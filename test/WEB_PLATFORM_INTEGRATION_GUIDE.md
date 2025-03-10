@@ -337,49 +337,49 @@ The recommended approach is to use the enhanced helper script, which offers flex
 
 ```bash
 # Run any test command with both WebNN and WebGPU simulation enabled (default)
-./run_web_platform_tests.sh python test/run_model_benchmarks.py --hardware webnn
+./run_web_platform_tests.sh python duckdb_api/run_model_benchmarks.py --hardware webnn
 
 # Enable only WebNN simulation
-./run_web_platform_tests.sh --webnn-only python test/run_model_benchmarks.py --hardware webnn
+./run_web_platform_tests.sh --webnn-only python duckdb_api/run_model_benchmarks.py --hardware webnn
 
 # Enable only WebGPU simulation
-./run_web_platform_tests.sh --webgpu-only python test/verify_key_models.py --platform webgpu
+./run_web_platform_tests.sh --webgpu-only python generators/verify_key_models.py --platform webgpu
 
 # Enable WebGPU compute shader optimization (March 2025)
-./run_web_platform_tests.sh --enable-compute-shaders python test/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --enable-compute-shaders python generators/runners/web/web_platform_test_runner.py --model whisper
 
 # Enable parallel model loading (March 2025)
-./run_web_platform_tests.sh --enable-parallel-loading python test/web_platform_test_runner.py --model clip
+./run_web_platform_tests.sh --enable-parallel-loading python generators/runners/web/web_platform_test_runner.py --model clip
 
 # Enable shader precompilation (March 2025)
-./run_web_platform_tests.sh --enable-shader-precompile python test/web_platform_test_runner.py --model vit
+./run_web_platform_tests.sh --enable-shader-precompile python generators/runners/web/web_platform_test_runner.py --model vit
 
 # Enable 4-bit inference for LLMs (August 2025)
-./run_web_platform_tests.sh --enable-4bit-inference python test/web_platform_test_runner.py --model llama
+./run_web_platform_tests.sh --enable-4bit-inference python generators/runners/web/web_platform_test_runner.py --model llama
 
 # Enable real WebNN implementation for audio models (August 2025)
-./run_web_platform_tests.sh --webnn-only --real-implementation python test/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --webnn-only --real-implementation python generators/runners/web/web_platform_test_runner.py --model whisper
 
 # Enable real WebGPU implementation for multimodal models with parallel loading (August 2025)
-./run_web_platform_tests.sh --webgpu-only --real-implementation --enable-parallel-loading python test/web_platform_test_runner.py --model llava
+./run_web_platform_tests.sh --webgpu-only --real-implementation --enable-parallel-loading python generators/runners/web/web_platform_test_runner.py --model llava
 
 # Run with all optimizations enabled (complete feature set)
-./run_web_platform_tests.sh --all-optimizations python test/web_platform_test_runner.py --model bert
+./run_web_platform_tests.sh --all-optimizations python generators/runners/web/web_platform_test_runner.py --model bert
 
 # Enable all March 2025 features
-./run_web_platform_tests.sh --all-features python test/run_web_platform_tests_with_db.py
+./run_web_platform_tests.sh --all-features python duckdb_api/web/run_web_platform_tests_with_db.py
 
 # Run with Firefox-specific audio optimizations
-./run_web_platform_tests.sh --firefox --enable-compute-shaders python test/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --firefox --enable-compute-shaders python generators/runners/web/web_platform_test_runner.py --model whisper
 
 # Compare Firefox vs Chrome audio model performance
 ./run_web_platform_tests.sh --compare-browsers python test/test_firefox_webgpu_compute_shaders.py --model whisper
 
 # Run with verbose output
-./run_web_platform_tests.sh --verbose python test/run_web_platform_tests_with_db.py
+./run_web_platform_tests.sh --verbose python duckdb_api/web/run_web_platform_tests_with_db.py
 
 # Run database-integrated web platform tests with Firefox optimization
-./run_web_platform_tests.sh --firefox python test/run_web_platform_tests_with_db.py
+./run_web_platform_tests.sh --firefox python duckdb_api/web/run_web_platform_tests_with_db.py
 ```
 
 This allows precise control over which web platform technologies are simulated, particularly useful when testing specific hardware compatibility or when diagnosing platform-specific issues.
@@ -687,25 +687,25 @@ To simplify testing with web platform simulation, use the provided helper script
 
 ```bash
 # Test model generation with WebNN support
-./run_web_platform_tests.sh python test/integrated_skillset_generator.py --model bert --hardware webnn
+./run_web_platform_tests.sh python generators/integrated_skillset_generator.py --model bert --hardware webnn
 
 # Test with WebGPU support
-./run_web_platform_tests.sh python test/run_model_benchmarks.py --hardware webgpu
+./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webgpu
 
 # Test with WebGPU compute shader optimization
-./run_web_platform_tests.sh --enable-compute-shaders python test/web_platform_test_runner.py --model whisper --platform webgpu
+./run_web_platform_tests.sh --enable-compute-shaders python generators/runners/web/web_platform_test_runner.py --model whisper --platform webgpu
 
 # Test with parallel model loading optimization
-./run_web_platform_tests.sh --enable-parallel-loading python test/web_platform_test_runner.py --model clip --platform webgpu
+./run_web_platform_tests.sh --enable-parallel-loading python generators/runners/web/web_platform_test_runner.py --model clip --platform webgpu
 
 # Test with shader precompilation optimization
-./run_web_platform_tests.sh --enable-shader-precompile python test/web_platform_test_runner.py --model vit --platform webgpu
+./run_web_platform_tests.sh --enable-shader-precompile python generators/runners/web/web_platform_test_runner.py --model vit --platform webgpu
 
 # Test template inheritance with web platforms
-./run_web_platform_tests.sh python test/template_inheritance_system.py --platform webnn
+./run_web_platform_tests.sh python generators/templates/template_inheritance_system.py --platform webnn
 
 # Test all March 2025 features together
-./run_web_platform_tests.sh --all-features python test/run_web_platform_tests_with_db.py
+./run_web_platform_tests.sh --all-features python duckdb_api/web/run_web_platform_tests_with_db.py
 ```
 
 ### Validating Web Platform Integration
@@ -714,31 +714,31 @@ We've created a comprehensive test script to validate the web platform integrati
 
 ```bash
 # Test both WebNN and WebGPU platforms across all modalities
-python test/test_web_platform_integration.py
+python generators/web/test_web_platform_integration.py
 
 # Test only WebNN platform
-python test/test_web_platform_integration.py --platform webnn
+python generators/web/test_web_platform_integration.py --platform webnn
 
 # Test only WebGPU platform with verbose output
-python test/test_web_platform_integration.py --platform webgpu --verbose
+python generators/web/test_web_platform_integration.py --platform webgpu --verbose
 
 # Test only text models on both platforms
-python test/test_web_platform_integration.py --modality text
+python generators/web/test_web_platform_integration.py --modality text
 
 # Test vision models on WebGPU
-python test/test_web_platform_integration.py --platform webgpu --modality vision
+python generators/web/test_web_platform_integration.py --platform webgpu --modality vision
 
 # Test audio models with compute shader optimization
-python test/test_web_platform_integration.py --platform webgpu --modality audio --compute-shaders
+python generators/web/test_web_platform_integration.py --platform webgpu --modality audio --compute-shaders
 
 # Test multimodal models with parallel loading
-python test/test_web_platform_integration.py --platform webgpu --modality multimodal --parallel-loading
+python generators/web/test_web_platform_integration.py --platform webgpu --modality multimodal --parallel-loading
 
 # Test vision models with shader precompilation
-python test/test_web_platform_integration.py --platform webgpu --modality vision --precompile-shaders
+python generators/web/test_web_platform_integration.py --platform webgpu --modality vision --precompile-shaders
 
 # Test all March 2025 features together
-python test/test_web_platform_integration.py --all-features
+python generators/web/test_web_platform_integration.py --all-features
 ```
 
 The integration test verifies that all platforms report the correct implementation types ("REAL_WEBNN" or "REAL_WEBGPU") and checks that the simulation mode works correctly across different model modalities (text, vision, audio, multimodal).
@@ -746,8 +746,8 @@ The integration test verifies that all platforms report the correct implementati
 You can also run the standard validation tests to verify implementation types in key models:
 
 ```bash
-./run_web_platform_tests.sh python test/verify_key_models.py --platform webnn
-./run_web_platform_tests.sh python test/verify_key_models.py --platform webgpu
+./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webnn
+./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webgpu
 ```
 
 The validation will check that all models report "REAL_WEBNN" or "REAL_WEBGPU" implementation types.
@@ -858,32 +858,32 @@ To generate tests with real web platform implementations, use the `merged_test_g
 
 ```bash
 # Generate WebNN test for BERT with real implementation
-python merged_test_generator.py --generate bert --web-platform webnn --real-implementation
+python generators/merged_test_generator.py --generate bert --web-platform webnn --real-implementation
 
 # Generate WebGPU test for Whisper with audio compute shader optimization
-python merged_test_generator.py --generate whisper --web-platform webgpu --with-audio-compute-shaders --real-implementation
+python generators/merged_test_generator.py --generate whisper --web-platform webgpu --with-audio-compute-shaders --real-implementation
 
 # Generate WebGPU test for LLaVA with parallel loading optimization
-python merged_test_generator.py --generate llava --web-platform webgpu --with-parallel-loading --real-implementation
+python generators/merged_test_generator.py --generate llava --web-platform webgpu --with-parallel-loading --real-implementation
 
 # Generate WebGPU test for LLAMA with 4-bit quantization
-python merged_test_generator.py --generate llama --web-platform webgpu --with-4bit-inference --real-implementation
+python generators/merged_test_generator.py --generate llama --web-platform webgpu --with-4bit-inference --real-implementation
 ```
 
 If you need to fix existing test templates or update the test generator with the latest web platform features, use the `fix_test_generator.py` script:
 
 ```bash
 # Fix all issues and update all templates
-python fix_test_generator.py --fix-all
+python generators/fix_test_generator.py --fix-all
 
 # Fix WebNN implementation for audio models
-python fix_test_generator.py --fix-webnn-audio
+python generators/fix_test_generator.py --fix-webnn-audio
 
 # Fix WebGPU implementation for multimodal models
-python fix_test_generator.py --fix-webgpu-multimodal
+python generators/fix_test_generator.py --fix-webgpu-multimodal
 
 # Update CLI arguments for web platform support
-python fix_test_generator.py --update-cli
+python generators/fix_test_generator.py --update-cli
 ```
 
 ### March 2025 Enhancements

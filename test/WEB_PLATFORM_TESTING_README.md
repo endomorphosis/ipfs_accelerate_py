@@ -50,9 +50,9 @@ To simplify testing with web platforms, the `run_web_platform_tests.sh` script s
 ./run_web_platform_tests.sh [your_test_command]
 
 # Examples
-./run_web_platform_tests.sh python test/run_model_benchmarks.py --hardware webnn
-./run_web_platform_tests.sh python test/integrated_skillset_generator.py --model bert --hardware webnn,webgpu
-./run_web_platform_tests.sh python test/verify_key_models.py --platform webgpu
+./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn
+./run_web_platform_tests.sh python generators/integrated_skillset_generator.py --model bert --hardware webnn,webgpu
+./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webgpu
 ```
 
 ### Advanced Features (March 2025)
@@ -79,16 +79,16 @@ The helper script now supports real browser automation for testing in actual bro
 
 ```bash
 # Test with real browser automation using Chrome
-./run_web_platform_tests.sh --use-browser-automation --browser chrome python test/web_platform_test_runner.py --model bert
+./run_web_platform_tests.sh --use-browser-automation --browser chrome python generators/runners/web/web_platform_test_runner.py --model bert
 
 # Test WebNN with Edge browser
-./run_web_platform_tests.sh --webnn-only --use-browser-automation --browser edge python test/web_platform_test_runner.py --model bert
+./run_web_platform_tests.sh --webnn-only --use-browser-automation --browser edge python generators/runners/web/web_platform_test_runner.py --model bert
 
 # Test WebGPU with Firefox browser
-./run_web_platform_tests.sh --webgpu-only --use-browser-automation --browser firefox python test/web_platform_test_runner.py --model vit
+./run_web_platform_tests.sh --webgpu-only --use-browser-automation --browser firefox python generators/runners/web/web_platform_test_runner.py --model vit
 
 # Combine browser automation with advanced features
-./run_web_platform_tests.sh --use-browser-automation --browser chrome --enable-compute-shaders python test/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --use-browser-automation --browser chrome --enable-compute-shaders python generators/runners/web/web_platform_test_runner.py --model whisper
 ```
 
 This script automatically sets these environment variables by default:
@@ -114,41 +114,41 @@ The browser automation flags add these environment variables:
 
 ```bash
 # Generate a test for BERT with WebNN support
-./run_web_platform_tests.sh python test/integrated_skillset_generator.py --model bert --hardware webnn
+./run_web_platform_tests.sh python generators/integrated_skillset_generator.py --model bert --hardware webnn
 
 # Generate tests for vision models with WebGPU support
-./run_web_platform_tests.sh python test/integrated_skillset_generator.py --model vit --hardware webgpu
+./run_web_platform_tests.sh python generators/integrated_skillset_generator.py --model vit --hardware webgpu
 ```
 
 ### Running Benchmarks
 
 ```bash
 # Run benchmarks with WebNN simulation
-./run_web_platform_tests.sh python test/run_model_benchmarks.py --hardware webnn --output-dir ./benchmark_results
+./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn --output-dir ./benchmark_results
 
 # Test multiple web platforms
-./run_web_platform_tests.sh python test/run_model_benchmarks.py --hardware webnn,webgpu --models-set small
+./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn,webgpu --models-set small
 ```
 
 ### Validating Implementation
 
 ```bash
 # Verify model functionality with WebNN
-./run_web_platform_tests.sh python test/verify_model_functionality.py --models bert t5 vit --hardware webnn
+./run_web_platform_tests.sh python generators/validators/verify_model_functionality.py --models bert t5 vit --hardware webnn
 
 # Verify that web platform implementation types are reporting correctly
-./run_web_platform_tests.sh python test/verify_key_models.py --platform webnn
-./run_web_platform_tests.sh python test/verify_key_models.py --platform webgpu
+./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webnn
+./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webgpu
 ```
 
 ### Running Specific Tests
 
 ```bash
 # Test template functionality with web platforms
-./run_web_platform_tests.sh python test/template_inheritance_system.py --platform webnn
+./run_web_platform_tests.sh python generators/templates/template_inheritance_system.py --platform webnn
 
 # Test hardware model integration
-./run_web_platform_tests.sh python test/run_integrated_hardware_model_test.py --platform webgpu
+./run_web_platform_tests.sh python generators/run_integrated_hardware_model_test.py --platform webgpu
 ```
 
 ## Fixing Web Platform Implementation Types
@@ -621,7 +621,7 @@ The `verify_web_platform_integration.py` script provides a comprehensive verific
 
 ```bash
 # Run the verification script
-python test/verify_web_platform_integration.py
+python generators/verify_web_platform_integration.py
 ```
 
 This script checks:

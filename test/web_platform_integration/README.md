@@ -188,27 +188,27 @@ To verify the implementation:
 
 1. **Basic verification**
    ```bash
-   python test/verify_web_platform_integration.py
+   python generators/validators/verify_web_platform_integration.py
    ```
 
 2. **Test a specific model with WebNN**
    ```bash
-   python test/web_platform_test_runner.py --model bert --platform webnn
+   python generators/runners/web/web_platform_test_runner.py --model bert --platform webnn
    ```
 
 3. **Test with WebGPU compute shaders (March 2025)**
    ```bash
-   python test/web_platform_test_runner.py --model whisper --platform webgpu --compute-shaders
+   python generators/runners/web/web_platform_test_runner.py --model whisper --platform webgpu --compute-shaders
    ```
 
 4. **Test with parallel model loading (March 2025)**
    ```bash
-   python test/web_platform_test_runner.py --model clip --platform webgpu --parallel-loading
+   python generators/runners/web/web_platform_test_runner.py --model clip --platform webgpu --parallel-loading
    ```
 
 5. **Generate performance report**
    ```bash
-   python test/scripts/benchmark_db_query.py --report web_platform --format html
+   python duckdb_api/core/benchmark_db_query.py --report web_platform --format html
    ```
 
 ## High-Priority Model Coverage for Web Platforms

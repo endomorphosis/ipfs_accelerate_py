@@ -277,13 +277,13 @@ Generate reports from the command line:
 
 ```bash
 # Generate benchmark report for specific model
-python test/scripts/benchmark_db_query.py --report performance --model bert-base-uncased --format html --output reports/bert_report.html
+python duckdb_api/core/benchmark_db_query.py --report performance --model bert-base-uncased --format html --output reports/bert_report.html
 
 # Generate comparative hardware report
-python test/scripts/benchmark_db_query.py --report hardware_comparison --models bert-base-uncased,t5-small,vit-base --format html --output reports/hardware_comparison.html
+python duckdb_api/core/benchmark_db_query.py --report hardware_comparison --models bert-base-uncased,t5-small,vit-base --format html --output reports/hardware_comparison.html
 
 # Generate trend report for specific model
-python test/scripts/benchmark_db_query.py --report performance_trend --model bert-base-uncased --hardware cuda --time-range "last_3_months" --format html --output reports/bert_trend_report.html
+python duckdb_api/core/benchmark_db_query.py --report performance_trend --model bert-base-uncased --hardware cuda --time-range "last_3_months" --format html --output reports/bert_trend_report.html
 ```
 
 ## Custom Benchmark Visualization
@@ -393,8 +393,8 @@ jobs:
           
       - name: Generate benchmark visualizations
         run: |
-          python test/scripts/benchmark_db_query.py --report weekly_performance --format html --output reports/weekly_performance.html
-          python test/scripts/benchmark_db_query.py --report hardware_comparison --format html --output reports/hardware_comparison.html
+          python duckdb_api/core/benchmark_db_query.py --report weekly_performance --format html --output reports/weekly_performance.html
+          python duckdb_api/core/benchmark_db_query.py --report hardware_comparison --format html --output reports/hardware_comparison.html
           
       - name: Upload visualization artifacts
         uses: actions/upload-artifact@v2

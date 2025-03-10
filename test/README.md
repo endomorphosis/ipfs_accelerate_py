@@ -2,20 +2,32 @@
 
 This directory contains the comprehensive testing framework for the IPFS Accelerate Python library, with a focus on validating model functionality, API integrations, and hardware acceleration capabilities.
 
+> **IMPORTANT CODE REORGANIZATION - MARCH 2025**
+>
+> The codebase has been reorganized for better maintainability:
+> - All generator files moved to the `generators/` directory (216 files)
+> - All database-related tools moved to the `duckdb_api/` directory (83 files)
+>
+> Please refer to [FINAL_MIGRATION_REPORT.md](FINAL_MIGRATION_REPORT.md) for complete details about the directory structure.
+>
+> All documentation has been updated to use the new file paths. If you find any references to old paths, please report them.
+
 ## Current Development: Q2-Q3 2025 - Advanced Performance and Distributed Systems
 
 Phase 16 has been successfully completed (March 2025), with all planned features implemented and validated. The current development focus has shifted to the following key initiatives:
 
 1. **Distributed Testing Framework** 🔄 - Creating a scalable system for parallel test execution across multiple nodes (IN PROGRESS - 25% complete)
-2. **Model File Verification and Conversion Pipeline** 📋 - Implementing pre-benchmark ONNX file verification and PyTorch conversion (PLANNED - Target: May 15, 2025)
+2. **Model File Verification and Conversion Pipeline** ✅ - Pre-benchmark ONNX file verification and PyTorch conversion (COMPLETED - March 9, 2025)
 3. **WebGPU/WebNN Resource Pool Integration** 🔄 - Implementing parallel model execution across browser backends (IN PROGRESS - Started March 7, 2025)
 4. **Cross-Browser Model Sharding** ✅ - Run large models distributed across multiple browser types (COMPLETED - March 8, 2025)
-5. **Predictive Performance System** 📋 - Implementing ML-based performance prediction (PLANNED - Target: June 30, 2025)
+5. **Predictive Performance System** 🔄 - Implementing ML-based performance prediction (IN PROGRESS - Started March 9, 2025)
 
 See the [Next Steps](NEXT_STEPS.md) document for the detailed roadmap of current and future initiatives. For information about the completed Phase 16, see the [Phase 16 Completion Report](PHASE16_COMPLETION_REPORT.md).
 
 ## Recent Documentation
 
+- **[MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md)** - NEW! Comprehensive guide to the Model File Verification and Conversion Pipeline
+- **[PREDICTIVE_PERFORMANCE_GUIDE.md](predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md)** - NEW! Comprehensive guide to the ML-based performance prediction system
 - **[WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md)** - NEW! Comprehensive guide to cross-browser model sharding for large models
 - **[OPENVINO_BENCHMARKING_GUIDE.md](OPENVINO_BENCHMARKING_GUIDE.md)** - NEW! Comprehensive guide to benchmarking models with OpenVINO across multiple precision formats (FP32, FP16, INT8)
 - **[ENHANCED_OPENVINO_INTEGRATION.md](ENHANCED_OPENVINO_INTEGRATION.md)** - NEW! Comprehensive guide to enhanced OpenVINO integration with optimum.intel and INT8 quantization
@@ -84,21 +96,41 @@ The test framework includes:
 
 ## Directory Structure
 
-The repository has been organized for better readability and maintainability:
+After the March 2025 reorganization, the codebase now has the following high-level structure:
 
+### Main Directories
 - **Root directory**: Contains the main scripts and documentation
-- **test_generators/**: Tools for generating test files
-- **model_test_runners/**: Model-specific test runner scripts
-- **implementation_files/**: Implementation scripts for various components
-- **integration_results/**: Results from integration test suite runs
-- **web_benchmark_results/**: Results from web platform benchmarking
-- **web_platform_results/**: Results from web platform testing
-- **archived_reports/**: Historical implementation reports
-- **archived_test_results/**: Historical test result files
-- **archived_md_files/**: Additional documentation
-- **archived_cuda_fixes/**: CUDA detection fix scripts
-- **old_scripts/**: Older versions of implementation scripts
-- **generated_skillsets/**: Output directory for skillset generator
+- **generators/**: All generator-related code (216 files)
+  - **benchmark_generators/**: Benchmark generation tools
+  - **models/**: Model implementations and skill files
+  - **runners/**: Test runner scripts
+  - **skill_generators/**: Skill generation tools
+  - **template_generators/**: Template generation utilities
+  - **templates/**: Template files and template system
+  - **test_generators/**: Test generation tools
+  - **utils/**: Utility functions
+- **duckdb_api/**: All database-related code (83 files)
+  - **core/**: Core database functionality
+  - **migration/**: Migration tools for JSON to database
+  - **schema/**: Database schema definitions
+  - **utils/**: Utility functions for database operations
+  - **visualization/**: Result visualization tools
+- **fixed_web_platform/**: Web platform implementation components
+- **predictive_performance/**: ML-based performance prediction system
+
+### Legacy Directories
+The following directories contain legacy files that are being archived or migrated:
+
+- **test/**:
+  - **integration_results/**: Results from integration test suite runs
+  - **web_benchmark_results/**: Results from web platform benchmarking
+  - **web_platform_results/**: Results from web platform testing
+  - **archived_reports/**: Historical implementation reports
+  - **archived_test_results/**: Historical test result files
+  - **archived_md_files/**: Additional documentation
+  - **archived_cuda_fixes/**: CUDA detection fix scripts
+  - **old_scripts/**: Older versions of implementation scripts
+  - **generated_skillsets/**: Output directory for skillset generator
 
 ### New Tools Added (April 2025)
 
@@ -213,32 +245,39 @@ This framework uses a template-based architecture for efficient management of 30
 To work with templates:
 ```bash
 # View templates in the database
-python template_database.py --list-templates
+python generators/templates/template_database.py --list-templates
 
 # Add or update a template
-python template_database.py --add-template [template_name] --template-type [model|helper|dependency]
+python generators/templates/template_database.py --add-template [template_name] --template-type [model|helper|dependency]
 
 # Generate test with fixed generator and cross-platform support
-python fixed_merged_test_generator.py --generate bert --platform all --output test_hf_bert.py
+python generators/test_generators/fixed_merged_test_generator.py --generate bert --platform all --output test_hf_bert.py
 
 # Generate test with specific hardware platforms
-python fixed_merged_test_generator.py --generate vit --platform "cuda,openvino,webgpu" --output test_hf_vit.py
+python generators/test_generators/fixed_merged_test_generator.py --generate vit --platform "cuda,openvino,webgpu" --output test_hf_vit.py
 
 # Generate skillset with cross-platform support
-python integrated_skillset_generator.py --model bert --hardware all --cross-platform
+python generators/models/integrated_skillset_generator.py --model bert --hardware all --cross-platform
 
 # Run Phase 16 generator test script to test across all platforms
-./run_phase16_generators.sh
+./generators/runners/run_phase16_generators.sh
 
 # Verify hardware support for key models
-python verify_hardware_support.py
+python generators/hardware/verify_hardware_support.py
 ```
 
-#### March 2025 Generator Improvements (Updated March 6, 2025)
+#### March 2025 Generator Improvements (Updated March 9, 2025)
 
 The latest update to the test generators includes several key improvements and critical fixes:
 
-1. **Critical Fixes (March 6, 2025)**:
+1. **Directory Reorganization (March 9, 2025)**:
+   - All generator files moved to the `generators/` directory with proper subdirectory structure
+   - All database-related tools moved to the `duckdb_api/` directory
+   - File paths updated in documentation and import statements
+   - Improved organization for better maintainability
+   - Enhanced package structure with proper `__init__.py` files
+
+2. **Critical Fixes (March 6, 2025)**:
    - Added model registry system for consistent model identification
    - Fixed missing run_tests() method in generated test classes
    - Added proper OpenVINO initialization with openvino_label parameter
@@ -294,32 +333,32 @@ The following tools are used for implementing and testing the API infrastructure
 
 ```bash
 # Test all web platform optimizations including ultra-low precision
-python test/test_web_platform_optimizations.py --all-optimizations
+python generators/test_web_platform_optimizations.py --all-optimizations
 
 # Test 2-bit and 3-bit ultra-low precision
-python test/test_ultra_low_precision.py --model llama --bits 2 --validate-accuracy
-python test/test_ultra_low_precision.py --bits 3 --model llama --analyze-tradeoffs
-python test/test_ultra_low_precision.py --mixed-precision --model llama --layer-analysis
+python generators/test_ultra_low_precision.py --model llama --bits 2 --validate-accuracy
+python generators/test_ultra_low_precision.py --bits 3 --model llama --analyze-tradeoffs
+python generators/test_ultra_low_precision.py --mixed-precision --model llama --layer-analysis
 
 # Test memory-efficient KV cache with ultra-low precision
-python test/test_ultra_low_precision.py --test-kv-cache --model llama
-python test/test_ultra_low_precision.py --extended-context --model llama --context-length 32768
+python generators/test_ultra_low_precision.py --test-kv-cache --model llama
+python generators/test_ultra_low_precision.py --extended-context --model llama --context-length 32768
 
 # Test browser compatibility with ultra-low precision
-python test/test_ultra_low_precision.py --test-browser-compatibility
-python test/test_ultra_low_precision.py --all-tests --db-path ./benchmark_db.duckdb
+python generators/test_ultra_low_precision.py --test-browser-compatibility
+python generators/test_ultra_low_precision.py --all-tests --db-path ./benchmark_db.duckdb
 
 # Test WebGPU compute shader optimization for audio models
-python test/test_web_platform_optimizations.py --compute-shaders --model whisper
+python generators/test_web_platform_optimizations.py --compute-shaders --model whisper
 
 # Test with Firefox browser and its exceptional WebGPU performance
-./run_web_platform_tests.sh --firefox --all-features --ultra-low-precision python test/test_web_platform_optimizations.py --model whisper
+./run_web_platform_tests.sh --firefox --all-features --ultra-low-precision python generators/test_web_platform_optimizations.py --model whisper
 
 # Test parallel loading for multimodal models with ultra-low precision
-python test/test_web_platform_optimizations.py --parallel-loading --ultra-low-precision --model clip
+python generators/test_web_platform_optimizations.py --parallel-loading --ultra-low-precision --model clip
 
 # Run comprehensive test suite with all optimizations
-python test/run_web_platform_tests_with_db.py --models bert vit clip whisper llama --all-features --ultra-low-precision
+python duckdb_api/run_web_platform_tests_with_db.py --models bert vit clip whisper llama --all-features --ultra-low-precision
 ```
 
 ### Model Tests
@@ -478,23 +517,23 @@ python test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
 
 
 # NEW! Real WebNN/WebGPU benchmarking with browser capabilities (March 2025)
-python test/run_real_web_benchmarks.py --platform webgpu --browser chrome --model bert
-python test/run_real_web_benchmarks.py --platform webnn --browser edge --model bert
-python test/run_real_web_benchmarks.py --model whisper --browser firefox --compute-shaders
-python test/run_real_web_benchmarks.py --comprehensive
+python generators/run_real_web_benchmarks.py --platform webgpu --browser chrome --model bert
+python generators/run_real_web_benchmarks.py --platform webnn --browser edge --model bert
+python generators/run_real_web_benchmarks.py --model whisper --browser firefox --compute-shaders
+python generators/run_real_web_benchmarks.py --comprehensive
 
 # NEW! Check browser WebNN/WebGPU capabilities before benchmarking
-python test/check_browser_webnn_webgpu.py --browser chrome
-python test/check_browser_webnn_webgpu.py --check-all
-python test/check_browser_webnn_webgpu.py --browser firefox --platform webgpu
+python generators/check_browser_webnn_webgpu.py --browser chrome
+python generators/check_browser_webnn_webgpu.py --check-all
+python generators/check_browser_webnn_webgpu.py --browser firefox --platform webgpu
 
 # Main entry point for WebNN and WebGPU with quantization testing (RECOMMENDED)
-python run_real_webgpu_webnn.py --platform webgpu --browser chrome --bits 4
-python run_real_webgpu_webnn.py --platform webnn --browser edge --bits 8
-python run_real_webgpu_webnn.py --platform both --browser chrome --bits 4 --mixed-precision
+python generators/run_real_webgpu_webnn.py --platform webgpu --browser chrome --bits 4
+python generators/run_real_webgpu_webnn.py --platform webnn --browser edge --bits 8
+python generators/run_real_webgpu_webnn.py --platform both --browser chrome --bits 4 --mixed-precision
 
 # Test experimental WebNN precision (new March 2025 feature)
-python run_real_webgpu_webnn.py --platform webnn --browser edge --bits 4 --experimental-precision
+python generators/run_real_webgpu_webnn.py --platform webnn --browser edge --bits 4 --experimental-precision
 
 # Legacy API (prefer run_real_webgpu_webnn.py instead)
 ./web_platform_testing.py --test-model bert --platform webnn
@@ -517,24 +556,24 @@ python run_real_webgpu_webnn.py --platform webnn --browser edge --bits 4 --exper
 ./web_platform_benchmark.py --model bert --chart-dir benchmark_charts
 
 # Using advanced features via the helper script
-./run_web_platform_tests.sh --enable-compute-shaders python test/web_platform_benchmark.py --model whisper
+./run_web_platform_tests.sh --enable-compute-shaders python generators/web_platform_benchmark.py --model whisper
 
 # Using Firefox with WebGPU compute shader support (March 2025 feature)
-./run_web_platform_tests.sh --firefox --all-features python test/test_web_platform_optimizations.py --model whisper
+./run_web_platform_tests.sh --firefox --all-features python generators/test_web_platform_optimizations.py --model whisper
 
 # Test all March 2025 optimizations together
-./run_web_platform_tests.sh --all-features python test/test_web_platform_optimizations.py --all-optimizations
-./run_web_platform_tests.sh --enable-parallel-loading python test/web_platform_benchmark.py --model llava
-./run_web_platform_tests.sh --enable-shader-precompile python test/web_platform_benchmark.py --model vit
-./run_web_platform_tests.sh --all-features python test/web_platform_benchmark.py --comparative
+./run_web_platform_tests.sh --all-features python generators/test_web_platform_optimizations.py --all-optimizations
+./run_web_platform_tests.sh --enable-parallel-loading python generators/web_platform_benchmark.py --model llava
+./run_web_platform_tests.sh --enable-shader-precompile python generators/web_platform_benchmark.py --model vit
+./run_web_platform_tests.sh --all-features python generators/web_platform_benchmark.py --comparative
 
 # Run parallel model loading tests
-python test_webgpu_parallel_model_loading.py --model-type multimodal
-python test_webgpu_parallel_model_loading.py --test-all --create-chart
+python generators/test_webgpu_parallel_model_loading.py --model-type multimodal
+python generators/test_webgpu_parallel_model_loading.py --test-all --create-chart
 ./test_run_parallel_model_loading.sh --update-handler --all-models --benchmark
 
 # Verify web platform integration
-python test/verify_web_platform_integration.py
+python generators/verify_web_platform_integration.py
 ```
 
 ### Benchmark Database and Analysis
@@ -546,10 +585,10 @@ python benchmark_openvino.py --model bert-base-uncased --precision FP32,FP16,INT
 python benchmark_openvino.py --model-family text --device CPU --batch-sizes 1,2,4,8,16 --report
 
 # Run comprehensive benchmarks with the new orchestration script
-python test/run_comprehensive_benchmarks.py
+python duckdb_api/run_comprehensive_benchmarks.py
 
 # Run benchmarks for specific models and hardware
-python test/run_comprehensive_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
+python duckdb_api/run_comprehensive_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
 
 # Initialize benchmark database with sample data
 python benchmark_database.py
@@ -573,7 +612,7 @@ python benchmark_query.py report --family embedding --format html
 python benchmark_query.py stats
 
 # Generate comprehensive benchmark timing report
-python test/benchmark_timing_report.py --generate --format html --output report.html
+python duckdb_api/benchmark_timing_report.py --generate --format html --output report.html
 ```
 
 ### Skillset Generation with Database Templates
@@ -641,21 +680,21 @@ The merged test generator now includes specialized optimizations for the 13 key 
 
 ```bash
 # Generate tests specifically for key model types with enhanced hardware support
-python merged_test_generator.py --generate-missing --key-models-only
+python generators/merged_test_generator.py --generate-missing --key-models-only
 
 # Prioritize key models when generating mixed tests
-python merged_test_generator.py --generate-missing --prioritize-key-models
+python generators/merged_test_generator.py --generate-missing --prioritize-key-models
 
 # Generate tests for specific key model categories
-python merged_test_generator.py --generate-missing --key-models-only --category multimodal
+python generators/merged_test_generator.py --generate-missing --key-models-only --category multimodal
 
 # Generate tests for a specific key model
-python merged_test_generator.py --generate t5
-python merged_test_generator.py --generate llava
-python merged_test_generator.py --generate whisper
+python generators/merged_test_generator.py --generate t5
+python generators/merged_test_generator.py --generate llava
+python generators/merged_test_generator.py --generate whisper
 
 # Generate tests for multiple key models
-python merged_test_generator.py --batch-generate t5,clap,wav2vec2,whisper,llava
+python generators/merged_test_generator.py --batch-generate t5,clap,wav2vec2,whisper,llava
 ```
 
 ### Modality-Specific Test Generation
@@ -664,19 +703,19 @@ The test generator system has been enhanced with modality-specific templates tha
 
 ```bash
 # Generate tests for specific modalities (text, vision, audio, multimodal)
-python generate_modality_tests.py --modality text
-python generate_modality_tests.py --modality vision
-python generate_modality_tests.py --modality audio
-python generate_modality_tests.py --modality multimodal
+python generators/generate_modality_tests.py --modality text
+python generators/generate_modality_tests.py --modality vision
+python generators/generate_modality_tests.py --modality audio
+python generators/generate_modality_tests.py --modality multimodal
 
 # Generate tests for all modalities
-python generate_modality_tests.py --modality all
+python generators/generate_modality_tests.py --modality all
 
 # Generate tests without verification
-python generate_modality_tests.py --modality vision --no-verify
+python generators/generate_modality_tests.py --modality vision --no-verify
 
 # Generate tests into a custom directory
-python generate_modality_tests.py --modality text --output-dir custom_tests
+python generators/generate_modality_tests.py --modality text --output-dir custom_tests
 ```
 
 ### Legacy Test Generation
@@ -685,13 +724,13 @@ The previous test generators are still available:
 
 ```bash
 # Using the primary generator
-python generate_model_tests.py --list-only
-python generate_model_tests.py --models layoutlmv2 nougat swinv2 vit_mae
-python generate_model_tests.py --category vision --limit 5
+python generators/generate_model_tests.py --list-only
+python generators/generate_model_tests.py --models layoutlmv2 nougat swinv2 vit_mae
+python generators/generate_model_tests.py --category vision --limit 5
 
 # Using the enhanced generator with dependency tracking
-python simple_model_test_generator.py --batch  # Generate batch of tests with dependency tracking
-python simple_model_test_generator.py --model llama-3-70b-instruct --task text-generation  # Specific model
+python generators/simple_model_test_generator.py --batch  # Generate batch of tests with dependency tracking
+python generators/simple_model_test_generator.py --model llama-3-70b-instruct --task text-generation  # Specific model
 ```
 
 ## Recent Improvements
@@ -956,13 +995,13 @@ Following the successful completion of Phase 16, the current development is focu
    - Create fault tolerance system with automatic retries and fallbacks
    - Design comprehensive monitoring dashboard for distributed tests
 
-2. **Predictive Performance System (High Priority)**
-   - Design ML architecture for performance prediction on untested configurations
-   - Create comprehensive dataset for model training from benchmark database
-   - Implement confidence scoring system for prediction reliability
-   - Build active learning pipeline for targeting high-value test configurations
-   - Develop hardware recommendation system using predictive models
-   - Create real-time prediction API with comprehensive documentation
+2. **Predictive Performance System (In Progress - Started March 9, 2025)**
+   - ✅ Designed ML architecture for performance prediction on untested configurations
+   - ✅ Created comprehensive dataset for model training from benchmark database
+   - ✅ Implemented confidence scoring system for prediction reliability
+   - 🔄 Building active learning pipeline for targeting high-value test configurations
+   - 🔄 Developing hardware recommendation system using predictive models
+   - ✅ Created comprehensive documentation with examples and usage guide
 
 3. **WebGPU/WebNN Resource Pool Integration (COMPLETED - March 2025)**
    - ✅ Created resource pool implementation for browser-based environments with IPFS acceleration

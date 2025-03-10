@@ -1,6 +1,0 @@
-{
-  "status": "Error",
-  "error": "'int' object has no attribute 'futures'",
-  "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/test_api_multiplexing_enhanced.py\", line 677, in __test__\n    results = self.run_all_tests()\n              ^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/test_api_multiplexing_enhanced.py\", line 637, in run_all_tests\n    test_results = self.test_high_concurrency(num_requests=8, concurrent=4)\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/test_api_multiplexing_enhanced.py\", line 412, in test_high_concurrency\n    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent) as executor:\n         ^^^^^^^^^^^^^^^^^^\nAttributeError: 'int' object has no attribute 'futures'\n",
-  "timestamp": "2025-03-01T18:14:47.980389"
-}

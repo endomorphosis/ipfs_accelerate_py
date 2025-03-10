@@ -8,11 +8,14 @@ This document provides an updated guide for using real WebNN and WebGPU hardware
 - ✅ Real WebNN and WebGPU Implementation (COMPLETED - March 6, 2025)
 - ✅ Cross-Browser Model Sharding (COMPLETED - March 8, 2025)
 - 🔄 WebGPU/WebNN Resource Pool Integration (IN PROGRESS - 40% complete, Target: May 25, 2025)
+- 🔲 **Migration to ipfs_accelerate_js folder (PLANNED - After all tests pass)**
 
 **New Implementation Files:**
 - `/fixed_web_platform/websocket_bridge.py` - Enhanced WebSocket communication with browsers
 - `/fixed_web_platform/resource_pool_bridge.py` - Resource pool integration (in progress)
 - `/test_ipfs_accelerate_with_real_webnn_webgpu.py` - Comprehensive testing tool
+
+> **IMPORTANT NOTE**: All WebGPU/WebNN implementations will be moved to a dedicated `ipfs_accelerate_js` folder once all tests pass. Import paths and references in this document will be updated accordingly after the migration.
 
 ## New Tools and Features
 
@@ -47,10 +50,23 @@ Significant performance improvements for audio models in Firefox:
 - **Optimized workgroup size** (256x1x1 vs Chrome's 128x2x1)
 - **Enhanced memory access patterns** for audio processing
 
-Implementation in `fixed_web_platform/webgpu_audio_compute_shaders.py`:
+Currently implemented in `fixed_web_platform/webgpu_audio_compute_shaders.py` (will move to `ipfs_accelerate_js` folder):
 
 ```python
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+
+# Create Firefox-optimized processor for Whisper
+processor = optimize_for_firefox({"model_name": "whisper"})
+
+# Process audio with optimized implementation
+features = processor["extract_features"]("audio.mp3")
+```
+
+After migration to the `ipfs_accelerate_js` folder, imports will change to:
+
+```python
+# Future import path after migration
+from ipfs_accelerate_js.webgpu_audio_compute_shaders import optimize_for_firefox
 
 # Create Firefox-optimized processor for Whisper
 processor = optimize_for_firefox({"model_name": "whisper"})
@@ -217,6 +233,7 @@ Based on extensive testing, we recommend these configurations:
 For concurrent execution and efficient resource management:
 
 ```python
+# Current import path (before migration)
 from fixed_web_platform.resource_pool_bridge import ResourcePoolBridge
 
 # Create resource pool bridge
@@ -246,11 +263,17 @@ results = await bridge.run_parallel([
 ])
 ```
 
+> **After Migration**: Once moved to the `ipfs_accelerate_js` folder, import paths will change to:
+> ```python
+> from ipfs_accelerate_js.resource_pool_bridge import ResourcePoolBridge
+> ```
+
 ### WebSocket Bridge Direct Access
 
 For lower-level control:
 
 ```python
+# Current import path (before migration)
 from fixed_web_platform.websocket_bridge import create_websocket_bridge
 
 # Create WebSocket bridge
@@ -279,6 +302,11 @@ inference_result = await bridge.run_inference(
 # Close when done
 await bridge.stop()
 ```
+
+> **After Migration**: Once moved to the `ipfs_accelerate_js` folder, import paths will change to:
+> ```python
+> from ipfs_accelerate_js.websocket_bridge import create_websocket_bridge
+> ```
 
 ## Troubleshooting
 
@@ -340,6 +368,25 @@ The current focus is on the Resource Pool Integration, which will enable concurr
 - 🔲 Resource monitoring and adaptive scaling (PLANNED - April 1-7, 2025)
 
 Target completion date: **May 25, 2025**
+
+### Migration to ipfs_accelerate_js (PLANNED - After all tests pass)
+
+All WebGPU/WebNN implementations will be moved from the current `/fixed_web_platform/` directory to a dedicated `ipfs_accelerate_js` folder once all tests pass successfully. This migration will:
+
+- ✅ Create a clearer separation between JavaScript-based components and Python-based components
+- ✅ Provide a more intuitive structure for WebGPU/WebNN implementations
+- ✅ Make the codebase easier to navigate and maintain
+- ✅ Simplify future JavaScript SDK development
+
+The migration plan includes:
+
+- 🔲 Move all WebGPU/WebNN implementations to the new `ipfs_accelerate_js` folder
+- 🔲 Update import paths across the codebase to reflect the new structure
+- 🔲 Update all documentation to reference the new paths
+- 🔲 Create migration guides for users of the existing API
+- 🔲 Update tests to verify functionality after migration
+
+All migration work will begin after current tests are passing to ensure stability.
 
 ### Other Upcoming Improvements
 

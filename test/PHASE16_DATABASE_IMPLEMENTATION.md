@@ -177,7 +177,7 @@ python test/scripts/benchmark_db_migration.py --migrate-all --db ./benchmark_db.
 
 ```python
 # Programmatic usage
-from benchmark_db_api import BenchmarkDBAPI
+from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
 api = BenchmarkDBAPI()
 api.store_performance_result(model_name="bert-base-uncased", hardware_type="cuda", throughput=123.4, latency_avg=10.5)
 ```
@@ -189,26 +189,26 @@ api.store_performance_result(model_name="bert-base-uncased", hardware_type="cuda
 python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda --batch-sizes 1,2,4,8,16 --db ./benchmark_db.duckdb
 
 # Run benchmarks with database integration using standard model benchmark runner
-python test/run_model_benchmarks.py --hardware cuda --models-set small --db-path ./benchmark_db.duckdb
+python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda --models-set small --db-path ./benchmark_db.duckdb
 
 # Run benchmarks without storing in database
-python test/run_model_benchmarks.py --hardware cuda --models-set small --no-db-store
+python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda --models-set small --no-db-store
 
 # Generate database visualizations from benchmark results
-python test/run_model_benchmarks.py --hardware cuda --visualize-from-db
+python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda --visualize-from-db
 ```
 
 ### Querying the Database
 
 ```bash
 # Execute a SQL query
-python test/scripts/benchmark_db_query.py --sql "SELECT model_name, hardware_type, AVG(throughput_items_per_second) FROM performance_results JOIN models USING(model_id) JOIN hardware_platforms USING(hardware_id) GROUP BY model_name, hardware_type"
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT model_name, hardware_type, AVG(throughput_items_per_second) FROM performance_results JOIN models USING(model_id) JOIN hardware_platforms USING(hardware_id) GROUP BY model_name, hardware_type"
 
 # Generate a report
-python test/scripts/benchmark_db_query.py --report performance --format html --output benchmark_report.html
+python duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html
 
 # Compare hardware platforms for a specific model
-python test/scripts/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
+python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
 ```
 
 ### Updating the Database

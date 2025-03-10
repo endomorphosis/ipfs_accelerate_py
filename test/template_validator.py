@@ -1,1 +1,0 @@
-/home/barberb/ipfs_accelerate_py/generators/skill_generators/template_validator.py

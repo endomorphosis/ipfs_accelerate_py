@@ -32,7 +32,7 @@ Firefox uses a 256x1x1 workgroup size that is particularly efficient for audio p
 
 ```bash
 # Run tests with Firefox optimization
-./run_web_platform_tests.sh --firefox python test/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --firefox python generators/runners/web/web_platform_test_runner.py --model whisper
 ```
 
 For detailed Firefox-specific performance data, see [Web Browser Audio Performance Comparison](WEB_BROWSER_AUDIO_PERFORMANCE.md).

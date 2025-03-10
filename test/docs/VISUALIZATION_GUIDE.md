@@ -52,16 +52,16 @@ trend_viz = TrendVisualizer(db_path="./benchmark_db.duckdb")
 
 ```bash
 # Generate benchmark visualization reports
-python test/scripts/benchmark_db_query.py --report performance --format html --output benchmark_report.html
+python duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html
 
 # Generate hardware compatibility visualization
-python test/scripts/benchmark_db_query.py --report compatibility --format html --output compatibility_matrix.html
+python duckdb_api/core/benchmark_db_query.py --report compatibility --format html --output compatibility_matrix.html
 
 # Generate memory usage comparison chart
-python test/scripts/benchmark_db_query.py --model bert-base-uncased --metric memory --compare-hardware --output memory_comparison.png
+python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric memory --compare-hardware --output memory_comparison.png
 
 # Generate performance trends over time
-python test/scripts/benchmark_db_query.py --trend performance --model bert-base-uncased --hardware cuda --metric throughput --format chart
+python duckdb_api/core/benchmark_db_query.py --trend performance --model bert-base-uncased --hardware cuda --metric throughput --format chart
 ```
 
 ### Visualization Output Formats

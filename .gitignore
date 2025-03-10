@@ -1,3 +1,15 @@
+*.json
+*.duckdb
+*benchmark_report_*
+*benchmark_status_*
+*comprehensive_benchmark_report*
+*_model_hardware_report*
+*model_functionality_report*
+*model_functionality*
+*.json
+*result.json*
+*benchmark_report*
+*.log
 dist
 *.egg-info
 *.egg
@@ -18,3 +30,10 @@ model_cache/*
 test/benchmark_results/*.json
 test/benchmark_results/*/*
 */benchmark_results/*
+*models--*
+test/webnn_webgpu_test_results/*.log
+benchmarks/*.duckdb
+benchmarks/*.sqlite
+benchmarks/*.json
+benchmarks/*.log
+benchmarks/*.csv

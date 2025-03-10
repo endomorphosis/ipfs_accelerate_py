@@ -296,10 +296,10 @@ All test results are stored in the DuckDB database, with specialized schema exte
 
 ```bash
 # Query the database for comprehensive coverage statistics
-python test/benchmark_db_query.py --report comprehensive-coverage --format html --output coverage_report.html
+python duckdb_api/core/benchmark_db_query.py --report comprehensive-coverage --format html --output coverage_report.html
 
 # Visualize coverage across hardware platforms
-python test/benchmark_db_visualizer.py --comprehensive-matrix --output matrix.html
+python duckdb_api/core/benchmark_db_visualizer.py --comprehensive-matrix --output matrix.html
 ```
 
 For detailed information on the database integration, see [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md).

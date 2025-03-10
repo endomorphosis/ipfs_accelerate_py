@@ -12,67 +12,253 @@ from typing import Dict, List, Any, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Model family definitions
+# Model family definitions with enhanced keywords (March 2025 Update)
 MODEL_FAMILIES = {
     "embedding": {
         "description": "Text embedding and representation models like BERT",
-        "keywords": ["bert", "embedding", "roberta", "distilbert", "camembert", "albert", "xlm", "sentence", "ernie", "luke"],
-        "tasks": ["feature-extraction", "fill-mask", "sentence-similarity", "token-classification", "text-classification"],
-        "methods": ["embed", "encode", "get_embedding", "get_sentence_embedding", "get_vector", "get_representation"]
+        "keywords": [
+            # Base embedding models
+            "bert", "embedding", "roberta", "distilbert", "camembert", "albert", "xlm", "sentence", "ernie", "luke",
+            # Specific embedding models (March 2025)
+            "e5", "bge", "gte", "mpnet", "deberta", "sentence-t5", "sgpt", "instructor", "minilm", "gtr", "simcse",
+            # Multilingual embeddings
+            "xlm-roberta", "multilingual-e5", "infoxlm", "labse", "paraphrase-multilingual", "muse", "laser",
+            # Domain-specific embeddings
+            "sci-bert", "bio-bert", "legal-bert", "clinical-bert", "fin-bert", "code-bert", "rubert", "sbert",
+            # Cross-encoders
+            "cross-encoder", "cross-e5", "re-ranker", "bi-encoder"
+        ],
+        "tasks": [
+            "feature-extraction", "fill-mask", "sentence-similarity", "token-classification", "text-classification",
+            "embedding", "dense-retrieval", "semantic-similarity", "passage-retrieval", "zero-shot-classification"
+        ],
+        "methods": [
+            "embed", "encode", "get_embedding", "get_sentence_embedding", "get_vector", "get_representation",
+            "encode_queries", "encode_passages", "get_document_embedding", "encode_plus", "compute_similarity"
+        ]
     },
     "text_generation": {
         "description": "Text generation and language models like GPT, LLaMA, T5, etc.",
-        "keywords": ["gpt", "t5", "llama", "opt", "bloom", "phi", "falcon", "mistral", "mamba", "transformer", "mixtral", "gemma"],
-        "tasks": ["text-generation", "text2text-generation", "summarization", "translation", "question-answering"],
-        "methods": ["generate", "predict", "generate_text", "complete", "predict_next", "chat", "summarize"]
+        "keywords": [
+            # Base generation models
+            "gpt", "t5", "llama", "opt", "bloom", "phi", "falcon", "mistral", "mamba", "transformer", "mixtral", "gemma",
+            # Newer models (March 2025)
+            "qwen", "vicuna", "orca", "j2", "yi", "olmo", "starcoder", "stablelm", "gptj", "gpt-neo", "gpt-neox", "palm",
+            "pythia", "chatglm", "xglm", "codellama", "baichuan", "koala", "nous-hermes", "cerebras", "h2o", "zephyr",
+            # Instruction-tuned variants
+            "instruct", "chat", "assistant", "flan", "alpaca", "llama2-chat", "bard", "anthropic", "claude",
+            # Specialized generation models
+            "t0", "mt5", "ul2", "mt0", "flan-t5", "flan-ul2", "bart", "pegasus", "switch", "pangu", "dolly",
+            # Code generation
+            "code", "codegen", "codet5", "incoder", "codex", "santacoder", "wizardcoder", "deepseekcoder"
+        ],
+        "tasks": [
+            "text-generation", "text2text-generation", "summarization", "translation", "question-answering",
+            "code-generation", "chat-completion", "instruction-following", "paraphrasing", "rewriting",
+            "completion", "language-modeling", "dialogue", "conversational", "code-completion"
+        ],
+        "methods": [
+            "generate", "predict", "generate_text", "complete", "predict_next", "chat", "summarize",
+            "answer", "translate", "instruct", "chat_completion", "generate_code", "complete_code", "respond"
+        ]
     },
     "vision": {
         "description": "Vision and image processing models like ViT, CLIP (vision part), etc.",
-        "keywords": ["vit", "vision", "resnet", "efficientnet", "swin", "deit", "beit", "convnext", "sam", "yolo", "detr"],
-        "tasks": ["image-classification", "object-detection", "image-segmentation", "depth-estimation", "zero-shot-image-classification"],
-        "methods": ["predict", "classify", "detect", "segment", "process_image"]
+        "keywords": [
+            # Base vision models
+            "vit", "vision", "resnet", "efficientnet", "swin", "deit", "beit", "convnext", "sam", "yolo", "detr",
+            # Vision models (March 2025)
+            "dinov2", "siglip", "owlvit", "eva", "levit", "maxvit", "dino", "segformer", "pvt", "mobilevit", "image",
+            "bit", "vgg", "densenet", "inceptionv3", "mobilenet", "regnet", "hrnet", "darknet", "fastrcnn", "maskrcnn",
+            "retinanet", "faster-rcnn", "efficientdet", "detectron", "mask2former", "oneformer", "resnext", "hrnet",
+            # Specialized vision applications
+            "segmentation", "detection", "depth-estimation", "optical-flow", "pose-estimation", "image-to-image",
+            "diffusion", "stable-diffusion", "sdxl", "dalle", "imagen", "kandinsky", "pixart", "gan", "inpainting",
+            # Video models
+            "video", "videobert", "videomae", "videoswin", "vivit", "slowfast", "timesformer", "x3d"
+        ],
+        "tasks": [
+            "image-classification", "object-detection", "image-segmentation", "depth-estimation", 
+            "zero-shot-image-classification", "instance-segmentation", "panoptic-segmentation", "semantic-segmentation",
+            "video-classification", "facial-recognition", "pose-estimation", "image-generation", "style-transfer",
+            "super-resolution", "image-inpainting", "image-denoising", "image-colorization", "optical-flow-estimation"
+        ],
+        "methods": [
+            "predict", "classify", "detect", "segment", "process_image", "extract_features", "compute_heatmap", 
+            "detect_objects", "estimate_depth", "generate_mask", "encode_image", "predict_class", "keypoint_detection",
+            "image_to_embedding", "forward", "infer", "segment_image", "analyze_image", "process_frame",
+            "extract_image_features"
+        ]
     },
     "audio": {
         "description": "Audio processing models like Whisper, Wav2Vec2, etc.",
-        "keywords": ["whisper", "wav2vec", "hubert", "audio", "speech", "clap", "unispeech", "wavlm", "encodec", "speecht5"],
-        "tasks": ["automatic-speech-recognition", "audio-classification", "audio-to-audio", "text-to-audio", "audio-frame-classification"],
-        "methods": ["transcribe", "recognize", "speech_to_text", "process_audio", "audio_to_text"]
+        "keywords": [
+            # Base audio models
+            "whisper", "wav2vec", "hubert", "audio", "speech", "clap", "unispeech", "wavlm", "encodec", "speecht5",
+            # Audio-specific keywords (March 2025)
+            "asr", "tts", "mms", "musicgen", "audiogen", "bark", "beats", "seamless", "sew", "conformer", "citrinet",
+            "mms-tts", "soundstream", "descript", "vall-e", "vocos", "fastpitch", "hifigan", "blaster", "speecht5",
+            "xtts", "audioldm", "musiclm", "transformertts", "encodec", "demucs", "contentvec", "m4t", "audiolm",
+            # Audio applications
+            "text-to-speech", "speech-to-text", "voice-conversion", "sound-classification", "music-generation",
+            "source-separation", "noise-suppression", "audio-enhancement", "speaker-diarization", "speaker-identification"
+        ],
+        "tasks": [
+            "automatic-speech-recognition", "audio-classification", "audio-to-audio", "text-to-audio", 
+            "audio-frame-classification", "speaker-verification", "sound-classification", "music-transcription",
+            "voice-conversion", "source-separation", "neural-audio-synthesis", "music-generation", "environmental-sound-classification"
+        ],
+        "methods": [
+            "transcribe", "recognize", "speech_to_text", "process_audio", "audio_to_text", "convert_text_to_speech",
+            "separate_sources", "extract_features", "generate_audio", "synthesize_speech", "classify_audio",
+            "enhance_audio", "remove_noise", "identify_speaker", "generate_music", "convert_voice"
+        ]
     },
     "multimodal": {
         "description": "Models that combine multiple modalities like LLaVA, BLIP, etc.",
-        "keywords": ["llava", "blip", "clip", "flava", "vision-text", "flamingo", "multimodal", "idefics", "fuyu", "pali"],
-        "tasks": ["image-to-text", "visual-question-answering", "document-question-answering", "text-to-image", "image-text-to-text"],
-        "methods": ["vision_to_text", "image_text_generation", "visual_question_answering", "process_image_text", "describe_image"]
+        "keywords": [
+            # Base multimodal models
+            "llava", "blip", "clip", "flava", "vision-text", "flamingo", "multimodal", "idefics", "fuyu", "pali",
+            # Multimodal models (March 2025)
+            "kosmos", "blip2", "cogvlm", "beit3", "git", "gpt4vision", "cm3leon", "gill", "x-vlm", "minigpt4",
+            "llava-next", "nougat", "florence", "pix2struct", "albef", "vilt", "vila", "grit", "fiber", "align",
+            "coca", "florence", "unified", "vlm", "xvlm", "metro", "merlot", "vln", "uniter", "visualbert",
+            "imagebert", "layoutlm", "layoutlmv2", "layoutlmv3", "donut", "udon", "hivemind", "bridge-tower",
+            # Audio-text
+            "audio-text", "whisperx", "audiolm", "w2v-bert", "audio-clip", "wav2clip", "whisper-variants",
+            # Additional modalities
+            "3d", "pointcloud", "tactile", "document", "layout", "table", "graph", "pointcloud", "mesh",
+            "sensor", "multiview", "nerf", "x-modality"
+        ],
+        "tasks": [
+            "image-to-text", "visual-question-answering", "document-question-answering", "text-to-image", 
+            "image-text-to-text", "image-captioning", "video-question-answering", "text-guided-generation",
+            "visual-dialog", "referring-expression", "audio-visual-fusion", "table-question-answering",
+            "multimodal-embedding", "cross-modal-retrieval", "unified-processing", "document-understanding",
+            "multimodal-classification", "multimodal-generation", "multimodal-instruction-following"
+        ],
+        "methods": [
+            "vision_to_text", "image_text_generation", "visual_question_answering", "process_image_text", 
+            "describe_image", "generate_caption", "answer_visual_query", "process_document", "extract_from_document",
+            "generate_from_multimodal", "cross_modal_search", "multimodal_embedding", "joint_embedding",
+            "process_audio_visual", "process_audio_text", "generate_from_image", "chat_with_image"
+        ]
+    },
+    # New family: Text-to-X Generation (March 2025 Addition)
+    "text_to_x": {
+        "description": "Models that generate non-text outputs from text inputs (images, audio, video, 3D)",
+        "keywords": [
+            # Text-to-image
+            "stable-diffusion", "sdxl", "dalle", "imagen", "midjourney", "diffusion", "latent-diffusion", "pixart",
+            "kandinsky", "muse", "karlo", "glide", "cogview", "nuwa", "parti", "make-a-scene", "if", "controlnet",
+            # Text-to-audio
+            "audiogen", "musicgen", "bark", "musiclm", "vall-e", "jukebox", "mms-tts", "tortoise-tts", "audiolm",
+            "soundstorm", "voicebox", "amphion", "textwave",
+            # Text-to-video
+            "video-generation", "gen-2", "sora", "animatediff", "modelscope", "text-to-video", "make-a-video",
+            "phenaki", "videopoet", "show-1", "video-diffusion", "imagen-video", "gen-1", "lumiere", "emu-video",
+            # Text-to-3D
+            "dreamfusion", "shape-e", "wonder3d", "dreamgaussian", "magic3d", "instant3d", "text-to-3d"
+        ],
+        "tasks": [
+            "text-to-image", "text-to-audio", "text-to-video", "text-to-3d", "text-to-mesh", "text-to-music",
+            "text-guided-generation", "text-guided-editing", "conditional-generation", "text-to-speech",
+            "controlled-generation", "style-transfer", "text-to-animation", "text-controlled-synthesis"
+        ],
+        "methods": [
+            "generate_image", "generate_audio", "generate_video", "generate_3d", "create_from_prompt",
+            "text_guided_synthesis", "sample", "diffuse", "forward", "generate_from_text", "text_to_speech",
+            "render_3d", "generate_representation", "generate_latents", "create_media", "predict_noise"
+        ]
+    },
+    # New family: Scientific & Domain-Specific (March 2025 Addition)
+    "scientific": {
+        "description": "Specialized scientific and domain-specific AI models",
+        "keywords": [
+            # Protein/molecular models
+            "esm", "esmfold", "alphafold", "openfold", "rfold", "graphdta", "chemberta", "gvp", "proteinbert",
+            "atom3d", "molformer", "deepchem", "grover", "chemprop", "drugben", "molgpt", "equibind", "dgllife",
+            # Scientific computing
+            "physics", "forcenet", "neuralode", "deeponet", "fourier", "neural-pde", "fenics", "deepxde", "torchsde",
+            "implicit-neural", "neural-operator", "simulai", "simulacra", "neuralsim", "neuralfd", "scnn",
+            # Medical/biological
+            "medical", "biobert", "biogpt", "pubmedbert", "radbert", "med-palm", "meditron", "galactica", "bioflan",
+            "biomedclip", "chexnet", "medvit", "medclip", "clinical", "biomedia", "med-segment", "pathology",
+            # Robotics & control
+            "diffusion-policy", "decision-transformer", "trajectory", "rql", "rt-x", "diffuser", "rt-1", "rt-2",
+            "octo", "vima", "rt-h", "gato", "robotic", "control-net", "behavior-transformer", "manipulator"
+        ],
+        "tasks": [
+            "protein-folding", "drug-discovery", "molecular-generation", "protein-structure-prediction",
+            "medical-image-segmentation", "chemical-property-prediction", "scientific-discovery",
+            "medical-report-generation", "genomics-analysis", "material-design", "physics-simulation",
+            "pde-solving", "protein-docking", "quantum-chemistry", "robot-control", "cell-segmentation"
+        ],
+        "methods": [
+            "predict_structure", "predict_properties", "generate_molecule", "dock_proteins", "predict_interaction",
+            "segment_medical_image", "analyze_sequence", "predict_binding", "analyze_genome", "predict_policy",
+            "solve_pde", "predict_dynamics", "predict_reaction", "simulate_physics", "design_material"
+        ]
     }
 }
 
-# Specialized subfamilies within each family
+# Specialized subfamilies within each family (Updated March 2025)
 MODEL_SUBFAMILIES = {
     "embedding": [
-        {"name": "masked_lm", "keywords": ["bert", "roberta", "distilbert", "albert", "masked"], "tasks": ["fill-mask", "masked-lm"]},
-        {"name": "sentence_transformer", "keywords": ["sentence", "sbert", "simcse"], "tasks": ["sentence-similarity"]},
-        {"name": "token_classifier", "keywords": ["ner", "token", "sequence-classification"], "tasks": ["token-classification"]}
+        {"name": "masked_lm", "keywords": ["bert", "roberta", "distilbert", "albert", "masked", "mlm"], "tasks": ["fill-mask", "masked-lm"]},
+        {"name": "sentence_transformer", "keywords": ["sentence", "sbert", "simcse", "e5", "bge", "gte", "instructor"], "tasks": ["sentence-similarity", "semantic-similarity"]},
+        {"name": "token_classifier", "keywords": ["ner", "token", "sequence-classification", "tagger"], "tasks": ["token-classification", "named-entity-recognition"]},
+        {"name": "cross_encoder", "keywords": ["cross-encoder", "re-ranker", "bi-encoder", "ranking"], "tasks": ["text-classification", "pair-classification"]},
+        {"name": "multilingual_embedding", "keywords": ["xlm", "multilingual", "muse", "laser", "labse"], "tasks": ["cross-lingual-embedding", "multilingual-embedding"]},
+        {"name": "domain_specific", "keywords": ["sci", "bio", "legal", "clinical", "fin", "code", "domain"], "tasks": ["specialized-embedding"]}
     ],
     "text_generation": [
-        {"name": "causal_lm", "keywords": ["gpt", "llama", "falcon", "mixtral", "phi", "gemma", "causal"], "tasks": ["text-generation"]},
-        {"name": "seq2seq", "keywords": ["t5", "bart", "mbart", "pegasus", "seq2seq"], "tasks": ["text2text-generation", "translation", "summarization"]},
-        {"name": "chat_model", "keywords": ["chat", "instruct", "assistant", "dialog"], "tasks": ["text-generation"], "methods": ["chat"]}
+        {"name": "causal_lm", "keywords": ["gpt", "llama", "falcon", "mixtral", "phi", "gemma", "causal", "decoder-only"], "tasks": ["text-generation", "language-modeling"]},
+        {"name": "seq2seq", "keywords": ["t5", "bart", "mbart", "pegasus", "seq2seq", "encoder-decoder"], "tasks": ["text2text-generation", "translation", "summarization"]},
+        {"name": "chat_model", "keywords": ["chat", "instruct", "assistant", "dialog", "llama-2-chat", "vicuna", "koala"], "tasks": ["text-generation"], "methods": ["chat", "respond", "chat_completion"]},
+        {"name": "code_generation", "keywords": ["code", "codegen", "starcoder", "codellama", "incoder", "codex"], "tasks": ["code-generation", "code-completion"]},
+        {"name": "instructional", "keywords": ["instruct", "flan", "alpaca", "instruction", "command", "supervised"], "tasks": ["instruction-following", "text-generation"]},
+        {"name": "creative_writing", "keywords": ["story", "novel", "creative", "writer", "narrative", "poem"], "tasks": ["creative-writing", "text-generation"]}
     ],
     "vision": [
-        {"name": "image_classifier", "keywords": ["classifier", "classification", "vit", "resnet"], "tasks": ["image-classification"]},
-        {"name": "object_detector", "keywords": ["yolo", "detr", "detection", "detector"], "tasks": ["object-detection"]},
-        {"name": "segmentation", "keywords": ["segmentation", "mask", "sam", "segment"], "tasks": ["image-segmentation"]},
-        {"name": "depth_estimation", "keywords": ["depth", "estimation", "dpt", "glpn"], "tasks": ["depth-estimation"]}
+        {"name": "image_classifier", "keywords": ["classifier", "classification", "vit", "resnet", "imagenet"], "tasks": ["image-classification", "zero-shot-image-classification"]},
+        {"name": "object_detector", "keywords": ["yolo", "detr", "detection", "detector", "rcnn", "faster", "retinanet"], "tasks": ["object-detection"]},
+        {"name": "segmentation", "keywords": ["segmentation", "mask", "sam", "segment", "instance", "panoptic", "semantic"], "tasks": ["image-segmentation", "instance-segmentation", "semantic-segmentation"]},
+        {"name": "depth_estimation", "keywords": ["depth", "estimation", "dpt", "glpn", "3d"], "tasks": ["depth-estimation"]},
+        {"name": "pose_estimation", "keywords": ["pose", "keypoint", "human", "skeleton", "joint"], "tasks": ["pose-estimation", "keypoint-detection"]},
+        {"name": "video_understanding", "keywords": ["video", "temporal", "motion", "action", "vivit", "slowfast"], "tasks": ["video-classification", "action-recognition"]},
+        {"name": "face_analysis", "keywords": ["face", "facial", "recognition", "identity", "emotion"], "tasks": ["facial-recognition", "emotion-recognition"]}
     ],
     "audio": [
-        {"name": "speech_recognition", "keywords": ["asr", "speech", "recognition", "whisper", "wav2vec"], "tasks": ["automatic-speech-recognition"]},
-        {"name": "audio_classifier", "keywords": ["audio", "classification", "clap"], "tasks": ["audio-classification"]},
-        {"name": "text_to_speech", "keywords": ["tts", "text-to-speech", "speech-synthesis"], "tasks": ["text-to-audio"]}
+        {"name": "speech_recognition", "keywords": ["asr", "speech", "recognition", "whisper", "wav2vec", "transcription"], "tasks": ["automatic-speech-recognition", "speech-to-text"]},
+        {"name": "audio_classifier", "keywords": ["audio", "classification", "clap", "sound", "environmental"], "tasks": ["audio-classification", "sound-classification"]},
+        {"name": "text_to_speech", "keywords": ["tts", "text-to-speech", "speech-synthesis", "voice", "vall-e", "xtts"], "tasks": ["text-to-audio", "text-to-speech"]},
+        {"name": "music_generation", "keywords": ["music", "musicgen", "audiogen", "jukebox", "melody", "composition"], "tasks": ["music-generation", "audio-generation"]},
+        {"name": "voice_conversion", "keywords": ["voice", "conversion", "style", "transfer", "clone", "mimicry"], "tasks": ["voice-conversion", "style-transfer"]},
+        {"name": "speaker_identification", "keywords": ["speaker", "diarization", "voice", "identification", "verification"], "tasks": ["speaker-verification", "speaker-diarization"]},
+        {"name": "audio_enhancement", "keywords": ["enhancement", "denoising", "separation", "clarity", "restoration"], "tasks": ["audio-enhancement", "source-separation", "noise-suppression"]}
     ],
     "multimodal": [
-        {"name": "vision_language", "keywords": ["llava", "blip", "vqa", "visual-question"], "tasks": ["visual-question-answering"]},
-        {"name": "image_text_encoder", "keywords": ["clip", "siglip", "contrastive"], "tasks": ["zero-shot-image-classification"]},
-        {"name": "document_qa", "keywords": ["document", "ocr", "layout", "donut"], "tasks": ["document-question-answering"]}
+        {"name": "vision_language", "keywords": ["llava", "blip", "vqa", "visual-question", "image-text", "gpt4vision"], "tasks": ["visual-question-answering", "image-captioning"]},
+        {"name": "image_text_encoder", "keywords": ["clip", "siglip", "contrastive", "joint", "dual-encoder"], "tasks": ["zero-shot-image-classification", "cross-modal-retrieval"]},
+        {"name": "document_qa", "keywords": ["document", "ocr", "layout", "donut", "layoutlm", "table"], "tasks": ["document-question-answering", "document-understanding"]},
+        {"name": "audio_visual", "keywords": ["audio-visual", "sound", "video", "av", "synchronization"], "tasks": ["audio-visual-fusion", "audio-visual-classification"]},
+        {"name": "multimodal_chatbot", "keywords": ["multimodal", "chat", "dialog", "conversation", "interactive"], "tasks": ["multimodal-instruction-following", "multimodal-chat"]},
+        {"name": "video_language", "keywords": ["video", "caption", "temporal", "description", "story"], "tasks": ["video-captioning", "video-question-answering"]}
+    ],
+    "text_to_x": [
+        {"name": "text_to_image", "keywords": ["stable-diffusion", "dalle", "image", "diffusion", "sdxl"], "tasks": ["text-to-image", "image-generation"]},
+        {"name": "text_to_audio", "keywords": ["audio", "speech", "voice", "bark", "tts", "music"], "tasks": ["text-to-audio", "text-to-speech", "text-to-music"]},
+        {"name": "text_to_video", "keywords": ["video", "animation", "motion", "sora", "gen-2", "temporal"], "tasks": ["text-to-video", "video-generation"]},
+        {"name": "text_to_3d", "keywords": ["3d", "mesh", "shape", "dreamfusion", "geometry", "dreamgaussian"], "tasks": ["text-to-3d", "text-to-mesh"]},
+        {"name": "controllable_generation", "keywords": ["controlnet", "edit", "style", "condition", "inpaint"], "tasks": ["controlled-generation", "text-guided-editing"]}
+    ],
+    "scientific": [
+        {"name": "protein_structure", "keywords": ["protein", "fold", "alphafold", "esmfold", "structure"], "tasks": ["protein-folding", "protein-structure-prediction"]},
+        {"name": "drug_discovery", "keywords": ["drug", "molecule", "chemical", "property", "binding"], "tasks": ["drug-discovery", "molecular-generation"]},
+        {"name": "medical_imaging", "keywords": ["medical", "radiology", "ct", "mri", "xray", "ultrasound"], "tasks": ["medical-image-segmentation", "medical-image-classification"]},
+        {"name": "physics_simulation", "keywords": ["physics", "simulation", "dynamics", "pde", "equation"], "tasks": ["physics-simulation", "pde-solving"]},
+        {"name": "robotics", "keywords": ["robot", "control", "policy", "reinforcement", "manipulation"], "tasks": ["robot-control", "trajectory-prediction"]}
     ]
 }
 
@@ -454,20 +640,98 @@ class ModelFamilyClassifier:
         if for_pattern:
             task_suffix = for_pattern.group(1)
             
-            # Map common task suffixes to families
+            # Map common task suffixes to families (expanded March 2025)
             task_family_map = {
+                # Text generation tasks
                 "ConditionalGeneration": "text_generation",
                 "CausalLM": "text_generation",
+                "TextGeneration": "text_generation",
+                "Seq2SeqLM": "text_generation",
+                "Translation": "text_generation",
+                "Summarization": "text_generation",
+                "QuestionAnswering": "text_generation",
+                "ChatModel": "text_generation",
+                "Assistant": "text_generation",
+                "InstructionModel": "text_generation",
+                "DialogueModel": "text_generation",
+                "GenerativeModel": "text_generation",
+                "CompletionModel": "text_generation",
+                "CodeGeneration": "text_generation",
+                "CodeCompletion": "text_generation",
+                
+                # Embedding/representation tasks
                 "MaskedLM": "embedding",
                 "SequenceClassification": "embedding",
                 "TokenClassification": "embedding",
-                "QuestionAnswering": "text_generation",
+                "SentenceTransformer": "embedding",
+                "Embedding": "embedding",
+                "CrossEncoder": "embedding",
+                "SentenceSimilarity": "embedding",
+                "MultilingualEncoder": "embedding",
+                "BiEncoder": "embedding",
+                "DenseRetrieval": "embedding",
+                "SemanticSearch": "embedding",
+                
+                # Vision tasks
                 "ImageClassification": "vision",
                 "ObjectDetection": "vision",
+                "ImageSegmentation": "vision",
+                "InstanceSegmentation": "vision",
+                "SemanticSegmentation": "vision",
+                "PanopticSegmentation": "vision",
+                "DepthEstimation": "vision",
+                "PoseEstimation": "vision",
+                "VideoClassification": "vision",
+                "ActionRecognition": "vision",
+                "OpticalFlow": "vision",
+                "FaceRecognition": "vision",
+                "KeypointDetection": "vision",
+                
+                # Audio tasks
                 "AudioClassification": "audio",
                 "SpeechSeq2Seq": "audio",
+                "SpeechRecognition": "audio",
+                "TextToSpeech": "audio",
+                "VoiceConversion": "audio",
+                "SpeakerVerification": "audio",
+                "SpeakerDiarization": "audio",
+                "SoundClassification": "audio",
+                "MusicGeneration": "audio",
+                "AudioEnhancement": "audio",
+                "SourceSeparation": "audio",
+                
+                # Multimodal tasks
                 "VisionTextDualEncoder": "multimodal",
-                "VisualQuestionAnswering": "multimodal"
+                "VisualQuestionAnswering": "multimodal",
+                "ImageTextJoint": "multimodal",
+                "ImageCaption": "multimodal",
+                "VideoCaption": "multimodal",
+                "DocumentQA": "multimodal",
+                "LayoutAnalysis": "multimodal",
+                "AudioVisualFusion": "multimodal",
+                "MultimodalEncoder": "multimodal",
+                "CrossModalRetrieval": "multimodal",
+                "MultimodalQA": "multimodal",
+                "MultimodalClassification": "multimodal",
+                
+                # Text-to-X generation tasks
+                "TextToImage": "text_to_x",
+                "TextToAudio": "text_to_x",
+                "TextToVideo": "text_to_x",
+                "TextTo3D": "text_to_x",
+                "DiffusionModel": "text_to_x",
+                "ControlledGeneration": "text_to_x",
+                "StyleTransfer": "text_to_x",
+                "Inpainting": "text_to_x",
+                
+                # Scientific tasks
+                "ProteinFolding": "scientific",
+                "MolecularGeneration": "scientific",
+                "DrugDiscovery": "scientific",
+                "MedicalImageSegmentation": "scientific",
+                "PhysicsSimulation": "scientific",
+                "RobotControl": "scientific",
+                "MaterialDesign": "scientific"
             }
             
             if task_suffix in task_family_map:
@@ -768,19 +1032,71 @@ class ModelFamilyClassifier:
         """
         Get the appropriate template filename for a given model family.
         
+        This enhanced implementation supports both family-level and subfamily-level 
+        template selection for more specialized code generation.
+        
         Args:
             family: The model family
             subfamily: Optional subfamily for more specific template
             
         Returns:
-            Template filename for the family
+            Template filename for the family/subfamily
         """
+        # First, check for subfamily-specific templates (more specialized)
+        if subfamily:
+            subfamily_template_map = {
+                # Embedding model subfamilies
+                "masked_lm": "hf_bert_template.py",
+                "sentence_transformer": "hf_sentence_transformer_template.py",
+                "token_classifier": "hf_token_classifier_template.py",
+                "cross_encoder": "hf_cross_encoder_template.py",
+                "multilingual_embedding": "hf_multilingual_embedding_template.py",
+                
+                # Text generation subfamilies
+                "causal_lm": "hf_causal_lm_template.py",
+                "seq2seq": "hf_seq2seq_template.py",
+                "chat_model": "hf_chat_model_template.py",
+                "code_generation": "hf_code_generation_template.py",
+                
+                # Vision subfamilies
+                "image_classifier": "hf_image_classifier_template.py",
+                "object_detector": "hf_object_detector_template.py",
+                "segmentation": "hf_segmentation_template.py",
+                "video_understanding": "hf_video_template.py",
+                
+                # Audio subfamilies
+                "speech_recognition": "hf_speech_recognition_template.py",
+                "text_to_speech": "hf_text_to_speech_template.py",
+                "audio_classifier": "hf_audio_classifier_template.py",
+                "music_generation": "hf_music_generation_template.py",
+                
+                # Multimodal subfamilies
+                "vision_language": "hf_vision_language_template.py",
+                "image_text_encoder": "hf_clip_template.py",
+                "document_qa": "hf_document_qa_template.py",
+                
+                # Text-to-X subfamilies
+                "text_to_image": "hf_text_to_image_template.py",
+                "text_to_audio": "hf_text_to_audio_template.py",
+                "text_to_video": "hf_text_to_video_template.py",
+                
+                # Scientific subfamilies
+                "protein_structure": "hf_protein_structure_template.py",
+                "drug_discovery": "hf_drug_discovery_template.py"
+            }
+            
+            if subfamily in subfamily_template_map:
+                return subfamily_template_map[subfamily]
+        
+        # If no subfamily-specific template found, use family-level template
         family_template_map = {
             "embedding": "hf_embedding_template.py",
             "text_generation": "hf_text_generation_template.py",
             "vision": "hf_vision_template.py",
             "audio": "hf_audio_template.py",
-            "multimodal": "hf_multimodal_template.py"
+            "multimodal": "hf_multimodal_template.py",
+            "text_to_x": "hf_text_to_x_template.py",
+            "scientific": "hf_scientific_template.py"
         }
         
         if family in family_template_map:

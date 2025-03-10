@@ -28,7 +28,7 @@ The database API provides a set of functions for interacting with the DuckDB dat
 The database API consists of two main components:
 
 1. **`TestResultsDBHandler`** in `test_ipfs_accelerate.py`: Primary interface for storing test results
-2. **`fixed_benchmark_db_query.py`**: Tool for querying and generating reports from the database
+2. **`duckdb_api/core/benchmark_db_query.py`**: Tool for querying and generating reports from the database
 
 ### TestResultsDBHandler
 
@@ -57,9 +57,9 @@ db_handler.store_test_result(test_result)
 report = db_handler.generate_report(format="markdown", output_file="report.md")
 ```
 
-### fixed_benchmark_db_query.py
+### duckdb_api/core/benchmark_db_query.py
 
-The `fixed_benchmark_db_query.py` script provides a command-line interface and programmatic API for querying the database:
+The `duckdb_api/core/benchmark_db_query.py` script provides a command-line interface and programmatic API for querying the database:
 
 ```python
 from fixed_benchmark_db_query import BenchmarkDBQuery
@@ -312,23 +312,23 @@ python test_ipfs_accelerate.py --report --format markdown --output test_report.m
 python test_ipfs_accelerate.py --models bert-base-uncased,t5-small
 ```
 
-### fixed_benchmark_db_query.py CLI
+### duckdb_api/core/benchmark_db_query.py CLI
 
 ```bash
 # Generate a summary report
-python fixed_benchmark_db_query.py --report summary --format markdown --output summary.md
+python duckdb_api/core/benchmark_db_query.py --report summary --format markdown --output summary.md
 
 # Generate a hardware report
-python fixed_benchmark_db_query.py --report hardware --format html --output hardware.html
+python duckdb_api/core/benchmark_db_query.py --report hardware --format html --output hardware.html
 
 # Generate a compatibility matrix
-python fixed_benchmark_db_query.py --compatibility-matrix --format markdown --output matrix.md
+python duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format markdown --output matrix.md
 
 # Compare hardware performance for a model
-python fixed_benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output chart.png
+python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output chart.png
 
 # Run a custom SQL query
-python fixed_benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output results.csv
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output results.csv
 ```
 
 ### migrate_json_to_db.py CLI
@@ -572,7 +572,7 @@ generate_report(format='markdown', output_file=None)
 - `output_file`: Path to save the report.
 - Returns: Report content as string.
 
-### fixed_benchmark_db_query.py
+### duckdb_api/core/benchmark_db_query.py
 
 #### Constructor
 

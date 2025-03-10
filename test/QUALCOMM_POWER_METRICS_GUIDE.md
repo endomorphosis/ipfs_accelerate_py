@@ -120,7 +120,7 @@ The mock mode provides realistic simulated metrics based on the specified model 
 
 ```bash
 # Query basic power consumption by model type
-python test/scripts/benchmark_db_query.py --sql "
+python duckdb_api/core/benchmark_db_query.py --sql "
 SELECT 
     model_type, 
     AVG(power_consumption_mw) as avg_power, 
@@ -141,7 +141,7 @@ ORDER BY
 
 ```bash
 # Compare energy efficiency across model types
-python test/scripts/benchmark_db_query.py --sql "
+python duckdb_api/core/benchmark_db_query.py --sql "
 SELECT 
     model_type, 
     AVG(energy_efficiency_items_per_joule) as efficiency,
@@ -162,7 +162,7 @@ ORDER BY
 
 ```bash
 # Analyze thermal throttling patterns
-python test/scripts/benchmark_db_query.py --sql "
+python duckdb_api/core/benchmark_db_query.py --sql "
 SELECT 
     model_type, 
     COUNT(*) as tests,
@@ -184,7 +184,7 @@ ORDER BY
 
 ```bash
 # Estimate battery life for different model types
-python test/scripts/benchmark_db_query.py --sql "
+python duckdb_api/core/benchmark_db_query.py --sql "
 SELECT 
     model_type, 
     ROUND(AVG(battery_impact_percent_per_hour),1) as battery_pct_per_hour,
@@ -205,7 +205,7 @@ ORDER BY
 
 ```bash
 # Compare power efficiency across hardware platforms
-python test/scripts/benchmark_db_query.py --sql "
+python duckdb_api/core/benchmark_db_query.py --sql "
 SELECT 
     hardware_type, 
     model_type,
@@ -226,10 +226,10 @@ ORDER BY
 
 ```bash
 # Generate comprehensive power efficiency report
-python test/scripts/benchmark_db_query.py --report power_efficiency --format html --output power_report.html
+python duckdb_api/core/benchmark_db_query.py --report power_efficiency --format html --output power_report.html
 
 # Generate mobile-focused power analysis
-python test/scripts/benchmark_db_query.py --report mobile_power_efficiency --format html --output mobile_power_report.html
+python duckdb_api/core/benchmark_db_query.py --report mobile_power_efficiency --format html --output mobile_power_report.html
 ```
 
 ### Custom Visualizations

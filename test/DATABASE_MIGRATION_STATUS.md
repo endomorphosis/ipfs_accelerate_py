@@ -21,7 +21,7 @@ This document tracks the status of migrating benchmark and test scripts to use t
 
 1. **IPFS Test Results Migration Tool**: Implemented `migrate_ipfs_test_results.py` for migrating legacy IPFS test results to DuckDB with validation, deduplication, and reporting capabilities
 2. **IPFS Migration Testing Framework**: Created `test_ipfs_migration.py` for testing the migration tool with sample data generation
-3. **Fixed Query Tool**: Implemented `fixed_benchmark_db_query.py` with robust error handling, NULL value processing, and comprehensive report generation
+3. **Fixed Query Tool**: Implemented `duckdb_api/core/benchmark_db_query.py` with robust error handling, NULL value processing, and comprehensive report generation
 4. **Simple Report Generator**: Created `generate_simple_report.py` for quick database analysis
 5. **Documentation**: Updated all database-related documentation with latest tools and best practices
 6. **Visualization**: Added chart generation capabilities to the query tool
@@ -216,7 +216,7 @@ The following tools are available for working with the benchmark database:
    python migrate_ipfs_test_results.py --input-dirs ./test_results --delete
    ```
 
-2. **Fixed Benchmark DB Query Tool** - `fixed_benchmark_db_query.py`
+2. **Fixed Benchmark DB Query Tool** - `duckdb_api/core/benchmark_db_query.py`
    - Robust command-line tool for querying the database
    - Improved error handling and NULL value processing
    - Comprehensive report generation in multiple formats
@@ -225,13 +225,13 @@ The following tools are available for working with the benchmark database:
 
    ```bash
    # Generate a summary report
-   python fixed_benchmark_db_query.py --report summary --format markdown --output benchmark_summary.md
+   python duckdb_api/core/benchmark_db_query.py --report summary --format markdown --output benchmark_summary.md
    
    # Generate a hardware compatibility matrix
-   python fixed_benchmark_db_query.py --compatibility-matrix --format markdown --output compatibility_matrix.md
+   python duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format markdown --output compatibility_matrix.md
    
    # Compare hardware performance for a model
-   python fixed_benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output bert_throughput.png
+   python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output bert_throughput.png
    ```
 
 3. **Simple Report Generator** - `generate_simple_report.py`

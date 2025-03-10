@@ -306,13 +306,13 @@ python test/benchmark_with_db_integration.py \
   --db-path ./benchmark_db.duckdb
 
 # Query database for quantization comparison results
-python test/scripts/benchmark_db_query.py \
+python duckdb_api/core/benchmark_db_query.py \
   --sql "SELECT model_name, quantization_method, accuracy, latency, power_consumption, model_size FROM quantization_results WHERE hardware_type='qualcomm' ORDER BY power_consumption ASC" \
   --format html \
   --output quantization_comparison.html
 
 # Generate comprehensive quantization report
-python test/scripts/benchmark_db_query.py \
+python duckdb_api/core/benchmark_db_query.py \
   --report quantization_comparison \
   --format html \
   --output reports/quantization_report.html

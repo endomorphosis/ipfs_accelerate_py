@@ -48,22 +48,22 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r test/scripts/requirements_db.txt
+          pip install -r duckdb_api/scripts/requirements_db.txt
       
       - name: Get date
         id: date
-        run: echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+        run: echo "::set-output name=date::$(date +'%Y%m%d')"
         
       - name: Generate run ID
         id: runid
-        run: echo "run_id=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
+        run: echo "::set-output name=run_id::$(date +'%Y%m%d%H%M%S')"
       
       - name: Set up database
         id: setup_db
         run: |
           mkdir -p benchmark_db
-          echo "db_path=benchmark_db/ci_benchmark_${{ steps.runid.outputs.run_id }}.duckdb" >> $GITHUB_OUTPUT
-          python test/scripts/create_benchmark_schema.py --output benchmark_db/ci_benchmark_${{ steps.runid.outputs.run_id }}.duckdb --sample-data
+          echo "::set-output name=db_path::benchmark_db/ci_benchmark_${{ steps.runid.outputs.run_id }}.duckdb"
+          python duckdb_api/scripts/create_benchmark_schema.py --output benchmark_db/ci_benchmark_${{ steps.runid.outputs.run_id }}.duckdb --sample-data
       
       - name: Generate CI metadata
         run: |
@@ -120,8 +120,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r test/scripts/requirements_db.txt
-          pip install -r test/requirements.txt
+          pip install -r duckdb_api/scripts/requirements_db.txt
+          pip install -r requirements.txt
           
       - name: Download database
         uses: actions/download-artifact@v3
@@ -138,13 +138,13 @@ jobs:
       - name: Get git info
         id: git_info
         run: |
-          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+          echo "::set-output name=commit::$(git rev-parse HEAD)"
+          echo "::set-output name=branch::$(git rev-parse --abbrev-ref HEAD)"
           
       - name: Run benchmark with database
         run: |
           DB_FILE=$(find benchmark_db -name "*.duckdb" | head -n 1)
-          python test/run_benchmark_with_db.py \
+          python duckdb_api/core/run_benchmark_with_db.py \
             --db $DB_FILE \
             --model ${{ matrix.model }} \
             --hardware ${{ matrix.hardware }} \
@@ -197,7 +197,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r test/scripts/requirements_db.txt
+          pip install -r duckdb_api/scripts/requirements_db.txt
+          pip install requests pandas numpy
           
       - name: Download all artifacts
         uses: actions/download-artifact@v3
@@ -210,7 +211,7 @@ jobs:
           
       - name: Process CI artifacts with integrator
         run: |
-          python test/scripts/ci_benchmark_integrator.py \
+          python duckdb_api/scripts/ci_benchmark_integrator.py \
             --artifacts-dir ./artifacts \
             --db ./consolidated_db.duckdb \
             --ci-metadata ./artifacts/ci-metadata/ci_metadata.json \
@@ -224,33 +225,92 @@ jobs:
       - name: Generate reports
         run: |
           # Generate performance report
-          python test/scripts/benchmark_db_query.py \
+          python duckdb_api/core/benchmark_db_query.py \
             --db ./consolidated_db.duckdb \
             --report performance \
             --format html \
             --output performance_report_${{ needs.setup_database.outputs.today_date }}.html
             
           # Generate compatibility matrix
-          python test/scripts/benchmark_db_query.py \
+          python duckdb_api/core/benchmark_db_query.py \
             --db ./consolidated_db.duckdb \
             --compatibility-matrix \
             --format html \
             --output compatibility_matrix_${{ needs.setup_database.outputs.today_date }}.html
             
           # Generate hardware comparison chart
-          python test/scripts/benchmark_db_query.py \
+          python duckdb_api/core/benchmark_db_query.py \
             --db ./consolidated_db.duckdb \
             --hardware-comparison-chart \
             --metric throughput \
             --output hardware_comparison_${{ needs.setup_database.outputs.today_date }}.png
             
           # Generate summary JSON
-          python test/scripts/benchmark_db_query.py \
+          python duckdb_api/core/benchmark_db_query.py \
             --db ./consolidated_db.duckdb \
             --summary \
             --format json \
             --output benchmark_summary_${{ needs.setup_database.outputs.today_date }}.json
+      
+      - name: Detect performance regressions
+        id: regression
+        run: |
+          python duckdb_api/analysis/benchmark_regression_detector.py \
+            --db ./consolidated_db.duckdb \
+            --run-id "${{ needs.setup_database.outputs.run_id }}" \
+            --threshold 0.1 \
+            --window 5 \
+            --metrics "throughput,latency,memory_peak" \
+            --output regression_report_${{ needs.setup_database.outputs.today_date }}.html \
+            --format html
           
+          # Additionally create markdown report for GitHub issues
+          python duckdb_api/analysis/benchmark_regression_detector.py \
+            --db ./consolidated_db.duckdb \
+            --run-id "${{ needs.setup_database.outputs.run_id }}" \
+            --threshold 0.1 \
+            --window 5 \
+            --output regression_report_${{ needs.setup_database.outputs.today_date }}.md \
+            --format markdown
+            
+          # Check for high severity regressions to be notified in the workflow summary
+          HIGH_SEVERITY=$(python duckdb_api/analysis/benchmark_regression_detector.py \
+            --db ./consolidated_db.duckdb \
+            --run-id "${{ needs.setup_database.outputs.run_id }}" \
+            --threshold 0.2 | grep -c '"severity": "high"' || echo "0")
+            
+          MEDIUM_SEVERITY=$(python duckdb_api/analysis/benchmark_regression_detector.py \
+            --db ./consolidated_db.duckdb \
+            --run-id "${{ needs.setup_database.outputs.run_id }}" \
+            --threshold 0.1 | grep -c '"severity": "medium"' || echo "0")
+            
+          echo "::set-output name=high_severity::${HIGH_SEVERITY}"
+          echo "::set-output name=medium_severity::${MEDIUM_SEVERITY}"
+          
+      - name: Create GitHub issue for severe regressions
+        if: ${{ steps.regression.outputs.high_severity > 0 || steps.regression.outputs.medium_severity > 0 }}
+        run: |
+          python duckdb_api/analysis/benchmark_regression_detector.py \
+            --db ./consolidated_db.duckdb \
+            --run-id "${{ needs.setup_database.outputs.run_id }}" \
+            --threshold 0.1 \
+            --create-issues \
+            --github-token ${{ secrets.GITHUB_TOKEN }} \
+            --github-repo ${{ github.repository }}
+      
+      - name: Integrate with hardware model predictor
+        run: |
+          python predictive_performance/hardware_model_predictor.py \
+            --validate-predictions \
+            --database ./consolidated_db.duckdb \
+            --output hardware_prediction_accuracy.json
+            
+          # Train updated prediction models based on new benchmark data
+          python predictive_performance/model_performance_predictor.py \
+            --train \
+            --database ./consolidated_db.duckdb \
+            --output-dir ./prediction_models
+      
       - name: Upload consolidated database
         uses: actions/upload-artifact@v3
         with:
@@ -266,6 +326,9 @@ jobs:
             compatibility_matrix_*.html
             hardware_comparison_*.png
             benchmark_summary_*.json
+            regression_report_*.html
+            regression_report_*.md
+            hardware_prediction_accuracy.json
 
   publish_results:
     needs: [setup_database, consolidate_results]
@@ -282,7 +345,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r test/scripts/requirements_db.txt
+          pip install -r duckdb_api/scripts/requirements_db.txt
           
       - name: Download reports
         uses: actions/download-artifact@v3
@@ -318,8 +381,27 @@ jobs:
                       <li><a href="performance_report_${{ needs.setup_database.outputs.today_date }}.html">Performance Report</a></li>
                       <li><a href="compatibility_matrix_${{ needs.setup_database.outputs.today_date }}.html">Compatibility Matrix</a></li>
                       <li><a href="hardware_comparison_${{ needs.setup_database.outputs.today_date }}.png">Hardware Comparison Chart</a></li>
+                      <li><a href="regression_report_${{ needs.setup_database.outputs.today_date }}.html">Performance Regression Analysis</a></li>
                       <li><a href="benchmark_summary_${{ needs.setup_database.outputs.today_date }}.json">Benchmark Summary (JSON)</a></li>
                   </ul>
+                  
+                  <h2>Performance Prediction</h2>
+                  <p>The benchmark system now includes machine learning-based performance prediction for hardware-model combinations:</p>
+                  <ul>
+                      <li><a href="hardware_prediction_accuracy.json">Latest Prediction Accuracy Report</a></li>
+                  </ul>
+                  
+                  <h2>CI/CD Integration</h2>
+                  <p>
+                    This benchmark report was automatically generated by the CI/CD system.
+                    The system includes performance regression detection, prediction model training,
+                    and automatic notification for significant regressions.
+                  </p>
+                  <p>
+                    <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" class="btn btn-primary">
+                      View CI Run
+                    </a>
+                  </p>
               </div>
           </body>
           </html>

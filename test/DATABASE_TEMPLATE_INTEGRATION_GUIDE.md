@@ -184,7 +184,7 @@ python hardware_test_templates/template_database.py --import-json /path/to/templ
 To migrate existing JSON results:
 
 ```bash
-python test/migrate_all_json_files.py --db-path ./benchmark_db.duckdb
+python duckdb_api/migrate_all_json_files.py --db-path ./benchmark_db.duckdb
 ```
 
 ### 3. Legacy Support

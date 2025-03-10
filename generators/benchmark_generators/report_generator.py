@@ -33,7 +33,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple, Set
 
 # Add DuckDB database support
 try:
-    from benchmark_db_api import BenchmarkDBAPI
+    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
     BENCHMARK_DB_AVAILABLE = True
 except ImportError:
     BENCHMARK_DB_AVAILABLE = False
@@ -472,7 +472,7 @@ if not DEPRECATE_JSON_OUTPUT:
                         with open(result_file, 'r') as f:
 # Try database first, fall back to JSON if necessary
 try:
-    from benchmark_db_api import BenchmarkDBAPI
+    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
     db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
     benchmark_results = db_api.get_benchmark_results()
     logger.info("Successfully loaded results from database")
@@ -1219,9 +1219,9 @@ except Exception as e:
                 sys.path.insert(0, str(CURRENT_DIR))
                 
                 try:
-                    from merged_test_generator import generate_test_file, KEY_MODEL_HARDWARE_MAP
+                    from generators.test_generators.merged_test_generator import generate_test_file, KEY_MODEL_HARDWARE_MAP
                 except ImportError:
-                    return False, "Could not import merged_test_generator module"
+                    return False, "Could not import generators.test_generators.merged_test_generator as merged_test_generator module"
                 
                 # Create output directory if it doesn't exist
                 if not SKILLS_DIR.exists():

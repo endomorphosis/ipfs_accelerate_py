@@ -43,10 +43,10 @@ The framework includes special optimizations for running complex multimodal mode
 
 ```python
 # Use MPS for any model by specifying the platform
-python test/run_model_benchmarks.py --model bert --hardware mps
+python generators/benchmark_generators/run_model_benchmarks.py --model bert --hardware mps
 
 # Test LLaVA models on MPS
-python test/run_model_benchmarks.py --model llava --hardware mps
+python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps
 
 # Comprehensive testing across hardware platforms
 python test/benchmark_all_key_models.py --model llava --hardware cpu,mps,cuda
@@ -58,13 +58,13 @@ For LLaVA and LLaVA-Next models, you can use specialized options:
 
 ```python
 # Set precision for MPS (default is float16)
-python test/run_model_benchmarks.py --model llava --hardware mps --precision float16
+python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --precision float16
 
 # Configure memory-efficient loading
-python test/run_model_benchmarks.py --model llava --hardware mps --memory-efficient
+python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --memory-efficient
 
 # Force alternative loading method (CPU first, then transfer)
-python test/run_model_benchmarks.py --model llava --hardware mps --alternative-loading
+python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --alternative-loading
 ```
 
 ## Performance Guidelines
@@ -82,7 +82,7 @@ Apple Silicon performance varies by model type:
 
 1. **Out of Memory**: Try reducing batch size or using a smaller model variant
    ```python
-   python test/run_model_benchmarks.py --model llava --hardware mps --batch-size 1 --small-model
+   python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --batch-size 1 --small-model
    ```
 
 2. **MPS Operation Not Implemented**: Some operations may not be supported
@@ -93,7 +93,7 @@ Apple Silicon performance varies by model type:
 
 3. **Model too large for memory**: Try using memory-efficient loading
    ```python
-   python test/run_model_benchmarks.py --model llava --hardware mps --memory-efficient
+   python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --memory-efficient
    ```
 
 ### Memory Optimization

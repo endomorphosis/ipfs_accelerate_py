@@ -420,7 +420,7 @@ All tests now integrate with our comprehensive benchmark database with extended 
 
 ```python
 # Example of enhanced test integration with benchmark database
-from benchmark_db_api import record_benchmark_result, compare_with_historical, generate_report
+from duckdb_api.core.benchmark_db_api import record_benchmark_result, compare_with_historical, generate_report
 
 def run_benchmark(model, browser, optimization_config):
     # Run the benchmark with detailed profiling

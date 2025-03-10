@@ -72,33 +72,33 @@ The `merged_test_generator.py` has been updated with improved capabilities for g
 
 ```bash
 # Generate tests for all key model types with complete hardware support
-python test/merged_test_generator.py --generate-missing --key-models-only
+python generators/merged_test_generator.py --generate-missing --key-models-only
 
 # Generate tests for a specific model with all hardware platforms
-python test/merged_test_generator.py --generate bert --platform all
+python generators/merged_test_generator.py --generate bert --platform all
 
 # Generate tests for a specific model on a specific platform
-python test/merged_test_generator.py --generate vit --platform cuda
+python generators/merged_test_generator.py --generate vit --platform cuda
 
 # Generate tests for multiple key models with all hardware support
-python test/merged_test_generator.py --batch-generate t5,clap,wav2vec2,whisper
+python generators/merged_test_generator.py --batch-generate t5,clap,wav2vec2,whisper
 
 # Generate tests for models with specific enhanced hardware support
-python test/merged_test_generator.py --generate-missing --enhance-openvino
-python test/merged_test_generator.py --generate-missing --enhance-web-platforms
+python generators/merged_test_generator.py --generate-missing --enhance-openvino
+python generators/merged_test_generator.py --generate-missing --enhance-web-platforms
 ```
 
 The `integrated_skillset_generator.py` now supports hardware-aware test generation and implementation:
 
 ```bash
 # Generate a skillset implementation for a key model with hardware support
-python test/integrated_skillset_generator.py --model bert --run-tests
+python generators/integrated_skillset_generator.py --model bert --run-tests
 
 # Generate implementations for all models in a key family
-python test/integrated_skillset_generator.py --family bert
+python generators/integrated_skillset_generator.py --family bert
 
 # Generate implementations for models with web platform support
-python test/integrated_skillset_generator.py --all --max-workers 20
+python generators/integrated_skillset_generator.py --all --max-workers 20
 ```
 
 ## Implementation Details
@@ -220,7 +220,7 @@ All model-hardware combinations are now fully integrated with the benchmark data
 
 ```bash
 # Run benchmarks for all key models across hardware platforms
-python test/run_model_benchmarks.py --key-models-only --output-dir ./benchmark_results
+python generators/benchmark_generators/run_model_benchmarks.py --key-models-only --output-dir ./benchmark_results
 
 # Generate a comparative hardware report
 python test/benchmark_query.py report --family embedding --hardware all --format html

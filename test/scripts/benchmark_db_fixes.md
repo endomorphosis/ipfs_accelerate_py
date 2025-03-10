@@ -60,5 +60,5 @@ python test/scripts/create_new_database.py --db ./benchmark_db.duckdb --force
 python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cpu --batch-sizes 1 --simulate
 
 # Validate database
-python test/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
 ```

@@ -1,0 +1,1245 @@
+#!/usr/bin/env python
+"""
+Benchmark Database Converter for the IPFS Accelerate Python Framework.
+
+This module converts benchmark and test output JSON files to DuckDB/Parquet format
+for efficient storage and querying.
+
+Usage:
+    python benchmark_db_converter.py --input-dir ./archived_test_results --output-db ./benchmark_db.duckdb
+    python benchmark_db_converter.py --consolidate --categories performance hardware compatibility
+"""
+
+import os
+import sys
+import json
+import glob
+import logging
+import argparse
+import datetime
+import time
+from typing import Dict, List, Any, Optional, Union, Tuple
+from pathlib import Path
+
+# Add DuckDB database support
+try:
+    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
+try:
+    import duckdb
+    import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+except ImportError:
+    print("Error: Required packages not installed. Please install with:")
+    print("pip install duckdb pandas pyarrow")
+    sys.exit(1)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO,
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class BenchmarkDBConverter:
+    """
+    Converts JSON benchmark results to DuckDB/Parquet format for efficient
+    storage and querying.
+    """
+    
+    def __init__(self, output_db: str = "./benchmark_db.duckdb", debug: bool = False):
+        """
+        Initialize the benchmark database converter.
+        
+        Args:
+            output_db: Path to the output DuckDB database
+            debug: Enable debug logging
+        """
+        self.output_db = output_db
+        
+        # Set up logging
+        if debug:
+            logger.setLevel(logging.DEBUG)
+        
+        # Schema definitions for different data types
+        self.schemas = {
+            "performance": self._get_performance_schema(),
+            "hardware": self._get_hardware_schema(),
+            "compatibility": self._get_compatibility_schema()
+        }
+        
+        logger.info(f"Initialized BenchmarkDBConverter with output DB: {output_db}")
+    
+    def _get_performance_schema(self):
+        """
+        Define the schema for performance benchmark data.
+        Matches the schema in create_benchmark_schema.py
+        """
+        return pa.schema([
+            ('result_id', pa.int32()),
+            ('run_id', pa.int32()),
+            ('model_id', pa.int32()),
+            ('hardware_id', pa.int32()),
+            ('test_case', pa.string()),
+            ('batch_size', pa.int32()),
+            ('precision', pa.string()),
+            ('total_time_seconds', pa.float32()),
+            ('average_latency_ms', pa.float32()),
+            ('throughput_items_per_second', pa.float32()),
+            ('memory_peak_mb', pa.float32()),
+            ('iterations', pa.int32()),
+            ('warmup_iterations', pa.int32()),
+            ('metrics', pa.string()),  # JSON as string
+            ('created_at', pa.timestamp('ms')),
+            ('source_file', pa.string()),
+            ('notes', pa.string())
+        ])
+    
+    def _get_hardware_schema(self):
+        """
+        Define the schema for hardware detection data.
+        Matches the schema in create_benchmark_schema.py
+        """
+        return pa.schema([
+            ('hardware_id', pa.int32()),
+            ('hardware_type', pa.string()),
+            ('device_name', pa.string()),
+            ('platform', pa.string()),
+            ('platform_version', pa.string()),
+            ('driver_version', pa.string()),
+            ('memory_gb', pa.float32()),
+            ('compute_units', pa.int32()),
+            ('metadata', pa.string()),  # JSON as string
+            ('created_at', pa.timestamp('ms')),
+            ('source_file', pa.string())
+        ])
+    
+    def _get_compatibility_schema(self):
+        """
+        Define the schema for compatibility test data.
+        Matches the schema in create_benchmark_schema.py
+        """
+        return pa.schema([
+            ('compatibility_id', pa.int32()),
+            ('run_id', pa.int32()),
+            ('model_id', pa.int32()),
+            ('hardware_id', pa.int32()),
+            ('is_compatible', pa.bool_()),
+            ('detection_success', pa.bool_()),
+            ('initialization_success', pa.bool_()),
+            ('error_message', pa.string()),
+            ('error_type', pa.string()),
+            ('suggested_fix', pa.string()),
+            ('workaround_available', pa.bool_()),
+            ('compatibility_score', pa.float32()),
+            ('metadata', pa.string()),  # JSON as string
+            ('created_at', pa.timestamp('ms')),
+            ('source_file', pa.string())
+        ])
+    
+    def _detect_file_category(self, file_path: str) -> str:
+        """
+        Detect the category of a JSON file based on its content.
+        
+        Args:
+            file_path: Path to the JSON file
+            
+        Returns:
+            Category string ('performance', 'hardware', or 'compatibility')
+        """
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+            
+            # Skip files that don't contain useful benchmark data
+            if isinstance(data, list):
+                # Check if the list contains dictionaries that we can process
+                if data and isinstance(data[0], dict):
+                    # Check first item for category indicators
+                    item = data[0]
+                    if any(k in item for k in ['throughput', 'latency', 'performance', 'benchmark']):
+                        return 'performance'
+                    elif any(k in item for k in ['cuda', 'rocm', 'mps', 'openvino', 'hardware_detection']):
+                        return 'hardware'
+                    elif any(k in item for k in ['compatibility', 'error', 'is_compatible']):
+                        return 'compatibility'
+                # If we can't determine or it's not a list of dictionaries we can process
+                return 'unknown'
+            
+            # Check for performance data
+            if any(k in data for k in ['throughput', 'latency', 'performance', 'benchmark']):
+                return 'performance'
+            
+            # Check for hardware detection data
+            if any(k in data for k in ['cuda', 'rocm', 'mps', 'openvino', 'hardware_detection']):
+                return 'hardware'
+            
+            # Check for compatibility data
+            if any(k in data for k in ['compatibility', 'error', 'is_compatible']):
+                return 'compatibility'
+            
+            # Default to performance if we can't determine
+            return 'performance'
+            
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Error detecting category for {file_path}: {e}")
+            return 'unknown'
+    
+    def _normalize_performance_data(self, data: Union[Dict, List], source_file: str) -> List[Dict]:
+        """
+        Normalize performance benchmark data to a standardized format.
+        
+        Args:
+            data: Input data dictionary or list from JSON
+            source_file: Source file path
+            
+        Returns:
+            List of normalized data dictionaries
+        """
+        normalized = []
+        current_time = datetime.datetime.now()
+        
+        # Handle list format
+        if isinstance(data, list):
+            # Process each item in the list as a separate result
+            for idx, item in enumerate(data):
+                if not isinstance(item, dict):
+                    continue
+                
+                # Get timestamp with fallback
+                timestamp = item.get('timestamp', current_time.isoformat())
+                
+                # Parse timestamp if it's a string
+                if isinstance(timestamp, str):
+                    try:
+                        timestamp = datetime.datetime.fromisoformat(timestamp)
+                    except ValueError:
+                        try:
+                            timestamp = datetime.datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            timestamp = current_time
+                
+                # Create entry with safe conversions
+                try:
+                    # Prepare JSON metrics field
+                    metrics = {}
+                    for key, value in item.items():
+                        if key not in ['model', 'hardware_type', 'device', 'batch_size', 'precision',
+                                     'throughput', 'latency', 'memory_peak', 'timestamp',
+                                     'iterations', 'warmup_iterations']:
+                            metrics[key] = value
+                    
+                    entry = {
+                        'result_id': 0,  # Will be assigned by database
+                        'run_id': 0,     # Will be assigned by database
+                        'model_id': 0,   # Will be resolved by database API
+                        'hardware_id': 0, # Will be resolved by database API
+                        'test_case': item.get('test_case', 'default'),
+                        'batch_size': int(float(item.get('batch_size', 1))),
+                        'precision': item.get('precision', 'fp32'),
+                        'total_time_seconds': float(item.get('total_time', item.get('execution_time', 0.0))),
+                        'average_latency_ms': float(item.get('latency_avg', item.get('latency', 0.0))),
+                        'throughput_items_per_second': float(item.get('throughput', 0.0)),
+                        'memory_peak_mb': float(item.get('memory_peak', item.get('memory', 0.0))),
+                        'iterations': int(item.get('iterations', 1)),
+                        'warmup_iterations': int(item.get('warmup_iterations', 0)),
+                        'metrics': json.dumps(metrics),
+                        'created_at': timestamp,
+                        'source_file': source_file,
+                        'notes': item.get('notes', ''),
+                        # Additional fields to help with database insertion
+                        'model_name': item.get('model', 'unknown'),
+                        'hardware_type': item.get('hardware', item.get('hardware_type', 'unknown')),
+                        'device_name': item.get('device', item.get('device_name', 'unknown'))
+                    }
+                    normalized.append(entry)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error normalizing list item {idx} in {source_file}: {e}")
+                    continue
+            
+            return normalized
+        
+        # Dictionary format (original implementation)
+        timestamp = data.get('timestamp', current_time.isoformat())
+        
+        # Parse timestamp if it's a string
+        if isinstance(timestamp, str):
+            try:
+                timestamp = datetime.datetime.fromisoformat(timestamp)
+            except ValueError:
+                # Try another common format
+                try:
+                    timestamp = datetime.datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    # Default to now if parsing fails
+                    timestamp = current_time
+        
+        # Handle different file formats
+        if 'results' in data and isinstance(data['results'], list):
+            # Multiple results format
+            for result in data['results']:
+                try:
+                    # Prepare JSON metrics field
+                    metrics = {}
+                    for key, value in result.items():
+                        if key not in ['model', 'hardware_type', 'device', 'batch_size', 'precision',
+                                     'throughput', 'latency', 'memory_peak', 'timestamp',
+                                     'iterations', 'warmup_iterations']:
+                            metrics[key] = value
+                    
+                    entry = {
+                        'result_id': 0,  # Will be assigned by database
+                        'run_id': 0,     # Will be assigned by database
+                        'model_id': 0,   # Will be resolved by database API
+                        'hardware_id': 0, # Will be resolved by database API
+                        'test_case': result.get('test_case', data.get('test_case', 'default')),
+                        'batch_size': int(float(result.get('batch_size', data.get('batch_size', 1)))),
+                        'precision': result.get('precision', data.get('precision', 'fp32')),
+                        'total_time_seconds': float(result.get('total_time', result.get('execution_time', data.get('total_time', data.get('execution_time', 0.0))))),
+                        'average_latency_ms': float(result.get('latency_avg', result.get('latency', 0.0))),
+                        'throughput_items_per_second': float(result.get('throughput', 0.0)),
+                        'memory_peak_mb': float(result.get('memory_peak', result.get('memory', 0.0))),
+                        'iterations': int(result.get('iterations', data.get('iterations', 1))),
+                        'warmup_iterations': int(result.get('warmup_iterations', data.get('warmup_iterations', 0))),
+                        'metrics': json.dumps(metrics),
+                        'created_at': timestamp,
+                        'source_file': source_file,
+                        'notes': result.get('notes', data.get('notes', '')),
+                        # Additional fields to help with database insertion
+                        'model_name': result.get('model', data.get('model', 'unknown')),
+                        'hardware_type': result.get('hardware', result.get('hardware_type', data.get('hardware', data.get('hardware_type', 'unknown')))),
+                        'device_name': result.get('device', result.get('device_name', data.get('device', data.get('device_name', 'unknown'))))
+                    }
+                    normalized.append(entry)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error normalizing result in {source_file}: {e}")
+                    continue
+        else:
+            # Single result format
+            try:
+                # Prepare JSON metrics field
+                metrics = {}
+                for key, value in data.items():
+                    if key not in ['model', 'hardware_type', 'device', 'batch_size', 'precision',
+                                 'throughput', 'latency', 'memory_peak', 'timestamp',
+                                 'iterations', 'warmup_iterations']:
+                        metrics[key] = value
+                
+                entry = {
+                    'result_id': 0,  # Will be assigned by database
+                    'run_id': 0,     # Will be assigned by database
+                    'model_id': 0,   # Will be resolved by database API
+                    'hardware_id': 0, # Will be resolved by database API
+                    'test_case': data.get('test_case', 'default'),
+                    'batch_size': int(float(data.get('batch_size', 1))),
+                    'precision': data.get('precision', 'fp32'),
+                    'total_time_seconds': float(data.get('total_time', data.get('execution_time', 0.0))),
+                    'average_latency_ms': float(data.get('latency_avg', data.get('latency', 0.0))),
+                    'throughput_items_per_second': float(data.get('throughput', 0.0)),
+                    'memory_peak_mb': float(data.get('memory_peak', data.get('memory', 0.0))),
+                    'iterations': int(data.get('iterations', 1)),
+                    'warmup_iterations': int(data.get('warmup_iterations', 0)),
+                    'metrics': json.dumps(metrics),
+                    'created_at': timestamp,
+                    'source_file': source_file,
+                    'notes': data.get('notes', ''),
+                    # Additional fields to help with database insertion
+                    'model_name': data.get('model', 'unknown'),
+                    'hardware_type': data.get('hardware', data.get('hardware_type', 'unknown')),
+                    'device_name': data.get('device', data.get('device_name', 'unknown'))
+                }
+                normalized.append(entry)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Error normalizing data in {source_file}: {e}")
+        
+        return normalized
+    
+    def _normalize_hardware_data(self, data: Dict, source_file: str) -> List[Dict]:
+        """
+        Normalize hardware detection data to a standardized format.
+        
+        Args:
+            data: Input data dictionary from JSON
+            source_file: Source file path
+            
+        Returns:
+            List of normalized data dictionaries
+        """
+        normalized = []
+        timestamp = data.get('timestamp', datetime.datetime.now().isoformat())
+        
+        # Parse timestamp if it's a string
+        if isinstance(timestamp, str):
+            try:
+                timestamp = datetime.datetime.fromisoformat(timestamp)
+            except ValueError:
+                # Try another common format
+                try:
+                    timestamp = datetime.datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    # Default to now if parsing fails
+                    timestamp = datetime.datetime.now()
+        
+        # Handle CUDA devices
+        if 'cuda' in data and data['cuda'] is True and 'cuda_devices' in data:
+            for device in data['cuda_devices']:
+                # Create metadata JSON
+                metadata = {
+                    'is_available': True,
+                    'memory_free': float(device.get('free_memory', 0.0)),
+                    'compute_capability': device.get('compute_capability', 'unknown'),
+                    'error': ''
+                }
+                
+                entry = {
+                    'hardware_id': 0,  # Will be assigned by database
+                    'hardware_type': 'cuda',
+                    'device_name': device.get('name', 'unknown'),
+                    'platform': data.get('system', {}).get('platform', 'unknown'),
+                    'platform_version': data.get('system', {}).get('platform_version', 'unknown'),
+                    'driver_version': data.get('cuda_driver_version', 'unknown'),
+                    'memory_gb': float(device.get('total_memory', 0.0)) / 1024.0 if 'total_memory' in device else 0.0,
+                    'compute_units': int(device.get('compute_units', 0)),
+                    'metadata': json.dumps(metadata),
+                    'created_at': timestamp,
+                    'source_file': source_file
+                }
+                normalized.append(entry)
+        elif 'cuda' in data:
+            # CUDA not available or no devices
+            # Create metadata JSON
+            metadata = {
+                'is_available': data['cuda'] is True,
+                'memory_free': 0.0,
+                'compute_capability': 'unknown',
+                'error': data.get('cuda_error', '')
+            }
+            
+            entry = {
+                'hardware_id': 0,  # Will be assigned by database
+                'hardware_type': 'cuda',
+                'device_name': 'none',
+                'platform': data.get('system', {}).get('platform', 'unknown'),
+                'platform_version': data.get('system', {}).get('platform_version', 'unknown'),
+                'driver_version': data.get('cuda_driver_version', 'unknown'),
+                'memory_gb': 0.0,
+                'compute_units': 0,
+                'metadata': json.dumps(metadata),
+                'created_at': timestamp,
+                'source_file': source_file
+            }
+            normalized.append(entry)
+        
+        # Handle ROCm devices
+        if 'rocm' in data and data['rocm'] is True and 'rocm_devices' in data:
+            for device in data['rocm_devices']:
+                entry = {
+                    'hardware_type': 'rocm',
+                    'device_name': device.get('name', 'unknown'),
+                    'is_available': True,
+                    'platform': data.get('system', {}).get('platform', 'unknown'),
+                    'driver_version': data.get('rocm_version', 'unknown'),
+                    'memory_total': float(device.get('total_memory', 0.0)),
+                    'memory_free': float(device.get('free_memory', 0.0)),
+                    'compute_capability': device.get('compute_capability', 'unknown'),
+                    'error': '',
+                    'timestamp': timestamp,
+                    'source_file': source_file
+                }
+                normalized.append(entry)
+        elif 'rocm' in data:
+            # ROCm not available or no devices
+            entry = {
+                'hardware_type': 'rocm',
+                'device_name': 'none',
+                'is_available': data['rocm'] is True,
+                'platform': data.get('system', {}).get('platform', 'unknown'),
+                'driver_version': data.get('rocm_version', 'unknown'),
+                'memory_total': 0.0,
+                'memory_free': 0.0,
+                'compute_capability': 'unknown',
+                'error': data.get('rocm_error', ''),
+                'timestamp': timestamp,
+                'source_file': source_file
+            }
+            normalized.append(entry)
+        
+        # Handle MPS
+        if 'mps' in data:
+            entry = {
+                'hardware_type': 'mps',
+                'device_name': 'Apple Silicon',
+                'is_available': data['mps'] is True,
+                'platform': data.get('system', {}).get('platform', 'unknown'),
+                'driver_version': 'n/a',
+                'memory_total': 0.0,  # MPS typically doesn't report memory
+                'memory_free': 0.0,
+                'compute_capability': 'n/a',
+                'error': data.get('mps_error', ''),
+                'timestamp': timestamp,
+                'source_file': source_file
+            }
+            normalized.append(entry)
+        
+        # Handle OpenVINO
+        if 'openvino' in data:
+            entry = {
+                'hardware_type': 'openvino',
+                'device_name': 'OpenVINO',
+                'is_available': data['openvino'] is True,
+                'platform': data.get('system', {}).get('platform', 'unknown'),
+                'driver_version': data.get('openvino_version', 'unknown'),
+                'memory_total': 0.0,
+                'memory_free': 0.0,
+                'compute_capability': 'n/a',
+                'error': data.get('openvino_error', ''),
+                'timestamp': timestamp,
+                'source_file': source_file
+            }
+            normalized.append(entry)
+        
+        # Handle WebNN
+        if 'webnn' in data:
+            entry = {
+                'hardware_type': 'webnn',
+                'device_name': 'WebNN',
+                'is_available': data['webnn'] is True,
+                'platform': data.get('system', {}).get('platform', 'unknown'),
+                'driver_version': 'n/a',
+                'memory_total': 0.0,
+                'memory_free': 0.0,
+                'compute_capability': 'n/a',
+                'error': data.get('webnn_error', ''),
+                'timestamp': timestamp,
+                'source_file': source_file
+            }
+            normalized.append(entry)
+        
+        # Handle WebGPU
+        if 'webgpu' in data:
+            entry = {
+                'hardware_type': 'webgpu',
+                'device_name': 'WebGPU',
+                'is_available': data['webgpu'] is True,
+                'platform': data.get('system', {}).get('platform', 'unknown'),
+                'driver_version': 'n/a',
+                'memory_total': 0.0,
+                'memory_free': 0.0,
+                'compute_capability': 'n/a',
+                'error': data.get('webgpu_error', ''),
+                'timestamp': timestamp,
+                'source_file': source_file
+            }
+            normalized.append(entry)
+        
+        # Handle CPU
+        entry = {
+            'hardware_type': 'cpu',
+            'device_name': data.get('system', {}).get('cpu_info', 'Unknown CPU'),
+            'is_available': True,  # CPU is always available
+            'platform': data.get('system', {}).get('platform', 'unknown'),
+            'driver_version': 'n/a',
+            'memory_total': float(data.get('system', {}).get('memory_total', 0.0)),
+            'memory_free': float(data.get('system', {}).get('memory_free', 0.0)),
+            'compute_capability': 'n/a',
+            'error': '',
+            'timestamp': timestamp,
+            'source_file': source_file
+        }
+        normalized.append(entry)
+        
+        return normalized
+    
+    def _normalize_compatibility_data(self, data: Dict, source_file: str) -> List[Dict]:
+        """
+        Normalize compatibility test data to a standardized format.
+        
+        Args:
+            data: Input data dictionary from JSON
+            source_file: Source file path
+            
+        Returns:
+            List of normalized data dictionaries
+        """
+        normalized = []
+        timestamp = data.get('timestamp', datetime.datetime.now().isoformat())
+        
+        # Parse timestamp if it's a string
+        if isinstance(timestamp, str):
+            try:
+                timestamp = datetime.datetime.fromisoformat(timestamp)
+            except ValueError:
+                # Try another common format
+                try:
+                    timestamp = datetime.datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    # Default to now if parsing fails
+                    timestamp = datetime.datetime.now()
+        
+        # Handle different file formats
+        if 'tests' in data and isinstance(data['tests'], list):
+            # Multiple test results format
+            for test in data['tests']:
+                model = test.get('model', data.get('model', 'unknown'))
+                for hw_type, hw_data in test.get('compatibility', {}).items():
+                    entry = {
+                        'model': model,
+                        'hardware_type': hw_type,
+                        'is_compatible': hw_data.get('is_compatible', hw_data.get('compatible', False)),
+                        'compatibility_level': hw_data.get('level', 'unknown'),
+                        'error_message': hw_data.get('error', ''),
+                        'error_type': hw_data.get('error_type', ''),
+                        'memory_required': float(hw_data.get('memory_required', 0.0)),
+                        'memory_available': float(hw_data.get('memory_available', 0.0)),
+                        'timestamp': timestamp,
+                        'source_file': source_file
+                    }
+                    normalized.append(entry)
+        elif 'compatibility' in data and isinstance(data['compatibility'], dict):
+            # Compatibility matrix format
+            model = data.get('model', 'unknown')
+            for hw_type, hw_data in data['compatibility'].items():
+                entry = {
+                    'model': model,
+                    'hardware_type': hw_type,
+                    'is_compatible': hw_data.get('is_compatible', hw_data.get('compatible', False)),
+                    'compatibility_level': hw_data.get('level', 'unknown'),
+                    'error_message': hw_data.get('error', ''),
+                    'error_type': hw_data.get('error_type', ''),
+                    'memory_required': float(hw_data.get('memory_required', 0.0)),
+                    'memory_available': float(hw_data.get('memory_available', 0.0)),
+                    'timestamp': timestamp,
+                    'source_file': source_file
+                }
+                normalized.append(entry)
+        elif 'errors' in data and isinstance(data['errors'], list):
+            # Error list format
+            model = data.get('model', 'unknown')
+            for error in data['errors']:
+                hw_type = error.get('hardware_type', 'unknown')
+                entry = {
+                    'model': model,
+                    'hardware_type': hw_type,
+                    'is_compatible': False,  # Errors indicate incompatibility
+                    'compatibility_level': 'incompatible',
+                    'error_message': error.get('message', ''),
+                    'error_type': error.get('error_type', ''),
+                    'memory_required': float(error.get('memory_required', 0.0)),
+                    'memory_available': float(error.get('memory_available', 0.0)),
+                    'timestamp': timestamp,
+                    'source_file': source_file
+                }
+                normalized.append(entry)
+        else:
+            # Simple format or unknown
+            # Try to extract some basic info
+            model = data.get('model', 'unknown')
+            hardware_types = ['cuda', 'rocm', 'mps', 'openvino', 'webnn', 'webgpu', 'cpu']
+            
+            for hw_type in hardware_types:
+                if hw_type in data:
+                    is_compatible = data.get(hw_type, False)
+                    error = data.get(f"{hw_type}_error", '')
+                    
+                    entry = {
+                        'model': model,
+                        'hardware_type': hw_type,
+                        'is_compatible': is_compatible,
+                        'compatibility_level': 'compatible' if is_compatible else 'incompatible',
+                        'error_message': error,
+                        'error_type': 'unknown',
+                        'memory_required': 0.0,
+                        'memory_available': 0.0,
+                        'timestamp': timestamp,
+                        'source_file': source_file
+                    }
+                    normalized.append(entry)
+        
+        return normalized
+    
+    def convert_file(self, file_path: str, category: str = None) -> Tuple[str, pd.DataFrame]:
+        """
+        Convert a single JSON file to a pandas DataFrame with a standardized schema.
+        
+        Args:
+            file_path: Path to the JSON file
+            category: Data category (if known, otherwise auto-detected)
+            
+        Returns:
+            Tuple of (category, DataFrame)
+        """
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+            
+            # Auto-detect category if not provided
+            if category is None:
+                category = self._detect_file_category(file_path)
+                logger.debug(f"Auto-detected category for {file_path}: {category}")
+            
+            # Skip unknown categories
+            if category == 'unknown':
+                logger.warning(f"Skipping file with unknown category: {file_path}")
+                return category, pd.DataFrame()
+            
+            # Normalize data based on category
+            source_file = os.path.basename(file_path)
+            if category == 'performance':
+                normalized = self._normalize_performance_data(data, source_file)
+            elif category == 'hardware':
+                normalized = self._normalize_hardware_data(data, source_file)
+            elif category == 'compatibility':
+                normalized = self._normalize_compatibility_data(data, source_file)
+            else:
+                logger.warning(f"Unsupported category: {category}")
+                return 'unknown', pd.DataFrame()
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(normalized)
+            logger.debug(f"Converted {file_path} to DataFrame with {len(df)} rows")
+            return category, df
+            
+        except Exception as e:
+            logger.error(f"Error converting file {file_path}: {e}")
+            return 'error', pd.DataFrame()
+    
+    def convert_directory(self, input_dir: str, categories: List[str] = None) -> Dict[str, pd.DataFrame]:
+        """
+        Convert all JSON files in a directory to pandas DataFrames.
+        
+        Args:
+            input_dir: Path to the directory containing JSON files
+            categories: List of categories to include (or None for all)
+            
+        Returns:
+            Dictionary of DataFrames by category
+        """
+        # Validate input directory
+        if not os.path.isdir(input_dir):
+            logger.error(f"Input directory not found: {input_dir}")
+            return {}
+        
+        # Find all JSON files
+        json_files = glob.glob(os.path.join(input_dir, "**/*.json"), recursive=True)
+        logger.info(f"Found {len(json_files)} JSON files in {input_dir}")
+        
+        # Initialize result DataFrames
+        result_dfs = {}
+        
+        # Process each file
+        for file_path in json_files:
+            category, df = self.convert_file(file_path)
+            
+            # Skip empty DataFrames or unwanted categories
+            if df.empty or (categories is not None and category not in categories):
+                continue
+                
+            # Add to result DataFrames
+            if category not in result_dfs:
+                result_dfs[category] = df
+            else:
+                result_dfs[category] = pd.concat([result_dfs[category], df], ignore_index=True)
+        
+        # Log the result
+        for category, df in result_dfs.items():
+            logger.info(f"Converted {len(df)} rows for category: {category}")
+        
+        return result_dfs
+    
+    def save_to_duckdb(self, dataframes: Dict[str, pd.DataFrame]) -> bool:
+        """
+        Save DataFrames to a DuckDB database.
+        
+        Args:
+            dataframes: Dictionary of DataFrames by category
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Use a new database file if the current one is locked
+        original_db_path = self.output_db
+        db_path_to_use = original_db_path
+        
+        # If database file exists, try to connect with a timeout
+        if os.path.exists(db_path_to_use):
+            try:
+                # Try to connect with a short timeout
+                con = duckdb.connect(db_path_to_use, read_only=False)
+                con.close()
+            except Exception as lock_error:
+                if "lock" in str(lock_error).lower():
+                    # Database is locked, use a new file
+                    timestamp = int(time.time())
+                    db_path_to_use = f"{original_db_path.rsplit('.', 1)[0]}_{timestamp}.duckdb"
+                    logger.warning(f"Database {original_db_path} is locked. Using {db_path_to_use} instead.")
+        
+        try:
+            # Connect to the database
+            con = duckdb.connect(db_path_to_use)
+            
+            # Create tables for each category
+            for category, df in dataframes.items():
+                if df.empty:
+                    continue
+                
+                # Create table if not exists
+                table_name = f"benchmark_{category}"
+                
+                # Method 1: Use schema to create table
+                try:
+                    # Get schema for this category
+                    schema = self.schemas.get(category)
+                    
+                    # Create table with correct schema
+                    if schema:
+                        # Convert DataFrame to list of tuples for insertion
+                        rows = df.to_dict('records')
+                        
+                        # Build columns string and types
+                        if category == 'performance':
+                            columns = ["model", "hardware", "device", "batch_size", "precision", 
+                                      "throughput", "latency_avg", "latency_p90", "latency_p95", 
+                                      "latency_p99", "memory_peak", "timestamp", "source_file", "notes"]
+                            con.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {table_name} (
+                                id INTEGER PRIMARY KEY,
+                                model VARCHAR,
+                                hardware VARCHAR,
+                                device VARCHAR,
+                                batch_size INTEGER,
+                                precision VARCHAR,
+                                throughput FLOAT,
+                                latency_avg FLOAT,
+                                latency_p90 FLOAT,
+                                latency_p95 FLOAT,
+                                latency_p99 FLOAT,
+                                memory_peak FLOAT,
+                                timestamp TIMESTAMP,
+                                source_file VARCHAR,
+                                notes VARCHAR
+                            )
+                            """)
+                        elif category == 'hardware':
+                            columns = ["hardware_type", "device_name", "is_available", "platform", 
+                                      "driver_version", "memory_total", "memory_free", 
+                                      "compute_capability", "error", "timestamp", "source_file"]
+                            con.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {table_name} (
+                                id INTEGER PRIMARY KEY,
+                                hardware_type VARCHAR,
+                                device_name VARCHAR,
+                                is_available BOOLEAN,
+                                platform VARCHAR,
+                                driver_version VARCHAR,
+                                memory_total FLOAT,
+                                memory_free FLOAT,
+                                compute_capability VARCHAR,
+                                error VARCHAR,
+                                timestamp TIMESTAMP,
+                                source_file VARCHAR
+                            )
+                            """)
+                        elif category == 'compatibility':
+                            columns = ["model", "hardware_type", "is_compatible", "compatibility_level", 
+                                      "error_message", "error_type", "memory_required", 
+                                      "memory_available", "timestamp", "source_file"]
+                            con.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {table_name} (
+                                id INTEGER PRIMARY KEY,
+                                model VARCHAR,
+                                hardware_type VARCHAR,
+                                is_compatible BOOLEAN,
+                                compatibility_level VARCHAR,
+                                error_message VARCHAR,
+                                error_type VARCHAR,
+                                memory_required FLOAT,
+                                memory_available FLOAT,
+                                timestamp TIMESTAMP,
+                                source_file VARCHAR
+                            )
+                            """)
+                        
+                        # Get next ID value to start from
+                        try:
+                            result = con.execute(f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table_name}").fetchone()
+                            start_id = result[0] if result else 1
+                        except:
+                            start_id = 1
+                        
+                        # Insert data row by row for better error control
+                        for i, row in enumerate(rows):
+                            try:
+                                # Create a list of values in the correct order
+                                values = []
+                                for col in columns:
+                                    if col == "timestamp" and col in row:
+                                        # Ensure timestamp is in the right format
+                                        if isinstance(row[col], (int, float)):
+                                            values.append(pd.Timestamp(row[col], unit='ms'))
+                                        else:
+                                            values.append(row[col])
+                                    else:
+                                        values.append(row.get(col, None))
+                                
+                                # Insert with explicit column names
+                                insert_sql = f"INSERT INTO {table_name} (id, {', '.join(columns)}) VALUES ({start_id + i}, {', '.join(['?' for _ in columns])})"
+                                con.execute(insert_sql, values)
+                                
+                            except Exception as row_error:
+                                logger.warning(f"Error inserting row {i} into {table_name}: {row_error}")
+                                continue
+                        
+                        logger.info(f"Inserted data into {table_name} using schema-based approach")
+                    else:
+                        # Fallback to generic CSV method
+                        raise ValueError("No schema available, using CSV method")
+                        
+                except Exception as schema_error:
+                    logger.warning(f"Error using schema-based approach: {schema_error}")
+                    
+                    # Method 2: Use CSV as intermediary
+                    try:
+                        # Save DataFrame to temporary CSV
+                        temp_csv = f"temp_{category}_{int(time.time())}.csv"
+                        df.to_csv(temp_csv, index=False)
+                        
+                        # Create table from CSV
+                        con.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {table_name} AS 
+                        SELECT * FROM read_csv_auto('{temp_csv}')
+                        WHERE 1=0
+                        """)
+                        
+                        # Import data
+                        con.execute(f"""
+                        INSERT INTO {table_name} 
+                        SELECT * FROM read_csv_auto('{temp_csv}')
+                        """)
+                        
+                        # Remove temporary file
+                        if os.path.exists(temp_csv):
+                            os.remove(temp_csv)
+                            
+                        logger.info(f"Inserted data into {table_name} using CSV method")
+                    except Exception as csv_error:
+                        logger.error(f"Error using CSV method: {csv_error}")
+                        logger.error(f"Skipping {table_name}")
+                        continue
+                
+                logger.info(f"Inserted {len(df)} rows into table {table_name}")
+            
+            # Create views for common queries
+            try:
+                self._create_views(con)
+            except Exception as view_error:
+                logger.warning(f"Error creating views: {view_error}")
+            
+            # Close connection
+            con.close()
+            
+            # If we used a different database file, log a warning
+            if db_path_to_use != original_db_path:
+                logger.warning(f"Data was saved to {db_path_to_use} due to lock on original database.")
+                logger.warning(f"You will need to merge the databases later.")
+            
+            logger.info(f"Successfully saved to DuckDB database: {db_path_to_use}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving to DuckDB: {e}")
+            return False
+    
+    def save_to_parquet(self, dataframes: Dict[str, pd.DataFrame], output_dir: str = "./benchmark_parquet") -> bool:
+        """
+        Save DataFrames to Parquet files.
+        
+        Args:
+            dataframes: Dictionary of DataFrames by category
+            output_dir: Directory for Parquet files
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create output directory if it doesn't exist
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Save each DataFrame to a Parquet file
+            for category, df in dataframes.items():
+                if df.empty:
+                    continue
+                
+                # Convert DataFrame to PyArrow Table with schema
+                # Convert timestamp to compatible format first
+                if 'timestamp' in df.columns:
+                    df['timestamp'] = df['timestamp'].astype('int64') // 10**6  # Convert to milliseconds
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                
+                schema = self.schemas.get(category)
+                if schema:
+                    try:
+                        table = pa.Table.from_pandas(df, schema=schema)
+                    except Exception as e:
+                        logger.warning(f"Error using predefined schema: {e}, using inferred schema")
+                        table = pa.Table.from_pandas(df)
+                else:
+                    table = pa.Table.from_pandas(df)
+                
+                # Save to Parquet file
+                output_file = os.path.join(output_dir, f"benchmark_{category}.parquet")
+                # JSON output deprecated in favor of database storage
+                if not DEPRECATE_JSON_OUTPUT:
+                    pq.write_table(table, output_file)
+                    logger.info(f"Saved {len(df)} rows to Parquet file: {output_file}")
+                else:
+                    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+            
+            logger.info(f"Successfully saved to Parquet files in directory: {output_dir}")
+            return True
+                
+        except Exception as e:
+            logger.error(f"Error saving to Parquet: {e}")
+            return False
+    
+    def _create_views(self, con: duckdb.DuckDBPyConnection) -> None:
+        """
+        Create views for common queries.
+        
+        Args:
+            con: DuckDB connection
+        """
+        try:
+            # View for latest performance results by model and hardware
+            con.execute("""
+                CREATE OR REPLACE VIEW latest_performance AS
+                SELECT
+                    model,
+                    hardware,
+                    batch_size,
+                    precision,
+                    throughput,
+                    latency_avg,
+                    memory_peak,
+                    timestamp
+                FROM (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY model, hardware, batch_size, precision
+                            ORDER BY timestamp DESC
+                        ) as row_num
+                    FROM benchmark_performance
+                ) WHERE row_num = 1
+            """)
+            
+            # View for hardware comparison
+            con.execute("""
+                CREATE OR REPLACE VIEW hardware_comparison AS
+                SELECT
+                    model,
+                    hardware,
+                    AVG(throughput) as avg_throughput,
+                    MIN(latency_avg) as min_latency,
+                    MAX(memory_peak) as max_memory,
+                    COUNT(*) as num_runs
+                FROM benchmark_performance
+                GROUP BY model, hardware
+            """)
+            
+            # View for the latest hardware detection
+            con.execute("""
+                CREATE OR REPLACE VIEW latest_hardware AS
+                SELECT
+                    hardware_type,
+                    device_name,
+                    is_available,
+                    memory_total,
+                    memory_free,
+                    timestamp
+                FROM (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY hardware_type, device_name
+                            ORDER BY timestamp DESC
+                        ) as row_num
+                    FROM benchmark_hardware
+                ) WHERE row_num = 1
+            """)
+            
+            # View for model compatibility matrix
+            con.execute("""
+                CREATE OR REPLACE VIEW compatibility_matrix AS
+                SELECT
+                    model,
+                    hardware_type,
+                    is_compatible,
+                    compatibility_level,
+                    error_message
+                FROM (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY model, hardware_type
+                            ORDER BY timestamp DESC
+                        ) as row_num
+                    FROM benchmark_compatibility
+                ) WHERE row_num = 1
+            """)
+            
+            logger.info("Created views in DuckDB database")
+            
+        except Exception as e:
+            logger.error(f"Error creating views: {e}")
+        
+    def consolidate_directories(self, directories: List[str], categories: List[str] = None) -> Dict[str, pd.DataFrame]:
+        """
+        Consolidate JSON files from multiple directories.
+        
+        Args:
+            directories: List of directories to process
+            categories: List of categories to include (or None for all)
+            
+        Returns:
+            Dictionary of consolidated DataFrames by category
+        """
+        # Initialize result DataFrames
+        result_dfs = {}
+        
+        # Process each directory
+        for directory in directories:
+            logger.info(f"Processing directory: {directory}")
+            dfs = self.convert_directory(directory, categories)
+            
+            # Merge with existing DataFrames
+            for category, df in dfs.items():
+                if category not in result_dfs:
+                    result_dfs[category] = df
+                else:
+                    result_dfs[category] = pd.concat([result_dfs[category], df], ignore_index=True)
+        
+        # Log the result
+        for category, df in result_dfs.items():
+            logger.info(f"Consolidated {len(df)} rows for category: {category}")
+        
+        return result_dfs
+    
+    def deduplicate_data(self, dataframes: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+        """
+        Deduplicate data by keeping the latest version of each unique entry.
+        
+        Args:
+            dataframes: Dictionary of DataFrames by category
+            
+        Returns:
+            Dictionary of deduplicated DataFrames
+        """
+        result_dfs = {}
+        
+        for category, df in dataframes.items():
+            if df.empty:
+                result_dfs[category] = df
+                continue
+            
+            # Define deduplication keys based on category
+            if category == 'performance':
+                keys = ['model', 'hardware', 'batch_size', 'precision']
+            elif category == 'hardware':
+                keys = ['hardware_type', 'device_name']
+            elif category == 'compatibility':
+                keys = ['model', 'hardware_type']
+            else:
+                # If we don't know how to deduplicate, just copy
+                result_dfs[category] = df
+                continue
+            
+            # Ensure timestamp column is properly formatted
+            if 'timestamp' in df.columns:
+                try:
+                    # Convert all timestamps to datetime objects
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                    # Replace NaT values with current timestamp
+                    df['timestamp'] = df['timestamp'].fillna(pd.Timestamp.now())
+                    # Sort by timestamp (descending) and keep first occurrence
+                    df = df.sort_values('timestamp', ascending=False)
+                except Exception as e:
+                    logger.warning(f"Error sorting by timestamp: {e}. Skipping sort.")
+            
+            # Deduplicate using keys
+            df = df.drop_duplicates(subset=keys, keep='first')
+            
+            logger.info(f"Deduplicated {category} data from {len(dataframes[category])} to {len(df)} rows")
+            result_dfs[category] = df
+        
+        return result_dfs
+
+def main():
+    """Command-line interface for the benchmark database converter."""
+    parser = argparse.ArgumentParser(description="Benchmark Database Converter")
+    parser.add_argument("--input-dir", 
+                        help="Directory containing JSON benchmark files")
+    parser.add_argument("--output-db", default="./benchmark_db.duckdb",
+                        help="Output DuckDB database path")
+    parser.add_argument("--output-parquet-dir", default="./benchmark_parquet",
+                        help="Output directory for Parquet files")
+    parser.add_argument("--categories", nargs="+", 
+                        choices=["performance", "hardware", "compatibility"],
+                        help="Categories to include (default: all)")
+    parser.add_argument("--consolidate", action="store_true",
+                        help="Consolidate data from multiple directories")
+    parser.add_argument("--deduplicate", action="store_true",
+                        help="Deduplicate data, keeping the latest version")
+    parser.add_argument("--directories", nargs="+",
+                        help="Directories to consolidate when using --consolidate")
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable debug logging")
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+    args = parser.parse_args()
+    
+    # Create converter
+    converter = BenchmarkDBConverter(output_db=args.output_db, debug=args.debug)
+    
+    # Perform requested actions
+    if args.consolidate:
+        directories = args.directories or [
+            "./archived_test_results",
+            "./performance_results",
+            "./hardware_compatibility_reports"
+        ]
+        dataframes = converter.consolidate_directories(directories, args.categories)
+    elif args.input_dir:
+        dataframes = converter.convert_directory(args.input_dir, args.categories)
+    else:
+        # No source specified
+        parser.print_help()
+        return
+    
+    # Deduplicate if requested
+    if args.deduplicate:
+        dataframes = converter.deduplicate_data(dataframes)
+    
+    # Save to DuckDB
+    success_duckdb = converter.save_to_duckdb(dataframes)
+    
+    # Save to Parquet
+    success_parquet = converter.save_to_parquet(dataframes, args.output_parquet_dir)
+    
+    if success_duckdb and success_parquet:
+        logger.info("Conversion completed successfully")
+    else:
+        logger.error("Conversion completed with errors")
+
+if __name__ == "__main__":
+    main()

@@ -26,12 +26,12 @@ export BENCHMARK_DB_PATH=/path/to/your/benchmark_db.duckdb
 
 Instead of:
 ```bash
-python test/run_model_benchmarks.py --output-dir ./results --models bert
+python generators/benchmark_generators/run_model_benchmarks.py --output-dir ./results --models bert
 ```
 
 Now use:
 ```bash
-python test/run_model_benchmarks.py --models bert
+python generators/benchmark_generators/run_model_benchmarks.py --models bert
 ```
 
 The results will be automatically stored in the database specified by `BENCHMARK_DB_PATH`.
@@ -50,13 +50,13 @@ To query results from the database:
 
 ```bash
 # Get performance reports
-python test/scripts/benchmark_db_query.py --report performance --format html --output report.html
+python duckdb_api/core/benchmark_db_query.py --report performance --format html --output report.html
 
 # Run SQL queries
-python test/scripts/benchmark_db_query.py --sql "SELECT * FROM performance_results LIMIT 10"
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results LIMIT 10"
 
 # Compare hardware platforms
-python test/scripts/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
+python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
 ```
 
 ## Temporarily Reverting to JSON (Not Recommended)
@@ -68,7 +68,7 @@ If you need to temporarily revert to the old JSON-based output for backward comp
 export DEPRECATE_JSON_OUTPUT=0
 
 # Run with JSON output explicitly
-python test/run_model_benchmarks.py --models bert --output-dir ./json_results
+python generators/benchmark_generators/run_model_benchmarks.py --models bert --output-dir ./json_results
 ```
 
 Note that this approach is not recommended and is only provided for transition purposes.

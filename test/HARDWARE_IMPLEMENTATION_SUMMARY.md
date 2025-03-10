@@ -152,7 +152,7 @@ python test/benchmark_all_key_models.py --output-dir ./benchmark_results
 python test/test_web_platform_optimizations.py --all-optimizations
 
 # Run web platform tests
-python test/web_platform_test_runner.py --model bert --platform webgpu --shader-precompile
+python generators/runners/web/web_platform_test_runner.py --model bert --platform webgpu --shader-precompile
 ```
 
 ## Conclusion

@@ -2,6 +2,8 @@
 
 This document provides an overview of the WebNN and WebGPU integration in the IPFS Accelerate Python package, which enables hardware-accelerated AI model inference on web platforms.
 
+> **IMPORTANT NOTE**: All WebGPU/WebNN implementations will be moved to a dedicated `ipfs_accelerate_js` folder once all tests pass. Import paths and references in this document will be updated accordingly after the migration.
+
 ## Overview
 
 The IPFS Accelerate package now integrates with WebNN and WebGPU, allowing hardware-accelerated AI model inference for various model types (text, vision, audio, multimodal) across different browsers (Chrome, Firefox, Edge, Safari) with optimization options including:
@@ -171,8 +173,32 @@ The system supports various precision levels:
 - **16-bit**: Higher accuracy, more memory usage, slower
 - **Mixed precision**: Uses higher precision for critical layers
 
+## Upcoming Migration to ipfs_accelerate_js
+
+All WebGPU/WebNN implementations will be moved from the current location to a dedicated `ipfs_accelerate_js` folder once all tests pass successfully. This migration will:
+
+1. **Create a clearer separation between JavaScript and Python components**
+2. **Provide a more intuitive structure for WebGPU/WebNN implementations**
+3. **Make the codebase easier to navigate and maintain**
+4. **Simplify future JavaScript SDK development**
+
+### Import Path Changes After Migration
+
+Current imports like:
+```python
+from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+```
+
+Will change to:
+```python
+from ipfs_accelerate_js.webgpu_audio_compute_shaders import optimize_for_firefox
+```
+
+The main `accelerate()` function API will remain unchanged to ensure backward compatibility.
+
 ## Version History
 
+- **0.4.0** - Planned migration to ipfs_accelerate_js (Coming Soon)
 - **0.3.0** - Added WebNN/WebGPU integration
 - **0.2.0** - Added P2P network optimization
 - **0.1.0** - Initial release

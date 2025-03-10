@@ -375,7 +375,7 @@ python test/benchmark_all_key_models.py --hardware cpu cuda openvino --output-di
 ./test/run_web_platform_integration_tests.sh --model whisper --enable-compute-shaders
 
 # Run with database integration for result tracking
-python test/run_web_platform_tests_with_db.py --model bert --run-webnn
+python duckdb_api/web/run_web_platform_tests_with_db.py --model bert --run-webnn
 ```
 
 ### Generating Reports

@@ -682,74 +682,74 @@ The typical workflow for deploying models to web platforms:
 # Basic Usage
 # ----------
 # Test both WebNN and WebGPU platforms across all modalities
-python test/test_web_platform_integration.py
+python generators/web/test_web_platform_integration.py
 
 # Test only WebNN platform
-python test/test_web_platform_integration.py --platform webnn
+python generators/web/test_web_platform_integration.py --platform webnn
 
 # Test only WebGPU platform with verbose output
-python test/test_web_platform_integration.py --platform webgpu --verbose
+python generators/web/test_web_platform_integration.py --platform webgpu --verbose
 
 # Test only text models on both platforms
-python test/test_web_platform_integration.py --modality text
+python generators/web/test_web_platform_integration.py --modality text
 
 # May 2025 Features
 # ----------------
 # Test LLMs with 4-bit inference optimization
-python test/test_web_platform_integration.py --platform webgpu --modality text --4bit-inference
+python generators/web/test_web_platform_integration.py --platform webgpu --modality text --4bit-inference
 
 # Test generative models with efficient KV-cache
-python test/test_web_platform_integration.py --platform webgpu --modality text --efficient-kv-cache
+python generators/web/test_web_platform_integration.py --platform webgpu --modality text --efficient-kv-cache
 
 # Test multimodal models with component-wise caching
-python test/test_web_platform_integration.py --platform webgpu --modality multimodal --component-cache
+python generators/web/test_web_platform_integration.py --platform webgpu --modality multimodal --component-cache
 
 # Test all May 2025 features together
-python test/test_web_platform_integration.py --all-may-2025-features
+python generators/web/test_web_platform_integration.py --all-may-2025-features
 
 # March 2025 Features
 # ----------------
 # Test audio models with compute shader optimization
-python test/test_web_platform_integration.py --platform webgpu --modality audio --compute-shaders
+python generators/web/test_web_platform_integration.py --platform webgpu --modality audio --compute-shaders
 
 # Test multimodal models with parallel loading
-python test/test_web_platform_integration.py --platform webgpu --modality multimodal --parallel-loading
+python generators/web/test_web_platform_integration.py --platform webgpu --modality multimodal --parallel-loading
 
 # Test vision models with shader precompilation
-python test/test_web_platform_integration.py --platform webgpu --modality vision --precompile-shaders
+python generators/web/test_web_platform_integration.py --platform webgpu --modality vision --precompile-shaders
 
 # Test all March 2025 features together
-python test/test_web_platform_integration.py --all-march-2025-features
+python generators/web/test_web_platform_integration.py --all-march-2025-features
 
 # Use Firefox for superior audio model performance
-python test/test_web_platform_integration.py --platform webgpu --modality audio --browser firefox --compute-shaders
+python generators/web/test_web_platform_integration.py --platform webgpu --modality audio --browser firefox --compute-shaders
 
 # Performance Benchmarking
 # ----------------------
 # Run with 10 benchmarking iterations
-python test/test_web_platform_integration.py --benchmark
+python generators/web/test_web_platform_integration.py --benchmark
 
 # Run intensive benchmarking with 100 iterations
-python test/test_web_platform_integration.py --benchmark-intensive
+python generators/web/test_web_platform_integration.py --benchmark-intensive
 
 # Specify custom iteration count
-python test/test_web_platform_integration.py --iterations 50
+python generators/web/test_web_platform_integration.py --iterations 50
 
 # Model Size Testing
 # ----------------
 # Test tiny model variants
-python test/test_web_platform_integration.py --size tiny
+python generators/web/test_web_platform_integration.py --size tiny
 
 # Test all available sizes
-python test/test_web_platform_integration.py --test-all-sizes
+python generators/web/test_web_platform_integration.py --test-all-sizes
 
 # Compare different sizes
-python test/test_web_platform_integration.py --compare-sizes
+python generators/web/test_web_platform_integration.py --compare-sizes
 
 # Output Options
 # ------------
 # Save results to JSON file
-python test/test_web_platform_integration.py --output-json results.json
+python generators/web/test_web_platform_integration.py --output-json results.json
 
 # June-July 2025 Next Steps Features
 # ----------------------------
@@ -800,13 +800,13 @@ python test/test_cross_origin_sharing.py --model bert --client-mode --server-ori
 # Basic Usage
 # ----------
 # Run tests with both WebNN and WebGPU simulation enabled (default)
-./run_web_platform_tests.sh python test/run_model_benchmarks.py --hardware webnn
+./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn
 
 # Enable only WebNN simulation
-./run_web_platform_tests.sh --webnn-only python test/run_model_benchmarks.py --hardware webnn
+./run_web_platform_tests.sh --webnn-only python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn
 
 # Enable only WebGPU simulation
-./run_web_platform_tests.sh --webgpu-only python test/verify_key_models.py --platform webgpu
+./run_web_platform_tests.sh --webgpu-only python generators/validators/verify_key_models.py --platform webgpu
 
 # May 2025 Features
 # ---------------
@@ -842,10 +842,10 @@ python test/test_cross_origin_sharing.py --model bert --client-mode --server-ori
 # Combined with Test Script
 # ---------------------
 # Run comprehensive benchmarks with all May 2025 features
-./run_web_platform_tests.sh --all-may-2025-features python test/test_web_platform_integration.py --benchmark --test-all-sizes --output-json may2025_benchmark.json
+./run_web_platform_tests.sh --all-may-2025-features python generators/web/test_web_platform_integration.py --benchmark --test-all-sizes --output-json may2025_benchmark.json
 
 # Run comprehensive benchmarks with both March and May 2025 features
-./run_web_platform_tests.sh --all-may-2025-features --all-march-2025-features python test/test_web_platform_integration.py --benchmark
+./run_web_platform_tests.sh --all-may-2025-features --all-march-2025-features python generators/web/test_web_platform_integration.py --benchmark
 ```
 
 ## Environmental Controls

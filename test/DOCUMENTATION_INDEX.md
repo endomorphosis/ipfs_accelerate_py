@@ -1,6 +1,6 @@
 # IPFS Accelerate Python Framework Documentation Index
 
-Last Updated: April 7, 2025
+Last Updated: March 9, 2025
 
 This document provides a comprehensive index of all project documentation, organized by category and implementation phase.
 
@@ -145,6 +145,7 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 
 ## Advanced Features Documentation (April 2025)
 
+- [MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md) - Comprehensive guide to the Model File Verification and Conversion Pipeline (NEW - March 9, 2025)
 - [DOCUMENTATION_CLEANUP_GUIDE.md](DOCUMENTATION_CLEANUP_GUIDE.md) - Guide for documentation and report cleanup (NEW - April 7, 2025)
 - [TIME_SERIES_PERFORMANCE_GUIDE.md](TIME_SERIES_PERFORMANCE_GUIDE.md) - Time-series performance tracking system
 - [IPFS_ACCELERATION_TESTING.md](IPFS_ACCELERATION_TESTING.md) - IPFS acceleration testing with DuckDB integration (Updated March 2025)
@@ -161,6 +162,9 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 
 ### Implementation Files
 
+- [model_file_verification.py](model_file_verification.py) - Core implementation of the Model File Verification and Conversion Pipeline (NEW - March 9, 2025)
+- [benchmark_model_verification.py](benchmark_model_verification.py) - Integration of the verification system with benchmarks (NEW - March 9, 2025)
+- [run_model_verification.sh](run_model_verification.sh) - Script to demonstrate model verification usage (NEW - March 9, 2025)
 - [archive_old_documentation.py](archive_old_documentation.py) - Utility for archiving outdated documentation (NEW - April 7, 2025)
 - [cleanup_stale_reports.py](cleanup_stale_reports.py) - Tool for cleaning up stale benchmark reports (UPDATED - April 7, 2025)
 - [run_documentation_cleanup.sh](run_documentation_cleanup.sh) - Script to run all documentation cleanup tools (NEW - April 7, 2025)

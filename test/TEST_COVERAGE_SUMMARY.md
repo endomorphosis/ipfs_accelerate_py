@@ -219,7 +219,7 @@ python test/benchmark_all_key_models.py --small-models
 python test/test_web_platform_optimizations.py --all-optimizations
 
 # Run web platform model tests
-python test/web_platform_test_runner.py --model bert --platform webgpu --shader-precompile
+python generators/runners/web/web_platform_test_runner.py --model bert --platform webgpu --shader-precompile
 
 # Run database integration tests
 python test/benchmark_with_db_integration.py --model bert --hardware cpu cuda

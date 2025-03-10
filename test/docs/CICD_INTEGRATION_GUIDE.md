@@ -42,7 +42,7 @@ The workflow consists of the following jobs:
 2. **run_tests**: Runs tests for specified models and hardware platforms
    - Creates a matrix of models and hardware platforms to test
    - Downloads the database from the setup job
-   - Runs tests using `test_ipfs_accelerate.py` with direct database storage
+   - Runs tests using `generators/models/test_ipfs_accelerate.py` with direct database storage
    - Verifies that test results were properly stored in the database
    - Generates test reports in markdown format
    - Uploads the updated database and reports as artifacts
@@ -50,16 +50,16 @@ The workflow consists of the following jobs:
 3. **run_web_tests**: Optionally runs web platform tests (WebNN, WebGPU)
    - Runs only when the `include_web` parameter is set to true
    - Sets up Node.js environment for web platform testing
-   - Runs web platform tests using `web_platform_test_runner.py`
+   - Runs web platform tests using `fixed_web_platform/web_platform_test_runner.py`
    - Stores results directly in the database
    - Uploads the updated database as an artifact
 
 4. **consolidate_results**: Processes all test results and generates reports
    - Downloads all artifacts from previous jobs
-   - Uses `ci_benchmark_integrator.py` to consolidate results into a single database
+   - Uses `duckdb_api/scripts/ci_benchmark_integrator.py` to consolidate results into a single database
    - Generates a compatibility matrix using the consolidated data
    - Creates performance reports in HTML format
-   - Detects performance regressions using `benchmark_regression_detector.py`
+   - Detects performance regressions using `duckdb_api/analysis/benchmark_regression_detector.py`
    - Creates GitHub issues for significant regressions when running on schedule
    - Uploads the consolidated database and reports as artifacts
 
@@ -117,14 +117,14 @@ The workflow consists of the following jobs:
 
 2. **run_benchmarks**: Runs benchmarks for specified models and hardware
    - Creates a matrix of models and hardware to benchmark
-   - Runs benchmarks using `run_benchmark_with_db.py`
+   - Runs benchmarks using `duckdb_api/core/run_benchmark_with_db.py`
    - Stores results directly in the database
    - Uploads the updated database as an artifact
 
 3. **consolidate_results**: Processes benchmark results and generates reports
-   - Uses `ci_benchmark_integrator.py` to consolidate results
+   - Uses `duckdb_api/scripts/ci_benchmark_integrator.py` to consolidate results
    - Generates performance reports, compatibility matrix, and hardware comparison charts
-   - Detects performance regressions using `benchmark_regression_detector.py`
+   - Detects performance regressions using `duckdb_api/analysis/benchmark_regression_detector.py`
    - Creates GitHub issues for severe regressions
    - Integrates with the hardware model predictor to validate predictions
    - Uploads the consolidated database and reports as artifacts
@@ -296,7 +296,7 @@ To add a new test type to the CI/CD system:
 
 To customize report generation:
 
-1. Modify the scripts in the `test/scripts/` directory
+1. Modify the scripts in the `duckdb_api/scripts/` directory
 2. Update the workflow steps that generate reports
 
 ### Local Testing
@@ -309,14 +309,14 @@ export BENCHMARK_DB_PATH=./benchmark_db_local.duckdb
 export DEPRECATE_JSON_OUTPUT=1
 
 # Run tests with database integration
-python test/test_ipfs_accelerate.py --models prajjwal1/bert-tiny --endpoints cpu --db-path $BENCHMARK_DB_PATH
+python generators/models/test_ipfs_accelerate.py --models prajjwal1/bert-tiny --endpoints cpu --db-path $BENCHMARK_DB_PATH
 
 # Generate reports
-python test/generate_compatibility_matrix.py --db-path $BENCHMARK_DB_PATH --format markdown --output compatibility_matrix.md
-python test/scripts/benchmark_db_query.py --db $BENCHMARK_DB_PATH --report performance --format html --output performance_report.html
+python duckdb_api/visualization/generate_compatibility_matrix.py --db-path $BENCHMARK_DB_PATH --format markdown --output compatibility_matrix.md
+python duckdb_api/core/benchmark_db_query.py --db $BENCHMARK_DB_PATH --report performance --format html --output performance_report.html
 
 # Check for regressions
-python test/scripts/benchmark_regression_detector.py --db $BENCHMARK_DB_PATH --threshold 0.1
+python duckdb_api/analysis/benchmark_regression_detector.py --db $BENCHMARK_DB_PATH --threshold 0.1
 ```
 
 ## Troubleshooting

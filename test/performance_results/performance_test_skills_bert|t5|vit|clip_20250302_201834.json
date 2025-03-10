@@ -1,6 +1,0 @@
-{
-  "timestamp": "2025-03-02T20:18:34.912722",
-  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-  "command": "/home/barberb/ipfs_accelerate_py/test/run_performance_tests.py --skills --filter bert|t5|vit|clip --timeout 300",
-  "skill_tests": {}
-}

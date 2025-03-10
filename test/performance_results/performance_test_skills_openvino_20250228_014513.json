@@ -1,6 +1,0 @@
-{
-  "timestamp": "2025-02-28T01:45:13.292629",
-  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-  "command": "run_performance_tests.py --skills --filter openvino",
-  "skill_tests": {}
-}

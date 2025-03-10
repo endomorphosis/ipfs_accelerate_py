@@ -869,7 +869,7 @@ The tool integrates with the merged test generator to extend coverage:
 python test/test_comprehensive_hardware_coverage.py --enhance-merged-generator --hardware all
 
 # Verify generator enhancements
-python test/test_comprehensive_hardware_coverage.py --verify-generator-enhancements --model bert
+python generators/test_comprehensive_hardware_coverage.py --verify-generator-enhancements --model bert
 ```
 
 #### Example of Enhanced Generator Configuration

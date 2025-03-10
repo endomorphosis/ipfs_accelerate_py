@@ -996,7 +996,11 @@ def create_optimized_kv_cache(
             "current_len": 0,
             "batch_size": batch_size,
             "num_heads": num_heads,
-            "head_dim": head_dim
+            "head_dim": head_dim,
+            "enhanced_memory_reduction": True,  # July 2025 update
+            "ultra_low_precision": True,        # July 2025 update
+            "packing_method": "dense_2bit",     # July 2025 update
+            "dequant_method": "symmetric_scaled"  # July 2025 update
         }
     elif bits == 3:
         # 3-bit quantization (81.25% memory reduction)
@@ -1034,7 +1038,11 @@ def create_optimized_kv_cache(
             "current_len": 0,
             "batch_size": batch_size,
             "num_heads": num_heads,
-            "head_dim": head_dim
+            "head_dim": head_dim,
+            "enhanced_memory_reduction": True,   # July 2025 update
+            "ultra_low_precision": True,         # July 2025 update
+            "packing_method": "dense_3bit",      # July 2025 update
+            "dequant_method": "symmetric_scaled"  # July 2025 update
         }
     else:
         raise ValueError(f"Unsupported bit width for ultra-low precision: {bits}. Use 2 or 3 bits.")

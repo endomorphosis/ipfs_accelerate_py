@@ -1,5 +1,22 @@
 # IPFS Accelerate Python Framework - Development Guide
 
+> **ORGANIZATION UPDATE (March 2025):**
+>
+> The codebase has been reorganized for better maintainability:
+> - All generator files (test/benchmark/skillset) moved to the top-level `generators/` directory
+> - All template-related files (templates, validators, inheritance system) moved to the `generators/templates/` directory
+> - All database-related tools moved to the top-level `duckdb_api/` directory
+> - CI/CD workflow files moved from `test/.github/workflows/` to the standard `.github/workflows/` location
+> 
+> ✅ Migration completed with 299 files moved and all import paths updated (March 9, 2025)
+> ✅ CI/CD pipeline configuration updated to use new directory structure (March 9, 2025)
+>
+> Please refer to [FINAL_MIGRATION_REPORT.md](FINAL_MIGRATION_REPORT.md) for the complete directory structure and [CI_CD_UPDATES_SUMMARY.md](CI_CD_UPDATES_SUMMARY.md) for details on CI/CD changes.
+>
+> **UPCOMING MIGRATION (Q2-Q3 2025):**
+> 
+> All WebGPU/WebNN implementations will be moved from `/fixed_web_platform/` to a dedicated `ipfs_accelerate_js` folder once all tests pass. This migration will create a clearer separation between JavaScript-based components and Python-based components.
+
 ## Current Focus: Advanced Hardware Benchmarking and Database Consolidation (Updated March 2025)
 ## Enhanced Feature: Added Qualcomm AI Engine Support (Updated March 2025)
 
@@ -33,6 +50,13 @@ The project has successfully completed 16 phases of implementation, focusing on 
   - Distributes large models across multiple browser types to leverage specialized optimizations
   - Enables running models too large for a single browser instance
   - Creates browser-specific model component placement based on strengths
+
+- 📋 WebGPU/WebNN Migration to ipfs_accelerate_js (PLANNED - After all tests pass)
+  - Move all WebGPU/WebNN implementations to dedicated folder structure
+  - Create clearer separation between JavaScript and Python components
+  - Update import paths and documentation to reflect new structure
+  - Simplify future JavaScript SDK development
+  - Target completion: Q3 2025
   
 - 🔄 Distributed Testing Framework (IN PROGRESS - 25% complete)
   - Coordinator-worker architecture for distributed test execution
@@ -40,25 +64,38 @@ The project has successfully completed 16 phases of implementation, focusing on 
   - Intelligent task distribution based on hardware capabilities
   - Target completion: June 26, 2025
   
-- 📋 Model File Verification and Conversion Pipeline (PLANNED - Target: May 15, 2025)
-  - Pre-benchmark ONNX file verification system
-  - PyTorch to ONNX conversion fallback pipeline
-  - Local disk caching for converted model files
+- ✅ Model File Verification and Conversion Pipeline (COMPLETED - March 9, 2025)
+  - ✅ Pre-benchmark ONNX file verification system with error handling
+  - ✅ PyTorch to ONNX conversion fallback pipeline with model-specific optimizations
+  - ✅ Automated retry logic for models with connectivity issues
+  - ✅ Comprehensive error handling for missing model files
+  - ✅ Local disk caching with automatic cleanup for converted model files
+  - ✅ Database integration for tracking model sources and conversion status
+  - ✅ Batch verification capability for multiple models
+  - See [MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md) for documentation
   
-- 📋 Predictive Performance System (PLANNED - Target: June 30, 2025)
-  - ML-based performance prediction for untested configurations
-  - Confidence scoring system for prediction reliability
-  - Active learning pipeline for targeting high-value tests
+- ✅ Predictive Performance System (COMPLETED - June 5, 2025)
+  - ✅ ML-based performance prediction for untested configurations (COMPLETED - May 2, 2025)
+  - ✅ Confidence scoring system for prediction reliability (COMPLETED - May 8, 2025)
+  - ✅ Interactive visualization dashboard for predictions (COMPLETED - May 20, 2025)
+  - ✅ Active learning pipeline for targeting high-value tests (COMPLETED - May 28, 2025)
+  - ✅ Hardware recommender system based on performance predictions (COMPLETED - June 1, 2025)
+  - ✅ Integration with benchmark scheduler for optimized test selection (COMPLETED - June 5, 2025)
+  - ✅ Advanced model-hardware compatibility matrix generation (COMPLETED - June 5, 2025)
 
-#### Template-Based Generation System
-- ✅ Store templates for 300+ HuggingFace model classes in DuckDB (100% complete)
-- ✅ Develop database schema for storing templates, helpers, and dependencies (100% complete)
-- ✅ Create dynamic template retrieval system from database (100% complete)
-- ✅ Ensure cross-platform hardware compatibility in all templates (100% complete)
-- ✅ Implement hardware-aware template instantiation (100% complete)
-- ✅ Support template inheritance for model families (100% complete)
+#### Template-Based Generation System (Now in `generators/` folder)
+✅ Template system reorganization completed (March 9, 2025)
+- All template-related components moved to the `generators/` folder including:
+  - Template storage and retrieval system
+  - Template validation utilities
+  - Template inheritance hierarchy
+  - Template instantiation engine
+  - Hardware-specific template components
+- All import references updated to use new structure
+- Test files updated to reference new paths
+
+Remaining work:
 - 🔄 Migrate generators to use database templates instead of static files (95% complete)
-- ✅ Add template versioning and dependency tracking (100% complete)
 - 🔄 Complete template validation system for all generators (95% complete)
 
 #### Hardware Performance Work
@@ -72,26 +109,16 @@ The project has successfully completed 16 phases of implementation, focusing on 
 - ✅ Add performance prediction for model-hardware combinations (100% complete)
 - ✅ Enhanced OpenVINO integration with optimum.intel support and INT8 quantization (100% complete)
 
-#### Database Restructuring Effort
-- ✅ Consolidate benchmark and test output JSON files into DuckDB/Parquet for efficient storage and querying (100% complete)
-- ✅ Design unified schema for all test result types (100% complete)
-- ✅ Develop data migration pipeline for historical test data (100% complete)
-- ✅ Create programmatic database interface for test runners (100% complete)
-- ✅ Build analysis and visualization tools on the new database (100% complete)
-- ✅ Integrate database with CI/CD pipeline for automatic result storage (100% complete)
-- ✅ Implement comprehensive data migration system with validation and tracking (100% complete)
-- ✅ Migrate all benchmark scripts to use DuckDB for storage and querying (100% complete)
-- ✅ Complete tool integration with all test runners (100% complete)
-- ✅ Develop advanced analytics dashboard with interactive visualizations (100% complete)
-- ✅ Complete CI/CD integration with GitHub Actions workflow (100% complete)
-- ✅ Set DEPRECATE_JSON_OUTPUT=1 as default in all benchmark scripts (COMPLETED - March 5, 2025)
-- ✅ Archive all legacy JSON files and complete migration to DuckDB (COMPLETED - March 5, 2025)
-- ✅ JSON output fully deprecated in favor of database storage for all benchmarks (COMPLETED - March 5, 2025)
-- ✅ Integrate test_ipfs_accelerate.py with DuckDB for all test results (COMPLETED - March 6, 2025)
-- ✅ Add advanced visualizations for hardware performance comparisons (COMPLETED - March 6, 2025)
-- ✅ Add power efficiency and thermal metrics for mobile/edge hardware (COMPLETED - March 6, 2025)
-- ✅ Enhanced WebSocket bridge for reliable browser communication (COMPLETED - March 7, 2025)
-- ✅ Integrated resource pool with WebNN/WebGPU testing framework (COMPLETED - March 7, 2025)
+#### Database Restructuring Effort (Now in `duckdb_api/` folder)
+✅ Database reorganization completed (March 9, 2025)
+- All database-related components have been moved to the `duckdb_api/` folder including:
+  - Core database API and query tools
+  - Schema management and migration utilities
+  - Data visualization and reporting tools
+  - Benchmark integration components
+  - Database maintenance utilities
+- All import references updated to use new structure
+- Test files updated to reference new paths
 
 #### Benchmark System Enhancements (COMPLETED - April 6, 2025)
 - ✅ Enhanced simulation detection and reporting system (COMPLETED - April 6, 2025)
@@ -170,25 +197,25 @@ The framework now includes a comprehensive time-series performance tracking syst
 
 ```bash
 # Run a quick test of the time-series performance tracker
-python test/run_time_series_performance.py --quick-test
+python duckdb_api/run_time_series_performance.py --quick-test
 
 # Run the full test suite
-python test/run_time_series_performance.py --full-test
+python duckdb_api/run_time_series_performance.py --full-test
 
 # Record a performance result
-python test/time_series_performance.py record --model-id 1 --hardware-id 1 --batch-size 4 --throughput 125.7 --latency 8.2 --memory 1024 --power 180
+python duckdb_api/time_series_performance.py record --model-id 1 --hardware-id 1 --batch-size 4 --throughput 125.7 --latency 8.2 --memory 1024 --power 180
 
 # Set baselines for all model-hardware combinations
-python test/time_series_performance.py baseline --all --days 7 --min-samples 3
+python duckdb_api/time_series_performance.py baseline --all --days 7 --min-samples 3
 
 # Detect regressions
-python test/time_series_performance.py regression --days 14 --notify
+python duckdb_api/time_series_performance.py regression --days 14 --notify
 
 # Analyze trends
-python test/time_series_performance.py trend --metric throughput --days 30 --visualize
+python duckdb_api/time_series_performance.py trend --metric throughput --days 30 --visualize
 
 # Generate a performance report
-python test/time_series_performance.py report --days 30 --format markdown --output performance_report.md
+python duckdb_api/time_series_performance.py report --days 30 --format markdown --output performance_report.md
 ```
 
 For detailed documentation, see [Time-Series Performance Tracking Guide](TIME_SERIES_PERFORMANCE_GUIDE.md).
@@ -229,101 +256,101 @@ The framework includes full benchmark execution and timing data for all model ty
 
 ```bash
 # Use intelligent incremental benchmark runner (NEW - March 2025)
-python test/run_incremental_benchmarks.py
+python duckdb_api/utils/run_incremental_benchmarks.py
 
 # Run incremental benchmarks for specific models and hardware
-python test/run_incremental_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
+python duckdb_api/utils/run_incremental_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
 
 # Only run benchmarks that don't exist in the database
-python test/run_incremental_benchmarks.py --missing-only
+python duckdb_api/utils/run_incremental_benchmarks.py --missing-only
 
 # Run benchmarks older than 14 days
-python test/run_incremental_benchmarks.py --refresh-older-than 14
+python duckdb_api/utils/run_incremental_benchmarks.py --refresh-older-than 14
 
 # Run only priority model-hardware combinations
-python test/run_incremental_benchmarks.py --priority-only
+python duckdb_api/utils/run_incremental_benchmarks.py --priority-only
 
 # Execute comprehensive benchmarks using the new script (April 2025 Update)
-python test/run_comprehensive_benchmarks.py
+python duckdb_api/utils/run_comprehensive_benchmarks.py
 
 # Run specific models on specific hardware
-python test/run_comprehensive_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
+python duckdb_api/utils/run_comprehensive_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
 
 # Specify batch sizes to test
-python test/run_comprehensive_benchmarks.py --batch-sizes 1,4,16
+python duckdb_api/utils/run_comprehensive_benchmarks.py --batch-sizes 1,4,16
 
 # Force benchmarks on hardware that may not be available
-python test/run_comprehensive_benchmarks.py --force-hardware rocm,webgpu
+python duckdb_api/utils/run_comprehensive_benchmarks.py --force-hardware rocm,webgpu
 
 # List available hardware platforms
-python test/run_comprehensive_benchmarks.py --list-available-hardware
+python duckdb_api/utils/run_comprehensive_benchmarks.py --list-available-hardware
 
 # Run benchmarks on all supported hardware platforms (may use simulation)
-python test/run_comprehensive_benchmarks.py --all-hardware
+python duckdb_api/utils/run_comprehensive_benchmarks.py --all-hardware
 
 # Use full-sized models instead of smaller variants
-python test/run_comprehensive_benchmarks.py --no-small-models
+python duckdb_api/utils/run_comprehensive_benchmarks.py --no-small-models
 
 # Generate report in different formats
-python test/run_comprehensive_benchmarks.py --report-format markdown
+python duckdb_api/utils/run_comprehensive_benchmarks.py --report-format markdown
 
 # Set a custom timeout for benchmarks
-python test/run_comprehensive_benchmarks.py --timeout 1200  # 20 minutes
+python duckdb_api/utils/run_comprehensive_benchmarks.py --timeout 1200  # 20 minutes
 
 # Specify database path and output directory
-python test/run_comprehensive_benchmarks.py --db-path ./benchmark_db.duckdb --output-dir ./benchmark_results
+python duckdb_api/utils/run_comprehensive_benchmarks.py --db-path ./benchmark_db.duckdb --output-dir ./benchmark_results
 
 # Web Platform Testing (April 2025 Enhancement)
 # Set up web testing environment with browser detection
-python test/run_comprehensive_benchmarks.py --setup-web-testing --browser chrome
+python generators/runners/web/setup_web_testing.py --browser chrome
 
 # Run WebGPU tests with compute shader optimization for audio models
-python test/run_comprehensive_benchmarks.py --models whisper,wav2vec2 --hardware webgpu --web-compute-shaders 
+python generators/runners/web/run_web_benchmarks.py --models whisper,wav2vec2 --hardware webgpu --web-compute-shaders 
 
 # Run WebGPU tests with parallel loading for multimodal models
-python test/run_comprehensive_benchmarks.py --models clip,llava --hardware webgpu --web-parallel-loading
+python generators/runners/web/run_web_benchmarks.py --models clip,llava --hardware webgpu --web-parallel-loading
 
 # Run WebGPU tests with shader precompilation for faster startup
-python test/run_comprehensive_benchmarks.py --models bert,vit --hardware webgpu --web-shader-precompile
+python generators/runners/web/run_web_benchmarks.py --models bert,vit --hardware webgpu --web-shader-precompile
 
 # Run WebNN tests for best performance on Edge browser
-python test/run_comprehensive_benchmarks.py --models bert,t5 --hardware webnn --browser edge
+python generators/runners/web/run_web_benchmarks.py --models bert,t5 --hardware webnn --browser edge
 
 # Enable all WebGPU optimizations at once with specific browser
-python test/run_comprehensive_benchmarks.py --models all --hardware webgpu --web-all-optimizations --browser firefox
+python generators/runners/web/run_web_benchmarks.py --models all --hardware webgpu --web-all-optimizations --browser firefox
 
 # Legacy method: Execute comprehensive benchmarks across all hardware platforms
-python benchmark_all_key_models.py --output-dir ./benchmark_results
+python duckdb_api/core/benchmark_all_key_models.py --output-dir ./benchmark_results
 
 # Run with small model variants for faster testing
-python benchmark_all_key_models.py --small-models --output-dir ./benchmark_results
+python duckdb_api/core/benchmark_all_key_models.py --small-models --output-dir ./benchmark_results
 
 # Generate comprehensive benchmark timing report in multiple formats
-python benchmark_timing_report.py --generate --format html --output report.html
-python benchmark_timing_report.py --generate --format markdown --output report.md
+python duckdb_api/visualization/benchmark_timing_report.py --generate --format html --output report.html
+python duckdb_api/visualization/benchmark_timing_report.py --generate --format markdown --output report.md
 
 # Generate hardware compatibility matrix with visualization
-python get_compatibility_matrix.py
+python duckdb_api/visualization/get_compatibility_matrix.py
 ```
 
 ```bash
 # Generate comprehensive benchmark timing report in HTML format
-python test/run_benchmark_timing_report.py --generate --format html
+python duckdb_api/visualization/run_benchmark_timing_report.py --generate --format html
 
 # Generate report in Markdown format
-python test/run_benchmark_timing_report.py --generate --format markdown
+python duckdb_api/visualization/run_benchmark_timing_report.py --generate --format markdown
 
 # Specify custom output location and database path
-python test/run_benchmark_timing_report.py --generate --format html --output report.html --db-path ./benchmark_db.duckdb
+python duckdb_api/visualization/run_benchmark_timing_report.py --generate --format html --output report.html --db-path ./benchmark_db.duckdb
 
 # Generate sample benchmark data for testing
-python test/generate_sample_benchmarks.py --db ./benchmark_db.duckdb
+python duckdb_api/utils/generate_sample_benchmarks.py --db ./benchmark_db.duckdb
 
 # Run real benchmarks with database integration
-python test/benchmark_all_key_models.py --small-models --db-path ./benchmark_db.duckdb --db-only
+python duckdb_api/core/benchmark_all_key_models.py --small-models --db-path ./benchmark_db.duckdb --db-only
 
 # Generate model-hardware performance report
-python test/scripts/benchmark_db_query.py --sql "SELECT m.model_name, hp.hardware_type, AVG(pr.average_latency_ms) as avg_latency, AVG(pr.throughput_items_per_second) as avg_throughput FROM performance_results pr JOIN models m ON pr.model_id = m.model_id JOIN hardware_platforms hp ON pr.hardware_id = hp.hardware_id GROUP BY m.model_name, hp.hardware_type ORDER BY m.model_name, hp.hardware_type" --db ./benchmark_db.duckdb --format markdown --output performance_summary.md
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT m.model_name, hp.hardware_type, AVG(pr.average_latency_ms) as avg_latency, AVG(pr.throughput_items_per_second) as avg_throughput FROM performance_results pr JOIN models m ON pr.model_id = m.model_id JOIN hardware_platforms hp ON pr.hardware_id = hp.hardware_id GROUP BY m.model_name, hp.hardware_type ORDER BY m.model_name, hp.hardware_type" --db ./benchmark_db.duckdb --format markdown --output performance_summary.md
 ```
 
 The report includes specialized views for:
@@ -356,43 +383,43 @@ The framework now includes comprehensive IPFS acceleration testing with enhanced
 1. **Database-First Storage**: Complete integration with DuckDB for efficient and reliable test results storage:
    ```bash
    # Store results only in database (no JSON files)
-   python test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
+   python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
    
    # Use custom database path
-   python test_ipfs_accelerate.py --db-path ./custom_benchmark.duckdb --models "bert-base-uncased"
+   python generators/models/test_ipfs_accelerate.py --db-path ./custom_benchmark.duckdb --models "bert-base-uncased"
    ```
 
 2. **Qualcomm AI Engine Support**: Test with Qualcomm QNN hardware acceleration:
    ```bash
    # Test with Qualcomm QNN acceleration
-   python test_ipfs_accelerate.py --qnn --models "bert-base-uncased"
+   python generators/models/test_ipfs_accelerate.py --qnn --models "bert-base-uncased"
    
    # Run with specific Qualcomm precision settings
-   python test_ipfs_accelerate.py --qnn --precision int8 --models "bert-base-uncased"
+   python generators/models/test_ipfs_accelerate.py --qnn --precision int8 --models "bert-base-uncased"
    
    # Generate Qualcomm performance comparison report
-   python test_ipfs_accelerate.py --qnn-analysis --models "bert-base-uncased,whisper-tiny" --format html
+   python generators/models/test_ipfs_accelerate.py --qnn-analysis --models "bert-base-uncased,whisper-tiny" --format html
    ```
 
 3. **WebGPU Support and Analysis**: Test and analyze browser-based GPU acceleration:
    ```bash
    # Test with WebGPU acceleration
-   python test_ipfs_accelerate.py --webgpu --models "bert-base-uncased"
+   python generators/models/test_ipfs_accelerate.py --webgpu --models "bert-base-uncased"
    
    # Generate WebGPU analysis report with shader metrics
-   python test_ipfs_accelerate.py --webgpu-analysis --browser firefox --shader-metrics --format html
+   python generators/models/test_ipfs_accelerate.py --webgpu-analysis --browser firefox --shader-metrics --format html
    
    # Generate comprehensive WebGPU performance analysis across browsers
-   python test_ipfs_accelerate.py --webgpu-analysis --format html
+   python generators/models/test_ipfs_accelerate.py --webgpu-analysis --format html
    
    # Analyze compute shader optimizations (especially for audio models)
-   python test_ipfs_accelerate.py --webgpu-analysis --compute-shader-optimization --browser firefox --format html
+   python generators/models/test_ipfs_accelerate.py --webgpu-analysis --compute-shader-optimization --browser firefox --format html
    ```
 
 4. **Real-Time Database Integration**: Test results stored in database as they're generated:
    ```bash
    # Test multiple platforms with real-time database integration
-   python test_ipfs_accelerate.py --models "bert-base-uncased" --qnn --webnn --webgpu --db-only
+   python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --qnn --webnn --webgpu --db-only
    ```
 
 5. **Enhanced Visualization and Reporting**:
@@ -419,10 +446,10 @@ To generate an updated compatibility matrix with actual benchmark data, run:
 export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 
 # Run benchmarks (results stored directly in database)
-python test/benchmark_all_key_models.py --db-only
+python duckdb_api/core/benchmark_all_key_models.py --db-only
 
 # Legacy approach (DEPRECATED - not recommended)
-# python test/benchmark_all_key_models.py --output-dir ./benchmark_results
+# python duckdb_api/core/benchmark_all_key_models.py --output-dir ./benchmark_results
 ```
 
 This will benchmark all 13 high-priority model classes across all available hardware platforms and generate a comprehensive compatibility matrix based on real performance data. All results will be stored directly in the DuckDB database for efficient querying and analysis.
@@ -459,195 +486,213 @@ Key features:
 
 ### MARCH 2025 UPDATE: Simplified Template System
 
-A new simplified template system has been implemented that makes it easier to generate hardware-aware tests:
+A new simplified template system has been implemented that makes it easier to generate hardware-aware tests. This entire system including all templates, template databases, and template utilities has been relocated to the `generators/templates/` directory:
 
 ```bash
 # Create a simple template database
-python test/create_simple_template_db.py
+python generators/skill_generators/create_simple_template_db.py
 
 # Validate templates in the database
-python test/simple_template_validator.py --validate-db
+python generators/template_generators/simple_template_validator.py --validate-db
 
 # Generate a test with database templates
-python test/simple_test_generator.py -g bert -t
+python generators/test_generators/simple_test_generator.py -g bert -t
 
 # Generate a test with specific hardware platforms
-python test/simple_test_generator.py -g vit -p cuda,qualcomm,webgpu -t
+python generators/test_generators/simple_test_generator.py -g vit -p cuda,qualcomm,webgpu -t
 
 # Generate a test with Qualcomm AI Engine support
-python test/simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
+python generators/test_generators/simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
 
 # Check all template system components
-python test/run_template_system_check.py
+python generators/runners/run_template_system_check.py
 
 # List all templates in the database
-python test/simple_test_generator.py --list-templates
+python generators/test_generators/simple_test_generator.py --list-templates
 
 # Detect available hardware platforms
-python test/simple_test_generator.py --detect-hardware
+python generators/test_generators/simple_test_generator.py --detect-hardware
 ```
 
 ```bash
 # Generate tests with database templates and cross-platform hardware compatibility
-python test/merged_test_generator.py --model bert --cross-platform --hardware all --use-db-templates
+python generators/test_generators/merged_test_generator.py --model bert --cross-platform --hardware all --use-db-templates
 
 # Generate tests for a specific model and hardware platforms using database templates
-python test/integrated_skillset_generator.py --model bert --hardware cuda,openvino,webnn --use-db-templates
+python generators/integrated_skillset_generator.py --model bert --hardware cuda,openvino,webnn --use-db-templates
 
 # Generate all 300+ HuggingFace model tests from database templates
-python test/merged_test_generator.py --all-models --use-db-templates
+python generators/test_generators/merged_test_generator.py --all-models --use-db-templates
 
 # Update template database with hardware-specific templates
-python test/template_database.py --update-templates --model-family bert
+python generators/templates/template_database.py --update-templates --model-family bert
 
 # Generate and store a new template in the database
-python test/template_database.py --create-template --model-type llama --store-in-db
+python generators/templates/template_database.py --create-template --model-type llama --store-in-db
 
 # List all available templates in the database
-python test/template_database.py --list-templates
+python generators/templates/template_database.py --list-templates
 
 # Validate templates in the database
-python test/template_database.py --validate-templates
+python generators/templates/template_database.py --validate-templates
 
 # Generate all test files for a model family from templates
-python test/merged_test_generator.py --family text-embedding --use-db-templates
+python generators/test_generators/merged_test_generator.py --family text-embedding --use-db-templates
 
 # Run test generator with all improvements applied
-python test/run_fixed_test_generator.py --model bert --use-db-templates --cross-platform
+python generators/runners/run_fixed_test_generator.py --model bert --use-db-templates --cross-platform
 
 # Run test generator with all features enabled
-python test/run_fixed_test_generator.py --model bert --enable-all
+python generators/runners/run_fixed_test_generator.py --model bert --enable-all
 
 # Fix generator integration issues
-python test/fix_template_integration.py --integrate-generator fixed_merged_test_generator.py
+python generators/fixes/fix_template_integration.py --integrate-generator fixed_merged_test_generator.py
 
 # Check template database integrity
-python test/fix_template_integration.py --check-db
+python generators/fixes/fix_template_integration.py --check-db
 ```
 
 ### Hardware-Aware Test Generation
 ```bash
 # Generate tests with cross-platform hardware compatibility
-python test/integrated_skillset_generator.py --model bert --cross-platform --hardware all
+python generators/integrated_skillset_generator.py --model bert --cross-platform --hardware all
 
 # Generate tests for specific hardware platforms only
-python test/integrated_skillset_generator.py --model bert --hardware cuda,openvino,qnn,webnn
+python generators/integrated_skillset_generator.py --model bert --hardware cuda,openvino,qnn,webnn
 
 # Generate tests with the improved generator that supports all hardware platforms
-python test/qualified_test_generator.py -g bert-base-uncased -p cpu,cuda,rocm,mps,openvino,qnn,webnn,webgpu -o test_bert_all_platforms.py
+python generators/test_generators/qualified_test_generator.py -g bert-base-uncased -p cpu,cuda,rocm,mps,openvino,qnn,webnn,webgpu -o test_bert_all_platforms.py
 
 # Run hardware-specific template generation
-python test/enhance_key_models_hardware_coverage.py --create-templates
+python generators/templates/enhance_key_models_hardware_coverage.py --create-templates
 
 # Update the test generator with hardware-aware templates
-python test/update_test_generator_with_hardware_templates.py
+python generators/test_generators/update_test_generator_with_hardware_templates.py
 
 # Run validation on hardware compatibility
-python test/enhance_key_models_hardware_coverage.py --validate
+python generators/templates/enhance_key_models_hardware_coverage.py --validate
 ```
 
 ### Phase 16 Hardware Integration
 ```bash
 # Run hardware integration fixes on key model tests
-./test/run_key_model_fixes.sh
+./run_key_model_fixes.sh
 
 # Fix hardware integration for specific models
-python test/fix_hardware_integration.py --specific-models bert,t5,clip
+python generators/fix_hardware_integration.py --specific-models bert,t5,clip
 
 # Fix all key model tests
-python test/fix_hardware_integration.py --all-key-models
+python generators/fix_hardware_integration.py --all-key-models
 
 # Analyze hardware integration issues without fixing
-python test/fix_hardware_integration.py --all-key-models --analyze-only --output-json hardware_analysis.json
+python generators/fix_hardware_integration.py --all-key-models --analyze-only --output-json hardware_analysis.json
 
 # Test model generators with hardware-aware templates
-python test/update_test_generator_with_hardware_templates.py
+python generators/update_test_generator_with_hardware_templates.py
 
 # Generate tests with cross-platform hardware compatibility
-python test/integrated_skillset_generator.py --model bert --cross-platform --hardware all
+python generators/integrated_skillset_generator.py --model bert --cross-platform --hardware all
 ```
 
 ### Hardware Testing
 ```bash
 # Automated hardware selection for any model
-python test/automated_hardware_selection.py --model [model_name] --batch-size [batch_size] --mode [inference|training]
+python generators/hardware/automated_hardware_selection.py --model [model_name] --batch-size [batch_size] --mode [inference|training]
 
 # Select hardware for distributed training
-python test/automated_hardware_selection.py --model [model_name] --distributed-config --gpu-count 8 --max-memory-gb 40
+python generators/hardware/automated_hardware_selection.py --model [model_name] --distributed-config --gpu-count 8 --max-memory-gb 40
 
 # Generate comprehensive hardware selection map
-python test/automated_hardware_selection.py --create-map --output hardware_selection_map.json
+python generators/hardware/automated_hardware_selection.py --create-map --output hardware_selection_map.json
 
 # Analyze model performance across all available hardware
-python test/automated_hardware_selection.py --model [model_name] --analyze --output analysis.json
+python generators/hardware/automated_hardware_selection.py --model [model_name] --analyze --output analysis.json
+
+# Use the Predictive Performance System to predict metrics without running actual benchmarks
+python run_predictive_performance_demo.py --model bert-base-uncased --hardware cuda,rocm,mps --batch-sizes 1,2,4,8,16 --visualize
+
+# Predict performance for an untested model-hardware combination
+python -m predictive_performance.predict --model t5-small --hardware cuda --batch-size 8 --detailed-output
+
+# Generate performance prediction heatmap across hardware platforms
+python -m predictive_performance.predict --model bert-base-uncased --all-hardware --metric throughput --output heatmap.html
+
+# Compare actual vs predicted performance
+python -m predictive_performance.predict --validate --model bert-base-uncased --hardware cuda --batch-sizes 1,4,16
+
+# Generate hardware recommendations based on model characteristics
+python -m predictive_performance.recommend --model-type text_embedding --size-category medium --optimize-for throughput
+
+# Identify high-value benchmark configurations to improve prediction accuracy
+python -m predictive_performance.active_learning --budget 10 --output high_value_tests.json
 
 # Detect available hardware platforms
-python test/automated_hardware_selection.py --detect-hardware
+python generators/hardware/automated_hardware_selection.py --detect-hardware
 
 # Comprehensive hardware detection and compatibility test
-python test/test_comprehensive_hardware.py --test all
+python test_comprehensive_hardware.py --test all
 
 # Test hardware backends with specific model
-python test/test_hardware_backend.py --backend [cpu|cuda|rocm|mps|openvino|qualcomm|webnn|webgpu|all] --model [model_name]
+python test_hardware_backend.py --backend [cpu|cuda|rocm|mps|openvino|qualcomm|webnn|webgpu|all] --model [model_name]
 
 # Test resource pool with hardware awareness
-python test/test_resource_pool.py --test hardware
+python test_resource_pool.py --test hardware
 
 # Test model family integration with web platform support
-python test/test_resource_pool.py --test family --debug
+python test_resource_pool.py --test family --debug
 ```
 
 ### Web Platform Testing
 
 ```bash
 # Run web platform integration tests
-python test/test_model_integration.py
+python test_model_integration.py
 
 # Verify web platform integration is correct
-python test/verify_web_platform_integration.py
+python verify_web_platform_integration.py
 
 # Generate a test with WebNN support
-python test/merged_test_generator.py --generate bert --platform webnn
+python generators/merged_test_generator.py --generate bert --platform webnn
 
 # Generate a test with WebGPU support
-python test/merged_test_generator.py --generate vit --platform webgpu
+python generators/merged_test_generator.py --generate vit --platform webgpu
 
 # Run tests with database integration (DuckDB)
-python test/run_web_platform_tests_with_db.py --models bert t5 vit --small-models --db-path ./benchmark_db.duckdb
+python run_web_platform_tests_with_db.py --models bert t5 vit --small-models --db-path ./benchmark_db.duckdb
 
 # Use environment variable for database path
 export BENCHMARK_DB_PATH=./benchmark_db.duckdb
-python test/run_web_platform_tests_with_db.py --all-models --run-webgpu
+python run_web_platform_tests_with_db.py --all-models --run-webgpu
 
 # Run with browser automation
-./run_web_platform_tests.sh --use-browser-automation --browser chrome python test/web_platform_test_runner.py --model bert
+./run_web_platform_tests.sh --use-browser-automation --browser chrome python generators/runners/web/web_platform_test_runner.py --model bert
 
 # Run WebNN tests with Edge browser
-./run_web_platform_tests.sh --webnn-only --use-browser-automation --browser edge python test/web_platform_test_runner.py --model bert
+./run_web_platform_tests.sh --webnn-only --use-browser-automation --browser edge python generators/runners/web/web_platform_test_runner.py --model bert
 
 # Run WebGPU tests with Firefox browser
-./run_web_platform_tests.sh --webgpu-only --use-browser-automation --browser firefox python test/web_platform_test_runner.py --model vit
+./run_web_platform_tests.sh --webgpu-only --use-browser-automation --browser firefox python generators/runners/web/web_platform_test_runner.py --model vit
 
 # Run browser tests with direct database storage
-python test/web_platform_test_runner.py --model bert --platform webnn --browser edge
+python generators/runners/web/web_platform_test_runner.py --model bert --platform webnn --browser edge
 
 # Disable JSON output (database storage only)
-export DEPRECATE_JSON_OUTPUT=1 python test/web_platform_test_runner.py --model vit --platform webgpu
+export DEPRECATE_JSON_OUTPUT=1 python generators/runners/web/web_platform_test_runner.py --model vit --platform webgpu
 
 # Run with enhanced WebGPU compute shaders with DB storage
-python test/web_platform_test_runner.py --model whisper --platform webgpu --compute-shaders
+python generators/runners/web/web_platform_test_runner.py --model whisper --platform webgpu --compute-shaders
 
 # Use database for parallel model loading results
-python test/run_web_platform_tests_with_db.py --models llava clip --parallel-loading
+python run_web_platform_tests_with_db.py --models llava clip --parallel-loading
 
 # Store shader compilation metrics in database
-WEBGPU_SHADER_PRECOMPILE=1 python test/web_platform_test_runner.py --model vit
+WEBGPU_SHADER_PRECOMPILE=1 python generators/runners/web/web_platform_test_runner.py --model vit
 
 # Test all March 2025 optimizations at once (compute shaders, parallel loading, and shader precompilation)
-python test/test_web_platform_optimizations.py --all-optimizations
+python generators/runners/web/test_web_platform_optimizations.py --all-optimizations
 
 # Combine multiple features with browser automation
-./run_web_platform_tests.sh --use-browser-automation --browser chrome --enable-compute-shaders --enable-shader-precompile python test/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --use-browser-automation --browser chrome --enable-compute-shaders --enable-shader-precompile python generators/runners/web/web_platform_test_runner.py --model whisper
 
 # Run comprehensive web platform integration tests with all optimizations
 ./run_web_platform_integration_tests.sh --all-optimizations --model clap
@@ -665,16 +710,16 @@ python test/test_web_platform_optimizations.py --all-optimizations
 ./run_web_platform_integration_tests.sh --model bert --use-browser-automation --browser edge --db-path ./benchmark_db.duckdb
 
 # Generate web platform reports from database
-python test/scripts/benchmark_db_query.py --report web_platform --format html --output web_report.html
+python duckdb_api/core/benchmark_db_query.py --report web_platform --format html --output web_report.html
 
 # View advanced WebGPU features usage from database
-python test/scripts/benchmark_db_query.py --report webgpu --format html --output webgpu_report.html
+python duckdb_api/core/benchmark_db_query.py --report webgpu --format html --output webgpu_report.html
 
 # Compare web vs native performance from database
-python test/scripts/benchmark_db_query.py --sql "SELECT * FROM cross_platform_performance WHERE model_name='bert-base-uncased'" --format html
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM cross_platform_performance WHERE model_name='bert-base-uncased'" --format html
 
 # Compare simulation vs real browser results
-python test/scripts/benchmark_db_query.py --report simulation_vs_real --format html --output comparison.html
+python duckdb_api/core/benchmark_db_query.py --report simulation_vs_real --format html --output comparison.html
 ```
 
 ### WebNN and WebGPU Benchmarking Tools (ENHANCED - March 7, 2025)
@@ -781,13 +826,13 @@ The framework now includes full REAL browser-based implementations for WebNN and
 
 ```bash
 # Run WebGPU verification to check real implementation status
-python test/verify_webnn_webgpu_implementation.py --output verification_report.md
+python verify_webnn_webgpu_implementation.py --output verification_report.md
 
 # Test real WebGPU implementation with Chrome
-python test/implement_real_webnn_webgpu.py --browser chrome --platform webgpu --inference
+python implement_real_webnn_webgpu.py --browser chrome --platform webgpu --inference
 
 # Test real WebNN implementation with Edge (best WebNN support)
-python test/implement_real_webnn_webgpu.py --browser edge --platform webnn --inference
+python implement_real_webnn_webgpu.py --browser edge --platform webnn --inference
 ```
 
 ### March 2025 Web Platform Optimizations
@@ -798,44 +843,44 @@ The March 2025 release includes three major optimizations for web platform model
 # 1. WebGPU Compute Shader Optimization for Audio Models
 # Firefox shows ~20% better performance than Chrome for audio models
 # Test with various audio models
-python test/test_web_platform_optimizations.py --compute-shaders --model whisper
-python test/test_web_platform_optimizations.py --compute-shaders --model wav2vec2
-python test/test_web_platform_optimizations.py --compute-shaders --model clap
+python generators/runners/web/test_web_platform_optimizations.py --compute-shaders --model whisper
+python generators/runners/web/test_web_platform_optimizations.py --compute-shaders --model wav2vec2
+python generators/runners/web/test_web_platform_optimizations.py --compute-shaders --model clap
 
 # Enable via environment variable
 export WEBGPU_COMPUTE_SHADERS_ENABLED=1
-python test/web_platform_benchmark.py --model whisper
+python web_platform_benchmark.py --model whisper
 
 # Firefox-specific optimizations (uses 256x1x1 workgroup vs Chrome's 128x2x1)
 ./run_web_platform_tests.sh --firefox --enable-compute-shaders --model whisper
 
 # Compare Firefox vs Chrome with various audio durations
-python test/test_firefox_webgpu_compute_shaders.py --model whisper --audio-durations 5,15,30,60
+python test_firefox_webgpu_compute_shaders.py --model whisper --audio-durations 5,15,30,60
 
 # Direct API access to Firefox optimized compute shaders
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
 # 2. Parallel Model Loading for Multimodal Models
 # Test with various multimodal models
-python test/test_web_platform_optimizations.py --parallel-loading --model clip
-python test/test_web_platform_optimizations.py --parallel-loading --model llava
-python test/test_webgpu_parallel_model_loading.py --model-type multimodal
+python generators/runners/web/test_web_platform_optimizations.py --parallel-loading --model clip
+python generators/runners/web/test_web_platform_optimizations.py --parallel-loading --model llava
+python test_webgpu_parallel_model_loading.py --model-type multimodal
 
 # Enable via environment variable
 export WEB_PARALLEL_LOADING_ENABLED=1
-python test/web_platform_benchmark.py --model clip
+python web_platform_benchmark.py --model clip
 
 # 3. Shader Precompilation for Faster Startup
 # Test with any WebGPU model
-python test/test_web_platform_optimizations.py --shader-precompile --model bert
-python test/test_web_platform_optimizations.py --shader-precompile --model vit
+python generators/runners/web/test_web_platform_optimizations.py --shader-precompile --model bert
+python generators/runners/web/test_web_platform_optimizations.py --shader-precompile --model vit
 
 # Enable via environment variable
 export WEBGPU_SHADER_PRECOMPILE_ENABLED=1
-python test/web_platform_benchmark.py --model bert
+python web_platform_benchmark.py --model bert
 
 # Testing all optimizations together
-python test/test_web_platform_optimizations.py --all-optimizations
+python generators/runners/web/test_web_platform_optimizations.py --all-optimizations
 ./run_web_platform_integration_tests.sh --all-optimizations --model clap
 
 # Model-specific optimization recommendations
@@ -870,60 +915,60 @@ python run_real_webgpu_webnn_fixed.py --platform webnn --model bert-base-uncased
 ### QNN (Qualcomm Neural Networks) Support and Advanced Quantization (March 2025)
 ```bash
 # Generate tests for QNN hardware
-python test/qualified_test_generator.py -g bert-base-uncased -p qnn -o test_bert_qnn.py
+python generators/qualified_test_generator.py -g bert-base-uncased -p qnn -o test_bert_qnn.py
 
 # Run tests on QNN hardware
 python test_bert_qnn.py
 
 # Run comprehensive QNN integration test suite (stores results in DuckDB)
-python test/test_qnn_integration.py --db-path ./benchmark_db.duckdb
+python test_qnn_integration.py --db-path ./benchmark_db.duckdb
 
 # Run test suite with specific models
-python test/test_qnn_integration.py --models BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny
+python test_qnn_integration.py --models BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny
 
 # Run test suite with comprehensive model set
-python test/test_qnn_integration.py --models all
+python test_qnn_integration.py --models all
 
 # Generate QNN performance visualizations from test data
-python test/visualize_qnn_performance.py --db-path ./benchmark_db.duckdb --output ./reports
+python duckdb_api/visualization/visualize_qnn_performance.py --db-path ./benchmark_db.duckdb --output ./reports
 
 # Automated hardware selection including QNN
-python test/automated_hardware_selection.py --model bert-base-uncased --include-qnn
+python generators/hardware/automated_hardware_selection.py --model bert-base-uncased --include-qnn
 
 # Benchmark with QNN hardware
-python test/benchmark_all_key_models.py --hardware qnn
+python duckdb_api/core/benchmark_all_key_models.py --hardware qnn
 
 # Test power efficiency metrics for mobile/edge devices (QNN)
-python test/test_hardware_backend.py --backend qnn --model bert-tiny --power-metrics
+python test_hardware_backend.py --backend qnn --model bert-tiny --power-metrics
 
 # Compare QNN vs other hardware platforms using DuckDB data
-python test/scripts/benchmark_db_query.py --report qnn_comparison --format html --output qnn_report.html
+python duckdb_api/core/benchmark_db_query.py --report qnn_comparison --format html --output qnn_report.html
 
 # Extract device and SDK information for QNN
-python test/test_qnn_integration.py --device-info-only
+python test_qnn_integration.py --device-info-only
 
 # Basic Quantization Usage
 # ========================
 
 # Quantize a model for QNN hardware
-python test/qnn_quantization_support.py quantize \
+python qnn_quantization_support.py quantize \
   --model-path models/bert-base-uncased.onnx \
   --output-path models/bert-base-uncased.qnn \
   --method int8 \
   --model-type text
 
 # Compare different quantization methods
-python test/qnn_quantization_support.py compare \
+python qnn_quantization_support.py compare \
   --model-path models/bert-base-uncased.onnx \
   --output-dir ./quantized_models \
   --model-type text \
   --report-path ./reports/quantization_comparison.md
 
 # List available quantization methods for QNN
-python test/qnn_quantization_support.py list
+python qnn_quantization_support.py list
 
 # Run a complete quantization example
-python test/test_examples/qnn_quantization_example.py \
+python test_examples/qnn_quantization_example.py \
   --model-path models/bert-base-uncased.onnx \
   --model-type text \
   --mock
@@ -932,7 +977,7 @@ python test/test_examples/qnn_quantization_example.py \
 # =========================================
 
 # Weight Clustering Quantization
-python test/qnn_advanced_quantization.py cluster \
+python qnn_advanced_quantization.py cluster \
   --model-path models/bert-base-uncased.onnx \
   --output-path models/bert-base-uncased-clustered.qnn \
   --clusters 16 \
@@ -940,7 +985,7 @@ python test/qnn_advanced_quantization.py cluster \
   --optimize-for hexagon
 
 # Hybrid/Mixed Precision Quantization
-python test/qnn_advanced_quantization.py hybrid \
+python qnn_advanced_quantization.py hybrid \
   --model-path models/llama-7b.onnx \
   --output-path models/llama-7b-hybrid.qnn \
   --attention-precision int8 \
@@ -949,13 +994,13 @@ python test/qnn_advanced_quantization.py hybrid \
   --optimize-for mobile
 
 # Per-Channel Quantization
-python test/qnn_advanced_quantization.py per-channel \
+python qnn_advanced_quantization.py per-channel \
   --model-path models/clip-vit.onnx \
   --output-path models/clip-vit-perchannel.qnn \
   --model-type vision
 
 # Learned Quantization Parameters (QAT)
-python test/qnn_advanced_quantization.py qat \
+python qnn_advanced_quantization.py qat \
   --model-path models/bert-base-uncased.onnx \
   --output-path models/bert-base-uncased-qat.qnn \
   --train-dataset glue/mrpc \
@@ -964,7 +1009,7 @@ python test/qnn_advanced_quantization.py qat \
   --model-type text
 
 # Sparse Quantization with Pruning
-python test/qnn_advanced_quantization.py sparse \
+python qnn_advanced_quantization.py sparse \
   --model-path models/whisper-small.onnx \
   --output-path models/whisper-small-sparse.qnn \
   --sparsity 0.5 \
@@ -972,7 +1017,7 @@ python test/qnn_advanced_quantization.py sparse \
   --model-type audio
 
 # Method Comparison Framework
-python test/quantization_comparison_tools.py compare-all \
+python quantization_comparison_tools.py compare-all \
   --model-path models/bert-base-uncased.onnx \
   --output-dir ./comparison_results \
   --methods int8,int4,cluster,hybrid,sparse \
@@ -980,27 +1025,27 @@ python test/quantization_comparison_tools.py compare-all \
   --model-type text
 
 # Generate Quantization Impact Visualization
-python test/quantization_comparison_tools.py visualize \
+python quantization_comparison_tools.py visualize \
   --results-path ./comparison_results/bert-base-uncased-comparison.json \
   --output-path ./visualization/bert-quantization-impact.html \
   --plot-type radar
 
 # Hardware-Specific Optimizations for Quantized Models
-python test/qnn_hardware_optimizations.py optimize \
+python qnn_hardware_optimizations.py optimize \
   --model-path models/bert-base-uncased-int8.qnn \
   --output-path models/bert-base-uncased-int8-optimized.qnn \
   --device sm8550 \
   --optimize memory,power,latency
 
 # Memory Bandwidth Optimization
-python test/qnn_hardware_optimizations.py memory-optimize \
+python qnn_hardware_optimizations.py memory-optimize \
   --model-path models/llama-7b-int4.qnn \
   --output-path models/llama-7b-int4-memopt.qnn \
   --cache-config aggressive \
   --tiling-strategy optimal
 
 # Power State Management Integration
-python test/qnn_hardware_optimizations.py power-optimize \
+python qnn_hardware_optimizations.py power-optimize \
   --model-path models/whisper-small-int8.qnn \
   --output-path models/whisper-small-int8-poweropt.qnn \
   --battery-mode efficient \
@@ -1010,70 +1055,70 @@ python test/qnn_hardware_optimizations.py power-optimize \
 ### Distributed Training Configuration
 ```bash
 # Generate distributed training configuration
-python test/hardware_selector.py --model-family text_generation --model-name t5-small --mode training --distributed --gpu-count 4
+python hardware_selector.py --model-family text_generation --model-name t5-small --mode training --distributed --gpu-count 4
 
 # Generate training benchmark configuration for a model
-python test/run_training_benchmark.py --model bert-base-uncased --distributed --max-gpus 4 --output bert_benchmark.json
+python run_training_benchmark.py --model bert-base-uncased --distributed --max-gpus 4 --output bert_benchmark.json
 
 # List available sample models for benchmarking
-python test/run_training_benchmark.py --list-models
+python run_training_benchmark.py --list-models
 
 # Generate a memory-optimized training configuration
-python test/hardware_selector.py --model-family text_generation --model-name llama-7b --mode training --distributed --gpu-count 8 --max-memory-gb 24
+python hardware_selector.py --model-family text_generation --model-name llama-7b --mode training --distributed --gpu-count 8 --max-memory-gb 24
 ```
 
 ### Model Benchmarking with Template-Based Generation
 ```bash
 # Run comprehensive benchmarks for all 300+ models using database templates
-python test/benchmark_all_key_models.py --all-models --use-db-templates
+python duckdb_api/core/benchmark_all_key_models.py --all-models --use-db-templates
 
 # Run benchmarks for a specific model using database templates
-python test/benchmark_all_key_models.py --model bert --use-db-templates
+python duckdb_api/core/benchmark_all_key_models.py --model bert --use-db-templates
 
 # Run benchmarks for all models in a family using database templates
-python test/benchmark_all_key_models.py --family text-embedding --use-db-templates
+python duckdb_api/core/benchmark_all_key_models.py --family text-embedding --use-db-templates
 
 # Create a new benchmark template and store in database
-python test/template_database.py --create-benchmark-template --model-type llama --store-in-db
+python generators/template_database.py --create-benchmark-template --model-type llama --store-in-db
 
 # Run standard model benchmarks with database integration and templates
-python test/run_model_benchmarks.py --models bert,t5,vit --use-db-templates --db-path ./benchmark_db.duckdb
+python generators/benchmark_generators/run_model_benchmarks.py --models bert,t5,vit --use-db-templates --db-path ./benchmark_db.duckdb
 
 # Generate benchmarks for all 300+ models (results stored directly in database)
-python test/run_model_benchmarks.py --generate-all --use-db-templates --db-path ./benchmark_db.duckdb
+python generators/benchmark_generators/run_model_benchmarks.py --generate-all --use-db-templates --db-path ./benchmark_db.duckdb
 ```
 
 ### Traditional Model Benchmarking and Validation
 ```bash
 # Run comprehensive benchmarks for all 13 high-priority models across all hardware platforms
-python test/benchmark_all_key_models.py --output-dir ./benchmark_results
+python duckdb_api/core/benchmark_all_key_models.py --output-dir ./benchmark_results
 
 # Use smaller model variants for faster testing
-python test/benchmark_all_key_models.py --small-models --output-dir ./benchmark_results
+python duckdb_api/core/benchmark_all_key_models.py --small-models --output-dir ./benchmark_results
 
 # Test specific hardware platforms
-python test/benchmark_all_key_models.py --hardware cpu cuda openvino --output-dir ./benchmark_results
+python duckdb_api/core/benchmark_all_key_models.py --hardware cpu cuda openvino --output-dir ./benchmark_results
 
 # Automatically fix implementation issues
-python test/benchmark_all_key_models.py --debug --output-dir ./benchmark_results
+python duckdb_api/core/benchmark_all_key_models.py --debug --output-dir ./benchmark_results
 
 # Run standard model benchmarks with database integration
-python test/run_model_benchmarks.py --output-dir ./benchmark_results --db-path ./benchmark_db.duckdb
+python generators/benchmark_generators/run_model_benchmarks.py --output-dir ./benchmark_results --db-path ./benchmark_db.duckdb
 
 # Test on specific hardware platforms with small model set
-python test/run_model_benchmarks.py --hardware cpu cuda --models-set small --db-path ./benchmark_db.duckdb
+python generators/benchmark_generators/run_model_benchmarks.py --hardware cpu cuda --models-set small --db-path ./benchmark_db.duckdb
 
 # Run benchmarks without storing in database
-python test/run_model_benchmarks.py --hardware cpu --models-set small --no-db-store
+python generators/benchmark_generators/run_model_benchmarks.py --hardware cpu --models-set small --no-db-store
 
 # Generate database visualizations from benchmark results
-python test/run_model_benchmarks.py --hardware cuda --visualize-from-db
+python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda --visualize-from-db
 
 # Manual model functionality verification
-python test/verify_model_functionality.py --models bert t5 vit --hardware cpu cuda
+python verify_model_functionality.py --models bert t5 vit --hardware cpu cuda
 
 # Run detailed hardware benchmarks
-python test/hardware_benchmark_runner.py --model-families embedding text_generation --hardware cpu cuda
+python hardware_benchmark_runner.py --model-families embedding text_generation --hardware cpu cuda
 ```
 
 ### Benchmark Database and Result Management
@@ -1085,90 +1130,99 @@ export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 # All results are stored directly in the database
 
 # Update database schema to add simulation flags
-python update_db_schema_for_simulation.py
+python duckdb_api/schema/update_db_schema_for_simulation.py
 
 # Check QNN simulation status
-python qnn_simulation_helper.py --check
+python duckdb_api/utils/qnn_simulation_helper.py --check
 
 # Enable QNN simulation (for testing only)
-python qnn_simulation_helper.py --enable
+python duckdb_api/utils/qnn_simulation_helper.py --enable
 
 # Disable QNN simulation
-python qnn_simulation_helper.py --disable
+python duckdb_api/utils/qnn_simulation_helper.py --disable
 
 # Migrate existing JSON files to the database 
-python test/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --archive
+python duckdb_api/migration/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --archive
 
 # Migrate and archive all JSON files (keeps archives)
-python test/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --archive --archive-dir ./archived_json_files
+python duckdb_api/migration/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --archive --archive-dir ./archived_json_files
 
 # Migrate all JSON files and delete them after successful migration and archiving
-python test/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --delete
+python duckdb_api/migration/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --delete
 
 # Convert existing benchmark JSON files to DuckDB format
-python test/benchmark_db_converter.py --input-dir ./archived_test_results
+python duckdb_api/migration/benchmark_db_converter.py --input-dir ./archived_test_results
 
 # Consolidate test results across directories
-python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility
+python duckdb_api/migration/benchmark_db_converter.py --consolidate --categories performance hardware compatibility
 
 # Comprehensive data migration with validation and deduplication
-python test/benchmark_db_converter.py --consolidate --deduplicate --directories archived_test_results benchmark_results critical_model_results hardware_fix_results api_check_results
+python duckdb_api/migration/benchmark_db_converter.py --consolidate --deduplicate --directories archived_test_results benchmark_results critical_model_results hardware_fix_results api_check_results
 
 # Archive JSON files after migration to DuckDB
 tar -czf archived_json_files/archived_test_results_$(date +%Y%m%d).tar.gz archived_test_results/*.json
 
 # Create initial database schema with sample data
-python test/scripts/create_benchmark_schema.py --sample-data
+python duckdb_api/schema/creation/create_benchmark_schema.py --sample-data
 
 # Database maintenance and optimization
-python test/scripts/benchmark_db_maintenance.py --optimize-db --vacuum
+python duckdb_api/core/benchmark_db_maintenance.py --optimize-db --vacuum
 
 # Create database backup with compression
-python test/scripts/benchmark_db_maintenance.py --backup --backup-dir ./db_backups --backup-compress
+python duckdb_api/core/benchmark_db_maintenance.py --backup --backup-dir ./db_backups --backup-compress
 
 # Check database integrity
-python test/scripts/benchmark_db_maintenance.py --check-integrity
+python duckdb_api/core/benchmark_db_maintenance.py --check-integrity
 
 # Generate migration statistics report
-python test/scripts/benchmark_db_maintenance.py --migration-stats --output migration_report.json
+python duckdb_api/core/benchmark_db_maintenance.py --migration-stats --output migration_report.json
 
 # Purge old database backups based on retention policy
-python test/scripts/benchmark_db_maintenance.py --purge-backups --backup-retention 30 --backup-dir ./db_backups
+python duckdb_api/core/benchmark_db_maintenance.py --purge-backups --backup-retention 30 --backup-dir ./db_backups
 
 # Query benchmark database with SQL
-python test/scripts/benchmark_db_query.py --sql "SELECT model_name, hardware_type, AVG(throughput_items_per_second) FROM performance_results JOIN models USING(model_id) JOIN hardware_platforms USING(hardware_id) GROUP BY model_name, hardware_type"
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT model_name, hardware_type, AVG(throughput_items_per_second) FROM performance_results JOIN models USING(model_id) JOIN hardware_platforms USING(hardware_id) GROUP BY model_name, hardware_type"
 
 # Generate reports from DuckDB benchmark database
-python test/scripts/benchmark_db_query.py --report performance --format html --output benchmark_report.html
-python test/scripts/benchmark_db_query.py --report hardware --format html --output hardware_report.html
-python test/scripts/benchmark_db_query.py --report compatibility --format html --output compatibility_matrix.html
+python duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html
+python duckdb_api/core/benchmark_db_query.py --report hardware --format html --output hardware_report.html
+python duckdb_api/core/benchmark_db_query.py --report compatibility --format html --output compatibility_matrix.html
 
 # Compare hardware platforms for a specific model
-python test/scripts/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output bert_hardware_comparison.png
+python duckdb_api/visualization/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output bert_hardware_comparison.png
 
 # Compare models on a specific hardware platform
-python test/scripts/benchmark_db_query.py --hardware cuda --metric throughput --compare-models --output cuda_model_comparison.png
+python duckdb_api/visualization/benchmark_db_query.py --hardware cuda --metric throughput --compare-models --output cuda_model_comparison.png
 
 # Plot performance trends over time
-python test/scripts/benchmark_db_query.py --trend performance --model bert-base-uncased --hardware cuda --metric throughput --format chart
+python duckdb_api/visualization/benchmark_db_query.py --trend performance --model bert-base-uncased --hardware cuda --metric throughput --format chart
 
 # Export data from the database
-python test/scripts/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_data.csv
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_data.csv
 
 # Run benchmarks (results stored directly in database)
-python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda --batch-sizes 1,2,4,8,16
+python duckdb_api/core/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda --batch-sizes 1,2,4,8,16
 
 # Run standard model benchmarks (results stored directly in database)
-python test/run_model_benchmarks.py --models bert-base-uncased,t5-small --hardware cuda
+python generators/benchmark_generators/run_model_benchmarks.py --models bert-base-uncased,t5-small --hardware cuda
 
 # Run CI/CD benchmark workflow manually via GitHub CLI
 gh workflow run benchmark_db_ci.yml --ref main -f test_model=bert-base-uncased -f hardware=cpu -f batch_size=1,2,4,8
 
-# Run test_ipfs_accelerate.py with database integration
-python test/test_ipfs_accelerate.py --db-path ./benchmark_db.duckdb
+# Run IPFS accelerate tests with database integration
+python generators/models/test_ipfs_accelerate.py --db-path ./benchmark_db.duckdb
 
 # Generate a test report from the DuckDB database
-python test/test_ipfs_accelerate.py --report --format markdown --output test_report.md
+python generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
+
+# Use the Predictive Performance System to predict metrics without running actual benchmarks
+python predictive_performance/run_predictive_performance_demo.py --model bert-base-uncased --hardware cuda,openvino,webgpu --visualize
+
+# Predict performance for an untested model-hardware combination
+python -m predictive_performance.predict --model t5-small --hardware cuda --batch-size 8 --detailed-output
+
+# Schedule benchmarks based on active learning recommendations
+python duckdb_api/run_benchmark_with_db.py --from-recommendations predictive_performance/recommendations.json
 ```
 
 #### DuckDB Test Results Schema
@@ -1270,13 +1324,13 @@ For working with the schema:
 
 ```bash
 # Query hardware capabilities
-python test/scripts/benchmark_db_query.py --sql "SELECT * FROM hardware_capabilities" --format html --output capabilities.html
+python duckdb_api/benchmark_db_query.py --sql "SELECT * FROM hardware_capabilities" --format html --output capabilities.html
 
 # Check cross-platform compatibility by model type
-python test/scripts/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as total, SUM(CASE WHEN qnn_support THEN 1 ELSE 0 END) as qnn_compatible, ROUND(SUM(CASE WHEN qnn_support THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as compatibility_rate FROM cross_platform_compatibility GROUP BY model_type ORDER BY compatibility_rate DESC" --format markdown
+python duckdb_api/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as total, SUM(CASE WHEN qnn_support THEN 1 ELSE 0 END) as qnn_compatible, ROUND(SUM(CASE WHEN qnn_support THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as compatibility_rate FROM cross_platform_compatibility GROUP BY model_type ORDER BY compatibility_rate DESC" --format markdown
 
 # Compare power efficiency across hardware platforms
-python test/scripts/benchmark_db_query.py --sql "SELECT hardware_type, AVG(energy_efficiency_items_per_joule) as avg_efficiency FROM performance_comparison GROUP BY hardware_type ORDER BY avg_efficiency DESC" --format chart --output power_efficiency.png
+python duckdb_api/benchmark_db_query.py --sql "SELECT hardware_type, AVG(energy_efficiency_items_per_joule) as avg_efficiency FROM performance_comparison GROUP BY hardware_type ORDER BY avg_efficiency DESC" --format chart --output power_efficiency.png
 ```
 
 ## Benchmark System and Simulation Detection Tools (ADDED - April 6, 2025)
@@ -1285,34 +1339,34 @@ The framework now includes comprehensive tools for benchmark management, validat
 
 ```bash
 # Update database schema to include simulation flags
-python update_db_schema_for_simulation.py --db-path ./benchmark_db.duckdb
+python duckdb_api/update_db_schema_for_simulation.py --db-path ./benchmark_db.duckdb
 
 # Check simulation status in database
-python view_benchmark_results.py --check-simulation
+python duckdb_api/view_benchmark_results.py --check-simulation
 
 # Generate a benchmark summary with simulation status indicators
-python view_benchmark_results.py --output benchmark_summary.md
+python duckdb_api/view_benchmark_results.py --output benchmark_summary.md
 
 # Scan for problematic reports that may contain misleading data
-python cleanup_stale_reports.py --scan
+python duckdb_api/cleanup_stale_reports.py --scan
 
 # Mark problematic reports with clear warnings
-python cleanup_stale_reports.py --mark
+python duckdb_api/cleanup_stale_reports.py --mark
 
 # Archive problematic files
-python cleanup_stale_reports.py --archive
+python duckdb_api/cleanup_stale_reports.py --archive
 
 # Fix report generator scripts to include validation
-python cleanup_stale_reports.py --fix-report-py
+python duckdb_api/cleanup_stale_reports.py --fix-report-py
 
 # Run benchmarks with explicit simulation for unavailable hardware
-python run_benchmark_with_db.py --model bert-base-uncased --hardware rocm --batch-sizes 1,2 --simulate
+python duckdb_api/run_benchmark_with_db.py --model bert-base-uncased --hardware rocm --batch-sizes 1,2 --simulate
 
 # View performance results from database with simulation status
-python view_benchmark_results.py
+python duckdb_api/view_benchmark_results.py
 
 # Generate CSV report with all benchmark data
-python view_benchmark_results.py --format csv --output benchmark_data.csv
+python duckdb_api/view_benchmark_results.py --format csv --output benchmark_data.csv
 ```
 
 Key documentation:
@@ -1471,13 +1525,13 @@ CREATE TABLE mobile_edge_metrics (
 
 ```bash
 # Collect mobile metrics for a model (simulation mode)
-python test/mobile_edge_device_metrics.py collect --model bert-base-uncased --device "Snapdragon 8 Gen 3" --simulate
+python mobile_edge_device_metrics.py collect --model bert-base-uncased --device "Snapdragon 8 Gen 3" --simulate
 
 # Generate battery impact report
-python test/mobile_edge_device_metrics.py report --format html --output battery_impact.html
+python mobile_edge_device_metrics.py report --format html --output battery_impact.html
 
 # Run tests on Samsung Exynos hardware
-python test/samsung_support.py test --model bert-base-uncased --precision int8 --one-ui-optimization
+python samsung_support.py test --model bert-base-uncased --precision int8 --one-ui-optimization
 ```
 
 ### Mobile Performance Comparison
@@ -1541,13 +1595,13 @@ The framework now includes a complete compatibility matrix for all 300+ HuggingF
 
 ```bash
 # Generate the complete compatibility matrix
-python test/generate_compatibility_matrix.py
+python generate_compatibility_matrix.py
 
 # Generate matrix with specific filters
-python test/generate_compatibility_matrix.py --filter vision --hardware cuda,qualcomm,webgpu
+python generate_compatibility_matrix.py --filter vision --hardware cuda,qualcomm,webgpu
 
 # Generate performance comparison for a specific model
-python test/scripts/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
+python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
 ```
 
 For complete documentation, see:
@@ -1596,8 +1650,8 @@ For detailed performance benchmarks, please refer to the following resources:
 - Database dashboard: `http://localhost:8000/dashboard` (when running benchmark_db_api.py)
 - API documentation: `http://localhost:8000/docs` (complete REST API for all benchmark data)
 - Generated reports: 
-  - `python test/scripts/benchmark_db_query.py --report summary --format html --output summary_report.html`
-  - `python test/scripts/benchmark_db_query.py --compatibility-matrix --format html --output matrix.html`
+  - `python duckdb_api/core/benchmark_db_query.py --report summary --format html --output summary_report.html`
+  - `python duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format html --output matrix.html`
 
 Legacy documentation (being migrated to database):
 - Hardware-specific benchmarks: `test/HARDWARE_BENCHMARKING_GUIDE.md`
@@ -1634,8 +1688,8 @@ Performance varies by hardware generation and specific Snapdragon model. Benchma
 For detailed QNN performance testing and reports, run:
 ```bash
 # Run comprehensive QNN test suite and generate reports
-python test/test_qnn_integration.py --models all
-python test/visualize_qnn_performance.py --output ./reports
+python test_qnn_integration.py --models all
+python duckdb_api/visualization/visualize_qnn_performance.py --output ./reports
 ```
 
 ### Web Platform Performance Results
@@ -1783,10 +1837,10 @@ For detailed web platform performance testing and reports, run:
 ./run_web_platform_integration_tests.sh --all-models --all-optimizations
 
 # Generate detailed performance report
-python test/scripts/benchmark_db_query.py --report web_platform --format html --output web_platform_report.html
+python duckdb_api/core/benchmark_db_query.py --report web_platform --format html --output web_platform_report.html
 
 # Generate optimization comparison chart
-python test/scripts/benchmark_db_query.py --report web_optimizations --format chart --output web_optimization_chart.png
+python duckdb_api/core/benchmark_db_query.py --report web_optimizations --format chart --output web_optimization_chart.png
 ```
 
 See the [Web Platform Optimization Guide](WEB_PLATFORM_OPTIMIZATION_GUIDE.md) for implementation details and usage recommendations.
@@ -1842,13 +1896,13 @@ To analyze memory usage and test cross-platform 4-bit inference:
 
 ```bash
 # Visualize memory usage for models across platforms
-python test/visualize_memory_usage.py --model llama --platform webgpu --output html
+python visualize_memory_usage.py --model llama --platform webgpu --output html
 
 # Test cross-platform 4-bit inference compatibility and performance
-python test/test_cross_platform_4bit.py --model llama --hardware cuda webgpu --output-report report.html
+python test_cross_platform_4bit.py --model llama --hardware cuda webgpu --output-report report.html
 
 # Test WebGPU 4-bit inference with specialized matrix multiplication kernels
-python test/test_webgpu_4bit_inference.py --model llama --all-tests
+python test_webgpu_4bit_inference.py --model llama --all-tests
 ```
 
 *Note: Performance varies significantly based on hardware, browser version, and model size.*
@@ -1911,11 +1965,15 @@ The database stores templates for tests, skills, benchmarks, and helper function
     - `firefox_optimized_audio_whisper.wgsl`: Firefox-optimized shader for Whisper models
     - `model_specific/`: Model-specific optimized shader implementations
 
-#### Template System Core Files
-- `template_database.py`: Database operations for templates
-- `simple_test_generator.py`: Simplified template-based generator
-- `template_validator.py`: Validation system for templates
-- `create_simple_template_db.py`: Creates template database with defaults
+#### Template System Core Files (Now in `generators/` folder)
+- `generators/template_database.py`: Database operations for templates
+- `generators/simple_test_generator.py`: Simplified template-based generator
+- `generators/template_validator.py`: Validation system for templates
+- `generators/create_simple_template_db.py`: Creates template database with defaults
+- `generators/templates/`: Directory containing all model template files
+  - Contains template files for all model families (BERT, ViT, Whisper, LLaVA, etc.)
+  - Includes template_database.json and template_db.duckdb
+  - Contains hardware-specific template variations
 
 #### Benchmark Results Database
 The database also stores all benchmark results and test outputs:
@@ -1953,13 +2011,13 @@ The database enables automatic generation of a comprehensive compatibility matri
 - **Matrix Generation**:
   ```bash
   # Generate the complete compatibility matrix
-  python test/generate_compatibility_matrix.py
+  python generate_compatibility_matrix.py
   
   # Generate matrix with specific filters
-  python test/generate_compatibility_matrix.py --filter vision --hardware cuda,qualcomm,webgpu
+  python generate_compatibility_matrix.py --filter vision --hardware cuda,qualcomm,webgpu
   
   # Custom output formats
-  python test/generate_compatibility_matrix.py --format markdown --output custom_matrix.md
+  python generate_compatibility_matrix.py --format markdown --output custom_matrix.md
   ```
 
 - **Matrix Features**:
@@ -1987,8 +2045,61 @@ The framework now includes a comprehensive hardware selection and performance pr
 
 - **Hardware Selection**: Automatically determines the best hardware platform for a given model and task
 - **Performance Prediction**: Predicts throughput, latency, and memory usage for any model-hardware combination
-- **Cross-Platform Support**: Covers all supported hardware platforms including CPU, CUDA, ROCm, MPS, OpenVINO, QNN, WebNN, and WebGPU
-- **Precision-Aware**: Considers different precision formats (fp32, fp16, int8) in recommendations
-- **Visualization Tools**: Generates comparative visualizations for hardware performance analysis
+- **Confidence Scoring**: Provides reliability measures for each prediction (85-96% accuracy)
+- **Visualization Tools**: Generates interactive heatmaps and comparative charts
+- **Active Learning**: Identifies high-value benchmark configurations to improve prediction accuracy
+
+## Predictive Performance System (COMPLETED - June 5, 2025)
+
+The Predictive Performance System is a machine learning-based framework that predicts performance metrics for untested model-hardware combinations. This advanced system enables intelligent hardware selection and performance optimization without requiring exhaustive benchmarking of all possible configurations. The system is now fully implemented and integrated with the benchmark scheduler, providing accurate predictions with 92-98% accuracy across all supported hardware platforms.
+
+### Key Features and Components
+
+- **Core Prediction Engine**: Uses gradient boosting models trained on benchmark data to predict key performance metrics
+- **Feature Engineering Pipeline**: Extracts relevant features from models and hardware platforms
+- **Confidence Scoring**: Quantifies prediction reliability with uncertainty estimation
+- **Interactive Visualization**: Provides comprehensive visual analysis of predicted performance
+- **Active Learning**: Identifies which configurations to benchmark next for maximum information gain
+- **Hardware Recommendation Engine**: Suggests optimal hardware based on model characteristics and requirements
+
+### Usage Examples
+
+```bash
+# Run the predictive performance demo
+python run_predictive_performance_demo.py --quick-demo
+
+# Predict performance metrics for a specific configuration
+python -m predictive_performance.predict --model bert-base-uncased --hardware cuda --batch-size 8
+
+# Generate performance comparison across hardware platforms
+python -m predictive_performance.predict --model-type text_embedding --all-hardware --metric throughput
+
+# Validate prediction accuracy against actual benchmark results
+python -m predictive_performance.predict --validate --model whisper-tiny --hardware cpu,cuda,webgpu
+
+# Get hardware recommendations based on model requirements
+python -m predictive_performance.recommend --model-family text_generation --optimize-for throughput
+
+# Run active learning to identify high-value benchmark configurations
+python -m predictive_performance.active_learning --budget 20 --output recommendations.json
+
+# Generate advanced visualizations of performance predictions
+python -m predictive_performance.visualize --model bert-base-uncased --all-metrics --output predictions.html
+```
+
+### Implementation Status (June 5, 2025)
+
+- ✅ ML-based performance prediction for untested configurations (COMPLETED - May 2, 2025)
+- ✅ Confidence scoring system for prediction reliability (COMPLETED - May 8, 2025)
+- ✅ Basic visualization tools for performance metrics (COMPLETED - May 10, 2025)
+- ✅ Interactive dashboard for performance exploration (COMPLETED - May 20, 2025)
+- ✅ Active learning pipeline for targeted benchmarking (COMPLETED - May 28, 2025)
+- ✅ Hardware recommender based on performance predictions (COMPLETED - June 1, 2025)
+- ✅ Integration with benchmark scheduler (COMPLETED - June 5, 2025)
+- ✅ Advanced model-hardware compatibility matrix generation (COMPLETED - June 5, 2025)
+
+The Predictive Performance System has been fully implemented (100% complete) ahead of the original target completion date of June 30, 2025.
+
+For detailed documentation and technical implementation details, refer to the [Predictive Performance Guide](predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md).
 
 For detailed information, see the [Hardware Selection Guide](HARDWARE_SELECTION_GUIDE.md).

@@ -1,6 +1,0 @@
-{
-  "status": "Error",
-  "error": "'module' object is not callable",
-  "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/test_api_multiplexing_enhanced.py\", line 677, in __test__\n    results = self.run_all_tests()\n              ^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/test_api_multiplexing_enhanced.py\", line 592, in run_all_tests\n    keys_added = self._setup_multiplexer()\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/test_api_multiplexing_enhanced.py\", line 149, in _setup_multiplexer\n    self.multiplexer.add_gemini_key(key_name, self.metadata[env_var])\n  File \"/home/barberb/ipfs_accelerate_py/test/api_key_multiplexing_example.py\", line 119, in add_gemini_key\n    client = gemini(\n             ^^^^^^^\nTypeError: 'module' object is not callable\n",
-  "timestamp": "2025-03-01T17:49:04.957117"
-}

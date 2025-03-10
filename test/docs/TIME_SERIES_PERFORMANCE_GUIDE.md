@@ -54,13 +54,13 @@ The time-series performance tracking system extends the existing benchmark datab
 mkdir -p test/db_schema
 
 # Apply the time-series schema to your database
-python -c "import duckdb; conn = duckdb.connect('./benchmark_db.duckdb'); conn.execute(open('test/db_schema/time_series_schema.sql').read())"
+python -c "import duckdb; conn = duckdb.connect('./benchmark_db.duckdb'); conn.execute(open('duckdb_api/schema/time_series_schema.sql').read())"
 ```
 
 ### Basic Usage
 
 ```python
-from time_series_performance import TimeSeriesPerformance
+from duckdb_api.core.time_series_performance import TimeSeriesPerformance
 
 # Initialize with default database path
 ts_perf = TimeSeriesPerformance()

@@ -95,10 +95,10 @@ Usage example:
 python test/update_test_generator_with_hardware_templates.py
 
 # Generate a test for a specific platform
-python test/merged_test_generator.py --model bert --platform cuda
+python generators/merged_test_generator.py --model bert --platform cuda
 
 # Generate a test with support for all platforms
-python test/merged_test_generator.py --model bert --platform all
+python generators/merged_test_generator.py --model bert --platform all
 ```
 
 ## Platform-Specific Implementation Notes

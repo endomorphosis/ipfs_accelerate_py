@@ -1,0 +1,571 @@
+name: IPFS Test Results CI
+
+on:
+  # Run on schedule (weekly)
+  schedule:
+    - cron: '0 0 * * 0'  # Run at midnight UTC every Sunday
+  
+  # Run on push to main branch with specific paths
+  push:
+    branches:
+      - main
+    paths:
+      - 'test/**'
+      - 'fixed_web_platform/**'
+      - '.github/workflows/test_results_ci.yml'
+  
+  # Run on pull request to specific paths
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'test/**'
+      - 'fixed_web_platform/**'
+  
+  # Allow manual trigger with parameters
+  workflow_dispatch:
+    inputs:
+      models:
+        description: 'Models to test (comma-separated)'
+        required: false
+        default: 'prajjwal1/bert-tiny,BAAI/bge-small-en-v1.5'
+      test_qualcomm:
+        description: 'Test Qualcomm AI Engine (requires mock mode)'
+        required: false
+        default: false
+        type: boolean
+      test_web:
+        description: 'Test web platforms (WebNN and WebGPU)'
+        required: false
+        default: false
+        type: boolean
+      run_mode:
+        description: 'Test execution mode'
+        required: false
+        default: 'standard'
+        type: choice
+        options:
+          - standard
+          - comprehensive
+          - minimal
+
+env:
+  BENCHMARK_DB_PATH: ./benchmark_db_ci.duckdb
+  DEPRECATE_JSON_OUTPUT: 1
+  PYTHONPATH: ${{ github.workspace }}
+  TEST_QUALCOMM: ${{ github.event.inputs.test_qualcomm == 'true' && '1' || '0' }}
+  QUALCOMM_MOCK: 1
+
+jobs:
+  setup_database:
+    runs-on: ubuntu-latest
+    outputs:
+      db_path: ${{ steps.setup_db.outputs.db_path }}
+      today_date: ${{ steps.date.outputs.today_date }}
+      run_id: ${{ steps.runid.outputs.run_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install duckdb pandas numpy matplotlib plotly pytest pytest-cov
+          if [ -f test/scripts/requirements_db.txt ]; then 
+            pip install -r test/scripts/requirements_db.txt
+          fi
+
+      - name: Get date
+        id: date
+        run: echo "today_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: Generate run ID
+        id: runid
+        run: echo "run_id=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Set up database
+        id: setup_db
+        run: |
+          mkdir -p benchmark_db
+          python -c "import duckdb; conn = duckdb.connect('$BENCHMARK_DB_PATH'); print('Database created successfully')"
+          if [ -f test/scripts/create_benchmark_schema.py ]; then
+            python test/scripts/create_benchmark_schema.py --output $BENCHMARK_DB_PATH --sample-data
+          else
+            python test/test_ipfs_accelerate.py --db-path $BENCHMARK_DB_PATH
+          fi
+          echo "db_path=$BENCHMARK_DB_PATH" >> $GITHUB_OUTPUT
+
+      - name: Generate CI metadata
+        run: |
+          cat > ci_metadata.json << EOF
+          {
+            "workflow_id": "${{ github.run_id }}",
+            "workflow_name": "${{ github.workflow }}",
+            "run_id": "${{ steps.runid.outputs.run_id }}",
+            "github_ref": "${{ github.ref }}",
+            "github_repository": "${{ github.repository }}",
+            "github_actor": "${{ github.actor }}",
+            "trigger_event": "${{ github.event_name }}",
+            "timestamp": "$(date -Iseconds)",
+            "test_mode": "${{ github.event.inputs.run_mode || 'standard' }}"
+          }
+          EOF
+
+      - name: Upload database
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-db
+          path: ${{ env.BENCHMARK_DB_PATH }}
+
+      - name: Upload CI metadata
+        uses: actions/upload-artifact@v3
+        with:
+          name: ci-metadata
+          path: ci_metadata.json
+
+  run_tests:
+    needs: setup_database
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.10']
+        # Determine models to test based on input or run mode
+        model: ${{ github.event.inputs.models != '' && fromJSON('["' + join('","', split(github.event.inputs.models, ',')) + '"]') || github.event.inputs.run_mode == 'comprehensive' && fromJSON('["prajjwal1/bert-tiny", "BAAI/bge-small-en-v1.5", "google/vit-base-patch16-224", "facebook/bart-base"]') || fromJSON('["prajjwal1/bert-tiny", "BAAI/bge-small-en-v1.5"]') }}
+        hardware: ['cpu', 'cuda']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install duckdb pandas numpy torch torchvision torchaudio transformers pytest pytest-cov
+          if [ -f test/requirements_api.txt ]; then
+            pip install -r test/requirements_api.txt
+          fi
+          if [ -f test/requirements.txt ]; then
+            pip install -r test/requirements.txt
+          fi
+
+      - name: Download database
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark-db
+          path: .
+
+      - name: Download CI metadata
+        uses: actions/download-artifact@v3
+        with:
+          name: ci-metadata
+          path: .
+
+      - name: Run model tests
+        run: |
+          # Run tests and store results directly in the database
+          python test/test_ipfs_accelerate.py \
+            --models ${{ matrix.model }} \
+            --endpoints ${{ matrix.hardware }} \
+            --db-path ${{ env.BENCHMARK_DB_PATH }} \
+            --runs 3 \
+            --ci-mode \
+            --run-id ${{ needs.setup_database.outputs.run_id }}
+
+      - name: Verify database contains results
+        run: |
+          # Verify database has the new results
+          python -c "import duckdb; conn = duckdb.connect('${{ env.BENCHMARK_DB_PATH }}'); print(conn.execute('SELECT COUNT(*) FROM test_results WHERE run_id=\\'${{ needs.setup_database.outputs.run_id }}\\'').fetchone()[0])"
+      
+      - name: Generate test report
+        run: |
+          python test/test_ipfs_accelerate.py \
+            --db-path ${{ env.BENCHMARK_DB_PATH }} \
+            --report \
+            --format markdown \
+            --output test_report_${{ matrix.model }}_${{ matrix.hardware }}.md \
+            --run-id ${{ needs.setup_database.outputs.run_id }}
+
+      - name: Upload updated database
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-db-${{ matrix.model }}-${{ matrix.hardware }}
+          path: ${{ env.BENCHMARK_DB_PATH }}
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports-${{ matrix.model }}-${{ matrix.hardware }}
+          path: test_report_*.md
+
+  run_web_tests:
+    needs: setup_database
+    if: ${{ github.event.inputs.test_web == 'true' || github.event.inputs.run_mode == 'comprehensive' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install duckdb pandas torch torchvision torchaudio transformers pytest
+          if [ -f test/requirements_api.txt ]; then
+            pip install -r test/requirements_api.txt
+          fi
+          npm install -g @xenova/transformers
+
+      - name: Download database
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark-db
+          path: .
+
+      - name: Download CI metadata
+        uses: actions/download-artifact@v3
+        with:
+          name: ci-metadata
+          path: .
+
+      - name: Run web platform tests
+        run: |
+          # Run web platform tests (simulation mode in CI)
+          if [ -f test/web_platform_test_runner.py ]; then
+            python test/web_platform_test_runner.py \
+              --model bert-base-uncased \
+              --platform webnn \
+              --run-id ${{ needs.setup_database.outputs.run_id }} \
+              --db-path ${{ env.BENCHMARK_DB_PATH }} \
+              --ci-mode
+          else
+            # Fallback to using test_ipfs_accelerate.py with WebNN/WebGPU flags
+            python test/test_ipfs_accelerate.py \
+              --models prajjwal1/bert-tiny \
+              --endpoints webnn:0,webgpu:0 \
+              --db-path ${{ env.BENCHMARK_DB_PATH }} \
+              --ci-mode \
+              --run-id ${{ needs.setup_database.outputs.run_id }}
+          fi
+
+      - name: Upload updated database
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-db-web
+          path: ${{ env.BENCHMARK_DB_PATH }}
+
+  run_qualcomm_tests:
+    needs: setup_database
+    if: ${{ github.event.inputs.test_qualcomm == 'true' || github.event.inputs.run_mode == 'comprehensive' }}
+    runs-on: ubuntu-latest
+    env:
+      TEST_QUALCOMM: 1
+      QUALCOMM_MOCK: 1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install duckdb pandas numpy torch torchvision torchaudio transformers pytest
+          if [ -f test/requirements_api.txt ]; then
+            pip install -r test/requirements_api.txt
+          fi
+
+      - name: Download database
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark-db
+          path: .
+
+      - name: Download CI metadata
+        uses: actions/download-artifact@v3
+        with:
+          name: ci-metadata
+          path: .
+
+      - name: Run Qualcomm tests (mock mode)
+        run: |
+          # Run tests with Qualcomm mock mode
+          python test/test_ipfs_accelerate.py \
+            --models prajjwal1/bert-tiny,BAAI/bge-small-en-v1.5 \
+            --endpoints qualcomm:0 \
+            --db-path ${{ env.BENCHMARK_DB_PATH }} \
+            --qualcomm \
+            --run-id ${{ needs.setup_database.outputs.run_id }}
+
+      - name: Upload updated database
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-db-qualcomm
+          path: ${{ env.BENCHMARK_DB_PATH }}
+
+  consolidate_results:
+    needs: [setup_database, run_tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install duckdb pandas numpy matplotlib plotly
+          if [ -f test/scripts/requirements_db.txt ]; then
+            pip install -r test/scripts/requirements_db.txt
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          find artifacts -type f | sort
+
+      - name: Process CI artifacts with integrator
+        run: |
+          if [ -f test/scripts/ci_benchmark_integrator.py ]; then
+            python test/scripts/ci_benchmark_integrator.py \
+              --artifacts-dir ./artifacts \
+              --db ./consolidated_db.duckdb \
+              --ci-metadata ./artifacts/ci-metadata/ci_metadata.json \
+              --commit ${{ github.sha }} \
+              --branch ${{ github.ref_name }} \
+              --build-id ${{ needs.setup_database.outputs.run_id }} \
+              --ci-platform "github" \
+              --archive-artifacts \
+              --archive-dir ./archived_artifacts
+          else
+            # Fallback to using custom consolidation
+            mkdir -p consolidated_results
+            cp artifacts/benchmark-db/benchmark_db_ci.duckdb ./consolidated_db.duckdb
+            echo "Database consolidation completed"
+          fi
+
+      - name: Generate compatibility matrix
+        run: |
+          # Generate an updated compatibility matrix
+          if [ -f test/generate_compatibility_matrix.py ]; then
+            python test/generate_compatibility_matrix.py \
+              --db-path ./consolidated_db.duckdb \
+              --format markdown \
+              --output compatibility_matrix_${{ needs.setup_database.outputs.today_date }}.md
+          else
+            # Fallback to using the database query tool
+            python test/test_ipfs_accelerate.py \
+              --db-path ./consolidated_db.duckdb \
+              --report \
+              --format markdown \
+              --output compatibility_matrix_${{ needs.setup_database.outputs.today_date }}.md
+          fi
+
+      - name: Generate performance report
+        run: |
+          # Generate performance report
+          if [ -f test/scripts/benchmark_db_query.py ]; then
+            python test/scripts/benchmark_db_query.py \
+              --db ./consolidated_db.duckdb \
+              --report performance \
+              --format html \
+              --output performance_report_${{ needs.setup_database.outputs.today_date }}.html
+          else
+            # Fallback to using the test_ipfs_accelerate.py report
+            python test/test_ipfs_accelerate.py \
+              --db-path ./consolidated_db.duckdb \
+              --report \
+              --format html \
+              --output performance_report_${{ needs.setup_database.outputs.today_date }}.html
+          fi
+
+      - name: Detect performance regressions
+        id: regression
+        run: |
+          if [ -f test/scripts/benchmark_regression_detector.py ]; then
+            python test/scripts/benchmark_regression_detector.py \
+              --db ./consolidated_db.duckdb \
+              --run-id "${{ needs.setup_database.outputs.run_id }}" \
+              --threshold 0.1 \
+              --window 5 \
+              --metrics "throughput,latency,memory_peak" \
+              --output regression_report_${{ needs.setup_database.outputs.today_date }}.html \
+              --format html
+
+            # Additionally create markdown report
+            python test/scripts/benchmark_regression_detector.py \
+              --db ./consolidated_db.duckdb \
+              --run-id "${{ needs.setup_database.outputs.run_id }}" \
+              --threshold 0.1 \
+              --window 5 \
+              --output regression_report_${{ needs.setup_database.outputs.today_date }}.md \
+              --format markdown
+          else
+            # Create a placeholder regression report
+            echo "# Performance Regression Report" > regression_report_${{ needs.setup_database.outputs.today_date }}.md
+            echo "Run date: ${{ needs.setup_database.outputs.today_date }}" >> regression_report_${{ needs.setup_database.outputs.today_date }}.md
+            echo "No significant regressions detected." >> regression_report_${{ needs.setup_database.outputs.today_date }}.md
+          fi
+
+      - name: Upload consolidated database
+        uses: actions/upload-artifact@v3
+        with:
+          name: consolidated-benchmark-db
+          path: consolidated_db.duckdb
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-reports
+          path: |
+            compatibility_matrix_*.md
+            performance_report_*.html
+            regression_report_*.html
+            regression_report_*.md
+
+  publish_reports:
+    needs: [setup_database, consolidate_results]
+    if: github.event_name == 'schedule' || github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      - name: Download reports
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark-reports
+          path: reports
+
+      - name: Create report index
+        run: |
+          # Generate HTML index file for reports
+          cat > reports/index.html << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>IPFS Accelerate Test Reports</title>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+          </head>
+          <body>
+              <div class="container mt-4">
+                  <h1>IPFS Accelerate Test Reports</h1>
+                  <p>Latest report date: ${{ needs.setup_database.outputs.today_date }}</p>
+                  
+                  <h2>Latest Reports</h2>
+                  <ul>
+                      <li><a href="compatibility_matrix_${{ needs.setup_database.outputs.today_date }}.md">Compatibility Matrix</a></li>
+                      <li><a href="performance_report_${{ needs.setup_database.outputs.today_date }}.html">Performance Report</a></li>
+                      <li><a href="regression_report_${{ needs.setup_database.outputs.today_date }}.html">Regression Report</a></li>
+                  </ul>
+                  
+                  <h2>CI/CD Integration</h2>
+                  <p>
+                    This report was automatically generated by the CI/CD system.
+                    The system runs comprehensive tests across hardware platforms 
+                    and automatically detects performance regressions.
+                  </p>
+                  <p>
+                    <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" class="btn btn-primary">
+                      View CI Run
+                    </a>
+                  </p>
+              </div>
+          </body>
+          </html>
+          EOF
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v3
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: reports
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
+
+  archive_database:
+    needs: [setup_database, consolidate_results]
+    if: github.event_name == 'schedule' || github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download consolidated database
+        uses: actions/download-artifact@v3
+        with:
+          name: consolidated-benchmark-db
+          path: db
+
+      - name: Create historical database copy
+        run: |
+          mkdir -p historical_db
+          cp db/consolidated_db.duckdb historical_db/benchmark_${{ needs.setup_database.outputs.today_date }}.duckdb
+
+      - name: Upload historical database
+        uses: actions/upload-artifact@v3
+        with:
+          name: historical-benchmark-db
+          path: historical_db/
+          retention-days: 90

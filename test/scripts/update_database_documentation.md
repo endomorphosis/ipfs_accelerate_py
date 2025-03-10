@@ -40,36 +40,36 @@ python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda -
 
 ```bash
 # Import data from JSON files
-python test/benchmark_db_converter.py --input-dir ./performance_results --output-db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_converter.py --input-dir ./performance_results --output-db ./benchmark_db.duckdb
 
 # Consolidate data from multiple directories
-python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
 ```
 
 ### Querying Data
 
 ```bash
 # Generate performance report
-python test/benchmark_db_query.py --report performance --format html --output benchmark_report.html --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html --db ./benchmark_db.duckdb
 
 # Compare hardware performance for a model
-python test/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output hardware_comparison.png --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output hardware_comparison.png --db ./benchmark_db.duckdb
 
 # Direct SQL query
-python test/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_results.csv --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_results.csv --db ./benchmark_db.duckdb
 ```
 
 ### Maintenance
 
 ```bash
 # Validate database
-python test/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
 
 # Optimize database
-python test/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
 
 # Backup database
-python test/benchmark_db_maintenance.py --backup --backup-dir ./benchmark_backups --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --backup --backup-dir ./benchmark_backups --db ./benchmark_db.duckdb
 ```
 
 ## Database Schema

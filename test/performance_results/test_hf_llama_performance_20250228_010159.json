@@ -1,7 +1,0 @@
-{
-  "test_file": "test_hf_llama.py",
-  "elapsed_time": 6.604084730148315,
-  "return_code": 0,
-  "stdout": "connecting to master\nconnecting to master\nStarting LLaMA test...\nAttempting to use primary model: facebook/opt-125m\nPrimary model validation failed: facebook/opt-125m is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\nTrying alternative model: EleutherAI/pythia-70m\nAlternative model validation failed: EleutherAI/pythia-70m is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\nTrying alternative model: distilgpt2\nAlternative model validation failed: distilgpt2 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co...",
-  "stderr": ""
-}

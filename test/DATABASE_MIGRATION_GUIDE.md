@@ -65,7 +65,7 @@ python test/scripts/create_new_database.py --db ./benchmark_db.duckdb --force
 python test/scripts/create_new_database.py --db ./benchmark_db.duckdb --force
 
 # Or convert existing data
-python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
 ```
 
 ### 2. Migrating Historical Data
@@ -78,13 +78,13 @@ For general benchmark data, use the converter tool:
 
 ```bash
 # Import data from specific directories
-python test/benchmark_db_converter.py --input-dir ./performance_results --output-db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_converter.py --input-dir ./performance_results --output-db ./benchmark_db.duckdb
 
 # Consolidate data from multiple directories
-python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
 
 # Export to Parquet format for external analysis
-python test/benchmark_db_converter.py --input-dir ./performance_results --output-parquet-dir ./benchmark_parquet
+python duckdb_api/core/benchmark_db_converter.py --input-dir ./performance_results --output-parquet-dir ./benchmark_parquet
 
 # Fix database issues when needed
 python test/scripts/benchmark_db_fix.py --fix-all --db ./benchmark_db.duckdb
@@ -138,19 +138,19 @@ The updated query tools provide capabilities for data analysis and visualization
 
 ```bash
 # Execute SQL queries on the database
-python test/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_data.csv --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_data.csv --db ./benchmark_db.duckdb
 
 # Generate HTML reports
-python test/benchmark_db_query.py --report performance --format html --output benchmark_report.html --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html --db ./benchmark_db.duckdb
 
 # Compare hardware platforms for a specific model
-python test/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output hardware_comparison.png --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output hardware_comparison.png --db ./benchmark_db.duckdb
 
 # Compare models on a specific hardware platform
-python test/benchmark_db_query.py --hardware cuda --metric throughput --compare-models --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_query.py --hardware cuda --metric throughput --compare-models --db ./benchmark_db.duckdb
 
 # Show tabular data directly in the terminal
-python test/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --db ./benchmark_db.duckdb
 ```
 
 ### 4. Running Benchmarks with Database Integration
@@ -174,16 +174,16 @@ The database maintenance utilities have been improved to handle various issues:
 
 ```bash
 # Validate database structure and integrity
-python test/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
 
 # Optimize database performance
-python test/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
 
 # Create a backup of the database
-python test/benchmark_db_maintenance.py --backup --backup-dir ./benchmark_backups --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --backup --backup-dir ./benchmark_backups --db ./benchmark_db.duckdb
 
 # Generate a maintenance report
-python test/benchmark_db_maintenance.py --report --report-file maintenance_report.json --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --report --report-file maintenance_report.json --db ./benchmark_db.duckdb
 ```
 
 For serious issues that require fixing database structure:
@@ -243,10 +243,10 @@ For large datasets, use incremental migration:
 
 ```bash
 # Identify already processed files
-python test/benchmark_db_updater.py --scan-dir ./archived_test_results --track-processed
+python duckdb_api/core/benchmark_db_updater.py --scan-dir ./archived_test_results --track-processed
 
 # Process new files incrementally
-python test/benchmark_db_updater.py --scan-dir ./new_results --incremental
+python duckdb_api/core/benchmark_db_updater.py --scan-dir ./new_results --incremental
 ```
 
 ### Parallel Processing
@@ -255,12 +255,12 @@ For faster migration of large datasets:
 
 ```bash
 # Process different directories in parallel
-python test/benchmark_db_converter.py --input-dir ./dir1 --output-db ./benchmark_db.duckdb &
-python test/benchmark_db_converter.py --input-dir ./dir2 --output-db ./benchmark_db.duckdb &
-python test/benchmark_db_converter.py --input-dir ./dir3 --output-db ./benchmark_db.duckdb &
+python duckdb_api/core/benchmark_db_converter.py --input-dir ./dir1 --output-db ./benchmark_db.duckdb &
+python duckdb_api/core/benchmark_db_converter.py --input-dir ./dir2 --output-db ./benchmark_db.duckdb &
+python duckdb_api/core/benchmark_db_converter.py --input-dir ./dir3 --output-db ./benchmark_db.duckdb &
 
 # Consolidate afterward
-python test/benchmark_db_converter.py --consolidate --deduplicate
+python duckdb_api/core/benchmark_db_converter.py --consolidate --deduplicate
 ```
 
 ### Validation
@@ -269,7 +269,7 @@ To validate migrated data:
 
 ```bash
 # Validate database structure and integrity
-python test/benchmark_db_maintenance.py --validate
+python duckdb_api/core/benchmark_db_maintenance.py --validate
 
 # Compare migrated data with original JSON
 python test/validate_migration.py --json-dir ./archived_test_results --db ./benchmark_db.duckdb
@@ -338,12 +338,12 @@ archived_json_files/
 
 2. **Duplicate Data**: If you have duplicate data:
    ```bash
-   python test/benchmark_db_converter.py --deduplicate
+   python duckdb_api/core/benchmark_db_converter.py --deduplicate
    ```
 
 3. **Performance Issues**: If database performance degrades:
    ```bash
-   python test/benchmark_db_maintenance.py --optimize
+   python duckdb_api/core/benchmark_db_maintenance.py --optimize
    ```
 
 ### Data Recovery
@@ -352,10 +352,10 @@ In case of migration issues:
 
 ```bash
 # Restore from backup
-python test/benchmark_db_maintenance.py --restore ./benchmark_backups/benchmark_db_20250301_120000.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --restore ./benchmark_backups/benchmark_db_20250301_120000.duckdb
 
 # Export data back to JSON if needed
-python test/benchmark_db_query.py --export performance --format json --output ./exported_performance.json
+python duckdb_api/core/benchmark_db_query.py --export performance --format json --output ./exported_performance.json
 ```
 
 ## Migrating Comprehensive HuggingFace Testing Data
@@ -364,16 +364,16 @@ The database migration system has been extended to handle data from comprehensiv
 
 ```bash
 # Migrate comprehensive test results to the database
-python test/benchmark_db_migration.py --migrate-comprehensive --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_migration.py --migrate-comprehensive --db ./benchmark_db.duckdb
 
 # Migrate specific model categories
-python test/benchmark_db_migration.py --migrate-comprehensive --categories text_encoders,vision_models --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_migration.py --migrate-comprehensive --categories text_encoders,vision_models --db ./benchmark_db.duckdb
 
 # Extract and store architecture metadata during migration
-python test/benchmark_db_migration.py --migrate-comprehensive --extract-architecture-metadata --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_migration.py --migrate-comprehensive --extract-architecture-metadata --db ./benchmark_db.duckdb
 
 # Analyze model-architecture coverage after migration
-python test/benchmark_db_query.py --db ./benchmark_db.duckdb --report comprehensive-coverage --format html --output coverage_report.html
+python duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --report comprehensive-coverage --format html --output coverage_report.html
 ```
 
 ### Comprehensive Testing Data Structure
@@ -404,13 +404,13 @@ After migrating comprehensive test data:
 
 ```bash
 # Validate architecture coverage data
-python test/benchmark_db_maintenance.py --validate-architecture-coverage --db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_maintenance.py --validate-architecture-coverage --db ./benchmark_db.duckdb
 
 # Generate hardware compatibility matrix
-python test/benchmark_db_query.py --db ./benchmark_db.duckdb --comprehensive-matrix --format html --output matrix.html
+python duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --comprehensive-matrix --format html --output matrix.html
 
 # Create improvement plan based on coverage gaps
-python test/benchmark_db_query.py --db ./benchmark_db.duckdb --generate-improvement-plan --output plan.md
+python duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --generate-improvement-plan --output plan.md
 ```
 
 ## Timeline and Milestones
