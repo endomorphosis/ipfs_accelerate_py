@@ -16,9 +16,9 @@ The test generators needed to be fixed to ensure they could correctly generate t
 
 The following generators have been fixed:
 
-1. **fixed_merged_test_generator.py** - Generates tests for models with comprehensive hardware platform support
-2. **merged_test_generator.py** - Simplified test generator with hardware platform support
-3. **integrated_skillset_generator.py** - Generates skill implementations with hardware platform support
+1. **fixed_generators/test_generators/merged_test_generator.py** - Generates tests for models with comprehensive hardware platform support
+2. **generators/test_generators/merged_test_generator.py** - Simplified test generator with hardware platform support
+3. **generators/skill_generators/integrated_skillset_generator.py** - Generates skill implementations with hardware platform support
 
 ## Fix Approach
 
@@ -51,13 +51,13 @@ Generate tests with specific hardware platforms:
 
 ```bash
 # Generate a test for bert with CPU and CUDA support
-python fixed_merged_test_generator.py -g bert -p cpu,cuda -o test_outputs/
+python fixed_generators/test_generators/merged_test_generator.py -g bert -p cpu,cuda -o test_outputs/
 
 # Generate a test for vit with all platforms
-python fixed_merged_test_generator.py -g vit-base -p all -o test_outputs/
+python fixed_generators/test_generators/merged_test_generator.py -g vit-base -p all -o test_outputs/
 
 # Generate a skill for clip with WebNN and WebGPU platforms
-python integrated_skillset_generator.py -m clip -p webnn,webgpu -o test_outputs/
+python generators/skill_generators/integrated_skillset_generator.py -m clip -p webnn,webgpu -o test_outputs/
 ```
 
 ### Running Test Suites
@@ -78,7 +78,7 @@ Run a comprehensive test of all generators:
 
 ```bash
 # Test all generators with various models and platforms
-python test_all_generators.py
+python generators/models/test_all_generators.py
 ```
 
 ## Key Improvements
@@ -113,9 +113,9 @@ With the generators fixed, you can now:
 
 During the fix process, the following files were created:
 
-- **fixed_merged_test_generator_clean.py** - Clean version of fixed_merged_test_generator.py
-- **merged_test_generator_clean.py** - Clean version of merged_test_generator.py
-- **integrated_skillset_generator_clean.py** - Clean version of integrated_skillset_generator.py
+- **fixed_merged_test_generator_clean.py** - Clean version of fixed_generators/test_generators/merged_test_generator.py
+- **merged_test_generator_clean.py** - Clean version of generators/test_generators/merged_test_generator.py
+- **integrated_skillset_generator_clean.py** - Clean version of generators/skill_generators/integrated_skillset_generator.py
 - **test_all_generators.py** - Script to test all generators with various models and platforms
 - **verify_key_models.py** - Script to verify tests for key models
 - **run_generators_phase16.sh** - Shell script to run tests for key models

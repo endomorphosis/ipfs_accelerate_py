@@ -15,7 +15,7 @@ The framework now includes comprehensive support for AMD GPUs with ROCm, alongsi
 
 ## Key Components
 
-### 1. Hardware Detection (auto_hardware_detection.py)
+### 1. Hardware Detection (auto_generators/hardware/hardware_detection.py)
 
 Automatically identifies available hardware platforms:
 
@@ -34,7 +34,7 @@ For each platform, it determines:
 
 **Usage:**
 ```bash
-python auto_hardware_detection.py --generate-config --generate-requirements
+python auto_generators/hardware/hardware_detection.py --generate-config --generate-requirements
 ```
 
 ### 2. Precision Benchmarking (benchmark_precision_hardware.py)
@@ -49,10 +49,10 @@ Benchmarks models across hardware platforms and precision formats:
 **Usage:**
 ```bash
 # Benchmark BERT model on all available hardware
-python benchmark_precision_hardware.py --models bert-base-uncased
+python duckdb_api/core/benchmark_precision_hardware.py --models bert-base-uncased
 
 # Benchmark specific models with specific precision types
-python benchmark_precision_hardware.py --models bert-base-uncased t5-small --precision fp32 fp16 int8 --hardware cpu cuda amd
+python duckdb_api/core/benchmark_precision_hardware.py --models bert-base-uncased t5-small --precision fp32 fp16 int8 --hardware cpu cuda amd
 ```
 
 ### 3. Dependency Installation (install_hardware_dependencies.py)
@@ -148,7 +148,7 @@ AMD GPUs are now fully supported with:
 
 1. **Detect your hardware**:
    ```bash
-   python auto_hardware_detection.py
+   python auto_generators/hardware/hardware_detection.py
    ```
 
 2. **Install appropriate dependencies**:
@@ -158,7 +158,7 @@ AMD GPUs are now fully supported with:
 
 3. **Benchmark models**:
    ```bash
-   python benchmark_precision_hardware.py --models bert-base-uncased
+   python duckdb_api/core/benchmark_precision_hardware.py --models bert-base-uncased
    ```
 
 4. **Use the optimal configuration**:

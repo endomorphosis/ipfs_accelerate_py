@@ -97,10 +97,10 @@ python -m test.apis.test_claude
 ANTHROPIC_API_KEY="your-api-key-here" python -m test.apis.test_claude
 
 # Run specific queue and backoff tests
-python test_api_backoff_queue.py --api claude
+python generators/models/test_api_backoff_queue.py --api claude
 
 # Run comprehensive tests with mock support (no API key needed)
-MOCK_CLAUDE_TEST=1 python test_api_backoff_queue.py --api claude
+MOCK_CLAUDE_TEST=1 python generators/models/test_api_backoff_queue.py --api claude
 
 # Run as part of the complete test suite
 python run_queue_backoff_tests.py --apis claude

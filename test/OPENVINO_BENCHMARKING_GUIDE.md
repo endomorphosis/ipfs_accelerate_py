@@ -114,16 +114,16 @@ You can also use the Python script directly for more control:
 
 ```bash
 # Run benchmarks for a specific model
-python benchmark_openvino.py --model bert-base-uncased
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased
 
 # Run benchmarks for a model family
-python benchmark_openvino.py --model-family text
+python duckdb_api/core/benchmark_openvino.py --model-family text
 
 # Specify precision formats and batch sizes
-python benchmark_openvino.py --model bert-base-uncased --precision FP32,FP16 --batch-sizes 1,2,4,8,16
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --precision FP32,FP16 --batch-sizes 1,2,4,8,16
 
 # Generate a report
-python benchmark_openvino.py --model bert-base-uncased --report --report-format markdown
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --report --report-format markdown
 ```
 
 ## Advanced Usage
@@ -137,7 +137,7 @@ You can test multiple models in a single run:
 ./run_openvino_benchmarks.sh --models "bert-base-uncased,t5-small,distilbert-base-uncased"
 
 # Using the Python script
-python benchmark_openvino.py --model bert-base-uncased,t5-small,distilbert-base-uncased
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased,t5-small,distilbert-base-uncased
 ```
 
 ### Testing Multiple Device Types
@@ -149,7 +149,7 @@ If your system has multiple OpenVINO-compatible devices (e.g., CPU and Intel GPU
 ./run_openvino_benchmarks.sh --device "CPU,GPU"
 
 # Using the Python script
-python benchmark_openvino.py --device CPU,GPU
+python duckdb_api/core/benchmark_openvino.py --device CPU,GPU
 ```
 
 ### Configuring Iterations
@@ -161,7 +161,7 @@ You can specify the number of iterations for more reliable metrics:
 ./run_openvino_benchmarks.sh --iterations 20
 
 # Using the Python script
-python benchmark_openvino.py --iterations 20
+python duckdb_api/core/benchmark_openvino.py --iterations 20
 ```
 
 ### Dry Run Mode
@@ -173,7 +173,7 @@ To test your configuration without running actual benchmarks:
 ./run_openvino_benchmarks.sh --dry-run
 
 # Using the Python script
-python benchmark_openvino.py --dry-run
+python duckdb_api/core/benchmark_openvino.py --dry-run
 ```
 
 ## INT8 Quantization
@@ -187,7 +187,7 @@ INT8 quantization can significantly improve performance with some trade-offs in 
 ./run_openvino_benchmarks.sh --precision INT8
 
 # Using the Python script
-python benchmark_openvino.py --precision INT8
+python duckdb_api/core/benchmark_openvino.py --precision INT8
 ```
 
 ### Configuring Calibration Samples
@@ -196,7 +196,7 @@ For more accurate INT8 quantization, you can specify the number of calibration s
 
 ```bash
 # Using the Python script
-python benchmark_openvino.py --precision INT8 --calibration-samples 20
+python duckdb_api/core/benchmark_openvino.py --precision INT8 --calibration-samples 20
 ```
 
 ## Database Integration
@@ -212,7 +212,7 @@ By default, all benchmark results are stored in the database specified by the `B
 ./run_openvino_benchmarks.sh --db-path ./custom_benchmark.duckdb
 
 # Using the Python script with a specific database path
-python benchmark_openvino.py --db-path ./custom_benchmark.duckdb
+python duckdb_api/core/benchmark_openvino.py --db-path ./custom_benchmark.duckdb
 ```
 
 ### Disabling Database Integration
@@ -221,7 +221,7 @@ If you don't want to store results in the database:
 
 ```bash
 # Using the Python script
-python benchmark_openvino.py --no-db
+python duckdb_api/core/benchmark_openvino.py --no-db
 ```
 
 ## Report Generation
@@ -235,7 +235,7 @@ The benchmarking system can generate comprehensive reports in different formats.
 ./run_openvino_benchmarks.sh --report 1 --report-format markdown
 
 # Using the Python script
-python benchmark_openvino.py --report --report-format markdown
+python duckdb_api/core/benchmark_openvino.py --report --report-format markdown
 ```
 
 ### HTML Reports
@@ -245,7 +245,7 @@ python benchmark_openvino.py --report --report-format markdown
 ./run_openvino_benchmarks.sh --report 1 --report-format html
 
 # Using the Python script
-python benchmark_openvino.py --report --report-format html
+python duckdb_api/core/benchmark_openvino.py --report --report-format html
 ```
 
 ### JSON Reports
@@ -255,7 +255,7 @@ python benchmark_openvino.py --report --report-format html
 ./run_openvino_benchmarks.sh --report 1 --report-format json
 
 # Using the Python script
-python benchmark_openvino.py --report --report-format json
+python duckdb_api/core/benchmark_openvino.py --report --report-format json
 ```
 
 ### Sample Report Content
@@ -304,7 +304,7 @@ If you encounter model loading issues:
 
 ```bash
 # Test with a smaller model
-python benchmark_openvino.py --model prajjwal1/bert-tiny
+python duckdb_api/core/benchmark_openvino.py --model prajjwal1/bert-tiny
 ```
 
 ### Memory Issues
@@ -317,7 +317,7 @@ If you encounter memory issues:
 
 ```bash
 # Reduce batch size and use lower precision
-python benchmark_openvino.py --model bert-base-uncased --batch-sizes 1,2 --precision FP16
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --batch-sizes 1,2 --precision FP16
 ```
 
 ### Device Issues
@@ -343,7 +343,7 @@ If INT8 quantization fails:
 
 ```bash
 # Try with more calibration samples
-python benchmark_openvino.py --model bert-base-uncased --precision INT8 --calibration-samples 30
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --precision INT8 --calibration-samples 30
 ```
 
 ## Conclusion
@@ -360,15 +360,15 @@ For any issues or suggestions, please report them through the project's issue tr
 
 ```bash
 # Basic text model benchmarking
-python benchmark_openvino.py --model bert-base-uncased
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased
 ./run_openvino_benchmarks.sh --models bert-base-uncased
 
 # Basic vision model benchmarking
-python benchmark_openvino.py --model-family vision
+python duckdb_api/core/benchmark_openvino.py --model-family vision
 ./run_openvino_benchmarks.sh --family vision
 
 # Basic audio model benchmarking
-python benchmark_openvino.py --model-family audio
+python duckdb_api/core/benchmark_openvino.py --model-family audio
 ./run_openvino_benchmarks.sh --family audio
 ```
 
@@ -376,34 +376,34 @@ python benchmark_openvino.py --model-family audio
 
 ```bash
 # Comprehensive benchmarking across multiple precision formats
-python benchmark_openvino.py --model bert-base-uncased,t5-small --precision FP32,FP16,INT8 --batch-sizes 1,2,4,8,16 --report
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased,t5-small --precision FP32,FP16,INT8 --batch-sizes 1,2,4,8,16 --report
 
 # Comprehensive benchmarking with results stored in database
-python benchmark_openvino.py --model-family text --precision FP32,FP16,INT8 --batch-sizes 1,4,16 --db-path ./benchmark_db.duckdb --report
+python duckdb_api/core/benchmark_openvino.py --model-family text --precision FP32,FP16,INT8 --batch-sizes 1,4,16 --db-path ./benchmark_db.duckdb --report
 
 # Comparative benchmarking across different devices
-python benchmark_openvino.py --model bert-base-uncased --device CPU,GPU --precision FP32,FP16 --batch-sizes 1,8 --report
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --device CPU,GPU --precision FP32,FP16 --batch-sizes 1,8 --report
 ```
 
 ### Report Generation
 
 ```bash
 # Generate markdown report
-python benchmark_openvino.py --model bert-base-uncased --report --report-format markdown --report-file benchmark_report.md
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --report --report-format markdown --report-file benchmark_report.md
 
 # Generate HTML report
-python benchmark_openvino.py --model bert-base-uncased --report --report-format html --report-file benchmark_report.html
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --report --report-format html --report-file benchmark_report.html
 
 # Generate JSON report
-python benchmark_openvino.py --model bert-base-uncased --report --report-format json --report-file benchmark_report.json
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --report --report-format json --report-file benchmark_report.json
 ```
 
 ### Advanced INT8 Quantization
 
 ```bash
 # Advanced INT8 quantization with custom calibration samples
-python benchmark_openvino.py --model bert-base-uncased --precision INT8 --calibration-samples 20
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --precision INT8 --calibration-samples 20
 
 # Compare INT8 vs FP16 vs FP32
-python benchmark_openvino.py --model bert-base-uncased --precision FP32,FP16,INT8 --report
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --precision FP32,FP16,INT8 --report
 ```

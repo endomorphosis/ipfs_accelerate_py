@@ -256,25 +256,25 @@ The framework includes dedicated tests for web platform features:
 
 ```bash
 # Run web platform specific test
-python test_resource_pool.py --test web --debug
+python generators/models/test_resource_pool.py --test web --debug
 
 # Enable simulation mode for testing in non-browser environments
-python test_resource_pool.py --test web --simulation --debug
+python generators/models/test_resource_pool.py --test web --simulation --debug
 
 # Test compute shader optimizations (March 2025 feature)
-python test_resource_pool.py --test web --compute-shaders --debug
+python generators/models/test_resource_pool.py --test web --compute-shaders --debug
 
 # Test parallel loading optimization (March 2025 feature)
-python test_resource_pool.py --test web --parallel-loading --debug
+python generators/models/test_resource_pool.py --test web --parallel-loading --debug
 
 # Test shader precompilation (March 2025 feature)
-python test_resource_pool.py --test web --precompile-shaders --debug
+python generators/models/test_resource_pool.py --test web --precompile-shaders --debug
 
 # Test all March 2025 enhancements together
-python test_resource_pool.py --test web --all-features --debug
+python generators/models/test_resource_pool.py --test web --all-features --debug
 
 # Run with hardware testing for more comprehensive verification
-python test_resource_pool.py --test hardware --web-platform --debug
+python generators/models/test_resource_pool.py --test hardware --web-platform --debug
 ```
 
 ### Web Platform Compatibility Matrix
@@ -576,13 +576,13 @@ The parallel loading implementation improves initialization times for multimodal
 5. **Testing and Evaluation**:
    ```bash
    # Test multimodal models with parallel loading
-   python test_webgpu_parallel_model_loading.py --model-type multimodal
+   python generators/models/test_webgpu_parallel_model_loading.py --model-type multimodal
    
    # Benchmark specific model performance
-   python test_webgpu_parallel_model_loading.py --model-name "openai/clip-vit-base-patch32" --benchmark
+   python generators/models/test_webgpu_parallel_model_loading.py --model-name "openai/clip-vit-base-patch32" --benchmark
    
    # Compare with and without parallel loading for all models
-   python test_webgpu_parallel_model_loading.py --test-all --create-chart
+   python generators/models/test_webgpu_parallel_model_loading.py --test-all --create-chart
    ```
 
 6. **Database Integration**:
@@ -636,7 +636,7 @@ Shader precompilation reduces startup latency through:
 
 The test generators now properly support WebNN and WebGPU platforms with the March 2025 enhancements:
 
-1. Updated merged_test_generator.py with enhanced WebNN/WebGPU handlers
+1. Updated generators/test_generators/merged_test_generator.py with enhanced WebNN/WebGPU handlers
 2. All model templates report REAL implementation types for validation
 3. Model type detection for appropriate web platform simulation
 4. Support for all model categories including detection models
@@ -687,7 +687,7 @@ To simplify testing with web platform simulation, use the provided helper script
 
 ```bash
 # Test model generation with WebNN support
-./run_web_platform_tests.sh python generators/integrated_skillset_generator.py --model bert --hardware webnn
+./run_web_platform_tests.sh python generators/generators/skill_generators/integrated_skillset_generator.py --model bert --hardware webnn
 
 # Test with WebGPU support
 ./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webgpu
@@ -854,20 +854,20 @@ The following improvements were made in Phase 16 to enhance web platform support
 
 ## Test Generation for Web Platforms
 
-To generate tests with real web platform implementations, use the `merged_test_generator.py` script with the following options:
+To generate tests with real web platform implementations, use the `generators/test_generators/merged_test_generator.py` script with the following options:
 
 ```bash
 # Generate WebNN test for BERT with real implementation
-python generators/merged_test_generator.py --generate bert --web-platform webnn --real-implementation
+python generators/generators/test_generators/merged_test_generator.py --generate bert --web-platform webnn --real-implementation
 
 # Generate WebGPU test for Whisper with audio compute shader optimization
-python generators/merged_test_generator.py --generate whisper --web-platform webgpu --with-audio-compute-shaders --real-implementation
+python generators/generators/test_generators/merged_test_generator.py --generate whisper --web-platform webgpu --with-audio-compute-shaders --real-implementation
 
 # Generate WebGPU test for LLaVA with parallel loading optimization
-python generators/merged_test_generator.py --generate llava --web-platform webgpu --with-parallel-loading --real-implementation
+python generators/generators/test_generators/merged_test_generator.py --generate llava --web-platform webgpu --with-parallel-loading --real-implementation
 
 # Generate WebGPU test for LLAMA with 4-bit quantization
-python generators/merged_test_generator.py --generate llama --web-platform webgpu --with-4bit-inference --real-implementation
+python generators/generators/test_generators/merged_test_generator.py --generate llama --web-platform webgpu --with-4bit-inference --real-implementation
 ```
 
 If you need to fix existing test templates or update the test generator with the latest web platform features, use the `fix_test_generator.py` script:
@@ -983,16 +983,16 @@ The 4-bit quantization support for LLMs provides significant memory reduction wh
 4. **Testing and Validation Tools**:
    ```bash
    # Test 4-bit inference with comparison to higher precision
-   python test_webgpu_4bit_inference.py --model llama --compare-precision
+   python generators/models/test_webgpu_4bit_inference.py --model llama --compare-precision
    
    # Compare across platforms (CPU, CUDA, WebGPU)
-   python test_cross_platform_4bit.py --model llama --all-platforms
+   python generators/models/test_cross_platform_4bit.py --model llama --all-platforms
    
    # Generate comprehensive HTML report with visualizations
-   python test_webgpu_4bit_inference.py --model llama --output-report report.html
+   python generators/models/test_webgpu_4bit_inference.py --model llama --output-report report.html
    
    # Generate compatibility matrix
-   python test_cross_platform_4bit.py --model llama --output-matrix matrix.html
+   python generators/models/test_cross_platform_4bit.py --model llama --output-matrix matrix.html
    ```
 
 ### Memory-Efficient KV-Cache
@@ -1059,13 +1059,13 @@ The cross-platform comparison framework enables comprehensive testing across har
 4. **Usage Examples**:
    ```bash
    # Compare 4-bit inference across all hardware platforms
-   python test_cross_platform_4bit.py --model llama --all-platforms
+   python generators/models/test_cross_platform_4bit.py --model llama --all-platforms
    
    # Generate compatibility matrix
-   python test_cross_platform_4bit.py --model llama --output-matrix matrix.html
+   python generators/models/test_cross_platform_4bit.py --model llama --output-matrix matrix.html
    
    # Run browser comparisons
-   python test_cross_platform_4bit.py --model llama --cross-browser
+   python generators/models/test_cross_platform_4bit.py --model llama --cross-browser
    ```
 
 ### Browser Compatibility Matrix
@@ -1334,34 +1334,34 @@ The following command-line tools have been added to support the April 2025 enhan
 
 ```bash
 # Test 4-bit inference with different precision formats
-python test_webgpu_4bit_inference.py --model llama --compare-precision
+python generators/models/test_webgpu_4bit_inference.py --model llama --compare-precision
 
 # Test 4-bit inference across hardware platforms
-python test_cross_platform_4bit.py --model llama --all-platforms
+python generators/models/test_cross_platform_4bit.py --model llama --all-platforms
 
 # Generate comprehensive HTML report
-python test_webgpu_4bit_inference.py --model llama --output-report report.html
+python generators/models/test_webgpu_4bit_inference.py --model llama --output-report report.html
 
 # Generate compatibility matrix for 4-bit quantization
-python test_cross_platform_4bit.py --model llama --output-matrix matrix.html
+python generators/models/test_cross_platform_4bit.py --model llama --output-matrix matrix.html
 
 # Run with browser comparison
-python test_cross_platform_4bit.py --model llama --cross-browser
+python generators/models/test_cross_platform_4bit.py --model llama --cross-browser
 
 # Test with specific hardware platforms
-python test_cross_platform_4bit.py --model llama --hardware cpu cuda webgpu
+python generators/models/test_cross_platform_4bit.py --model llama --hardware cpu cuda webgpu
 
 # Validate accuracy against reference models
-python test_webgpu_4bit_inference.py --model llama --validate-accuracy
+python generators/models/test_webgpu_4bit_inference.py --model llama --validate-accuracy
 
 # Test KV-cache optimization
-python test_webgpu_kv_cache_optimization.py --test all
+python generators/models/test_webgpu_kv_cache_optimization.py --test all
 
 # Test memory-efficient attention mechanisms
-python test_webgpu_kv_cache_optimization.py --test memory
+python generators/models/test_webgpu_kv_cache_optimization.py --test memory
 
 # Run all April 2025 optimizations together
-./run_web_platform_tests.sh --all-features --april-2025-features python test_webgpu_4bit_inference.py --model llama
+./run_web_platform_tests.sh --all-features --april-2025-features python generators/models/test_webgpu_4bit_inference.py --model llama
 ```
 
 ## Using the April 2025 Features in Your Code

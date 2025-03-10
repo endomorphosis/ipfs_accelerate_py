@@ -145,38 +145,38 @@ Use the `test_web_resource_pool.py` script to run comprehensive benchmarks:
 
 ```bash
 # Basic benchmarks with default models
-python test_web_resource_pool.py
+python generators/models/test_web_resource_pool.py
 
 # Test with specific models
-python test_web_resource_pool.py --models bert-base-uncased,vit-base-patch16-224,whisper-tiny
+python generators/models/test_web_resource_pool.py --models bert-base-uncased,vit-base-patch16-224,whisper-tiny
 
 # Test concurrent model execution
-python test_web_resource_pool.py --concurrent-models
+python generators/models/test_web_resource_pool.py --concurrent-models
 
 # Compare browser performance
-python test_web_resource_pool.py --compare-browsers
+python generators/models/test_web_resource_pool.py --compare-browsers
 
 # Test precision levels
-python test_web_resource_pool.py --test-quantization
+python generators/models/test_web_resource_pool.py --test-quantization
 
 # Run stress test
-python test_web_resource_pool.py --stress-test --duration 120
+python generators/models/test_web_resource_pool.py --stress-test --duration 120
 ```
 
 ### Advanced Benchmark Options
 
 ```bash
 # Store results in database
-python test_web_resource_pool.py --db-path ./benchmark_db.duckdb
+python generators/models/test_web_resource_pool.py --db-path ./benchmark_db.duckdb
 
 # Test model loading optimizations
-python test_web_resource_pool.py --test-loading-optimizations
+python generators/models/test_web_resource_pool.py --test-loading-optimizations
 
 # Test memory optimization techniques
-python test_web_resource_pool.py --test-memory-optimization
+python generators/models/test_web_resource_pool.py --test-memory-optimization
 
 # Test Firefox audio compute shader optimizations
-python test_web_resource_pool.py --models whisper-tiny --browser firefox --test-compute-shaders
+python generators/models/test_web_resource_pool.py --models whisper-tiny --browser firefox --test-compute-shaders
 ```
 
 ## Precision Modes
@@ -241,13 +241,13 @@ The resource pool implements several techniques for memory optimization:
 python check_browser_webnn_webgpu.py --browser firefox
 
 # Test WebSocket connection
-python test_websocket_bridge.py --port 8765
+python generators/models/test_websocket_bridge.py --port 8765
 
 # Validate resource pool with basic model
-python test_web_resource_pool.py --browser chrome --platform webgpu --basic-test
+python generators/models/test_web_resource_pool.py --browser chrome --platform webgpu --basic-test
 
 # Check database connection
-python test_web_resource_pool.py --check-db --db-path ./benchmark_db.duckdb
+python generators/models/test_web_resource_pool.py --check-db --db-path ./benchmark_db.duckdb
 ```
 
 ## Performance Tips

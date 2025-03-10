@@ -39,7 +39,7 @@ This document summarizes the codebase reorganization completed on March 9, 2025.
 The following documentation files were updated to reflect the new directory structure:
 
 1. **WEB_PLATFORM_INTEGRATION_GUIDE.md**:
-   - Updated references to `merged_test_generator.py` to use `generators/merged_test_generator.py`
+   - Updated references to `generators/test_generators/merged_test_generator.py` to use `generators/generators/test_generators/merged_test_generator.py`
    - Updated references to `fix_test_generator.py` to use `generators/fix_test_generator.py`
    - Updated references to `run_model_benchmarks.py` to use `duckdb_api/run_model_benchmarks.py`
 
@@ -47,7 +47,7 @@ The following documentation files were updated to reflect the new directory stru
    - Updated all references to `run_comprehensive_benchmarks.py` to use `duckdb_api/run_comprehensive_benchmarks.py`
    - Updated all references to `run_benchmark_timing_report.py` to use `duckdb_api/run_benchmark_timing_report.py`
    - Updated all references to `query_benchmark_timings.py` to use `duckdb_api/query_benchmark_timings.py`
-   - Updated all references to `benchmark_db_query.py` to use `duckdb_api/benchmark_db_query.py`
+   - Updated all references to `duckdb_api/core/benchmark_db_query.py` to use `duckdb_api/duckdb_api/core/benchmark_db_query.py`
    - Updated GitHub Actions workflow example
 
 3. **README.md**:
@@ -71,9 +71,9 @@ The following path update patterns were consistently applied across all document
 |----------|----------|
 | `python generators/benchmark_generators/run_model_benchmarks.py` | `python duckdb_api/run_model_benchmarks.py` |
 | `python test/run_comprehensive_benchmarks.py` | `python duckdb_api/run_comprehensive_benchmarks.py` |
-| `python merged_test_generator.py` | `python generators/merged_test_generator.py` |
+| `python generators/test_generators/merged_test_generator.py` | `python generators/generators/test_generators/merged_test_generator.py` |
 | `python fix_test_generator.py` | `python generators/fix_test_generator.py` |
-| `python benchmark_db_query.py` | `python duckdb_api/benchmark_db_query.py` |
+| `python duckdb_api/core/duckdb_api/core/benchmark_db_query.py` | `python duckdb_api/duckdb_api/core/benchmark_db_query.py` |
 | `python run_benchmark_timing_report.py` | `python duckdb_api/run_benchmark_timing_report.py` |
 | `python query_benchmark_timings.py` | `python duckdb_api/query_benchmark_timings.py` |
 | `python test/test_web_platform_optimizations.py` | `python generators/test_web_platform_optimizations.py` |

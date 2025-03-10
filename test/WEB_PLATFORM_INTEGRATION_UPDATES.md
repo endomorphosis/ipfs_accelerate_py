@@ -9,7 +9,7 @@ This file documents the updates made to the WEB_PLATFORM_INTEGRATION_GUIDE.md to
 The following path changes were made to reflect the new directory structure:
 
 ### Python scripts moved to generators/
-- `python merged_test_generator.py` → `python generators/merged_test_generator.py`
+- `python generators/test_generators/merged_test_generator.py` → `python generators/generators/test_generators/merged_test_generator.py`
 - `python fix_test_generator.py` → `python generators/fix_test_generator.py`
 
 ### Python scripts moved to duckdb_api/
@@ -22,10 +22,10 @@ The following commands were updated:
 1. Generator commands:
    ```bash
    # Old
-   python merged_test_generator.py --generate bert --web-platform webnn --real-implementation
+   python generators/test_generators/merged_test_generator.py --generate bert --web-platform webnn --real-implementation
    
    # New
-   python generators/merged_test_generator.py --generate bert --web-platform webnn --real-implementation
+   python generators/generators/test_generators/merged_test_generator.py --generate bert --web-platform webnn --real-implementation
    ```
 
 2. Database-related commands:

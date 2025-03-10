@@ -51,7 +51,7 @@ To simplify testing with web platforms, the `run_web_platform_tests.sh` script s
 
 # Examples
 ./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn
-./run_web_platform_tests.sh python generators/integrated_skillset_generator.py --model bert --hardware webnn,webgpu
+./run_web_platform_tests.sh python generators/generators/skill_generators/integrated_skillset_generator.py --model bert --hardware webnn,webgpu
 ./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webgpu
 ```
 
@@ -114,10 +114,10 @@ The browser automation flags add these environment variables:
 
 ```bash
 # Generate a test for BERT with WebNN support
-./run_web_platform_tests.sh python generators/integrated_skillset_generator.py --model bert --hardware webnn
+./run_web_platform_tests.sh python generators/generators/skill_generators/integrated_skillset_generator.py --model bert --hardware webnn
 
 # Generate tests for vision models with WebGPU support
-./run_web_platform_tests.sh python generators/integrated_skillset_generator.py --model vit --hardware webgpu
+./run_web_platform_tests.sh python generators/generators/skill_generators/integrated_skillset_generator.py --model vit --hardware webgpu
 ```
 
 ### Running Benchmarks
@@ -156,10 +156,10 @@ The browser automation flags add these environment variables:
 If you have inconsistently named implementation types, use the provided fix script:
 
 ```bash
-# Fix implementation types in merged_test_generator.py and all test files
+# Fix implementation types in generators/test_generators/merged_test_generator.py and all test files
 python fix_test_files.py --fix-all
 
-# Fix only the merged_test_generator.py file
+# Fix only the generators/test_generators/merged_test_generator.py file
 python fix_test_files.py --fix-generator
 
 # Fix only test files in a specific directory
@@ -626,7 +626,7 @@ python generators/verify_web_platform_integration.py
 
 This script checks:
 
-1. Whether the fixed_web_platform module is properly imported in merged_test_generator.py
+1. Whether the fixed_web_platform module is properly imported in generators/test_generators/merged_test_generator.py
 2. Whether all required functions (process_for_web, init_webnn, init_webgpu) are available
 3. Whether advanced features like shader compilation and parallel loading are implemented
 4. Whether the template database includes all necessary web platform entries

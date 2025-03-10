@@ -9,12 +9,12 @@ This document summarizes the test coverage for hardware backends and models in t
 The test generation system consists of these key components:
 
 1. **Test Generators**:
-   - `merged_test_generator.py`: Main generator for all model types
-   - `fixed_merged_test_generator.py`: Enhanced generator with improved hardware support
+   - `generators/test_generators/merged_test_generator.py`: Main generator for all model types
+   - `fixed_generators/test_generators/merged_test_generator.py`: Enhanced generator with improved hardware support
    - `comprehensive_template_generator.py`: Creates templates for model families
 
 2. **Hardware Detection**:
-   - `hardware_detection.py`: Detects available hardware platforms
+   - `generators/hardware/hardware_detection.py`: Detects available hardware platforms
    - `test_comprehensive_hardware.py`: Tests hardware detection capabilities
 
 3. **Web Platform Testing**:
@@ -140,7 +140,7 @@ Test coverage:
 The benchmark system is integrated with DuckDB:
 
 - `benchmark_db.duckdb`: Main benchmark database
-- `benchmark_db_query.py`: Query tool for benchmark data
+- `duckdb_api/core/benchmark_db_query.py`: Query tool for benchmark data
 - `benchmark_db_updater.py`: Updates benchmark data
 
 Database schema test coverage:

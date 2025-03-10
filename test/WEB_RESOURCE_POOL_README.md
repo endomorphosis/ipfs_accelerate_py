@@ -20,45 +20,45 @@ The `test_web_resource_pool.py` script provides comprehensive testing capabiliti
 
 ```bash
 # Test specific models
-python test_web_resource_pool.py --models bert,vit,whisper
+python generators/models/test_web_resource_pool.py --models bert,vit,whisper
 
 # Test with custom connection limit
-python test_web_resource_pool.py --models bert,vit --max-connections 6
+python generators/models/test_web_resource_pool.py --models bert,vit --max-connections 6
 ```
 
 ### Advanced Testing Features
 
 ```bash
 # Test concurrent model execution
-python test_web_resource_pool.py --concurrent-models --models bert,vit,whisper
+python generators/models/test_web_resource_pool.py --concurrent-models --models bert,vit,whisper
 
 # Test batch processing with different batch sizes
-python test_web_resource_pool.py --batch-test --models bert
+python generators/models/test_web_resource_pool.py --batch-test --models bert
 
 # Run stress test with multiple models
-python test_web_resource_pool.py --stress-test --models bert,vit,whisper
+python generators/models/test_web_resource_pool.py --stress-test --models bert,vit,whisper
 
 # Test multi-browser support with model placement
-python test_web_resource_pool.py --browser-test --browsers chrome,firefox,edge --models bert,vit,whisper
+python generators/models/test_web_resource_pool.py --browser-test --browsers chrome,firefox,edge --models bert,vit,whisper
 
 # Test memory efficiency through browser resource sharing
-python test_web_resource_pool.py --memory-test --models bert,vit,t5,whisper
+python generators/models/test_web_resource_pool.py --memory-test --models bert,vit,t5,whisper
 ```
 
 ### Browser Comparison Benchmarking
 
 ```bash
 # Run comprehensive browser comparison across multiple models
-python test_web_resource_pool.py --browser-comparison --models bert,vit,whisper --browsers chrome,firefox,edge
+python generators/models/test_web_resource_pool.py --browser-comparison --models bert,vit,whisper --browsers chrome,firefox,edge
 
 # Test a single model with different browsers
-python test_web_resource_pool.py --single-browser-test bert --browsers chrome,firefox,edge
+python generators/models/test_web_resource_pool.py --single-browser-test bert --browsers chrome,firefox,edge
 
 # Run parallel browser benchmarks
-python test_web_resource_pool.py --browser-comparison --models bert,vit,whisper,t5,clip --parallel
+python generators/models/test_web_resource_pool.py --browser-comparison --models bert,vit,whisper,t5,clip --parallel
 
 # Run more iterations for higher confidence
-python test_web_resource_pool.py --browser-comparison --models bert,vit --num-runs 10
+python generators/models/test_web_resource_pool.py --browser-comparison --models bert,vit --num-runs 10
 ```
 
 The browser comparison benchmarks will:
@@ -71,13 +71,13 @@ The browser comparison benchmarks will:
 
 ```bash
 # Run comprehensive quantization tests across models and browsers
-python test_web_resource_pool.py --quantization-test --models bert,vit,whisper --browsers chrome,firefox
+python generators/models/test_web_resource_pool.py --quantization-test --models bert,vit,whisper --browsers chrome,firefox
 
 # Test quantization for a single model
-python test_web_resource_pool.py --single-quant-test bert --browsers chrome 
+python generators/models/test_web_resource_pool.py --single-quant-test bert --browsers chrome 
 
 # Run more iterations for higher confidence
-python test_web_resource_pool.py --quantization-test --models bert --num-runs 5
+python generators/models/test_web_resource_pool.py --quantization-test --models bert --num-runs 5
 ```
 
 The quantization testing framework:
@@ -91,10 +91,10 @@ The quantization testing framework:
 
 ```bash
 # Generate performance dashboard in markdown format
-python test_web_resource_pool.py --perf-dashboard --models bert,vit,whisper
+python generators/models/test_web_resource_pool.py --perf-dashboard --models bert,vit,whisper
 
 # Generate HTML performance dashboard with visualizations
-python test_web_resource_pool.py --perf-dashboard --models bert,vit,whisper --report-format html
+python generators/models/test_web_resource_pool.py --perf-dashboard --models bert,vit,whisper --report-format html
 ```
 
 ## Additional Configuration Options

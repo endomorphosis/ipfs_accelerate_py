@@ -20,7 +20,7 @@ The system consists of the following core components:
 2. `execute_comprehensive_benchmarks.py` - Core benchmark execution module
 3. `benchmark_hardware_models.py` - Hardware-specific benchmark implementation
 4. `benchmark_timing_report.py` - Report generation from benchmark results
-5. `benchmark_db_api.py` - Database interface for storing and retrieving results
+5. `duckdb_api/core/benchmark_db_api.py` - Database interface for storing and retrieving results
 
 ## New Feature: Simplified Benchmark Execution
 

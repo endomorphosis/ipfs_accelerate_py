@@ -544,16 +544,16 @@ The integrated benchmark database provides comprehensive performance tracking:
 ./run_web_platform_tests.sh --model bert --all-optimizations --db-path ./benchmark_db.duckdb
 
 # Generate comprehensive performance report
-python scripts/benchmark_db_query.py --report web_platform --format html --output web_report.html
+python scripts/duckdb_api/core/benchmark_db_query.py --report web_platform --format html --output web_report.html
 
 # Compare ultra-low precision benefits across models
-python scripts/benchmark_db_query.py --report ultra_low_precision --format html --output ulp_report.html
+python scripts/duckdb_api/core/benchmark_db_query.py --report ultra_low_precision --format html --output ulp_report.html
 
 # Generate memory efficiency visualization
 python scripts/benchmark_db_visualizer.py --memory-efficiency --models all --output memory_chart.png
 
 # Compare browser shader compilation times
-python scripts/benchmark_db_query.py --report shader_compilation --format chart --output shader_times.png
+python scripts/duckdb_api/core/benchmark_db_query.py --report shader_compilation --format chart --output shader_times.png
 ```
 
 ## Best Practices
@@ -608,7 +608,7 @@ python scripts/benchmark_db_query.py --report shader_compilation --format chart 
 
 4. **Generate detailed reports after testing**
    ```bash
-   python scripts/benchmark_db_query.py --report web_platform_comprehensive --format html
+   python scripts/duckdb_api/core/benchmark_db_query.py --report web_platform_comprehensive --format html
    ```
 
 ## Real-World Benefits

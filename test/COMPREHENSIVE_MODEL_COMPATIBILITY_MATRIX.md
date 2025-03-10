@@ -107,7 +107,7 @@ The table below shows which models support the advanced quantization methods imp
 To view all models that work well on Qualcomm hardware:
 
 ```bash
-python duckdb_api/core/benchmark_db_query.py --hardware qualcomm --compatibility-level high --format markdown
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --hardware qualcomm --compatibility-level high --format markdown
 ```
 
 ### Filtering by Model Type
@@ -115,7 +115,7 @@ python duckdb_api/core/benchmark_db_query.py --hardware qualcomm --compatibility
 To view all vision models with their compatibility:
 
 ```bash
-python duckdb_api/core/benchmark_db_query.py --model-type vision --format markdown
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model-type vision --format markdown
 ```
 
 ### Generating Performance Comparison
@@ -123,7 +123,7 @@ python duckdb_api/core/benchmark_db_query.py --model-type vision --format markdo
 To compare performance across hardware for a specific model:
 
 ```bash
-python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
 ```
 
 ## Implementation Details

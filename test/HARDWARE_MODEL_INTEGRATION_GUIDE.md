@@ -16,7 +16,7 @@ This guide explains how to use these capabilities in your workflow.
 
 The system consists of three main components:
 
-1. **Hardware Detection** (`hardware_detection.py`): Detects available hardware and capabilities
+1. **Hardware Detection** (`generators/hardware/hardware_detection.py`): Detects available hardware and capabilities
 2. **Model Family Classifier** (`model_family_classifier.py`): Classifies models into families and subfamilies
 3. **Hardware-Model Integration** (`hardware_model_integration.py`): Combines the two for intelligent hardware selection
 
@@ -281,19 +281,19 @@ The project includes a `test_generator_with_resource_pool.py` script that combin
 
 ```bash
 # Generate a hardware-aware test for BERT
-python test_generator_with_resource_pool.py --model bert-base-uncased --output-dir ./skills
+python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --output-dir ./skills
 
 # Generate with debug logging
-python test_generator_with_resource_pool.py --model bert-base-uncased --debug
+python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --debug
 
 # Clear the resource cache before generating
-python test_generator_with_resource_pool.py --model bert-base-uncased --clear-cache
+python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --clear-cache
 
 # Generate with a custom timeout for resource cleanup
-python test_generator_with_resource_pool.py --model bert-base-uncased --timeout 60
+python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --timeout 60
 
 # Force a specific hardware device
-python test_generator_with_resource_pool.py --model bert-base-uncased --device cuda
+python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --device cuda
 ```
 
 ## Classification and Template Output Examples

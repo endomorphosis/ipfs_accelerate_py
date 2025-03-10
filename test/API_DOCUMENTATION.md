@@ -28,7 +28,7 @@ The database API provides a set of functions for interacting with the DuckDB dat
 The database API consists of two main components:
 
 1. **`TestResultsDBHandler`** in `test_ipfs_accelerate.py`: Primary interface for storing test results
-2. **`duckdb_api/core/benchmark_db_query.py`**: Tool for querying and generating reports from the database
+2. **`duckdb_api/core/duckdb_api/core/benchmark_db_query.py`**: Tool for querying and generating reports from the database
 
 ### TestResultsDBHandler
 
@@ -57,9 +57,9 @@ db_handler.store_test_result(test_result)
 report = db_handler.generate_report(format="markdown", output_file="report.md")
 ```
 
-### duckdb_api/core/benchmark_db_query.py
+### duckdb_api/core/duckdb_api/core/benchmark_db_query.py
 
-The `duckdb_api/core/benchmark_db_query.py` script provides a command-line interface and programmatic API for querying the database:
+The `duckdb_api/core/duckdb_api/core/benchmark_db_query.py` script provides a command-line interface and programmatic API for querying the database:
 
 ```python
 from fixed_benchmark_db_query import BenchmarkDBQuery
@@ -306,39 +306,39 @@ The database API can also be accessed through command-line tools:
 
 ```bash
 # Generate a report directly from test_ipfs_accelerate.py
-python test_ipfs_accelerate.py --report --format markdown --output test_report.md
+python generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
 
 # Run tests and store results in the database
-python test_ipfs_accelerate.py --models bert-base-uncased,t5-small
+python generators/models/test_ipfs_accelerate.py --models bert-base-uncased,t5-small
 ```
 
-### duckdb_api/core/benchmark_db_query.py CLI
+### duckdb_api/core/duckdb_api/core/benchmark_db_query.py CLI
 
 ```bash
 # Generate a summary report
-python duckdb_api/core/benchmark_db_query.py --report summary --format markdown --output summary.md
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report summary --format markdown --output summary.md
 
 # Generate a hardware report
-python duckdb_api/core/benchmark_db_query.py --report hardware --format html --output hardware.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report hardware --format html --output hardware.html
 
 # Generate a compatibility matrix
-python duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format markdown --output matrix.md
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format markdown --output matrix.md
 
 # Compare hardware performance for a model
-python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output chart.png
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output chart.png
 
 # Run a custom SQL query
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output results.csv
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output results.csv
 ```
 
-### migrate_json_to_db.py CLI
+### duckdb_api/migration/migrate_json_to_db.py CLI
 
 ```bash
 # Migrate JSON files to the database
-python migrate_json_to_db.py --directories ./benchmark_results ./archived_test_results --report migration_report.md
+python duckdb_api/migration/migrate_json_to_db.py --directories ./benchmark_results ./archived_test_results --report migration_report.md
 
 # Archive and delete JSON files after migration
-python migrate_json_to_db.py --directories ./benchmark_results --archive-dir ./archived_json_files --delete
+python duckdb_api/migration/migrate_json_to_db.py --directories ./benchmark_results --archive-dir ./archived_json_files --delete
 ```
 
 ## Best Practices
@@ -485,7 +485,7 @@ python migrate_json_to_db.py --directories ./benchmark_results --archive-dir ./a
 
 ```bash
 # Check database integrity
-python scripts/benchmark_db_maintenance.py --check-integrity
+python scripts/duckdb_api/core/benchmark_db_maintenance.py --check-integrity
 
 # Output:
 # Checking database integrity for: ./benchmark_db.duckdb
@@ -496,7 +496,7 @@ python scripts/benchmark_db_maintenance.py --check-integrity
 # Database integrity check passed: No issues found
 
 # Optimize database performance
-python scripts/benchmark_db_maintenance.py --optimize-db
+python scripts/duckdb_api/core/benchmark_db_maintenance.py --optimize-db
 
 # Output:
 # Analyzing database: ./benchmark_db.duckdb
@@ -507,7 +507,7 @@ python scripts/benchmark_db_maintenance.py --optimize-db
 # Optimization complete: 11.0% reduction in size
 
 # Generate database statistics
-python scripts/benchmark_db_maintenance.py --generate-stats
+python scripts/duckdb_api/core/benchmark_db_maintenance.py --generate-stats
 
 # Output:
 # Generating statistics for database: ./benchmark_db.duckdb
@@ -572,7 +572,7 @@ generate_report(format='markdown', output_file=None)
 - `output_file`: Path to save the report.
 - Returns: Report content as string.
 
-### duckdb_api/core/benchmark_db_query.py
+### duckdb_api/core/duckdb_api/core/benchmark_db_query.py
 
 #### Constructor
 
@@ -903,7 +903,7 @@ When working with large datasets, follow these tips for optimal performance:
 
 ```bash
 # Run database optimization periodically
-python scripts/benchmark_db_maintenance.py --optimize-db
+python scripts/duckdb_api/core/benchmark_db_maintenance.py --optimize-db
 
 # Output:
 # Analyzing database: ./benchmark_db.duckdb

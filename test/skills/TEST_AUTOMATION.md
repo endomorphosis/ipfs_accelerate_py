@@ -79,29 +79,29 @@ Each test file follows a standardized structure:
 
 ```bash
 # List available models
-python test_hf_MODEL_TYPE.py --list-models
+python generators/models/test_hf_MODEL_TYPE.py --list-models
 
 # Test with default model
-python test_hf_MODEL_TYPE.py
+python generators/models/test_hf_MODEL_TYPE.py
 
 # Test specific model
-python test_hf_MODEL_TYPE.py --model MODEL_ID
+python generators/models/test_hf_MODEL_TYPE.py --model MODEL_ID
 
 # Test with all hardware backends
-python test_hf_MODEL_TYPE.py --all-hardware
+python generators/models/test_hf_MODEL_TYPE.py --all-hardware
 
 # Save results to file
-python test_hf_MODEL_TYPE.py --save
+python generators/models/test_hf_MODEL_TYPE.py --save
 ```
 
 ### Batch Testing
 
 ```bash
 # Test all model types
-python test_all_models.py
+python generators/models/test_all_models.py
 
 # Test specific model families
-python test_all_models.py --models bert,gpt2,t5
+python generators/models/test_all_models.py --models bert,gpt2,t5
 ```
 
 ## Comprehensive Testing Plan
@@ -115,17 +115,17 @@ To fully verify all 300 model types across hardware platforms:
 
 2. **Phase 2: Verify Each Model Type on CPU**
    ```bash
-   python test_all_models.py --cpu-only
+   python generators/models/test_all_models.py --cpu-only
    ```
 
 3. **Phase 3: Test GPU Acceleration**
    ```bash
-   python test_all_models.py --cuda-only
+   python generators/models/test_all_models.py --cuda-only
    ```
 
 4. **Phase 4: Test OpenVINO Acceleration**
    ```bash
-   python test_all_models.py --openvino-only
+   python generators/models/test_all_models.py --openvino-only
    ```
 
 5. **Phase 5: Generate Comprehensive Report**

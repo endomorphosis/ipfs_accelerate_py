@@ -55,7 +55,7 @@ The framework uses a dynamic hardware compatibility matrix to determine optimal 
 The framework implements a robust fallback system when components are missing or hardware is unavailable:
 
 1. **Component-Level Fallbacks**:
-   - When hardware_detection.py is missing → Use basic PyTorch device detection
+   - When generators/hardware/hardware_detection.py is missing → Use basic PyTorch device detection
    - When model_family_classifier.py is missing → Use heuristic classification based on model name
    - When both are missing → Use user-provided device preference or default to CPU
 

@@ -11,7 +11,7 @@ A total of **47 documentation files** have been updated with new file paths. Key
 
 1. **BENCHMARK_TIMING_GUIDE.md**
    - Updated paths from `test/run_comprehensive_benchmark_timing.py` to `duckdb_api/visualization/run_comprehensive_benchmark_timing.py`
-   - Updated paths from `test/scripts/benchmark_db_query.py` to `duckdb_api/core/benchmark_db_query.py`
+   - Updated paths from `test/scripts/duckdb_api/core/benchmark_db_query.py` to `duckdb_api/core/duckdb_api/core/benchmark_db_query.py`
    - Updated paths from `test/scripts/ci_benchmark_timing_report.py` to `duckdb_api/ci/ci_benchmark_timing_report.py`
    - Updated paths from `test/examples/run_benchmark_timing_example.py` to `duckdb_api/examples/run_benchmark_timing_example.py`
 
@@ -23,7 +23,7 @@ A total of **47 documentation files** have been updated with new file paths. Key
    - Updated paths from `test/db_schema/time_series_schema.sql` to `duckdb_api/schema/time_series_schema.sql`
 
 3. **WEB_PLATFORM_INTEGRATION_GUIDE.md**
-   - Updated paths from `test/integrated_skillset_generator.py` to `generators/integrated_skillset_generator.py`
+   - Updated paths from `test/generators/skill_generators/integrated_skillset_generator.py` to `generators/generators/skill_generators/integrated_skillset_generator.py`
    - Updated paths from `test/run_model_benchmarks.py` to `generators/benchmark_generators/run_model_benchmarks.py`
    - Updated paths from `test/web_platform_test_runner.py` to `generators/runners/web/web_platform_test_runner.py`
    - Updated paths from `test/template_inheritance_system.py` to `generators/templates/template_inheritance_system.py`

@@ -21,7 +21,7 @@ This document tracks the status of migrating benchmark and test scripts to use t
 
 1. **IPFS Test Results Migration Tool**: Implemented `migrate_ipfs_test_results.py` for migrating legacy IPFS test results to DuckDB with validation, deduplication, and reporting capabilities
 2. **IPFS Migration Testing Framework**: Created `test_ipfs_migration.py` for testing the migration tool with sample data generation
-3. **Fixed Query Tool**: Implemented `duckdb_api/core/benchmark_db_query.py` with robust error handling, NULL value processing, and comprehensive report generation
+3. **Fixed Query Tool**: Implemented `duckdb_api/core/duckdb_api/core/benchmark_db_query.py` with robust error handling, NULL value processing, and comprehensive report generation
 4. **Simple Report Generator**: Created `generate_simple_report.py` for quick database analysis
 5. **Documentation**: Updated all database-related documentation with latest tools and best practices
 6. **Visualization**: Added chart generation capabilities to the query tool
@@ -49,8 +49,8 @@ The following scripts have been successfully migrated to use the DuckDB database
    - ✅ `web_platform_test_runner.py`: Web platform test runner
 
 4. **Generator Tools**:
-   - ✅ `integrated_skillset_generator.py`: Integrated skillset implementation generator with database templates
-   - ✅ `fixed_merged_test_generator.py`: Merged test generator with database template integration
+   - ✅ `generators/skill_generators/integrated_skillset_generator.py`: Integrated skillset implementation generator with database templates
+   - ✅ `fixed_generators/test_generators/merged_test_generator.py`: Merged test generator with database template integration
    - ✅ `hardware_test_templates/template_database.py`: Template database API with comprehensive template management
 
 5. **Other Benchmarking Tools**:
@@ -62,8 +62,8 @@ The following scripts have been successfully migrated to use the DuckDB database
 
 The following obsolete scripts have been archived as they have been replaced by the new database-integrated tools:
 
-1. ❌ `benchmark_database.py` → Replaced by DuckDB system and `benchmark_db_api.py`
-2. ❌ `benchmark_query.py` → Replaced by `benchmark_db_query.py`
+1. ❌ `benchmark_database.py` → Replaced by DuckDB system and `duckdb_api/core/benchmark_db_api.py`
+2. ❌ `benchmark_query.py` → Replaced by `duckdb_api/core/benchmark_db_query.py`
 3. ❌ `test_model_benchmarks.py` → Replaced by integrated tests
 
 ## Implementation Details
@@ -216,7 +216,7 @@ The following tools are available for working with the benchmark database:
    python migrate_ipfs_test_results.py --input-dirs ./test_results --delete
    ```
 
-2. **Fixed Benchmark DB Query Tool** - `duckdb_api/core/benchmark_db_query.py`
+2. **Fixed Benchmark DB Query Tool** - `duckdb_api/core/duckdb_api/core/benchmark_db_query.py`
    - Robust command-line tool for querying the database
    - Improved error handling and NULL value processing
    - Comprehensive report generation in multiple formats
@@ -225,13 +225,13 @@ The following tools are available for working with the benchmark database:
 
    ```bash
    # Generate a summary report
-   python duckdb_api/core/benchmark_db_query.py --report summary --format markdown --output benchmark_summary.md
+   python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report summary --format markdown --output benchmark_summary.md
    
    # Generate a hardware compatibility matrix
-   python duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format markdown --output compatibility_matrix.md
+   python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format markdown --output compatibility_matrix.md
    
    # Compare hardware performance for a model
-   python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output bert_throughput.png
+   python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output bert_throughput.png
    ```
 
 3. **Simple Report Generator** - `generate_simple_report.py`
@@ -253,7 +253,7 @@ The following tools are available for working with the benchmark database:
    
    ```bash
    # Run all steps: create samples, migrate, validate
-   python test_ipfs_migration.py --all
+   python generators/models/test_ipfs_migration.py --all
    ```
 
 5. **Benchmark DB Converter** - `benchmark_db_converter.py`
@@ -261,7 +261,7 @@ The following tools are available for working with the benchmark database:
    - Consolidates results from multiple sources
    - Validates data during conversion
 
-6. **Benchmark DB Maintenance** - `benchmark_db_maintenance.py`
+6. **Benchmark DB Maintenance** - `duckdb_api/core/benchmark_db_maintenance.py`
    - Database optimization and cleanup
    - Backup and restore functionality
    - Schema validation and repair

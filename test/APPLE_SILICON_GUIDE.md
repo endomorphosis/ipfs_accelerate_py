@@ -110,7 +110,7 @@ For large models on systems with limited memory:
 The MPS support is implemented in several key components:
 
 1. **Template Files**: See `hardware_test_templates/template_llava.py` and others
-2. **Hardware Detection**: MPS detection in `hardware_detection.py`
+2. **Hardware Detection**: MPS detection in `generators/hardware/hardware_detection.py`
 3. **Test Generators**: All generators support MPS platform in generated tests
 
 ## Further Reading

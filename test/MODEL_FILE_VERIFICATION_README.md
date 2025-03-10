@@ -88,19 +88,19 @@ Where `batch_models.json` contains:
 ### Benchmark Integration
 
 ```bash
-python benchmark_model_verification.py --model bert-base-uncased --file-path model.onnx
+python duckdb_api/core/benchmark_model_verification.py --model bert-base-uncased --file-path model.onnx
 ```
 
 ### Multiple Models Benchmark
 
 ```bash
-python benchmark_model_verification.py --models bert-base-uncased t5-small --file-path model.onnx
+python duckdb_api/core/benchmark_model_verification.py --models bert-base-uncased t5-small --file-path model.onnx
 ```
 
 ### From a Model List File
 
 ```bash
-python benchmark_model_verification.py --model-file models.txt
+python duckdb_api/core/benchmark_model_verification.py --model-file models.txt
 ```
 
 Where `models.txt` contains one model ID per line:

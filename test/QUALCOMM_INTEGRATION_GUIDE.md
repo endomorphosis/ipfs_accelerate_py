@@ -28,17 +28,17 @@ To use the Qualcomm AI Engine support, you need:
 
 ```bash
 # Generate a test for bert with Qualcomm support
-python simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
+python generators/test_generators/simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
 
 # Generate a comprehensive test with all hardware platforms including Qualcomm
-python simple_test_generator.py -g bert -p all
+python generators/test_generators/simple_test_generator.py -g bert -p all
 ```
 
 ### Run Tests on Qualcomm Hardware
 
 ```bash
 # Run the test on Qualcomm hardware
-python test_bert_qualcomm.py
+python generators/models/test_bert_qualcomm.py
 
 # Run a specific test method for Qualcomm
 python -m unittest test_hf_bert.TestBert.test_qualcomm
@@ -48,7 +48,7 @@ python -m unittest test_hf_bert.TestBert.test_qualcomm
 
 ```bash
 # Use the automated hardware selector with Qualcomm support
-python automated_hardware_selection.py --model bert --include-qualcomm
+python generators/hardware/automated_hardware_selection.py --model bert --include-qualcomm
 
 # Get hardware recommendations that include Qualcomm devices
 python hardware_selector.py --model-family text --include-qualcomm
@@ -221,19 +221,19 @@ Different model types have unique power consumption patterns:
 
 ```bash
 # Query comprehensive power metrics with model type
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT model_name, model_type, hardware_type, power_consumption_mw, temperature_celsius, energy_efficiency_items_per_joule, battery_impact_percent_per_hour, thermal_throttling_detected FROM power_metrics ORDER BY energy_efficiency_items_per_joule DESC" --format table
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT model_name, model_type, hardware_type, power_consumption_mw, temperature_celsius, energy_efficiency_items_per_joule, battery_impact_percent_per_hour, thermal_throttling_detected FROM power_metrics ORDER BY energy_efficiency_items_per_joule DESC" --format table
 
 # Generate enhanced power efficiency comparison report
-python duckdb_api/core/benchmark_db_query.py --report mobile_power_efficiency --format html --output power_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report mobile_power_efficiency --format html --output power_report.html
 
 # Compare power metrics by model type
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT model_type, AVG(energy_efficiency_items_per_joule) as avg_efficiency, AVG(battery_impact_percent_per_hour) as battery_impact, AVG(temperature_celsius) as avg_temp FROM power_metrics WHERE hardware_type='qualcomm' GROUP BY model_type ORDER BY avg_efficiency DESC" --format chart --output model_type_comparison.png
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT model_type, AVG(energy_efficiency_items_per_joule) as avg_efficiency, AVG(battery_impact_percent_per_hour) as battery_impact, AVG(temperature_celsius) as avg_temp FROM power_metrics WHERE hardware_type='qualcomm' GROUP BY model_type ORDER BY avg_efficiency DESC" --format chart --output model_type_comparison.png
 
 # Analyze thermal throttling patterns
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as tests, SUM(CASE WHEN thermal_throttling_detected=true THEN 1 ELSE 0 END) as throttled_tests, ROUND(SUM(CASE WHEN thermal_throttling_detected=true THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as throttling_pct FROM power_metrics WHERE hardware_type='qualcomm' GROUP BY model_type ORDER BY throttling_pct DESC" --format table
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as tests, SUM(CASE WHEN thermal_throttling_detected=true THEN 1 ELSE 0 END) as throttled_tests, ROUND(SUM(CASE WHEN thermal_throttling_detected=true THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as throttling_pct FROM power_metrics WHERE hardware_type='qualcomm' GROUP BY model_type ORDER BY throttling_pct DESC" --format table
 
 # Estimate battery life for continuous operation
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT model_type, ROUND(AVG(battery_impact_percent_per_hour),1) as battery_pct_per_hour, ROUND(100/AVG(battery_impact_percent_per_hour),1) as hours_to_drain_battery FROM power_metrics WHERE hardware_type='qualcomm' AND battery_impact_percent_per_hour > 0 GROUP BY model_type ORDER BY hours_to_drain_battery DESC" --format html --output battery_life.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT model_type, ROUND(AVG(battery_impact_percent_per_hour),1) as battery_pct_per_hour, ROUND(100/AVG(battery_impact_percent_per_hour),1) as hours_to_drain_battery FROM power_metrics WHERE hardware_type='qualcomm' AND battery_impact_percent_per_hour > 0 GROUP BY model_type ORDER BY hours_to_drain_battery DESC" --format html --output battery_life.html
 ```
 
 ### Advanced Visualization Tools

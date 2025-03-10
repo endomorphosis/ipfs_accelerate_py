@@ -313,7 +313,7 @@ python generators/models/test_ipfs_accelerate.py --models prajjwal1/bert-tiny --
 
 # Generate reports
 python duckdb_api/visualization/generate_compatibility_matrix.py --db-path $BENCHMARK_DB_PATH --format markdown --output compatibility_matrix.md
-python duckdb_api/core/benchmark_db_query.py --db $BENCHMARK_DB_PATH --report performance --format html --output performance_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --db $BENCHMARK_DB_PATH --report performance --format html --output performance_report.html
 
 # Check for regressions
 python duckdb_api/analysis/benchmark_regression_detector.py --db $BENCHMARK_DB_PATH --threshold 0.1

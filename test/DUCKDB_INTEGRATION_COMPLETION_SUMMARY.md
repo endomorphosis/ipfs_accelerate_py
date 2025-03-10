@@ -138,23 +138,23 @@ Reports include:
 ```bash
 # Run tests with database storage
 export BENCHMARK_DB_PATH=./benchmark_db.duckdb
-python test_ipfs_accelerate.py
+python generators/models/test_ipfs_accelerate.py
 
 # Generate a report from the database
-python test_ipfs_accelerate.py --report --format markdown --output test_report.md
+python generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
 ```
 
 ### Advanced Usage
 
 ```bash
 # Run tests with specific models
-python test_ipfs_accelerate.py --models bert-base-uncased,t5-small --db-path ./benchmark_db.duckdb
+python generators/models/test_ipfs_accelerate.py --models bert-base-uncased,t5-small --db-path ./benchmark_db.duckdb
 
 # Generate an HTML report
-python test_ipfs_accelerate.py --report --format html --output test_report.html
+python generators/models/test_ipfs_accelerate.py --report --format html --output test_report.html
 
 # Run tests with Qualcomm endpoints
-python test_ipfs_accelerate.py --qualcomm --db-path ./benchmark_db.duckdb
+python generators/models/test_ipfs_accelerate.py --qualcomm --db-path ./benchmark_db.duckdb
 ```
 
 ## Additional Information

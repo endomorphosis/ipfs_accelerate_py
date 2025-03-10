@@ -136,10 +136,10 @@ export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 ./run_web_platform_tests.sh --model bert
 
 # Query the database for web platform results
-python scripts/benchmark_db_query.py --report web_platform --format html --output web_report.html
+python scripts/duckdb_api/core/benchmark_db_query.py --report web_platform --format html --output web_report.html
 
 # Generate a comparison report for different platforms
-python scripts/benchmark_db_query.py --sql "SELECT * FROM web_platform_results WHERE model_name='bert'" --format html
+python scripts/duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM web_platform_results WHERE model_name='bert'" --format html
 ```
 
 ## March 2025 Optimizations Detail
@@ -287,7 +287,7 @@ The framework uses DuckDB for storing web platform test results with the followi
 
 4. **Generate reports after testing**:
    ```bash
-   python scripts/benchmark_db_query.py --report web_platform --format html --output web_report.html
+   python scripts/duckdb_api/core/benchmark_db_query.py --report web_platform --format html --output web_report.html
    ```
 
 5. **Run cross-platform tests for comparative analysis**:

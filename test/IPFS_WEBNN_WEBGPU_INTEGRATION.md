@@ -137,13 +137,13 @@ For optimal performance, we recommend:
 A simple test script is provided to verify the integration:
 
 ```bash
-python test_ipfs_accelerate_webnn_webgpu.py
+python generators/models/test_ipfs_accelerate_webnn_webgpu.py
 ```
 
 For comprehensive testing with real browser automation:
 
 ```bash
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --platform webgpu --model whisper-tiny --optimize-audio
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --platform webgpu --model whisper-tiny --optimize-audio
 ```
 
 ## Technical Details

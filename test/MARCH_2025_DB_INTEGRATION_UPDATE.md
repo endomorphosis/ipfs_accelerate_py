@@ -10,7 +10,7 @@ This update completes the DuckDB integration for the IPFS Accelerate Python Fram
 
 ## Key Updates
 
-1. **Fixed Database Query Tool**: Created a robust `duckdb_api/core/benchmark_db_query.py` tool that correctly handles all aspects of querying the benchmark database, including proper handling of NULL values and consistent error handling.
+1. **Fixed Database Query Tool**: Created a robust `duckdb_api/core/duckdb_api/core/benchmark_db_query.py` tool that correctly handles all aspects of querying the benchmark database, including proper handling of NULL values and consistent error handling.
 
 2. **Comprehensive Report Generation**: Added support for generating various types of reports:
    - Summary Report: Overview of models, hardware platforms, and benchmark results
@@ -55,20 +55,20 @@ Analysis shows that:
 export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 
 # Generate a summary report
-python duckdb_api/core/benchmark_db_query.py --report summary --format markdown --output benchmark_summary.md
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report summary --format markdown --output benchmark_summary.md
 
 # Generate a hardware compatibility matrix
-python duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format markdown --output compatibility_matrix.md
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --compatibility-matrix --format markdown --output compatibility_matrix.md
 
 # Compare hardware performance for a model
-python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output bert_throughput.png
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output bert_throughput.png
 ```
 
 See `BENCHMARK_DB_QUERY_GUIDE.md` for complete documentation.
 
 ## Issues Addressed
 
-1. **Indentation Errors**: Fixed indentation errors in the original `benchmark_db_query.py` script.
+1. **Indentation Errors**: Fixed indentation errors in the original `duckdb_api/core/benchmark_db_query.py` script.
 2. **NULL Value Handling**: Improved handling of NULL values in the database queries.
 3. **Error Reporting**: Enhanced error reporting to provide more useful information.
 4. **Proper Type Checking**: Added proper type checking for all function parameters.
@@ -84,6 +84,6 @@ See `BENCHMARK_DB_QUERY_GUIDE.md` for complete documentation.
 
 ## Conclusion
 
-The DuckDB integration is now working successfully, providing a powerful system for benchmarking and analyzing performance across different hardware platforms and models. The fixed database query tool (`duckdb_api/core/benchmark_db_query.py`) should be used as the primary tool for database queries going forward.
+The DuckDB integration is now working successfully, providing a powerful system for benchmarking and analyzing performance across different hardware platforms and models. The fixed database query tool (`duckdb_api/core/duckdb_api/core/benchmark_db_query.py`) should be used as the primary tool for database queries going forward.
 
 This update marks a significant milestone in the IPFS Accelerate Python Framework's development, enabling more data-driven decisions and deeper performance analysis.

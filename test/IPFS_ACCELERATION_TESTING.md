@@ -29,37 +29,37 @@ The framework provides:
 
 ```bash
 # Run tests with default models (small embedding models)
-python test_ipfs_accelerate.py
+python generators/models/test_ipfs_accelerate.py
 
 # Run with specific models
-python test_ipfs_accelerate.py --models "BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny"
+python generators/models/test_ipfs_accelerate.py --models "BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny"
 
 # Test with specific hardware platforms (include Qualcomm)
-python test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm
 
 # Test with WebNN acceleration
-python test_ipfs_accelerate.py --models "bert-base-uncased" --webnn
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --webnn
 
 # Test with WebGPU acceleration
-python test_ipfs_accelerate.py --models "bert-base-uncased" --webgpu
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --webgpu
 
 # Test with P2P network optimization (New!)
-python test_ipfs_accelerate.py --models "bert-base-uncased" --p2p-optimization
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --p2p-optimization
 
 # Test with all platform types
-python test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm --webnn --webgpu --p2p-optimization
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm --webnn --webgpu --p2p-optimization
 
 # Specify custom endpoint types
-python test_ipfs_accelerate.py --models "bert-base-uncased" --endpoints "cuda:0,openvino:0,cpu:0,webnn:0,webgpu:0"
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --endpoints "cuda:0,openvino:0,cpu:0,webnn:0,webgpu:0"
 
 # Force database storage of results (overrides DEPRECATE_JSON_OUTPUT=0)
-python test_ipfs_accelerate.py --models "bert-base-uncased" --store-in-db
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --store-in-db
 
 # Store results ONLY in database (no JSON files)
-python test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
 
 # Specify custom database path
-python test_ipfs_accelerate.py --models "bert-base-uncased" --db-path ./custom_benchmark.duckdb
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --db-path ./custom_benchmark.duckdb
 ```
 
 ### Generating Reports
@@ -71,7 +71,7 @@ The framework supports four types of reports:
 Provides an overview of all test results, including hardware compatibility, model family information, and performance metrics.
 
 ```bash
-python test_ipfs_accelerate.py --report --format html --output test_report.html
+python generators/models/test_ipfs_accelerate.py --report --format html --output test_report.html
 ```
 
 #### 2. IPFS Acceleration Report
@@ -79,7 +79,7 @@ python test_ipfs_accelerate.py --report --format html --output test_report.html
 Focuses specifically on IPFS acceleration results, with detailed information about acceleration types, success rates, and execution times.
 
 ```bash
-python test_ipfs_accelerate.py --ipfs-acceleration-report --format html --output accel_report.html
+python generators/models/test_ipfs_accelerate.py --ipfs-acceleration-report --format html --output accel_report.html
 ```
 
 #### 3. Acceleration Comparison Report
@@ -88,10 +88,10 @@ Provides interactive visualizations comparing different hardware acceleration me
 
 ```bash
 # Compare all acceleration types across all models
-python test_ipfs_accelerate.py --comparison-report --format html
+python generators/models/test_ipfs_accelerate.py --comparison-report --format html
 
 # Compare acceleration for a specific model
-python test_ipfs_accelerate.py --comparison-report --model "bert-base-uncased" --format html
+python generators/models/test_ipfs_accelerate.py --comparison-report --model "bert-base-uncased" --format html
 ```
 
 #### 4. WebGPU Analysis Report (NEW!)
@@ -100,16 +100,16 @@ Provides detailed analysis of WebGPU performance characteristics, shader compila
 
 ```bash
 # Generate WebGPU analysis report for all browsers
-python test_ipfs_accelerate.py --webgpu-analysis --format html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --format html
 
 # Generate WebGPU analysis for a specific browser
-python test_ipfs_accelerate.py --webgpu-analysis --browser firefox --format html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --browser firefox --format html
 
 # Include shader compilation metrics in the analysis
-python test_ipfs_accelerate.py --webgpu-analysis --shader-metrics --format html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --shader-metrics --format html
 
 # Analyze compute shader optimizations
-python test_ipfs_accelerate.py --webgpu-analysis --compute-shader-optimization --format html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --compute-shader-optimization --format html
 ```
 
 ## Report Features
@@ -186,28 +186,28 @@ For a comprehensive testing workflow, follow these steps:
 
 ```bash
 # Test with CPU, CUDA, OpenVINO, WebNN, WebGPU and Qualcomm
-python test_ipfs_accelerate.py --models "bert-base-uncased,prajjwal1/bert-tiny" --qualcomm --webnn --webgpu --db-only
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased,prajjwal1/bert-tiny" --qualcomm --webnn --webgpu --db-only
 ```
 
 2. **Generate an acceleration comparison report**:
 
 ```bash
 # Generate HTML report with interactive visualizations
-python test_ipfs_accelerate.py --comparison-report --format html --output acceleration_comparison.html
+python generators/models/test_ipfs_accelerate.py --comparison-report --format html --output acceleration_comparison.html
 ```
 
 3. **Analyze model-specific performance**:
 
 ```bash
 # Generate comparison for a specific model
-python test_ipfs_accelerate.py --comparison-report --model "bert-base-uncased" --format html --output bert_acceleration.html
+python generators/models/test_ipfs_accelerate.py --comparison-report --model "bert-base-uncased" --format html --output bert_acceleration.html
 ```
 
 4. **Analyze WebGPU performance across browsers**:
 
 ```bash
 # Generate WebGPU-specific analysis report
-python test_ipfs_accelerate.py --webgpu-analysis --browser firefox --shader-metrics --format html --output webgpu_analysis.html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --browser firefox --shader-metrics --format html --output webgpu_analysis.html
 ```
 
 5. **Make data-driven decisions** based on the reports:
@@ -224,28 +224,28 @@ The framework now supports advanced P2P network optimization for content distrib
 
 ```bash
 # Enable P2P network optimization
-python test_ipfs_accelerate.py --models "bert-base-uncased" --p2p-optimization
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --p2p-optimization
 
 # Test P2P optimization with specific replication factor
-python test_ipfs_accelerate.py --models "bert-base-uncased" --p2p-optimization --replicas 5
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --p2p-optimization --replicas 5
 
 # Generate P2P network analytics report
-python test_ipfs_accelerate.py --p2p-network-report --format html --output p2p_report.html
+python generators/models/test_ipfs_accelerate.py --p2p-network-report --format html --output p2p_report.html
 
 # Perform detailed network topology analysis
-python test_ipfs_accelerate.py --p2p-network-analysis --format html
+python generators/models/test_ipfs_accelerate.py --p2p-network-analysis --format html
 
 # Run comprehensive P2P optimization test
-python test_p2p_optimization.py
+python generators/models/test_p2p_optimization.py
 
 # Test content placement optimization strategies
-python test_ipfs_accelerate.py --p2p-optimization --content-placement-test
+python generators/models/test_ipfs_accelerate.py --p2p-optimization --content-placement-test
 
 # Analyze P2P retrieval performance
-python test_ipfs_accelerate.py --p2p-optimization --retrieval-performance-test
+python generators/models/test_ipfs_accelerate.py --p2p-optimization --retrieval-performance-test
 
 # Run P2P optimization with custom peer count
-python test_ipfs_accelerate.py --p2p-optimization --peer-count 20
+python generators/models/test_ipfs_accelerate.py --p2p-optimization --peer-count 20
 ```
 
 ### WebGPU Acceleration Testing
@@ -254,25 +254,25 @@ The framework supports testing WebGPU acceleration capabilities:
 
 ```bash
 # Test with WebGPU acceleration
-python test_ipfs_accelerate.py --models "bert-base-uncased" --webgpu
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --webgpu
 
 # Test WebGPU with shader metrics monitoring
-python test_ipfs_accelerate.py --models "bert-base-uncased" --webgpu --shader-metrics
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --webgpu --shader-metrics
 
 # Include WebGPU in comparison reports
-python test_ipfs_accelerate.py --comparison-report --format html
+python generators/models/test_ipfs_accelerate.py --comparison-report --format html
 
 # Generate detailed WebGPU performance analysis report
-python test_ipfs_accelerate.py --webgpu-analysis --format html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --format html
 
 # Analyze WebGPU performance for a specific browser
-python test_ipfs_accelerate.py --webgpu-analysis --browser firefox --format html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --browser firefox --format html
 
 # Analyze shader compilation metrics in WebGPU
-python test_ipfs_accelerate.py --webgpu-analysis --shader-metrics --format html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --shader-metrics --format html
 
 # Analyze compute shader optimizations (best for audio models)
-python test_ipfs_accelerate.py --webgpu-analysis --compute-shader-optimization --browser firefox --format html
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --compute-shader-optimization --browser firefox --format html
 ```
 
 ### WebNN Acceleration Testing
@@ -281,10 +281,10 @@ The framework supports testing WebNN acceleration capabilities:
 
 ```bash
 # Test with WebNN acceleration
-python test_ipfs_accelerate.py --models "bert-base-uncased" --webnn
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --webnn
 
 # Include WebNN in comparison reports
-python test_ipfs_accelerate.py --comparison-report --format html
+python generators/models/test_ipfs_accelerate.py --comparison-report --format html
 ```
 
 ### Qualcomm AI Engine Testing
@@ -293,10 +293,10 @@ For testing mobile acceleration with Qualcomm AI Engine:
 
 ```bash
 # Test with Qualcomm acceleration
-python test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm
 
 # Include power metrics for mobile devices
-python test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm --db-only
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm --db-only
 ```
 
 ### Real-Time Database Integration
@@ -305,13 +305,13 @@ Test results are now stored directly in the database as they are generated:
 
 ```bash
 # Store results only in database (no JSON files)
-python test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
 
 # Use custom database path
-python test_ipfs_accelerate.py --models "bert-base-uncased" --db-path ./custom.duckdb --db-only
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --db-path ./custom.duckdb --db-only
 
 # Auto-generate reports immediately after test completion
-python test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
 ```
 
 ### Enhanced Visualization
@@ -363,13 +363,13 @@ If you encounter database connection issues:
 
 ```bash
 # Specify a custom database path
-python test_ipfs_accelerate.py --db-path ./my_benchmark.duckdb --comparison-report
+python generators/models/test_ipfs_accelerate.py --db-path ./my_benchmark.duckdb --comparison-report
 
 # Check database availability and schema
-python scripts/benchmark_db_maintenance.py --check-integrity --db-path ./benchmark_db.duckdb
+python scripts/duckdb_api/core/benchmark_db_maintenance.py --check-integrity --db-path ./benchmark_db.duckdb
 
 # Fix database schema issues
-python scripts/benchmark_db_maintenance.py --fix-schema --db-path ./benchmark_db.duckdb
+python scripts/duckdb_api/core/benchmark_db_maintenance.py --fix-schema --db-path ./benchmark_db.duckdb
 
 # Check database permissions
 ls -la ./benchmark_db.duckdb
@@ -382,13 +382,13 @@ If you encounter issues with WebGPU or WebNN testing:
 
 ```bash
 # Check browser availability for WebGPU
-python test_ipfs_accelerate.py --webgpu-analysis --browser-check
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --browser-check
 
 # Test with a specific browser
-python test_ipfs_accelerate.py --models "bert-base-uncased" --webgpu --browser firefox
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --webgpu --browser firefox
 
 # Check shader compatibility
-python test_ipfs_accelerate.py --webgpu-analysis --shader-compatibility-check
+python generators/models/test_ipfs_accelerate.py --webgpu-analysis --shader-compatibility-check
 ```
 
 ### Missing Hardware Support
@@ -397,13 +397,13 @@ If hardware acceleration is not detected:
 
 ```bash
 # Check available hardware with the hardware detection tool
-python hardware_detection.py --verbose
+python generators/hardware/hardware_detection.py --verbose
 
 # Run tests with only available hardware
-python test_ipfs_accelerate.py --models "bert-base-uncased" --endpoints "cpu:0"
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --endpoints "cpu:0"
 
 # Force testing with specific hardware (even if not detected)
-python test_ipfs_accelerate.py --models "bert-base-uncased" --force-hardware webgpu
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --force-hardware webgpu
 ```
 
 ### Report Generation Failures
@@ -412,16 +412,16 @@ If report generation fails:
 
 ```bash
 # Verify database connectivity
-python test_ipfs_accelerate.py --db-path ./benchmark_db.duckdb --report --format json
+python generators/models/test_ipfs_accelerate.py --db-path ./benchmark_db.duckdb --report --format json
 
 # Check database schema and tables
-python scripts/benchmark_db_maintenance.py --check-schema
+python scripts/duckdb_api/core/benchmark_db_maintenance.py --check-schema
 
 # Generate report with debug information
-python test_ipfs_accelerate.py --comparison-report --format html --debug
+python generators/models/test_ipfs_accelerate.py --comparison-report --format html --debug
 
 # Try a simpler report format first
-python test_ipfs_accelerate.py --report --format markdown
+python generators/models/test_ipfs_accelerate.py --report --format markdown
 ```
 
 ### Real-Time Database Storage Issues
@@ -433,10 +433,10 @@ If you encounter issues with real-time database storage:
 python scripts/benchmark_db_test.py --write-test
 
 # Fall back to JSON output if needed
-python test_ipfs_accelerate.py --models "bert-base-uncased" --no-db
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --no-db
 
 # Use alternative database
-python test_ipfs_accelerate.py --models "bert-base-uncased" --db-path ./alternative.duckdb
+python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --db-path ./alternative.duckdb
 ```
 
 ## P2P Network Optimization Features
@@ -482,7 +482,7 @@ The `test_p2p_optimization.py` script provides a comprehensive test of P2P netwo
 
 ```bash
 # Run the complete P2P optimization test suite
-python test_p2p_optimization.py
+python generators/models/test_p2p_optimization.py
 
 # View generated P2P optimization report
 cat p2p_optimization_report.json

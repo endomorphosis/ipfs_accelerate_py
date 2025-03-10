@@ -40,7 +40,7 @@ The Performance Dashboard provides interactive visualization of performance metr
 
 1. **Data Collection System** - Gathers performance metrics
    - Status: ✅ Completed (100%)
-   - Implementation: `BenchmarkDataCollector` class in `benchmark_db_api.py`
+   - Implementation: `BenchmarkDataCollector` class in `duckdb_api/core/benchmark_db_api.py`
    - Features:
      - Standardized metric collection
      - Browser capability detection
@@ -50,7 +50,7 @@ The Performance Dashboard provides interactive visualization of performance metr
 
 2. **Benchmark Storage** - Stores performance data
    - Status: 🔄 In Progress (55%)
-   - Implementation: `BenchmarkDatabase` class in `benchmark_db_api.py`
+   - Implementation: `BenchmarkDatabase` class in `duckdb_api/core/benchmark_db_api.py`
    - Features:
      - DuckDB/Parquet storage
      - Schema versioning
@@ -60,7 +60,7 @@ The Performance Dashboard provides interactive visualization of performance metr
 
 3. **Analysis Engine** - Analyzes performance data
    - Status: 🔄 In Progress (45%)
-   - Implementation: `PerformanceAnalyzer` class in `benchmark_db_api.py`
+   - Implementation: `PerformanceAnalyzer` class in `duckdb_api/core/benchmark_db_api.py`
    - Features:
      - Statistical analysis
      - Trend detection
@@ -82,7 +82,7 @@ The Performance Dashboard provides interactive visualization of performance metr
 
 1. **Historical Trends** - Analyzes performance over time
    - Status: 🔄 In Progress (35%)
-   - Implementation: `HistoricalTrendAnalyzer` class in `benchmark_db_api.py`
+   - Implementation: `HistoricalTrendAnalyzer` class in `duckdb_api/core/benchmark_db_api.py`
    - Features:
      - Time-series visualization
      - Trend detection
@@ -92,7 +92,7 @@ The Performance Dashboard provides interactive visualization of performance metr
 
 2. **Regression Detection** - Identifies performance regressions
    - Status: 🔄 In Progress (25%)
-   - Implementation: `RegressionDetector` class in `benchmark_db_api.py`
+   - Implementation: `RegressionDetector` class in `duckdb_api/core/benchmark_db_api.py`
    - Features:
      - Automatic regression detection
      - Statistical significance testing
@@ -102,7 +102,7 @@ The Performance Dashboard provides interactive visualization of performance metr
 
 3. **Feature Analysis** - Analyzes impact of features
    - Status: ✅ Completed (100%)
-   - Implementation: `FeatureImpactAnalyzer` class in `benchmark_db_api.py`
+   - Implementation: `FeatureImpactAnalyzer` class in `duckdb_api/core/benchmark_db_api.py`
    - Features:
      - A/B testing
      - Feature isolation
@@ -112,7 +112,7 @@ The Performance Dashboard provides interactive visualization of performance metr
 
 4. **Hardware Comparison** - Compares performance across hardware
    - Status: 🔄 In Progress (60%)
-   - Implementation: `HardwareComparisonAnalyzer` class in `benchmark_db_api.py`
+   - Implementation: `HardwareComparisonAnalyzer` class in `duckdb_api/core/benchmark_db_api.py`
    - Features:
      - Cross-hardware benchmarking
      - Performance scaling analysis
@@ -154,7 +154,7 @@ The Performance Dashboard provides interactive visualization of performance metr
 
 4. **Configuration Optimizer** - Suggests optimal configurations
    - Status: 🔄 In Progress (20%)
-   - Implementation: `ConfigurationOptimizer` class in `benchmark_db_api.py`
+   - Implementation: `ConfigurationOptimizer` class in `duckdb_api/core/benchmark_db_api.py`
    - Features:
      - Configuration recommendation
      - Performance prediction

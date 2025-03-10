@@ -43,7 +43,7 @@ This implementation allows tests to be generated for all 13 key model families w
      - `__init__.py`: Exports the main functions
      - `web_platform_handler.py`: Contains the main implementation
 
-2. **Integration with merged_test_generator.py**
+2. **Integration with generators/test_generators/merged_test_generator.py**
    - Imports the fixed_web_platform module
    - Uses enhanced WebNN and WebGPU initializers
    - Supports platform-specific test generation
@@ -102,27 +102,27 @@ Generate tests with web platform support using:
 
 ```bash
 # Generate a test for BERT with WebNN platform
-python merged_test_generator.py --generate bert --platform webnn
+python generators/test_generators/merged_test_generator.py --generate bert --platform webnn
 
 # Generate a test for ViT with WebGPU platform 
-python merged_test_generator.py --generate vit --platform webgpu
+python generators/test_generators/merged_test_generator.py --generate vit --platform webgpu
 
 # Specify the WebNN implementation mode
-python merged_test_generator.py --generate bert --platform webnn --webnn-mode simulation
+python generators/test_generators/merged_test_generator.py --generate bert --platform webnn --webnn-mode simulation
 
 # Generate for specific browsers with optimizations
-python merged_test_generator.py --generate bert --platform webgpu --firefox  # Firefox optimizations
-python merged_test_generator.py --generate bert --platform webgpu --safari   # Safari Metal API integration
+python generators/test_generators/merged_test_generator.py --generate bert --platform webgpu --firefox  # Firefox optimizations
+python generators/test_generators/merged_test_generator.py --generate bert --platform webgpu --safari   # Safari Metal API integration
 
 # Generate for all platforms
-python merged_test_generator.py --generate bert --platform all
+python generators/test_generators/merged_test_generator.py --generate bert --platform all
 ```
 
 ### Running Web Platform Tests
 
 ```bash
 # Run a basic integration test to verify functionality
-python test_model_integration.py
+python generators/models/test_model_integration.py
 
 # Run tests with database integration
 python run_web_platform_tests_with_db.py --models bert t5 vit --small-models
@@ -131,7 +131,7 @@ python run_web_platform_tests_with_db.py --models bert t5 vit --small-models
 python run_web_platform_tests_with_db.py --all-models --run-webgpu
 
 # Run browser tests for specific models
-python web_platform_test_runner.py --model bert --platform webnn --browser edge
+python fixed_web_platform/web_platform_test_runner.py --model bert --platform webnn --browser edge
 ```
 
 ### Environment Variables
@@ -207,7 +207,7 @@ This script checks:
 For a simple test of the web platform handlers:
 
 ```bash
-python test_model_integration.py
+python generators/models/test_model_integration.py
 ```
 
 This script tests:
@@ -221,37 +221,37 @@ For real browser testing with WebNN and WebGPU:
 
 ```bash
 # Run browser tests for key models
-python web_platform_test_runner.py --model bert --platform webnn --browser edge
-python web_platform_test_runner.py --model vit --platform webgpu --browser chrome
+python fixed_web_platform/web_platform_test_runner.py --model bert --platform webnn --browser edge
+python fixed_web_platform/web_platform_test_runner.py --model vit --platform webgpu --browser chrome
 
 # Run with compute shader optimizations
-python web_platform_test_runner.py --model xclip --platform webgpu --compute-shaders
-python web_platform_test_runner.py --model whisper --platform webgpu --compute-shaders
+python fixed_web_platform/web_platform_test_runner.py --model xclip --platform webgpu --compute-shaders
+python fixed_web_platform/web_platform_test_runner.py --model whisper --platform webgpu --compute-shaders
 
 # Run with transformer-specific compute shader optimizations
-python web_platform_test_runner.py --model bert --platform webgpu --transformer-compute
-python web_platform_test_runner.py --model t5 --platform webgpu --transformer-compute
-python web_platform_test_runner.py --model llama --platform webgpu --transformer-compute --all-optimizations
+python fixed_web_platform/web_platform_test_runner.py --model bert --platform webgpu --transformer-compute
+python fixed_web_platform/web_platform_test_runner.py --model t5 --platform webgpu --transformer-compute
+python fixed_web_platform/web_platform_test_runner.py --model llama --platform webgpu --transformer-compute --all-optimizations
 
 # Run with video-specific compute shader optimizations
-python web_platform_test_runner.py --model xclip --platform webgpu --video-compute
+python fixed_web_platform/web_platform_test_runner.py --model xclip --platform webgpu --video-compute
 
 # Run with shader precompilation and parallel loading
-python web_platform_test_runner.py --model vit --platform webgpu --shader-precompile --parallel-loading
+python fixed_web_platform/web_platform_test_runner.py --model vit --platform webgpu --shader-precompile --parallel-loading
 
 # Run with headless mode for CI/CD environments
-python web_platform_test_runner.py --model bert --platform webnn --browser edge --headless
+python fixed_web_platform/web_platform_test_runner.py --model bert --platform webnn --browser edge --headless
 
 # Run WebGPU tests on Firefox with audio optimizations
-python web_platform_test_runner.py --model vit --platform webgpu --browser firefox
-python web_platform_test_runner.py --model whisper --platform webgpu --browser firefox --compute-shaders
+python fixed_web_platform/web_platform_test_runner.py --model vit --platform webgpu --browser firefox
+python fixed_web_platform/web_platform_test_runner.py --model whisper --platform webgpu --browser firefox --compute-shaders
 
 # Run WebGPU tests on Safari with Metal API integration
-python web_platform_test_runner.py --model bert --platform webgpu --browser safari --enable-metal-api
-python web_platform_test_runner.py --model vit --platform webgpu --browser safari --enable-metal-api
+python fixed_web_platform/web_platform_test_runner.py --model bert --platform webgpu --browser safari --enable-metal-api
+python fixed_web_platform/web_platform_test_runner.py --model vit --platform webgpu --browser safari --enable-metal-api
 
 # Run with all optimizations enabled
-python web_platform_test_runner.py --model llama --platform webgpu --all-optimizations
+python fixed_web_platform/web_platform_test_runner.py --model llama --platform webgpu --all-optimizations
 ```
 
 Browser requirements:
@@ -273,18 +273,18 @@ export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 python run_web_platform_tests_with_db.py --models bert t5 vit --small-models
 
 # Run web platform test runner with database storage
-python web_platform_test_runner.py --model bert --platform webnn
+python fixed_web_platform/web_platform_test_runner.py --model bert --platform webnn
 
 # Generate web platform reports from the database
-python scripts/benchmark_db_query.py --report web_platform --format html --output web_platform_report.html
-python scripts/benchmark_db_query.py --report webgpu --format html --output webgpu_features_report.html
+python scripts/duckdb_api/core/benchmark_db_query.py --report web_platform --format html --output web_platform_report.html
+python scripts/duckdb_api/core/benchmark_db_query.py --report webgpu --format html --output webgpu_features_report.html
 
 # Cross-platform comparison query (SQL)
-python scripts/benchmark_db_query.py --sql "SELECT m.model_name, wp.platform, AVG(wp.inference_time_ms) FROM web_platform_results wp JOIN models m ON wp.model_id = m.model_id GROUP BY m.model_name, wp.platform"
+python scripts/duckdb_api/core/benchmark_db_query.py --sql "SELECT m.model_name, wp.platform, AVG(wp.inference_time_ms) FROM web_platform_results wp JOIN models m ON wp.model_id = m.model_id GROUP BY m.model_name, wp.platform"
 
 # Disable JSON output (database only)
 export DEPRECATE_JSON_OUTPUT=1
-python web_platform_test_runner.py --model vit --platform webgpu
+python fixed_web_platform/web_platform_test_runner.py --model vit --platform webgpu
 ```
 
 #### Database Schema
@@ -510,7 +510,7 @@ python -c "from fixed_web_platform import process_for_web; print('Module importe
 python verify_web_platform_integration.py
 
 # Test with explicit environment variables
-WEBNN_ENABLED=1 WEBNN_SIMULATION=1 python test_model_integration.py
+WEBNN_ENABLED=1 WEBNN_SIMULATION=1 python generators/models/test_model_integration.py
 ```
 
 ## Recent and Future Enhancements

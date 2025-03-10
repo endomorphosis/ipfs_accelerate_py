@@ -137,7 +137,7 @@ The migration of files from the `test/` directory to the new dedicated directori
 ### Priority Files to Migrate
 1. Key generator files:
    - test_vit_from_template.py
-   - fixed_merged_test_generator.py
+   - fixed_generators/test_generators/merged_test_generator.py
    - minimal_test_generator.py
    - improved_template_generator.py
 
@@ -145,7 +145,7 @@ The migration of files from the `test/` directory to the new dedicated directori
    - benchmark_database.py
    - template_database.py
    - benchmark_db_api_client.py
-   - duckdb_api/core/benchmark_db_query.py
+   - duckdb_api/core/duckdb_api/core/benchmark_db_query.py
 
 ## Migration Helper
 

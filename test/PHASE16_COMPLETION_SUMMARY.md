@@ -25,7 +25,7 @@ This document summarizes the completed work, key features, and benefits of these
 - Implemented CLI interface for database operations
 
 ✅ **Migration Tools**:
-- Created `migrate_json_to_db.py` for automatic JSON to DuckDB migration
+- Created `duckdb_api/migration/migrate_json_to_db.py` for automatic JSON to DuckDB migration
 - Added validation, deduplication, and archiving capabilities
 - Implemented reporting system for migration tracking
 

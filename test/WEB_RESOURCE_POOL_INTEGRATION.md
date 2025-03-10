@@ -83,32 +83,32 @@ The following scripts provide comprehensive testing and benchmarking for the res
 
 ```bash
 # Test a model with WebGPU acceleration and real hardware validation
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --model bert-base-uncased --platform webgpu --browser chrome
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model bert-base-uncased --platform webgpu --browser chrome
 
 # Use Firefox with audio optimizations for Whisper models
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --model whisper-tiny --browser firefox --optimize-audio
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model whisper-tiny --browser firefox --optimize-audio
 
 # Test Edge browser with WebNN support
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --model bert-base-uncased --platform webnn --browser edge
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model bert-base-uncased --platform webnn --browser edge
 
 # Run comprehensive tests across all browsers and platforms
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
 ```
 
 #### Advanced Resource Pool Benchmarking
 
 ```bash
 # Benchmark resource pool with WebGPU acceleration
-python benchmark_webnn_webgpu_resource_pool.py --model bert-base-uncased --platform webgpu
+python duckdb_api/core/benchmark_webnn_webgpu_resource_pool.py --model bert-base-uncased --platform webgpu
 
 # Test concurrent model execution with resource pool
-python benchmark_webnn_webgpu_resource_pool.py --concurrent-models 3 --models bert-base-uncased,whisper-tiny,vit-base
+python duckdb_api/core/benchmark_webnn_webgpu_resource_pool.py --concurrent-models 3 --models bert-base-uncased,whisper-tiny,vit-base
 
 # Test Firefox audio optimizations
-python benchmark_webnn_webgpu_resource_pool.py --browser firefox --model whisper-tiny --optimize-audio
+python duckdb_api/core/benchmark_webnn_webgpu_resource_pool.py --browser firefox --model whisper-tiny --optimize-audio
 
 # Run comprehensive benchmarks with database integration
-python benchmark_webnn_webgpu_resource_pool.py --comprehensive --db-path ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_webnn_webgpu_resource_pool.py --comprehensive --db-path ./benchmark_db.duckdb
 ```
 
 ## Key Features

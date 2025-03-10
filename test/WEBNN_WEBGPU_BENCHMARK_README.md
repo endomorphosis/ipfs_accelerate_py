@@ -43,19 +43,19 @@ The easiest way to run benchmarks is through the `benchmark_real_webnn_webgpu.py
 
 ```bash
 # Run WebGPU benchmarks with Chrome
-python benchmark_real_webnn_webgpu.py --webgpu --chrome
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --webgpu --chrome
 
 # Run WebNN benchmarks with Edge (best for WebNN)
-python benchmark_real_webnn_webgpu.py --webnn --edge
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --webnn --edge
 
 # Run audio model benchmarks with Firefox (best for audio with compute shaders)
-python benchmark_real_webnn_webgpu.py --audio --firefox
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --audio --firefox
 
 # Run quantized model benchmarks
-python benchmark_real_webnn_webgpu.py --bits 8 --mixed-precision
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --bits 8 --mixed-precision
 
 # Run comprehensive benchmarks across multiple models and configurations
-python benchmark_real_webnn_webgpu.py --comprehensive
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --comprehensive
 ```
 
 ### Command-Line Options
@@ -124,11 +124,11 @@ Results can be stored in a DuckDB database for easy querying and analysis. To en
 
 ```bash
 # Specify database path directly
-python benchmark_real_webnn_webgpu.py --db-path ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --db-path ./benchmark_db.duckdb
 
 # Or set the environment variable
 export BENCHMARK_DB_PATH=./benchmark_db.duckdb
-python benchmark_real_webnn_webgpu.py
+python duckdb_api/core/benchmark_real_webnn_webgpu.py
 ```
 
 ## March 2025 Optimizations
@@ -163,26 +163,26 @@ The benchmark system collects and reports the following performance metrics:
 
 ```bash
 # Benchmark BERT model with WebGPU in Chrome
-python benchmark_real_webnn_webgpu.py --text --chrome
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --text --chrome
 
 # Benchmark ViT model with WebGPU in Chrome
-python benchmark_real_webnn_webgpu.py --vision --chrome
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --vision --chrome
 
 # Benchmark Whisper model with WebGPU in Firefox
-python benchmark_real_webnn_webgpu.py --audio --firefox
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --audio --firefox
 ```
 
 ### Advanced Benchmarking
 
 ```bash
 # Benchmark with 8-bit quantization
-python benchmark_real_webnn_webgpu.py --text --bits 8
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --text --bits 8
 
 # Benchmark with 4-bit mixed precision
-python benchmark_real_webnn_webgpu.py --text --bits 4 --mixed-precision
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --text --bits 4 --mixed-precision
 
 # Comprehensive benchmark with HTML report
-python benchmark_real_webnn_webgpu.py --comprehensive --output-format html
+python duckdb_api/core/benchmark_real_webnn_webgpu.py --comprehensive --output-format html
 ```
 
 ## Troubleshooting

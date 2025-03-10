@@ -94,8 +94,8 @@ Performance varies significantly by hardware platform:
 
 The architecture consists of several key components:
 
-1. **Hardware Detection**: `hardware_detection.py` provides robust detection of available hardware.
-2. **Test Generator**: `merged_test_generator.py` and `fixed_merged_test_generator.py` generate model tests.
+1. **Hardware Detection**: `generators/hardware/hardware_detection.py` provides robust detection of available hardware.
+2. **Test Generator**: `generators/test_generators/merged_test_generator.py` and `fixed_generators/test_generators/merged_test_generator.py` generate model tests.
 3. **Web Platform Handler**: `fixed_web_platform/web_platform_handler.py` implements WebNN/WebGPU platforms.
 4. **Benchmark System**: Benchmarks store results in DuckDB database instead of JSON files.
 5. **Hardware Selection System**: Automated hardware selection based on model requirements.

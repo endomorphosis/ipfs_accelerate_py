@@ -15,7 +15,7 @@ We have successfully set up the DuckDB integration framework and created tools t
 Several issues need to be addressed to complete the DuckDB integration:
 
 1. ❌ The `test_ipfs_accelerate.py` script has integration issues when attempting to run it directly
-2. ❌ The `benchmark_db_query.py` script contains syntax errors that prevent it from running
+2. ❌ The `duckdb_api/core/benchmark_db_query.py` script contains syntax errors that prevent it from running
 3. ❌ The `benchmark_all_key_models.py` script also contains syntax errors
 4. ❌ Some database queries fail when encountering NULL values in the data
 
@@ -25,7 +25,7 @@ The following tasks need to be completed to finalize the DuckDB integration:
 
 ### 1. Fix Script Syntax Errors
 
-1. Fix `benchmark_db_query.py` indentation errors:
+1. Fix `duckdb_api/core/benchmark_db_query.py` indentation errors:
    ```python
    # Line ~1306
    args = parser.parse_args()

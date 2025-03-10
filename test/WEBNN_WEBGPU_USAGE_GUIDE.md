@@ -29,7 +29,7 @@ pip install websockets==15.0 selenium==4.29.0 webdriver-manager==4.0.2
 Install WebDriver for your browser(s):
 
 ```bash
-python test_webnn_webgpu_integration.py --install-drivers
+python generators/models/test_webnn_webgpu_integration.py --install-drivers
 ```
 
 ## Quick Start
@@ -281,16 +281,16 @@ if __name__ == "__main__":
 
 ```bash
 # Test WebGPU with 4-bit quantization on Chrome
-python test_webnn_webgpu_simplified.py --platform webgpu --bits 4 --browser chrome
+python generators/models/test_webnn_webgpu_simplified.py --platform webgpu --bits 4 --browser chrome
 
 # Test WebNN with 8-bit quantization on Edge
-python test_webnn_webgpu_simplified.py --platform webnn --bits 8 --browser edge
+python generators/models/test_webnn_webgpu_simplified.py --platform webnn --bits 8 --browser edge
 
 # Test both platforms with default settings
-python test_webnn_webgpu_simplified.py --platform both
+python generators/models/test_webnn_webgpu_simplified.py --platform both
 
 # Test with mixed precision
-python test_webnn_webgpu_simplified.py --platform webgpu --mixed-precision
+python generators/models/test_webnn_webgpu_simplified.py --platform webgpu --mixed-precision
 ```
 
 ### Comprehensive Testing Script
@@ -448,7 +448,7 @@ Optimal settings:
    - Increase browser memory limits with `--js-flags="--max-old-space-size=8192"`
 
 4. **WebDriver Issues**:
-   - Update WebDriver: `python test_webnn_webgpu_integration.py --install-drivers`
+   - Update WebDriver: `python generators/models/test_webnn_webgpu_integration.py --install-drivers`
    - Check browser version compatibility
 
 ### Quantization Debugging

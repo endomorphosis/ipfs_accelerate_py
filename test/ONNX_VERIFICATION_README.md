@@ -87,10 +87,10 @@ The `benchmark_onnx_integration.py` script provides a complete example of integr
 
 ```bash
 # Run benchmark on CPU for all configured models
-python benchmark_onnx_integration.py --hardware cpu
+python duckdb_api/core/benchmark_onnx_integration.py --hardware cpu
 
 # Run benchmark for specific models
-python benchmark_onnx_integration.py --hardware cuda --models bert-base-uncased t5-small
+python duckdb_api/core/benchmark_onnx_integration.py --hardware cuda --models bert-base-uncased t5-small
 ```
 
 ### Command-Line ONNX File Checker
@@ -129,13 +129,13 @@ The `test_onnx_verification.py` script provides comprehensive tests:
 
 ```bash
 # Run all tests
-python test_onnx_verification.py
+python generators/models/test_onnx_verification.py
 
 # Run a specific test
-python test_onnx_verification.py --test test_verify_onnx_file
+python generators/models/test_onnx_verification.py --test test_verify_onnx_file
 
 # Run with verbose output
-python test_onnx_verification.py --verbose
+python generators/models/test_onnx_verification.py --verbose
 ```
 
 ## Supported Models

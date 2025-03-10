@@ -25,7 +25,7 @@ In addition to moving the workflow files, the file paths referenced in these wor
 |----------|----------|
 | `test/scripts/` | `duckdb_api/scripts/` |
 | `test/run_benchmark_with_db.py` | `duckdb_api/core/run_benchmark_with_db.py` |
-| `test/benchmark_db_query.py` | `duckdb_api/core/benchmark_db_query.py` |
+| `test/duckdb_api/core/benchmark_db_query.py` | `duckdb_api/core/duckdb_api/core/benchmark_db_query.py` |
 | `test/benchmark_regression_detector.py` | `duckdb_api/analysis/benchmark_regression_detector.py` |
 | `test/hardware_model_predictor.py` | `predictive_performance/hardware_model_predictor.py` |
 | `test/model_performance_predictor.py` | `predictive_performance/model_performance_predictor.py` |

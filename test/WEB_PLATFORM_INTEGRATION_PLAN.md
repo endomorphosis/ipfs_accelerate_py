@@ -267,7 +267,7 @@ esac
 
 # Generate comprehensive report
 if [ "$MODE" = "integration" ] || [ "$MODE" = "benchmark" ]; then
-    "$PYTHON_CMD" "scripts/benchmark_db_query.py" --report web_platform --format html --output "$REPORT_DIR/web_platform_report_$(date +%Y%m%d_%H%M%S).html"
+    "$PYTHON_CMD" "scripts/duckdb_api/core/benchmark_db_query.py" --report web_platform --format html --output "$REPORT_DIR/web_platform_report_$(date +%Y%m%d_%H%M%S).html"
 fi
 ```
 
@@ -341,7 +341,7 @@ The database integration enables comprehensive reporting:
 ### 1. Web Platform Report
 
 ```bash
-python scripts/benchmark_db_query.py --report web_platform --format html --output web_report.html
+python scripts/duckdb_api/core/benchmark_db_query.py --report web_platform --format html --output web_report.html
 ```
 
 ### 2. Optimization Benefits Visualization
@@ -353,7 +353,7 @@ python scripts/benchmark_db_visualizer.py --optimization-benefits --output optim
 ### 3. Browser Comparison Report
 
 ```bash
-python scripts/benchmark_db_query.py --browser-comparison --format html --output browser_comparison.html
+python scripts/duckdb_api/core/benchmark_db_query.py --browser-comparison --format html --output browser_comparison.html
 ```
 
 ## July 2025 Implementation Plan

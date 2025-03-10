@@ -6,7 +6,7 @@ This document summarizes the key improvements made during Phase 16 of the IPFS A
 
 ### Fixed Test Generators
 
-- ✅ Fixed syntax errors in all generator scripts (merged_test_generator.py, fixed_merged_test_generator.py, integrated_skillset_generator.py)
+- ✅ Fixed syntax errors in all generator scripts (generators/test_generators/merged_test_generator.py, fixed_generators/test_generators/merged_test_generator.py, generators/skill_generators/integrated_skillset_generator.py)
 - ✅ Created clean, simplified versions of the generators that work reliably
 - ✅ Added proper hardware detection for all platforms
 - ✅ Enhanced template handling with DuckDB database integration

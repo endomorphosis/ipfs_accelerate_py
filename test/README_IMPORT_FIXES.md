@@ -33,7 +33,7 @@ This reorganization caused import path issues that need to be addressed.
 
 2. **Test package imports**:
    ```bash
-   python test_package_imports.py
+   python generators/models/test_package_imports.py
    ```
 
 3. **Check for syntax errors**:

@@ -165,13 +165,13 @@ export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 
 ```bash
 # Query the database for optimization test results
-python scripts/benchmark_db_query.py --sql "SELECT * FROM web_platform_optimizations LIMIT 10"
+python scripts/duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM web_platform_optimizations LIMIT 10"
 
 # Generate a web platform report
-python scripts/benchmark_db_query.py --report web_platform --format html --output web_report.html
+python scripts/duckdb_api/core/benchmark_db_query.py --report web_platform --format html --output web_report.html
 
 # Compare different browsers
-python scripts/benchmark_db_query.py --browser-comparison --format html --output browser_comparison.html
+python scripts/duckdb_api/core/benchmark_db_query.py --browser-comparison --format html --output browser_comparison.html
 ```
 
 ## March 2025 Optimization Integration
@@ -185,7 +185,7 @@ The database integration supports all three March 2025 optimizations:
 ./run_web_platform_tests.sh --model whisper --enable-compute-shaders --db-path ./benchmark_db.duckdb
 
 # Query for compute shader performance
-python scripts/benchmark_db_query.py --sql "
+python scripts/duckdb_api/core/benchmark_db_query.py --sql "
     SELECT model_name, AVG(improvement_percent) as avg_improvement
     FROM web_platform_optimizations
     WHERE test_type = 'compute_shader' AND optimization_enabled = TRUE
@@ -201,7 +201,7 @@ python scripts/benchmark_db_query.py --sql "
 ./run_web_platform_tests.sh --model clip --enable-parallel-loading --db-path ./benchmark_db.duckdb
 
 # Query for parallel loading performance
-python scripts/benchmark_db_query.py --sql "
+python scripts/duckdb_api/core/benchmark_db_query.py --sql "
     SELECT model_name, AVG(improvement_percent) as avg_improvement
     FROM web_platform_optimizations
     WHERE test_type = 'parallel_loading' AND optimization_enabled = TRUE
@@ -217,7 +217,7 @@ python scripts/benchmark_db_query.py --sql "
 ./run_web_platform_tests.sh --model vit --enable-shader-precompile --db-path ./benchmark_db.duckdb
 
 # Query for shader precompilation performance
-python scripts/benchmark_db_query.py --sql "
+python scripts/duckdb_api/core/benchmark_db_query.py --sql "
     SELECT model_name, AVG(improvement_percent) as avg_improvement
     FROM web_platform_optimizations
     WHERE test_type = 'shader_precompilation' AND optimization_enabled = TRUE

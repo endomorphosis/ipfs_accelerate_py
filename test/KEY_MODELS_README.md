@@ -68,37 +68,37 @@ Legend:
 
 ## Using the Enhanced Generator
 
-The `merged_test_generator.py` has been updated with improved capabilities for generating hardware-specific tests:
+The `generators/test_generators/merged_test_generator.py` has been updated with improved capabilities for generating hardware-specific tests:
 
 ```bash
 # Generate tests for all key model types with complete hardware support
-python generators/merged_test_generator.py --generate-missing --key-models-only
+python generators/generators/test_generators/merged_test_generator.py --generate-missing --key-models-only
 
 # Generate tests for a specific model with all hardware platforms
-python generators/merged_test_generator.py --generate bert --platform all
+python generators/generators/test_generators/merged_test_generator.py --generate bert --platform all
 
 # Generate tests for a specific model on a specific platform
-python generators/merged_test_generator.py --generate vit --platform cuda
+python generators/generators/test_generators/merged_test_generator.py --generate vit --platform cuda
 
 # Generate tests for multiple key models with all hardware support
-python generators/merged_test_generator.py --batch-generate t5,clap,wav2vec2,whisper
+python generators/generators/test_generators/merged_test_generator.py --batch-generate t5,clap,wav2vec2,whisper
 
 # Generate tests for models with specific enhanced hardware support
-python generators/merged_test_generator.py --generate-missing --enhance-openvino
-python generators/merged_test_generator.py --generate-missing --enhance-web-platforms
+python generators/generators/test_generators/merged_test_generator.py --generate-missing --enhance-openvino
+python generators/generators/test_generators/merged_test_generator.py --generate-missing --enhance-web-platforms
 ```
 
-The `integrated_skillset_generator.py` now supports hardware-aware test generation and implementation:
+The `generators/skill_generators/integrated_skillset_generator.py` now supports hardware-aware test generation and implementation:
 
 ```bash
 # Generate a skillset implementation for a key model with hardware support
-python generators/integrated_skillset_generator.py --model bert --run-tests
+python generators/generators/skill_generators/integrated_skillset_generator.py --model bert --run-tests
 
 # Generate implementations for all models in a key family
-python generators/integrated_skillset_generator.py --family bert
+python generators/generators/skill_generators/integrated_skillset_generator.py --family bert
 
 # Generate implementations for models with web platform support
-python generators/integrated_skillset_generator.py --all --max-workers 20
+python generators/generators/skill_generators/integrated_skillset_generator.py --all --max-workers 20
 ```
 
 ## Implementation Details

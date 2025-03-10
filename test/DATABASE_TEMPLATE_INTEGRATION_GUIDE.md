@@ -95,7 +95,7 @@ The data is stored in two tables:
 To generate a model implementation using database templates:
 
 ```bash
-python integrated_skillset_generator.py --model bert --use-db-templates
+python generators/skill_generators/integrated_skillset_generator.py --model bert --use-db-templates
 ```
 
 ### 2. Database Path Configuration
@@ -105,7 +105,7 @@ To specify a custom database path:
 ```bash
 export TEMPLATE_DB_PATH=/path/to/template_db.duckdb
 export BENCHMARK_DB_PATH=/path/to/benchmark_db.duckdb
-python integrated_skillset_generator.py --model bert
+python generators/skill_generators/integrated_skillset_generator.py --model bert
 ```
 
 ### 3. Cross-Platform Generation
@@ -113,7 +113,7 @@ python integrated_skillset_generator.py --model bert
 To generate implementations with all hardware platforms:
 
 ```bash
-python integrated_skillset_generator.py --model bert --hardware all --cross-platform
+python generators/skill_generators/integrated_skillset_generator.py --model bert --hardware all --cross-platform
 ```
 
 ### 4. Bulk Generation
@@ -121,7 +121,7 @@ python integrated_skillset_generator.py --model bert --hardware all --cross-plat
 To generate implementations for all models in a family:
 
 ```bash
-python integrated_skillset_generator.py --family text-embedding --use-db-templates
+python generators/skill_generators/integrated_skillset_generator.py --family text-embedding --use-db-templates
 ```
 
 ### 5. Task-Based Generation
@@ -129,7 +129,7 @@ python integrated_skillset_generator.py --family text-embedding --use-db-templat
 To generate implementations for all models with a specific task:
 
 ```bash
-python integrated_skillset_generator.py --task text_generation --use-db-templates
+python generators/skill_generators/integrated_skillset_generator.py --task text_generation --use-db-templates
 ```
 
 ## Implementation Details
@@ -156,7 +156,7 @@ When a specific template isn't found, the system tries:
 Templates can be customized for specific hardware platforms:
 
 ```bash
-python integrated_skillset_generator.py --model bert --hardware cuda,rocm
+python generators/skill_generators/integrated_skillset_generator.py --model bert --hardware cuda,rocm
 ```
 
 This loads templates specific to the specified hardware if available.
@@ -225,7 +225,7 @@ python -c "import duckdb; print(duckdb.connect('template_db.duckdb').execute('SE
 If hardware platforms aren't detected:
 
 ```bash
-python integrated_skillset_generator.py --model bert --hardware cpu --verbose
+python generators/skill_generators/integrated_skillset_generator.py --model bert --hardware cpu --verbose
 ```
 
 ## FAQ

@@ -14,8 +14,8 @@
 
 3. **Fixed Basic Syntax Errors**
    - Fixed syntax errors in 3 key files:
-     - `benchmark_db_maintenance.py`
-     - `benchmark_db_query.py`
+     - `duckdb_api/core/benchmark_db_maintenance.py`
+     - `duckdb_api/core/benchmark_db_query.py`
      - `cleanup_stale_reports.py`
 
 4. **Created Essential Documentation**
@@ -39,7 +39,7 @@
 
 2. **Test Fixed Modules**
    - Test functionality of fixed modules to ensure they work correctly
-   - Start with core modules like `benchmark_db_api.py` and `benchmark_db_query.py`
+   - Start with core modules like `duckdb_api/core/benchmark_db_api.py` and `duckdb_api/core/benchmark_db_query.py`
 
 3. **Update Developer Documentation**
    - Update all developer documentation to reference new file paths

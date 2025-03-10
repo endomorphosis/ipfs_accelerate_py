@@ -31,7 +31,7 @@ The web platform integration follows a layered architecture:
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                   Test Generator Layer                      │
-│   (merged_test_generator.py, web_platform_test_runner.py)   │
+│   (generators/test_generators/merged_test_generator.py, web_platform_test_runner.py)   │
 └─────────────────────────────┬──────────────────────────────┘
                               │
                               ▼
@@ -61,7 +61,7 @@ The web platform integration follows a layered architecture:
    - Integrates with real browsers or simulation mode
 
 3. **Integration with Test Generator**
-   - Location: `test/merged_test_generator.py`
+   - Location: `test/generators/test_generators/merged_test_generator.py`
    - Command-line arguments for platform selection
    - Template-based generation for web platforms
 
@@ -208,7 +208,7 @@ To verify the implementation:
 
 5. **Generate performance report**
    ```bash
-   python duckdb_api/core/benchmark_db_query.py --report web_platform --format html
+   python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report web_platform --format html
    ```
 
 ## High-Priority Model Coverage for Web Platforms

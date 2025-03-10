@@ -18,7 +18,7 @@ The `run_benchmark_with_db.py` script has been fixed to handle different version
 
 ## 3. Database Maintenance Tool
 
-Updated the `benchmark_db_maintenance.py` utility to validate, optimize, and backup database files.
+Updated the `duckdb_api/core/benchmark_db_maintenance.py` utility to validate, optimize, and backup database files.
 
 ## 4. Migration Script
 
@@ -28,7 +28,7 @@ The `benchmark_db_fix.py` script can be used to fix issues with existing databas
 
 1. Use the create_new_database.py script to generate a fresh, properly structured database.
 2. Use run_benchmark_with_db.py to populate the database with benchmark results.
-3. Run regular validation and maintenance using benchmark_db_maintenance.py.
+3. Run regular validation and maintenance using duckdb_api/core/benchmark_db_maintenance.py.
 4. Consider backing up the database before major operations.
 
 ## Common Errors and Fixes
@@ -60,5 +60,5 @@ python test/scripts/create_new_database.py --db ./benchmark_db.duckdb --force
 python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cpu --batch-sizes 1 --simulate
 
 # Validate database
-python duckdb_api/core/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
+python duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
 ```

@@ -29,7 +29,7 @@ Ollama is a local API for running large language models on your own hardware. Th
 Tests the implementation of the Ollama API client:
 
 ```bash
-python test_ollama_unified.py --standard
+python generators/models/test_ollama_unified.py --standard
 ```
 
 This validates:
@@ -46,7 +46,7 @@ This validates:
 Benchmarks the performance of the API:
 
 ```bash
-python test_ollama_unified.py --performance
+python generators/models/test_ollama_unified.py --performance
 ```
 
 This measures:
@@ -62,7 +62,7 @@ This measures:
 Tests connection to an actual Ollama server:
 
 ```bash
-python test_ollama_unified.py --real
+python generators/models/test_ollama_unified.py --real
 ```
 
 This verifies:
@@ -75,7 +75,7 @@ This verifies:
 Run all test suites:
 
 ```bash
-python test_ollama_unified.py --all
+python generators/models/test_ollama_unified.py --all
 ```
 
 ## Configuration Options
@@ -90,7 +90,7 @@ You can customize the tests with these parameters:
 
 Example with custom configuration:
 ```bash
-python test_ollama_unified.py --all --model mistral --api-url http://localhost:11434/api --timeout 60
+python generators/models/test_ollama_unified.py --all --model mistral --api-url http://localhost:11434/api --timeout 60
 ```
 
 ## Environment Variables

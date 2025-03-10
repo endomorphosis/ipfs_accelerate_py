@@ -13,9 +13,9 @@ Prior to March 2025, most code was housed in the `/test/` directory, which conta
 ```
 /test/
 ├── benchmark_*.py          # Benchmark-related files
-├── merged_test_generator.py # Test generator
-├── fixed_merged_test_generator.py # Fixed test generator
-├── integrated_skillset_generator.py # Skillset generator
+├── generators/test_generators/merged_test_generator.py # Test generator
+├── fixed_generators/test_generators/merged_test_generator.py # Fixed test generator
+├── generators/skill_generators/integrated_skillset_generator.py # Skillset generator
 └── ... (many other files)  # Various test, benchmark, and utility files
 ```
 
@@ -50,13 +50,13 @@ After the March 2025 reorganization, files were moved to the following directory
 ### Generators (moved to `/generators/`)
 
 - **Test Generators**:
-  - `merged_test_generator.py` → `generators/merged_test_generator.py`
-  - `fixed_merged_test_generator.py` → `generators/test_generators/fixed_merged_test_generator.py`
-  - `simple_test_generator.py` → `generators/test_generators/simple_test_generator.py`
+  - `generators/test_generators/merged_test_generator.py` → `generators/generators/test_generators/merged_test_generator.py`
+  - `fixed_generators/test_generators/merged_test_generator.py` → `generators/test_generators/fixed_generators/test_generators/merged_test_generator.py`
+  - `generators/test_generators/simple_test_generator.py` → `generators/test_generators/generators/test_generators/simple_test_generator.py`
   - `generate_modality_tests.py` → `generators/generate_modality_tests.py`
 
 - **Skill Generators**:
-  - `integrated_skillset_generator.py` → `generators/models/integrated_skillset_generator.py`
+  - `generators/skill_generators/integrated_skillset_generator.py` → `generators/models/generators/skill_generators/integrated_skillset_generator.py`
   - `skillset_generator.py` → `generators/skill_generators/skillset_generator.py`
 
 - **Template System**:
@@ -72,10 +72,10 @@ After the March 2025 reorganization, files were moved to the following directory
 ### Database Tools (moved to `/duckdb_api/`)
 
 - **Core Database Functions**:
-  - `benchmark_db_api.py` → `duckdb_api/core/benchmark_db_api.py`
+  - `duckdb_api/core/benchmark_db_api.py` → `duckdb_api/core/duckdb_api/core/benchmark_db_api.py`
   - `benchmark_db_updater.py` → `duckdb_api/core/benchmark_db_updater.py`
-  - `benchmark_db_query.py` → `duckdb_api/core/benchmark_db_query.py`
-  - `benchmark_db_maintenance.py` → `duckdb_api/core/benchmark_db_maintenance.py`
+  - `duckdb_api/core/benchmark_db_query.py` → `duckdb_api/core/duckdb_api/core/benchmark_db_query.py`
+  - `duckdb_api/core/benchmark_db_maintenance.py` → `duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py`
 
 - **Visualization**:
   - `benchmark_db_visualizer.py` → `duckdb_api/visualization/benchmark_db_visualizer.py`
@@ -112,10 +112,10 @@ When running files, update your commands to use the new paths:
 
 ```bash
 # Old commands
-python generators/merged_test_generator.py --generate bert
+python generators/generators/test_generators/merged_test_generator.py --generate bert
 
 # New commands
-python generators/merged_test_generator.py --generate bert
+python generators/generators/test_generators/merged_test_generator.py --generate bert
 ```
 
 ### Backward Compatibility
@@ -123,12 +123,12 @@ python generators/merged_test_generator.py --generate bert
 To maintain backward compatibility, import redirection has been implemented in some modules:
 
 ```python
-# In test/merged_test_generator.py
+# In test/generators/test_generators/merged_test_generator.py
 import sys
 import warnings
 
 warnings.warn(
-    "This module has been moved to generators/merged_test_generator.py. "
+    "This module has been moved to generators/generators/test_generators/merged_test_generator.py. "
     "Please update your imports.",
     DeprecationWarning
 )

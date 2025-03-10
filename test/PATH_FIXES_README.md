@@ -53,7 +53,7 @@ The codebase has been reorganized with files moved from `/test/` to:
 2. **Test Package Imports**:
    ```bash
    # From the test directory
-   python test_package_imports.py
+   python generators/models/test_package_imports.py
    ```
 
 3. **Setup Import Paths**:

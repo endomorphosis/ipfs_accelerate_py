@@ -50,13 +50,13 @@ To query results from the database:
 
 ```bash
 # Get performance reports
-python duckdb_api/core/benchmark_db_query.py --report performance --format html --output report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report performance --format html --output report.html
 
 # Run SQL queries
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results LIMIT 10"
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results LIMIT 10"
 
 # Compare hardware platforms
-python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
 ```
 
 ## Temporarily Reverting to JSON (Not Recommended)
@@ -83,10 +83,10 @@ Note that this approach is not recommended and is only provided for transition p
 
 ## Available Tools
 
-- `benchmark_db_api.py`: Programmatic API for storing and querying results
-- `benchmark_db_query.py`: Command-line tool for querying and reporting
+- `duckdb_api/core/benchmark_db_api.py`: Programmatic API for storing and querying results
+- `duckdb_api/core/benchmark_db_query.py`: Command-line tool for querying and reporting
 - `benchmark_db_converter.py`: Converts JSON files to database format
-- `benchmark_db_maintenance.py`: Maintenance tasks for the database
+- `duckdb_api/core/benchmark_db_maintenance.py`: Maintenance tasks for the database
 - `benchmark_db_migration.py`: Comprehensive data migration tool
 
 ## Common Issues
@@ -118,7 +118,7 @@ If the database becomes slow:
 
 ```bash
 # Optimize the database
-python test/scripts/benchmark_db_maintenance.py --optimize-db --vacuum
+python test/scripts/duckdb_api/core/benchmark_db_maintenance.py --optimize-db --vacuum
 ```
 
 ## Further Information

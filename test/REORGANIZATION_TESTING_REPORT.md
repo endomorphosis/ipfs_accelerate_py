@@ -18,14 +18,14 @@ Testing focused on ensuring these relocated files can be properly imported and e
 ## What Works ✅
 
 1. **Basic Script Execution**
-   - Successfully ran `simple_test_generator.py` from the generators directory
+   - Successfully ran `generators/test_generators/simple_test_generator.py` from the generators directory
    - Script correctly detects hardware and generates test files
    - Generated test files have proper imports and structure
 
 2. **Package Structure**
    - All package directories have proper `__init__.py` files
    - Root packages (`generators` and `duckdb_api`) can be imported
-   - Files can be run directly with `python ../generators/test_generators/simple_test_generator.py`
+   - Files can be run directly with `python ../generators/test_generators/generators/test_generators/simple_test_generator.py`
 
 3. **Documentation**
    - Created comprehensive import path setup guide
@@ -55,8 +55,8 @@ Testing focused on ensuring these relocated files can be properly imported and e
 
 ### Syntax Errors
 
-1. `/duckdb_api/benchmark_db_query.py` - Invalid syntax at line 1368
-2. `/duckdb_api/benchmark_db_maintenance.py` - Missing except/finally block at line 383
+1. `/duckdb_api/duckdb_api/core/benchmark_db_query.py` - Invalid syntax at line 1368
+2. `/duckdb_api/duckdb_api/core/benchmark_db_maintenance.py` - Missing except/finally block at line 383
 3. `/duckdb_api/migration/benchmark_db_migration.py` - Missing indented block after with statement
 4. `/duckdb_api/schema/create_hardware_model_benchmark_database.py` - Missing indented block
 5. `/duckdb_api/schema/update_template_database_for_qualcomm.py` - Invalid syntax
@@ -64,9 +64,9 @@ Testing focused on ensuring these relocated files can be properly imported and e
 7. `/duckdb_api/schema/remaining/update_template_database_for_qualcomm.py` - Invalid syntax
 8. `/duckdb_api/schema/extra/web_audio_benchmark_db.py` - Missing indented block
 9. `/duckdb_api/visualization/benchmark_db_visualizer.py` - Missing except/finally block
-10. `/duckdb_api/core/benchmark_db_maintenance.py` - Missing except/finally block
+10. `/duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py` - Missing except/finally block
 11. `/duckdb_api/core/benchmark_with_db_integration.py` - Unexpected indent
-12. `/duckdb_api/core/benchmark_db_query.py` - Invalid syntax
+12. `/duckdb_api/core/duckdb_api/core/benchmark_db_query.py` - Invalid syntax
 13. `/duckdb_api/core/run_db_integrated_benchmarks.py` - Missing indented block
 14. `/duckdb_api/utils/benchmark_db_updater.py` - Missing indented block
 15. `/duckdb_api/utils/cleanup_stale_reports.py` - Invalid syntax
@@ -97,7 +97,7 @@ Testing focused on ensuring these relocated files can be properly imported and e
 
 1. **Fix Syntax Errors**
    - Manually fix the 15 files with syntax errors
-   - Prioritize core files like `benchmark_db_query.py` and `benchmark_db_maintenance.py`
+   - Prioritize core files like `duckdb_api/core/benchmark_db_query.py` and `duckdb_api/core/benchmark_db_maintenance.py`
    - Re-run `fix_syntax_errors.py` to verify fixes
 
 2. **Update Import Statements**

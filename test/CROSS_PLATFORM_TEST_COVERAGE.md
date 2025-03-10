@@ -124,10 +124,10 @@ To run comprehensive tests of WebNN and WebGPU quantization support:
 ./run_webnn_quantized_tests.sh
 
 # Run specific WebGPU test
-python test_webgpu_quantization.py --model prajjwal1/bert-tiny --browser chrome --bits 8
+python generators/models/test_webgpu_quantization.py --model prajjwal1/bert-tiny --browser chrome --bits 8
 
 # Run specific WebNN test
-python test_webnn_minimal.py --model prajjwal1/bert-tiny --browser edge --bits 4 --mixed-precision
+python generators/models/test_webnn_minimal.py --model prajjwal1/bert-tiny --browser edge --bits 4 --mixed-precision
 ```
 
 The test suite will generate a comprehensive report comparing performance across browsers and precision levels. It automatically selects the most appropriate precision/browser combination for each model type.
@@ -245,10 +245,10 @@ To verify the cross-platform compatibility of models, we have developed testing 
 
 ```bash
 # Test a single model on multiple hardware platforms
-python test_single_model_hardware.py --model-file key_models_hardware_fixes/test_hf_qwen2.py --platforms cpu cuda mps qualcomm
+python generators/models/test_single_model_hardware.py --model-file key_models_hardware_fixes/test_hf_qwen2.py --platforms cpu cuda mps qualcomm
 
 # Run the full benchmark suite for all models
-python benchmark_all_key_models.py --output-dir ./benchmark_results
+python duckdb_api/core/benchmark_all_key_models.py --output-dir ./benchmark_results
 ```
 
 For detailed information on benchmarking, see [HARDWARE_BENCHMARKING_GUIDE_PHASE16.md](HARDWARE_BENCHMARKING_GUIDE_PHASE16.md).
@@ -296,7 +296,7 @@ All test results are stored in the DuckDB database, with specialized schema exte
 
 ```bash
 # Query the database for comprehensive coverage statistics
-python duckdb_api/core/benchmark_db_query.py --report comprehensive-coverage --format html --output coverage_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report comprehensive-coverage --format html --output coverage_report.html
 
 # Visualize coverage across hardware platforms
 python duckdb_api/core/benchmark_db_visualizer.py --comprehensive-matrix --output matrix.html

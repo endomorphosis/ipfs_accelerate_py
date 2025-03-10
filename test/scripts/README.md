@@ -49,62 +49,62 @@ The tools use DuckDB and Parquet files to efficiently store, query, and analyze 
 
 ### 3. Database Querying
 
-`benchmark_db_query.py` - Queries the database and generates reports from benchmark results.
+`duckdb_api/core/benchmark_db_query.py` - Queries the database and generates reports from benchmark results.
 
 ```bash
 # Execute a custom SQL query
-./benchmark_db_query.py --db ./benchmark_db.duckdb --sql "SELECT * FROM models LIMIT 10"
+./duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --sql "SELECT * FROM models LIMIT 10"
 
 # Generate a performance report for a specific model family
-./benchmark_db_query.py --db ./benchmark_db.duckdb --report performance --family bert
+./duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --report performance --family bert
 
 # Generate a hardware compatibility matrix
-./benchmark_db_query.py --db ./benchmark_db.duckdb --compatibility-matrix
+./duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --compatibility-matrix
 
 # Compare throughput across hardware platforms for a specific model
-./benchmark_db_query.py --db ./benchmark_db.duckdb --model bert-base-uncased --metric throughput --compare-hardware
+./duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --model bert-base-uncased --metric throughput --compare-hardware
 
 # Export report to HTML
-./benchmark_db_query.py --db ./benchmark_db.duckdb --report summary --format html --output report.html
+./duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --report summary --format html --output report.html
 
 # Generate a chart comparing model performance
-./benchmark_db_query.py --db ./benchmark_db.duckdb --model bert-base-uncased --metric throughput --compare-hardware --format chart --output chart.png
+./duckdb_api/core/benchmark_db_query.py --db ./benchmark_db.duckdb --model bert-base-uncased --metric throughput --compare-hardware --format chart --output chart.png
 ```
 
 ### 4. Database Maintenance
 
-`benchmark_db_maintenance.py` - Performs maintenance operations on the database and related files.
+`duckdb_api/core/benchmark_db_maintenance.py` - Performs maintenance operations on the database and related files.
 
 ```bash
 # Clean up JSON files that have been migrated to the database (older than 30 days)
-./benchmark_db_maintenance.py --db ./benchmark_db.duckdb --clean-json --older-than 30
+./duckdb_api/core/benchmark_db_maintenance.py --db ./benchmark_db.duckdb --clean-json --older-than 30
 
 # Archive old JSON files instead of deleting
-./benchmark_db_maintenance.py --db ./benchmark_db.duckdb --clean-json --archive-data --archive-dir ./archived_json
+./duckdb_api/core/benchmark_db_maintenance.py --db ./benchmark_db.duckdb --clean-json --archive-data --archive-dir ./archived_json
 
 # Optimize database tables and indexes
-./benchmark_db_maintenance.py --db ./benchmark_db.duckdb --optimize-db
+./duckdb_api/core/benchmark_db_maintenance.py --db ./benchmark_db.duckdb --optimize-db
 
 # Reclaim space with VACUUM operation
-./benchmark_db_maintenance.py --db ./benchmark_db.duckdb --vacuum
+./duckdb_api/core/benchmark_db_maintenance.py --db ./benchmark_db.duckdb --vacuum
 
 # Perform a dry run to see what would happen
-./benchmark_db_maintenance.py --db ./benchmark_db.duckdb --clean-json --dry-run --verbose
+./duckdb_api/core/benchmark_db_maintenance.py --db ./benchmark_db.duckdb --clean-json --dry-run --verbose
 ```
 
 ### 5. API Server
 
-`benchmark_db_api.py` - Provides a REST API and web dashboard for accessing benchmark data.
+`duckdb_api/core/benchmark_db_api.py` - Provides a REST API and web dashboard for accessing benchmark data.
 
 ```bash
 # Start the API server
-./benchmark_db_api.py --db ./benchmark_db.duckdb --serve
+./duckdb_api/core/benchmark_db_api.py --db ./benchmark_db.duckdb --serve
 
 # Start server on a different host/port
-./benchmark_db_api.py --db ./benchmark_db.duckdb --host 0.0.0.0 --port 8080 --serve
+./duckdb_api/core/benchmark_db_api.py --db ./benchmark_db.duckdb --host 0.0.0.0 --port 8080 --serve
 
 # Enable auto-reload for development
-./benchmark_db_api.py --db ./benchmark_db.duckdb --serve --reload --verbose
+./duckdb_api/core/benchmark_db_api.py --db ./benchmark_db.duckdb --serve --reload --verbose
 ```
 
 After starting the server, access:
@@ -125,9 +125,9 @@ The migration process from JSON files to the database involves the following ste
 
 1. **Create the schema**: Run `create_benchmark_schema.py` to set up the database structure
 2. **Convert existing data**: Run `benchmark_db_converter.py` to migrate JSON files
-3. **Verify data**: Use `benchmark_db_query.py` to check that data was migrated correctly
+3. **Verify data**: Use `duckdb_api/core/benchmark_db_query.py` to check that data was migrated correctly
 4. **Update test runners**: Modify existing test runners to write directly to the database
-5. **Clean up old files**: Use `benchmark_db_maintenance.py` to remove or archive old JSON files
+5. **Clean up old files**: Use `duckdb_api/core/benchmark_db_maintenance.py` to remove or archive old JSON files
 
 ## Data Model
 

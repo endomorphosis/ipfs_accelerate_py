@@ -16,11 +16,11 @@ After running `fix_syntax_errors.py`, we found 14 files with syntax errors in th
 
 ## Files with Errors and How to Fix Them
 
-### 1. `/duckdb_api/benchmark_db_query.py` - Line 1382
+### 1. `/duckdb_api/duckdb_api/core/benchmark_db_query.py` - Line 1382
 **Error:** Invalid syntax
 **Fix:** Check the indentation and structure around line 1382. Ensure that all `if/elif/else` blocks are properly indented and closed.
 
-### 2. `/duckdb_api/benchmark_db_maintenance.py` - Line 499
+### 2. `/duckdb_api/duckdb_api/core/benchmark_db_maintenance.py` - Line 499
 **Error:** Expected 'except' or 'finally' block
 **Fix:** Find the unclosed `try` block around line 499 and add the appropriate `except` or `finally` block.
 
@@ -52,7 +52,7 @@ After running `fix_syntax_errors.py`, we found 14 files with syntax errors in th
 **Error:** Expected 'except' or 'finally' block
 **Fix:** Find the unclosed `try` block around line 330 and add the appropriate `except` or `finally` block.
 
-### 10. `/duckdb_api/core/benchmark_db_maintenance.py` - Line 383
+### 10. `/duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py` - Line 383
 **Error:** Expected 'except' or 'finally' block
 **Fix:** Find the unclosed `try` block around line 383 and add the appropriate `except` or `finally` block.
 
@@ -60,7 +60,7 @@ After running `fix_syntax_errors.py`, we found 14 files with syntax errors in th
 **Error:** Invalid syntax
 **Fix:** Check the code around line 1183 for invalid syntax, such as mismatched parentheses or quotes.
 
-### 12. `/duckdb_api/core/benchmark_db_query.py` - Line 1368
+### 12. `/duckdb_api/core/duckdb_api/core/benchmark_db_query.py` - Line 1368
 **Error:** Invalid syntax
 **Fix:** Check the code around line 1368 for invalid syntax, such as incorrect indentation or mismatched control structures.
 

@@ -99,10 +99,10 @@ export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 python test/test_ipfs_accelerate.py
 
 # View results in database using a SQL query
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM test_results WHERE hardware_type='qualcomm'" --format table
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM test_results WHERE hardware_type='qualcomm'" --format table
 
 # Generate power efficiency comparison report
-python duckdb_api/core/benchmark_db_query.py --report qualcomm_power_efficiency --format html --output power_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report qualcomm_power_efficiency --format html --output power_report.html
 ```
 
 ### Basic Usage
@@ -368,13 +368,13 @@ The Qualcomm AI Engine support has been integrated into the template system to e
 
 ```bash
 # Generate a BERT test with Qualcomm support
-python generators/simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
+python generators/generators/test_generators/simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
 
 # Generate a vision model test with Qualcomm support
-python generators/simple_test_generator.py -g vit -p qualcomm -o test_vit_qualcomm.py
+python generators/generators/test_generators/simple_test_generator.py -g vit -p qualcomm -o test_vit_qualcomm.py
 
 # Generate a test with all hardware platforms including Qualcomm
-python generators/simple_test_generator.py -g bert -p all
+python generators/generators/test_generators/simple_test_generator.py -g bert -p all
 ```
 
 The templates include specialized Qualcomm hardware detection:

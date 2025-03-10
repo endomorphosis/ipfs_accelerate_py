@@ -40,11 +40,11 @@ These archives contain:
 These files represent previous iterations of development that are no longer needed:
 
 - Backup (.bak) files for major script files:
-  - `merged_test_generator.py.bak*`
-  - `fixed_merged_test_generator.py.bak*`
-  - `integrated_skillset_generator.py.bak*`
+  - `generators/test_generators/merged_test_generator.py.bak*`
+  - `fixed_generators/test_generators/merged_test_generator.py.bak*`
+  - `generators/skill_generators/integrated_skillset_generator.py.bak*`
   - `fix_generator_hardware_support.py.bak*`
-  - `template_hardware_detection.py.bak*`
+  - `template_generators/hardware/hardware_detection.py.bak*`
   - All `.bak_json_dep` files (created during JSON deprecation)
 
 - Old versions of generators that have been replaced by improved versions:
@@ -66,8 +66,8 @@ The following directories already contain archived files:
 
 These scripts have been explicitly deprecated and replaced:
 
-- `benchmark_database.py` → Replaced by `benchmark_db_api.py`
-- `benchmark_query.py` → Replaced by `benchmark_db_query.py`
+- `benchmark_database.py` → Replaced by `duckdb_api/core/benchmark_db_api.py`
+- `benchmark_query.py` → Replaced by `duckdb_api/core/benchmark_db_query.py`
 - `test_model_benchmarks.py` → Replaced by integrated tests
 
 ## Accessing Archived Files

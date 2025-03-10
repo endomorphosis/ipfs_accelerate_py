@@ -120,7 +120,7 @@ The framework uses a compatibility matrix to determine which models can be deplo
 To ensure consistent cross-platform hardware detection and compatibility, we've implemented a centralized hardware detection system:
 
 1. **Centralized Hardware Detection Module**
-   - Located in `centralized_hardware_detection/hardware_detection.py`
+   - Located in `centralized_hardware_detection/generators/hardware/hardware_detection.py`
    - Provides a unified interface for hardware capabilities across all platforms
    - Eliminates duplicate detection code that led to inconsistencies
 

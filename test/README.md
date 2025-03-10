@@ -158,9 +158,9 @@ The following directories contain legacy files that are being archived or migrat
 - **`test_firefox_webgpu_compute_shaders.py`**: Tests Firefox's exceptional WebGPU compute shader performance
 - **`run_web_platform_tests.sh`**: Enhanced test runner with Firefox WebGPU support (55% improvement)
 - **`test_webgpu_audio_compute_shaders.py`**: Tests WebGPU compute shader audio model optimization
-- **`integrated_skillset_generator.py`**: Test-driven skillset implementation generator
+- **`generators/skill_generators/integrated_skillset_generator.py`**: Test-driven skillset implementation generator
 - **`enhanced_template_generator.py`**: Template generator with WebNN and WebGPU support
-- **`merged_test_generator.py`**: Comprehensive test generator for all model types
+- **`generators/test_generators/merged_test_generator.py`**: Comprehensive test generator for all model types
 
 ## Core Documentation
 
@@ -213,7 +213,7 @@ This framework uses a template-based architecture for efficient management of 30
    - Hardware compatibility mappings for all models
    - Web platform optimizations (compute shaders, parallel loading, shader precompilation)
 
-2. **On-Demand Generation**: The test generators (`fixed_merged_test_generator.py`, `integrated_skillset_generator.py`) retrieve templates from the database at runtime to create:
+2. **On-Demand Generation**: The test generators (`fixed_generators/test_generators/merged_test_generator.py`, `generators/skill_generators/integrated_skillset_generator.py`) retrieve templates from the database at runtime to create:
    - Test files for all 300+ HuggingFace model classes with full cross-platform support
    - Skill implementation files for the same models with hardware-specific optimizations
    - Benchmark files for performance testing across all hardware platforms
@@ -251,13 +251,13 @@ python generators/templates/template_database.py --list-templates
 python generators/templates/template_database.py --add-template [template_name] --template-type [model|helper|dependency]
 
 # Generate test with fixed generator and cross-platform support
-python generators/test_generators/fixed_merged_test_generator.py --generate bert --platform all --output test_hf_bert.py
+python generators/test_generators/fixed_generators/test_generators/merged_test_generator.py --generate bert --platform all --output test_hf_bert.py
 
 # Generate test with specific hardware platforms
-python generators/test_generators/fixed_merged_test_generator.py --generate vit --platform "cuda,openvino,webgpu" --output test_hf_vit.py
+python generators/test_generators/fixed_generators/test_generators/merged_test_generator.py --generate vit --platform "cuda,openvino,webgpu" --output test_hf_vit.py
 
 # Generate skillset with cross-platform support
-python generators/models/integrated_skillset_generator.py --model bert --hardware all --cross-platform
+python generators/models/generators/skill_generators/integrated_skillset_generator.py --model bert --hardware all --cross-platform
 
 # Run Phase 16 generator test script to test across all platforms
 ./generators/runners/run_phase16_generators.sh
@@ -381,44 +381,44 @@ python run_skills_tests.py --category language
 python check_api_implementation.py 
 
 # Test a specific API
-python test_single_api.py [api_name]
+python generators/models/test_single_api.py [api_name]
 
 # Test queue and backoff features
-python test_api_backoff_queue.py --api [api_name]
+python generators/models/test_api_backoff_queue.py --api [api_name]
 
 # Run comprehensive queue and backoff tests
 python run_queue_backoff_tests.py
 
 # Run detailed Ollama backoff tests
-python test_ollama_backoff_comprehensive.py
+python generators/models/test_ollama_backoff_comprehensive.py
 ```
 
 ### Hardware and Integration Tests
 
 ```bash
 # Test hardware backends
-python test_hardware_backend.py
+python generators/models/test_hardware_backend.py
 
 # Test specific hardware platform
-python test_hardware_backend.py --backend [cpu|cuda|openvino|mps|amd|webnn|webgpu]
+python generators/models/test_hardware_backend.py --backend [cpu|cuda|openvino|mps|amd|webnn|webgpu]
 
 # NEW! Test enhanced OpenVINO integration
-python test_enhanced_openvino.py --test-optimum --model bert-base-uncased
-python test_enhanced_openvino.py --test-int8 --model bert-base-uncased
-python test_enhanced_openvino.py --compare-precisions --model bert-base-uncased --iterations 10
-python test_enhanced_openvino.py --run-all --model bert-base-uncased
+python generators/models/test_enhanced_openvino.py --test-optimum --model bert-base-uncased
+python generators/models/test_enhanced_openvino.py --test-int8 --model bert-base-uncased
+python generators/models/test_enhanced_openvino.py --compare-precisions --model bert-base-uncased --iterations 10
+python generators/models/test_enhanced_openvino.py --run-all --model bert-base-uncased
 
 # Test all hardware platforms for a specific model
-python test_hardware_backend.py --model bert --all-backends
+python generators/models/test_hardware_backend.py --model bert --all-backends
 
 # Run comprehensive hardware detection tests
-python test_comprehensive_hardware.py
+python generators/models/test_comprehensive_hardware.py
 
 # Test hardware-aware model classification
-python test_comprehensive_hardware.py --test integration
+python generators/models/test_comprehensive_hardware.py --test integration
 
 # Test hardware and model integration
-python test_comprehensive_hardware.py --test comparison
+python generators/models/test_comprehensive_hardware.py --test comparison
 
 # Run integrated test of ResourcePool with hardware and model family components
 python run_integrated_hardware_model_test.py
@@ -476,19 +476,19 @@ python integration_test_suite.py --ci-mode
 
 ```bash
 # Test resource pool with enhanced functionality
-python test_resource_pool.py --test all
+python generators/models/test_resource_pool.py --test all
 
 # Test device-specific caching in resource pool
-python test_resource_pool.py --test device
+python generators/models/test_resource_pool.py --test device
 
 # Test memory tracking in resource pool
-python test_resource_pool.py --test memory
+python generators/models/test_resource_pool.py --test memory
 
 # Test hardware-aware model selection
-python test_resource_pool.py --test hardware
+python generators/models/test_resource_pool.py --test hardware
 
 # Test model family integration with resource pool
-python test_resource_pool.py --test family
+python generators/models/test_resource_pool.py --test family
 ```
 
 ### Web Platform Tests
@@ -499,21 +499,21 @@ python cross_browser_model_sharding.py --model llama --size 70b --browsers chrom
 python cross_browser_model_sharding.py --model whisper --size large --browsers firefox,edge --test benchmark
 python cross_browser_model_sharding.py --model clip --size large --browsers chrome,edge --test compare
 python cross_browser_model_sharding.py --model llama --size 70b --browsers chrome,firefox,edge,safari --test comprehensive
-python test_ipfs_accelerate_with_cross_browser.py --model llama --size 70b --browsers chrome,firefox,edge
+python generators/models/test_ipfs_accelerate_with_cross_browser.py --model llama --size 70b --browsers chrome,firefox,edge
 
 # NEW! Resource Pool with WebNN/WebGPU acceleration (March 2025)
-python test_web_resource_pool.py --models bert,vit,whisper
-python test_web_resource_pool.py --concurrent-models --models bert,vit,whisper
-python test_web_resource_pool.py --compare-browsers --models whisper
-python test_web_resource_pool.py --test-loading-optimizations
-python test_web_resource_pool.py --test-quantization
-python test_web_resource_pool.py --stress-test --duration 120
+python generators/models/test_web_resource_pool.py --models bert,vit,whisper
+python generators/models/test_web_resource_pool.py --concurrent-models --models bert,vit,whisper
+python generators/models/test_web_resource_pool.py --compare-browsers --models whisper
+python generators/models/test_web_resource_pool.py --test-loading-optimizations
+python generators/models/test_web_resource_pool.py --test-quantization
+python generators/models/test_web_resource_pool.py --stress-test --duration 120
 
 # NEW! IPFS Acceleration with WebNN/WebGPU integration (March 2025)
-python test_ipfs_accelerate_webnn_webgpu.py --output results.json
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --platform webgpu --model whisper-tiny --optimize-audio
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --browser edge --platform webnn --model bert-base-uncased 
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
+python generators/models/test_ipfs_accelerate_webnn_webgpu.py --output results.json
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --platform webgpu --model whisper-tiny --optimize-audio
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser edge --platform webnn --model bert-base-uncased 
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
 
 
 # NEW! Real WebNN/WebGPU benchmarking with browser capabilities (March 2025)
@@ -581,8 +581,8 @@ python generators/verify_web_platform_integration.py
 ```bash
 # NEW! Run OpenVINO benchmarks across different precision formats
 ./run_openvino_benchmarks.sh --models bert-base-uncased --device CPU --precision FP32,FP16,INT8 --report 1
-python benchmark_openvino.py --model bert-base-uncased --precision FP32,FP16,INT8 --report
-python benchmark_openvino.py --model-family text --device CPU --batch-sizes 1,2,4,8,16 --report
+python duckdb_api/core/benchmark_openvino.py --model bert-base-uncased --precision FP32,FP16,INT8 --report
+python duckdb_api/core/benchmark_openvino.py --model-family text --device CPU --batch-sizes 1,2,4,8,16 --report
 
 # Run comprehensive benchmarks with the new orchestration script
 python duckdb_api/run_comprehensive_benchmarks.py
@@ -591,25 +591,25 @@ python duckdb_api/run_comprehensive_benchmarks.py
 python duckdb_api/run_comprehensive_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
 
 # Initialize benchmark database with sample data
-python benchmark_database.py
+python duckdb_api/core/benchmark_database.py
 
 # Get latest performance metrics
-python benchmark_query.py performance --family embedding --hardware cuda
+python duckdb_api/core/benchmark_query.py performance --family embedding --hardware cuda
 
 # Compare hardware platforms for a specific model
-python benchmark_query.py hardware --model bert-base-uncased --metric throughput
+python duckdb_api/core/benchmark_query.py hardware --model bert-base-uncased --metric throughput
 
 # Compare models within a family on specific hardware
-python benchmark_query.py models --family vision --hardware cuda
+python duckdb_api/core/benchmark_query.py models --family vision --hardware cuda
 
 # Analyze batch size scaling for a specific model
-python benchmark_query.py batch --model bert-base-uncased --hardware cuda --metric throughput
+python duckdb_api/core/benchmark_query.py batch --model bert-base-uncased --hardware cuda --metric throughput
 
 # Generate comprehensive report
-python benchmark_query.py report --family embedding --format html
+python duckdb_api/core/benchmark_query.py report --family embedding --format html
 
 # Get database statistics
-python benchmark_query.py stats
+python duckdb_api/core/benchmark_query.py stats
 
 # Generate comprehensive benchmark timing report
 python duckdb_api/benchmark_timing_report.py --generate --format html --output report.html
@@ -619,30 +619,30 @@ python duckdb_api/benchmark_timing_report.py --generate --format html --output r
 
 ```bash
 # Generate a skillset implementation using the database templates
-python integrated_skillset_generator.py --model bert --use-db-templates
+python generators/skill_generators/integrated_skillset_generator.py --model bert --use-db-templates
 
 # Generate with specific hardware platforms
-python integrated_skillset_generator.py --model bert --hardware cuda,rocm,webgpu
+python generators/skill_generators/integrated_skillset_generator.py --model bert --hardware cuda,rocm,webgpu
 
 # Generate with cross-platform support for all hardware
-python integrated_skillset_generator.py --model bert --hardware all --cross-platform
+python generators/skill_generators/integrated_skillset_generator.py --model bert --hardware all --cross-platform
 
 # Generate implementations for all models in a family
-python integrated_skillset_generator.py --family bert --use-db-templates
+python generators/skill_generators/integrated_skillset_generator.py --family bert --use-db-templates
 
 # Generate implementations for a specific task
-python integrated_skillset_generator.py --task text_generation --use-db-templates
+python generators/skill_generators/integrated_skillset_generator.py --task text_generation --use-db-templates
 
 # Run tests before generating implementations
-python integrated_skillset_generator.py --model bert --run-tests
+python generators/skill_generators/integrated_skillset_generator.py --model bert --run-tests
 
 # Set database path for template and result storage
 export TEMPLATE_DB_PATH=/path/to/template_db.duckdb
 export BENCHMARK_DB_PATH=/path/to/benchmark_db.duckdb
-python integrated_skillset_generator.py --model bert
+python generators/skill_generators/integrated_skillset_generator.py --model bert
 
 # Generate implementations for all models with parallel execution
-python integrated_skillset_generator.py --all --max-workers 20 --use-db-templates
+python generators/skill_generators/integrated_skillset_generator.py --all --max-workers 20 --use-db-templates
 ```
 
 ## Current Test Coverage (March 2025)
@@ -660,18 +660,18 @@ The test generator system now includes hardware-aware test generation that autom
 
 ```bash
 # Generate hardware-aware tests for specific models
-python test_generator_with_resource_pool.py --model bert-base-uncased
-python test_generator_with_resource_pool.py --model t5-small
-python test_generator_with_resource_pool.py --model vit-base-patch16-224
+python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased
+python generators/models/test_generator_with_resource_pool.py --model t5-small
+python generators/models/test_generator_with_resource_pool.py --model vit-base-patch16-224
 
 # Generate with specific settings
-python test_generator_with_resource_pool.py --model gpt2 --output-dir ./skills
-python test_generator_with_resource_pool.py --model distilbert-base-uncased --debug
-python test_generator_with_resource_pool.py --model roberta-base --clear-cache
-python test_generator_with_resource_pool.py --model facebook/bart-large --timeout 60
+python generators/models/test_generator_with_resource_pool.py --model gpt2 --output-dir ./skills
+python generators/models/test_generator_with_resource_pool.py --model distilbert-base-uncased --debug
+python generators/models/test_generator_with_resource_pool.py --model roberta-base --clear-cache
+python generators/models/test_generator_with_resource_pool.py --model facebook/bart-large --timeout 60
 
 # Generate tests for multiple models with shared resources
-python test_generator_with_resource_pool.py --models bert,roberta,gpt2 --output-dir ./skills
+python generators/models/test_generator_with_resource_pool.py --models bert,roberta,gpt2 --output-dir ./skills
 ```
 
 ### Enhanced Test Generation for Key Models
@@ -680,21 +680,21 @@ The merged test generator now includes specialized optimizations for the 13 key 
 
 ```bash
 # Generate tests specifically for key model types with enhanced hardware support
-python generators/merged_test_generator.py --generate-missing --key-models-only
+python generators/generators/test_generators/merged_test_generator.py --generate-missing --key-models-only
 
 # Prioritize key models when generating mixed tests
-python generators/merged_test_generator.py --generate-missing --prioritize-key-models
+python generators/generators/test_generators/merged_test_generator.py --generate-missing --prioritize-key-models
 
 # Generate tests for specific key model categories
-python generators/merged_test_generator.py --generate-missing --key-models-only --category multimodal
+python generators/generators/test_generators/merged_test_generator.py --generate-missing --key-models-only --category multimodal
 
 # Generate tests for a specific key model
-python generators/merged_test_generator.py --generate t5
-python generators/merged_test_generator.py --generate llava
-python generators/merged_test_generator.py --generate whisper
+python generators/generators/test_generators/merged_test_generator.py --generate t5
+python generators/generators/test_generators/merged_test_generator.py --generate llava
+python generators/generators/test_generators/merged_test_generator.py --generate whisper
 
 # Generate tests for multiple key models
-python generators/merged_test_generator.py --batch-generate t5,clap,wav2vec2,whisper,llava
+python generators/generators/test_generators/merged_test_generator.py --batch-generate t5,clap,wav2vec2,whisper,llava
 ```
 
 ### Modality-Specific Test Generation
@@ -962,13 +962,13 @@ To test the API implementations:
 python complete_api_improvement_plan.py
 
 # Test a specific API's backoff and queue functionality
-python test_api_backoff_queue.py --api claude
+python generators/models/test_api_backoff_queue.py --api claude
 
 # Run all queue and backoff tests across APIs
 python run_queue_backoff_tests.py
 
 # Run comprehensive Ollama tests
-python test_ollama_backoff_comprehensive.py
+python generators/models/test_ollama_backoff_comprehensive.py
 
 # Check current implementation status of all APIs
 python check_api_implementation.py

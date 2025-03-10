@@ -16,8 +16,8 @@ I've made significant progress in fixing the import path issues caused by the co
 
 ### 3. Syntax Errors ✅
 - Fixed 3 files with syntax errors:
-  - `benchmark_db_maintenance.py` - Fixed missing except blocks
-  - `benchmark_db_query.py` - Fixed indentation errors
+  - `duckdb_api/core/benchmark_db_maintenance.py` - Fixed missing except blocks
+  - `duckdb_api/core/benchmark_db_query.py` - Fixed indentation errors
   - `cleanup_stale_reports.py` - Fixed invalid docstring syntax
 - Created a fixed version of `update_template_database_for_qualcomm.py`
 

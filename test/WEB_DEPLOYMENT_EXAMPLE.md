@@ -15,13 +15,13 @@ First, generate a skillset implementation with web backend support:
 
 ```bash
 # Generate tests for the model
-python merged_test_generator.py --generate bert
+python generators/test_generators/merged_test_generator.py --generate bert
 
 # Run tests to collect insights
 python test/skills/test_hf_bert.py
 
 # Generate implementation with web support
-python integrated_skillset_generator.py --model bert --run-tests
+python generators/skill_generators/integrated_skillset_generator.py --model bert --run-tests
 ```
 
 ## Step 2: Export the Model for Web

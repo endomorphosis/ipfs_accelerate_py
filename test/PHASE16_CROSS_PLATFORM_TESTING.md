@@ -218,7 +218,7 @@ python hardware_compatibility_reporter.py --collect-all --matrix
 
 ### 2. Benchmark Database Integration
 
-Implemented in `benchmark_db_query.py` and related files, this component:
+Implemented in `duckdb_api/core/benchmark_db_query.py` and related files, this component:
 - Stores test results in the unified DuckDB database
 - Provides SQL query capabilities for result analysis
 - Generates visualizations for performance comparisons
@@ -226,7 +226,7 @@ Implemented in `benchmark_db_query.py` and related files, this component:
 
 ```python
 # Usage
-python benchmark_db_query.py --report compatibility --format html --output matrix.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report compatibility --format html --output matrix.html
 ```
 
 ### 3. Cross-Platform Test Runner
@@ -239,7 +239,7 @@ Implemented in `benchmark_all_key_models.py`, this component:
 
 ```python
 # Usage
-python benchmark_all_key_models.py --hardware cpu cuda openvino webnn webgpu
+python duckdb_api/core/benchmark_all_key_models.py --hardware cpu cuda openvino webnn webgpu
 ```
 
 ### 4. Web Platform Integration Tests
@@ -252,7 +252,7 @@ Implemented in `test_web_platform_integration.py` and related files, this compon
 
 ```python
 # Usage
-python test_web_platform_integration.py --platform webgpu --modality text
+python generators/models/test_web_platform_integration.py --platform webgpu --modality text
 ```
 
 ## Focused Testing Priorities
@@ -385,10 +385,10 @@ python duckdb_api/web/run_web_platform_tests_with_db.py --model bert --run-webnn
 python hardware_compatibility_reporter.py --collect-all --matrix
 
 # Query database for performance comparison
-python benchmark_db_query.py --report performance --format html --output perf_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report performance --format html --output perf_report.html
 
 # Generate model-specific report
-python benchmark_db_query.py --model bert --metric throughput --compare-hardware
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert --metric throughput --compare-hardware
 ```
 
 ## Testing the Full HuggingFace Model Ecosystem

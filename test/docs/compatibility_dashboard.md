@@ -50,7 +50,7 @@ The compatibility dashboard is available through a web interface:
 
 ```bash
 # Start the dashboard server
-python test/scripts/benchmark_db_api.py --dashboard --port 8000
+python test/scripts/duckdb_api/core/benchmark_db_api.py --dashboard --port 8000
 
 # Access the dashboard
 open http://localhost:8000/dashboard/compatibility
@@ -79,10 +79,10 @@ Generate the dashboard using command-line tools:
 
 ```bash
 # Generate static compatibility dashboard
-python duckdb_api/core/benchmark_db_query.py --dashboard compatibility --output reports/compatibility_dashboard.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --dashboard compatibility --output reports/compatibility_dashboard.html
 
 # Generate with specific filters
-python duckdb_api/core/benchmark_db_query.py --dashboard compatibility --model-types text,vision --hardware-platforms cuda,webgpu --output reports/filtered_compatibility_dashboard.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --dashboard compatibility --model-types text,vision --hardware-platforms cuda,webgpu --output reports/filtered_compatibility_dashboard.html
 ```
 
 ## Dashboard Features
@@ -354,7 +354,7 @@ jobs:
           
       - name: Generate updated dashboard
         run: |
-          python duckdb_api/core/benchmark_db_query.py --dashboard compatibility --output public/compatibility_dashboard.html
+          python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --dashboard compatibility --output public/compatibility_dashboard.html
           
       - name: Deploy dashboard
         uses: JamesIves/github-pages-deploy-action@4.1.5

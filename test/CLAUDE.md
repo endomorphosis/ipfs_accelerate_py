@@ -1,15 +1,37 @@
 # IPFS Accelerate Python Framework - Development Guide
 
-> **ORGANIZATION UPDATE (March 2025):**
+> **ORGANIZATION UPDATE (March 9, 2025):**
 >
-> The codebase has been reorganized for better maintainability:
-> - All generator files (test/benchmark/skillset) moved to the top-level `generators/` directory
-> - All template-related files (templates, validators, inheritance system) moved to the `generators/templates/` directory
-> - All database-related tools moved to the top-level `duckdb_api/` directory
-> - CI/CD workflow files moved from `test/.github/workflows/` to the standard `.github/workflows/` location
+> The codebase has been reorganized for better maintainability with the following top-level structure:
 > 
+> - All generator files moved to the top-level `generators/` directory (216 files) with subdirectories:
+>   - `generators/benchmark_generators/`: Benchmark generation tools
+>   - `generators/models/`: Model implementations and skills
+>   - `generators/runners/`: Test runner scripts
+>   - `generators/skill_generators/`: Skill generation tools
+>   - `generators/template_generators/`: Template generation utilities
+>   - `generators/templates/`: Template files for model generation
+>   - `generators/test_generators/`: Test generation tools
+>   - `generators/utils/`: Utility functions
+>   - `generators/hardware/`: Hardware-specific generator tools
+>
+> - All database-related tools moved to the top-level `duckdb_api/` directory (83 files) with subdirectories:
+>   - `duckdb_api/core/`: Core database functionality
+>   - `duckdb_api/migration/`: Migration tools for JSON to database
+>   - `duckdb_api/schema/`: Database schema definitions 
+>   - `duckdb_api/utils/`: Utility functions for database operations
+>   - `duckdb_api/visualization/`: Result visualization tools
+>   - `duckdb_api/distributed_testing/`: Distributed testing framework components
+>
+> - Web platform implementations remain in `fixed_web_platform/` directory with subdirectories:
+>   - `fixed_web_platform/unified_framework/`: Unified API for cross-browser WebNN/WebGPU
+>   - `fixed_web_platform/wgsl_shaders/`: WebGPU Shading Language shader implementations
+>
+> - CI/CD workflow files moved from `test/.github/workflows/` to the standard `.github/workflows/` location
+>
 > ✅ Migration completed with 299 files moved and all import paths updated (March 9, 2025)
 > ✅ CI/CD pipeline configuration updated to use new directory structure (March 9, 2025)
+> ✅ All documentation path references have been updated to use the new structure
 >
 > Please refer to [FINAL_MIGRATION_REPORT.md](FINAL_MIGRATION_REPORT.md) for the complete directory structure and [CI_CD_UPDATES_SUMMARY.md](CI_CD_UPDATES_SUMMARY.md) for details on CI/CD changes.
 >
@@ -83,14 +105,22 @@ The project has successfully completed 16 phases of implementation, focusing on 
   - ✅ Integration with benchmark scheduler for optimized test selection (COMPLETED - June 5, 2025)
   - ✅ Advanced model-hardware compatibility matrix generation (COMPLETED - June 5, 2025)
 
-#### Template-Based Generation System (Now in `generators/` folder)
+#### Template-Based Generation System (In `generators/` folder)
 ✅ Template system reorganization completed (March 9, 2025)
 - All template-related components moved to the `generators/` folder including:
-  - Template storage and retrieval system
-  - Template validation utilities
+  - Template storage and retrieval system (`generators/templates/`)
+  - Template validation utilities (`generators/template_generators/`)
   - Template inheritance hierarchy
   - Template instantiation engine
   - Hardware-specific template components
+- Template generator files categorized into appropriate subdirectories:
+  - `generators/benchmark_generators/`: Benchmark generation tools
+  - `generators/models/`: Model implementations and skills
+  - `generators/skill_generators/`: Skill generation tools
+  - `generators/template_generators/`: Template generation utilities
+  - `generators/test_generators/`: Test generation tools
+  - `generators/runners/`: Test runner scripts
+  - `generators/utils/`: Utility functions
 - All import references updated to use new structure
 - Test files updated to reference new paths
 
@@ -109,14 +139,21 @@ Remaining work:
 - ✅ Add performance prediction for model-hardware combinations (100% complete)
 - ✅ Enhanced OpenVINO integration with optimum.intel support and INT8 quantization (100% complete)
 
-#### Database Restructuring Effort (Now in `duckdb_api/` folder)
+#### Database Restructuring Effort (In `duckdb_api/` folder)
 ✅ Database reorganization completed (March 9, 2025)
 - All database-related components have been moved to the `duckdb_api/` folder including:
-  - Core database API and query tools
-  - Schema management and migration utilities
-  - Data visualization and reporting tools
+  - Core database API and query tools (`duckdb_api/core/`)
+  - Schema management and migration utilities (`duckdb_api/schema/`)
+  - Data visualization and reporting tools (`duckdb_api/visualization/`)
   - Benchmark integration components
-  - Database maintenance utilities
+  - Database maintenance utilities (`duckdb_api/utils/`)
+  - Migration tools for JSON to database (`duckdb_api/migration/`)
+- The database components are now organized into logical subdirectories:
+  - `duckdb_api/core/`: Core database functionality
+  - `duckdb_api/migration/`: Migration tools for JSON to database
+  - `duckdb_api/schema/`: Database schema definitions
+  - `duckdb_api/utils/`: Utility functions for database operations
+  - `duckdb_api/visualization/`: Result visualization tools
 - All import references updated to use new structure
 - Test files updated to reference new paths
 
@@ -486,7 +523,7 @@ Key features:
 
 ### MARCH 2025 UPDATE: Simplified Template System
 
-A new simplified template system has been implemented that makes it easier to generate hardware-aware tests. This entire system including all templates, template databases, and template utilities has been relocated to the `generators/templates/` directory:
+A new simplified template system has been implemented that makes it easier to generate hardware-aware tests. This entire system including all templates, template databases, and template utilities has been relocated to the `generators/` directory with specialized subdirectories:
 
 ```bash
 # Create a simple template database
@@ -1391,31 +1428,31 @@ The framework now includes a high-performance distributed testing system that en
 
 ```bash
 # Start the coordinator (central server)
-python distributed_testing/coordinator.py --host 0.0.0.0 --port 8080 --db-path ./benchmark_db.duckdb
+python duckdb_api/distributed_testing/coordinator.py --host 0.0.0.0 --port 8080 --db-path ./benchmark_db.duckdb
 
 # Start a worker node
-python distributed_testing/worker.py --coordinator http://localhost:8080 --api-key WORKER_API_KEY
+python duckdb_api/distributed_testing/worker.py --coordinator http://localhost:8080 --api-key WORKER_API_KEY
 
 # Generate API keys for authentication
-python distributed_testing/coordinator.py --generate-worker-key --security-config ./security_config.json
+python duckdb_api/distributed_testing/coordinator.py --generate-worker-key --security-config ./security_config.json
 
 # Run a test using the distributed framework
-python distributed_testing/run_test.py --mode all --db-path ./test_db.duckdb --security-config ./test_security_config.json
+python duckdb_api/distributed_testing/run_test.py --mode all --db-path ./test_db.duckdb --security-config ./test_security_config.json
 ```
 
 ### Creating Tasks for Distributed Execution
 
 ```bash
 # Create a benchmark task with specific requirements
-python distributed_testing/create_task.py --type benchmark --model bert-base-uncased \
+python duckdb_api/distributed_testing/create_task.py --type benchmark --model bert-base-uncased \
   --hardware cuda --batch-sizes 1,2,4,8,16 --priority 1
 
 # Create a test task
-python distributed_testing/create_task.py --type test --test-file test_webgpu_4bit_inference.py \
+python duckdb_api/distributed_testing/create_task.py --type test --test-file test_webgpu_4bit_inference.py \
   --hardware webgpu --browser firefox --priority 2
 
 # Monitor task execution
-python distributed_testing/monitor_tasks.py --status all
+python duckdb_api/distributed_testing/monitor_tasks.py --status all
 ```
 
 ### Security Features
@@ -1429,8 +1466,8 @@ The distributed testing framework includes comprehensive security features:
 
 For detailed documentation on the distributed testing framework, see:
 - [DISTRIBUTED_TESTING_DESIGN.md](DISTRIBUTED_TESTING_DESIGN.md) - Detailed design document
-- [distributed_testing/README.md](distributed_testing/README.md) - Usage instructions
-- [distributed_testing/SECURITY.md](distributed_testing/SECURITY.md) - Security implementation
+- [duckdb_api/distributed_testing/README.md](duckdb_api/distributed_testing/README.md) - Usage instructions
+- [duckdb_api/distributed_testing/SECURITY.md](duckdb_api/distributed_testing/SECURITY.md) - Security implementation
 
 ## Web Resource Pool Integration (COMPLETED - May 10, 2025)
 
@@ -1965,15 +2002,35 @@ The database stores templates for tests, skills, benchmarks, and helper function
     - `firefox_optimized_audio_whisper.wgsl`: Firefox-optimized shader for Whisper models
     - `model_specific/`: Model-specific optimized shader implementations
 
-#### Template System Core Files (Now in `generators/` folder)
-- `generators/template_database.py`: Database operations for templates
-- `generators/simple_test_generator.py`: Simplified template-based generator
-- `generators/template_validator.py`: Validation system for templates
-- `generators/create_simple_template_db.py`: Creates template database with defaults
-- `generators/templates/`: Directory containing all model template files
-  - Contains template files for all model families (BERT, ViT, Whisper, LLaVA, etc.)
-  - Includes template_database.json and template_db.duckdb
-  - Contains hardware-specific template variations
+#### Generator System Directory Structure
+- `generators/`: Main directory for all generation-related code (216 files)
+  - `benchmark_generators/`: Benchmark generation tools
+    - `run_model_benchmarks.py`: Main benchmark execution script
+    - `benchmark_visualizer.py`: Tools for visualizing benchmark results
+  - `models/`: Model implementations and skills
+    - `test_ipfs_accelerate.py`: IPFS acceleration testing utilities
+    - Model-specific implementation files
+  - `runners/`: Test runner scripts
+    - `web/`: Web-specific test runners
+    - `run_template_system_check.py`: Template system verification
+  - `skill_generators/`: Skill generation tools
+    - `create_simple_template_db.py`: Creates template database with defaults
+    - `integrated_skillset_generator.py`: Generates skills for models
+  - `template_generators/`: Template generation utilities
+    - `template_validator.py`: Validation system for templates
+  - `templates/`: Template files and database
+    - `template_database.py`: Database operations for templates
+    - Template files for all model families (BERT, ViT, Whisper, LLaVA, etc.)
+    - Template database files (template_database.json, template_db.duckdb)
+    - Hardware-specific template variations
+  - `test_generators/`: Test generation tools
+    - `simple_test_generator.py`: Simplified template-based generator
+    - `merged_test_generator.py`: Advanced test generator
+    - `qualified_test_generator.py`: Generator with hardware qualification
+  - `utils/`: Utility functions for generators
+  - `hardware/`: Hardware-specific generator tools
+    - `automated_hardware_selection.py`: Hardware selection utilities
+    - `hardware_detection.py`: Detects available hardware platforms
 
 #### Benchmark Results Database
 The database also stores all benchmark results and test outputs:
@@ -1993,17 +2050,17 @@ The database also stores all benchmark results and test outputs:
   - Interactive dashboard for result exploration
 
 - **Core Components**:
-  - `create_benchmark_schema.py`: Schema definition and initialization
-  - `benchmark_db_converter.py`: JSON to database migration
-  - `benchmark_db_updater.py`: Direct database writing interface
-  - `benchmark_db_query.py`: Comprehensive query tool
-  - `benchmark_db_maintenance.py`: Database optimization
-  - `benchmark_db_api.py`: REST API and dashboard
-  - `benchmark_db_performance.py`: Performance testing
-  - `run_benchmark_with_db.py`: Example integration
-  - `cleanup_test_results.py`: Automated migration utility
-  - `generate_compatibility_matrix.py`: Creates comprehensive model compatibility matrix
-  - `update_db_schema_for_simulation.py`: Updates schema with simulation flags
+  - `duckdb_api/schema/creation/create_benchmark_schema.py`: Schema definition and initialization
+  - `duckdb_api/migration/benchmark_db_converter.py`: JSON to database migration
+  - `duckdb_api/core/benchmark_db_updater.py`: Direct database writing interface
+  - `duckdb_api/core/benchmark_db_query.py`: Comprehensive query tool
+  - `duckdb_api/core/benchmark_db_maintenance.py`: Database optimization
+  - `duckdb_api/core/benchmark_db_api.py`: REST API and dashboard
+  - `duckdb_api/core/benchmark_db_performance.py`: Performance testing
+  - `duckdb_api/core/run_benchmark_with_db.py`: Example integration
+  - `duckdb_api/migration/cleanup_test_results.py`: Automated migration utility
+  - `duckdb_api/core/generate_compatibility_matrix.py`: Creates comprehensive model compatibility matrix
+  - `duckdb_api/schema/update_db_schema_for_simulation.py`: Updates schema with simulation flags
 
 #### Model Compatibility Matrix
 The database enables automatic generation of a comprehensive compatibility matrix for all 300+ HuggingFace model classes:

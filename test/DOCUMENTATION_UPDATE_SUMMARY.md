@@ -10,14 +10,14 @@ This file summarizes the documentation updates made to reflect the recent reorga
 
 1. **WEB_PLATFORM_INTEGRATION_GUIDE.md**
    - Updated references from `python test/` to `python duckdb_api/` for database-related scripts
-   - Updated references from `python merged_test_generator.py` to `python generators/merged_test_generator.py`
+   - Updated references from `python generators/test_generators/merged_test_generator.py` to `python generators/generators/test_generators/merged_test_generator.py`
    - Updated references from `python fix_test_generator.py` to `python generators/fix_test_generator.py`
 
 2. **BENCHMARK_TIMING_REPORT_GUIDE.md**
    - Updated all references to `run_comprehensive_benchmarks.py`
    - Updated all references to `run_benchmark_timing_report.py`
    - Updated all references to `query_benchmark_timings.py`
-   - Updated all references to `benchmark_db_query.py`
+   - Updated all references to `duckdb_api/core/benchmark_db_query.py`
    - Updated the GitHub Actions workflow example
 
 ## Documentation Artifacts Created
@@ -40,9 +40,9 @@ The following path update patterns were applied consistently across the document
 |----------|----------|
 | `python generators/benchmark_generators/run_model_benchmarks.py` | `python duckdb_api/run_model_benchmarks.py` |
 | `python test/run_comprehensive_benchmarks.py` | `python duckdb_api/run_comprehensive_benchmarks.py` |
-| `python merged_test_generator.py` | `python generators/merged_test_generator.py` |
+| `python generators/test_generators/merged_test_generator.py` | `python generators/generators/test_generators/merged_test_generator.py` |
 | `python fix_test_generator.py` | `python generators/fix_test_generator.py` |
-| `python benchmark_db_query.py` | `python duckdb_api/benchmark_db_query.py` |
+| `python duckdb_api/core/duckdb_api/core/benchmark_db_query.py` | `python duckdb_api/duckdb_api/core/benchmark_db_query.py` |
 | `python run_benchmark_timing_report.py` | `python duckdb_api/run_benchmark_timing_report.py` |
 | `python query_benchmark_timings.py` | `python duckdb_api/query_benchmark_timings.py` |
 

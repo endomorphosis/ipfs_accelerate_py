@@ -15,25 +15,25 @@ This module handles updating the benchmark database with new test results. It su
 
 ```bash
 # Update database with performance results
-python benchmark_db_updater.py --input path/to/performance_results.json --type performance
+python duckdb_api/core/benchmark_db_updater.py --input path/to/performance_results.json --type performance
 
 # Update database with compatibility results
-python benchmark_db_updater.py --input path/to/compatibility_results.json --type compatibility
+python duckdb_api/core/benchmark_db_updater.py --input path/to/compatibility_results.json --type compatibility
 
 # Update database with integration test results
-python benchmark_db_updater.py --input path/to/integration_results.json --type integration
+python duckdb_api/core/benchmark_db_updater.py --input path/to/integration_results.json --type integration
 
 # Enable debug mode
-python benchmark_db_updater.py --input path/to/results.json --type performance --debug
+python duckdb_api/core/benchmark_db_updater.py --input path/to/results.json --type performance --debug
 ```
 
-### 2. `benchmark_db_api.py`
+### 2. `duckdb_api/core/benchmark_db_api.py`
 
 This module provides a programmatic API and a REST API for storing and querying benchmark data.
 
 ```bash
 # Start the API server
-python benchmark_db_api.py --serve --host 0.0.0.0 --port 8000
+python duckdb_api/core/duckdb_api/core/benchmark_db_api.py --serve --host 0.0.0.0 --port 8000
 ```
 
 API endpoints:
@@ -44,22 +44,22 @@ API endpoints:
 - `/hardware`: Get list of available hardware platforms
 - `/models`: Get list of available models
 
-### 3. `benchmark_db_query.py`
+### 3. `duckdb_api/core/benchmark_db_query.py`
 
 This module provides a command-line tool for querying and generating reports from the benchmark database.
 
 ```bash
 # Execute SQL query
-python benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output output.csv
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output output.csv
 
 # Generate performance report
-python benchmark_db_query.py --report performance --format html --output report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report performance --format html --output report.html
 
 # Compare hardware platforms for a model
-python benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
 
 # Compare models on a hardware platform
-python benchmark_db_query.py --hardware cuda --metric throughput --compare-models
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --hardware cuda --metric throughput --compare-models
 ```
 
 ### 4. `benchmark_db_converter.py`
@@ -68,25 +68,25 @@ This module converts existing JSON benchmark files to the database format.
 
 ```bash
 # Convert JSON files to database
-python benchmark_db_converter.py --input-dir ./archived_test_results --output-db ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_db_converter.py --input-dir ./archived_test_results --output-db ./benchmark_db.duckdb
 
 # Consolidate data from multiple directories
-python benchmark_db_converter.py --consolidate --categories performance hardware compatibility
+python duckdb_api/core/benchmark_db_converter.py --consolidate --categories performance hardware compatibility
 ```
 
-### 5. `benchmark_db_maintenance.py`
+### 5. `duckdb_api/core/benchmark_db_maintenance.py`
 
 This module provides utilities for maintaining the benchmark database.
 
 ```bash
 # Validate database structure
-python benchmark_db_maintenance.py --validate
+python duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py --validate
 
 # Optimize database
-python benchmark_db_maintenance.py --optimize
+python duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py --optimize
 
 # Clean up old JSON files
-python benchmark_db_maintenance.py --clean-json --older-than 30
+python duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py --clean-json --older-than 30
 ```
 
 ## Database Schema

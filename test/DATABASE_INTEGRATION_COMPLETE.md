@@ -17,7 +17,7 @@ We are pleased to announce the successful completion of the database integration
    - Report generation in multiple formats (markdown, HTML, JSON)
 
 2. **Migration Tool**:
-   - Created `migrate_json_to_db.py` for migrating existing JSON data
+   - Created `duckdb_api/migration/migrate_json_to_db.py` for migrating existing JSON data
    - Added validation, deduplication, and archiving capabilities
    - Comprehensive reporting for migration tracking
 
@@ -91,16 +91,16 @@ report = db_handler.generate_report(format="markdown", output_file="report.md")
 
 ```bash
 # Run tests and store results in the database
-python test_ipfs_accelerate.py --models bert-base-uncased,t5-small
+python generators/models/test_ipfs_accelerate.py --models bert-base-uncased,t5-small
 
 # Generate a report from the database
-python test_ipfs_accelerate.py --report --format markdown --output test_report.md
+python generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
 
 # Generate a compatibility matrix
 python generate_compatibility_matrix.py --format html --output compatibility_matrix.html
 
 # Migrate JSON files to the database
-python migrate_json_to_db.py --directories ./benchmark_results ./archived_test_results
+python duckdb_api/migration/migrate_json_to_db.py --directories ./benchmark_results ./archived_test_results
 ```
 
 ## Next Steps

@@ -18,7 +18,7 @@ We have implemented comprehensive hardware platform support through:
 
 The implementation consists of the following key components:
 
-1. **Updated Hardware Compatibility Map**: Refined mapping in `merged_test_generator.py` with accurate "REAL" vs "SIMULATION" designations for all platforms
+1. **Updated Hardware Compatibility Map**: Refined mapping in `generators/test_generators/merged_test_generator.py` with accurate "REAL" vs "SIMULATION" designations for all platforms
 2. **Hardware Integration Fixer**: New tool in `fix_hardware_integration.py` to identify and fix hardware integration issues
 3. **Automated Fix Script**: Runner in `run_key_model_fixes.sh` to apply fixes to all key model test files
 4. **Hardware Templates**: Model-specific WebNN and WebGPU implementation templates based on modality (text, vision, audio, multimodal)
@@ -51,7 +51,7 @@ The following table shows the current hardware platform support status for key m
 
 ### 1. Hardware Compatibility Map
 
-The hardware compatibility map in `merged_test_generator.py` was updated to correctly reflect the actual implementation status of each hardware platform for each model family. This ensures that test generators and skill generators produce code with appropriate hardware support.
+The hardware compatibility map in `generators/test_generators/merged_test_generator.py` was updated to correctly reflect the actual implementation status of each hardware platform for each model family. This ensures that test generators and skill generators produce code with appropriate hardware support.
 
 Key changes:
 - Corrected WebNN and WebGPU status for LLMs and audio models from "REAL" to "SIMULATION"
@@ -120,9 +120,9 @@ To apply hardware fixes to model test files:
 
 The hardware compatibility mapping and platform support is integrated with:
 
-1. **Merged Test Generator**: Test files generated with `merged_test_generator.py` will include appropriate hardware platform support based on the model type.
+1. **Merged Test Generator**: Test files generated with `generators/test_generators/merged_test_generator.py` will include appropriate hardware platform support based on the model type.
 
-2. **Skillset Generator**: The `integrated_skillset_generator.py` uses the hardware compatibility mapping to generate skillset implementations with correct hardware support.
+2. **Skillset Generator**: The `generators/skill_generators/integrated_skillset_generator.py` uses the hardware compatibility mapping to generate skillset implementations with correct hardware support.
 
 3. **Template System**: The template inheritance system properly inherits hardware-specific implementations from parent templates.
 

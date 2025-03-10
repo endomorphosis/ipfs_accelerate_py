@@ -86,15 +86,15 @@ The following tools and scripts have been created to support the implementation:
 
 | Script | Purpose | Status |
 |--------|---------|--------|
-| fixed_merged_test_generator.py | Generate tests with hardware support | ✅ Complete |
-| integrated_skillset_generator.py | Generate skills with hardware support | ✅ Complete |
-| merged_test_generator.py | Generate tests (simplified) | ✅ Complete |
+| fixed_generators/test_generators/merged_test_generator.py | Generate tests with hardware support | ✅ Complete |
+| generators/skill_generators/integrated_skillset_generator.py | Generate skills with hardware support | ✅ Complete |
+| generators/test_generators/merged_test_generator.py | Generate tests (simplified) | ✅ Complete |
 | test_all_generators.py | Test all generators with various models | ✅ Complete |
 | verify_key_models.py | Verify key model implementations | ✅ Complete |
 | generate_key_model_tests.py | Generate tests for all key models | ✅ Complete |
 | complete_phase16.py | Complete all Phase 16 requirements | ✅ Complete |
-| benchmark_db_api.py | Database API for benchmarks | ✅ Complete |
-| benchmark_db_query.py | Query tool for benchmark database | ✅ Complete |
+| duckdb_api/core/benchmark_db_api.py | Database API for benchmarks | ✅ Complete |
+| duckdb_api/core/benchmark_db_query.py | Query tool for benchmark database | ✅ Complete |
 | benchmark_db_visualizer.py | Visualization tool for database | ✅ Complete |
 | run_incremental_benchmarks.py | Intelligent benchmark runner | ✅ Complete |
 
@@ -114,19 +114,19 @@ The test generators have been improved to:
 
 ```bash
 # Generate a test for bert with all hardware platforms
-python fixed_merged_test_generator.py -g bert -p all -o test_outputs/
+python fixed_generators/test_generators/merged_test_generator.py -g bert -p all -o test_outputs/
 
 # Generate a test for vit with specific platforms
-python fixed_merged_test_generator.py -g vit -p cpu,cuda,webgpu -o test_outputs/
+python fixed_generators/test_generators/merged_test_generator.py -g vit -p cpu,cuda,webgpu -o test_outputs/
 
 # Generate a skill for clip
-python integrated_skillset_generator.py -m clip -p all -o test_outputs/
+python generators/skill_generators/integrated_skillset_generator.py -m clip -p all -o test_outputs/
 
 # Generate tests for all key models
 python generate_key_model_tests.py --verify
 
 # Test all generators
-python test_all_generators.py
+python generators/models/test_all_generators.py
 
 # Complete Phase 16 implementation
 python complete_phase16.py
@@ -145,13 +145,13 @@ The database system uses DuckDB for efficient storage and querying:
 
 ```bash
 # Query benchmark data
-python benchmark_db_query.py --model bert --metric throughput --format chart
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert --metric throughput --format chart
 
 # Visualize benchmark results
-python benchmark_visualizer.py --input benchmark_db.duckdb --output report.html
+python duckdb_api/core/benchmark_visualizer.py --input benchmark_db.duckdb --output report.html
 
 # Run benchmark with database integration
-python benchmark_with_db_integration.py --model bert --hardware all
+python duckdb_api/core/benchmark_with_db_integration.py --model bert --hardware all
 
 # Run incremental benchmarks (only missing or outdated tests)
 python run_incremental_benchmarks.py --models bert,t5,vit --hardware cpu,cuda

@@ -270,15 +270,15 @@ To thoroughly test hardware detection, use the provided test script:
 
 ```bash
 # Run the basic test
-python test_comprehensive_hardware.py
+python generators/models/test_comprehensive_hardware.py
 
 # Run specific test components
-python test_comprehensive_hardware.py --test detection
-python test_comprehensive_hardware.py --test comparison
-python test_comprehensive_hardware.py --test integration
+python generators/models/test_comprehensive_hardware.py --test detection
+python generators/models/test_comprehensive_hardware.py --test comparison
+python generators/models/test_comprehensive_hardware.py --test integration
 
 # Run all tests
-python test_comprehensive_hardware.py --test all
+python generators/models/test_comprehensive_hardware.py --test all
 ```
 
 ## Version History

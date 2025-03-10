@@ -241,13 +241,13 @@ To test these optimizations on different browsers:
 
 ```bash
 # Test with browser-specific optimizations
-python test_webgpu_4bit_inference.py --model llama --browser-specific
+python generators/models/test_webgpu_4bit_inference.py --model llama --browser-specific
 
 # Test with a specific browser
-python test_webgpu_4bit_inference.py --model llama --browser-specific --target-browser firefox
+python generators/models/test_webgpu_4bit_inference.py --model llama --browser-specific --target-browser firefox
 
 # Compare performance across browsers
-python test_webgpu_4bit_inference.py --model llama --compare-hardware --all-platforms
+python generators/models/test_webgpu_4bit_inference.py --model llama --compare-hardware --all-platforms
 ```
 
 ## Future Work

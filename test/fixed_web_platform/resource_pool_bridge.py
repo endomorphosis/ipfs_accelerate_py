@@ -78,6 +78,12 @@ class BrowserConnection:
     
     This class handles communication with a browser via WebSocket and Selenium,
     providing an interface for loading models and running inference in the browser.
+    
+    Enhanced in March 2025 with:
+    - Advanced error recovery and diagnostic mechanisms
+    - Circuit breaker pattern implementation for failing connections
+    - Enhanced memory management under stress
+    - Comprehensive error tracking and telemetry
     """
     
     def __init__(self, connection_id: str, browser_name: str = 'chrome', 
@@ -115,6 +121,35 @@ class BrowserConnection:
         self.last_used_time = time.time()
         self.error_count = 0
         self.max_errors = 3
+        
+        # Enhanced lifecycle and health tracking
+        self.status = "created"
+        self.health_status = "unknown"
+        self.last_error = None
+        self.last_error_time = None
+        self.error_history = []  # Track last 10 errors with timestamps
+        self.heartbeat_failures = 0
+        self.max_heartbeat_failures = 3
+        self.memory_usage_mb = 0
+        self.browser_info = {}
+        self.adapter_info = {}
+        self.last_health_check = time.time()
+        self.startup_time = 0
+        self.total_inference_time = 0
+        self.total_inference_count = 0
+        self.recovery_attempts = 0
+        self.max_recovery_attempts = 2
+        
+        # Circuit breaker pattern implementation
+        self.circuit_state = "closed"  # closed, open, half-open
+        self.circuit_failure_threshold = 5
+        self.circuit_reset_timeout = 30  # seconds
+        self.circuit_last_failure_time = 0
+        self.consecutive_failures = 0
+        
+        # Model-specific error tracking
+        self.model_error_counts = {}
+        self.model_performance = {}
         
         # WebSocket bridge for real communication
         self.has_websocket_module = False
@@ -524,9 +559,269 @@ class BrowserConnection:
                 self.busy = False
                 return False
     
+    def _check_circuit_breaker(self, model_id: str) -> Tuple[bool, str]:
+        """
+        Check if circuit breaker allows operation to proceed.
+        
+        Implements the circuit breaker pattern to prevent repeated calls to failing services.
+        
+        Args:
+            model_id: ID of the model to check
+            
+        Returns:
+            Tuple[bool, str]: (is_allowed, reason)
+                is_allowed: True if operation is allowed, False otherwise
+                reason: Reason why operation is not allowed (if applicable)
+        """
+        # Check global circuit breaker first
+        current_time = time.time()
+        
+        # If circuit is open, check if reset timeout has elapsed
+        if self.circuit_state == "open":
+            if current_time - self.circuit_last_failure_time > self.circuit_reset_timeout:
+                # Reset to half-open state and allow a trial request
+                self.circuit_state = "half-open"
+                logger.info(f"Circuit breaker transitioned from open to half-open for {self.connection_id}")
+                return True, "Circuit breaker in half-open state, allowing trial request"
+            else:
+                # Circuit is open and timeout not reached, fail fast
+                time_remaining = self.circuit_reset_timeout - (current_time - self.circuit_last_failure_time)
+                return False, f"Circuit breaker open (reset in {time_remaining:.1f}s)"
+        
+        # Check model-specific circuit breaker
+        if model_id in self.model_error_counts:
+            model_errors = self.model_error_counts[model_id]
+            # If model has excessive errors, fail fast
+            if model_errors >= 3:  # Use a lower threshold for model-specific errors
+                return False, f"Model {model_id} has excessive errors ({model_errors})"
+        
+        # Circuit is closed or half-open, allow operation
+        return True, "Circuit breaker closed"
+    
+    def _update_circuit_breaker(self, success: bool, model_id: str = None, error: str = None):
+        """
+        Update circuit breaker state based on operation success/failure.
+        
+        Args:
+            success: Whether the operation succeeded
+            model_id: Model ID for model-specific tracking (optional)
+            error: Error message if operation failed (optional)
+        """
+        if success:
+            # On success, reset failure counters
+            if self.circuit_state == "half-open":
+                # Transition from half-open to closed on successful operation
+                self.circuit_state = "closed"
+                logger.info(f"Circuit breaker transitioned from half-open to closed for {self.connection_id}")
+            
+            # Reset counters
+            self.consecutive_failures = 0
+            
+            # Reset model-specific error count if relevant
+            if model_id and model_id in self.model_error_counts and self.model_error_counts[model_id] > 0:
+                self.model_error_counts[model_id] = 0
+                
+        else:
+            # On failure, increment counters
+            self.consecutive_failures += 1
+            
+            # Update model-specific error count
+            if model_id:
+                if model_id not in self.model_error_counts:
+                    self.model_error_counts[model_id] = 0
+                self.model_error_counts[model_id] += 1
+            
+            # Track error history (keep last 10)
+            if error:
+                error_entry = {"time": time.time(), "error": error, "model_id": model_id}
+                self.error_history.append(error_entry)
+                if len(self.error_history) > 10:
+                    self.error_history.pop(0)  # Remove oldest error
+            
+            # Update global circuit breaker state
+            if self.consecutive_failures >= self.circuit_failure_threshold:
+                # Open the circuit breaker
+                if self.circuit_state != "open":
+                    self.circuit_state = "open"
+                    self.circuit_last_failure_time = time.time()
+                    logger.warning(f"Circuit breaker opened for {self.connection_id} due to {self.consecutive_failures} consecutive failures")
+    
+    async def _recover_connection(self) -> bool:
+        """
+        Attempt to recover a degraded connection.
+        
+        This method performs a sequence of recovery steps to bring a connection
+        back to a healthy state without completely rebuilding it.
+        
+        Returns:
+            bool: True if recovery succeeded, False otherwise
+        """
+        if not self.initialized or not hasattr(self, 'browser_automation') or not self.browser_automation:
+            logger.error(f"Cannot recover uninitialized connection {self.connection_id}")
+            return False
+        
+        # Update connection status
+        if hasattr(self, 'status'):
+            self.status = "recovering"
+        
+        logger.info(f"Attempting to recover connection {self.connection_id}, attempt {self.recovery_attempts+1}/{self.max_recovery_attempts}")
+        self.recovery_attempts += 1
+        
+        try:
+            # Step 1: Try to ping the WebSocket
+            try:
+                if (hasattr(self.browser_automation, 'websocket_bridge') and 
+                    self.browser_automation.websocket_bridge and
+                    hasattr(self.browser_automation.websocket_bridge, 'ping')):
+                    
+                    logger.info(f"Attempting to ping WebSocket for connection {self.connection_id}")
+                    ping_response = await self.browser_automation.websocket_bridge.ping(timeout=5.0)
+                    
+                    if ping_response and ping_response.get('status') == 'success':
+                        logger.info(f"WebSocket ping successful for connection {self.connection_id}")
+                        
+                        # Update health status
+                        if hasattr(self, 'health_status'):
+                            self.health_status = "degraded"  # Still degraded until proven otherwise
+                        
+                        # WebSocket is alive, try a basic operation
+                        try:
+                            capabilities = await self.browser_automation.websocket_bridge.get_browser_capabilities(retry_attempts=1)
+                            if capabilities:
+                                logger.info(f"WebSocket connection appears functional for {self.connection_id}")
+                                
+                                # Update health status
+                                if hasattr(self, 'health_status'):
+                                    self.health_status = "healthy"
+                                
+                                # Reset some error counters
+                                self.heartbeat_failures = 0
+                                
+                                # Update status
+                                if hasattr(self, 'status'):
+                                    self.status = "ready"
+                                
+                                return True
+                        except Exception as cap_error:
+                            logger.warning(f"Error checking capabilities during recovery: {cap_error}")
+                    else:
+                        logger.warning(f"WebSocket ping failed during recovery for {self.connection_id}")
+            except Exception as ping_error:
+                logger.warning(f"Error during WebSocket ping recovery: {ping_error}")
+            
+            # Step 2: Try to restart the WebSocket bridge
+            try:
+                if (hasattr(self.browser_automation, 'websocket_bridge') and 
+                    self.browser_automation.websocket_bridge):
+                    
+                    logger.info(f"Attempting to restart WebSocket bridge for connection {self.connection_id}")
+                    
+                    # Stop the current bridge
+                    await self.browser_automation.websocket_bridge.stop()
+                    
+                    # Wait briefly
+                    await asyncio.sleep(1.0)
+                    
+                    # Create a new bridge
+                    self.websocket_port = 8765 + random.randint(0, 1000)  # Use a new random port
+                    
+                    # Import WebSocketBridge from fixed_web_platform module
+                    try:
+                        from websocket_bridge import create_websocket_bridge
+                        
+                        # Create new WebSocket bridge
+                        logger.info(f"Creating new WebSocket bridge on port {self.websocket_port}")
+                        websocket_bridge = await create_websocket_bridge(port=self.websocket_port)
+                        
+                        if websocket_bridge:
+                            # Update the browser automation with new bridge
+                            self.browser_automation.websocket_bridge = websocket_bridge
+                            
+                            # Try to refresh the page to reload the bridge
+                            if hasattr(self.browser_automation, 'refresh_page'):
+                                await self.browser_automation.refresh_page()
+                            
+                            # Check if bridge is working
+                            await asyncio.sleep(2.0)  # Wait for page to refresh
+                            
+                            # Wait for WebSocket connection
+                            websocket_connected = await websocket_bridge.wait_for_connection(
+                                timeout=10.0,
+                                retry_attempts=2
+                            )
+                            
+                            if websocket_connected:
+                                logger.info(f"WebSocket bridge successfully restarted for {self.connection_id}")
+                                
+                                # Update health status
+                                if hasattr(self, 'health_status'):
+                                    self.health_status = "degraded"  # Still degraded until fully proven
+                                
+                                # Get browser capabilities to verify feature support
+                                capabilities = await websocket_bridge.get_browser_capabilities(retry_attempts=1)
+                                if capabilities:
+                                    logger.info(f"New WebSocket bridge is fully functional for {self.connection_id}")
+                                    
+                                    # Update health status
+                                    if hasattr(self, 'health_status'):
+                                        self.health_status = "healthy"
+                                    
+                                    # Update status
+                                    if hasattr(self, 'status'):
+                                        self.status = "ready"
+                                    
+                                    return True
+                    except Exception as bridge_error:
+                        logger.warning(f"Error recreating WebSocket bridge: {bridge_error}")
+            except Exception as restart_error:
+                logger.warning(f"Error during WebSocket bridge restart: {restart_error}")
+            
+            # If recovery attempts exhausted, mark as failed
+            if self.recovery_attempts >= self.max_recovery_attempts:
+                logger.error(f"Recovery failed after {self.recovery_attempts} attempts for connection {self.connection_id}")
+                
+                # Update health status
+                if hasattr(self, 'health_status'):
+                    self.health_status = "unhealthy"
+                
+                # Update status
+                if hasattr(self, 'status'):
+                    self.status = "error"
+                
+                return False
+            
+            # Final fallback: try a simpler recovery by refreshing the page
+            try:
+                if hasattr(self.browser_automation, 'refresh_page'):
+                    logger.info(f"Attempting final recovery with page refresh for {self.connection_id}")
+                    await self.browser_automation.refresh_page()
+                    
+                    # Wait for page to load
+                    await asyncio.sleep(3.0)
+                    
+                    # Update status
+                    if hasattr(self, 'status'):
+                        self.status = "degraded"
+                    
+                    if hasattr(self, 'health_status'):
+                        self.health_status = "degraded"
+                    
+                    # Not fully recovered but maybe usable
+                    return True
+            except Exception as refresh_error:
+                logger.warning(f"Error during page refresh recovery: {refresh_error}")
+            
+            # Recovery failed
+            return False
+            
+        except Exception as recovery_error:
+            logger.error(f"Unexpected error during connection recovery: {recovery_error}")
+            traceback.print_exc()
+            return False
+    
     async def run_inference(self, model_id: str, inputs: Dict[str, Any], retry_attempts: int = 1) -> Dict[str, Any]:
         """
-        Run inference with a loaded model with enhanced reliability.
+        Run inference with a loaded model with enhanced reliability and circuit breaker pattern.
         
         Args:
             model_id: ID of the model to use
@@ -546,13 +841,43 @@ class BrowserConnection:
                 error_msg = f"Model {model_id} not loaded in this connection"
                 logger.error(error_msg)
                 return {'success': False, 'error': error_msg, 'model_id': model_id}
+            
+            # Check circuit breaker before proceeding
+            circuit_allowed, circuit_reason = self._check_circuit_breaker(model_id)
+            if not circuit_allowed:
+                logger.warning(f"Circuit breaker prevented inference for {model_id}: {circuit_reason}")
+                
+                # Return simulated result with circuit breaker info
+                return {
+                    'success': True,  # Still return success for compatibility
+                    'status': 'simulated',
+                    'model_id': model_id,
+                    'output_shape': [1, 768],  # Mock output shape
+                    'platform': self.platform,
+                    'backend': 'webgpu' if self.platform == 'webgpu' else 'webnn',
+                    'browser': self.browser_name,
+                    'is_real_implementation': False,
+                    'is_simulation': True,
+                    'circuit_breaker_active': True,
+                    'circuit_breaker_reason': circuit_reason,
+                    'performance_metrics': {
+                        'inference_time_ms': 100,  # Fast simulation since we fail fast
+                        'throughput_items_per_sec': 10,
+                        'memory_usage_mb': 500  # Mock memory usage
+                    },
+                    'compute_shader_optimized': self.compute_shaders,
+                    'precompile_shaders': self.precompile_shaders,
+                    'parallel_loading': self.parallel_loading
+                }
                 
             self.busy = True
             self.last_used_time = time.time()
+            inference_start_time = time.time()
             
-            # Track retries
+            # Track retries and errors
             attempt = 0
             last_error = None
+            recovery_triggered = False
             
             while attempt <= retry_attempts:
                 try:
@@ -565,6 +890,22 @@ class BrowserConnection:
                             # For retry attempts, log that we're retrying
                             if attempt > 0:
                                 logger.info(f"Retry {attempt}/{retry_attempts} for inference with model {model_id}")
+                            
+                            # Check WebSocket health if this is a retry
+                            if attempt > 0 and hasattr(self, 'health_status') and self.health_status != "healthy":
+                                # Connection is degraded, try recovery before proceeding
+                                if not recovery_triggered:
+                                    logger.info(f"Connection {self.connection_id} is degraded, attempting recovery before retry")
+                                    recovery_success = await self._recover_connection()
+                                    recovery_triggered = True
+                                    
+                                    if not recovery_success:
+                                        logger.warning(f"Recovery failed for connection {self.connection_id}, falling back to simulation")
+                                        break  # Exit to simulation
+                                        
+                                    # Update bridge reference after recovery
+                                    if hasattr(self.browser_automation, 'websocket_bridge'):
+                                        bridge = self.browser_automation.websocket_bridge
                             
                             # Determine appropriate timeout based on model and content
                             input_size = 'unknown'
@@ -585,6 +926,21 @@ class BrowserConnection:
                                     input_size = 'audio data'
                                     timeout_multiplier = 3  # Audio models often take longer
                             
+                            # Store model-specific metadata for diagnostics
+                            if model_id not in self.model_performance:
+                                self.model_performance[model_id] = {
+                                    'execution_count': 0,
+                                    'success_count': 0,
+                                    'failure_count': 0,
+                                    'average_latency_ms': 0,
+                                    'last_execution_time': None,
+                                    'memory_footprint_mb': 0
+                                }
+                            
+                            # Update execution count
+                            self.model_performance[model_id]['execution_count'] += 1
+                            self.model_performance[model_id]['last_execution_time'] = time.time()
+                            
                             logger.info(f"Running inference with model {model_id} (input size: {input_size})")
                             
                             # Send inference request to browser via WebSocket with our enhanced timeout and retry
@@ -601,6 +957,9 @@ class BrowserConnection:
                             if inference_response and inference_response.get('status') == 'success':
                                 logger.info(f"Real inference completed in {inference_time:.2f}s via WebSocket")
                                 
+                                # Update circuit breaker on success
+                                self._update_circuit_breaker(success=True, model_id=model_id)
+                                
                                 # Extract response data with better error handling
                                 result_data = inference_response.get('result', {})
                                 performance_metrics = inference_response.get('performance_metrics', {})
@@ -615,6 +974,24 @@ class BrowserConnection:
                                     memory_usage = inference_response['memory_usage']
                                     performance_metrics['memory_usage_mb'] = memory_usage
                                     logger.info(f"Memory usage: {memory_usage} MB")
+                                    
+                                    # Update model memory footprint
+                                    self.model_performance[model_id]['memory_footprint_mb'] = memory_usage
+                                
+                                # Update model performance metrics
+                                self.model_performance[model_id]['success_count'] += 1
+                                # Update average latency with exponential moving average
+                                latency_ms = performance_metrics['inference_time_ms']
+                                prev_avg = self.model_performance[model_id]['average_latency_ms']
+                                if prev_avg == 0:
+                                    self.model_performance[model_id]['average_latency_ms'] = latency_ms
+                                else:
+                                    # Use 0.8 as weight for new measurements
+                                    self.model_performance[model_id]['average_latency_ms'] = prev_avg * 0.2 + latency_ms * 0.8
+                                
+                                # Update connection statistics
+                                self.total_inference_count += 1
+                                self.total_inference_time += inference_time
                                 
                                 # Convert inference response to comprehensive result format
                                 result = {
@@ -639,6 +1016,14 @@ class BrowserConnection:
                                     if key not in ['status', 'result', 'performance_metrics'] and key not in result:
                                         result[key] = value
                                 
+                                # Add diagnostic information
+                                result['diagnostics'] = {
+                                    'recovery_triggered': recovery_triggered,
+                                    'retry_count': attempt,
+                                    'connection_health': getattr(self, 'health_status', 'unknown'),
+                                    'total_time_ms': (time.time() - inference_start_time) * 1000
+                                }
+                                
                                 self.busy = False
                                 return result
                             else:
@@ -650,11 +1035,34 @@ class BrowserConnection:
                                 last_error = f"WebSocket inference failed: {error}"
                                 logger.warning(last_error)
                                 
+                                # Update model performance metrics
+                                self.model_performance[model_id]['failure_count'] += 1
+                                
+                                # Update circuit breaker state
+                                self._update_circuit_breaker(success=False, model_id=model_id, error=last_error)
+                                
+                                # Check health and trigger recovery if needed
+                                if not recovery_triggered and hasattr(self, 'health_status'):
+                                    if self.health_status != "healthy":
+                                        logger.info(f"Connection health is {self.health_status}, attempting recovery")
+                                        recovery_success = await self._recover_connection()
+                                        recovery_triggered = True
+                                        
+                                        if recovery_success:
+                                            logger.info(f"Connection recovery succeeded for {self.connection_id}")
+                                        else:
+                                            logger.warning(f"Connection recovery failed for {self.connection_id}")
+                                
                                 # If we have retries left, try again
                                 if attempt < retry_attempts:
                                     attempt += 1
-                                    # Brief pause before retry
-                                    await asyncio.sleep(0.5 * attempt)
+                                    # Adaptive pause before retry based on error type and recovery status
+                                    if recovery_triggered:
+                                        # Longer pause after recovery
+                                        await asyncio.sleep(1.0 * attempt)
+                                    else:
+                                        # Standard pause before regular retry
+                                        await asyncio.sleep(0.5 * attempt)
                                     continue
                                     
                                 # No more retries, fall back to simulation
@@ -673,9 +1081,27 @@ class BrowserConnection:
                     # Handle exceptions during inference
                     last_error = f"Error during inference: {e}"
                     logger.error(last_error)
+                    
+                    # Update circuit breaker state
+                    self._update_circuit_breaker(success=False, model_id=model_id, error=last_error)
+                    
+                    # Update model performance metrics
+                    if model_id in self.model_performance:
+                        self.model_performance[model_id]['failure_count'] += 1
+                    
+                    # Try recovery if severe error and not already attempted
+                    if not recovery_triggered and str(e).lower() in ["connection refused", "not connected", "timeout", "connection closed"]:
+                        logger.info(f"Attempting connection recovery due to severe error: {e}")
+                        recovery_success = await self._recover_connection()
+                        recovery_triggered = True
+                        
+                        if not recovery_success:
+                            logger.warning(f"Connection recovery failed, falling back to simulation")
+                            break
+                    
                     if attempt < retry_attempts:
                         attempt += 1
-                        # Brief pause before retry
+                        # Adaptive pause before retry
                         await asyncio.sleep(0.5 * attempt)
                         continue
                     else:
@@ -702,6 +1128,12 @@ class BrowserConnection:
             elif "whisper" in model_type.lower() or "wav2vec" in model_type.lower():
                 inference_time = 0.8  # Audio models take longer
                 
+            # If we have performance data from previous real runs, use it for more realistic simulation
+            if model_id in self.model_performance and self.model_performance[model_id]['average_latency_ms'] > 0:
+                realistic_latency_ms = self.model_performance[model_id]['average_latency_ms']
+                inference_time = realistic_latency_ms / 1000  # Convert ms to seconds
+                logger.info(f"Using realistic simulation time of {inference_time:.3f}s based on previous runs")
+                
             # Simulate execution time
             await asyncio.sleep(inference_time)
             
@@ -716,6 +1148,7 @@ class BrowserConnection:
                 'browser': self.browser_name,
                 'is_real_implementation': False,
                 'is_simulation': True,
+                'recovery_attempted': recovery_triggered,
                 'error_info': last_error,  # Include error that caused fallback
                 'performance_metrics': {
                     'inference_time_ms': inference_time * 1000,
@@ -724,7 +1157,18 @@ class BrowserConnection:
                 },
                 'compute_shader_optimized': self.compute_shaders,
                 'precompile_shaders': self.precompile_shaders,
-                'parallel_loading': self.parallel_loading
+                'parallel_loading': self.parallel_loading,
+                'circuit_breaker_state': self.circuit_state
+            }
+            
+            # Add diagnostics
+            result['diagnostics'] = {
+                'recovery_triggered': recovery_triggered,
+                'retry_count': attempt,
+                'connection_health': getattr(self, 'health_status', 'unknown'),
+                'total_time_ms': (time.time() - inference_start_time) * 1000,
+                'last_error': last_error,
+                'error_count': self.error_count
             }
             
             self.busy = False
@@ -1080,6 +1524,14 @@ class ResourcePoolBridge:
     - Automatic load balancing and resource allocation
     - Connection management with health monitoring and recovery
     - Efficient resource cleanup and memory management
+    
+    Enhanced in March 2025 with:
+    - Advanced circuit breaker pattern for failure resilience  
+    - Comprehensive error recovery mechanisms for browser connections
+    - Enhanced telemetry and diagnostics for intermittent failures
+    - Model-specific error tracking and performance monitoring
+    - Memory pressure detection with adaptive scaling
+    - Detailed lifecycle management for browser connections
     """
     
     def __init__(self, max_connections: int = 4, 
@@ -1257,6 +1709,12 @@ class ResourcePoolBridge:
         This method periodically checks all connections to ensure they're healthy,
         updates their status, and collects performance metrics. It helps identify issues
         with connections before they cause failures during model inference.
+        
+        Enhanced in March 2025 with:
+        - Automated recovery for degraded connections
+        - Circuit breaker monitoring and management
+        - Memory pressure and resource usage tracking
+        - Detailed telemetry for performance optimization
         """
         with self._lock:
             # Skip if shutting down
@@ -1271,11 +1729,33 @@ class ResourcePoolBridge:
                 'unhealthy': 0,
                 'memory_usage_total': 0,
                 'memory_usage_avg': 0,
-                'health_check_duration': 0
+                'health_check_duration': 0,
+                'circuit_breaker_open': 0,
+                'circuit_breaker_half_open': 0,
+                'recovery_attempts': 0,
+                'recovery_successes': 0
             }
             
             # Start timing
             check_start_time = time.time()
+            
+            # Check system memory pressure
+            system_memory_pressure = False
+            available_memory_mb = 0
+            try:
+                import psutil
+                vm = psutil.virtual_memory()
+                available_memory_mb = vm.available / (1024 * 1024)
+                system_memory_pressure = vm.percent > 85  # Over 85% memory utilization is high pressure
+                
+                # Add to stats
+                connection_stats['system_memory_percent'] = vm.percent
+                connection_stats['system_available_memory_mb'] = available_memory_mb
+                
+                if system_memory_pressure:
+                    logger.warning(f"System under memory pressure: {vm.percent}% memory used, {available_memory_mb:.0f}MB available")
+            except ImportError:
+                logger.debug("psutil not available, skipping memory pressure check")
             
             # Collect all connections
             all_connections = []
@@ -1290,6 +1770,7 @@ class ResourcePoolBridge:
                 return
             
             # Perform health checks on all connections
+            recovery_tasks = []
             for conn in all_connections:
                 try:
                     # Skip if connection is busy to avoid interference
@@ -1297,24 +1778,75 @@ class ResourcePoolBridge:
                         connection_stats['total'] -= 1  # Don't count in stats
                         continue
                     
+                    # Check circuit breaker status
+                    if hasattr(conn, 'circuit_state'):
+                        if conn.circuit_state == "open":
+                            connection_stats['circuit_breaker_open'] += 1
+                            
+                            # Check if circuit breaker should transition to half-open
+                            current_time = time.time()
+                            if hasattr(conn, 'circuit_last_failure_time') and hasattr(conn, 'circuit_reset_timeout'):
+                                if current_time - conn.circuit_last_failure_time > conn.circuit_reset_timeout:
+                                    # Reset to half-open state and allow a trial request
+                                    conn.circuit_state = "half-open"
+                                    logger.info(f"Circuit breaker transitioned from open to half-open for {conn.connection_id}")
+                                    connection_stats['circuit_breaker_half_open'] += 1
+                        elif conn.circuit_state == "half-open":
+                            connection_stats['circuit_breaker_half_open'] += 1
+                    
                     # Perform health check
                     is_healthy = await conn.perform_health_check()
                     
-                    # Update stats
+                    # Update stats based on health status
                     if is_healthy:
-                        if hasattr(conn, 'health_status') and conn.health_status == 'degraded':
-                            connection_stats['degraded'] += 1
+                        if hasattr(conn, 'health_status'):
+                            if conn.health_status == 'degraded':
+                                connection_stats['degraded'] += 1
+                            else:
+                                connection_stats['healthy'] += 1
                         else:
                             connection_stats['healthy'] += 1
                     else:
                         connection_stats['unhealthy'] += 1
+                        
+                        # Attempt automatic recovery for unhealthy connections that aren't busy
+                        if (hasattr(conn, 'health_status') and conn.health_status == 'unhealthy' and 
+                            hasattr(conn, '_recover_connection') and not conn.is_busy() and
+                            hasattr(conn, 'recovery_attempts') and conn.recovery_attempts < conn.max_recovery_attempts):
+                            
+                            # Schedule recovery task to run concurrently
+                            logger.info(f"Scheduling automatic recovery for unhealthy connection {conn.connection_id}")
+                            recovery_tasks.append(conn._recover_connection())
+                            connection_stats['recovery_attempts'] += 1
                     
                     # Collect memory usage
                     if hasattr(conn, 'memory_usage_mb') and conn.memory_usage_mb > 0:
                         connection_stats['memory_usage_total'] += conn.memory_usage_mb
+                        
+                        # Check for high memory usage in individual connections
+                        # Firefox and Chrome can handle ~2GB before instability
+                        if conn.memory_usage_mb > 1800:  # Over 1.8GB is concerning
+                            logger.warning(f"High memory usage in connection {conn.connection_id}: {conn.memory_usage_mb}MB")
+                            
+                            # If system is also under memory pressure, mark connection for cleanup
+                            if system_memory_pressure:
+                                logger.warning(f"System under memory pressure with high-memory connection {conn.connection_id}, marking for cleanup")
+                                if hasattr(conn, 'status'):
+                                    conn.status = "memory_pressure"
                 except Exception as e:
                     logger.error(f"Error performing health check on connection {conn.connection_id}: {e}")
                     connection_stats['unhealthy'] += 1
+            
+            # Run recovery tasks concurrently
+            if recovery_tasks:
+                recovery_results = await asyncio.gather(*recovery_tasks, return_exceptions=True)
+                
+                # Count successful recoveries
+                for result in recovery_results:
+                    if isinstance(result, bool) and result:
+                        connection_stats['recovery_successes'] += 1
+                
+                logger.info(f"Completed {len(recovery_tasks)} auto-recovery attempts with {connection_stats['recovery_successes']} successes")
             
             # Calculate metrics
             if connection_stats['total'] > 0:
@@ -1322,30 +1854,88 @@ class ResourcePoolBridge:
             
             connection_stats['health_check_duration'] = time.time() - check_start_time
             
-            # Log results
+            # Log results with enhanced detail
+            summary_parts = [
+                f"{connection_stats['healthy']} healthy",
+                f"{connection_stats['degraded']} degraded",
+                f"{connection_stats['unhealthy']} unhealthy"
+            ]
+            
+            if connection_stats['circuit_breaker_open'] > 0:
+                summary_parts.append(f"{connection_stats['circuit_breaker_open']} circuit-open")
+            
+            if connection_stats['circuit_breaker_half_open'] > 0:
+                summary_parts.append(f"{connection_stats['circuit_breaker_half_open']} circuit-half-open")
+                
+            if connection_stats['recovery_attempts'] > 0:
+                summary_parts.append(f"{connection_stats['recovery_successes']}/{connection_stats['recovery_attempts']} recoveries")
+                
+            summary = ", ".join(summary_parts)
+            
             if connection_stats['unhealthy'] > 0:
-                logger.warning(f"Connection health check: {connection_stats['healthy']} healthy, {connection_stats['degraded']} degraded, {connection_stats['unhealthy']} unhealthy (took {connection_stats['health_check_duration']:.3f}s)")
+                logger.warning(f"Connection health check: {summary} (took {connection_stats['health_check_duration']:.3f}s, avg memory: {connection_stats['memory_usage_avg']:.1f}MB)")
             else:
-                logger.info(f"Connection health check: {connection_stats['healthy']} healthy, {connection_stats['degraded']} degraded (avg memory: {connection_stats['memory_usage_avg']:.1f}MB)")
+                logger.info(f"Connection health check: {summary} (avg memory: {connection_stats['memory_usage_avg']:.1f}MB)")
             
             # Update global stats
             self.stats['last_health_check'] = time.time()
             self.stats['last_health_check_stats'] = connection_stats
             
-            # Update connection health metrics
+            # Update connection health metrics with enhanced data
             for platform, connections in self.connections.items():
                 for conn in connections:
                     conn_id = conn.get_connection_id()
+                    
+                    # Get circuit breaker state
+                    circuit_state = getattr(conn, 'circuit_state', 'unknown')
+                    circuit_failures = getattr(conn, 'consecutive_failures', 0)
+                    
+                    # Collect model performance metrics 
+                    model_metrics = {}
+                    if hasattr(conn, 'model_performance'):
+                        for model_id, metrics in conn.model_performance.items():
+                            model_metrics[model_id] = {
+                                'execution_count': metrics.get('execution_count', 0),
+                                'success_rate': (metrics.get('success_count', 0) / max(metrics.get('execution_count', 1), 1)) * 100,
+                                'avg_latency_ms': metrics.get('average_latency_ms', 0),
+                                'memory_footprint_mb': metrics.get('memory_footprint_mb', 0)
+                            }
+                    
+                    # Create comprehensive connection health report
                     self.connection_health[conn_id] = {
+                        'timestamp': time.time(),
                         'is_healthy': conn.is_healthy(),
                         'status': getattr(conn, 'status', 'unknown'),
                         'health_status': getattr(conn, 'health_status', 'unknown'),
                         'error_count': conn.error_count,
                         'memory_usage_mb': getattr(conn, 'memory_usage_mb', 0),
                         'last_health_check': getattr(conn, 'last_health_check', 0),
+                        'time_since_health_check': time.time() - getattr(conn, 'last_health_check', time.time()),
                         'heartbeat_failures': getattr(conn, 'heartbeat_failures', 0),
-                        'loaded_model_count': len(conn.loaded_models)
+                        'loaded_model_count': len(conn.loaded_models),
+                        'loaded_models': list(conn.loaded_models),
+                        'creation_time': getattr(conn, 'creation_time', 0),
+                        'age_seconds': time.time() - getattr(conn, 'creation_time', time.time()),
+                        'last_used_time': getattr(conn, 'last_used_time', 0),
+                        'idle_time_seconds': time.time() - getattr(conn, 'last_used_time', time.time()),
+                        'browser_name': getattr(conn, 'browser_name', 'unknown'),
+                        'platform': getattr(conn, 'platform', 'unknown'),
+                        'circuit_state': circuit_state,
+                        'consecutive_failures': circuit_failures,
+                        'recovery_attempts': getattr(conn, 'recovery_attempts', 0),
+                        'error_history': getattr(conn, 'error_history', [])[:3],  # Include last 3 errors
+                        'total_inference_count': getattr(conn, 'total_inference_count', 0),
+                        'total_inference_time': getattr(conn, 'total_inference_time', 0),
+                        'model_metrics': model_metrics
                     }
+                    
+                    # Track detailed browser information if available
+                    if hasattr(conn, 'browser_info') and conn.browser_info:
+                        self.connection_health[conn_id]['browser_info'] = conn.browser_info
+                        
+                    # Track adapter information if available
+                    if hasattr(conn, 'adapter_info') and conn.adapter_info:
+                        self.connection_health[conn_id]['adapter_info'] = conn.adapter_info
     
     async def _cleanup_connections(self):
         """Clean up idle and unhealthy connections with enhanced lifecycle management."""

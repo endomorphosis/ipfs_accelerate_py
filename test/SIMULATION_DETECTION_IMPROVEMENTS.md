@@ -148,7 +148,7 @@ python update_db_schema_for_simulation.py --db-path ./custom_benchmark.duckdb
 
 ```bash
 # Run simple benchmark to test actual hardware (CPU, CUDA)
-python test_bert_benchmark.py
+python generators/models/test_bert_benchmark.py
 
 # Check database schema to understand column structure
 python check_database_schema.py
@@ -193,19 +193,19 @@ python qnn_simulation_helper.py --disable
 
 ```bash
 # Run all simulation detection and flagging tests
-python test_simulation_detection.py
+python generators/models/test_simulation_detection.py
 
 # Test only hardware detection
-python test_simulation_detection.py --hardware-only
+python generators/models/test_simulation_detection.py --hardware-only
 
 # Test only report generation
-python test_simulation_detection.py --report-only
+python generators/models/test_simulation_detection.py --report-only
 
 # Test only database integration
-python test_simulation_detection.py --database-only
+python generators/models/test_simulation_detection.py --database-only
 
 # Verify simulation awareness in reports
-python test_simulation_awareness.py
+python generators/models/test_simulation_awareness.py
 
 # Run the complete stale reports cleanup process
 python run_cleanup_stale_reports.py

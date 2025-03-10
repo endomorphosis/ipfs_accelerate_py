@@ -22,13 +22,13 @@ The database implementation is currently **100% complete** with the following co
    - Implements deduplication and data cleaning
    - Supports Parquet export for compatibility
 
-3. **Database API** (`benchmark_db_api.py`)
+3. **Database API** (`duckdb_api/core/benchmark_db_api.py`)
    - Programmatic API for storing and retrieving benchmark data
    - REST API for remote access to the database
    - Comprehensive endpoints for all data types
    - Authentication and security features
 
-4. **Query Interface** (`benchmark_db_query.py`)
+4. **Query Interface** (`duckdb_api/core/benchmark_db_query.py`)
    - SQL query interface for data analysis
    - Report generation for performance, hardware, and compatibility data
    - Visualization capabilities for benchmark results
@@ -53,7 +53,7 @@ The database implementation is currently **100% complete** with the following co
    - Historical comparison in CI reports
    - Performance regression detection
 
-8. **Database Maintenance** (`benchmark_db_maintenance.py`)
+8. **Database Maintenance** (`duckdb_api/core/benchmark_db_maintenance.py`)
    - Database optimization and cleanup
    - Backup and restore functionality
    - JSON file cleanup after migration
@@ -202,13 +202,13 @@ python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda -
 
 ```bash
 # Execute a SQL query
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT model_name, hardware_type, AVG(throughput_items_per_second) FROM performance_results JOIN models USING(model_id) JOIN hardware_platforms USING(hardware_id) GROUP BY model_name, hardware_type"
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT model_name, hardware_type, AVG(throughput_items_per_second) FROM performance_results JOIN models USING(model_id) JOIN hardware_platforms USING(hardware_id) GROUP BY model_name, hardware_type"
 
 # Generate a report
-python duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html
 
 # Compare hardware platforms for a specific model
-python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware
 ```
 
 ### Updating the Database
@@ -228,13 +228,13 @@ python test/scripts/benchmark_db_migration.py --migrate-ci --artifacts-dir ./art
 
 ```bash
 # Validate database structure and integrity
-python test/scripts/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
+python test/scripts/duckdb_api/core/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
 
 # Optimize the database
-python test/scripts/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
+python test/scripts/duckdb_api/core/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
 
 # Clean up old JSON files
-python test/scripts/benchmark_db_maintenance.py --clean-json --older-than 30 --db ./benchmark_db.duckdb
+python test/scripts/duckdb_api/core/benchmark_db_maintenance.py --clean-json --older-than 30 --db ./benchmark_db.duckdb
 
 # Fix inconsistencies detected during validation
 python test/scripts/benchmark_db_migration.py --validate --fix-inconsistencies --db ./benchmark_db.duckdb
@@ -399,8 +399,8 @@ As part of the database implementation, we have successfully migrated all benchm
 
 The following scripts have been archived as they're replaced by the new database system:
 
-1. `benchmark_database.py` → Replaced by DuckDB system and `benchmark_db_api.py`
-2. `benchmark_query.py` → Replaced by `benchmark_db_query.py`
+1. `benchmark_database.py` → Replaced by DuckDB system and `duckdb_api/core/benchmark_db_api.py`
+2. `benchmark_query.py` → Replaced by `duckdb_api/core/benchmark_db_query.py`
 3. `test_model_benchmarks.py` → Replaced by integrated tests
 
 For detailed information on migration status, see [DATABASE_MIGRATION_STATUS.md](DATABASE_MIGRATION_STATUS.md).

@@ -23,32 +23,32 @@ To run benchmarks and store results in the database, use the new resource pool b
 
 ```bash
 # Run resource pool benchmarks with WebGPU acceleration
-python benchmark_webnn_webgpu_resource_pool.py --model bert-base-uncased --platform webgpu --db-path ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_webnn_webgpu_resource_pool.py --model bert-base-uncased --platform webgpu --db-path ./benchmark_db.duckdb
 
 # Benchmark concurrent model execution with 3 models
-python benchmark_webnn_webgpu_resource_pool.py --concurrent-models 3 --models bert-base-uncased,whisper-tiny,vit-base --db-path ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_webnn_webgpu_resource_pool.py --concurrent-models 3 --models bert-base-uncased,whisper-tiny,vit-base --db-path ./benchmark_db.duckdb
 
 # Test Firefox audio optimizations for Whisper
-python benchmark_webnn_webgpu_resource_pool.py --browser firefox --model whisper-tiny --platform webgpu --optimize-audio --db-path ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_webnn_webgpu_resource_pool.py --browser firefox --model whisper-tiny --platform webgpu --optimize-audio --db-path ./benchmark_db.duckdb
 
 # Run comprehensive benchmarks across all browsers and platforms with real hardware validation
-python benchmark_webnn_webgpu_resource_pool.py --comprehensive --db-path ./benchmark_db.duckdb
+python duckdb_api/core/benchmark_webnn_webgpu_resource_pool.py --comprehensive --db-path ./benchmark_db.duckdb
 ```
 
 For real hardware validation and testing:
 
 ```bash
 # Test real WebGPU implementation with hardware validation
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --browser chrome --platform webgpu --model bert-base-uncased --db-path ./benchmark_db.duckdb
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser chrome --platform webgpu --model bert-base-uncased --db-path ./benchmark_db.duckdb
 
 # Test Firefox with audio optimizations and real hardware validation
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --model whisper-tiny --optimize-audio --db-path ./benchmark_db.duckdb
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --model whisper-tiny --optimize-audio --db-path ./benchmark_db.duckdb
 
 # Test Edge WebNN with real hardware validation
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --browser edge --platform webnn --model bert-base-uncased --db-path ./benchmark_db.duckdb
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser edge --platform webnn --model bert-base-uncased --db-path ./benchmark_db.duckdb
 
 # Run comprehensive hardware validation tests
-python test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive --db-path ./benchmark_db.duckdb
+python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive --db-path ./benchmark_db.duckdb
 ```
 
 Still compatible with legacy methods:
@@ -67,11 +67,11 @@ python run_comprehensive_webnn_webgpu_tests.py --browser chrome --platform webgp
 Once your benchmark results are stored in the database, you can analyze them using SQL queries:
 
 ```bash
-# Use the benchmark_db_query.py tool to analyze results
-python benchmark_db_query.py --sql "SELECT * FROM resource_pool_benchmarks" --db-path ./benchmark_db.duckdb
+# Use the duckdb_api/core/benchmark_db_query.py tool to analyze results
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM resource_pool_benchmarks" --db-path ./benchmark_db.duckdb
 
 # Compare concurrent model execution
-python benchmark_db_query.py --sql "
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "
   SELECT 
     model_name,
     platform,
@@ -91,7 +91,7 @@ python benchmark_db_query.py --sql "
 " --db-path ./benchmark_db.duckdb --format markdown
 
 # Compare Firefox audio optimizations for Whisper models
-python benchmark_db_query.py --sql "
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "
   SELECT 
     browser,
     browser_optimizations,
@@ -110,7 +110,7 @@ python benchmark_db_query.py --sql "
 " --db-path ./benchmark_db.duckdb --format markdown
 
 # Compare real hardware vs. simulation performance
-python benchmark_db_query.py --sql "
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "
   SELECT 
     platform,
     browser,
@@ -128,7 +128,7 @@ python benchmark_db_query.py --sql "
 " --db-path ./benchmark_db.duckdb --format markdown
 
 # Analyze resource pool connections and model initialization
-python benchmark_db_query.py --sql "
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "
   SELECT 
     concurrent_models,
     AVG(init_time_ms) as avg_init_time,
@@ -150,16 +150,16 @@ You can generate reports directly from the database:
 
 ```bash
 # Generate a WebNN/WebGPU comparison report
-python benchmark_db_query.py --report webnn_webgpu_comparison --format html --output comparison_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report webnn_webgpu_comparison --format html --output comparison_report.html
 
 # Generate browser comparison report
-python benchmark_db_query.py --report browser_comparison --format html --output browser_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report browser_comparison --format html --output browser_report.html
 
 # Generate precision level comparison report
-python benchmark_db_query.py --report precision_comparison --format html --output precision_report.html
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report precision_comparison --format html --output precision_report.html
 
 # Generate model compatibility report
-python benchmark_db_query.py --report model_compatibility --format markdown --output compatibility.md
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report model_compatibility --format markdown --output compatibility.md
 ```
 
 ## Database Schema
@@ -253,7 +253,7 @@ conn.execute("ALTER TABLE performance_results ADD COLUMN new_metric FLOAT")
 
 ### Custom Reports
 
-Create custom reports by defining new functions in benchmark_db_query.py:
+Create custom reports by defining new functions in duckdb_api/core/benchmark_db_query.py:
 
 ```python
 def generate_custom_report(db_path, format="html"):
@@ -281,10 +281,10 @@ For advanced visualization, export data to formats compatible with visualization
 
 ```bash
 # Export to CSV for Excel/Tableau
-python benchmark_db_query.py --sql "SELECT ... FROM performance_results" --format csv --output data.csv
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT ... FROM performance_results" --format csv --output data.csv
 
 # Export to JSON for JavaScript visualizations
-python benchmark_db_query.py --sql "SELECT ... FROM performance_results" --format json --output data.json
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT ... FROM performance_results" --format json --output data.json
 ```
 
 ## Conclusion

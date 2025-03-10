@@ -8,7 +8,7 @@ The database integration system has been successfully fixed and updated with the
 
 2. **Improved Converters:** Updated the benchmark_db_converter.py to handle different data formats and properly insert data into the database.
 
-3. **Fixed Query Tools:** Enhanced the benchmark_db_query.py to work with both old and new schema formats.
+3. **Fixed Query Tools:** Enhanced the duckdb_api/core/benchmark_db_query.py to work with both old and new schema formats.
 
 4. **Compatibility Fixes:** Made database tools work with different versions of DuckDB library.
 
@@ -17,7 +17,7 @@ The database integration system has been successfully fixed and updated with the
 - `scripts/create_new_database.py`: Creates a fresh database with the proper schema
 - `scripts/benchmark_db_fix.py`: Fixes issues in existing databases
 - `benchmark_db_converter.py`: Enhanced with better error handling and data type conversion
-- `benchmark_db_query.py`: Updated to work with both old and new schema formats
+- `duckdb_api/core/benchmark_db_query.py`: Updated to work with both old and new schema formats
 - `run_benchmark_with_db.py`: Fixed to handle DuckDB API compatibility issues
 
 ## Usage Guide
@@ -50,26 +50,26 @@ python duckdb_api/core/benchmark_db_converter.py --consolidate --categories perf
 
 ```bash
 # Generate performance report
-python duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html --db ./benchmark_db.duckdb
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --report performance --format html --output benchmark_report.html --db ./benchmark_db.duckdb
 
 # Compare hardware performance for a model
-python duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output hardware_comparison.png --db ./benchmark_db.duckdb
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output hardware_comparison.png --db ./benchmark_db.duckdb
 
 # Direct SQL query
-python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_results.csv --db ./benchmark_db.duckdb
+python duckdb_api/core/duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_results.csv --db ./benchmark_db.duckdb
 ```
 
 ### Maintenance
 
 ```bash
 # Validate database
-python duckdb_api/core/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
+python duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
 
 # Optimize database
-python duckdb_api/core/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
+python duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
 
 # Backup database
-python duckdb_api/core/benchmark_db_maintenance.py --backup --backup-dir ./benchmark_backups --db ./benchmark_db.duckdb
+python duckdb_api/core/duckdb_api/core/benchmark_db_maintenance.py --backup --backup-dir ./benchmark_backups --db ./benchmark_db.duckdb
 ```
 
 ## Database Schema

@@ -61,19 +61,19 @@ A dedicated test script is provided to verify the migration tool's functionality
 
 ```bash
 # Create sample test files
-python test_ipfs_migration.py --create-samples
+python generators/models/test_ipfs_migration.py --create-samples
 
 # Run migration on sample files
-python test_ipfs_migration.py --migrate
+python generators/models/test_ipfs_migration.py --migrate
 
 # Validate migration results
-python test_ipfs_migration.py --validate
+python generators/models/test_ipfs_migration.py --validate
 
 # Run all steps: create samples, migrate, and validate
-python test_ipfs_migration.py --all
+python generators/models/test_ipfs_migration.py --all
 
 # Clean up after testing
-python test_ipfs_migration.py --all --cleanup
+python generators/models/test_ipfs_migration.py --all --cleanup
 ```
 
 ## Understanding the Migration Process

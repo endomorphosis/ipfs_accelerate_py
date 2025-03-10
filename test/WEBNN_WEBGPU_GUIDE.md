@@ -35,7 +35,7 @@ pip install websockets==15.0 selenium==4.29.0 webdriver-manager==4.0.2
 Install WebDriver for your browsers using our utility:
 
 ```bash
-python test_webnn_webgpu_integration.py --install-drivers
+python generators/models/test_webnn_webgpu_integration.py --install-drivers
 ```
 
 This will automatically download and install the appropriate drivers for Chrome and Firefox. For other browsers, you may need to install drivers manually:
@@ -51,10 +51,10 @@ Verify your installation is working correctly:
 
 ```bash
 # Run the simulation test to check implementation structure
-python test_webnn_webgpu_integration.py --simulate
+python generators/models/test_webnn_webgpu_integration.py --simulate
 
 # Optional: Run with a real browser (requires browser installation)
-python test_webnn_webgpu_integration.py --platform webgpu --browser chrome --headless
+python generators/models/test_webnn_webgpu_integration.py --platform webgpu --browser chrome --headless
 ```
 
 ## Basic Usage
@@ -796,7 +796,7 @@ Key benefits:
 - Ensure the browser is installed and in the system path
 - Install WebDriver for your browsers:
   ```bash
-  python test_webnn_webgpu_integration.py --install-drivers
+  python generators/models/test_webnn_webgpu_integration.py --install-drivers
   ```
 - Specify the browser path explicitly:
   ```python
@@ -976,13 +976,13 @@ The project includes several example files to help get started:
 - `test_webnn_webgpu_integration.py`: Complete integration testing and driver installation
   ```bash
   # Install drivers
-  python test_webnn_webgpu_integration.py --install-drivers
+  python generators/models/test_webnn_webgpu_integration.py --install-drivers
   
   # Test in simulation mode
-  python test_webnn_webgpu_integration.py --simulate
+  python generators/models/test_webnn_webgpu_integration.py --simulate
   
   # Test with real browser
-  python test_webnn_webgpu_integration.py --platform webgpu --browser chrome --headless
+  python generators/models/test_webnn_webgpu_integration.py --platform webgpu --browser chrome --headless
   ```
 
 - `webnn_webgpu_example.py`: Practical usage examples for different scenarios
@@ -1025,7 +1025,7 @@ For development and testing without a browser, use the simulation mode:
 
 ```bash
 # Test with simulation mode
-python test_webnn_webgpu_integration.py --simulate
+python generators/models/test_webnn_webgpu_integration.py --simulate
 ```
 
 This validates the API structure without requiring actual browser access.
@@ -1109,16 +1109,16 @@ For quick verification and simple testing, use our simplified script:
 
 ```bash
 # Test WebGPU with 4-bit quantization
-python test_webnn_webgpu_simplified.py --platform webgpu --bits 4 --browser chrome
+python generators/models/test_webnn_webgpu_simplified.py --platform webgpu --bits 4 --browser chrome
 
 # Test WebNN with 8-bit quantization
-python test_webnn_webgpu_simplified.py --platform webnn --bits 8 --browser edge
+python generators/models/test_webnn_webgpu_simplified.py --platform webnn --bits 8 --browser edge
 
 # Test both platforms with default settings
-python test_webnn_webgpu_simplified.py --platform both
+python generators/models/test_webnn_webgpu_simplified.py --platform both
 
 # Test with mixed precision
-python test_webnn_webgpu_simplified.py --platform webgpu --mixed-precision --bits 4
+python generators/models/test_webnn_webgpu_simplified.py --platform webgpu --mixed-precision --bits 4
 ```
 
 For detailed implementation guidance, see our new [WebNN WebGPU Usage Guide](WEBNN_WEBGPU_USAGE_GUIDE.md), which provides comprehensive code examples and configurations. For more information on quantization techniques and performance results, see [WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md](WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md).
