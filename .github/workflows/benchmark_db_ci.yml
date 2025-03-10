@@ -4,12 +4,14 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'test/**'
+      - 'generators/**'
+      - 'duckdb_api/**'
       - '.github/workflows/benchmark_db_ci.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'test/**'
+      - 'generators/**'
+      - 'duckdb_api/**'
   workflow_dispatch:
     inputs:
       test_model:

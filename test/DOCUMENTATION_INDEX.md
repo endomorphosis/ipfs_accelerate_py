@@ -1,10 +1,27 @@
 # IPFS Accelerate Python Framework Documentation Index
 
-Last Updated: March 9, 2025
+Last Updated: March 10, 2025
 
 This document provides a comprehensive index of all project documentation, organized by category and implementation phase.
 
-## Recently Archived Documentation (April 2025)
+## Recently Archived Documentation
+
+### March 10, 2025 Archive
+
+A major cleanup of stale and unused files was performed:
+
+- Approximately 480 files were moved to `/test/archive/`
+- Categories included:
+  - Backup files (*.bak, *.bak_*)
+  - Old database backups
+  - Fixed/superseded implementation files
+  - Completed status reports
+  - Older benchmark reports
+  - One-time utility scripts
+  - Deprecated test runners
+- See `/test/cleanup_summary.md` for complete details
+
+### April 2025 Archive
 
 The following documentation has been archived as part of the April 2025 cleanup:
 
@@ -146,6 +163,7 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 ## Advanced Features Documentation (April 2025)
 
 - [MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md) - Comprehensive guide to the Model File Verification and Conversion Pipeline (NEW - March 9, 2025)
+- [ARCHIVE_STRUCTURE.md](ARCHIVE_STRUCTURE.md) - Documentation of the archive directory structure and management (NEW - March 10, 2025)
 - [DOCUMENTATION_CLEANUP_GUIDE.md](DOCUMENTATION_CLEANUP_GUIDE.md) - Guide for documentation and report cleanup (NEW - April 7, 2025)
 - [TIME_SERIES_PERFORMANCE_GUIDE.md](TIME_SERIES_PERFORMANCE_GUIDE.md) - Time-series performance tracking system
 - [IPFS_ACCELERATION_TESTING.md](IPFS_ACCELERATION_TESTING.md) - IPFS acceleration testing with DuckDB integration (Updated March 2025)
@@ -165,6 +183,8 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [model_file_verification.py](model_file_verification.py) - Core implementation of the Model File Verification and Conversion Pipeline (NEW - March 9, 2025)
 - [benchmark_model_verification.py](benchmark_model_verification.py) - Integration of the verification system with benchmarks (NEW - March 9, 2025)
 - [run_model_verification.sh](run_model_verification.sh) - Script to demonstrate model verification usage (NEW - March 9, 2025)
+- [archive/archive_backups.sh](archive/archive_backups.sh) - Script for archiving backup files and old reports (NEW - March 10, 2025)
+- [archive/archive_stale.sh](archive/archive_stale.sh) - Script for archiving stale scripts and documentation (NEW - March 10, 2025)
 - [archive_old_documentation.py](archive_old_documentation.py) - Utility for archiving outdated documentation (NEW - April 7, 2025)
 - [cleanup_stale_reports.py](cleanup_stale_reports.py) - Tool for cleaning up stale benchmark reports (UPDATED - April 7, 2025)
 - [run_documentation_cleanup.sh](run_documentation_cleanup.sh) - Script to run all documentation cleanup tools (NEW - April 7, 2025)
@@ -194,12 +214,16 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 ## Archived Documentation
 
 Older documentation files have been archived in the following directories:
+- `archive/old_documentation/` - Older documentation files (March 10, 2025)
+- `archive/old_reports/` - Old benchmark reports and results files (March 10, 2025)
+- `archive/stale_scripts/` - Deprecated Python scripts that are no longer in active use (March 10, 2025)
+- `archive/backup_files/` - Backup files with original directory structure preserved (March 10, 2025)
 - `archived_md_files/` - Legacy documentation from previous phases
 - `archived_documentation_april2025/` - Recently archived documentation (April 2025)
 - `archived_reports_april2025/` - Recently archived performance reports (April 2025)
 - `archived_stale_reports/` - Problematic benchmark reports identified during cleanup
 
-Each archived file has been marked with an archive notice for clarity.
+See [ARCHIVE_STRUCTURE.md](ARCHIVE_STRUCTURE.md) for a complete guide to the archive directory structure and management procedures.
 
 ## How to Use This Index
 

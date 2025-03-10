@@ -10,9 +10,9 @@ on:
     branches:
       - main
     paths:
-      - 'test/**'
+      - 'generators/**'
+      - 'duckdb_api/**'
       - 'fixed_web_platform/**'
-      - 'hardware_test_templates/**'
       - '.github/workflows/test_results_integration.yml'
   
   # Run on pull request to specific paths
@@ -20,9 +20,9 @@ on:
     branches:
       - main
     paths:
-      - 'test/**'
+      - 'generators/**'
+      - 'duckdb_api/**'
       - 'fixed_web_platform/**'
-      - 'hardware_test_templates/**'
   
   # Allow manual trigger with parameters
   workflow_dispatch:

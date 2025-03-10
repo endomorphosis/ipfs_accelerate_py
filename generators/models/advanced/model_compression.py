@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 # Try to import framework components with graceful degradation
 try:
-    from hardware_detection import detect_hardware_with_comprehensive_checks
+    from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
     from model_family_classifier import classify_model, ModelFamilyClassifier
-    from resource_pool import get_global_resource_pool
+    from generators.utils.resource_pool import get_global_resource_pool
     HAS_ALL_COMPONENTS = True
 except ImportError as e:
     logger.warning(f"Could not import all components: {e}. Some functionality may be limited.")

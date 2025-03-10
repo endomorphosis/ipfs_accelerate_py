@@ -26,6 +26,23 @@ import concurrent.futures
 import argparse
 from typing import Dict, List, Any, Optional, Tuple, Set, Union
 
+# Import template validator integration
+try:
+    from validators.template_validator_integration import validate_template_for_generator
+    HAS_VALIDATOR = True
+except ImportError:
+    try:
+        # Try relative import
+        sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+        from generators.validators.template_validator_integration import validate_template_for_generator
+        HAS_VALIDATOR = True
+    except ImportError:
+        # Define minimal validation
+        def validate_template_for_generator(template_content, generator_type):
+            return True, []
+        HAS_VALIDATOR = False
+        logging.warning("Template validator not found. Templates will not be validated.")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -1211,6 +1228,32 @@ if __name__ == "__main__":
     print("\\nFor detailed results, use --save flag and check the JSON output file.")
 '''
     
+    # Determine whether to validate based on args
+    should_validate = HAS_VALIDATOR and (args.validate or not args.skip_validation)
+    
+    # Validate template before saving
+    if should_validate:
+        logger.info(f"Validating template for {model_name}...")
+        is_valid, validation_errors = validate_template_for_generator(
+            content, 
+            "simple_test_generator",
+            validate_hardware=True,
+            check_resource_pool=False
+        )
+        
+        if not is_valid:
+            logger.warning(f"Template validation failed for {model_name}:")
+            for error in validation_errors:
+                logger.warning(f"  - {error}")
+            
+            # Decide whether to continue based on error severity
+            # For now, we'll continue with a warning
+            logger.warning("Continuing with generation despite validation errors.")
+        else:
+            logger.info(f"Template validation passed for {model_name}")
+    elif args.validate and not HAS_VALIDATOR:
+        logger.warning("Template validation requested but validator not available. Skipping validation.")
+
     # Save file
     output_path = os.path.join(output_dir, f"{TEST_FILE_PREFIX}{normalized_name}.py")
     
@@ -1897,6 +1940,12 @@ def main():
                       help="Add comprehensive mocks to existing test files")
     parser.add_argument("--update-dependencies", action="store_true",
                       help="Update dependency tracking in existing test files")
+                      
+    # Add arguments for template validation
+    parser.add_argument("--validate", action="store_true",
+                      help="Validate templates before generation (default if validator available)")
+    parser.add_argument("--skip-validation", action="store_true",
+                      help="Skip template validation even if validator is available")
     
     # Parse arguments
     args = parser.parse_args()

@@ -7,43 +7,43 @@ either the generators/ or duckdb_api/ directories based on their names and
 content. It preserves file history and ensures import statements are updated.
 
 Usage:
-    python move_files_to_packages.py []],,--dry-run] []],,--file path/to/file.py] []],,--type generator|database],
-    """
+    python move_files_to_packages.py [--dry-run] [--file path/to/file.py] [--type generator|database]
+"""
 
-    import os
-    import sys
-    import re
-    import shutil
-    import argparse
-    import importlib.util
-    from pathlib import Path
+import os
+import sys
+import re
+import shutil
+import argparse
+import importlib.util
+from pathlib import Path
 
 # File type patterns to identify categories
-    FILE_PATTERNS = {}}}
+FILE_PATTERNS = {
     # Generator files
-    "generator": []],,
-    r".*_generator.*\.py$",
-    r".*generator.*\.py$",
-    r"template_.*\.py$",
-    r".*_template.*\.py$",
-    r"hardware_detection\.py$",
-    r".*skill_.*\.py$",
-    r".*_skillset_.*\.py$",
+    "generator": [
+        r".*_generator.*\.py$",
+        r".*generator.*\.py$",
+        r"template_.*\.py$",
+        r".*_template.*\.py$",
+        r"hardware_detection\.py$",
+        r".*skill_.*\.py$",
+        r".*_skillset_.*\.py$",
     ],
     
     # Database files
-    "database": []],,
-    r"benchmark_db.*\.py$",
-    r".*_db_.*\.py$",
-    r"db_.*\.py$",
-    r"time_series_.*\.py$",
-    r".*_database.*\.py$",
-    r".*_visualization.*\.py$",
+    "database": [
+        r"benchmark_db.*\.py$",
+        r".*_db_.*\.py$",
+        r"db_.*\.py$",
+        r"time_series_.*\.py$",
+        r".*_database.*\.py$",
+        r".*_visualization.*\.py$",
     ],
-    }
+}
 
 # Mapping of file pattern to destination directory
-    DESTINATION_MAPPING = {}}}
+DESTINATION_MAPPING = {
     # Generator files
     r".*merged_test_generator.*\.py$": "generators/test_generators/",
     r".*simple_test_generator.*\.py$": "generators/test_generators/",
@@ -78,7 +78,7 @@ Usage:
     r".*_visualization.*\.py$": "duckdb_api/visualization/",
     r"benchmark_timing_report\.py$": "duckdb_api/visualization/",
     r".*_benchmark_timing.*\.py$": "duckdb_api/visualization/",
-    }
+}
 
 def determine_file_type(filename):
     """
@@ -89,13 +89,13 @@ def determine_file_type(filename):
         
     Returns:
         String: "generator", "database", or None if can't determine
-    """::
+    """
     for file_type, patterns in FILE_PATTERNS.items():
         for pattern in patterns:
             if re.match(pattern, filename):
-            return file_type
+                return file_type
     
-        return None
+    return None
 
 def determine_destination(filename, file_type):
     """
@@ -107,10 +107,10 @@ def determine_destination(filename, file_type):
         
     Returns:
         String: Destination path or None if can't determine
-    """::
+    """
     for pattern, destination in DESTINATION_MAPPING.items():
         if re.match(pattern, filename):
-        return destination
+            return destination
     
     # Default destinations based on file type
     if file_type == "generator":
@@ -118,7 +118,7 @@ def determine_destination(filename, file_type):
     elif file_type == "database":
         return "duckdb_api/utils/"
     
-        return None
+    return None
 
 def move_file(source_path, destination_root, dry_run=False):
     """
@@ -131,19 +131,19 @@ def move_file(source_path, destination_root, dry_run=False):
         
     Returns:
         Tuple: (success, destination_path or error message)
-        """
-        filename = os.path.basename(source_path)
-        file_type = determine_file_type(filename)
+    """
+    filename = os.path.basename(source_path)
+    file_type = determine_file_type(filename)
     
     if not file_type:
-        return False, f"Could not determine file type for {}}}filename}"
+        return False, f"Could not determine file type for {filename}"
     
-        destination_subdir = determine_destination(filename, file_type)
+    destination_subdir = determine_destination(filename, file_type)
     
     if not destination_subdir:
-        return False, f"Could not determine destination for {}}}filename}"
+        return False, f"Could not determine destination for {filename}"
     
-    # Check if destination is a rename pattern (contains full filename with extension):
+    # Check if destination is a rename pattern (contains full filename with extension)
     if destination_subdir.endswith(".py"):
         # Splitting destination into directory and filename
         destination_dir = os.path.dirname(destination_subdir)
@@ -153,22 +153,22 @@ def move_file(source_path, destination_root, dry_run=False):
         destination_path = os.path.join(destination_root, destination_subdir, filename)
     
     # Create destination directory if it doesn't exist
-    destination_dir = os.path.dirname(destination_path):
+    destination_dir = os.path.dirname(destination_path)
     if not os.path.exists(destination_dir) and not dry_run:
         try:
             os.makedirs(destination_dir, exist_ok=True)
         except Exception as e:
-            return False, f"Error creating directory {}}}destination_dir}: {}}}e}"
+            return False, f"Error creating directory {destination_dir}: {e}"
     
     if dry_run:
-            return True, destination_path
+        return True, destination_path
     
     try:
         # Copy the file to destination
         shutil.copy2(source_path, destination_path)
-            return True, destination_path
+        return True, destination_path
     except Exception as e:
-            return False, f"Error copying file: {}}}e}"
+        return False, f"Error copying file: {e}"
 
 def process_directory(directory, destination_root, file_type=None, dry_run=False):
     """
@@ -182,16 +182,16 @@ def process_directory(directory, destination_root, file_type=None, dry_run=False
         
     Returns:
         Dict: Statistics about the operation
-        """
-        stats = {}}}
+    """
+    stats = {
         "total_files": 0,
         "moved_files": 0,
         "skipped_files": 0,
         "failed_files": 0,
-        "by_destination": {}}}}
-        }
+        "by_destination": {}
+    }
     
-        print(f"Processing directory: {}}}directory}")
+    print(f"Processing directory: {directory}")
     
     for root, _, files in os.walk(directory):
         for filename in files:
@@ -200,45 +200,45 @@ def process_directory(directory, destination_root, file_type=None, dry_run=False
                 
                 # Skip __init__.py files
                 if filename == "__init__.py":
-                continue
-                
-                # Skip if file type doesn't match filter
-                determined_type = determine_file_type(filename):
-                if file_type and determined_type != file_type:
-                    print(f"👉 Skipped {}}}filename} (wrong type: {}}}determined_type})")
-                    stats[]],,"skipped_files"] += 1
                     continue
                 
-                    stats[]],,"total_files"] += 1
+                # Skip if file type doesn't match filter
+                determined_type = determine_file_type(filename)
+                if file_type and determined_type != file_type:
+                    print(f"👉 Skipped {filename} (wrong type: {determined_type})")
+                    stats["skipped_files"] += 1
+                    continue
+                
+                stats["total_files"] += 1
                 
                 # Move the file
-                    success, result = move_file(source_path, destination_root, dry_run)
+                success, result = move_file(source_path, destination_root, dry_run)
                 
                 if success:
                     destination_path = result
                     destination_dir = os.path.dirname(destination_path)
                     
                     relative_destination = os.path.relpath(destination_path, destination_root)
-                    stats[]],,"by_destination"][]],,relative_destination] = stats[]],,"by_destination"].get(relative_destination, 0) + 1
+                    stats["by_destination"][relative_destination] = stats["by_destination"].get(relative_destination, 0) + 1
                     
-                    stats[]],,"moved_files"] += 1
+                    stats["moved_files"] += 1
                     
                     if dry_run:
-                        print(f"🔍 []],,DRY RUN] Would move {}}}filename} to {}}}destination_path}")
+                        print(f"🔍 [DRY RUN] Would move {filename} to {destination_path}")
                     else:
-                        print(f"✅ Moved {}}}filename} to {}}}destination_path}")
+                        print(f"✅ Moved {filename} to {destination_path}")
                 else:
                     error_message = result
-                    stats[]],,"failed_files"] += 1
-                    print(f"❌ Could not move {}}}filename}: {}}}error_message}")
+                    stats["failed_files"] += 1
+                    print(f"❌ Could not move {filename}: {error_message}")
     
-                        return stats
+    return stats
 
 def main():
     parser = argparse.ArgumentParser(description='Move files to new package structure')
     parser.add_argument('--dry-run', action='store_true', help='Show actions without moving files')
     parser.add_argument('--file', help='Path to a specific file to move')
-    parser.add_argument('--type', choices=[]],,'generator', 'database'], help='Type of files to move')
+    parser.add_argument('--type', choices=['generator', 'database'], help='Type of files to move')
     
     args = parser.parse_args()
     
@@ -246,8 +246,8 @@ def main():
     project_root = Path(__file__).parent.parent
     source_dir = project_root / "test"
     
-    print(f"Project root: {}}}project_root}")
-    print(f"Source directory: {}}}source_dir}")
+    print(f"Project root: {project_root}")
+    print(f"Source directory: {source_dir}")
     
     if args.dry_run:
         print("\n🔍 DRY RUN MODE: No files will be moved\n")
@@ -261,36 +261,36 @@ def main():
             if success:
                 destination_path = result
                 if args.dry_run:
-                    print(f"🔍 []],,DRY RUN] Would move {}}}filename} to {}}}destination_path}")
+                    print(f"🔍 [DRY RUN] Would move {filename} to {destination_path}")
                 else:
-                    print(f"✅ Moved {}}}filename} to {}}}destination_path}")
-                    return 0
+                    print(f"✅ Moved {filename} to {destination_path}")
+                return 0
             else:
                 error_message = result
-                print(f"❌ Could not move {}}}filename}: {}}}error_message}")
-                    return 1
+                print(f"❌ Could not move {filename}: {error_message}")
+                return 1
         else:
-            print(f"Error: File {}}}args.file} does not exist or is not a Python file.")
-                    return 1
+            print(f"Error: File {args.file} does not exist or is not a Python file.")
+            return 1
     else:
         # Process all files in the directory
         stats = process_directory(source_dir, project_root, args.type, args.dry_run)
         
         print("\n=== SUMMARY ===")
-        print(f"Total files processed: {}}}stats[]],,'total_files']}")
-        print(f"Files moved: {}}}stats[]],,'moved_files']}")
-        print(f"Files skipped: {}}}stats[]],,'skipped_files']}")
-        print(f"Files failed: {}}}stats[]],,'failed_files']}")
+        print(f"Total files processed: {stats['total_files']}")
+        print(f"Files moved: {stats['moved_files']}")
+        print(f"Files skipped: {stats['skipped_files']}")
+        print(f"Files failed: {stats['failed_files']}")
         
-        if stats[]],,"by_destination"]:
+        if stats["by_destination"]:
             print("\nFiles by destination:")
-            for destination, count in sorted(stats[]],,"by_destination"].items()):
-                print(f"  - {}}}destination}: {}}}count} files")
+            for destination, count in sorted(stats["by_destination"].items()):
+                print(f"  - {destination}: {count} files")
         
         if args.dry_run:
             print("\nRun without --dry-run to actually move the files")
         
-                return 0 if stats[]],,"failed_files"] == 0 else 1
-:
+        return 0 if stats["failed_files"] == 0 else 1
+
 if __name__ == "__main__":
     sys.exit(main())

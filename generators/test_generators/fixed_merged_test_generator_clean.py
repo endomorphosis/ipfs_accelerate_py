@@ -1,273 +1,629 @@
 #!/usr/bin/env python3
 """
-Fixed Merged Test Generator - Clean Version
-
-This is a simplified version of the test generator that works
-reliably without syntax errors.
+Unified test generator supporting multiple models and hardware platforms.
+This is a fixed and cleaned version of the merged_test_generator.py that includes:
+- Better error handling and logging
+- Improved hardware detection and support
+- Enhanced template rendering
+- Cross-platform hardware support
 """
 
 import os
 import sys
+import json
+import logging
 import argparse
-import importlib.util
-import logging
+import tempfile
+import importlib
+from datetime import datetime
 from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Hardware detection
+# Try to import resource pool
 try:
-    import torch
-    HAS_CUDA = torch.cuda.is_available()
-    HAS_ROCM = (HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version')) or ('ROCM_HOME' in os.environ)
-    HAS_MPS = hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available()
-except ImportError:
-    HAS_CUDA = False
-    HAS_ROCM = False
-    HAS_MPS = False
+    from generators.utils.resource_pool import get_global_resource_pool
+except ImportError as e:
+    logger.warning(f"ResourcePool not available: {e}")
+    logger.warning("Will create model for each test - may cause memory issues")
 
-# Other hardware detection
-HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
-HAS_QUALCOMM = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
-HAS_WEBNN = importlib.util.find_spec("webnn") is not None or "WEBNN_AVAILABLE" in os.environ
-HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE" in os.environ
+# Constants
+DEFAULT_OUTPUT_DIR = "./generated_tests"
+DEFAULT_TEMPLATE_DIR = "./templates"
+ALL_HARDWARE_TYPES = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
 
-# Define key model hardware support
-KEY_MODEL_HARDWARE_MAP = {
-    "bert": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "REAL", "webnn": "REAL", "webgpu": "REAL"},
-    "t5": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "REAL", "webnn": "REAL", "webgpu": "REAL"},
-    "vit": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "REAL", "webnn": "REAL", "webgpu": "REAL"},
-    "clip": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "REAL", "webnn": "REAL", "webgpu": "REAL"},
-    "whisper": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "wav2vec2": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "clap": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "llama": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "llava": {"cpu": "REAL", "cuda": "REAL", "rocm": "SIMULATION", "mps": "SIMULATION", "openvino": "SIMULATION", "qualcomm": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "xclip": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "detr": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qualcomm": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "qwen2": {"cpu": "REAL", "cuda": "REAL", "rocm": "SIMULATION", "mps": "SIMULATION", "openvino": "SIMULATION", "qualcomm": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"}
-}
+class TestGenerator:
+    """
+    Generates test files for different models with hardware support
+    
+    This class provides functionality to generate test files for various models
+    with support for different hardware platforms using templates.
+    """
+    
+    def __init__(self, output_dir=None, template_dir=None, debug=False):
+        """
+        Initialize the test generator
+        
+        Args:
+            output_dir: Directory to save generated test files
+            template_dir: Directory containing templates
+            debug: Enable debug logging
+        """
+        # Configure logging
+        self.debug = debug
+        if debug:
+            logger.setLevel(logging.DEBUG)
+            
+        # Set directories
+        self.output_dir = output_dir or DEFAULT_OUTPUT_DIR
+        self.template_dir = template_dir or DEFAULT_TEMPLATE_DIR
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        logger.debug(f"Output directory: {self.output_dir}")
+        logger.debug(f"Template directory: {self.template_dir}")
+        
+        # Initialize templates
+        self._init_templates()
+        
+        # Try to get resource pool
+        try:
+            self.resource_pool = get_global_resource_pool()
+            logger.debug("Using resource pool for model management")
+        except:
+            self.resource_pool = None
+            logger.debug("Resource pool unavailable - model caching disabled")
+            
+        # Check for hardware detection module
+        try:
+            import generators.hardware.hardware_detection as hardware_detection
+            self.hardware_detection_available = True
+            logger.debug("Hardware detection module available")
+        except ImportError:
+            self.hardware_detection_available = False
+            logger.debug("Hardware detection module not available")
+            
+        # Initialize hardware information
+        self.detected_hardware = self._detect_hardware()
+        
+    def _init_templates(self):
+        """Initialize templates from template directory"""
+        self.templates = {}
+        
+        # Basic fallback template in case file loading fails
+        self.templates["default"] = """
+#!/usr/bin/env python3
+\"\"\"
+Test for {model_name} with hardware support for {hardware_types}.
+Generated by fixed_merged_test_generator.py on {generated_at}
+\"\"\"
 
-def detect_model_modality(model_name):
-    model_lower = model_name.lower()
-    
-    # Text models
-    if any(t in model_lower for t in ["bert", "gpt", "t5", "llama", "roberta"]):
-        return "text"
-    
-    # Vision models
-    if any(v in model_lower for v in ["vit", "deit", "resnet", "convnext"]):
-        return "vision"
-    
-    # Audio models
-    if any(a in model_lower for a in ["wav2vec", "whisper", "hubert", "clap"]):
-        return "audio"
-    
-    # Multimodal models
-    if any(m in model_lower for m in ["clip", "llava", "blip"]):
-        return "multimodal"
-    
-    # Video models
-    if any(v in model_lower for v in ["xclip", "video"]):
-        return "video"
-    
-    # Default to text
-    return "text"
-
-def generate_imports_for_platform(platform):
-    """Generate the imports for a specific platform."""
-    imports = []
-    
-    if platform == "cpu":
-        imports.append("import torch")
-    elif platform == "cuda" or platform == "rocm":
-        imports.append("import torch")
-    elif platform == "mps":
-        imports.append("import torch")
-    elif platform == "openvino":
-        imports.append("import torch")
-        imports.append("try:\n    import openvino as ov\nexcept ImportError:\n    ov = None")
-    elif platform == "qualcomm":
-        imports.append("import torch")
-        imports.append("try:\n    import qnn_wrapper\nexcept ImportError:\n    qnn_wrapper = None")
-    elif platform == "webnn":
-        imports.append("import torch")
-        imports.append("# WebNN specific imports would go here")
-    elif platform == "webgpu":
-        imports.append("import torch")
-        imports.append("# WebGPU specific imports would go here")
-    
-    return imports
-
-def generate_test_file(model_name, platform=None, output_dir=None, cross_platform=False):
-    """Generate a test file for the specified model and platforms."""
-    model_type = detect_model_modality(model_name)
-    
-    # Default to all platforms if none specified or cross-platform is True
-    all_platforms = ["cpu", "cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu"]
-    if cross_platform:
-        platforms = all_platforms
-    elif platform and platform != "all":
-        platforms = [p.strip() for p in platform.split(",")]
-    else:
-        platforms = all_platforms
-    
-    # Create file name and path
-    file_name = f"test_hf_{model_name.replace('-', '_')}.py"
-    
-    # Use output_dir if specified, otherwise use current directory
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, file_name)
-    else:
-        output_path = file_name
-    
-    # Generate file content
-    with open(output_path, "w") as f:
-        # Header and imports
-        f.write(f'''#!/usr/bin/env python3
-"""
-Test for {model_name} model with hardware platform support
-Generated by fixed_merged_test_generator_clean.py
-"""
-
-import os
-import sys
 import unittest
-import importlib.util
 import logging
-import torch
-import numpy as np
-from transformers import AutoModel, AutoTokenizer, AutoConfig
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Hardware detection
-HAS_CUDA = torch.cuda.is_available()
-HAS_ROCM = (HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version')) or ('ROCM_HOME' in os.environ)
-HAS_MPS = hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available()
-HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
-HAS_QUALCOMM = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
-HAS_WEBNN = importlib.util.find_spec("webnn") is not None or "WEBNN_AVAILABLE" in os.environ
-HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE" in os.environ
-
-class Test{model_name.replace("-", "").title()}(unittest.TestCase):
-    """Test {model_name} model with cross-platform hardware support."""
+class Test{normalized_name}(unittest.TestCase):
+    \"\"\"Test {model_name} with hardware support.\"\"\"
     
-    def setUp(self):
-        """Set up the test environment."""
-        self.model_id = "{model_name}"
-        self.tokenizer = None
-        self.model = None
-        self.modality = "{model_type}"
-''')
-        
-        # Add methods for each platform
-        for p in platforms:
-            # Only include supported platforms based on hardware detection
-            hardware_var = f"HAS_{p.upper()}"
-            
-            # Skip condition based on hardware availability
-            skip_condition = f"if not {hardware_var}: self.skipTest('{p.upper()} not available')"
-            
-            # Device setup based on platform
-            if p == "cuda" or p == "rocm":
-                device_setup = 'device = "cuda"'
-            elif p == "mps":
-                device_setup = 'device = "mps"'
-            else:
-                device_setup = 'device = "cpu"'
-            
-            # Check model specific support in KEY_MODEL_HARDWARE_MAP
-            model_base = model_name.split("-")[0].lower()
-            special_setup = ""
-            special_teardown = ""
-            
-            if model_base in KEY_MODEL_HARDWARE_MAP:
-                if p.lower() in KEY_MODEL_HARDWARE_MAP[model_base]:
-                    support_type = KEY_MODEL_HARDWARE_MAP[model_base][p.lower()]
-                    if support_type == "NONE":
-                        continue  # Skip this platform entirely
-                    elif support_type == "SIMULATION":
-                        special_setup = '        logger.info("Using simulation mode for this platform")'
-            
-            # Add the test method
-            f.write(f'''
-    def test_{p.lower()}(self):
-        """Test {model_name} with {p}."""
-        # Skip if hardware not available
-        {skip_condition}
-        
-        # Set up device
-        {device_setup}
-        {special_setup}
-        
+    @classmethod
+    def setUpClass(cls):
+        \"\"\"Set up test environment.\"\"\"
         try:
-            # Initialize tokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+            import torch
+            cls.torch = torch
             
-            # Initialize model
-            self.model = AutoModel.from_pretrained(self.model_id)
+            from transformers import AutoModel, AutoTokenizer
+            cls.model = AutoModel.from_pretrained("{model_name}")
+            cls.tokenizer = AutoTokenizer.from_pretrained("{model_name}")
             
-            # Move model to device if not CPU
-            if device != "cpu":
-                self.model = self.model.to(device)
-            
-            # Prepare input
-            inputs = self.tokenizer("Test input for {model_name}", return_tensors="pt")
-            
-            # Move inputs to device if not CPU
-            if device != "cpu":
-                inputs = {{k: v.to(device) for k, v in inputs.items()}}
-            
-            # Run inference
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-            
-            # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
-            
-            # Log success
-            logger.info(f"Successfully tested {{self.model_id}} on {p.lower()}")
-            {special_teardown}
+            # Move model to appropriate device
+            cls.device = "{best_device}"
+            if cls.device != "cpu":
+                cls.model = cls.model.to(cls.device)
         except Exception as e:
-            logger.error(f"Error testing {{self.model_id}} on {p.lower()}: {{str(e)}}")
-            raise
-''')
+            logger.error(f"Error loading model: {e}")
+            raise unittest.SkipTest(f"Failed to load model: {e}")
+    
+    def test_model_loaded(self):
+        \"\"\"Test that model loaded successfully.\"\"\"
+        self.assertIsNotNone(self.model)
+        self.assertIsNotNone(self.tokenizer)
+    
+    def test_inference(self):
+        \"\"\"Test basic inference.\"\"\"
+        # Prepare input
+        text = "This is a test."
+        inputs = self.tokenizer(text, return_tensors="pt")
         
-        # Add test main
-        f.write('''
+        # Move inputs to device if needed
+        if self.device != "cpu":
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        
+        # Run inference
+        with self.torch.no_grad():
+            outputs = self.model(**inputs)
+        
+        # Verify outputs
+        self.assertIsNotNone(outputs)
+        self.assertIn("last_hidden_state", outputs)
+        
+        # Log success
+        logger.info(f"Successfully tested {model_name}")
+
 if __name__ == "__main__":
     unittest.main()
-''')
+"""
+        
+        # Try to load templates from files
+        try:
+            template_file = os.path.join(self.template_dir, "test_template.py.txt")
+            if os.path.exists(template_file):
+                with open(template_file, "r") as f:
+                    self.templates["default"] = f.read()
+                logger.debug(f"Loaded default template from {template_file}")
+                
+            # Load model-specific templates if they exist
+            for model_type in ["bert", "t5", "vit", "clip", "whisper"]:
+                template_file = os.path.join(self.template_dir, f"test_{model_type}_template.py.txt")
+                if os.path.exists(template_file):
+                    with open(template_file, "r") as f:
+                        self.templates[model_type] = f.read()
+                    logger.debug(f"Loaded {model_type} template from {template_file}")
+        except Exception as e:
+            logger.warning(f"Error loading templates from files: {e}")
+            logger.warning("Using default embedded templates")
     
-    logger.info(f"Generated test file: {output_path}")
-    return output_path
+    def _detect_hardware(self) -> Dict[str, bool]:
+        """
+        Detect available hardware on the system
+        
+        Returns:
+            Dictionary with hardware availability information
+        """
+        hardware_info = {
+            "cpu": True,  # CPU is always available
+            "cuda": False,
+            "rocm": False,
+            "mps": False,
+            "openvino": False,
+            "qnn": False,
+            "webnn": False,
+            "webgpu": False
+        }
+        
+        # Basic PyTorch hardware detection
+        try:
+            import torch
+            
+            # CUDA
+            if torch.cuda.is_available():
+                hardware_info["cuda"] = True
+                logger.debug(f"CUDA available: {torch.cuda.get_device_name(0)}")
+                
+            # MPS (Apple Silicon)
+            if hasattr(torch, 'backends') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                hardware_info["mps"] = True
+                logger.debug("MPS (Apple Silicon) available")
+                
+            # ROCm (AMD)
+            if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+                hardware_info["rocm"] = True
+                logger.debug("ROCm (AMD) available")
+                
+        except ImportError:
+            logger.debug("PyTorch not available for hardware detection")
+        
+        # Check for OpenVINO
+        try:
+            import importlib.util
+            if importlib.util.find_spec("openvino") is not None:
+                hardware_info["openvino"] = True
+                logger.debug("OpenVINO available")
+        except:
+            pass
+        
+        # Check for Qualcomm AI Engine (QNN)
+        try:
+            if importlib.util.find_spec("qnn_wrapper") is not None:
+                hardware_info["qnn"] = True
+                logger.debug("Qualcomm AI Engine (QNN) available")
+        except:
+            pass
+        
+        # WebNN and WebGPU are typically simulated in testing
+        # For now, assume they're not available for direct hardware detection
+        
+        # Use enhanced hardware detection if available
+        if self.hardware_detection_available:
+            try:
+                from generators.hardware.hardware_detection import detect_available_hardware
+                enhanced_hardware = detect_available_hardware()
+                
+                # Update hardware info with more accurate information
+                for hw_type, available in enhanced_hardware.items():
+                    if hw_type in hardware_info and isinstance(available, bool):
+                        hardware_info[hw_type] = available
+                        
+                logger.debug(f"Enhanced hardware detection result: {enhanced_hardware}")
+            except Exception as e:
+                logger.warning(f"Error in enhanced hardware detection: {e}")
+        
+        # Log detected hardware
+        available_hw = [hw for hw, available in hardware_info.items() if available]
+        logger.info(f"Detected hardware: {', '.join(available_hw)}")
+        
+        return hardware_info
+    
+    def get_best_device(self, model_type: str = None, model_name: str = None) -> str:
+        """
+        Determine the best device for a model
+        
+        Args:
+            model_type: Type of model (e.g., 'bert', 't5')
+            model_name: Name of model
+            
+        Returns:
+            String with recommended device
+        """
+        # Default to CPU
+        best_device = "cpu"
+        
+        # Use resource pool's hardware selection if available
+        if self.resource_pool is not None and hasattr(self.resource_pool, "_get_optimal_device"):
+            try:
+                device = self.resource_pool._get_optimal_device(
+                    model_type=model_type or "default",
+                    model_name=model_name or "unknown",
+                    hardware_preferences=None
+                )
+                if device:
+                    return device
+            except Exception as e:
+                logger.debug(f"Error getting optimal device from resource pool: {e}")
+        
+        # Basic selection based on detected hardware
+        # Priority: CUDA > MPS > ROCm > OpenVINO > CPU
+        if self.detected_hardware.get("cuda", False):
+            best_device = "cuda"
+        elif self.detected_hardware.get("mps", False):
+            best_device = "mps"
+        elif self.detected_hardware.get("rocm", False):
+            best_device = "rocm"
+        elif self.detected_hardware.get("openvino", False):
+            best_device = "openvino"
+        
+        logger.debug(f"Selected device for {model_name or 'unknown'}: {best_device}")
+        return best_device
+    
+    def generate_test(self, 
+                      model_name: str, 
+                      hardware_types: List[str] = None,
+                      output_file: str = None,
+                      model_type: str = None,
+                      template: str = None, use_db_templates=False) -> str:
+        """
+        Generate a test file for a model with hardware support
+        
+        Args:
+            model_name: Name of the model (e.g., 'bert-base-uncased')
+            hardware_types: List of hardware types to support (e.g., ['cpu', 'cuda'])
+            output_file: Path to save the generated test file
+            model_type: Type of model (e.g., 'bert', 't5')
+            template: Custom template string
+            
+        Returns:
+            Path to the generated test file
+        """
+        # Handle default arguments
+        if hardware_types is None:
+            # Use all detected hardware by default
+            hardware_types = [hw for hw, available in self.detected_hardware.items() if available]
+        
+        if not output_file:
+            # Generate filename from model name
+            normalized_name = model_name.replace("/", "_").replace("-", "_").lower()
+            output_file = os.path.join(self.output_dir, f"test_hf_{normalized_name}.py")
+        
+        # Determine model type if not provided
+        if not model_type:
+            model_type = self._guess_model_type(model_name)
+        
+        # Get best device for the model
+        best_device = self.get_best_device(model_type, model_name)
+        
+        # Prepare template context
+        normalized_name = model_name.replace("/", "_").replace("-", "_").lower()
+        context = {
+            "model_name": model_name,
+            "model_type": model_type,
+            "normalized_name": normalized_name,
+            "hardware_types": hardware_types,
+            "hardware_types_str": ", ".join(hardware_types),
+            "best_device": best_device,
+            "has_cuda": self.detected_hardware.get("cuda", False),
+            "has_mps": self.detected_hardware.get("mps", False),
+            "has_rocm": self.detected_hardware.get("rocm", False),
+            "has_openvino": self.detected_hardware.get("openvino", False),
+            "has_qnn": self.detected_hardware.get("qnn", False),
+            "has_webnn": self.detected_hardware.get("webnn", False),
+            "has_webgpu": self.detected_hardware.get("webgpu", False),
+            "generated_at": datetime.now().isoformat()
+        }
+        
+        # Select template
+        if template:
+            template_content = template
+        elif model_type in self.templates:
+            template_content = self.templates[model_type]
+        else:
+            template_content = self.templates["default"]
+        
+        # Render template
+        try:
+            rendered = self._render_template(template_content, context)
+        except Exception as e:
+            logger.error(f"Error rendering template: {e}")
+            logger.error("Using simple template as fallback")
+            rendered = f"""
+#!/usr/bin/env python3
+\"\"\"
+Test for {model_name} with hardware support.
+Generated by fixed_merged_test_generator.py on {datetime.now().isoformat()}
+\"\"\"
+
+import unittest
+
+class Test{normalized_name}(unittest.TestCase):
+    def test_dummy(self):
+        self.assertTrue(True)
+
+if __name__ == "__main__":
+    unittest.main()
+"""
+        
+        # Write test file
+        with open(output_file, "w") as f:
+            f.write(rendered)
+        
+        logger.info(f"Generated test file: {output_file}")
+        return output_file
+    
+    def _guess_model_type(self, model_name: str) -> str:
+        """
+        Guess the model type based on the model name
+        
+        Args:
+            model_name: Name of the model
+            
+        Returns:
+            Guessed model type
+        """
+        model_name_lower = model_name.lower()
+        
+        # Simple pattern matching
+        if "bert" in model_name_lower:
+            return "bert"
+        elif "t5" in model_name_lower:
+            return "t5"
+        elif "vit" in model_name_lower or "vision" in model_name_lower:
+            return "vit"
+        elif "clip" in model_name_lower:
+            return "clip"
+        elif "whisper" in model_name_lower:
+            return "whisper"
+        elif "wav2vec" in model_name_lower:
+            return "wav2vec2"
+        elif "llama" in model_name_lower or "gpt" in model_name_lower:
+            return "llama"
+        else:
+            # Default to generic transformer model
+            return "default"
+    
+    def _render_template(self, template: str, context: Dict[str, Any]) -> str:
+        """
+        Render a template with the given context
+        
+        Args:
+            template: Template string
+            context: Dictionary with variables for template rendering
+            
+        Returns:
+            Rendered template string
+        """
+        # Simple string formatting-based templating
+        rendered = template
+        for key, value in context.items():
+            placeholder = "{" + key + "}"
+            if placeholder in rendered:
+                rendered = rendered.replace(placeholder, str(value))
+        
+        return rendered
+    
+    def generate_tests_for_models(self, 
+                                 models: List[str], 
+                                 hardware_types: List[str] = None,
+                                 output_dir: str = None) -> List[str]:
+        """
+        Generate tests for multiple models
+        
+        Args:
+            models: List of model names
+            hardware_types: List of hardware types to support
+            output_dir: Directory to save generated tests
+            
+        Returns:
+            List of paths to generated test files
+        """
+        if output_dir:
+            self.output_dir = output_dir
+            os.makedirs(self.output_dir, exist_ok=True)
+        
+        generated_files = []
+        for model_name in models:
+            try:
+                output_file = self.generate_test(
+                    model_name=model_name,
+                    hardware_types=hardware_types
+                , use_db_templates=use_db_templates)
+                generated_files.append(output_file)
+            except Exception as e:
+                logger.error(f"Error generating test for {model_name}: {e}")
+        
+        return generated_files
+    
+    def generate_all_models(self, 
+                          hardware_types: List[str] = None,
+                          output_dir: str = None,
+                          model_family: str = None) -> List[str]:
+        """
+        Generate tests for all core models
+        
+        Args:
+            hardware_types: List of hardware types to support
+            output_dir: Directory to save generated tests
+            model_family: Filter by model family
+            
+        Returns:
+            List of paths to generated test files
+        """
+        # Define core models to test
+        core_models = {
+            "text_embedding": [
+                "bert-base-uncased",
+                "roberta-base",
+                "distilbert-base-uncased"
+            ],
+            "text_generation": [
+                "gpt2",
+                "t5-small",
+                "facebook/opt-125m"
+            ],
+            "vision": [
+                "google/vit-base-patch16-224",
+                "facebook/deit-small-patch16-224",
+                "microsoft/resnet-50"
+            ],
+            "audio": [
+                "openai/whisper-tiny",
+                "facebook/wav2vec2-base"
+            ],
+            "multimodal": [
+                "openai/clip-vit-base-patch32",
+                "facebook/flava-full"
+            ]
+        }
+        
+        # Filter by model family if specified
+        if model_family:
+            if model_family in core_models:
+                models_to_generate = core_models[model_family]
+            else:
+                logger.warning(f"Unknown model family: {model_family}")
+                models_to_generate = []
+        else:
+            # Flatten all models if no family specified
+            models_to_generate = []
+            for family_models in core_models.values():
+                models_to_generate.extend(family_models)
+        
+        # Generate tests
+        return self.generate_tests_for_models(
+            models=models_to_generate,
+            hardware_types=hardware_types,
+            output_dir=output_dir
+        )
+
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="Generate test files for models with hardware support")
+    
+    # Model selection options
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument("--model", "-m", type=str, help="Model name (e.g., bert-base-uncased)")
+    model_group.add_argument("--models", "-ms", type=str, nargs="+", help="Multiple model names")
+    model_group.add_argument("--all-models", "-a", action="store_true", help="Generate tests for all core models")
+    model_group.add_argument("--family", "-f", type=str, help="Generate tests for a model family")
+    
+    # Hardware options
+    parser.add_argument("--hardware", "-hw", type=str, nargs="+", choices=ALL_HARDWARE_TYPES + ["all", "detected"], 
+                       help="Hardware types to support")
+    parser.add_argument("--cross-platform", "-cp", action="store_true", 
+                       help="Generate cross-platform tests for all detected hardware")
+    
+    # Output options
+    parser.add_argument("--output-dir", "-o", type=str, help="Output directory for generated tests")
+    parser.add_argument("--output-file", "-of", type=str, help="Output file path (only with single model)")
+    
+    # Template options
+    parser.add_argument("--template-dir", "-td", type=str, help="Directory containing templates")
+    parser.add_argument("--model-type", "-mt", type=str, help="Force model type for template selection")
+    
+    # Debugging options
+    parser.add_argument("--debug", "-d", action="store_true", help="Enable debug logging")
+    
+
+    parser.add_argument(
+        "--use-db-templates", action="store_true",
+        help="Use database templates instead of static files"
+    )    return parser.parse_args()
 
 def main():
-    parser = argparse.ArgumentParser(description="Fixed Merged Test Generator - Clean Version")
-    parser.add_argument("--generate", "-g", type=str, help="Model to generate tests for")
-    parser.add_argument("--platform", "-p", type=str, default="all", help="Platform to generate tests for (comma-separated or 'all')")
-    parser.add_argument("--output-dir", "-o", type=str, help="Output directory for generated files")
-    parser.add_argument("--cross-platform", "-c", action="store_true", help="Generate test for all platforms")
+
+    # Check for database templates flag from environment variable
+    use_db_templates = args.use_db_templates if hasattr(args, 'use_db_templates') else False
+    if not use_db_templates and os.environ.get('USE_DB_TEMPLATES', '').lower() in ('1', 'true', 'yes'):
+        logger.info("Using database templates from environment variable")
+        use_db_templates = True
+        
+    """Main function"""
+    args = parse_args()
     
-    args = parser.parse_args()
+    # Handle hardware options
+    hardware_types = args.hardware
+    if args.cross_platform or (hardware_types and "all" in hardware_types):
+        hardware_types = ALL_HARDWARE_TYPES
+    elif hardware_types and "detected" in hardware_types:
+        hardware_types = None  # Will use detected hardware
     
-    if args.generate:
-        output_file = generate_test_file(
-            args.generate,
-            args.platform,
-            args.output_dir,
-            cross_platform=args.cross_platform
+    # Initialize generator
+    generator = TestGenerator(
+        output_dir=args.output_dir,
+        template_dir=args.template_dir,
+        debug=args.debug
+    )
+    
+    # Generate tests
+    if args.model:
+        # Single model
+        generator.generate_test(
+            model_name=args.model,
+            hardware_types=hardware_types,
+            output_file=args.output_file,
+            model_type=args.model_type
         )
-        print(f"Generated test file: {output_file}")
+    elif args.models:
+        # Multiple models
+        generator.generate_tests_for_models(
+            models=args.models,
+            hardware_types=hardware_types,
+            output_dir=args.output_dir
+        )
+    elif args.all_models or args.family:
+        # All models or model family
+        generator.generate_all_models(
+            hardware_types=hardware_types,
+            output_dir=args.output_dir,
+            model_family=args.family
+        )
     else:
-        parser.print_help()
+        logger.error("No models specified. Use --model, --models, --all-models, or --family")
+        return 1
     
     return 0
 

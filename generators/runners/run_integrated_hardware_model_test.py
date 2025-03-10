@@ -78,7 +78,7 @@ def test_resource_pool_basic():
     
     try:
         # Import resource pool
-        from resource_pool import get_global_resource_pool
+        from generators.utils.resource_pool import get_global_resource_pool
         logger.info("✅ ResourcePool module imported successfully")
         
         # Get instance
@@ -148,7 +148,7 @@ def test_hardware_detection(has_pytorch=False):
     
     try:
         # Import the module
-        from hardware_detection import detect_hardware_with_comprehensive_checks
+        from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
         logger.info("✅ Hardware detection module imported successfully")
         
         # Run detection
@@ -343,7 +343,7 @@ def test_resource_pool_with_components(has_hardware_detection, hardware_info,
     
     try:
         # Import resource pool
-        from resource_pool import get_global_resource_pool
+        from generators.utils.resource_pool import get_global_resource_pool
         pool = get_global_resource_pool()
         
         # Try to get PyTorch
@@ -569,7 +569,7 @@ def test_full_integration(has_hardware_detection, hardware_info,
     
     # Test ResourcePool with both components
     try:
-        from resource_pool import get_global_resource_pool
+        from generators.utils.resource_pool import get_global_resource_pool
         pool = get_global_resource_pool()
         
         # Try to import torch

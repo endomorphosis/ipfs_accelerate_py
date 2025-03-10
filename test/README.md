@@ -117,6 +117,27 @@ After the March 2025 reorganization, the codebase now has the following high-lev
   - **visualization/**: Result visualization tools
 - **fixed_web_platform/**: Web platform implementation components
 - **predictive_performance/**: ML-based performance prediction system
+- **archive/**: Repository of archived files and stale code (March 10, 2025)
+  - **backup_files/**: Contains backup (*.bak) files with original directory structure preserved
+  - **old_reports/**: Contains old benchmark reports and results files
+  - **stale_scripts/**: Contains deprecated Python scripts that are no longer in active use
+  - **old_documentation/**: Contains older documentation files
+
+### Test Directory Archive
+On March 10, 2025, a major cleanup of the test directory was performed:
+- Approximately 480 files were moved to **/test/archive/**
+- Categories of archived files include:
+  - Backup files (*.bak, *.bak_*)
+  - Old database backups (benchmark_db*.duckdb.bak*)
+  - Fixed/superseded implementation files
+  - Completed status reports and documentation
+  - Older benchmark reports
+  - One-time utility scripts
+  - Deprecated test runners
+  - Duplicate files with newer versions available
+
+This cleanup significantly reduced clutter while preserving all historical files for reference. 
+See **/test/cleanup_summary.md** for complete details about the archiving process.
 
 ### Legacy Directories
 The following directories contain legacy files that are being archived or migrated:

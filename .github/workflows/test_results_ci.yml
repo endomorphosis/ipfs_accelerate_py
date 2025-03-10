@@ -96,10 +96,10 @@ jobs:
         run: |
           mkdir -p benchmark_db
           python -c "import duckdb; conn = duckdb.connect('$BENCHMARK_DB_PATH'); print('Database created successfully')"
-          if [ -f test/scripts/create_benchmark_schema.py ]; then
-            python test/scripts/create_benchmark_schema.py --output $BENCHMARK_DB_PATH --sample-data
+          if [ -f duckdb_api/scripts/create_benchmark_schema.py ]; then
+            python duckdb_api/scripts/create_benchmark_schema.py --output $BENCHMARK_DB_PATH --sample-data
           else
-            python test/test_ipfs_accelerate.py --db-path $BENCHMARK_DB_PATH
+            python generators/models/test_ipfs_accelerate.py --db-path $BENCHMARK_DB_PATH
           fi
           echo "db_path=$BENCHMARK_DB_PATH" >> $GITHUB_OUTPUT
 
@@ -260,8 +260,8 @@ jobs:
       - name: Run web platform tests
         run: |
           # Run web platform tests (simulation mode in CI)
-          if [ -f test/web_platform_test_runner.py ]; then
-            python test/web_platform_test_runner.py \
+          if [ -f fixed_web_platform/web_platform_test_runner.py ]; then
+            python fixed_web_platform/web_platform_test_runner.py \
               --model bert-base-uncased \
               --platform webnn \
               --run-id ${{ needs.setup_database.outputs.run_id }} \
@@ -393,8 +393,8 @@ jobs:
       - name: Generate compatibility matrix
         run: |
           # Generate an updated compatibility matrix
-          if [ -f test/generate_compatibility_matrix.py ]; then
-            python test/generate_compatibility_matrix.py \
+          if [ -f duckdb_api/visualization/generate_compatibility_matrix.py ]; then
+            python duckdb_api/visualization/generate_compatibility_matrix.py \
               --db-path ./consolidated_db.duckdb \
               --format markdown \
               --output compatibility_matrix_${{ needs.setup_database.outputs.today_date }}.md
@@ -410,8 +410,8 @@ jobs:
       - name: Generate performance report
         run: |
           # Generate performance report
-          if [ -f test/scripts/benchmark_db_query.py ]; then
-            python test/scripts/benchmark_db_query.py \
+          if [ -f duckdb_api/core/benchmark_db_query.py ]; then
+            python duckdb_api/core/benchmark_db_query.py \
               --db ./consolidated_db.duckdb \
               --report performance \
               --format html \

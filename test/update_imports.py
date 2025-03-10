@@ -18,16 +18,18 @@ IMPORT_MAPPINGS = {
     "import benchmark_db_query": "import duckdb_api.core.benchmark_db_query as benchmark_db_query",
     "from merged_test_generator import": "from generators.test_generators.merged_test_generator import",
     "import merged_test_generator": "import generators.test_generators.merged_test_generator as merged_test_generator",
-    "from simple_test_generator import": "from generators.test_generators.simple_test_generator import",
-    "import simple_test_generator": "import generators.test_generators.simple_test_generator as simple_test_generator",
-    "from skill_generator import": "from generators.skill_generators.skill_generator import",
-    "import skill_generator": "import generators.skill_generators.skill_generator as skill_generator",
-    "from template_database import": "from generators.templates.template_database import",
-    "import template_database": "import generators.templates.template_database as template_database",
     "from fixed_merged_test_generator_clean import": "from generators.test_generators.fixed_merged_test_generator_clean import",
     "import fixed_merged_test_generator_clean": "import generators.test_generators.fixed_merged_test_generator_clean as fixed_merged_test_generator_clean",
+    "from simple_test_generator import": "from generators.test_generators.simple_test_generator import",
+    "import simple_test_generator": "import generators.test_generators.simple_test_generator as simple_test_generator",
+    "from resource_pool import": "from generators.utils.resource_pool import",
+    "import resource_pool": "import generators.utils.resource_pool as resource_pool",
     "from test_generator_with_resource_pool import": "from generators.utils.test_generator_with_resource_pool import",
     "import test_generator_with_resource_pool": "import generators.utils.test_generator_with_resource_pool as test_generator_with_resource_pool",
+    "from hardware_detection import": "from generators.hardware.hardware_detection import",
+    "import hardware_detection": "import generators.hardware.hardware_detection as hardware_detection",
+    "from template_database import": "from generators.templates.template_database import",
+    "import template_database": "import generators.templates.template_database as template_database",
 }
 
 def update_imports_in_file(file_path: str) -> int:
@@ -89,8 +91,8 @@ def main():
     project_root = Path(__file__).parent.parent  # Go up one directory from test
     
     directories = [
-        project_root / "duckdb_api",
         project_root / "generators",
+        project_root / "duckdb_api",
     ]
     
     total_replacements = 0

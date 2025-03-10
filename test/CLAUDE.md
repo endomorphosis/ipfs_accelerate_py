@@ -1,6 +1,6 @@
 # IPFS Accelerate Python Framework - Development Guide
 
-> **ORGANIZATION UPDATE (March 9, 2025):**
+> **ORGANIZATION UPDATE (March 10, 2025):**
 >
 > The codebase has been reorganized for better maintainability with the following top-level structure:
 > 
@@ -35,6 +35,30 @@
 >
 > Please refer to [FINAL_MIGRATION_REPORT.md](FINAL_MIGRATION_REPORT.md) for the complete directory structure and [CI_CD_UPDATES_SUMMARY.md](CI_CD_UPDATES_SUMMARY.md) for details on CI/CD changes.
 >
+> **ARCHIVE UPDATE (March 10, 2025):**
+>
+> A major cleanup of stale and unused files has been completed to improve repository organization:
+>
+> - Approximately 480 files were moved to `/test/archive/` including:
+>   - Backup files (*.bak, *.bak_*)
+>   - Old database backups (benchmark_db*.duckdb.bak*)
+>   - Fixed/superseded implementation files
+>   - Completed status reports and documentation
+>   - Older benchmark reports
+>   - One-time utility scripts
+>   - Deprecated test runners
+>
+> - Archive directory structure:
+>   - `/test/archive/`: Primary archive for all stale test files
+>   - Additional documentation about the archive is available in:
+>     - `/test/cleanup_summary.md`: Detailed summary of the archiving process 
+>     - `/test/ARCHIVE_STRUCTURE.md`: Guidelines for archive organization and access
+>     - `/test/DOCUMENTATION_INDEX.md`: Updated to reflect archived documentation
+>
+> ✅ Archive cleanup completed with 480+ files organized (March 10, 2025)
+> ✅ Documentation updated to reflect archive status (March 10, 2025)
+> ✅ Archive structure documented for future reference (March 10, 2025)
+>
 > **UPCOMING MIGRATION (Q2-Q3 2025):**
 > 
 > All WebGPU/WebNN implementations will be moved from `/fixed_web_platform/` to a dedicated `ipfs_accelerate_js` folder once all tests pass. This migration will create a clearer separation between JavaScript-based components and Python-based components.
@@ -58,146 +82,47 @@ The project has successfully completed 16 phases of implementation, focusing on 
 - ✅ Historical data migration pipeline implemented (100% complete)
 - ✅ CI/CD integration for automated benchmark storage (100% complete)
 
-### Completed: Phase 16 - Advanced Hardware Benchmarking and Database Consolidation (100% Complete)
-### Completed: Web Platform Integration and Framework (100% Complete)
+### Completed Major Phases and Milestones
+
+- ✅ **Phase 16 - Advanced Hardware Benchmarking and Database Consolidation** (March 2025)
+- ✅ **Web Platform Integration and Framework** (March 2025)
+- ✅ **Template System Reorganization** (March 9, 2025)
+- ✅ **Database Reorganization** (March 9, 2025)
+- ✅ **Model File Verification Pipeline** (March 9, 2025)
+- ✅ **Time-Series Performance Tracking** (March 25, 2025)
+- ✅ **Cross-Browser Model Sharding** (March 8, 2025)
+- ✅ **Benchmark System Enhancements** (April 6, 2025)
+- ✅ **Mobile and Edge Support** (April 6, 2025)
+- ✅ **Predictive Performance System** (June 5, 2025)
+- ✅ **IPFS Acceleration with WebNN/WebGPU Integration** (May 22, 2025)
+- ✅ **Template Database Migration** (100% complete, March 10, 2025) - [Documentation](TEMPLATE_DATABASE_README.md)
+- ✅ **Template Validation System** (100% complete)
 
 ### Current Focus Areas (Q2 2025):
-- 🔄 WebGPU/WebNN Resource Pool Integration (IN PROGRESS - 40% complete)
+
+- 🔄 **WebGPU/WebNN Resource Pool Integration** (IN PROGRESS - 40% complete)
   - Enables concurrent execution of multiple AI models across heterogeneous browser backends
   - Creates browser-aware load balancing for model type optimization
   - Implements connection pooling for browser instance lifecycle management
   - Target completion: May 25, 2025
   
-- ✅ Cross-Browser Model Sharding (COMPLETED - March 8, 2025)
-  - Distributes large models across multiple browser types to leverage specialized optimizations
-  - Enables running models too large for a single browser instance
-  - Creates browser-specific model component placement based on strengths
+- 🔄 **Distributed Testing Framework** (IN PROGRESS - 25% complete)
+  - Coordinator-worker architecture for distributed test execution
+  - Secure worker node registration with JWT-based authentication
+  - Intelligent task distribution based on hardware capabilities
+  - Target completion: June 26, 2025
 
-- 📋 WebGPU/WebNN Migration to ipfs_accelerate_js (PLANNED - After all tests pass)
+- 📋 **WebGPU/WebNN Migration to ipfs_accelerate_js** (PLANNED - After all tests pass)
   - Move all WebGPU/WebNN implementations to dedicated folder structure
   - Create clearer separation between JavaScript and Python components
   - Update import paths and documentation to reflect new structure
   - Simplify future JavaScript SDK development
   - Target completion: Q3 2025
-  
-- 🔄 Distributed Testing Framework (IN PROGRESS - 25% complete)
-  - Coordinator-worker architecture for distributed test execution
-  - Secure worker node registration with JWT-based authentication
-  - Intelligent task distribution based on hardware capabilities
-  - Target completion: June 26, 2025
-  
-- ✅ Model File Verification and Conversion Pipeline (COMPLETED - March 9, 2025)
-  - ✅ Pre-benchmark ONNX file verification system with error handling
-  - ✅ PyTorch to ONNX conversion fallback pipeline with model-specific optimizations
-  - ✅ Automated retry logic for models with connectivity issues
-  - ✅ Comprehensive error handling for missing model files
-  - ✅ Local disk caching with automatic cleanup for converted model files
-  - ✅ Database integration for tracking model sources and conversion status
-  - ✅ Batch verification capability for multiple models
-  - See [MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md) for documentation
-  
-- ✅ Predictive Performance System (COMPLETED - June 5, 2025)
-  - ✅ ML-based performance prediction for untested configurations (COMPLETED - May 2, 2025)
-  - ✅ Confidence scoring system for prediction reliability (COMPLETED - May 8, 2025)
-  - ✅ Interactive visualization dashboard for predictions (COMPLETED - May 20, 2025)
-  - ✅ Active learning pipeline for targeting high-value tests (COMPLETED - May 28, 2025)
-  - ✅ Hardware recommender system based on performance predictions (COMPLETED - June 1, 2025)
-  - ✅ Integration with benchmark scheduler for optimized test selection (COMPLETED - June 5, 2025)
-  - ✅ Advanced model-hardware compatibility matrix generation (COMPLETED - June 5, 2025)
 
-#### Template-Based Generation System (In `generators/` folder)
-✅ Template system reorganization completed (March 9, 2025)
-- All template-related components moved to the `generators/` folder including:
-  - Template storage and retrieval system (`generators/templates/`)
-  - Template validation utilities (`generators/template_generators/`)
-  - Template inheritance hierarchy
-  - Template instantiation engine
-  - Hardware-specific template components
-- Template generator files categorized into appropriate subdirectories:
-  - `generators/benchmark_generators/`: Benchmark generation tools
-  - `generators/models/`: Model implementations and skills
-  - `generators/skill_generators/`: Skill generation tools
-  - `generators/template_generators/`: Template generation utilities
-  - `generators/test_generators/`: Test generation tools
-  - `generators/runners/`: Test runner scripts
-  - `generators/utils/`: Utility functions
-- All import references updated to use new structure
-- Test files updated to reference new paths
-
-Remaining work:
-- 🔄 Migrate generators to use database templates instead of static files (95% complete)
-- 🔄 Complete template validation system for all generators (95% complete)
-
-#### Hardware Performance Work
-- ✅ Create comprehensive benchmark database for all model-hardware combinations (100% complete)
-- ✅ Implement comparative analysis reporting system for hardware performance (100% complete)
-- ✅ Create automated hardware selection based on benchmarking data (100% complete)
-- ✅ Implement training mode test coverage in addition to inference (100% complete)
-- ✅ Complete cross-platform test coverage for 13 key model classes (100% complete)
-- ✅ Develop specialized web platform tests for audio models (100% complete)
-- ✅ Implement distributed training test suite (100% complete)
-- ✅ Add performance prediction for model-hardware combinations (100% complete)
-- ✅ Enhanced OpenVINO integration with optimum.intel support and INT8 quantization (100% complete)
-
-#### Database Restructuring Effort (In `duckdb_api/` folder)
-✅ Database reorganization completed (March 9, 2025)
-- All database-related components have been moved to the `duckdb_api/` folder including:
-  - Core database API and query tools (`duckdb_api/core/`)
-  - Schema management and migration utilities (`duckdb_api/schema/`)
-  - Data visualization and reporting tools (`duckdb_api/visualization/`)
-  - Benchmark integration components
-  - Database maintenance utilities (`duckdb_api/utils/`)
-  - Migration tools for JSON to database (`duckdb_api/migration/`)
-- The database components are now organized into logical subdirectories:
-  - `duckdb_api/core/`: Core database functionality
-  - `duckdb_api/migration/`: Migration tools for JSON to database
-  - `duckdb_api/schema/`: Database schema definitions
-  - `duckdb_api/utils/`: Utility functions for database operations
-  - `duckdb_api/visualization/`: Result visualization tools
-- All import references updated to use new structure
-- Test files updated to reference new paths
-
-#### Benchmark System Enhancements (COMPLETED - April 6, 2025)
-- ✅ Enhanced simulation detection and reporting system (COMPLETED - April 6, 2025)
-  - Added is_simulated and simulation_reason columns to database tables
-  - Added hardware_availability_log table for tracking detection status
-  - Created update_db_schema_for_simulation.py for schema updates
-  - Implemented detailed logging of simulation status in benchmark system
-- ✅ Stale report detection and cleanup (COMPLETED - April 6, 2025)
-  - Created cleanup_stale_reports.py utility for detecting and marking problematic reports
-  - Implemented marking system for HTML, Markdown, and JSON files
-  - Added explicit warnings to all reports with potentially misleading data
-  - Added validation functions to all report generators
-- ✅ Report validation enhancements (COMPLETED - April 6, 2025)
-  - Added _validate_data_authenticity() to validate benchmark data
-  - Added clear visual indicators for simulated hardware results
-  - Added validation step to all report generators
-  - Enhanced database query logic to identify simulation status
-- ✅ Benchmark verification tools (COMPLETED - April 6, 2025)
-  - Created view_benchmark_results.py for database query and verification
-  - Added tools for checking simulation status and fixing database flags
-  - Implemented comprehensive simulation tracking functions
-  - Added detailed documentation in BENCHMARK_DB_FIX.md
-
-#### IPFS Acceleration with WebNN/WebGPU Integration (COMPLETED - May 22, 2025)
-- ✅ Integrated IPFS content acceleration with WebNN/WebGPU hardware backends (COMPLETED - May 15, 2025)
-  - Added `accelerate()` function that combines IPFS content delivery with hardware acceleration
-  - Created browser-specific optimization system (Firefox for audio, Edge for WebNN)
-  - Implemented P2P-optimized content delivery for browser acceleration
-  - Added comprehensive test files for verification and benchmarking
-- ✅ Added precision control across web acceleration platforms (COMPLETED - May 18, 2025) 
-  - Implemented 4-bit, 8-bit, and 16-bit precision with mixed precision support
-  - Created dynamic memory usage optimization based on model type and precision
-  - Added browser-specific shader optimizations for optimal performance
-- ✅ Integrated with existing test generators and benchmarking infrastructure (COMPLETED - May 20, 2025)
-  - Updated test generators to support WebNN/WebGPU with IPFS acceleration
-  - Created benchmark configuration for IPFS acceleration performance testing
-  - Added database schema support for storing acceleration metrics
-- ✅ Created comprehensive documentation (COMPLETED - May 22, 2025)
-  - Added user guide for IPFS acceleration with WebNN/WebGPU
-  - Created API documentation with example code
-  - Added browser-specific performance recommendations
-  - Updated SDK documentation with integration details
+- 📋 **Ultra-low precision quantization support** (PLANNED - July 2025)
+  - 2-bit and 3-bit quantization for WebGPU
+  - Memory-efficient KV cache with 87.5% memory reduction
+  - Browser-specific optimizations for Chrome, Firefox, Edge, and Safari
 
 #### Latest Framework Enhancements
 - ✅ Cross-Browser Model Sharding (COMPLETED - March 8, 2025)

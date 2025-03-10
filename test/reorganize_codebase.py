@@ -10,103 +10,103 @@ This script guides the user through the entire process of reorganizing the codeb
     5. Running tests to verify everything works
 
 Usage:
-    python reorganize_codebase.py [],--step N] [],--dry-run],
-    """
+    python reorganize_codebase.py [--step N] [--dry-run]
+"""
 
-    import os
-    import sys
-    import argparse
-    import subprocess
-    from pathlib import Path
-    import time
-    import importlib
+import os
+import sys
+import argparse
+import subprocess
+from pathlib import Path
+import time
+import importlib
 
 # Steps in the reorganization process
-    STEPS = [],
-    {}}}}}}}
-    "name": "Create Package Structure",
-    "description": "Create the generators/ and duckdb_api/ directories with their subdirectories",
-    "script": "create_package_structure.py",
+STEPS = [
+    {
+        "name": "Create Package Structure",
+        "description": "Create the generators/ and duckdb_api/ directories with their subdirectories",
+        "script": "create_package_structure.py",
     },
-    {}}}}}}}
-    "name": "Fix Syntax Errors",
-    "description": "Fix syntax errors in generator files and other Python files",
-    "script": "fix_syntax_errors.py",
+    {
+        "name": "Fix Syntax Errors",
+        "description": "Fix syntax errors in generator files and other Python files",
+        "script": "fix_syntax_errors.py",
     },
-    {}}}}}}}
-    "name": "Move Generator Files",
-    "description": "Move generator files to their correct locations in the generators/ directory",
-    "script": "move_files_to_packages.py --type generator",
+    {
+        "name": "Move Generator Files",
+        "description": "Move generator files to their correct locations in the generators/ directory",
+        "script": "move_files_to_packages.py --type generator",
     },
-    {}}}}}}}
-    "name": "Move Database Files",
-    "description": "Move database files to their correct locations in the duckdb_api/ directory",
-    "script": "move_files_to_packages.py --type database",
+    {
+        "name": "Move Database Files",
+        "description": "Move database files to their correct locations in the duckdb_api/ directory",
+        "script": "move_files_to_packages.py --type database",
     },
-    {}}}}}}}
-    "name": "Update Import Statements",
-    "description": "Update import statements in all files to use the new package structure",
-    "script": "update_imports.py",
+    {
+        "name": "Update Import Statements",
+        "description": "Update import statements in all files to use the new package structure",
+        "script": "update_imports.py",
     },
-    {}}}}}}}
-    "name": "Update Documentation Paths",
-    "description": "Update file paths in documentation files to reflect the new structure",
-    "script": "update_doc_paths.py",
+    {
+        "name": "Update Documentation Paths",
+        "description": "Update file paths in documentation files to reflect the new structure",
+        "script": "update_doc_paths.py",
     },
-    {}}}}}}}
-    "name": "Run Tests",
-    "description": "Run tests to verify everything works correctly",
-    "script": "python -m pytest -xvs",  # Assumes pytest is available
+    {
+        "name": "Run Tests",
+        "description": "Run tests to verify everything works correctly",
+        "script": "python -m pytest -xvs",  # Assumes pytest is available
     },
-    ]
+]
 
 def run_script(script, dry_run=False):
     """Run a Python script with the appropriate command."""
     if script.startswith("python "):
         cmd = script
     else:
-        cmd = f"python {}}}}}}}script}"
+        cmd = f"python {script}"
         
     if dry_run and not cmd.endswith("--dry-run"):
         cmd += " --dry-run"
     
-        print(f"\n🚀 Running: {}}}}}}}cmd}")
-        print("-" * 80)
+    print(f"\n🚀 Running: {cmd}")
+    print("-" * 80)
     
-        result = subprocess.run(cmd, shell=True)
+    result = subprocess.run(cmd, shell=True)
     
-        print("-" * 80)
+    print("-" * 80)
     if result.returncode == 0:
-        print(f"✅ Command completed successfully: {}}}}}}}cmd}")
+        print(f"✅ Command completed successfully: {cmd}")
     else:
-        print(f"❌ Command failed with code {}}}}}}}result.returncode}: {}}}}}}}cmd}")
+        print(f"❌ Command failed with code {result.returncode}: {cmd}")
     
-        return result.returncode
+    return result.returncode
 
 def check_script_exists(script):
-    """Check if a script exists.""":
+    """Check if a script exists."""
     if script.startswith("python "):
         # Extract the script name from the command
         parts = script.split()
-        if len(parts) >= 2 and parts[],0] == "python":
-            script = parts[],1]
+        if len(parts) >= 2 and parts[0] == "python":
+            script = parts[1]
             if script.startswith("-m"):
                 # It's a module, not a file
-            return True
+                return True
     
-        return os.path.exists(script)
+    return os.path.exists(script)
 
 def get_step_input(current_step, total_steps):
     """Get user input for the current step."""
     while True:
         print("\nOptions:")
-        print(f"  [],Enter] - Run step {}}}}}}}current_step}")
+        print(f"  [Enter] - Run step {current_step}")
         print("  s - Skip this step")
         if current_step > 1:
             print("  p - Go back to previous step")
-            print("  q - Quit")
-            print("  d - Toggle dry run mode")
-            choice = input("\nChoice: ").strip().lower()
+        print("  q - Quit")
+        print("  d - Toggle dry run mode")
+        choice = input("\nChoice: ").strip().lower()
         
         if choice == "":
             return "run"
@@ -138,49 +138,49 @@ def main():
     os.chdir(script_dir)
     
     print("\n===== IPFS ACCELERATE CODEBASE REORGANIZATION =====")
-    print(f"Starting reorganization process from step {}}}}}}}current_step}"):
-    print(f"Dry run mode: {}}}}}}}'ON' if dry_run else 'OFF'}"):
-        print(f"Interactive mode: {}}}}}}}'ON' if interactive else 'OFF'}")
-    print("\nThis script will guide you through the reorganization of the codebase"):
-        print("according to the plan in CLAUDE.md. The following steps will be performed:")
+    print(f"Starting reorganization process from step {current_step}")
+    print(f"Dry run mode: {'ON' if dry_run else 'OFF'}")
+    print(f"Interactive mode: {'ON' if interactive else 'OFF'}")
+    print("\nThis script will guide you through the reorganization of the codebase")
+    print("according to the plan in CLAUDE.md. The following steps will be performed:")
     
     for i, step in enumerate(STEPS, 1):
-        print(f"{}}}}}}}i}. {}}}}}}}step[],'name']}: {}}}}}}}step[],'description']}")
+        print(f"{i}. {step['name']}: {step['description']}")
     
     if interactive:
         input("\nPress Enter to start...")
     
     # Main loop
     while current_step <= len(STEPS):
-        step = STEPS[],current_step - 1]
-        script = step[],'script']
+        step = STEPS[current_step - 1]
+        script = step['script']
         
-        print(f"\n\n===== STEP {}}}}}}}current_step}/{}}}}}}}len(STEPS)}: {}}}}}}}step[],'name']} =====")
-        print(f"Description: {}}}}}}}step[],'description']}")
-        print(f"Script: {}}}}}}}script}")
-        print(f"Dry run: {}}}}}}}'ON' if dry_run else 'OFF'}"):
+        print(f"\n\n===== STEP {current_step}/{len(STEPS)}: {step['name']} =====")
+        print(f"Description: {step['description']}")
+        print(f"Script: {script}")
+        print(f"Dry run: {'ON' if dry_run else 'OFF'}")
         
         # Check if script exists
         if not check_script_exists(script):
-            print(f"❌ Error: Script {}}}}}}}script} not found")
+            print(f"❌ Error: Script {script} not found")
             if interactive:
                 choice = get_step_input(current_step, len(STEPS))
                 if choice == "skip":
                     current_step += 1
-                continue
+                    continue
                 elif choice == "previous" and current_step > 1:
                     current_step -= 1
-                continue
+                    continue
                 elif choice == "quit":
                     print("Quitting reorganization process.")
-                return 0
+                    return 0
                 elif choice == "toggle_dry_run":
                     dry_run = not dry_run
-                continue
+                    continue
                 else:
                     print("Cannot run missing script. Skipping.")
                     current_step += 1
-                continue
+                    continue
             else:
                 print("Skipping step due to missing script.")
                 current_step += 1
@@ -190,38 +190,38 @@ def main():
             choice = get_step_input(current_step, len(STEPS))
             if choice == "skip":
                 current_step += 1
-            continue
+                continue
             elif choice == "previous" and current_step > 1:
                 current_step -= 1
-            continue
+                continue
             elif choice == "quit":
                 print("Quitting reorganization process.")
-            return 0
+                return 0
             elif choice == "toggle_dry_run":
                 dry_run = not dry_run
-            continue
+                continue
         
         # Run the script
-            result = run_script(script, dry_run)
+        result = run_script(script, dry_run)
         
         if result == 0:
-            print(f"\n✅ Step {}}}}}}}current_step} completed successfully!")
+            print(f"\n✅ Step {current_step} completed successfully!")
         else:
-            print(f"\n⚠️ Step {}}}}}}}current_step} completed with errors.")
+            print(f"\n⚠️ Step {current_step} completed with errors.")
             if interactive:
                 choice = input("Continue anyway? (y/n): ").strip().lower()
                 if choice != "y":
                     print("Stopping reorganization process.")
-                return 1
+                    return 1
         
         # Move to next step
-                current_step += 1
+        current_step += 1
     
-                print("\n🎉 Reorganization process completed!")
-                print("The codebase has been reorganized according to the plan in CLAUDE.md.")
-                print("Please check the results and run tests to verify everything works correctly.")
+    print("\n🎉 Reorganization process completed!")
+    print("The codebase has been reorganized according to the plan in CLAUDE.md.")
+    print("Please check the results and run tests to verify everything works correctly.")
     
-            return 0
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

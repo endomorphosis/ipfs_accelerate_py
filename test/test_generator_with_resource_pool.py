@@ -65,6 +65,10 @@ def parse_args()))))):
     parser.add_argument()))))"--model-db", type=str, help="Path to model database")
     parser.add_argument()))))"--use-model-family", action="store_true", 
     help="Use model family classifier for optimal template selection")
+    parser.add_argument()))))"--use-db-templates", action="store_true", 
+    help="Use database templates instead of static files")
+    parser.add_argument()))))"--db-path", type=str, 
+    help="Path to template database file (overrides default path)")
     return parser.parse_args())))))
 
 def setup_environment()))))args):
@@ -175,7 +179,7 @@ def get_hardware_aware_classification()))))model_name, hw_cache_path=None, model
             }
 
             def generate_test_file()))))model_name, output_dir="./", model_family="default",
-                      model_subfamily=None, hardware_info=None):
+                      model_subfamily=None, hardware_info=None, use_db_templates=False, db_path=None):
                           """
                           Generate test file for a model with hardware-specific configurations.
     
@@ -230,8 +234,10 @@ def get_hardware_aware_classification()))))model_name, hw_cache_path=None, model
         "generator": __file__
         }
     
-    # Select appropriate template based on model family
-        template = get_template_for_model()))))model_family, model_subfamily)
+    # Select appropriate template based on model family and hardware
+        best_hardware = hardware_info.get()))))"best_hardware", "cpu")
+        template = get_template_for_model()))))model_family, model_subfamily, best_hardware, 
+                                         use_db=use_db_templates, db_path=db_path)
     
     # Render template with context
         test_content = render_template()))))template, context)
@@ -243,39 +249,71 @@ def get_hardware_aware_classification()))))model_name, hw_cache_path=None, model
         logger.info()))))f"Generated test file: {}}}}}file_path}")
         return file_path
 
-def get_template_for_model()))))model_family, model_subfamily=None):
+def get_template_for_model()))))model_family, model_subfamily=None, hardware_platform=None, use_db=True, db_path=None):
     """
     Select appropriate template based on model family and subfamily.
     
     Args:
         model_family: Model family ()))))e.g., "bert", "t5", "vit")
         model_subfamily: Optional model subfamily
+        hardware_platform: Optional hardware platform for hardware-specific templates
+        use_db: Whether to use database templates (if available)
+        db_path: Optional path to template database file
         
     Returns:
         Template string for the model family
-        """
+    """
+    # Try to get template from database if requested
+    if use_db:
+        try:
+            # Try to import DB template functions
+            from create_template_database import get_template_from_db, DEFAULT_DB_PATH
+            
+            # Use provided db_path or default
+            template_db_path = db_path or DEFAULT_DB_PATH
+            
+            # Get template from database
+            template = get_template_from_db()))))
+                template_db_path, 
+                model_family, 
+                "test", 
+                hardware_platform
+            )
+            
+            if template:
+                logger.info()))))f"Using database template for {}}}}}model_family} from {}}}}}template_db_path}")
+                return template
+            
+        except ImportError as e:
+            logger.warning()))))f"Failed to import database template functions: {}}}}}e}")
+        except Exception as e:
+            logger.warning()))))f"Failed to get template from database: {}}}}}e}")
+    
+    # Fallback to static templates if database not available or template not found
+    logger.warning()))))f"Falling back to static templates for {}}}}}model_family}")
+    
     # Basic template selection based on model family
     if model_family == "bert":
-        template = TEMPLATES["bert"],
+        template = TEMPLATES["bert"]
     elif model_family == "t5":
-        template = TEMPLATES["t5"],
+        template = TEMPLATES["t5"]
     elif model_family == "vit":
-        template = TEMPLATES["vit"],
+        template = TEMPLATES["vit"]
     elif model_family == "clip":
-        template = TEMPLATES["clip"],
+        template = TEMPLATES["clip"]
     elif model_family == "llama":
-        template = TEMPLATES["llama"],
+        template = TEMPLATES["llama"]
     elif model_family == "whisper":
-        template = TEMPLATES["whisper"],
+        template = TEMPLATES["whisper"]
     elif model_family == "wav2vec2":
-        template = TEMPLATES["wav2vec2"],
-    elif model_family in ["clap", "audio"]:,
-        template = TEMPLATES["clap"],
+        template = TEMPLATES["wav2vec2"]
+    elif model_family in ["clap", "audio"]:
+        template = TEMPLATES["clap"]
     else:
         # Default to generic text model
         template = TEMPLATES["default"]
-        ,
-        return template
+    
+    return template
 
 def render_template()))))template, context):
     """
@@ -400,7 +438,9 @@ def main()))))):
     output_dir=args.output_dir,
     model_family=classification.get()))))"family", "default"),
     model_subfamily=classification.get()))))"subfamily"),
-    hardware_info=classification
+    hardware_info=classification,
+    use_db_templates=args.use_db_templates,
+    db_path=args.db_path
     )
     
     logger.info()))))f"Test file generated successfully: {}}}}}output_file}")

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 try:
     from hardware_detection_updates import detect_hardware_with_simulation_check
 except ImportError as e:
-    logger.error(f"Failed to import hardware_detection_updates: {str(e)}")
+    logger.error(f"Failed to import generators.hardware.hardware_detection as hardware_detection_updates: {str(e)}")
     sys.exit(1)
 
 def main():

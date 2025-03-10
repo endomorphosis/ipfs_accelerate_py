@@ -1,4 +1,23 @@
-# Phase 16: Test Generator Improvement
+# Generators Directory
+
+This directory contains files for generating Python code for the IPFS Accelerate framework.
+
+## Directory Structure
+
+- **benchmark_generators/**: Generators for benchmark code
+- **models/**: Model implementation files 
+- **generated_tests/**: Generated test files that are ready to run
+- **generated_skillsets/**: Generated skill implementation files
+- **templates/**: Template files for test and skill generation
+- **archive/**: Archived files and template generators that need template processing
+
+## Note on Template Files and Syntax
+
+Many template files intentionally have Python syntax errors when viewed directly because they contain template placeholders like `{{model_name}}` or `{model_name}`. These files should be used through the template instantiation system, not executed directly.
+
+Template files with complex template syntax have been moved to archive/syntax_templates/.
+
+## Phase 16: Test Generator Improvement
 
 This directory contains update scripts to improve the Phase 16 test generators by addressing the duplicate hardware detection code and ensuring consistent hardware detection across all test generators and templates.
 

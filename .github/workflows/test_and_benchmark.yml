@@ -10,8 +10,8 @@ on:
     branches:
       - main
     paths:
-      - 'test/**'
-      - 'hardware_test_templates/**'
+      - 'generators/**'
+      - 'duckdb_api/**'
       - 'fixed_web_platform/**'
       - '.github/workflows/test_and_benchmark.yml'
   
@@ -20,8 +20,8 @@ on:
     branches:
       - main
     paths:
-      - 'test/**'
-      - 'hardware_test_templates/**'
+      - 'generators/**'
+      - 'duckdb_api/**'
       - 'fixed_web_platform/**'
   
   # Allow manual trigger

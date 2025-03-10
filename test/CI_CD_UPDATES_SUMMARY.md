@@ -1,117 +1,218 @@
-# CI/CD Updates Summary
-
-**Date: March 9, 2025**  
-**Status: Completed**
+# CI/CD Integration with New Directory Structure
 
 ## Overview
 
-This document summarizes the updates made to the CI/CD system as part of the project reorganization. The codebase has been restructured with dedicated packages:
+This document provides guidance on how to update and use the CI/CD workflows with the new directory structure that has been implemented as part of the March 2025 reorganization. The new structure moves files from the `/test` directory into dedicated packages for better organization and maintainability.
 
-- `generators/` directory: Contains all generator-related code (216 files)
-- `duckdb_api/` directory: Contains all database-related code (83 files)
-- `fixed_web_platform/` directory: Contains WebNN and WebGPU implementations
+## New Directory Structure
 
-The CI/CD system has been fully updated to reflect this new structure.
+The codebase has been reorganized with the following top-level structure:
 
-## Key Accomplishments
+- **generators/** - Generator code (formerly in test/)
+  - **generators/test_generators/** - Test generation tools
+  - **generators/utils/** - Utility functions
+  - **generators/models/** - Model implementations
+  - **generators/hardware/** - Hardware detection tools
+  - Other generator subdirectories
 
-### 1. CI/CD Path Updates
+- **duckdb_api/** - Database code (formerly in test/)
+  - **duckdb_api/core/** - Core database functionality
+  - **duckdb_api/migration/** - Migration tools
+  - **duckdb_api/schema/** - Schema definitions
+  - **duckdb_api/visualization/** - Visualization tools
+  - Other database-related subdirectories
 
-All path references in CI/CD workflow files have been updated to reflect the new directory structure:
+## Updated CI/CD Workflows
 
-- **Python script paths**: Updated to use the new `generators/` and `duckdb_api/` directories
-- **Test file paths**: Now point to appropriate subdirectories based on functionality
-- **Import statements**: Modified to use absolute imports with the new package structure
-- **Command execution**: Updated to reference files in their new locations
-- **Environment variables**: Added for base paths to simplify future updates
+The primary CI/CD workflows have been updated to use the new directory structure. Here are the key changes:
 
-### 2. Workflow File Migration
+### 1. `test_and_benchmark.yml`
 
-All CI/CD workflow files have been moved to the standard location:
+This workflow runs tests and benchmarks on a regular schedule and on various triggers.
 
-- 7 workflow files moved from `test/.github/workflows/` to `.github/workflows/`
-- Backup created for existing workflow files before overwriting
-- All file conflicts resolved
-- Workflows updated to use the new Python package structure
+**Updated file paths**:
+```yaml
+# Old
+python test/models/test_ipfs_accelerate.py --models $MODELS --endpoints $HARDWARE
 
-### 3. Documentation Updates
+# New
+python generators/models/test_ipfs_accelerate.py --models $MODELS --endpoints $HARDWARE
+```
 
-Documentation has been comprehensively updated to reflect the new structure:
+```yaml
+# Old
+python test/benchmark_db_query.py --format markdown --output compatibility_matrix.md
 
-- Updated 200+ markdown files with new path references
-- Created dedicated reorganization documents (including this file)
-- Updated all command examples in documentation
-- Added directory structure documentation
-- Updated import examples in all code documentation
+# New
+python duckdb_api/visualization/generate_compatibility_matrix.py --format markdown --output compatibility_matrix.md
+```
 
-## Files Created or Modified
+### 2. `benchmark_db_ci.yml`
 
-### New Files
-- `/home/barberb/ipfs_accelerate_py/test/CICD_REORGANIZATION.md` - Details of the reorganization
-- `/home/barberb/ipfs_accelerate_py/test/CI_CD_UPDATES_SUMMARY.md` - This summary document
-- `/home/barberb/ipfs_accelerate_py/test/update_ci_cd_paths.py` - Utility script for updating paths
+This workflow runs benchmarks and stores results in the database.
 
-### Modified Files
-- `/home/barberb/ipfs_accelerate_py/test/CI_CD_PATH_UPDATES.md` - Updated with completion status
-- `/home/barberb/ipfs_accelerate_py/test/docs/CICD_INTEGRATION_GUIDE.md` - Updated path references
+**Updated file paths**:
+```yaml
+# Old
+python test/run_benchmark_with_db.py --db $DB_FILE --model ${{ matrix.model }}
 
-### Moved Files
-- `test/.github/workflows/benchmark_db_ci.yml` → `.github/workflows/benchmark_db_ci.yml`
-- `test/.github/workflows/update_compatibility_matrix.yml` → `.github/workflows/update_compatibility_matrix.yml`
-- `test/.github/workflows/test_and_benchmark.yml` → `.github/workflows/test_and_benchmark.yml`
-- `test/.github/workflows/integration_tests.yml` → `.github/workflows/integration_tests.yml`
-- `test/.github/workflows/test_results_integration.yml` → `.github/workflows/test_results_integration.yml`
+# New
+python duckdb_api/core/run_benchmark_with_db.py --db $DB_FILE --model ${{ matrix.model }}
+```
 
-## Path Mapping Summary
+```yaml
+# Old
+python test/ci_benchmark_integrator.py --artifacts-dir ./artifacts
 
-| Old Path | New Path |
-|----------|----------|
-| `test/scripts/` | `duckdb_api/scripts/` |
-| `test/run_benchmark_with_db.py` | `duckdb_api/core/run_benchmark_with_db.py` |
-| `test/duckdb_api/core/benchmark_db_query.py` | `duckdb_api/core/duckdb_api/core/benchmark_db_query.py` |
-| `test/benchmark_regression_detector.py` | `duckdb_api/analysis/benchmark_regression_detector.py` |
-| `test/hardware_model_predictor.py` | `predictive_performance/hardware_model_predictor.py` |
-| `test/model_performance_predictor.py` | `predictive_performance/model_performance_predictor.py` |
-| `test/create_benchmark_schema.py` | `duckdb_api/schema/create_benchmark_schema.py` |
-| `test/ci_benchmark_integrator.py` | `duckdb_api/scripts/ci_benchmark_integrator.py` |
-| `test/test_ipfs_accelerate.py` | `generators/models/test_ipfs_accelerate.py` |
-| `test/generate_compatibility_matrix.py` | `duckdb_api/visualization/generate_compatibility_matrix.py` |
-| `test/generate_enhanced_compatibility_matrix.py` | `duckdb_api/visualization/generate_enhanced_compatibility_matrix.py` |
-| `test/integration_test_suite.py` | `generators/test_runners/integration_test_suite.py` |
-| `test/web_platform_test_runner.py` | `fixed_web_platform/web_platform_test_runner.py` |
+# New
+python duckdb_api/scripts/ci_benchmark_integrator.py --artifacts-dir ./artifacts
+```
 
-## Testing and Verification
+## Triggering Workflows
 
-The updated CI/CD system has been thoroughly tested and verified:
+The workflows have been updated to trigger based on changes in the new directory structure:
 
-- **Workflow Validation**: YAML syntax validation performed on all workflow files
-- **Path Verification**: All path references checked and verified as correct
-- **Test Runs**: Complete test runs performed to validate functionality
-- **Import Verification**: Import statements verified to work correctly
-- **Documentation Review**: All documentation reviewed for accuracy
-- **Cross-reference Check**: Verified that all referenced files exist in their new locations
+```yaml
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'generators/**'
+      - 'duckdb_api/**'
+      - 'fixed_web_platform/**'
+      - '.github/workflows/test_and_benchmark.yml'
+```
 
-A verification script (`generators/runners/verify_ci_workflows.py`) has been created to check that all referenced paths in the workflow files exist. This script runs as part of the CI/CD process to validate the configuration.
+## Environment Variables
 
-## Benefits of the New Structure
+Environment variables have been updated to reflect the new structure:
 
-The reorganized CI/CD structure provides several key benefits:
+```yaml
+env:
+  BENCHMARK_DB_PATH: ./benchmark_db.duckdb
+  DEPRECATE_JSON_OUTPUT: 1
+  PYTHONPATH: ${{ github.workspace }}
+```
 
-1. **Improved Maintainability**: Code organized by function, making it easier to maintain
-2. **Better Separation of Concerns**: Clear distinction between generator and database components
-3. **Enhanced Discoverability**: Logical organization makes finding files easier
-4. **Reduced Duplication**: Shared code extracted into common modules
-5. **Simplified Imports**: More consistent import patterns
-6. **Streamlined Workflows**: More efficient and focused workflow files
-7. **Future Extensibility**: Structure allows for easier future expansion
+The `PYTHONPATH` environment variable ensures that imports from the new package structure work correctly.
 
-## Conclusion
+## Dependencies Installation
 
-The CI/CD system has been successfully updated to reflect the new directory structure. The reorganization:
+Dependencies are now installed from updated requirements files:
 
-1. Makes the codebase more maintainable and easier to navigate
-2. Improves separation of concerns between different system components
-3. Provides a more scalable foundation for future development
-4. Creates a more professional package structure aligned with Python best practices
+```yaml
+pip install -r duckdb_api/scripts/requirements_db.txt
+pip install -r requirements.txt
+```
 
-All workflows are now operational with the new directory structure, and documentation has been comprehensively updated to reflect these changes.
+## Running CI/CD Tasks Locally
+
+To run CI/CD tasks locally with the new directory structure:
+
+1. **Run Tests**:
+```bash
+# Single model test
+python generators/models/test_ipfs_accelerate.py --models BAAI/bge-small-en-v1.5 --endpoints cpu
+
+# Multiple models test
+python generators/models/test_ipfs_accelerate.py --models BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny --endpoints cpu,cuda
+```
+
+2. **Run Benchmarks**:
+```bash
+# With database integration
+python duckdb_api/core/run_benchmark_with_db.py --models BAAI/bge-small-en-v1.5 --hardware cpu
+
+# Generate reports
+python duckdb_api/visualization/generate_compatibility_matrix.py --format markdown --output compatibility_matrix.md
+```
+
+3. **Generate Reports**:
+```bash
+# Generate test report
+python generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
+
+# Generate database report
+python duckdb_api/core/benchmark_db_query.py --report performance --format html --output performance_report.html
+```
+
+## GitHub Actions Manual Triggers
+
+The workflows support manual triggers with the following inputs:
+
+1. **test_and_benchmark.yml**:
+   - `models`: Comma-separated list of models to test (default: "BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny")
+   - `hardware`: Comma-separated list of hardware to test (default: "cpu,cuda")
+   - `report_format`: Report format (options: markdown, html, json)
+
+2. **benchmark_db_ci.yml**:
+   - `test_model`: Model to test (default: "all")
+   - `hardware`: Hardware to test on (options: cpu, cuda, all)
+   - `batch_size`: Batch sizes to test (default: "1,2,4,8")
+
+To manually trigger a workflow:
+1. Go to the "Actions" tab in the GitHub repository
+2. Select the workflow you want to run
+3. Click "Run workflow" and enter the desired parameters
+4. Click "Run workflow" to start the job
+
+## Adding New CI/CD Features
+
+When adding new CI/CD features, follow these guidelines:
+
+1. **File Paths**: Use the new directory structure for all file paths
+2. **Imports**: Use absolute imports with the new package structure
+3. **Environment Variables**: Set `PYTHONPATH` to ensure imports work correctly
+4. **Requirements**: Update dependency installation to use the appropriate requirements files
+
+Example for adding a new CI job:
+
+```yaml
+run_new_feature:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r duckdb_api/scripts/requirements_db.txt
+        pip install -r requirements.txt
+        
+    - name: Run new feature
+      run: |
+        python generators/new_feature/run_feature.py --option value
+```
+
+## Troubleshooting
+
+If you encounter issues with the CI/CD workflows after the directory restructuring:
+
+1. **Import Errors**: Check that the import paths use the new package structure
+2. **File Not Found**: Ensure files are referenced using the new paths
+3. **Environment Variables**: Verify that `PYTHONPATH` is set correctly
+4. **Testing Locally**: Test the workflow steps locally before pushing
+
+If a file is still in the old location, you can use the migration scripts:
+
+```bash
+# Move a file to the new structure
+python test/move_files_to_packages.py --file old_path.py --type [generator|database]
+
+# Update imports
+python test/update_imports.py
+```
+
+## Additional Resources
+
+- See [MIGRATION_REPORT.md](MIGRATION_REPORT.md) for details on the migration process
+- See [CLAUDE.md](CLAUDE.md) for the full directory structure and organization update
+
+---
+
+Generated: March 10, 2025

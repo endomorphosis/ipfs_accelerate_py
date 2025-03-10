@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # Import hardware detection module
 try:
-    from hardware_detection import detect_hardware_with_comprehensive_checks
+    from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
 except ImportError:
     logger.error("Hardware detection module not found. Please ensure hardware_detection.py is in the current directory")
     sys.exit(1)

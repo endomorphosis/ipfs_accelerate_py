@@ -68,6 +68,20 @@ from resource_pool import get_global_resource_pool
 # Import locally to avoid circular imports
 from fixed_web_platform.browser_automation import BrowserAutomation
 
+# Import for system metrics (if available)
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    
+# Import for machine learning-based adaptive scaling (if available)
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+
 # Initialize logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -2710,110 +2724,111 @@ class ResourcePoolBridge:
                 
                 # Wait for all futures to complete with timeout
                 try:
-                    if timeout:
-                        # Wait for all results with a global timeout
-                        remaining = timeout
-                        for task_idx, future in all_futures:
-                            # Calculate remaining time for this future
-                            start_wait = time.time()
-                            
-                            if remaining <= 0:
-                                # No time left, mark as timeout
-                                results[task_idx] = {
-                                    'success': False,
-                                    'status': 'error',
-                                    'error': 'Global timeout exceeded',
-                                    'model_id': tasks[task_idx][0]
-                                }
-                                # Cancel the future
-                                if not future.done():
-                                    future.cancel()
-                                continue
-                            
-                            # Wait for this future with timeout
-                            try:
-                                result = await asyncio.wait_for(future, timeout=remaining)
-                                results[task_idx] = result
-                            except asyncio.TimeoutError:
-                                # Timeout for this task
-                                results[task_idx] = {
-                                    'success': False,
-                                    'status': 'error',
-                                    'error': f'Task timeout after {remaining:.1f}s',
-                                    'model_id': tasks[task_idx][0]
-                                }
-                                # Cancel the future
-                                if not future.done():
-                                    future.cancel()
-                            except Exception as e:
-                                # Error processing this task
-                                results[task_idx] = {
-                                    'success': False,
-                                    'status': 'error',
-                                    'error': str(e),
-                                    'model_id': tasks[task_idx][0]
-                                }
-                            
-                            # Update remaining time
-                            elapsed = time.time() - start_wait
-                            remaining -= elapsed
-                    else:
-                        # No global timeout, wait for all tasks individually
-                        for task_idx, future in all_futures:
-                            try:
-                                # Set a reasonable per-task timeout based on model type
-                                model_id = tasks[task_idx][0]
-                                per_task_timeout = 60.0  # Default timeout
+                    try:
+                        if timeout:
+                            # Wait for all results with a global timeout
+                            remaining = timeout
+                            for task_idx, future in all_futures:
+                                # Calculate remaining time for this future
+                                start_wait = time.time()
                                 
-                                # Adjust timeout based on model type
-                                if ":" in model_id:
-                                    family = model_id.split(":", 1)[0]
-                                    if family in ['audio', 'speech', 'asr']:
-                                        per_task_timeout = 120.0  # Audio models may take longer
-                                    elif family in ['text_generation', 'multimodal']:
-                                        per_task_timeout = 180.0  # Generation models take longer
+                                if remaining <= 0:
+                                    # No time left, mark as timeout
+                                    results[task_idx] = {
+                                        'success': False,
+                                        'status': 'error',
+                                        'error': 'Global timeout exceeded',
+                                        'model_id': tasks[task_idx][0]
+                                    }
+                                    # Cancel the future
+                                    if not future.done():
+                                        future.cancel()
+                                    continue
                                 
-                                # Wait for this task with timeout
-                                result = await asyncio.wait_for(future, timeout=per_task_timeout)
-                                results[task_idx] = result
-                            except asyncio.TimeoutError:
-                                # Timeout for this task
-                                results[task_idx] = {
-                                    'success': False,
-                                    'status': 'error',
-                                    'error': 'Task timeout',
-                                    'model_id': tasks[task_idx][0]
-                                }
-                            except Exception as e:
-                                # Error processing this task
-                                results[task_idx] = {
-                                    'success': False,
-                                    'status': 'error',
-                                    'error': str(e),
-                                    'model_id': tasks[task_idx][0]
-                                }
+                                # Wait for this future with timeout
+                                try:
+                                    result = await asyncio.wait_for(future, timeout=remaining)
+                                    results[task_idx] = result
+                                except asyncio.TimeoutError:
+                                    # Timeout for this task
+                                    results[task_idx] = {
+                                        'success': False,
+                                        'status': 'error',
+                                        'error': f'Task timeout after {remaining:.1f}s',
+                                        'model_id': tasks[task_idx][0]
+                                    }
+                                    # Cancel the future
+                                    if not future.done():
+                                        future.cancel()
+                                except Exception as e:
+                                    # Error processing this task
+                                    results[task_idx] = {
+                                        'success': False,
+                                        'status': 'error',
+                                        'error': str(e),
+                                        'model_id': tasks[task_idx][0]
+                                    }
+                                
+                                # Update remaining time
+                                elapsed = time.time() - start_wait
+                                remaining -= elapsed
+                        else:
+                            # No global timeout, wait for all tasks individually
+                            for task_idx, future in all_futures:
+                                try:
+                                    # Set a reasonable per-task timeout based on model type
+                                    model_id = tasks[task_idx][0]
+                                    per_task_timeout = 60.0  # Default timeout
+                                    
+                                    # Adjust timeout based on model type
+                                    if ":" in model_id:
+                                        family = model_id.split(":", 1)[0]
+                                        if family in ['audio', 'speech', 'asr']:
+                                            per_task_timeout = 120.0  # Audio models may take longer
+                                        elif family in ['text_generation', 'multimodal']:
+                                            per_task_timeout = 180.0  # Generation models take longer
+                                    
+                                    # Wait for this task with timeout
+                                    result = await asyncio.wait_for(future, timeout=per_task_timeout)
+                                    results[task_idx] = result
+                                except asyncio.TimeoutError:
+                                    # Timeout for this task
+                                    results[task_idx] = {
+                                        'success': False,
+                                        'status': 'error',
+                                        'error': 'Task timeout',
+                                        'model_id': tasks[task_idx][0]
+                                    }
+                                except Exception as e:
+                                    # Error processing this task
+                                    results[task_idx] = {
+                                        'success': False,
+                                        'status': 'error',
+                                        'error': str(e),
+                                        'model_id': tasks[task_idx][0]
+                                    }
                 
-                # Calculate performance metrics
-                total_duration = time.time() - start_time
-                success_count = sum(1 for r in results if isinstance(r, dict) and r.get('success', False))
-                tasks_per_second = len(tasks) / total_duration if total_duration > 0 else 0
-                
-                # Update stats
-                self.stats['parallel_executions'] = self.stats.get('parallel_executions', 0) + 1
-                self.stats['parallel_tasks'] = self.stats.get('parallel_tasks', 0) + len(tasks)
-                self.stats['parallel_success'] = self.stats.get('parallel_success', 0) + success_count
-                self.stats['errors'] += len(tasks) - success_count
-                self.stats['largest_parallel_batch'] = max(
-                    self.stats.get('largest_parallel_batch', 0),
-                    len(tasks)
-                )
-                
-                # Log performance summary
-                logger.info(f"Completed {len(tasks)} tasks in {total_duration:.2f}s " +
-                           f"({tasks_per_second:.2f} tasks/second, " +
-                           f"success: {success_count}/{len(tasks)})")
-                
-                return results
+                    # Calculate performance metrics
+                    total_duration = time.time() - start_time
+                    success_count = sum(1 for r in results if isinstance(r, dict) and r.get('success', False))
+                    tasks_per_second = len(tasks) / total_duration if total_duration > 0 else 0
+                    
+                    # Update stats
+                    self.stats['parallel_executions'] = self.stats.get('parallel_executions', 0) + 1
+                    self.stats['parallel_tasks'] = self.stats.get('parallel_tasks', 0) + len(tasks)
+                    self.stats['parallel_success'] = self.stats.get('parallel_success', 0) + success_count
+                    self.stats['errors'] += len(tasks) - success_count
+                    self.stats['largest_parallel_batch'] = max(
+                        self.stats.get('largest_parallel_batch', 0),
+                        len(tasks)
+                    )
+                    
+                    # Log performance summary
+                    logger.info(f"Completed {len(tasks)} tasks in {total_duration:.2f}s " +
+                               f"({tasks_per_second:.2f} tasks/second, " +
+                               f"success: {success_count}/{len(tasks)})")
+                    
+                    return results
                 
             except Exception as e:
                 # Handle any errors in the concurrent execution approach

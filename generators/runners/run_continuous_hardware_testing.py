@@ -74,7 +74,7 @@ DEFAULT_PLATFORMS = ["cpu", "cuda", "mps", "rocm", "openvino", "webnn", "webgpu"
 try:
     from continuous_hardware_benchmarking import HardwareBenchmark
     from model_compression_optimizer import ModelCompressor
-    from resource_pool import get_global_resource_pool
+    from generators.utils.resource_pool import get_global_resource_pool
     HAS_ADVANCED_COMPONENTS = True
     logger.info("Advanced benchmarking and optimization components available")
 except ImportError as e:
