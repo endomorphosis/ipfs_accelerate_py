@@ -159,8 +159,20 @@ class StaleReportCleaner:
                         logger.warning(f"Failed to parse JSON file: {file_path}")
                         return False
                         
+        except FileNotFoundError as e:
+            logger.error(f"File not found: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except PermissionError as e:
+            logger.error(f"Permission denied when accessing file: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except UnicodeDecodeError as e:
+            logger.error(f"Unicode decoding error for file: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error checking if file is marked: {file_path}")
+            logger.error(f"Unexpected error checking if file is marked: {file_path}")
             logger.error(f"Error details: {e}")
             return False
     
@@ -254,8 +266,28 @@ class StaleReportCleaner:
             logger.info(f"Marked report as potentially stale: {file_path}")
             return True
             
+        except FileNotFoundError as e:
+            logger.error(f"File not found when marking report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except PermissionError as e:
+            logger.error(f"Permission denied when marking report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error when marking report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except UnicodeDecodeError as e:
+            logger.error(f"Unicode decode error when marking report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except IOError as e:
+            logger.error(f"I/O error when marking report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error marking report: {file_path}")
+            logger.error(f"Unexpected error marking report: {file_path}")
             logger.error(f"Error details: {e}")
             return False
     
@@ -288,8 +320,24 @@ class StaleReportCleaner:
             logger.info(f"Archived report to: {dest_path}")
             return True
             
+        except FileNotFoundError as e:
+            logger.error(f"File not found when archiving report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except PermissionError as e:
+            logger.error(f"Permission denied when archiving report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except shutil.Error as e:
+            logger.error(f"Shutil error when archiving report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except IOError as e:
+            logger.error(f"I/O error when archiving report: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error archiving report: {file_path}")
+            logger.error(f"Unexpected error archiving report: {file_path}")
             logger.error(f"Error details: {e}")
             return False
     
@@ -319,7 +367,7 @@ class StaleReportCleaner:
             # Function to add to the script
             validation_function = """
     def _validate_data_authenticity(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
+        \"\"\"
         Validate the authenticity of benchmark data by checking simulation status.
         
         Args:
@@ -327,7 +375,7 @@ class StaleReportCleaner:
             
         Returns:
             DataFrame with added validation columns
-        """
+        \"\"\"
         # Check if 'is_simulated' column exists
         if 'is_simulated' not in data.columns:
             # Add is_simulated column with default value False
@@ -400,8 +448,28 @@ class StaleReportCleaner:
             logger.warning(f"Could not find appropriate place to add validation to: {file_path}")
             return False
             
+        except FileNotFoundError as e:
+            logger.error(f"File not found when fixing report generator: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except PermissionError as e:
+            logger.error(f"Permission denied when fixing report generator: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except UnicodeDecodeError as e:
+            logger.error(f"Unicode decode error when fixing report generator: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except re.error as e:
+            logger.error(f"Regex error when fixing report generator: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
+        except IOError as e:
+            logger.error(f"I/O error when fixing report generator: {file_path}")
+            logger.error(f"Error details: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error fixing report generator: {file_path}")
+            logger.error(f"Unexpected error fixing report generator: {file_path}")
             logger.error(f"Error details: {e}")
             return False
     

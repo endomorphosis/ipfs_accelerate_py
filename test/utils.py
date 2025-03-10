@@ -20,9 +20,9 @@ class FileLock:
         
         Args:
             lock_file: Path to the lock file
-            """
-            self.lock_file = lock_file
-            self.lock_handle = None
+        """
+        self.lock_file = lock_file
+        self.lock_handle = None
         
     def __enter__(self):
         """Acquire the lock when entering a with block."""
@@ -36,17 +36,17 @@ class FileLock:
         max_attempts = 10
         attempt = 0
         while attempt < max_attempts:
-            try::
+            try:
                 fcntl.flock(self.lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return self
+                return self
             except IOError:
                 attempt += 1
-                logger.info(f"Lock {}}}}}}}}}self.lock_file} is held by another process. "
-                f"Waiting... (attempt {}}}}}}}}}attempt}/{}}}}}}}}}max_attempts})")
+                logger.info(f"Lock {self.lock_file} is held by another process. "
+                f"Waiting... (attempt {attempt}/{max_attempts})")
                 time.sleep(1)
         
         # If we get here, we couldn't acquire the lock
-            raise TimeoutError(f"Could not acquire lock on {}}}}}}}}}self.lock_file} after {}}}}}}}}}max_attempts} attempts")
+        raise TimeoutError(f"Could not acquire lock on {self.lock_file} after {max_attempts} attempts")
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Release the lock when exiting a with block."""

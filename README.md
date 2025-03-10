@@ -11,6 +11,35 @@ IPFS Accelerate Python provides a unified interface for running machine learning
 
 This is meant to be an extension of the Huggingface accelerate library, acting as a model server that can contain lists of other endpoints to call, call a local instance, and respond to external calls for inference. It includes modular backends such as Libp2p, Akash, Lilypad, Huggingface Zero, and Vast AI for autoscaling. If the model is already listed in the ipfs_model_manager, there should be an associated hw_requirements key in the manifest. For libp2p requests, inference will go to peers in the same trusted zone; if no peers are available and local resources are sufficient, it will run locally, otherwise a docker container will be launched with one of the providers.
 
+## Directory Structure (Updated March 2025)
+
+The codebase has been reorganized for better maintainability with the following top-level structure:
+
+- **`generators/`**: Generation tools for tests, models, and benchmarks
+  - `generators/benchmark_generators/`: Benchmark generation tools
+  - `generators/models/`: Model implementations and skills
+  - `generators/runners/`: Test runner scripts
+  - `generators/skill_generators/`: Skill generation tools
+  - `generators/template_generators/`: Template generation utilities
+  - `generators/templates/`: Template files for model generation
+  - `generators/test_generators/`: Test generation tools
+  - `generators/utils/`: Utility functions
+  - `generators/hardware/`: Hardware-specific generator tools
+
+- **`duckdb_api/`**: Database functionality for storing and analyzing benchmark results
+  - `duckdb_api/core/`: Core database functionality
+  - `duckdb_api/migration/`: Migration tools for JSON to database
+  - `duckdb_api/schema/`: Database schema definitions 
+  - `duckdb_api/utils/`: Utility functions for database operations
+  - `duckdb_api/visualization/`: Result visualization tools
+  - `duckdb_api/distributed_testing/`: Distributed testing framework components
+
+- **`fixed_web_platform/`**: Web platform implementations
+  - `fixed_web_platform/unified_framework/`: Unified API for cross-browser WebNN/WebGPU
+  - `fixed_web_platform/wgsl_shaders/`: WebGPU Shading Language shader implementations
+
+- **`predictive_performance/`**: ML-based performance prediction system
+
 Key features:
 
 - **Hardware-Accelerated Inference**: Support for multiple hardware platforms (CPU, CUDA, ROCm, MPS, OpenVINO, Qualcomm, WebNN, WebGPU)

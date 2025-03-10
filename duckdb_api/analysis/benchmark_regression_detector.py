@@ -1,503 +1,643 @@
-#!/usr/bin/env python
+#\!/usr/bin/env python
 """
-Benchmark Regression Detector for CI/CD Integration
+Benchmark Regression Detector
 
-This script analyzes benchmark results from the database to detect performance regressions.
-It compares recent benchmarks with historical data to identify significant performance degradation
-and can automatically create GitHub issues for regressions that meet specific thresholds.
+This script analyzes benchmark data from the DuckDB database to detect
+performance regressions between test runs. It can be used to automatically
+detect when changes to the codebase lead to performance degradation.
 
-Part of Phase 16 of the IPFS Accelerate project.
+Usage:
+    python benchmark_regression_detector.py --db benchmark_db.duckdb --run-id "123456789"
 """
 
 import os
 import sys
 import json
-import logging
 import argparse
 import datetime
-import requests
-import statistics
-import duckdb
-import pandas as pd
-import numpy as np
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union, Any
 
-# Configure logging
-logging.basicConfig()))))
-level=logging.INFO,
-format='%()))))asctime)s - %()))))name)s - %()))))levelname)s - %()))))message)s'
-)
-logger = logging.getLogger()))))"regression_detector")
+# Define pandas/duckdb import flag
+HAS_DEPENDENCIES = False
 
-def parse_args()))))):
-    parser = argparse.ArgumentParser()))))description="Detect performance regressions in benchmark results")
-    
-    parser.add_argument()))))"--db", type=str, default="./benchmark_db.duckdb", 
-    help="Path to DuckDB database")
-    parser.add_argument()))))"--run-id", type=str,
-    help="Run ID to analyze")
-    parser.add_argument()))))"--model", type=str,
-    help="Filter analysis to specific model")
-    parser.add_argument()))))"--hardware", type=str,
-    help="Filter analysis to specific hardware")
-    parser.add_argument()))))"--threshold", type=float, default=0.1,
-    help="Regression threshold ()))))e.g., 0.1 = 10%% degradation)")
-    parser.add_argument()))))"--window", type=int, default=5,
-    help="Number of previous runs to compare against")
-    parser.add_argument()))))"--metrics", type=str, default="throughput,latency",
-    help="Comma-separated list of metrics to analyze")
-    parser.add_argument()))))"--create-issues", action="store_true",
-    help="Create GitHub issues for regressions")
-    parser.add_argument()))))"--github-token", type=str,
-    help="GitHub token for creating issues")
-    parser.add_argument()))))"--github-repo", type=str,
-    help="GitHub repository ()))))owner/repo)")
-    parser.add_argument()))))"--output", type=str,
-    help="Output file for regression report")
-    parser.add_argument()))))"--format", type=str, default="json",
-    choices=[],"json", "markdown", "html"],
-    help="Output format")
-    parser.add_argument()))))"--verbose", action="store_true",
-    help="Enable verbose logging")
-    
-return parser.parse_args())))))
-
-def connect_to_db()))))db_path):
-    """Connect to the DuckDB database"""
-    if not os.path.exists()))))db_path):
-        logger.error()))))f"Database file not found: {}}}db_path}")
-        sys.exit()))))1)
+# Try to import dependencies
+try:
+    import duckdb
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from scipy import stats
+    HAS_DEPENDENCIES = True
+except ImportError:
+    # Create minimal pd stub for function definitions
+    class DataFrame:
+        def empty():
+            return True
         
-    try:
-        conn = duckdb.connect()))))db_path)
-        return conn
-    except Exception as e:
-        logger.error()))))f"Error connecting to database: {}}}e}")
-        sys.exit()))))1)
+        def iterrows():
+            return []
+    
+    class DataFrameStub:
+        def fetchdf(self):
+            return DataFrame()
+    
+    pd = type('', (), {})()
+    pd.DataFrame = DataFrame
 
-def get_latest_run_id()))))conn):
-    """Get the latest run ID if not provided""":
-    try:
-        result = conn.execute()))))"""
+# Define metrics to analyze
+DEFAULT_METRICS = [
+    "throughput_items_per_second",
+    "average_latency_ms",
+    "peak_memory_mb"
+]
+
+# Define regression thresholds (percent change)
+DEFAULT_THRESHOLD = 0.1  # 10%
+HIGH_THRESHOLD = 0.2     # 20%
+
+class BenchmarkRegressionDetector:
+    """Class to detect regressions in benchmark results."""
+    
+    def __init__(self, db_path: str, run_id: Optional[str] = None, 
+                 threshold: float = DEFAULT_THRESHOLD,
+                 window: int = 5,
+                 metrics: List[str] = None):
+        """
+        Initialize the detector.
+        
+        Args:
+            db_path (str): Path to the DuckDB database
+            run_id (str, optional): Run ID to compare with previous runs
+            threshold (float): Threshold for detecting regressions (percent change)
+            window (int): Number of previous runs to include in baseline
+            metrics (List[str]): Metrics to analyze for regressions
+        """
+        self.db_path = db_path
+        self.run_id = run_id
+        self.threshold = threshold
+        self.window = window
+        self.metrics = metrics or DEFAULT_METRICS
+        
+        # Check if the database exists
+        if not os.path.exists(db_path):
+            raise FileNotFoundError(f"Database not found: {db_path}")
+        
+        # Connect to the database
+        self.conn = duckdb.connect(db_path)
+        
+        # Store detected regressions
+        self.regressions = []
+    
+    def detect_regressions(self) -> List[Dict[str, Any]]:
+        """
+        Detect regressions in benchmark results.
+        
+        Returns:
+            List[Dict[str, Any]]: List of detected regressions
+        """
+        if not HAS_DEPENDENCIES:
+            print("Error: Required dependencies not found. Please install:")
+            print("  pip install duckdb pandas numpy matplotlib scipy")
+            return []
+        
+        # If we don't have a run ID, use the latest run
+        if self.run_id is None:
+            self.run_id = self._get_latest_run_id()
+            if self.run_id is None:
+                print("Error: No run ID provided and no runs found in database")
+                return []
+        
+        # Get the current run's data
+        current_run_data = self._get_run_data(self.run_id)
+        if current_run_data.empty:
+            print(f"Error: No data found for run ID: {self.run_id}")
+            return []
+        
+        # Get previous runs for comparison
+        previous_runs = self._get_previous_runs(self.run_id, self.window)
+        if not previous_runs:
+            print(f"Warning: No previous runs found for comparison with {self.run_id}")
+            return []
+        
+        # Get baseline data from previous runs
+        baseline_data = self._get_baseline_data(previous_runs)
+        if baseline_data.empty:
+            print("Warning: No baseline data found for comparison")
+            return []
+        
+        # Compare current run with baseline
+        self.regressions = self._compare_with_baseline(current_run_data, baseline_data)
+        
+        return self.regressions
+    
+    def _get_latest_run_id(self) -> Optional[str]:
+        """
+        Get the latest run ID from the database.
+        
+        Returns:
+            Optional[str]: Latest run ID or None if no runs found
+        """
+        query = """
         SELECT run_id
         FROM performance_results
         ORDER BY timestamp DESC
         LIMIT 1
-        """).fetchone())))))
-        
-        if result and result[],0],:,
-        return result[],0],
-        else:
-            logger.error()))))"No run IDs found in database")
-            sys.exit()))))1)
-    except Exception as e:
-        logger.error()))))f"Error getting latest run ID: {}}}e}")
-        sys.exit()))))1)
-
-def get_recent_results()))))conn, run_id, model=None, hardware=None, window=5):
-    """Get results from the current run and historical runs for comparison"""
-    model_filter = f"AND model_name = '{}}}model}'" if model else ""
-    hardware_filter = f"AND hardware_type = '{}}}hardware}'" if hardware else ""
-    
-    # Get current run results
-    current_query = f"""
-    SELECT 
-    pr.id,
-    m.model_name,
-    h.hardware_type,
-    pr.batch_size,
-    pr.throughput AS throughput,
-    pr.latency AS latency,
-    pr.memory_peak AS memory,
-    pr.timestamp,
-    pr.run_id
-    FROM 
-    performance_results pr
-    JOIN
-    models m ON pr.model_id = m.id
-    JOIN
-    hardware_platforms h ON pr.hardware_id = h.id
-    WHERE
-    pr.run_id = '{}}}run_id}'
-    {}}}model_filter}
-    {}}}hardware_filter}
-    """
-    
-    # Get historical results for comparison ()))))excluding current run)
-    historical_query = f"""
-    WITH recent_runs AS ()))))
-    SELECT DISTINCT
-    run_id,
-    timestamp
-    FROM
-    performance_results
-    WHERE
-    run_id != '{}}}run_id}'
-    ORDER BY
-    timestamp DESC
-    LIMIT {}}}window}
-    )
-    SELECT 
-    pr.id,
-    m.model_name,
-    h.hardware_type,
-    pr.batch_size,
-    pr.throughput AS throughput,
-    pr.latency AS latency,
-    pr.memory_peak AS memory,
-    pr.timestamp,
-    pr.run_id
-    FROM 
-    performance_results pr
-    JOIN
-    models m ON pr.model_id = m.id
-    JOIN
-    hardware_platforms h ON pr.hardware_id = h.id
-    JOIN
-    recent_runs rr ON pr.run_id = rr.run_id
-    WHERE
-    1=1
-    {}}}model_filter}
-    {}}}hardware_filter}
-    """
-    :
-    try:
-        current_results = conn.execute()))))current_query).fetchdf())))))
-        historical_results = conn.execute()))))historical_query).fetchdf())))))
-        
-        return current_results, historical_results
-    except Exception as e:
-        logger.error()))))f"Error fetching results: {}}}e}")
-        sys.exit()))))1)
-
-def detect_regressions()))))current_results, historical_results, threshold=0.1, metrics=None):
-    """
-    Detect performance regressions by comparing current results with historical data.
-    Returns a list of regression details.
-    """
-    if metrics is None:
-        metrics = [],"throughput", "latency"]
-        ,
-    if current_results.empty:
-        logger.warning()))))"No current results to analyze")
-        return [],]
-        ,,,
-    if historical_results.empty:
-        logger.warning()))))"No historical results to compare against")
-        return [],]
-        ,,,
-        regressions = [],]
-        ,,,
-    # Group by model, hardware, batch size
-        for ()))))model, hardware, batch_size), current_group in current_results.groupby()))))[],'model_name', 'hardware_type', 'batch_size']):,
-        # Find matching historical results
-        historical_group = historical_results[],
-        ()))))historical_results[],'model_name'] == model) &
-        ()))))historical_results[],'hardware_type'] == hardware) &
-        ()))))historical_results[],'batch_size'] == batch_size)
-        ]
-        
-        if historical_group.empty:
-            logger.info()))))f"No historical data for {}}}model} on {}}}hardware} with batch size {}}}batch_size}")
-        continue
-        
-        # Analyze each metric
-        for metric in metrics:
-            if metric not in current_group.columns or metric not in historical_group.columns:
-            continue
-                
-            current_value = current_group[],metric].mean())))))
-            historical_values = historical_group[],metric].tolist())))))
-            historical_mean = statistics.mean()))))historical_values)
-            
-            # For latency, lower is better; for throughput, higher is better
-            if metric == "latency":
-                change_ratio = current_value / historical_mean - 1
-                regression = change_ratio > threshold
-            else:  # throughput, memory
-            change_ratio = 1 - current_value / historical_mean
-            regression = change_ratio > threshold
-            
-            if regression:
-                # Calculate z-score for statistical significance
-                if len()))))historical_values) > 1:
-                    historical_stddev = statistics.stdev()))))historical_values)
-                    if historical_stddev > 0:
-                        z_score = abs()))))current_value - historical_mean) / historical_stddev
-                    else:
-                        z_score = float()))))'inf')
-                else:
-                    z_score = float()))))'inf')
-                
-                # Only report statistically significant regressions ()))))z-score > 2)
-                if z_score > 2:
-                    regression_info = {}}}
-                    "model": model,
-                    "hardware": hardware,
-                    "batch_size": batch_size,
-                    "metric": metric,
-                    "current_value": float()))))current_value),
-                    "historical_mean": float()))))historical_mean),
-                    "change_percentage": float()))))change_ratio * 100),
-                    "z_score": float()))))z_score),
-                    "run_id": current_group[],'run_id'].iloc[],0],,
-                        "timestamp": current_group[],'timestamp'].iloc[],0],.isoformat()))))) if isinstance()))))current_group[],'timestamp'].iloc[],0],, pd.Timestamp) else current_group[],'timestamp'].iloc[],0],,:
-                            "historical_runs": historical_group[],'run_id'].unique()))))).tolist()))))),
-                            "severity": "high" if change_ratio > 0.2 else "medium" if change_ratio > 0.1 else "low"
-                            }
-                    
-                            regressions.append()))))regression_info)
-    
-                    return regressions
-:
-def format_regression_report()))))regressions, format_type="json"):
-    """Format the regression report in the specified format"""
-    if format_type == "json":
-    return json.dumps()))))regressions, indent=2)
-    
-    elif format_type == "markdown":
-        if not regressions:
-        return "## Performance Regression Report\n\nNo regressions detected."
-        
-        markdown = "## Performance Regression Report\n\n"
-        markdown += f"**Date:** {}}}datetime.datetime.now()))))).strftime()))))'%Y-%m-%d %H:%M:%S')}\n\n"
-        markdown += f"**Total Regressions:** {}}}len()))))regressions)}\n\n"
-        
-        markdown += "### Summary of Regressions\n\n"
-        markdown += "| Model | Hardware | Batch Size | Metric | Change | Severity |\n"
-        markdown += "|-------|----------|------------|--------|--------|----------|\n"
-        
-        for reg in regressions:
-            markdown += f"| {}}}reg[],'model']} | {}}}reg[],'hardware']} | {}}}reg[],'batch_size']} | {}}}reg[],'metric']} | {}}}reg[],'change_percentage']:.2f}% | {}}}reg[],'severity'].upper())))))} |\n"
-        
-            markdown += "\n### Detailed Regression Information\n\n"
-        
-        for i, reg in enumerate()))))regressions, 1):
-            markdown += f"#### Regression #{}}}i}: {}}}reg[],'model']} on {}}}reg[],'hardware']}\n\n"
-            markdown += f"- **Metric:** {}}}reg[],'metric']}\n"
-            markdown += f"- **Batch Size:** {}}}reg[],'batch_size']}\n"
-            markdown += f"- **Current Value:** {}}}reg[],'current_value']:.4f}\n"
-            markdown += f"- **Historical Mean:** {}}}reg[],'historical_mean']:.4f}\n"
-            markdown += f"- **Change:** {}}}reg[],'change_percentage']:.2f}%\n"
-            markdown += f"- **Statistical Significance ()))))Z-Score):** {}}}reg[],'z_score']:.2f}\n"
-            markdown += f"- **Severity:** {}}}reg[],'severity'].upper())))))}\n"
-            markdown += f"- **Run ID:** {}}}reg[],'run_id']}\n"
-            markdown += f"- **Timestamp:** {}}}reg[],'timestamp']}\n\n"
-        
-            return markdown
-    
-    elif format_type == "html":
-        if not regressions:
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <title>Performance Regression Report</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-        </head>
-        <body>
-        <div class="container mt-4">
-        <h1>Performance Regression Report</h1>
-        <p>No regressions detected.</p>
-        </div>
-        </body>
-        </html>
         """
         
+        try:
+            result = self.conn.execute(query).fetchone()
+            if result:
+                return result[0]
+        except Exception as e:
+            print(f"Error getting latest run ID: {e}")
+        
+        return None
+    
+    def _get_run_data(self, run_id: str) -> pd.DataFrame:
+        """
+        Get benchmark data for a specific run.
+        
+        Args:
+            run_id (str): Run ID to get data for
+            
+        Returns:
+            pd.DataFrame: Benchmark data for the run
+        """
+        # Build query dynamically to include the requested metrics
+        metrics_str = ", ".join([f"pr.{metric}" for metric in self.metrics])
+        
+        query = f"""
+        SELECT pr.result_id, pr.timestamp, pr.run_id, 
+               m.model_id, m.model_name, m.model_type,
+               hp.hardware_id, hp.hardware_type, hp.hardware_model,
+               pr.batch_size, {metrics_str}
+        FROM performance_results pr
+        JOIN models m ON pr.model_id = m.model_id
+        JOIN hardware_platforms hp ON pr.hardware_id = hp.hardware_id
+        WHERE pr.run_id = ?
+        """
+        
+        try:
+            return self.conn.execute(query, [run_id]).fetchdf()
+        except Exception as e:
+            print(f"Error getting run data: {e}")
+            return pd.DataFrame()
+    
+    def _get_previous_runs(self, current_run_id: str, window: int) -> List[str]:
+        """
+        Get previous run IDs for comparison.
+        
+        Args:
+            current_run_id (str): Current run ID
+            window (int): Number of previous runs to include
+            
+        Returns:
+            List[str]: List of previous run IDs
+        """
+        query = """
+        SELECT DISTINCT run_id
+        FROM performance_results
+        WHERE run_id \!= ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+        """
+        
+        try:
+            results = self.conn.execute(query, [current_run_id, window]).fetchall()
+            return [result[0] for result in results]
+        except Exception as e:
+            print(f"Error getting previous runs: {e}")
+            return []
+    
+    def _get_baseline_data(self, run_ids: List[str]) -> pd.DataFrame:
+        """
+        Get baseline data from previous runs.
+        
+        Args:
+            run_ids (List[str]): List of run IDs to include in baseline
+            
+        Returns:
+            pd.DataFrame: Baseline data
+        """
+        if not run_ids:
+            return pd.DataFrame()
+        
+        # Build placeholders for SQL query
+        placeholders = ", ".join(["?" for _ in run_ids])
+        
+        # Build query dynamically to include the requested metrics
+        metrics_str = ", ".join([f"pr.{metric}" for metric in self.metrics])
+        
+        query = f"""
+        SELECT pr.result_id, pr.timestamp, pr.run_id, 
+               m.model_id, m.model_name, m.model_type,
+               hp.hardware_id, hp.hardware_type, hp.hardware_model,
+               pr.batch_size, {metrics_str}
+        FROM performance_results pr
+        JOIN models m ON pr.model_id = m.model_id
+        JOIN hardware_platforms hp ON pr.hardware_id = hp.hardware_id
+        WHERE pr.run_id IN ({placeholders})
+        """
+        
+        try:
+            return self.conn.execute(query, run_ids).fetchdf()
+        except Exception as e:
+            print(f"Error getting baseline data: {e}")
+            return pd.DataFrame()
+    
+    def _compare_with_baseline(self, current_data: pd.DataFrame, 
+                               baseline_data: pd.DataFrame) -> List[Dict[str, Any]]:
+        """
+        Compare current run with baseline to detect regressions.
+        
+        Args:
+            current_data (pd.DataFrame): Current run data
+            baseline_data (pd.DataFrame): Baseline data from previous runs
+            
+        Returns:
+            List[Dict[str, Any]]: List of detected regressions
+        """
+        regressions = []
+        
+        # Group data by model, hardware, and batch size
+        for _, current_group in current_data.groupby(['model_id', 'hardware_id', 'batch_size']):
+            if current_group.empty:
+                continue
+            
+            # Extract key information
+            model_id = current_group['model_id'].iloc[0]
+            model_name = current_group['model_name'].iloc[0]
+            hardware_id = current_group['hardware_id'].iloc[0]
+            hardware_type = current_group['hardware_type'].iloc[0]
+            batch_size = current_group['batch_size'].iloc[0]
+            
+            # Get corresponding baseline data
+            baseline_group = baseline_data[
+                (baseline_data['model_id'] == model_id) &
+                (baseline_data['hardware_id'] == hardware_id) &
+                (baseline_data['batch_size'] == batch_size)
+            ]
+            
+            if baseline_group.empty:
+                continue
+            
+            # Check each metric for regressions
+            for metric in self.metrics:
+                if metric not in current_group.columns or metric not in baseline_group.columns:
+                    continue
+                
+                # Get current and baseline values
+                current_value = current_group[metric].mean()
+                baseline_values = baseline_group[metric].values
+                baseline_mean = baseline_values.mean()
+                baseline_std = baseline_values.std()
+                
+                # Skip if baseline has no variance (likely only one sample)
+                if baseline_std == 0:
+                    baseline_std = baseline_mean * 0.01  # Assume 1% standard deviation
+                
+                # Calculate percent change
+                percent_change = (current_value - baseline_mean) / baseline_mean
+                
+                # For metrics where lower is better (like latency), invert the sign
+                if metric in ['average_latency_ms', 'peak_memory_mb']:
+                    percent_change = -percent_change
+                
+                # Calculate z-score for statistical significance
+                z_score = (current_value - baseline_mean) / baseline_std if baseline_std > 0 else 0
+                
+                # Determine if this is a regression
+                is_regression = percent_change < -self.threshold
+                severity = "high" if percent_change < -HIGH_THRESHOLD else "medium" if is_regression else "low"
+                
+                if is_regression:
+                    regressions.append({
+                        "model_id": int(model_id),
+                        "model_name": model_name,
+                        "hardware_id": int(hardware_id),
+                        "hardware_type": hardware_type,
+                        "batch_size": int(batch_size),
+                        "metric": metric,
+                        "current_value": float(current_value),
+                        "baseline_mean": float(baseline_mean),
+                        "baseline_std": float(baseline_std),
+                        "percent_change": float(percent_change),
+                        "z_score": float(z_score),
+                        "severity": severity,
+                        "run_id": self.run_id
+                    })
+        
+        # Sort regressions by severity and percent change
+        regressions.sort(key=lambda x: (
+            0 if x["severity"] == "high" else 1 if x["severity"] == "medium" else 2,
+            x["percent_change"]
+        ))
+        
+        return regressions
+    
+    def generate_report(self, format="text", output=None):
+        """
+        Generate a report of detected regressions.
+        
+        Args:
+            format (str): Output format ("text", "json", "html", "markdown")
+            output (str): Output file path (None for stdout)
+            
+        Returns:
+            str: Report content
+        """
+        if not self.regressions:
+            if not output:
+                print("No regressions detected.")
+            return "No regressions detected."
+        
+        if format == "json":
+            report = json.dumps(self.regressions, indent=2)
+        elif format == "html":
+            report = self._generate_html_report()
+        elif format == "markdown":
+            report = self._generate_markdown_report()
+        else:  # text
+            report = self._generate_text_report()
+        
+        if output:
+            with open(output, 'w') as f:
+                f.write(report)
+            print(f"Report saved to {output}")
+        else:
+            print(report)
+        
+        return report
+    
+    def _generate_text_report(self) -> str:
+        """
+        Generate a text report of detected regressions.
+        
+        Returns:
+            str: Text report
+        """
+        lines = ["Performance Regression Report", "=" * 30, ""]
+        
+        lines.append(f"Run ID: {self.run_id}")
+        lines.append(f"Threshold: {self.threshold * 100:.1f}%")
+        lines.append(f"Window: {self.window} previous runs")
+        lines.append(f"Metrics: {', '.join(self.metrics)}")
+        lines.append("")
+        
+        lines.append(f"Detected {len(self.regressions)} regressions:")
+        lines.append("")
+        
+        for i, reg in enumerate(self.regressions, 1):
+            lines.append(f"Regression {i}:")
+            lines.append(f"  Model: {reg['model_name']}")
+            lines.append(f"  Hardware: {reg['hardware_type']}")
+            lines.append(f"  Batch Size: {reg['batch_size']}")
+            lines.append(f"  Metric: {reg['metric']}")
+            lines.append(f"  Current Value: {reg['current_value']:.2f}")
+            lines.append(f"  Baseline Mean: {reg['baseline_mean']:.2f}")
+            lines.append(f"  Percent Change: {reg['percent_change'] * 100:.2f}%")
+            lines.append(f"  Severity: {reg['severity']}")
+            lines.append("")
+        
+        return "\n".join(lines)
+    
+    def _generate_html_report(self) -> str:
+        """
+        Generate an HTML report of detected regressions.
+        
+        Returns:
+            str: HTML report
+        """
         html = """
-        <!DOCTYPE html>
+        <\!DOCTYPE html>
         <html>
         <head>
-        <title>Performance Regression Report</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+            <title>Performance Regression Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                h1 { color: #333; }
+                .summary { margin: 20px 0; padding: 10px; background-color: #f5f5f5; border-radius: 5px; }
+                table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                tr:nth-child(even) { background-color: #f9f9f9; }
+                .high { background-color: #ffdddd; }
+                .medium { background-color: #ffffcc; }
+                .low { background-color: #ddffdd; }
+            </style>
         </head>
         <body>
-        <div class="container mt-4">
-        <h1>Performance Regression Report</h1>
-        <p><strong>Date:</strong> {}}}date}</p>
-        <p><strong>Total Regressions:</strong> {}}}total}</p>
-                
-        <h2>Summary of Regressions</h2>
-        <table class="table table-striped">
-        <thead>
-        <tr>
-        <th>Model</th>
-        <th>Hardware</th>
-        <th>Batch Size</th>
-        <th>Metric</th>
-        <th>Change</th>
-        <th>Severity</th>
-        </tr>
-        </thead>
-        <tbody>
-        """.format()))))
-        date=datetime.datetime.now()))))).strftime()))))'%Y-%m-%d %H:%M:%S'),
-        total=len()))))regressions)
+            <h1>Performance Regression Report</h1>
+            
+            <div class="summary">
+                <p><strong>Run ID:</strong> {run_id}</p>
+                <p><strong>Threshold:</strong> {threshold:.1f}%</p>
+                <p><strong>Window:</strong> {window} previous runs</p>
+                <p><strong>Metrics:</strong> {metrics}</p>
+                <p><strong>Total Regressions:</strong> {total_regressions}</p>
+            </div>
+            
+            <table>
+                <tr>
+                    <th>Model</th>
+                    <th>Hardware</th>
+                    <th>Batch Size</th>
+                    <th>Metric</th>
+                    <th>Current Value</th>
+                    <th>Baseline Mean</th>
+                    <th>Percent Change</th>
+                    <th>Z-Score</th>
+                    <th>Severity</th>
+                </tr>
+        """.format(
+            run_id=self.run_id,
+            threshold=self.threshold * 100,
+            window=self.window,
+            metrics=', '.join(self.metrics),
+            total_regressions=len(self.regressions)
         )
         
-        for reg in regressions:
-            html += f"""
-            <tr>
-            <td>{}}}reg[],'model']}</td>
-            <td>{}}}reg[],'hardware']}</td>
-            <td>{}}}reg[],'batch_size']}</td>
-            <td>{}}}reg[],'metric']}</td>
-            <td>{}}}reg[],'change_percentage']:.2f}%</td>
-            <td><span class="badge bg-{}}}'danger' if reg[],'severity']=='high' else 'warning' if reg[],'severity']=='medium' else 'info'}">{}}}reg[],'severity'].upper())))))}</span></td>
-            </tr>
-            """
-        
+        for reg in self.regressions:
             html += """
-            </tbody>
+                <tr class="{severity}">
+                    <td>{model_name}</td>
+                    <td>{hardware_type}</td>
+                    <td>{batch_size}</td>
+                    <td>{metric}</td>
+                    <td>{current_value:.2f}</td>
+                    <td>{baseline_mean:.2f}</td>
+                    <td>{percent_change:.2f}%</td>
+                    <td>{z_score:.2f}</td>
+                    <td>{severity}</td>
+                </tr>
+            """.format(
+                model_name=reg['model_name'],
+                hardware_type=reg['hardware_type'],
+                batch_size=reg['batch_size'],
+                metric=reg['metric'],
+                current_value=reg['current_value'],
+                baseline_mean=reg['baseline_mean'],
+                percent_change=reg['percent_change'] * 100,
+                z_score=reg['z_score'],
+                severity=reg['severity']
+            )
+        
+        html += """
             </table>
-                
-            <h2>Detailed Regression Information</h2>
-            <div class="accordion" id="regressionAccordion">
-            """
-        :
-        for i, reg in enumerate()))))regressions, 1):
-            html += f"""
-            <div class="accordion-item">
-            <h2 class="accordion-header" id="heading{}}}i}">
-                        <button class="accordion-button {}}}'collapsed' if i > 1 else ''}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{}}}i}" aria-expanded="{}}}i==1}" aria-controls="collapse{}}}i}">:
-                            Regression #{}}}i}: {}}}reg[],'model']} on {}}}reg[],'hardware']} ())))){}}}reg[],'metric']})
-                            </button>
-                            </h2>
-                            <div id="collapse{}}}i}" class="accordion-collapse collapse {}}}'show' if i==1 else ''}" aria-labelledby="heading{}}}i}" data-bs-parent="#regressionAccordion">
-                            <div class="accordion-body">
-                            <ul class="list-group">:
-                                <li class="list-group-item"><strong>Metric:</strong> {}}}reg[],'metric']}</li>
-                                <li class="list-group-item"><strong>Batch Size:</strong> {}}}reg[],'batch_size']}</li>
-                                <li class="list-group-item"><strong>Current Value:</strong> {}}}reg[],'current_value']:.4f}</li>
-                                <li class="list-group-item"><strong>Historical Mean:</strong> {}}}reg[],'historical_mean']:.4f}</li>
-                                <li class="list-group-item"><strong>Change:</strong> {}}}reg[],'change_percentage']:.2f}%</li>
-                                <li class="list-group-item"><strong>Statistical Significance ()))))Z-Score):</strong> {}}}reg[],'z_score']:.2f}</li>
-                                <li class="list-group-item"><strong>Severity:</strong> {}}}reg[],'severity'].upper())))))}</li>
-                                <li class="list-group-item"><strong>Run ID:</strong> {}}}reg[],'run_id']}</li>
-                                <li class="list-group-item"><strong>Timestamp:</strong> {}}}reg[],'timestamp']}</li>
-                                </ul>
-                                </div>
-                                </div>
-                                </div>
-                                """
+            
+            <p>Generated on: {date}</p>
+        </body>
+        </html>
+        """.format(date=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         
-                                html += """
-                                </div>
-                                </div>
-                                <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-                                </body>
-                                </html>
-                                """
+        return html
+    
+    def _generate_markdown_report(self) -> str:
+        """
+        Generate a markdown report of detected regressions.
         
-                            return html
+        Returns:
+            str: Markdown report
+        """
+        lines = ["# Performance Regression Report", ""]
+        
+        lines.append(f"**Run ID:** {self.run_id}")
+        lines.append(f"**Threshold:** {self.threshold * 100:.1f}%")
+        lines.append(f"**Window:** {self.window} previous runs")
+        lines.append(f"**Metrics:** {', '.join(self.metrics)}")
+        lines.append(f"**Total Regressions:** {len(self.regressions)}")
+        lines.append("")
+        
+        lines.append("## Detected Regressions")
+        lines.append("")
+        
+        lines.append("| Model | Hardware | Batch Size | Metric | Current Value | Baseline Mean | % Change | Severity |")
+        lines.append("|-------|----------|------------|--------|---------------|---------------|----------|----------|")
+        
+        for reg in self.regressions:
+            lines.append(f"| {reg['model_name']} | {reg['hardware_type']} | {reg['batch_size']} | " +
+                         f"{reg['metric']} | {reg['current_value']:.2f} | {reg['baseline_mean']:.2f} | " +
+                         f"{reg['percent_change'] * 100:.2f}% | {reg['severity']} |")
+        
+        lines.append("")
+        lines.append(f"*Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
+        
+        return "\n".join(lines)
     
-    else:
-        logger.error()))))f"Unsupported format: {}}}format_type}")
-                            return json.dumps()))))regressions)
+    def visualize_regressions(self, output=None):
+        """
+        Visualize the detected regressions.
+        
+        Args:
+            output (str): Output file path (None for display)
+        """
+        if not HAS_DEPENDENCIES:
+            print("Error: Required dependencies not found. Please install:")
+            print("  pip install matplotlib numpy pandas")
+            return
+        
+        if not self.regressions:
+            print("No regressions to visualize.")
+            return
+        
+        # Group regressions by model and hardware
+        groups = {}
+        for reg in self.regressions:
+            key = (reg['model_name'], reg['hardware_type'])
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(reg)
+        
+        # Create a figure for each group
+        for (model_name, hardware_type), regs in groups.items():
+            # Create figure
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # Prepare data
+            metrics = []
+            current_values = []
+            baseline_means = []
+            percent_changes = []
+            
+            for reg in regs:
+                metrics.append(f"{reg['metric']} (bs={reg['batch_size']})")
+                current_values.append(reg['current_value'])
+                baseline_means.append(reg['baseline_mean'])
+                percent_changes.append(reg['percent_change'] * 100)
+            
+            # Create bar chart
+            x = range(len(metrics))
+            width = 0.35
+            
+            ax.bar([i - width/2 for i in x], baseline_means, width, label='Baseline Mean')
+            ax.bar([i + width/2 for i in x], current_values, width, label='Current Value')
+            
+            # Add percent change as text
+            for i, (pct, curr) in enumerate(zip(percent_changes, current_values)):
+                ax.text(i, curr, f"{pct:.1f}%", ha='center', va='bottom', 
+                        color='red' if pct < 0 else 'green')
+            
+            # Add labels and title
+            ax.set_xlabel('Metrics')
+            ax.set_ylabel('Value')
+            ax.set_title(f'Performance Regression: {model_name} on {hardware_type}')
+            ax.set_xticks(x)
+            ax.set_xticklabels(metrics, rotation=45, ha='right')
+            ax.legend()
+            
+            plt.tight_layout()
+            
+            # Save or display
+            if output:
+                output_path = f"{os.path.splitext(output)[0]}_{model_name}_{hardware_type}.png"
+                plt.savefig(output_path)
+                print(f"Visualization saved to {output_path}")
+            else:
+                plt.show()
+            
+            plt.close(fig)
 
-def create_github_issue()))))regressions, token, repo):
-    """Create a GitHub issue for performance regressions"""
-    if not regressions:
-        logger.info()))))"No regressions to report")
-    return None
+def main():
+    """Main function."""
+    if not HAS_DEPENDENCIES:
+        print("Error: Required dependencies not found. Please install:")
+        print("  pip install duckdb pandas numpy matplotlib scipy")
+        sys.exit(1)
     
-    # Group regressions by severity
-    high_severity = [],r for r in regressions if r[],'severity'] == 'high']
-    medium_severity = [],r for r in regressions if r[],'severity'] == 'medium']
-    low_severity = [],r for r in regressions if r[],'severity'] == 'low']
+    parser = argparse.ArgumentParser(description="Detect performance regressions in benchmark results.")
+    parser.add_argument("--db", required=True, help="Path to DuckDB database")
+    parser.add_argument("--run-id", help="Run ID to analyze (default: latest run)")
+    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
+                        help=f"Regression detection threshold (default: {DEFAULT_THRESHOLD * 100}%%)")
+    parser.add_argument("--window", type=int, default=5,
+                        help="Number of previous runs to include in baseline (default: 5)")
+    parser.add_argument("--metrics", nargs="+",
+                        help=f"Metrics to analyze (default: {', '.join(DEFAULT_METRICS)})")
+    parser.add_argument("--format", choices=["text", "json", "html", "markdown"], default="text",
+                        help="Output format (default: text)")
+    parser.add_argument("--output", help="Output file path (default: stdout)")
+    parser.add_argument("--visualize", action="store_true", help="Visualize regressions")
     
-    # Only create issues for medium and high severity:
-    if not high_severity and not medium_severity:
-        logger.info()))))"No medium or high severity regressions to report")
-    return None
+    args = parser.parse_args()
     
-    # Prepare issue content
-    title = f"Performance Regression Alert: {}}}len()))))high_severity)} high, {}}}len()))))medium_severity)} medium severity issues"
-    body = format_regression_report()))))regressions, format_type="markdown")
-    
-    # Create GitHub issue
-    url = f"https://api.github.com/repos/{}}}repo}/issues"
-    headers = {}}}
-    "Authorization": f"token {}}}token}",
-    "Accept": "application/vnd.github.v3+json"
-    }
-    data = {}}}
-    "title": title,
-    "body": body,
-    "labels": [],"performance", "regression", "automated"]
-    }
-    
-    try:
-        response = requests.post()))))url, headers=headers, json=data)
-        response.raise_for_status())))))
-        issue = response.json())))))
-        logger.info()))))f"Created GitHub issue #{}}}issue[],'number']}: {}}}issue[],'html_url']}")
-    return issue
-    except Exception as e:
-        logger.error()))))f"Error creating GitHub issue: {}}}e}")
-    return None
-
-def main()))))):
-    args = parse_args())))))
-    
-    # Set logging level
-    if args.verbose:
-        logger.setLevel()))))logging.DEBUG)
-    
-    # Connect to database
-        conn = connect_to_db()))))args.db)
-    
-    # Get run ID if not provided
-    run_id = args.run_id or get_latest_run_id()))))conn):
-        logger.info()))))f"Analyzing run ID: {}}}run_id}")
-    
-    # Get metrics to analyze
-        metrics = args.metrics.split()))))',') if args.metrics else [],"throughput", "latency"]
-        ,
-    # Get current and historical results
-        current_results, historical_results = get_recent_results()))))
-        conn, run_id, args.model, args.hardware, args.window
-        )
+    detector = BenchmarkRegressionDetector(
+        db_path=args.db,
+        run_id=args.run_id,
+        threshold=args.threshold,
+        window=args.window,
+        metrics=args.metrics
+    )
     
     # Detect regressions
-        regressions = detect_regressions()))))
-        current_results, historical_results, args.threshold, metrics
-        )
+    detector.detect_regressions()
     
     # Generate report
-        report = format_regression_report()))))regressions, args.format)
+    detector.generate_report(format=args.format, output=args.output)
     
-    # Write report to file if output specified:
-    if args.output:
-        with open()))))args.output, 'w') as f:
-            f.write()))))report)
-            logger.info()))))f"Regression report written to {}}}args.output}")
-    else:
-        print()))))report)
-    
-    # Create GitHub issue if requested:
-    if args.create_issues and ()))))args.github_token and args.github_repo):
-        issue = create_github_issue()))))regressions, args.github_token, args.github_repo)
-        if issue:
-            logger.info()))))f"Created GitHub issue: {}}}issue[],'html_url']}")
-    elif args.create_issues:
-        logger.warning()))))"Cannot create GitHub issue: token or repo not provided")
-    
-    # Return exit code based on regression severity
-    if any()))))r[],'severity'] == 'high' for r in regressions):
-        logger.warning()))))"High severity regressions detected")
-        return 2
-    elif any()))))r[],'severity'] == 'medium' for r in regressions):
-        logger.warning()))))"Medium severity regressions detected")
-        return 1
-    else:
-        logger.info()))))"No significant regressions detected")
-        return 0
+    # Visualize regressions if requested
+    if args.visualize:
+        detector.visualize_regressions(output=args.output)
 
 if __name__ == "__main__":
-    sys.exit()))))main()))))))
+    main()

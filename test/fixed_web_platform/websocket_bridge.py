@@ -9,11 +9,13 @@ and improved message processing.
 The March 2025 version fixes connection stability issues, reduces timeouts, and provides
 better error reporting for reliable real-hardware benchmarking.
 
-March 8, 2025 Update:
+March 10, 2025 Update:
+- Integrated with unified error handling framework
 - Enhanced reconnection strategy with progressive backoff
 - Added adaptive timeouts based on operation complexity and input size
 - Improved error reporting and diagnostic information collection
 - Added comprehensive cleanup on connection failures
+- Implemented standardized retry mechanisms with exponential backoff
 """
 
 import os
@@ -27,22 +29,64 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union, Callable, Any
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Try to import websockets with improved error handling
+# Import unified error handling framework
 try:
+    from fixed_web_platform.unified_framework.error_handling import (
+        ErrorHandler, handle_errors, handle_async_errors, with_retry,
+        validate_dependencies, ErrorCategories
+    )
+    HAS_ERROR_FRAMEWORK = True
+except ImportError:
+    HAS_ERROR_FRAMEWORK = False
+    # Configure basic logging if error framework not available
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+
+# Use the error framework's validate_dependencies if available, otherwise create a simple version
+if HAS_ERROR_FRAMEWORK:
+    logger = logging.getLogger(__name__)
+    # We'll use the imported validate_dependencies decorator
+else:
+    # Simple dependency validation function if error framework not available
+    def validate_dependencies(*dependencies):
+        def decorator(func):
+            def wrapper(*args, **kwargs):
+                missing = []
+                for dep in dependencies:
+                    try:
+                        __import__(dep)
+                    except ImportError:
+                        missing.append(dep)
+                
+                if missing:
+                    logger.error(f"Missing required dependencies: {', '.join(missing)}")
+                    return None
+                return func(*args, **kwargs)
+            return wrapper
+        return decorator
+
+# Validate websockets dependency
+@validate_dependencies("websockets")
+def _check_websockets_dependency():
     import websockets
     from websockets.exceptions import (
         ConnectionClosedError, 
         ConnectionClosedOK, 
         WebSocketException
     )
-    HAS_WEBSOCKETS = True
-except ImportError:
+    return True
+
+# Check if websockets is available
+HAS_WEBSOCKETS = _check_websockets_dependency()
+if HAS_WEBSOCKETS:
+    import websockets
+    from websockets.exceptions import (
+        ConnectionClosedError, 
+        ConnectionClosedOK, 
+        WebSocketException
+    )
+else:
     logger.error("websockets package is required. Install with: pip install websockets")
-    HAS_WEBSOCKETS = False
 
 class WebSocketBridge:
     """
@@ -312,104 +356,187 @@ class WebSocketBridge:
         
         return False
             
-    async def send_message(self, message, timeout=None, retry_attempts=2):
-        """
-        Send message to connected client with enhanced retry capability and adaptive timeouts.
-        
-        Args:
-            message: Message to send (will be converted to JSON)
-            timeout: Timeout in seconds (None for adaptive timeout based on message size)
-            retry_attempts: Number of retry attempts if sending fails
+    # Use with_retry decorator if available, otherwise implement manually
+    if HAS_ERROR_FRAMEWORK:
+        @with_retry(max_retries=2, initial_delay=0.1, backoff_factor=2.0)
+        async def send_message(self, message, timeout=None, retry_attempts=2):
+            """
+            Send message to connected client with enhanced retry capability and adaptive timeouts.
             
-        Returns:
-            bool: True if sent successfully, False otherwise
-        """
-        if timeout is None:
-            timeout = self.message_timeout
-            
-        # Check connection status
-        if not self.is_connected or not self.connection:
-            logger.error("Cannot send message: WebSocket not connected")
-            
-            # Attempt to reconnect if connection event not set
-            if not self.connection_event.is_set():
-                logger.info("Attempting to reconnect before sending message...")
-                connection_success = await self.wait_for_connection(timeout=self.connection_timeout/2)
-                if not connection_success:
-                    return False
-                    
-                # Connection was re-established
-                if self.is_connected and self.connection:
-                    logger.info("Reconnected successfully, proceeding with message")
+            Args:
+                message: Message to send (will be converted to JSON)
+                timeout: Timeout in seconds (None for adaptive timeout based on message size)
+                retry_attempts: Number of retry attempts if sending fails
+                
+            Returns:
+                bool: True if sent successfully, False otherwise
+            """
+            if timeout is None:
+                timeout = self.message_timeout
+                
+            # Check connection status
+            if not self.is_connected or not self.connection:
+                # Create a context for error handling
+                context = {
+                    "action": "send_message",
+                    "is_connected": self.is_connected,
+                    "connection_exists": self.connection is not None,
+                    "message_type": message.get("type", "unknown") if isinstance(message, dict) else "raw"
+                }
+                
+                logger.error("Cannot send message: WebSocket not connected")
+                
+                # Attempt to reconnect if connection event not set
+                if not self.connection_event.is_set():
+                    logger.info("Attempting to reconnect before sending message...")
+                    connection_success = await self.wait_for_connection(timeout=self.connection_timeout/2)
+                    if not connection_success:
+                        raise ConnectionError("Failed to establish connection for sending message")
+                        
+                    # Connection was re-established
+                    if self.is_connected and self.connection:
+                        logger.info("Reconnected successfully, proceeding with message")
+                    else:
+                        raise ConnectionError("Connection status inconsistent after reconnection")
                 else:
-                    return False
-            else:
-                return False
-        
-        # Track retry attempts
-        attempt = 0
-        last_error = None
-        
-        while attempt <= retry_attempts:
+                    raise ConnectionError("WebSocket not connected and no reconnection attempted")
+            
+            # Serialize message once to avoid repeating work
+            message_json = json.dumps(message)
+            
             try:
                 # Use specified timeout for sending
-                if attempt > 0:
-                    logger.info(f"Retry {attempt}/{retry_attempts} sending message")
-                
-                # Serialize message once to avoid repeating work
-                message_json = json.dumps(message)
-                
                 await asyncio.wait_for(
                     self.connection.send(message_json),
                     timeout=timeout
                 )
                 return True
+            except asyncio.TimeoutError as e:
+                # Create a context with detailed information
+                context = {
+                    "action": "send_message",
+                    "timeout": timeout,
+                    "message_type": message.get("type", "unknown") if isinstance(message, dict) else "raw",
+                    "message_id": message.get("id", "unknown") if isinstance(message, dict) else "none"
+                }
                 
-            except asyncio.TimeoutError:
-                attempt += 1
-                last_error = f"Timeout sending message (timeout={timeout}s)"
-                logger.warning(last_error)
-                
-                if attempt > retry_attempts:
-                    break
-                    
-                # Use slightly longer timeout for retries
-                timeout = timeout * 1.2
-                await asyncio.sleep(0.1)  # Brief pause before retry
-                
+                # Let the retry decorator handle this recoverable error
+                raise asyncio.TimeoutError(f"Timeout sending message (timeout={timeout}s)")
             except ConnectionClosedError as e:
-                attempt += 1
-                last_error = f"Connection closed: {e}"
-                logger.warning(f"Connection closed while sending message: {e}")
-                
                 # Connection was closed, clear connected state
                 self.is_connected = False
                 self.connection = None
                 self.connection_event.clear()
                 
-                if attempt > retry_attempts:
-                    break
-                    
-                # Wait for reconnection before retry
-                logger.info("Waiting for reconnection before retry...")
-                reconnected = await self.wait_for_connection(timeout=self.connection_timeout/2)
-                if not reconnected:
-                    logger.error("Failed to reconnect, cannot send message")
-                    break
+                # Create context for error handling
+                context = {
+                    "action": "send_message",
+                    "message_type": message.get("type", "unknown") if isinstance(message, dict) else "raw",
+                    "connection_state": "closed_during_send"
+                }
                 
-            except Exception as e:
-                attempt += 1
-                last_error = f"Error sending message: {e}"
-                logger.warning(f"Error sending message: {e}")
+                # This is a recoverable error that should trigger reconnection
+                raise ConnectionError(f"Connection closed while sending message: {e}")
+    else:
+        # Manual implementation if error framework is not available
+        async def send_message(self, message, timeout=None, retry_attempts=2):
+            """
+            Send message to connected client with enhanced retry capability and adaptive timeouts.
+            
+            Args:
+                message: Message to send (will be converted to JSON)
+                timeout: Timeout in seconds (None for adaptive timeout based on message size)
+                retry_attempts: Number of retry attempts if sending fails
                 
-                if attempt > retry_attempts:
-                    break
+            Returns:
+                bool: True if sent successfully, False otherwise
+            """
+            if timeout is None:
+                timeout = self.message_timeout
+                
+            # Check connection status
+            if not self.is_connected or not self.connection:
+                logger.error("Cannot send message: WebSocket not connected")
+                
+                # Attempt to reconnect if connection event not set
+                if not self.connection_event.is_set():
+                    logger.info("Attempting to reconnect before sending message...")
+                    connection_success = await self.wait_for_connection(timeout=self.connection_timeout/2)
+                    if not connection_success:
+                        return False
+                        
+                    # Connection was re-established
+                    if self.is_connected and self.connection:
+                        logger.info("Reconnected successfully, proceeding with message")
+                    else:
+                        return False
+                else:
+                    return False
+            
+            # Track retry attempts
+            attempt = 0
+            last_error = None
+            
+            while attempt <= retry_attempts:
+                try:
+                    # Use specified timeout for sending
+                    if attempt > 0:
+                        logger.info(f"Retry {attempt}/{retry_attempts} sending message")
                     
-                await asyncio.sleep(0.2)  # Slightly longer pause for general errors
-        
-        # If we got here, all attempts failed
-        logger.error(f"Failed to send message after {retry_attempts} retries: {last_error}")
-        return False
+                    # Serialize message once to avoid repeating work
+                    message_json = json.dumps(message)
+                    
+                    await asyncio.wait_for(
+                        self.connection.send(message_json),
+                        timeout=timeout
+                    )
+                    return True
+                    
+                except asyncio.TimeoutError:
+                    attempt += 1
+                    last_error = f"Timeout sending message (timeout={timeout}s)"
+                    logger.warning(last_error)
+                    
+                    if attempt > retry_attempts:
+                        break
+                        
+                    # Use slightly longer timeout for retries
+                    timeout = timeout * 1.2
+                    await asyncio.sleep(0.1)  # Brief pause before retry
+                    
+                except ConnectionClosedError as e:
+                    attempt += 1
+                    last_error = f"Connection closed: {e}"
+                    logger.warning(f"Connection closed while sending message: {e}")
+                    
+                    # Connection was closed, clear connected state
+                    self.is_connected = False
+                    self.connection = None
+                    self.connection_event.clear()
+                    
+                    if attempt > retry_attempts:
+                        break
+                        
+                    # Wait for reconnection before retry
+                    logger.info("Waiting for reconnection before retry...")
+                    reconnected = await self.wait_for_connection(timeout=self.connection_timeout/2)
+                    if not reconnected:
+                        logger.error("Failed to reconnect, cannot send message")
+                        break
+                    
+                except Exception as e:
+                    attempt += 1
+                    last_error = f"Error sending message: {e}"
+                    logger.warning(f"Error sending message: {e}")
+                    
+                    if attempt > retry_attempts:
+                        break
+                        
+                    await asyncio.sleep(0.2)  # Slightly longer pause for general errors
+            
+            # If we got here, all attempts failed
+            logger.error(f"Failed to send message after {retry_attempts} retries: {last_error}")
+            return False
             
     async def send_and_wait(self, message, timeout=None, retry_attempts=1, response_timeout=None):
         """

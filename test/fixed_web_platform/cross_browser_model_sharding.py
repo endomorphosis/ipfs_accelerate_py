@@ -478,12 +478,291 @@ class ModelShardingManager:
             traceback.print_exc()
             return False
     
-    async def run_inference_sharded(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run_components_in_order(self, inputs: Dict[str, Any], shard_type: str) -> Dict:
         """
-        Run inference across sharded model components.
+        Run components in the appropriate order based on shard type with failure detection.
+        
+        Args:
+            inputs: Input data for all components
+            shard_type: Type of sharding ('layer', 'attention_feedforward', 'component')
+            
+        Returns:
+            Dict containing component_results and failed_components
+        """
+        component_results = {}
+        failed_components = []
+        current_inputs = inputs
+        
+        if shard_type == "layer":
+            # For layer-based sharding, process sequentially through layers
+            for component in self.components:
+                try:
+                    # Process through this component
+                    result = await component.process(current_inputs)
+                    
+                    # Check for errors
+                    if isinstance(result, dict) and 'error' in result:
+                        logger.warning(f"Error in component {component.component_id}: {result['error']}")
+                        failed_components.append(component)
+                    else:
+                        # Store result and update input for next component
+                        component_results[component.component_id] = result
+                        current_inputs = result  # Output becomes input to next layer
+                except Exception as e:
+                    logger.error(f"Exception in component {component.component_id}: {e}")
+                    failed_components.append(component)
+        
+        elif shard_type == "attention_feedforward":
+            # For attention-feedforward sharding, process attention first then feedforward
+            attention_components = [c for c in self.components if "attention" in c.component_id]
+            feedforward_components = [c for c in self.components if "feedforward" in c.component_id]
+            
+            # Process attention components (in parallel)
+            attention_tasks = [component.process(inputs) for component in attention_components]
+            attention_results = await asyncio.gather(*attention_tasks, return_exceptions=True)
+            
+            # Process results and track failures
+            attention_output = {}
+            for i, result in enumerate(attention_results):
+                component = attention_components[i]
+                if isinstance(result, Exception) or (isinstance(result, dict) and 'error' in result):
+                    logger.warning(f"Error in attention component {component.component_id}")
+                    failed_components.append(component)
+                else:
+                    component_results[component.component_id] = result
+                    # Merge all attention outputs
+                    if isinstance(result, dict):
+                        attention_output.update(result)
+            
+            # Process feedforward components (in parallel) with attention output
+            feedforward_tasks = [component.process({**inputs, **attention_output}) 
+                              for component in feedforward_components]
+            feedforward_results = await asyncio.gather(*feedforward_tasks, return_exceptions=True)
+            
+            # Process results and track failures
+            for i, result in enumerate(feedforward_results):
+                component = feedforward_components[i]
+                if isinstance(result, Exception) or (isinstance(result, dict) and 'error' in result):
+                    logger.warning(f"Error in feedforward component {component.component_id}")
+                    failed_components.append(component)
+                else:
+                    component_results[component.component_id] = result
+        
+        elif shard_type == "component":
+            # For component-based sharding, process components in parallel
+            component_tasks = [component.process(inputs) for component in self.components]
+            component_task_results = await asyncio.gather(*component_tasks, return_exceptions=True)
+            
+            # Process results and track failures
+            for i, result in enumerate(component_task_results):
+                component = self.components[i]
+                if isinstance(result, Exception) or (isinstance(result, dict) and 'error' in result):
+                    logger.warning(f"Error in component {component.component_id}")
+                    failed_components.append(component)
+                else:
+                    component_results[component.component_id] = result
+        
+        else:
+            # Default processing (in parallel)
+            component_tasks = [component.process(inputs) for component in self.components]
+            component_task_results = await asyncio.gather(*component_tasks, return_exceptions=True)
+            
+            # Process results and track failures
+            for i, result in enumerate(component_task_results):
+                component = self.components[i]
+                if isinstance(result, Exception) or (isinstance(result, dict) and 'error' in result):
+                    logger.warning(f"Error in component {component.component_id}")
+                    failed_components.append(component)
+                else:
+                    component_results[component.component_id] = result
+        
+        return {
+            'component_results': component_results,
+            'failed_components': failed_components
+        }
+    
+    async def _recover_failed_components(self, failed_components, inputs, successful_results, max_retries):
+        """
+        Attempt to recover failed components with progressive strategies.
+        
+        Args:
+            failed_components: List of components that failed in first attempt
+            inputs: Original inputs to all components
+            successful_results: Results from successful components
+            max_retries: Maximum number of recovery attempts
+            
+        Returns:
+            Dict containing recovered_results, still_failed, and metrics
+        """
+        recovered_results = {}
+        still_failed = []
+        recovery_metrics = {
+            'recovery_attempts': 0,
+            'successful_recoveries': 0,
+            'retry_succeeded': 0,
+            'reroute_succeeded': 0,
+            'browser_change_succeeded': 0
+        }
+        
+        # Try to recover each failed component
+        for component in failed_components:
+            # Track recovery attempts
+            recovery_metrics['recovery_attempts'] += 1
+            recovered = False
+            
+            # Strategy 1: Simple retry with existing component
+            for retry in range(max_retries):
+                try:
+                    logger.info(f"Recovery attempt {retry+1}/{max_retries} for component {component.component_id}")
+                    
+                    # Try to re-process with the component
+                    result = await component.process(inputs)
+                    
+                    # Check if successful
+                    if not (isinstance(result, dict) and 'error' in result):
+                        logger.info(f"Successfully recovered component {component.component_id} with retry")
+                        recovered_results[component.component_id] = result
+                        recovered = True
+                        recovery_metrics['retry_succeeded'] += 1
+                        break
+                except Exception as e:
+                    logger.warning(f"Recovery attempt {retry+1} failed for {component.component_id}: {e}")
+            
+            # Strategy 2: If retry failed, try browser change
+            if not recovered:
+                try:
+                    logger.info(f"Attempting browser change for component {component.component_id}")
+                    
+                    # Create browser allocation for different browser
+                    alternate_browsers = {
+                        'chrome': 'firefox',
+                        'firefox': 'edge',
+                        'edge': 'chrome'
+                    }
+                    new_browser = alternate_browsers[component.browser]
+                    
+                    # Create a new component with different browser
+                    new_component = ShardedModelComponent(
+                        component_id=f"{component.component_id}_recovery",
+                        model_type=component.model_type,
+                        model_name=component.model_name,
+                        shard_index=component.shard_index,
+                        shard_type=component.shard_type,
+                        browser=new_browser,
+                        platform=component.platform,
+                        resource_pool_integration=self.resource_pool
+                    )
+                    
+                    # Initialize new component
+                    init_success = await new_component.initialize()
+                    if init_success:
+                        # Try to process with new component
+                        result = await new_component.process(inputs)
+                        
+                        # Check if successful
+                        if not (isinstance(result, dict) and 'error' in result):
+                            logger.info(f"Successfully recovered component {component.component_id} with browser change")
+                            recovered_results[component.component_id] = result
+                            recovered = True
+                            recovery_metrics['browser_change_succeeded'] += 1
+                except Exception as e:
+                    logger.warning(f"Browser change recovery failed for {component.component_id}: {e}")
+            
+            # If still not recovered, mark as failed
+            if not recovered:
+                still_failed.append(component)
+        
+        # Update recovery metrics
+        recovery_metrics['successful_recoveries'] = len(failed_components) - len(still_failed)
+        
+        return {
+            'recovered_results': recovered_results,
+            'still_failed': still_failed,
+            'metrics': recovery_metrics
+        }
+    
+    def _merge_component_results(self, component_results, shard_type):
+        """
+        Merge results from all components into a single result.
+        
+        Args:
+            component_results: Dictionary of component results
+            shard_type: Type of sharding
+            
+        Returns:
+            Merged inference result
+        """
+        if not component_results:
+            return {'error': 'No successful component results to merge'}
+        
+        # Different merge strategies based on shard type
+        if shard_type == "layer":
+            # For layer-based sharding, use the result from the final layer
+            components_by_index = sorted(
+                [(k, v) for k, v in component_results.items()],
+                key=lambda x: int(x[0].split("shard")[1].split("_")[0])
+            )
+            
+            # Return result from final layer if available
+            if components_by_index:
+                return components_by_index[-1][1]
+        
+        elif shard_type == "attention_feedforward":
+            # For attention-feedforward, combine attention and feedforward results
+            merged = {}
+            # Add results from all components (prioritizing feedforward for overlapping keys)
+            for component_id, result in component_results.items():
+                if isinstance(result, dict):
+                    if "feedforward" in component_id:
+                        # Feedforward results take priority
+                        merged.update(result)
+                    else:
+                        # For attention results, only add keys not already present
+                        for key, value in result.items():
+                            if key not in merged:
+                                merged[key] = value
+            return merged
+        
+        elif shard_type == "component":
+            # For component-based sharding (e.g., multimodal), merge specialized outputs
+            merged = {}
+            for component_id, result in component_results.items():
+                if isinstance(result, dict):
+                    # Use component specialization to determine output keys
+                    if "vision" in component_id:
+                        merged["vision_output"] = result
+                    elif "text" in component_id:
+                        merged["text_output"] = result
+                    elif "audio" in component_id:
+                        merged["audio_output"] = result
+                    elif "fusion" in component_id:
+                        # Fusion outputs may have special keys to preserve
+                        merged["fusion_output"] = result
+                        # Also include top-level outputs from fusion
+                        for key, value in result.items():
+                            if key not in ('vision_output', 'text_output', 'audio_output'):
+                                merged[key] = value
+            return merged
+        
+        else:
+            # Default strategy: combine all results into a dictionary
+            merged = {}
+            for component_id, result in component_results.items():
+                if isinstance(result, dict):
+                    key = component_id.replace(":", "_")
+                    merged[key] = result
+            return merged
+    
+    async def run_inference_sharded(self, inputs: Dict[str, Any], max_retries: int = 2) -> Dict[str, Any]:
+        """
+        Run inference across sharded model components with fault tolerance.
+        
+        This method implements fault tolerance by automatically detecting
+        failed components and attempting recovery or rerouting when possible.
         
         Args:
             inputs: Input data for the model
+            max_retries: Maximum number of retries for failed components
             
         Returns:
             Combined inference results
@@ -495,23 +774,68 @@ class ModelShardingManager:
         try:
             start_time = time.time()
             
-            # Process inputs through pipeline of components
-            # This is a simplified version - in reality, this would depend on the shard type
-            current_output = inputs
+            # Process inputs through pipeline of components with fault tolerance
+            # This implements a robust execution model with failure handling
             
-            # For layer-based sharding, process sequentially
-            if self.shard_type == "layer":
-                for component in self.components:
-                    result = await component.process(current_output)
-                    
-                    # Check for errors
-                    if 'error' in result:
-                        logger.error(f"Error in component {component.component_id}: {result['error']}")
-                        return {'error': f"Component {component.component_id} failed: {result['error']}"}
-                    
-                    # Update current output for next component
-                    current_output = result
+            # 1. First attempt - run components in appropriate order based on shard type
+            processing_results = await self._run_components_in_order(inputs, self.shard_type)
             
+            # 2. Handle any failed components
+            if processing_results['failed_components']:
+                logger.warning(f"Detected {len(processing_results['failed_components'])} failed components. Attempting recovery...")
+                recovery_results = await self._recover_failed_components(
+                    processing_results['failed_components'],
+                    inputs,
+                    processing_results['component_results'],
+                    max_retries
+                )
+                
+                # Update results with recovery information
+                processing_results['component_results'].update(recovery_results['recovered_results'])
+                processing_results['failed_components'] = recovery_results['still_failed']
+                processing_results['recovery_metrics'] = recovery_results['metrics']
+            
+            # 3. Merge results from all successful components
+            merged_result = self._merge_component_results(
+                processing_results['component_results'],
+                self.shard_type
+            )
+            
+            # Track inference time
+            inference_time = time.time() - start_time
+            self.metrics['total_inference_time'] += inference_time
+            self.metrics['inference_count'] += 1
+            self.metrics['average_inference_time'] = (
+                self.metrics['total_inference_time'] / self.metrics['inference_count']
+                if self.metrics['inference_count'] > 0 else 0
+            )
+            
+            # Add detailed metrics to the result
+            detailed_result = {
+                'result': merged_result,
+                'metrics': {
+                    'inference_time_ms': inference_time * 1000,
+                    'component_count': len(self.components),
+                    'successful_components': len(processing_results['component_results']),
+                    'failed_components': len(processing_results['failed_components']),
+                    'shard_type': self.shard_type,
+                }
+            }
+            
+            # Add recovery metrics if recovery was attempted
+            if 'recovery_metrics' in processing_results:
+                detailed_result['metrics']['recovery'] = processing_results['recovery_metrics']
+            
+            logger.info(f"Sharded inference completed in {inference_time:.2f}s with "
+                      f"{detailed_result['metrics']['successful_components']}/{len(self.components)} "
+                      f"successful components")
+            
+            return detailed_result
+            
+        except Exception as e:
+            logger.error(f"Error in sharded inference: {e}")
+            traceback.print_exc()
+            return {'error': f"Sharded inference failed: {e}"}
             # For attention-feedforward sharding, process in parallel then combine
             elif self.shard_type == "attention_feedforward":
                 # Process components in parallel

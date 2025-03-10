@@ -36,11 +36,26 @@ class ResourcePoolErrorRecovery:
     Enhanced error recovery mechanisms for the ResourcePoolBridge.
     
     This class provides utilities for improving reliability and recoverability
-    of browser connections in the ResourcePoolBridge implementation.
+    of browser connections in the ResourcePoolBridge implementation with
+    adaptive load balancing and performance-aware recovery strategies.
     """
     
-    @staticmethod
-    async def recover_connection(connection, retry_attempts=2, timeout=10.0):
+    # Performance history dictionary to track model performance by browser type
+    # Used for intelligent load balancing and recovery decisions
+    _performance_history = {
+        'models': {},       # Tracks performance by model type and browser
+        'connections': {},  # Tracks reliability metrics by connection
+        'browsers': {       # Default performance metrics by browser type
+            'chrome': {'success_rate': 0.95, 'avg_latency': 100, 'reliability': 0.9, 'samples': 10},
+            'firefox': {'success_rate': 0.93, 'avg_latency': 110, 'reliability': 0.9, 'samples': 10}, 
+            'edge': {'success_rate': 0.92, 'avg_latency': 120, 'reliability': 0.85, 'samples': 10},
+            'safari': {'success_rate': 0.90, 'avg_latency': 150, 'reliability': 0.8, 'samples': 5}
+        }
+    }
+    
+    @classmethod
+    async def recover_connection(cls, connection, retry_attempts=2, timeout=10.0, 
+                                model_type=None, model_id=None):
         """
         Attempt to recover a degraded or failed connection with progressive strategies.
         
@@ -50,10 +65,16 @@ class ResourcePoolErrorRecovery:
         3. Page refresh to reset browser state
         4. Browser restart (most aggressive)
         
+        With model_type information, the method will apply performance-aware recovery
+        strategies, selecting optimal browsers for specific model types based on
+        historical performance data.
+        
         Args:
             connection: The BrowserConnection to recover
             retry_attempts: Number of retry attempts per strategy
             timeout: Timeout in seconds for each recovery attempt
+            model_type: Type of model being run ('text', 'vision', 'audio', etc.)
+            model_id: Specific model ID for performance tracking
             
         Returns:
             Tuple[bool, str]: (success, recovery_method_used)
@@ -251,6 +272,59 @@ class ResourcePoolErrorRecovery:
             # If no recovery method succeeded, mark as failed
             logger.error(f"All recovery strategies failed for connection {connection.connection_id}")
             
+            # Check if we should try performance-based browser switch
+            if model_type and all([
+                hasattr(connection, 'browser_type'),
+                hasattr(connection, 'resource_pool'),
+                hasattr(connection.resource_pool, 'create_connection')
+            ]):
+                try:
+                    # Get current browser type
+                    current_browser = connection.browser_type
+                    
+                    # Get optimal browser for this model type from performance history
+                    optimal_browser = cls.get_optimal_browser_for_model(model_type)
+                    
+                    # If optimal browser is different from current, try to use it
+                    if optimal_browser != current_browser:
+                        logger.info(f"Performance-based recovery: Switching from {current_browser} to {optimal_browser} for {model_type}")
+                        
+                        # Create a new connection with optimal browser
+                        new_connection = await connection.resource_pool.create_connection(
+                            browser_type=optimal_browser,
+                            headless=getattr(connection, 'headless', True)
+                        )
+                        
+                        if new_connection:
+                            # Check if new connection is healthy
+                            if hasattr(new_connection, 'browser_automation') and new_connection.browser_automation:
+                                capabilities = await new_connection.browser_automation.websocket_bridge.get_browser_capabilities(
+                                    retry_attempts=1
+                                )
+                                
+                                if capabilities:
+                                    logger.info(f"Performance-based browser switch successful: {current_browser} -> {optimal_browser}")
+                                    
+                                    # Add recovery flag to telemetry
+                                    new_connection.recovery_from = connection.connection_id
+                                    
+                                    # Track metrics for successful recovery
+                                    if model_id:
+                                        cls.track_model_performance(
+                                            model_id, 
+                                            optimal_browser,
+                                            {
+                                                'success': True,
+                                                'recovery_success': True,
+                                                'latency_ms': 0  # Will be updated during next operation
+                                            }
+                                        )
+                                    
+                                    return True, "performance_based_browser_switch"
+                        
+                except Exception as e:
+                    logger.warning(f"Performance-based browser switch failed: {e}")
+            
             # Update connection status
             if hasattr(connection, 'status'):
                 connection.status = "error"
@@ -264,6 +338,19 @@ class ResourcePoolErrorRecovery:
                 if hasattr(connection, 'circuit_last_failure_time'):
                     connection.circuit_last_failure_time = time.time()
                 logger.info(f"Opened circuit breaker for {connection.connection_id} after failed recovery")
+            
+            # Track metrics for failed recovery if model_id provided
+            if model_id:
+                browser_type = getattr(connection, 'browser_type', 'unknown')
+                cls.track_model_performance(
+                    model_id,
+                    browser_type,
+                    {
+                        'success': False,
+                        'recovery_success': False,
+                        'error': 'recovery_failed'
+                    }
+                )
             
             return False, recovery_method
             
@@ -280,8 +367,174 @@ class ResourcePoolErrorRecovery:
                 
             return False, "error"
     
-    @staticmethod
-    def export_telemetry(resource_pool, include_connections=False, include_models=False):
+    @classmethod
+    def track_model_performance(cls, model_id, browser_type, metrics):
+        """
+        Track performance metrics for a specific model/browser combination.
+        
+        This method accumulates performance data to enable intelligent
+        load balancing and browser selection based on historical performance.
+        
+        Args:
+            model_id: Model identifier (e.g., 'bert-base-uncased', 'vision:vit-base')
+            browser_type: Browser used ('chrome', 'firefox', 'edge', 'safari')
+            metrics: Dictionary of performance metrics (latency, success, etc.)
+        """
+        # Extract model type from model_id
+        if ':' in model_id:
+            model_type = model_id.split(':', 1)[0]
+        else:
+            # Try to identify model type from name
+            model_id_lower = model_id.lower()
+            if any(text in model_id_lower for text in ['bert', 't5', 'gpt', 'llama']):
+                model_type = 'text'
+            elif any(vision in model_id_lower for vision in ['vit', 'clip', 'resnet']):
+                model_type = 'vision'
+            elif any(audio in model_id_lower for audio in ['whisper', 'wav2vec', 'clap']):
+                model_type = 'audio'
+            else:
+                model_type = 'unknown'
+        
+        # Initialize model type if not exists
+        if model_type not in cls._performance_history['models']:
+            cls._performance_history['models'][model_type] = {}
+        
+        # Initialize browser data if not exists for this model type
+        if browser_type not in cls._performance_history['models'][model_type]:
+            cls._performance_history['models'][model_type][browser_type] = {
+                'success_count': 0,
+                'error_count': 0,
+                'total_latency': 0,
+                'inference_count': 0,
+                'average_latency': 0,
+                'success_rate': 0,
+            }
+        
+        # Update model-specific metrics
+        browser_data = cls._performance_history['models'][model_type][browser_type]
+        
+        # Increment success or error count
+        if metrics.get('success', True):
+            browser_data['success_count'] += 1
+        else:
+            browser_data['error_count'] += 1
+        
+        # Update latency statistics if available
+        if 'latency_ms' in metrics:
+            browser_data['total_latency'] += metrics['latency_ms']
+            browser_data['inference_count'] += 1
+            browser_data['average_latency'] = (
+                browser_data['total_latency'] / browser_data['inference_count']
+                if browser_data['inference_count'] > 0 else 0
+            )
+        
+        # Update success rate
+        total_attempts = browser_data['success_count'] + browser_data['error_count']
+        browser_data['success_rate'] = (
+            browser_data['success_count'] / total_attempts
+            if total_attempts > 0 else 0
+        )
+        
+        # Update global browser metrics
+        cls._update_browser_metrics(browser_type, metrics)
+        
+        logger.debug(f"Tracked performance for {model_type} on {browser_type}: "
+                    f"Success rate {browser_data['success_rate']:.2f}, "
+                    f"Avg latency {browser_data['average_latency']:.2f}ms")
+    
+    @classmethod
+    def _update_browser_metrics(cls, browser_type, metrics):
+        """Update global browser performance metrics."""
+        if browser_type not in cls._performance_history['browsers']:
+            cls._performance_history['browsers'][browser_type] = {
+                'success_rate': 0.9,  # Default values 
+                'avg_latency': 100,
+                'reliability': 0.9,
+                'samples': 0
+            }
+        
+        browser_metrics = cls._performance_history['browsers'][browser_type]
+        
+        # Weighted update of browser metrics
+        sample_weight = min(browser_metrics['samples'], 100) / 100  # Cap influence of history
+        new_weight = 1 - sample_weight
+        
+        # Update success rate
+        if 'success' in metrics:
+            success_value = 1.0 if metrics['success'] else 0.0
+            browser_metrics['success_rate'] = (
+                browser_metrics['success_rate'] * sample_weight + 
+                success_value * new_weight
+            )
+        
+        # Update average latency
+        if 'latency_ms' in metrics:
+            browser_metrics['avg_latency'] = (
+                browser_metrics['avg_latency'] * sample_weight +
+                metrics['latency_ms'] * new_weight
+            )
+        
+        # Update reliability metric (recovery success rate)
+        if 'recovery_success' in metrics:
+            recovery_value = 1.0 if metrics['recovery_success'] else 0.0
+            browser_metrics['reliability'] = (
+                browser_metrics['reliability'] * sample_weight +
+                recovery_value * new_weight
+            )
+        
+        # Increment sample count
+        browser_metrics['samples'] += 1
+    
+    @classmethod
+    def get_optimal_browser_for_model(cls, model_type):
+        """
+        Get the optimal browser for a specific model type based on performance history.
+        
+        Args:
+            model_type: Type of model ('text', 'vision', 'audio', etc.)
+            
+        Returns:
+            String: Name of optimal browser ('chrome', 'firefox', 'edge', etc.)
+        """
+        # Default browser preferences (fallback if no history)
+        default_preferences = {
+            'text': 'edge',      # Edge has good WebNN support for text models
+            'vision': 'chrome',  # Chrome has good support for vision models
+            'audio': 'firefox',  # Firefox has optimized compute shaders for audio
+            'multimodal': 'chrome'  # Chrome is good all-around for multimodal
+        }
+        
+        # If no history for this model type, return default
+        if (model_type not in cls._performance_history['models'] or
+            not cls._performance_history['models'][model_type]):
+            return default_preferences.get(model_type, 'chrome')
+        
+        # Get performance data for this model type
+        model_data = cls._performance_history['models'][model_type]
+        
+        # Find the browser with the best performance
+        best_browser = None
+        best_score = -1
+        
+        for browser, metrics in model_data.items():
+            # Calculate a combined score based on success rate and latency
+            # We normalize latency to 0-1 range assuming 200ms as upper bound
+            latency_score = max(0, 1 - metrics['average_latency'] / 200) if metrics['average_latency'] > 0 else 0.5
+            success_score = metrics['success_rate']
+            
+            # Combine scores (70% weight on success rate, 30% on latency)
+            combined_score = 0.7 * success_score + 0.3 * latency_score
+            
+            # Update best browser if this one has a better score
+            if combined_score > best_score:
+                best_score = combined_score
+                best_browser = browser
+        
+        # Return best browser or default if none found
+        return best_browser or default_preferences.get(model_type, 'chrome')
+    
+    @classmethod
+    def export_telemetry(cls, resource_pool, include_connections=False, include_models=False):
         """
         Export comprehensive telemetry data from the resource pool.
         
@@ -493,9 +746,101 @@ class ResourcePoolErrorRecovery:
         # Add resource metrics if available
         if hasattr(resource_pool, 'resource_metrics'):
             telemetry['resource_metrics'] = resource_pool.resource_metrics
+            
+        # Add performance history data and analysis
+        telemetry['performance_history'] = {
+            'browser_performance': cls._performance_history['browsers'],
+        }
+        
+        # Include model type performance data if requested
+        if include_models:
+            telemetry['performance_history']['model_type_stats'] = cls._performance_history['models']
+            
+            # Add performance trend analysis
+            telemetry['performance_analysis'] = cls.analyze_performance_trends()
         
         return telemetry
     
+    @classmethod
+    def analyze_performance_trends(cls):
+        """
+        Analyze performance trends to provide optimized browser allocation guidance.
+        
+        This method analyzes accumulated performance data to identify trends
+        and provide recommendations for optimizing browser allocation.
+        
+        Returns:
+            Dict: Performance analysis and recommendations
+        """
+        analysis = {
+            'browser_performance': {},
+            'model_type_affinities': {},
+            'recommendations': {}
+        }
+        
+        # Analyze overall browser performance
+        for browser, metrics in cls._performance_history['browsers'].items():
+            analysis['browser_performance'][browser] = {
+                'success_rate': round(metrics['success_rate'] * 100, 1),
+                'avg_latency_ms': round(metrics['avg_latency'], 1),
+                'reliability': round(metrics['reliability'] * 100, 1),
+                'samples': metrics['samples'],
+                'overall_score': round((0.6 * metrics['success_rate'] + 
+                                     0.2 * (1 - metrics['avg_latency'] / 200) +
+                                     0.2 * metrics['reliability']) * 100, 1)
+            }
+        
+        # Analyze model type affinities (which browser works best for which model types)
+        for model_type, browser_data in cls._performance_history['models'].items():
+            browser_scores = {}
+            
+            for browser, metrics in browser_data.items():
+                # Skip browsers with too few samples
+                if metrics['inference_count'] < 5:
+                    continue
+                
+                # Calculate score (weighted mix of success rate and latency)
+                latency_factor = max(0, 1 - metrics['average_latency'] / 200) if metrics['average_latency'] > 0 else 0.5
+                browser_scores[browser] = {
+                    'success_rate': round(metrics['success_rate'] * 100, 1),
+                    'avg_latency_ms': round(metrics['average_latency'], 1),
+                    'inference_count': metrics['inference_count'],
+                    'score': round((0.7 * metrics['success_rate'] + 0.3 * latency_factor) * 100, 1)
+                }
+            
+            # Find the best browser for this model type
+            if browser_scores:
+                best_browser = max(browser_scores.items(), key=lambda x: x[1]['score'])[0]
+                analysis['model_type_affinities'][model_type] = {
+                    'optimal_browser': best_browser,
+                    'scores': browser_scores
+                }
+                
+                # Add recommendation if we have a clear winner (>5% better than second best)
+                if len(browser_scores) > 1:
+                    scores = [(browser, data['score']) for browser, data in browser_scores.items()]
+                    scores.sort(key=lambda x: x[1], reverse=True)
+                    if scores[0][1] > scores[1][1] + 5:  # Best is at least 5% better
+                        analysis['recommendations'][model_type] = {
+                            'recommendation': f"Use {best_browser} for {model_type} models",
+                            'improvement': f"{round(scores[0][1] - scores[1][1], 1)}% better than {scores[1][0]}"
+                        }
+        
+        # Add general recommendations based on analysis
+        if not analysis['recommendations']:
+            # General recommendations based on browser overall performance
+            browser_ranks = [(browser, data['overall_score']) 
+                           for browser, data in analysis['browser_performance'].items()]
+            browser_ranks.sort(key=lambda x: x[1], reverse=True)
+            
+            if browser_ranks:
+                analysis['recommendations']['general'] = {
+                    'recommendation': f"For most workloads, prefer {browser_ranks[0][0]}",
+                    'details': f"Overall performance score: {browser_ranks[0][1]}%"
+                }
+        
+        return analysis
+        
     @staticmethod
     def check_circuit_breaker(connection, model_id=None):
         """

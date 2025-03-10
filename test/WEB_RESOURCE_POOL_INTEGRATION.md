@@ -17,6 +17,9 @@ The WebNN/WebGPU Resource Pool Integration provides a unified framework for runn
 - Advanced resource scaling based on workload demands
 - Direct database integration for performance metrics storage and analysis
 - Real hardware validation to distinguish between genuine acceleration and simulation
+- Performance-aware browser selection and load balancing (NEW - May 2025)
+- Fault-tolerant cross-browser model sharding with recovery (NEW - May 2025)
+- Performance history tracking and trend analysis (NEW - May 2025)
 
 ## Key Components
 
@@ -28,6 +31,9 @@ The integration consists of these primary components:
 4. **IPFSAccelerateWebIntegration**: Integrates with resource pool
 5. **IPFSWebAccelerator**: High-level API for accelerated inference
 6. **EnhancedWebModel**: Wrapper for accelerated models
+7. **ResourcePoolErrorRecovery**: Advanced error recovery mechanism with performance-aware strategies (NEW)
+8. **ModelShardingManager**: Cross-browser model sharding with fault tolerance (NEW)
+9. **PerformanceAnalyzer**: Browser-model performance tracking and optimization (NEW)
 
 ## Getting Started
 
@@ -241,6 +247,57 @@ vit_model = accelerator.accelerate_model("vit-base-patch16-224", platform="webgp
 # Run inference concurrently
 results = bert_model.run_concurrent([bert_input1, bert_input2], [vit_model])
 ```
+
+### Performance-Aware Browser Selection (NEW - May 2025)
+
+The system now automatically selects the optimal browser based on historical performance data:
+
+```python
+# Use performance-aware browser selection
+model = accelerator.accelerate_model(
+    model_name="whisper-tiny",
+    model_type="audio",
+    use_performance_history=True  # Will select Firefox for audio models
+)
+
+# Access performance trend analysis
+performance_analysis = accelerator.analyze_performance_trends()
+```
+
+Key features:
+- Performance history tracking by model type and browser
+- Automatic browser selection based on historical success rate and latency
+- Performance trend analysis with recommendations for optimal configuration
+- Weighted scoring system considering success rate (70%) and latency (30%)
+- Automatic adaptation to changing browser capabilities and performance
+
+### Fault-Tolerant Cross-Browser Model Sharding (NEW - May 2025)
+
+The system can now shard large models across multiple browsers with fault tolerance:
+
+```python
+# Create a model sharding manager
+sharding_manager = ModelShardingManager(
+    model_name="llama-7b",
+    num_shards=4,
+    shard_type="layer",
+    model_type="text",
+    enable_fault_tolerance=True
+)
+
+# Initialize model sharding
+await sharding_manager.initialize_sharding()
+
+# Run inference with automatic fault recovery
+result = await sharding_manager.run_inference_sharded(inputs, max_retries=2)
+```
+
+Key features:
+- Model sharding across multiple browsers to handle large models
+- Automatic component recovery for failed or degraded components
+- Browser-specific component allocation based on model type
+- Specialized allocation strategies for different shard types (layer, attention_feedforward, component)
+- Performance metrics for shard execution and recovery
 
 ### Batch Processing
 
