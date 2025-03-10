@@ -20,15 +20,41 @@ import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 
+# Try to import the dependency management framework
 try:
+    sys.path.append(str(Path(__file__).parent.parent.parent))
+    from fixed_web_platform.unified_framework.dependency_management import (
+        global_dependency_manager, require_dependencies
+    )
+    
+    # Check core dependencies using the dependency manager
+    for dep in ["duckdb", "pandas", "pyarrow"]:
+        if not global_dependency_manager.check_optional_dependency(dep):
+            # Get installation instructions
+            install_instructions = global_dependency_manager.get_installation_instructions()
+            print(f"Error: Required packages not installed.\n{install_instructions}")
+            sys.exit(1)
+    
+    # Import the dependencies now that we've verified they are available
     import duckdb
     import pandas as pd
     import pyarrow as pa
     import pyarrow.parquet as pq
+    
+    HAS_DEPENDENCY_MANAGER = True
 except ImportError:
-    print("Error: Required packages not installed. Please install with:")
-    print("pip install duckdb pandas pyarrow")
-    sys.exit(1)
+    # Fallback to direct import checking
+    try:
+        import duckdb
+        import pandas as pd
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        print("Error: Required packages not installed. Please install with:")
+        print("pip install duckdb pandas pyarrow")
+        sys.exit(1)
+    
+    HAS_DEPENDENCY_MANAGER = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,

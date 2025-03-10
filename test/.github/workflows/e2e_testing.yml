@@ -1,0 +1,284 @@
+name: End-to-End Tests
+
+on:
+  # Run on schedule (weekly)
+  schedule:
+    - cron: '0 0 * * 0'  # Run at midnight UTC every Sunday
+  
+  # Run on push to main branch for relevant file changes
+  push:
+    branches:
+      - main
+    paths:
+      - 'test/generators/runners/end_to_end/**'
+      - 'test/generators/templates/**'
+      - 'test/generators/skill_generators/**'
+      - 'test/generators/test_generators/**'
+      - 'test/.github/workflows/e2e_testing.yml'
+  
+  # Run on pull request to main branch for relevant file changes
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'test/generators/runners/end_to_end/**'
+      - 'test/generators/templates/**'
+      - 'test/generators/skill_generators/**'
+      - 'test/generators/test_generators/**'
+  
+  # Allow manual trigger with parameters
+  workflow_dispatch:
+    inputs:
+      model_family:
+        description: 'Model family to test (text-embedding, text-generation, vision, audio, multimodal)'
+        required: false
+        type: choice
+        options:
+          - text-embedding
+          - text-generation
+          - vision
+          - audio
+          - multimodal
+          - all
+        default: 'text-embedding'
+      hardware:
+        description: 'Hardware platforms to test (comma-separated)'
+        required: false
+        default: 'cpu,cuda'
+      test_type:
+        description: 'Test type (mock or real)'
+        required: false
+        type: choice
+        options:
+          - mock
+          - real
+        default: 'mock'
+      distributed:
+        description: 'Use distributed testing'
+        required: false
+        type: boolean
+        default: true
+      update_expected:
+        description: 'Update expected results'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  BENCHMARK_DB_PATH: ./benchmark_db.duckdb
+  PYTHONPATH: ${{ github.workspace }}
+
+jobs:
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.10']
+        test-scope:
+          - name: 'text-embedding'
+            model_family: 'text-embedding'
+            hardware: 'cpu,cuda'
+            test_type: 'mock'
+          - name: 'vision'
+            model_family: 'vision'
+            hardware: 'cpu,cuda'
+            test_type: 'mock'
+          - name: 'audio'
+            model_family: 'audio'
+            hardware: 'cpu'
+            test_type: 'mock'
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install duckdb pandas numpy torch torchvision torchaudio transformers pytest psutil
+          pip install -r requirements_api.txt
+      
+      - name: Create directories
+        run: |
+          mkdir -p test/generators/expected_results
+          mkdir -p test/generators/collected_results
+          mkdir -p test/generators/model_documentation
+          mkdir -p test/generators/reports
+      
+      - name: Download benchmark database
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark_db
+          path: .
+        continue-on-error: true
+      
+      - name: Run end-to-end tests
+        run: |
+          # Determine test parameters
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Use workflow dispatch inputs
+            MODEL_FAMILY="${{ github.event.inputs.model_family }}"
+            HARDWARE="${{ github.event.inputs.hardware }}"
+            TEST_TYPE="${{ github.event.inputs.test_type }}"
+            DISTRIBUTED="${{ github.event.inputs.distributed }}"
+            UPDATE_EXPECTED="${{ github.event.inputs.update_expected }}"
+          else
+            # Use matrix values
+            MODEL_FAMILY="${{ matrix.test-scope.model_family }}"
+            HARDWARE="${{ matrix.test-scope.hardware }}"
+            TEST_TYPE="${{ matrix.test-scope.test_type }}"
+            DISTRIBUTED="true"
+            UPDATE_EXPECTED="false"
+          fi
+          
+          # Convert 'all' to actual parameter
+          if [ "$MODEL_FAMILY" == "all" ]; then
+            MODEL_FAMILY_PARAM="--all-models"
+          else
+            MODEL_FAMILY_PARAM="--model-family $MODEL_FAMILY"
+          fi
+          
+          # Handle distributed flag
+          if [ "$DISTRIBUTED" == "true" ]; then
+            DISTRIBUTED_PARAM="--distributed"
+          else
+            DISTRIBUTED_PARAM=""
+          fi
+          
+          # Handle update expected flag
+          if [ "$UPDATE_EXPECTED" == "true" ]; then
+            UPDATE_EXPECTED_PARAM="--update-expected"
+          else
+            UPDATE_EXPECTED_PARAM=""
+          fi
+          
+          # Run different test types based on TEST_TYPE
+          if [ "$TEST_TYPE" == "real" ]; then
+            # Run real model tests
+            echo "Running real model tests with: $MODEL_FAMILY_PARAM --hardware $HARDWARE $DISTRIBUTED_PARAM $UPDATE_EXPECTED_PARAM"
+            python test/generators/runners/end_to_end/run_real_model_tests.py \
+              $MODEL_FAMILY_PARAM \
+              --hardware $HARDWARE \
+              $DISTRIBUTED_PARAM \
+              $UPDATE_EXPECTED_PARAM \
+              --use-db \
+              --generate-report
+          else
+            # Run regular end-to-end tests with mock models
+            echo "Running mock model tests with: $MODEL_FAMILY_PARAM --hardware $HARDWARE $DISTRIBUTED_PARAM $UPDATE_EXPECTED_PARAM"
+            python test/generators/runners/end_to_end/run_e2e_tests.py \
+              $MODEL_FAMILY_PARAM \
+              --hardware $HARDWARE \
+              $DISTRIBUTED_PARAM \
+              $UPDATE_EXPECTED_PARAM \
+              --use-db \
+              --ci \
+              --simulation-aware \
+              --workers 4
+          fi
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: e2e-test-results-${{ matrix.test-scope.name }}
+          path: |
+            test/generators/collected_results/summary/*.json
+            test/generators/collected_results/summary/*.md
+            test/generators/reports/*
+          retention-days: 30
+      
+      - name: Upload benchmark database
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark_db
+          path: benchmark_db.duckdb
+          retention-days: 90
+  
+  analyze-results:
+    name: Analyze Test Results
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install duckdb pandas numpy matplotlib
+      
+      - name: Download all test results
+        uses: actions/download-artifact@v3
+        with:
+          path: all-results
+      
+      - name: Generate enhanced test reports
+        run: |
+          pip install duckdb pandas numpy matplotlib
+          
+          # Create output directory for reports
+          mkdir -p reports
+          
+          # Run enhanced CI/CD report generator
+          python test/generators/runners/end_to_end/enhanced_ci_cd_reports.py \
+            --input-dir all-results \
+            --output-dir reports \
+            --format html \
+            --historical \
+            --ci \
+            --github-pages
+      
+      - name: Create badges
+        run: |
+          # Generate badge-only reports
+          python test/generators/runners/end_to_end/enhanced_ci_cd_reports.py \
+            --input-dir all-results \
+            --output-dir reports \
+            --badge-only
+      
+      - name: Upload reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: e2e-test-enhanced-reports
+          path: reports
+          retention-days: 90
+      
+      - name: Setup Pages
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        uses: actions/configure-pages@v3
+      
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: reports
+      
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        id: deployment
+        uses: actions/deploy-pages@v2
+      
+      - name: Update status badges
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v3
+        with:
+          name: status-badges
+          path: reports/badges
+          retention-days: 90

@@ -4,6 +4,20 @@ import logging
 import platform
 import re
 from datetime import datetime
+import importlib.util
+from typing import Dict, Any, Optional, List, Union, Callable
+
+# Check for availability of the WebNN/WebGPU Resource Pool Bridge with Recovery
+WEBNN_WEBGPU_RESOURCE_POOL_AVAILABLE = False
+try:
+    # Check if the module exists first
+    if importlib.util.find_spec("fixed_web_platform.resource_pool_bridge_integration") is not None:
+        from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+        WEBNN_WEBGPU_RESOURCE_POOL_AVAILABLE = True
+except ImportError as e:
+    logging.getLogger("ResourcePool").debug(f"WebNN/WebGPU Resource Pool not available: {e}")
+except Exception as e:
+    logging.getLogger("ResourcePool").debug(f"Error importing WebNN/WebGPU Resource Pool: {e}")
 
 class ResourcePool:
     """
@@ -19,6 +33,7 @@ class ResourcePool:
         _lock (threading.RLock): Lock for thread safety
         _stats (dict): Usage statistics
         low_memory_mode (bool): Whether to operate in low-memory mode
+        web_resource_pool: Optional WebNN/WebGPU resource pool integration
         """
     
     def __init__(self):
@@ -54,7 +69,36 @@ class ResourcePool:
             self.logger.warning(f"Low memory detected ({self.available_memory_mb:.2f} MB). Enabling low memory mode.")
             self.low_memory_mode = True
         
-        self.logger.info(f"ResourcePool initialized (low memory mode: {self.low_memory_mode}, available memory: {self.available_memory_mb} MB)")
+        # Initialize WebNN/WebGPU resource pool if available
+        self.web_resource_pool = None
+        self.web_resource_pool_initialized = False
+        if WEBNN_WEBGPU_RESOURCE_POOL_AVAILABLE:
+            # Check if we should initialize the web resource pool
+            init_web_pool = os.environ.get("INIT_WEB_RESOURCE_POOL", "1").lower() in ("1", "true", "yes")
+            if init_web_pool:
+                try:
+                    self.logger.info("Initializing WebNN/WebGPU Resource Pool with Recovery")
+                    self.web_resource_pool = ResourcePoolBridgeIntegrationWithRecovery(
+                        max_connections=2,  # Start with conservative connection count
+                        adaptive_scaling=True,  # Allow adaptive scaling
+                        enable_recovery=True,  # Enable recovery features
+                        max_retries=3,  # Retry operations up to 3 times
+                        fallback_to_simulation=True  # Allow fallback to simulation
+                    )
+                    
+                    # Initialize resource pool (may create browser connections)
+                    success = self.web_resource_pool.initialize()
+                    if success:
+                        self.logger.info("WebNN/WebGPU Resource Pool successfully initialized")
+                        self.web_resource_pool_initialized = True
+                    else:
+                        self.logger.warning("Failed to initialize WebNN/WebGPU Resource Pool")
+                except Exception as e:
+                    self.logger.error(f"Error initializing WebNN/WebGPU Resource Pool: {e}")
+            else:
+                self.logger.info("WebNN/WebGPU Resource Pool available but not auto-initialized (set INIT_WEB_RESOURCE_POOL=1 to enable)")
+        
+        self.logger.info(f"ResourcePool initialized (low memory mode: {self.low_memory_mode}, available memory: {self.available_memory_mb} MB, WebNN/WebGPU: {'available' if self.web_resource_pool_initialized else 'not available'})")
     
     def _detect_available_memory(self):
         """Detect available system memory in MB for better resource management"""
@@ -138,13 +182,25 @@ class ResourcePool:
     
     def get_model(self, model_type, model_name, constructor=None, hardware_preferences=None):
         """
-        Get or create a model from the pool with hardware awareness
+        Get or create a model from the pool with hardware awareness and WebNN/WebGPU support
+        
+        This enhanced implementation supports:
+        1. Standard hardware-aware model loading (CPU, CUDA, MPS, etc.)
+        2. WebNN/WebGPU browser-based acceleration if available
+        3. Automatic recovery from errors during model loading
+        4. Transparent fallback to simulation mode when hardware unavailable
         
         Args:
-            model_type (str): The type of model (e.g., 'bert', 't5')
+            model_type (str): The type of model (e.g., 'bert', 't5', 'audio', 'vision')
             model_name (str): The specific model name (e.g., 'bert-base-uncased')
             constructor (callable, optional): Function to create the model if not present
             hardware_preferences (dict, optional): Hardware preferences for model loading
+                Possible keys:
+                - device: Target device (cuda, cpu, mps, webgpu, webnn, etc.)
+                - priority_list: List of devices to try in order
+                - browser: For web platforms, specify browser (chrome, firefox, edge)
+                - precision: For quantization, specify bit precision (16, 8, 4)
+                - mixed_precision: Enable mixed precision (True/False)
             
         Returns:
             The requested model, or None if it couldn't be created
@@ -159,10 +215,47 @@ class ResourcePool:
                 self._stats["last_accessed"][key] = datetime.now().isoformat()
                 self.logger.debug(f"Model hit: {key}")
                 return self.models[key]
-            
-            # Model miss - need to create it
-            if constructor:
+                
+            # Check if we should use WebNN/WebGPU resource pool
+            should_use_web_pool = self._should_use_web_resource_pool(model_type, model_name, hardware_preferences)
+                
+            if should_use_web_pool and self.web_resource_pool_initialized:
                 self._stats["misses"] += 1
+                
+                try:
+                    self.logger.info(f"Loading model {key} using WebNN/WebGPU Resource Pool")
+                    start_time = datetime.now()
+                    
+                    # Use the web resource pool to get the model
+                    model = self.web_resource_pool.get_model(
+                        model_type=model_type,
+                        model_name=model_name,
+                        hardware_preferences=hardware_preferences
+                    )
+                    
+                    if model:
+                        load_time = (datetime.now() - start_time).total_seconds()
+                        
+                        # Store in cache
+                        self.models[key] = model
+                        self._stats["creation_timestamps"][key] = datetime.now().isoformat()
+                        self._stats["last_accessed"][key] = datetime.now().isoformat()
+                        
+                        platform = hardware_preferences.get("priority_list", ["unknown"])[0] if hardware_preferences else "unknown"
+                        self.logger.info(f"Model {key} loaded via WebNN/WebGPU Resource Pool ({platform}) in {load_time:.2f} seconds")
+                        
+                        return self.models[key]
+                    else:
+                        self.logger.warning(f"Failed to load model {key} via WebNN/WebGPU Resource Pool")
+                        # Continue to regular loading if web pool failed
+                except Exception as e:
+                    self.logger.error(f"Error loading model {key} via WebNN/WebGPU Resource Pool: {e}")
+                    # Continue to regular loading if web pool failed
+            
+            # Regular model loading path (if web pool not used or failed)
+            if constructor:
+                if key not in self._stats["misses"]:  # Avoid double counting if web pool failed
+                    self._stats["misses"] += 1
                 
                 # Check hardware compatibility if we're creating a new model
                 target_device = self._get_optimal_device(model_type, model_name, hardware_preferences)
@@ -214,6 +307,60 @@ class ResourcePool:
             else:
                 self.logger.warning(f"Model not found and no constructor provided: {key}")
                 return None
+                
+    def _should_use_web_resource_pool(self, model_type: str, model_name: str, 
+                                     hardware_preferences: Optional[Dict[str, Any]]) -> bool:
+        """
+        Determine if the WebNN/WebGPU resource pool should be used for model loading.
+        
+        Args:
+            model_type: Type of model
+            model_name: Name of model
+            hardware_preferences: Hardware preferences dict
+            
+        Returns:
+            True if WebNN/WebGPU resource pool should be used
+        """
+        # If web resource pool is not initialized, don't use it
+        if not self.web_resource_pool_initialized:
+            return False
+            
+        # If FORCE_WEB_RESOURCE_POOL is set, use it
+        force_web_pool = os.environ.get("FORCE_WEB_RESOURCE_POOL", "0").lower() in ("1", "true", "yes")
+        if force_web_pool:
+            self.logger.debug(f"Using WebNN/WebGPU Resource Pool for {model_type}:{model_name} due to FORCE_WEB_RESOURCE_POOL")
+            return True
+            
+        # Check hardware preferences
+        if hardware_preferences:
+            # If priority list contains webgpu or webnn, use web pool
+            if "priority_list" in hardware_preferences:
+                priorities = hardware_preferences["priority_list"]
+                if any(p in ["webgpu", "webnn"] for p in priorities):
+                    self.logger.debug(f"Using WebNN/WebGPU Resource Pool for {model_type}:{model_name} due to hardware priority list")
+                    return True
+                    
+            # If device is specified as webgpu or webnn, use web pool
+            if "device" in hardware_preferences:
+                device = hardware_preferences["device"]
+                if device in ["webgpu", "webnn"]:
+                    self.logger.debug(f"Using WebNN/WebGPU Resource Pool for {model_type}:{model_name} due to device preference")
+                    return True
+                    
+            # If platform is specified as webgpu or webnn, use web pool
+            if "platform" in hardware_preferences:
+                platform = hardware_preferences["platform"]
+                if platform in ["webgpu", "webnn"]:
+                    self.logger.debug(f"Using WebNN/WebGPU Resource Pool for {model_type}:{model_name} due to platform preference")
+                    return True
+                    
+            # If browser is specified, use web pool
+            if "browser" in hardware_preferences:
+                self.logger.debug(f"Using WebNN/WebGPU Resource Pool for {model_type}:{model_name} due to browser preference")
+                return True
+        
+        # Otherwise, don't use web pool by default
+        return False
                 
     def _get_optimal_device(self, model_type, model_name, hardware_preferences=None):
         """
@@ -570,8 +717,17 @@ class ResourcePool:
                 pass
             except Exception as e:
                 cuda_memory["error"] = str(e)
+                
+            # Get WebNN/WebGPU Resource Pool metrics if available
+            web_resource_pool_metrics = {}
+            if self.web_resource_pool_initialized and self.web_resource_pool:
+                try:
+                    web_resource_pool_metrics = self.web_resource_pool.get_metrics()
+                except Exception as e:
+                    web_resource_pool_metrics = {"error": str(e)}
             
-            return {
+            # Combined stats
+            stats = {
                 "hits": self._stats["hits"],
                 "misses": self._stats["misses"],
                 "total_requests": total_requests,
@@ -584,13 +740,89 @@ class ResourcePool:
                 "timestamp": datetime.now().isoformat(),
                 "low_memory_mode": self.low_memory_mode,
                 "system_memory": system_memory,
-                "cuda_memory": cuda_memory
+                "cuda_memory": cuda_memory,
+                "web_resource_pool": {
+                    "available": WEBNN_WEBGPU_RESOURCE_POOL_AVAILABLE,
+                    "initialized": self.web_resource_pool_initialized
+                }
             }
+            
+            # Add detailed web resource pool metrics if available
+            if web_resource_pool_metrics:
+                stats["web_resource_pool"]["metrics"] = web_resource_pool_metrics
+                
+                # Extract recovery statistics if available
+                if "recovery_stats" in web_resource_pool_metrics:
+                    stats["web_resource_pool"]["recovery_stats"] = web_resource_pool_metrics["recovery_stats"]
+                
+                # Extract browser connections if available
+                if "base_metrics" in web_resource_pool_metrics and "connections" in web_resource_pool_metrics["base_metrics"]:
+                    stats["web_resource_pool"]["connections"] = web_resource_pool_metrics["base_metrics"]["connections"]
+            
+            return stats
+    
+    def execute_concurrent(self, models_and_inputs):
+        """
+        Execute multiple models concurrently for efficient inference
+        
+        This method will use the WebNN/WebGPU Resource Pool for concurrent
+        execution when available and appropriate, otherwise falling back to
+        sequential execution.
+        
+        Args:
+            models_and_inputs: List of (model, inputs) tuples to execute concurrently
+            
+        Returns:
+            List of results in the same order as the input list
+        """
+        # If WebNN/WebGPU Resource Pool is available, use it
+        if self.web_resource_pool_initialized and hasattr(self.web_resource_pool, 'execute_concurrent'):
+            try:
+                # Check if any of the models are from the web resource pool
+                web_models = []
+                for model, inputs in models_and_inputs:
+                    # Check if model has model_id attribute (typical for WebNN/WebGPU models)
+                    if hasattr(model, 'model_id'):
+                        web_models.append((model.model_id, inputs))
+                
+                if web_models:
+                    self.logger.info(f"Executing {len(web_models)} models concurrently via WebNN/WebGPU Resource Pool")
+                    return self.web_resource_pool.execute_concurrent(web_models)
+            except Exception as e:
+                self.logger.error(f"Error executing models concurrently via WebNN/WebGPU Resource Pool: {e}")
+                # Continue to sequential execution if web pool failed
+        
+        # Sequential execution fallback
+        self.logger.info(f"Executing {len(models_and_inputs)} models sequentially")
+        results = []
+        for model, inputs in models_and_inputs:
+            try:
+                result = model(inputs)
+                results.append(result)
+            except Exception as e:
+                self.logger.error(f"Error executing model: {e}")
+                # Include error in results to maintain order
+                results.append({
+                    "success": False,
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                })
+        
+        return results
     
     def clear(self):
         """Clear all cached resources"""
         with self._lock:
-            # First try to clean up PyTorch resources properly
+            # First try to clean up WebNN/WebGPU resources if available
+            if self.web_resource_pool_initialized and self.web_resource_pool:
+                try:
+                    self.logger.info("Closing WebNN/WebGPU Resource Pool")
+                    self.web_resource_pool.close()
+                    self.web_resource_pool_initialized = False
+                except Exception as e:
+                    self.logger.error(f"Error closing WebNN/WebGPU Resource Pool: {e}")
+            
+            # Then clean up PyTorch resources
             try:
                 # Move models to CPU before deletion if possible
                 for key, model in self.models.items():

@@ -29,11 +29,10 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union, Callable, Any
 
-# Import unified error handling framework
+# Import unified error handling and dependency management frameworks
 try:
     from fixed_web_platform.unified_framework.error_handling import (
-        ErrorHandler, handle_errors, handle_async_errors, with_retry,
-        validate_dependencies, ErrorCategories
+        ErrorHandler, handle_errors, handle_async_errors, with_retry, ErrorCategories
     )
     HAS_ERROR_FRAMEWORK = True
 except ImportError:
@@ -42,51 +41,48 @@ except ImportError:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
 
-# Use the error framework's validate_dependencies if available, otherwise create a simple version
+# Set up logger if error framework is available
 if HAS_ERROR_FRAMEWORK:
     logger = logging.getLogger(__name__)
-    # We'll use the imported validate_dependencies decorator
-else:
-    # Simple dependency validation function if error framework not available
-    def validate_dependencies(*dependencies):
-        def decorator(func):
-            def wrapper(*args, **kwargs):
-                missing = []
-                for dep in dependencies:
-                    try:
-                        __import__(dep)
-                    except ImportError:
-                        missing.append(dep)
-                
-                if missing:
-                    logger.error(f"Missing required dependencies: {', '.join(missing)}")
-                    return None
-                return func(*args, **kwargs)
-            return wrapper
-        return decorator
 
-# Validate websockets dependency
-@validate_dependencies("websockets")
-def _check_websockets_dependency():
-    import websockets
-    from websockets.exceptions import (
-        ConnectionClosedError, 
-        ConnectionClosedOK, 
-        WebSocketException
+# Try to import unified dependency management
+try:
+    from fixed_web_platform.unified_framework.dependency_management import (
+        global_dependency_manager, require_dependencies
     )
-    return True
+    HAS_DEPENDENCY_MANAGER = True
+except ImportError:
+    HAS_DEPENDENCY_MANAGER = False
 
-# Check if websockets is available
-HAS_WEBSOCKETS = _check_websockets_dependency()
-if HAS_WEBSOCKETS:
-    import websockets
-    from websockets.exceptions import (
-        ConnectionClosedError, 
-        ConnectionClosedOK, 
-        WebSocketException
-    )
+# Check for websockets availability using dependency management if available
+if HAS_DEPENDENCY_MANAGER:
+    # Use the dependency manager to check websockets
+    HAS_WEBSOCKETS = global_dependency_manager.check_optional_dependency("websockets")
+    
+    if HAS_WEBSOCKETS:
+        import websockets
+        from websockets.exceptions import (
+            ConnectionClosedError, 
+            ConnectionClosedOK, 
+            WebSocketException
+        )
+    else:
+        # Get installation instructions from the dependency manager
+        install_instructions = global_dependency_manager.get_installation_instructions(["websockets"])
+        logger.error(f"websockets package is required. {install_instructions}")
 else:
-    logger.error("websockets package is required. Install with: pip install websockets")
+    # Fallback to direct import check if dependency manager is not available
+    try:
+        import websockets
+        from websockets.exceptions import (
+            ConnectionClosedError, 
+            ConnectionClosedOK, 
+            WebSocketException
+        )
+        HAS_WEBSOCKETS = True
+    except ImportError:
+        HAS_WEBSOCKETS = False
+        logger.error("websockets package is required. Install with: pip install websockets")
 
 class WebSocketBridge:
     """
@@ -209,16 +205,45 @@ class WebSocketBridge:
             self.connection = None
             self.connection_event.clear()
     
-    async def handle_message(self, message_data):
+    async def handle_message(self, message_data: str):
         """
         Process incoming WebSocket message.
         
         Args:
             message_data: Message data (raw string)
         """
+        # Input validation
+        if not message_data:
+            logger.warning("Received empty message, ignoring")
+            return
+            
+        # Use the new error handling framework if available
+        if HAS_ERROR_FRAMEWORK:
+            context = {
+                "action": "handle_message",
+                "message_length": len(message_data),
+                "message_preview": message_data[:50] + "..." if len(message_data) > 50 else message_data
+            }
+        
         try:
+            # Try to import our string utilities
+            try:
+                from fixed_web_platform.unified_framework.string_utils import fix_escapes
+                # Apply escape sequence fixes before parsing
+                message_data = fix_escapes(message_data)
+            except ImportError:
+                # Continue without fixing escapes
+                pass
+                
+            # Parse the message
             message = json.loads(message_data)
-            logger.debug(f"Received message: {message.get('type', 'unknown')}")
+            
+            # Validate minimal message structure
+            msg_type = message.get('type')
+            if not msg_type:
+                logger.warning(f"Message missing 'type' field: {message_data[:100]}")
+            else:
+                logger.debug(f"Received message: {msg_type}")
             
             # Add to message queue for processing
             await self.message_queue.put(message)
@@ -229,11 +254,29 @@ class WebSocketBridge:
                 # Store response and set event
                 self.response_data[msg_id] = message
                 self.response_events[msg_id].set()
+                logger.debug(f"Set event for message ID: {msg_id}")
                 
-        except json.JSONDecodeError:
-            logger.error(f"Failed to parse message as JSON: {message_data[:100]}")
+        except json.JSONDecodeError as e:
+            # Provide more context for JSON decode errors
+            error_context = {
+                "position": e.pos,
+                "line": e.lineno,
+                "column": e.colno,
+                "preview": message_data[max(0, e.pos-20):min(len(message_data), e.pos+20)] if e.pos else message_data[:100]
+            }
+            
+            if HAS_ERROR_FRAMEWORK:
+                error_handler = ErrorHandler()
+                error_handler.handle_error(e, {**context, **error_context})
+            else:
+                logger.error(f"Failed to parse message as JSON at position {e.pos}: {message_data[:100]}")
+                
         except Exception as e:
-            logger.error(f"Error handling message: {e}")
+            if HAS_ERROR_FRAMEWORK:
+                error_handler = ErrorHandler()
+                error_handler.handle_error(e, context)
+            else:
+                logger.error(f"Error handling message: {e}")
     
     async def process_message_queue(self):
         """Process messages from queue"""

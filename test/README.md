@@ -756,6 +756,40 @@ python generators/simple_model_test_generator.py --model llama-3-70b-instruct --
 
 ## Recent Improvements
 
+### May 2025 Enhancements
+
+1. **Comprehensive Error Handling Framework** - Major improvements to error handling system:
+   - Implemented standardized error handling across all components with consistent categorization
+   - Enhanced timeout handling for browser launch, WebSocket connection, and inference requests
+   - Added detailed error diagnostics with recovery suggestions for all error types
+   - Implemented resource cleanup tracking with comprehensive status reporting
+   - Added circuit breaker pattern with graceful degradation for connection health management
+   - Improved cross-browser error handling with browser-specific error diagnostics
+   - Enhanced WebSocket bridge reliability with automatic reconnection
+   - Added comprehensive connection monitoring and health metrics
+   - Implemented concurrent execution error handling with per-model timeouts
+   - Added support for mixed precision error handling with fallback mechanisms
+   - Enhanced tensor sharing validation with comprehensive error checking
+   - Added high-performance memory usage monitoring during inference
+   - Implemented detailed WebNN and WebGPU error categorization
+   - Added browser status diagnostics for critical failures
+   - Enhanced retry logic with configurable backoff strategies
+   - Implemented comprehensive documentation for error handling strategies
+
+2. **Resource Pool Bridge Improvements** - Enhanced WebNN/WebGPU resource management:
+   - Added comprehensive timeout handling for browser operations
+   - Implemented detailed connection tracking with diagnostic information
+   - Added advanced error categorization and recovery strategies for WebNN/WebGPU
+   - Enhanced tensor sharing with comprehensive validation and error handling
+   - Implemented graceful degradation with simulation fallbacks when needed
+   - Added configurable timeout controls for all async operations
+   - Enhanced resource cleanup with forced cleanup for critical issues
+   - Implemented connection health monitoring with automatic recovery
+   - Added performance tracking with detailed metrics and error correlation
+   - Improved cross-model execution with error isolation between models
+   - Implemented process memory monitoring for resource-constrained environments
+   - Added browser compatibility diagnostics for error root cause analysis
+
 ### April 2025 Enhancements
 
 1. **Enhanced Benchmark Timing System** - Major improvements to the benchmark system:

@@ -212,14 +212,35 @@ class StaleReportCleaner:
                 warning = self.warning_templates["html"].format(date=date_str)
                 
                 if "<body" in content:
+                    # Use raw string for regex pattern to avoid escaping issues
+                    body_tag_pattern = r"<body[^>]*>"
+                    
+                    # Try to import string utils for better regex handling
+                    try:
+                        sys.path.append(str(Path(__file__).parent.parent.parent))
+                        from fixed_web_platform.unified_framework.string_utils import is_valid_regex
+                        
+                        # Validate regex pattern
+                        if not is_valid_regex(body_tag_pattern):
+                            logger.error(f"Invalid regex pattern: {body_tag_pattern}")
+                            return False
+                    except ImportError:
+                        # Continue without pattern validation
+                        pass
+                    
                     # Find where body tag ends
-                    body_end_match = re.search(r"<body[^>]*>", content)
+                    body_end_match = re.search(body_tag_pattern, content)
                     if body_end_match:
                         body_end = body_end_match.end()
                         new_content = content[:body_end] + warning + content[body_end:]
                         
-                        with open(file_path, 'w', encoding='utf-8') as f:
-                            f.write(new_content)
+                        # Use proper error handling for file operations
+                        try:
+                            with open(file_path, 'w', encoding='utf-8') as f:
+                                f.write(new_content)
+                        except (IOError, PermissionError) as e:
+                            logger.error(f"Error writing to file {file_path}: {e}")
+                            return False
                     else:
                         logger.warning(f"Could not find where body tag ends in HTML file: {file_path}")
                         return False

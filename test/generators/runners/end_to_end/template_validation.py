@@ -246,16 +246,37 @@ class ModelValidator:
 
 
 class ResultComparer:
-    """Compares test results against expected values with tolerance for numeric values."""
+    """
+    Enhanced result comparison tool with support for tensor data, specialized numeric comparison,
+    and configurable tolerance levels for different data types.
+    """
     
-    def __init__(self, tolerance: float = 0.1):
+    def __init__(self, 
+                 tolerance: float = 0.1, 
+                 tensor_rtol: float = 1e-5, 
+                 tensor_atol: float = 1e-5,
+                 tensor_comparison_mode: str = 'auto'):
         """
-        Initialize the result comparer.
+        Initialize the result comparer with enhanced capabilities.
         
         Args:
-            tolerance: Tolerance for numeric comparisons (as a percentage)
+            tolerance: General tolerance for numeric comparisons (as a percentage)
+            tensor_rtol: Relative tolerance for tensor comparison
+            tensor_atol: Absolute tolerance for tensor comparison
+            tensor_comparison_mode: Mode for tensor comparison ('auto', 'exact', 'statistical')
         """
         self.tolerance = tolerance
+        self.tensor_rtol = tensor_rtol
+        self.tensor_atol = tensor_atol
+        self.tensor_comparison_mode = tensor_comparison_mode
+        
+        # Initialize numpy if available for better tensor comparison
+        self.has_numpy = True
+        try:
+            import numpy as np
+            self.np = np
+        except ImportError:
+            self.has_numpy = False
     
     def compare(self, expected: Dict[str, Any], actual: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -399,20 +420,96 @@ class ResultComparer:
             logger.error(f"Error comparing results with file {expected_path}: {str(e)}")
             return {"matches": False, "reason": f"Comparison error: {str(e)}"}
     
+    def statistical_tensor_compare(self, expected_data: List[float], actual_data: List[float]) -> Dict[str, Any]:
+        """
+        Perform statistical comparison of tensor-like data.
+        
+        Args:
+            expected_data: Expected tensor data as flat list
+            actual_data: Actual tensor data as flat list
+            
+        Returns:
+            Dictionary with statistical comparison results
+        """
+        if not self.has_numpy:
+            return {
+                "matches": False, 
+                "reason": "statistical comparison requires numpy"
+            }
+            
+        try:
+            # Convert to numpy arrays
+            exp_arr = self.np.array(expected_data, dtype=float)
+            act_arr = self.np.array(actual_data, dtype=float)
+            
+            # Basic statistics
+            exp_mean = float(self.np.mean(exp_arr))
+            act_mean = float(self.np.mean(act_arr))
+            exp_std = float(self.np.std(exp_arr))
+            act_std = float(self.np.std(act_arr))
+            
+            # Calculate relative differences in statistics
+            mean_rel_diff = abs(exp_mean - act_mean) / (abs(exp_mean) if abs(exp_mean) > 1e-10 else 1.0)
+            std_rel_diff = abs(exp_std - act_std) / (abs(exp_std) if abs(exp_std) > 1e-10 else 1.0)
+            
+            # Check if distributions are similar enough
+            stats_match = mean_rel_diff <= self.tolerance and std_rel_diff <= self.tolerance
+            
+            # Additional metrics for large tensors
+            if len(exp_arr) > 100:
+                # Percentiles
+                exp_p50 = float(self.np.percentile(exp_arr, 50))
+                act_p50 = float(self.np.percentile(act_arr, 50))
+                exp_p95 = float(self.np.percentile(exp_arr, 95))
+                act_p95 = float(self.np.percentile(act_arr, 95))
+                
+                # Check percentile differences
+                p50_rel_diff = abs(exp_p50 - act_p50) / (abs(exp_p50) if abs(exp_p50) > 1e-10 else 1.0)
+                p95_rel_diff = abs(exp_p95 - act_p95) / (abs(exp_p95) if abs(exp_p95) > 1e-10 else 1.0)
+                
+                # Update match status with percentile comparison
+                stats_match = stats_match and p50_rel_diff <= self.tolerance and p95_rel_diff <= self.tolerance
+                
+                return {
+                    "matches": stats_match,
+                    "statistics": {
+                        "mean": {"expected": exp_mean, "actual": act_mean, "rel_diff": mean_rel_diff},
+                        "std": {"expected": exp_std, "actual": act_std, "rel_diff": std_rel_diff},
+                        "p50": {"expected": exp_p50, "actual": act_p50, "rel_diff": p50_rel_diff},
+                        "p95": {"expected": exp_p95, "actual": act_p95, "rel_diff": p95_rel_diff}
+                    }
+                }
+            else:
+                return {
+                    "matches": stats_match,
+                    "statistics": {
+                        "mean": {"expected": exp_mean, "actual": act_mean, "rel_diff": mean_rel_diff},
+                        "std": {"expected": exp_std, "actual": act_std, "rel_diff": std_rel_diff}
+                    }
+                }
+        except Exception as e:
+            return {
+                "matches": False,
+                "reason": f"statistical comparison error: {str(e)}"
+            }
+            
     def deep_compare_tensors(self, expected: Dict[str, Any], actual: Dict[str, Any], 
-                            rtol: float = 1e-5, atol: float = 1e-5) -> Dict[str, Any]:
+                            rtol: float = None, atol: float = None) -> Dict[str, Any]:
         """
         Special comparison for tensor outputs with more advanced tolerance settings.
         
         Args:
             expected: Expected result dictionary with tensor data
             actual: Actual result dictionary with tensor data
-            rtol: Relative tolerance for tensor comparison
-            atol: Absolute tolerance for tensor comparison
+            rtol: Relative tolerance for tensor comparison (overrides default)
+            atol: Absolute tolerance for tensor comparison (overrides default)
             
         Returns:
             Dictionary with comparison results
         """
+        # Use instance defaults if not specified
+        rtol = rtol if rtol is not None else self.tensor_rtol
+        atol = atol if atol is not None else self.tensor_atol
         differences = {}
         
         # Find all tensor keys in expected and actual

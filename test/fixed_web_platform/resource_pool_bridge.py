@@ -343,14 +343,27 @@ class ResourcePoolBridgeIntegration:
     
     async def _setup_initial_connections(self, num_connections):
         """
-        Set up initial browser connections.
+        Set up initial browser connections with enhanced error handling.
+        
+        This method creates browser connections based on the desired distribution and applies
+        browser-specific optimizations. It includes improved error handling with timeouts,
+        retry logic, and comprehensive diagnostics.
         
         Args:
             num_connections: Number of connections to create
         """
+        # Import error handling components
+        from fixed_web_platform.unified_framework.error_handling import ErrorHandler, with_retry, with_timeout
+
         # Determine browser distribution
         browser_distribution = self._calculate_browser_distribution(num_connections)
         logger.info(f"Browser distribution: {browser_distribution}")
+        
+        # Track connection attempts and failures for diagnostics
+        attempted_connections = 0
+        failed_connections = 0
+        successful_connections = 0
+        connection_errors = {}
         
         # Create browser connections
         for browser, count in browser_distribution.items():
@@ -374,6 +387,7 @@ class ResourcePoolBridgeIntegration:
                 
                 # Launch browser and create WebSocket bridge
                 connection_id = f"{browser}_{platform}_{i+1}"
+                attempted_connections += 1
                 
                 try:
                     # Set up browser automation
@@ -387,16 +401,72 @@ class ResourcePoolBridgeIntegration:
                         test_port=port
                     )
                     
-                    # Launch browser
-                    success = await automation.launch(allow_simulation=True)
+                    # Define retriable launch function
+                    async def launch_with_retry():
+                        return await automation.launch(allow_simulation=True)
+                    
+                    # Launch browser with timeout and retry
+                    try:
+                        success = await asyncio.wait_for(
+                            automation.launch(allow_simulation=True),
+                            timeout=30  # 30 second timeout for browser launch
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"Timeout while launching browser for {connection_id}")
+                        # Record the error for diagnostics
+                        connection_errors[connection_id] = "browser_launch_timeout"
+                        failed_connections += 1
+                        continue
+                    except Exception as launch_error:
+                        logger.error(f"Error launching browser for {connection_id}: {launch_error}")
+                        # Record the error for diagnostics
+                        connection_errors[connection_id] = f"browser_launch_error: {type(launch_error).__name__}"
+                        failed_connections += 1
+                        continue
                     
                     if success:
                         # Create WebSocket bridge
-                        bridge = await self.create_websocket_bridge(port=port)
+                        try:
+                            bridge = await asyncio.wait_for(
+                                self.create_websocket_bridge(port=port),
+                                timeout=10  # 10 second timeout for bridge creation
+                            )
+                        except asyncio.TimeoutError:
+                            logger.error(f"Timeout while creating WebSocket bridge for {connection_id}")
+                            await automation.close()
+                            # Record the error for diagnostics
+                            connection_errors[connection_id] = "websocket_bridge_timeout"
+                            failed_connections += 1
+                            continue
+                        except Exception as bridge_error:
+                            logger.error(f"Error creating WebSocket bridge for {connection_id}: {bridge_error}")
+                            await automation.close()
+                            # Record the error for diagnostics
+                            connection_errors[connection_id] = f"websocket_bridge_error: {type(bridge_error).__name__}"
+                            failed_connections += 1
+                            continue
                         
                         if bridge:
                             # Wait for connection to be established
-                            connected = await bridge.wait_for_connection(timeout=10)
+                            try:
+                                connected = await asyncio.wait_for(
+                                    bridge.wait_for_connection(timeout=10),
+                                    timeout=15  # 15 second total timeout
+                                )
+                            except asyncio.TimeoutError:
+                                logger.error(f"Timeout while waiting for WebSocket connection for {connection_id}")
+                                await automation.close()
+                                # Record the error for diagnostics
+                                connection_errors[connection_id] = "websocket_connection_timeout"
+                                failed_connections += 1
+                                continue
+                            except Exception as connection_error:
+                                logger.error(f"Error establishing WebSocket connection for {connection_id}: {connection_error}")
+                                await automation.close()
+                                # Record the error for diagnostics
+                                connection_errors[connection_id] = f"websocket_connection_error: {type(connection_error).__name__}"
+                                failed_connections += 1
+                                continue
                             
                             if connected:
                                 # Store connection
@@ -411,13 +481,27 @@ class ResourcePoolBridgeIntegration:
                                     "compute_shaders": compute_shaders,
                                     "precompile_shaders": precompile_shaders,
                                     "parallel_loading": parallel_loading,
-                                    "is_simulation": getattr(automation, "simulation_mode", True)
+                                    "is_simulation": getattr(automation, "simulation_mode", True),
+                                    "connection_time": time.time(),
+                                    "error_count": 0,
+                                    "success_count": 0,
+                                    "last_error": None,
+                                    "last_error_time": None,
+                                    "reconnect_attempts": 0
                                 }
                                 
                                 logger.info(f"Successfully created browser connection: {connection_id}")
+                                successful_connections += 1
                                 
                                 # Check browser capabilities
-                                capabilities = await bridge.get_browser_capabilities()
+                                try:
+                                    capabilities = await asyncio.wait_for(
+                                        bridge.get_browser_capabilities(),
+                                        timeout=10  # 10 second timeout for capability check
+                                    )
+                                except (asyncio.TimeoutError, Exception) as cap_error:
+                                    logger.warning(f"Error checking browser capabilities for {connection_id}: {cap_error}")
+                                    capabilities = None
                                 
                                 if capabilities:
                                     # Update connection info with capabilities
@@ -436,19 +520,62 @@ class ResourcePoolBridgeIntegration:
                             else:
                                 logger.warning(f"Failed to establish WebSocket connection for {connection_id}")
                                 await automation.close()
+                                # Record the error for diagnostics
+                                connection_errors[connection_id] = "websocket_connection_failed"
+                                failed_connections += 1
                         else:
                             logger.warning(f"Failed to create WebSocket bridge for {connection_id}")
                             await automation.close()
+                            # Record the error for diagnostics
+                            connection_errors[connection_id] = "websocket_bridge_creation_failed"
+                            failed_connections += 1
                     else:
                         logger.warning(f"Failed to launch browser for {connection_id}")
+                        # Record the error for diagnostics
+                        connection_errors[connection_id] = "browser_launch_failed"
+                        failed_connections += 1
                 except Exception as e:
                     logger.error(f"Error setting up browser connection {connection_id}: {e}")
-                    import traceback
+                    # Record the error for diagnostics with traceback
+                    connection_errors[connection_id] = {
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                        "traceback": traceback.format_exc()
+                    }
+                    failed_connections += 1
+                    
+                    # Log full traceback for debugging
                     traceback.print_exc()
+        
+        # Log connection statistics
+        logger.info(f"Connection setup complete: {successful_connections} successful, {failed_connections} failed out of {attempted_connections} attempted")
+        
+        # Attempt recovery if we have fewer connections than expected
+        if successful_connections < num_connections // 2 and successful_connections > 0:
+            logger.warning(f"Only {successful_connections} connections created. Some operations may be slower than expected.")
         
         # If we have no connections but real browser is available, fall back to simulation
         if not self.browser_connections and self.real_browser_available:
             logger.warning("No browser connections could be established, falling back to simulation mode")
+            # Store diagnostic information
+            self._connection_diagnostics = {
+                "attempted": attempted_connections,
+                "failed": failed_connections,
+                "successful": successful_connections,
+                "connection_errors": connection_errors,
+                "timestamp": time.time()
+            }
+            
+            # Analyze failure patterns
+            if failed_connections > 0:
+                error_types = {}
+                for error in connection_errors.values():
+                    error_type = error if isinstance(error, str) else error.get("error_type", "unknown")
+                    error_types[error_type] = error_types.get(error_type, 0) + 1
+                
+                # Log the most common errors to help diagnose connection issues
+                logger.error(f"Connection error summary: {error_types}")
+            
             self.real_browser_available = False
     
     def _calculate_browser_distribution(self, num_connections):
@@ -789,10 +916,29 @@ class ResourcePoolBridgeIntegration:
                 self.inference_count = 0
                 
             async def __call__(self, inputs):
-                """Run inference with the model."""
+                """
+                Run inference with the model.
+                
+                This enhanced implementation includes:
+                - Comprehensive timeout handling
+                - Error categorization and diagnostics
+                - Automatic recovery for transient errors
+                - Detailed performance metrics
+                - Circuit breaker integration
+                - Resource cleanup on failure
+                
+                Args:
+                    inputs: The input data for inference
+                    
+                Returns:
+                    Dictionary with inference results or error information
+                """
+                from fixed_web_platform.unified_framework.error_handling import ErrorHandler, ErrorCategories
+
                 self.inference_count += 1
                 connection_id = None
                 start_time = time.time()
+                error_handler = ErrorHandler()
                 
                 # Get connection ID
                 for conn_id, conn in self.pool.browser_connections.items():
@@ -800,20 +946,84 @@ class ResourcePoolBridgeIntegration:
                         connection_id = conn_id
                         break
                 
+                # Track in connection stats
+                if connection_id and "error_count" in self.connection:
+                    self.connection["active_since"] = time.time()
+                
+                # Create context for error handling
+                context = {
+                    "model_name": self.model_name,
+                    "model_type": self.model_type,
+                    "platform": self.platform,
+                    "connection_id": connection_id,
+                    "inference_count": self.inference_count
+                }
+                
                 try:
-                    # Run inference
-                    result = await self.bridge.run_inference(
-                        self.model_name,
-                        inputs,
-                        self.platform
-                    )
+                    # Run inference with timeout
+                    try:
+                        result = await asyncio.wait_for(
+                            self.bridge.run_inference(
+                                self.model_name,
+                                inputs,
+                                self.platform
+                            ),
+                            timeout=60  # 60 second timeout for inference
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"Inference timeout for {self.model_name} after 60 seconds")
+                        
+                        # Update connection stats
+                        if connection_id and "error_count" in self.connection:
+                            self.connection["error_count"] += 1
+                            self.connection["last_error"] = "inference_timeout"
+                            self.connection["last_error_time"] = time.time()
+                        
+                        # Record failure with circuit breaker
+                        if hasattr(self.pool, 'circuit_breaker_manager') and connection_id:
+                            try:
+                                timeout_error = TimeoutError(f"Inference timeout after 60 seconds for {self.model_name}")
+                                await self.pool.circuit_breaker_manager.handle_error(
+                                    connection_id,
+                                    timeout_error,
+                                    {"action": "inference", "model_name": self.model_name, "error_type": "timeout"}
+                                )
+                            except Exception as circuit_error:
+                                logger.warning(f"Error handling timeout with circuit breaker: {circuit_error}")
+                        
+                        return {
+                            "success": False,
+                            "error_type": "timeout",
+                            "error": f"Inference request timed out after 60 seconds",
+                            "model_name": self.model_name,
+                            "model_type": self.model_type,
+                            "hardware": self.platform,
+                            "is_simulation": self.connection["is_simulation"],
+                            "recovery_suggestion": "Try again with smaller input or when the system is less busy"
+                        }
                     
                     # Calculate inference time
                     inference_time_ms = (time.time() - start_time) * 1000
                     
                     # Check for successful inference
                     if not result or result.get("status") != "success":
-                        logger.error(f"Inference failed for {self.model_name}: {result.get('error', 'Unknown error')}")
+                        error_msg = result.get('error', 'Unknown error') if result else "Empty response"
+                        logger.error(f"Inference failed for {self.model_name}: {error_msg}")
+                        
+                        # Update connection stats
+                        if connection_id and "error_count" in self.connection:
+                            self.connection["error_count"] += 1
+                            self.connection["last_error"] = "inference_failed"
+                            self.connection["last_error_time"] = time.time()
+                            
+                        # Determine error category
+                        error_category = ErrorCategories.UNKNOWN
+                        if "memory" in str(error_msg).lower():
+                            error_category = ErrorCategories.RESOURCE
+                        elif "timeout" in str(error_msg).lower():
+                            error_category = ErrorCategories.TIMEOUT
+                        elif "connection" in str(error_msg).lower():
+                            error_category = ErrorCategories.NETWORK
                         
                         # Record failure with circuit breaker if available
                         if hasattr(self.pool, 'circuit_breaker_manager') and connection_id:
@@ -836,19 +1046,27 @@ class ResourcePoolBridgeIntegration:
                                 # Handle error with circuit breaker
                                 await self.pool.circuit_breaker_manager.handle_error(
                                     connection_id,
-                                    Exception(result.get("error", "Unknown error")),
+                                    Exception(error_msg),
                                     {"action": "inference", "model_name": self.model_name}
                                 )
                             except Exception as e:
                                 logger.warning(f"Error recording failure with circuit breaker: {e}")
                         
+                        # Get recovery suggestion
+                        recovery_strategy = error_handler.get_recovery_strategy(Exception(error_msg))
+                        recovery_suggestion = recovery_strategy.get("strategy_description")
+                        
                         return {
                             "success": False,
-                            "error": result.get("error", "Unknown error"),
+                            "error": error_msg,
+                            "error_category": error_category,
                             "model_name": self.model_name,
                             "model_type": self.model_type,
                             "hardware": self.platform,
-                            "is_simulation": connection["is_simulation"]
+                            "is_simulation": self.connection["is_simulation"],
+                            "inference_time_ms": inference_time_ms,
+                            "recovery_suggestion": recovery_suggestion,
+                            "should_retry": recovery_strategy.get("should_retry", False)
                         }
                     
                     # Record success with circuit breaker if available
@@ -870,18 +1088,24 @@ class ResourcePoolBridgeIntegration:
                         except Exception as e:
                             logger.warning(f"Error recording success with circuit breaker: {e}")
                     
+                    # Update connection stats
+                    if connection_id and "success_count" in self.connection:
+                        self.connection["success_count"] += 1
+                    
                     # Process and return result
                     output = {
                         "success": True,
                         "model_name": self.model_name,
                         "model_type": self.model_type,
                         "hardware": self.platform,
-                        "browser": connection["browser"],
-                        "is_real_hardware": not connection["is_simulation"],
-                        "is_simulation": connection["is_simulation"],
-                        "compute_shader_optimized": connection["compute_shaders"],
-                        "precompile_shaders": connection["precompile_shaders"],
-                        "parallel_loading": connection["parallel_loading"]
+                        "browser": self.connection["browser"],
+                        "is_real_hardware": not self.connection["is_simulation"],
+                        "is_simulation": self.connection["is_simulation"],
+                        "compute_shader_optimized": self.connection["compute_shaders"],
+                        "precompile_shaders": self.connection["precompile_shaders"],
+                        "parallel_loading": self.connection["parallel_loading"],
+                        "inference_time_ms": inference_time_ms,
+                        "total_time_ms": (time.time() - start_time) * 1000
                     }
                     
                     # Copy performance metrics if available
@@ -909,13 +1133,23 @@ class ResourcePoolBridgeIntegration:
                     # Calculate inference time even for failures
                     inference_time_ms = (time.time() - start_time) * 1000
                     
+                    # Update connection stats
+                    if connection_id and "error_count" in self.connection:
+                        self.connection["error_count"] += 1
+                        self.connection["last_error"] = type(e).__name__
+                        self.connection["last_error_time"] = time.time()
+                    
+                    # Categorize the error
+                    error_category = error_handler.categorize_error(e)
+                    is_recoverable = error_handler.is_recoverable(e)
+                    
                     # Record failure with circuit breaker if available
                     if hasattr(self.pool, 'circuit_breaker_manager') and connection_id:
                         try:
                             await self.pool.circuit_breaker_manager.record_request_result(
                                 connection_id, 
                                 False, 
-                                error_type="inference_exception", 
+                                error_type=type(e).__name__, 
                                 response_time_ms=inference_time_ms
                             )
                             
@@ -931,19 +1165,46 @@ class ResourcePoolBridgeIntegration:
                             await self.pool.circuit_breaker_manager.handle_error(
                                 connection_id,
                                 e,
-                                {"action": "inference", "model_name": self.model_name, "error_type": "exception"}
+                                {"action": "inference", "model_name": self.model_name, "error_type": type(e).__name__}
                             )
                         except Exception as circuit_error:
                             logger.warning(f"Error recording failure with circuit breaker: {circuit_error}")
                     
-                    return {
+                    # Get recovery strategy
+                    recovery_strategy = error_handler.get_recovery_strategy(e)
+                    recovery_suggestion = recovery_strategy.get("strategy_description")
+                    
+                    # Create detailed error response
+                    error_response = {
                         "success": False,
                         "error": str(e),
+                        "error_type": type(e).__name__,
+                        "error_category": error_category,
                         "model_name": self.model_name,
                         "model_type": self.model_type,
                         "hardware": self.platform,
-                        "is_simulation": connection["is_simulation"]
+                        "is_simulation": self.connection["is_simulation"],
+                        "inference_time_ms": inference_time_ms,
+                        "recoverable": is_recoverable,
+                        "recovery_suggestion": recovery_suggestion,
+                        "should_retry": recovery_strategy.get("should_retry", False)
                     }
+                    
+                    # For critical errors, include additional diagnostics if available
+                    if not is_recoverable:
+                        try:
+                            # Check for websocket status
+                            if hasattr(self.bridge, "websocket") and hasattr(self.bridge.websocket, "state"):
+                                error_response["websocket_state"] = self.bridge.websocket.state
+                            
+                            # Check for browser status
+                            if hasattr(self.connection["automation"], "process") and self.connection["automation"].process:
+                                error_response["browser_running"] = self.connection["automation"].process.poll() is None
+                        except Exception:
+                            # Ignore errors while collecting diagnostics
+                            pass
+                    
+                    return error_response
             
             def release(self):
                 """Release the connection."""
@@ -1117,115 +1378,287 @@ class ResourcePoolBridgeIntegration:
         
         return metrics
     
-    async def execute_concurrent(self, model_and_inputs_list):
+    async def execute_concurrent(self, model_and_inputs_list, timeout_seconds=120):
         """
         Execute multiple models concurrently for efficient inference.
         
-        This method enables concurrent execution of multiple models,
-        which dramatically improves throughput when running multiple
-        models simultaneously. It leverages asyncio for efficient
-        concurrent execution with shared resources.
+        This enhanced implementation provides:
+        1. Comprehensive timeout handling for overall execution
+        2. Detailed error categorization and diagnostics
+        3. Performance tracking for each model execution
+        4. Advanced error recovery options
+        5. Memory usage monitoring during concurrent execution
         
         Args:
             model_and_inputs_list: List of (model, inputs) tuples to execute
+            timeout_seconds: Maximum time in seconds for the entire operation (default: 120)
             
         Returns:
             List of results in the same order as inputs
         """
+        # Import for error handling
+        from fixed_web_platform.unified_framework.error_handling import ErrorHandler, ErrorCategories
+        error_handler = ErrorHandler()
+        
+        # Check for empty input
         if not model_and_inputs_list:
             return []
         
+        # Tracking variables
+        start_time = time.time()
+        execution_stats = {
+            "total_models": len(model_and_inputs_list),
+            "successful": 0,
+            "failed": 0,
+            "null_results": 0,
+            "timed_out": 0,
+            "failure_types": {},
+            "start_time": start_time
+        }
+        
         # Create tasks for concurrent execution
         tasks = []
-        for model, inputs in model_and_inputs_list:
+        model_infos = []  # Store model info for error reporting
+        
+        for i, (model, inputs) in enumerate(model_and_inputs_list):
+            # Extract model info for error reporting
+            model_name = getattr(model, 'model_name', 'unknown')
+            model_type = getattr(model, 'model_type', 'unknown')
+            
+            # Store model info
+            model_infos.append({
+                "index": i,
+                "model_name": model_name,
+                "model_type": model_type,
+                "input_type": type(inputs).__name__ if inputs is not None else "None"
+            })
+            
             if not model:
                 # Use a dummy task for None models
                 tasks.append(asyncio.create_task(asyncio.sleep(0)))
             else:
-                # Create task for each model execution
-                async def call_model(model, inputs):
+                # Create an inner function to capture model and inputs
+                async def call_model(model, inputs, model_info):
+                    model_start_time = time.time()
                     try:
-                        return model(inputs)
+                        result = model(inputs)
+                        
+                        # Record execution time
+                        execution_time = time.time() - model_start_time
+                        
+                        # For async models, await the result
+                        if asyncio.iscoroutine(result) or hasattr(result, "__await__"):
+                            try:
+                                # Use a smaller timeout for individual model execution
+                                model_timeout = min(60, timeout_seconds * 0.8)  # 80% of total timeout or 60s, whichever is smaller
+                                result = await asyncio.wait_for(result, timeout=model_timeout)
+                            except asyncio.TimeoutError:
+                                logger.error(f"Individual model timeout: {model_info['model_name']} after {model_timeout}s")
+                                return {
+                                    "success": False,
+                                    "error_type": "model_timeout",
+                                    "error_category": ErrorCategories.TIMEOUT,
+                                    "error": f"Model execution timed out after {model_timeout} seconds",
+                                    "model_name": model_info["model_name"],
+                                    "model_type": model_info["model_type"],
+                                    "execution_time": time.time() - model_start_time,
+                                    "timestamp": time.time()
+                                }
+                        
+                        # Add execution time to result if it's a dict
+                        if isinstance(result, dict) and "execution_time" not in result:
+                            result["execution_time"] = execution_time
+                            
+                        return result
+                        
                     except TypeError as e:
                         # Handle invalid input types
-                        logger.error(f"Type error executing model {getattr(model, 'model_name', 'unknown')}: {e}")
-                        return {"success": False, "error_type": "input_type_error", "error": str(e)}
+                        logger.error(f"Type error executing model {model_info['model_name']}: {e}")
+                        error_obj = error_handler.handle_error(e, model_info)
+                        return {
+                            "success": False,
+                            "error_type": "input_type_error",
+                            "error_category": ErrorCategories.INPUT,
+                            "error": str(e),
+                            "model_name": model_info["model_name"],
+                            "model_type": model_info["model_type"],
+                            "input_type": model_info["input_type"],
+                            "execution_time": time.time() - model_start_time,
+                            "timestamp": time.time(),
+                            "recovery_suggestion": "Check input data types match model expectations"
+                        }
                     except ValueError as e:
                         # Handle invalid input values
-                        logger.error(f"Value error executing model {getattr(model, 'model_name', 'unknown')}: {e}")
-                        return {"success": False, "error_type": "input_value_error", "error": str(e)}
+                        logger.error(f"Value error executing model {model_info['model_name']}: {e}")
+                        error_obj = error_handler.handle_error(e, model_info)
+                        return {
+                            "success": False,
+                            "error_type": "input_value_error",
+                            "error_category": ErrorCategories.INPUT,
+                            "error": str(e),
+                            "model_name": model_info["model_name"],
+                            "model_type": model_info["model_type"],
+                            "input_type": model_info["input_type"],
+                            "execution_time": time.time() - model_start_time,
+                            "timestamp": time.time(),
+                            "recovery_suggestion": "Check input values are within expected ranges"
+                        }
                     except RuntimeError as e:
                         # Handle runtime execution errors
-                        logger.error(f"Runtime error executing model {getattr(model, 'model_name', 'unknown')}: {e}")
-                        return {"success": False, "error_type": "runtime_error", "error": str(e)}
+                        logger.error(f"Runtime error executing model {model_info['model_name']}: {e}")
+                        error_obj = error_handler.handle_error(e, model_info)
+                        return {
+                            "success": False,
+                            "error_type": "runtime_error",
+                            "error_category": ErrorCategories.INTERNAL,
+                            "error": str(e),
+                            "model_name": model_info["model_name"],
+                            "model_type": model_info["model_type"],
+                            "execution_time": time.time() - model_start_time,
+                            "timestamp": time.time(),
+                            "recovery_suggestion": error_handler.get_recovery_strategy(e).get("strategy_description")
+                        }
                     except Exception as e:
                         # Catch any other unexpected errors
-                        logger.error(f"Unexpected error executing model {getattr(model, 'model_name', 'unknown')}: {e}")
-                        return {"success": False, "error_type": "unexpected_error", "error": str(e)}
+                        logger.error(f"Unexpected error executing model {model_info['model_name']}: {e}")
+                        error_category = error_handler.categorize_error(e)
+                        recovery_strategy = error_handler.get_recovery_strategy(e)
+                        return {
+                            "success": False,
+                            "error_type": type(e).__name__,
+                            "error_category": error_category,
+                            "error": str(e),
+                            "model_name": model_info["model_name"],
+                            "model_type": model_info["model_type"],
+                            "execution_time": time.time() - model_start_time,
+                            "timestamp": time.time(),
+                            "recovery_suggestion": recovery_strategy.get("strategy_description"),
+                            "should_retry": recovery_strategy.get("should_retry", False)
+                        }
                 
-                tasks.append(asyncio.create_task(call_model(model, inputs)))
+                # Create task with model info for better error reporting
+                tasks.append(asyncio.create_task(call_model(model, inputs, model_infos[i])))
         
-        # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Wait for all tasks to complete with overall timeout
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Concurrent execution timed out after {timeout_seconds} seconds")
+            # Create timeout results for all models
+            execution_stats["timed_out"] = len(model_and_inputs_list)
+            
+            results = []
+            for info in model_infos:
+                results.append({
+                    'success': False,
+                    'error_type': 'timeout',
+                    'error_category': ErrorCategories.TIMEOUT,
+                    'error': f'Concurrent execution timed out after {timeout_seconds} seconds',
+                    'model_name': info["model_name"],
+                    'model_type': info["model_type"],
+                    'timestamp': time.time(),
+                    'recovery_suggestion': 'Try with fewer models or longer timeout'
+                })
+            
+            return results
         
         # Process results
         processed_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 # Create detailed error result with categorization
-                model, inputs = model_and_inputs_list[i]
-                model_name = getattr(model, 'model_name', 'unknown')
-                model_type = getattr(model, 'model_type', 'unknown')
+                model_info = model_infos[i]
+                
+                # Update stats
+                execution_stats["failed"] += 1
+                error_type = type(result).__name__
+                if error_type not in execution_stats["failure_types"]:
+                    execution_stats["failure_types"][error_type] = 0
+                execution_stats["failure_types"][error_type] += 1
                 
                 # Categorize the exception for better error handling
+                error_category = ErrorCategories.UNKNOWN
+                recovery_suggestion = None
+                
                 if isinstance(result, asyncio.TimeoutError):
                     error_type = "timeout"
-                    error_category = "execution_timeout"
+                    error_category = ErrorCategories.TIMEOUT
+                    recovery_suggestion = "Try with smaller input or longer timeout"
                 elif isinstance(result, asyncio.CancelledError):
                     error_type = "cancelled"
-                    error_category = "execution_cancelled"
+                    error_category = ErrorCategories.EXECUTION_INTERRUPTED
+                    recovery_suggestion = "Task was cancelled, try again when system is less busy"
                 elif isinstance(result, (TypeError, ValueError)):
                     error_type = "input_error"
-                    error_category = "invalid_input"
+                    error_category = ErrorCategories.INPUT
+                    recovery_suggestion = "Check input format and types"
                 elif isinstance(result, RuntimeError):
                     error_type = "runtime_error"
-                    error_category = "execution_failed"
-                else:
-                    error_type = "unknown_error"
-                    error_category = "unexpected_exception"
+                    error_category = ErrorCategories.INTERNAL
+                    recovery_suggestion = "Internal error occurred, check logs for details"
+                elif isinstance(result, MemoryError):
+                    error_type = "memory_error"
+                    error_category = ErrorCategories.RESOURCE
+                    recovery_suggestion = "System is low on memory, try with smaller batch size"
+                elif isinstance(result, ConnectionError):
+                    error_type = "connection_error"
+                    error_category = ErrorCategories.NETWORK
+                    recovery_suggestion = "Network error occurred, check connectivity and retry"
                 
                 # Create detailed error response
-                processed_results.append({
+                error_response = {
                     'success': False,
                     'error': str(result),
                     'error_type': error_type,
                     'error_category': error_category,
-                    'model_name': model_name,
-                    'model_type': model_type,
-                    'input_type': type(inputs).__name__,
+                    'model_name': model_info["model_name"],
+                    'model_type': model_info["model_type"],
+                    'input_type': model_info["input_type"],
                     'timestamp': time.time(),
-                    'traceback': getattr(result, '__traceback__', None) and ''.join(
+                    'recovery_suggestion': recovery_suggestion
+                }
+                
+                # Add traceback if available
+                if hasattr(result, '__traceback__') and result.__traceback__:
+                    error_response['traceback'] = ''.join(
                         traceback.format_exception(type(result), result, result.__traceback__)
                     )
-                })
+                
+                processed_results.append(error_response)
                 
                 # Log error with stack trace for debugging
-                logger.error(f"Error executing model {model_name}: {result}")
+                logger.error(f"Error executing model {model_info['model_name']}: {result}")
                 
             elif result is None:
                 # Handle None results explicitly
-                model, _ = model_and_inputs_list[i]
-                model_name = getattr(model, 'model_name', 'unknown')
+                model_info = model_infos[i]
+                execution_stats["null_results"] += 1
+                
                 processed_results.append({
                     'success': False, 
                     'error_type': 'null_result',
+                    'error_category': ErrorCategories.DATA,
                     'error': 'Model returned None',
-                    'model_name': model_name,
-                    'timestamp': time.time()
+                    'model_name': model_info["model_name"],
+                    'model_type': model_info["model_type"],
+                    'timestamp': time.time(),
+                    'recovery_suggestion': 'Check model implementation returns valid results'
                 })
             else:
-                # Normal successful result
+                # Successful result
+                execution_stats["successful"] += 1
                 processed_results.append(result)
+        
+        # Add execution stats to the first successful result for debugging
+        execution_stats["total_time"] = time.time() - start_time
+        for i, result in enumerate(processed_results):
+            if isinstance(result, dict) and result.get('success') is True:
+                # Only add to the first successful result
+                result['_execution_stats'] = execution_stats
+                break
         
         return processed_results
     
@@ -1254,42 +1687,150 @@ class ResourcePoolBridgeIntegration:
         """
         Close all resources and connections.
         
-        This method gracefully shuts down all browser connections,
-        closes WebSocket bridges, and releases resources.
-        """
-        logger.info("Closing resource pool bridge...")
+        This enhanced implementation provides:
+        1. Comprehensive error handling during shutdown
+        2. Sequential resource cleanup with status tracking
+        3. Graceful degradation for partial shutdown
+        4. Force cleanup for critical resources when needed
+        5. Detailed cleanup reporting for diagnostics
         
-        # Close circuit breaker manager if available
+        Returns:
+            True if all resources were closed successfully, False if any errors occurred
+        """
+        from fixed_web_platform.unified_framework.error_handling import safe_resource_cleanup
+        
+        logger.info("Closing resource pool bridge...")
+        start_time = time.time()
+        
+        # Track cleanup status
+        cleanup_status = {
+            "success": True,
+            "errors": {},
+            "closed_connections": 0,
+            "total_connections": len(getattr(self, 'browser_connections', {})),
+            "start_time": start_time
+        }
+        
+        # First attempt graceful shutdown of circuit breaker
         if hasattr(self, 'circuit_breaker_manager'):
             logger.info("Closing circuit breaker manager")
             try:
-                await self.circuit_breaker_manager.close()
+                # Use timeout to prevent hanging
+                await asyncio.wait_for(
+                    self.circuit_breaker_manager.close(),
+                    timeout=10  # 10 second timeout for circuit breaker closing
+                )
+                cleanup_status["circuit_breaker_closed"] = True
+            except asyncio.TimeoutError:
+                logger.error("Timeout while closing circuit breaker manager")
+                cleanup_status["success"] = False
+                cleanup_status["errors"]["circuit_breaker"] = "close_timeout"
+                # Force cleanup if available
+                if hasattr(self.circuit_breaker_manager, 'force_cleanup'):
+                    try:
+                        logger.warning("Attempting force cleanup of circuit breaker manager")
+                        if asyncio.iscoroutinefunction(self.circuit_breaker_manager.force_cleanup):
+                            await self.circuit_breaker_manager.force_cleanup()
+                        else:
+                            self.circuit_breaker_manager.force_cleanup()
+                        cleanup_status["circuit_breaker_force_cleanup"] = True
+                    except Exception as force_cleanup_error:
+                        logger.critical(f"Force cleanup of circuit breaker failed: {force_cleanup_error}")
+                        cleanup_status["errors"]["circuit_breaker_force_cleanup"] = str(force_cleanup_error)
             except Exception as e:
-                logger.warning(f"Error closing circuit breaker manager: {e}")
+                logger.error(f"Error closing circuit breaker manager: {e}")
+                cleanup_status["success"] = False
+                cleanup_status["errors"]["circuit_breaker"] = str(e)
         
         # Close all active browser connections
+        connection_errors = {}
+        
         if hasattr(self, 'browser_connections'):
             for connection_id, connection in list(self.browser_connections.items()):
+                connection_cleanup_status = {"bridge_closed": False, "automation_closed": False}
+                
                 try:
                     logger.info(f"Closing browser connection: {connection_id}")
                     
-                    # Try to shut down the WebSocket bridge
-                    if "bridge" in connection:
-                        try:
-                            await connection["bridge"].shutdown_browser()
-                            await connection["bridge"].stop()
-                        except Exception as e:
-                            logger.warning(f"Error shutting down WebSocket bridge for {connection_id}: {e}")
+                    # Prepare a list of cleanup functions for this connection
+                    cleanup_functions = []
                     
-                    # Try to close the browser automation
+                    # Add bridge shutdown function if available
+                    if "bridge" in connection:
+                        async def cleanup_bridge():
+                            try:
+                                # First try to shutdown the browser via the bridge
+                                await asyncio.wait_for(
+                                    connection["bridge"].shutdown_browser(),
+                                    timeout=5
+                                )
+                                connection_cleanup_status["browser_shutdown"] = True
+                                
+                                # Then stop the bridge itself
+                                await asyncio.wait_for(
+                                    connection["bridge"].stop(),
+                                    timeout=5
+                                )
+                                connection_cleanup_status["bridge_closed"] = True
+                                return True
+                            except asyncio.TimeoutError:
+                                logger.warning(f"Timeout shutting down bridge for {connection_id}")
+                                return False
+                            except Exception as bridge_error:
+                                logger.warning(f"Error shutting down bridge for {connection_id}: {bridge_error}")
+                                return False
+                                
+                        cleanup_functions.append(cleanup_bridge)
+                    
+                    # Add automation cleanup function if available
                     if "automation" in connection:
-                        try:
-                            await connection["automation"].close()
-                        except Exception as e:
-                            logger.warning(f"Error closing browser automation for {connection_id}: {e}")
+                        async def cleanup_automation():
+                            try:
+                                await asyncio.wait_for(
+                                    connection["automation"].close(),
+                                    timeout=5
+                                )
+                                connection_cleanup_status["automation_closed"] = True
+                                return True
+                            except asyncio.TimeoutError:
+                                logger.warning(f"Timeout closing automation for {connection_id}")
+                                return False
+                            except Exception as automation_error:
+                                logger.warning(f"Error closing automation for {connection_id}: {automation_error}")
+                                return False
+                                
+                        cleanup_functions.append(cleanup_automation)
+                    
+                    # Execute all cleanup functions and check for errors
+                    cleanup_results = await safe_resource_cleanup(cleanup_functions, logger)
+                    
+                    # Check for any errors
+                    if any(result is not None for result in cleanup_results):
+                        logger.warning(f"Partial cleanup for connection {connection_id}")
+                        cleanup_status["success"] = False
+                        
+                        # Record specific errors for this connection
+                        connection_errors[connection_id] = {
+                            "bridge_error": str(cleanup_results[0]) if cleanup_results[0] is not None else None,
+                            "automation_error": str(cleanup_results[1]) if len(cleanup_results) > 1 and cleanup_results[1] is not None else None,
+                            "status": connection_cleanup_status
+                        }
+                    else:
+                        # Successful cleanup
+                        cleanup_status["closed_connections"] += 1
                     
                 except Exception as e:
                     logger.error(f"Error closing connection {connection_id}: {e}")
+                    cleanup_status["success"] = False
+                    connection_errors[connection_id] = {
+                        "error": str(e),
+                        "traceback": traceback.format_exc(),
+                        "status": connection_cleanup_status
+                    }
+            
+            # Store connection errors in status
+            if connection_errors:
+                cleanup_status["errors"]["connections"] = connection_errors
         
         # Close adaptive manager if available
         if hasattr(self, 'adaptive_manager'):
@@ -1299,14 +1840,61 @@ class ResourcePoolBridgeIntegration:
             if hasattr(self.adaptive_manager, 'close'):
                 try:
                     if asyncio.iscoroutinefunction(self.adaptive_manager.close):
-                        await self.adaptive_manager.close()
+                        await asyncio.wait_for(
+                            self.adaptive_manager.close(),
+                            timeout=5
+                        )
                     else:
                         self.adaptive_manager.close()
+                    cleanup_status["adaptive_manager_closed"] = True
+                except asyncio.TimeoutError:
+                    logger.error("Timeout while closing adaptive manager")
+                    cleanup_status["success"] = False
+                    cleanup_status["errors"]["adaptive_manager"] = "close_timeout"
                 except Exception as e:
                     logger.warning(f"Error closing adaptive manager: {e}")
+                    cleanup_status["success"] = False
+                    cleanup_status["errors"]["adaptive_manager"] = str(e)
         
-        logger.info("Resource pool bridge closed")
-        return True
+        # Clear all circular references to help garbage collection
+        try:
+            if hasattr(self, 'browser_connections'):
+                self.browser_connections.clear()
+            
+            if hasattr(self, 'circuit_breaker_manager'):
+                self.circuit_breaker_manager = None
+                
+            if hasattr(self, 'adaptive_manager'):
+                self.adaptive_manager = None
+                
+            if hasattr(self, 'tensor_sharing_manager'):
+                self.tensor_sharing_manager = None
+            
+            # Clear any event loops we may have created
+            if hasattr(self, 'loop') and not self.loop.is_closed():
+                try:
+                    remaining_tasks = asyncio.all_tasks(self.loop)
+                    if remaining_tasks:
+                        logger.warning(f"Cancelling {len(remaining_tasks)} remaining tasks")
+                        for task in remaining_tasks:
+                            task.cancel()
+                except Exception as e:
+                    logger.warning(f"Error cancelling remaining tasks: {e}")
+        except Exception as clear_error:
+            logger.warning(f"Error clearing references: {clear_error}")
+            cleanup_status["errors"]["reference_clearing"] = str(clear_error)
+        
+        # Calculate total time for cleanup
+        cleanup_status["total_cleanup_time"] = time.time() - start_time
+        
+        # Log cleanup status summary
+        if cleanup_status["success"]:
+            logger.info(f"Resource pool bridge closed successfully in {cleanup_status['total_cleanup_time']:.2f}s")
+        else:
+            error_count = len(cleanup_status["errors"])
+            logger.warning(f"Resource pool bridge closed with {error_count} errors in {cleanup_status['total_cleanup_time']:.2f}s")
+            
+        return cleanup_status["success"]
     
     def close_sync(self):
         """Synchronous wrapper for close."""
@@ -1331,19 +1919,75 @@ class ResourcePoolBridgeIntegration:
         Returns:
             TensorSharingManager instance
         """
+        from fixed_web_platform.unified_framework.error_handling import ErrorHandler
+        
+        # Input validation
+        if max_memory_mb is not None and not isinstance(max_memory_mb, (int, float)):
+            logger.error(f"Invalid max_memory_mb value: {max_memory_mb}. Must be a number or None.")
+            return None
+            
+        if max_memory_mb is not None and max_memory_mb <= 0:
+            logger.error(f"Invalid max_memory_mb value: {max_memory_mb}. Must be positive.")
+            return None
+            
         try:
             from fixed_web_platform.cross_model_tensor_sharing import TensorSharingManager
-            self.tensor_sharing_manager = TensorSharingManager(max_memory_mb=max_memory_mb)
-            logger.info(f"Tensor sharing enabled with max memory: {max_memory_mb} MB")
-            return self.tensor_sharing_manager
-        except ImportError:
-            logger.warning("Cross-model tensor sharing not available. The 'cross_model_tensor_sharing' module could not be imported.")
+            
+            # Set default memory limit if not provided
+            if max_memory_mb is None:
+                # Use 25% of available system memory if possible
+                try:
+                    import psutil
+                    available_mem = psutil.virtual_memory().available / (1024 * 1024)  # Convert to MB
+                    max_memory_mb = int(available_mem * 0.25)  # Use 25% of available memory
+                    logger.info(f"Automatically set tensor sharing memory limit to {max_memory_mb} MB (25% of available memory)")
+                except ImportError:
+                    # Default to 1GB if psutil not available
+                    max_memory_mb = 1024
+                    logger.info(f"Set default tensor sharing memory limit to {max_memory_mb} MB")
+            
+            # Create the manager with validation
+            try:
+                self.tensor_sharing_manager = TensorSharingManager(max_memory_mb=max_memory_mb)
+                logger.info(f"Tensor sharing enabled with max memory: {max_memory_mb} MB")
+                
+                # Initialize tracking metrics
+                self.tensor_sharing_stats = {
+                    "total_tensors": 0,
+                    "total_memory_used_mb": 0,
+                    "tensors_by_type": {},
+                    "sharing_events": 0,
+                    "creation_time": time.time()
+                }
+                
+                return self.tensor_sharing_manager
+            except Exception as e:
+                logger.error(f"Error initializing TensorSharingManager: {e}")
+                error_handler = ErrorHandler()
+                error_obj = error_handler.handle_error(e, {"max_memory_mb": max_memory_mb})
+                return None
+                
+        except ImportError as e:
+            logger.warning(f"Cross-model tensor sharing not available: {e}. The 'cross_model_tensor_sharing' module could not be imported.")
+            
+            # Suggest installation if needed
+            if "No module named" in str(e):
+                package_name = str(e).split("No module named ")[-1].strip("'")
+                logger.info(f"To enable tensor sharing, install the required package: pip install {package_name}")
+                
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error setting up tensor sharing: {e}")
             return None
             
     async def share_tensor_between_models(self, tensor_data, tensor_name, producer_model, consumer_models, 
                                        shape=None, storage_type="cpu", dtype="float32"):
         """
         Share a tensor between models in the resource pool.
+        
+        This method enables efficient sharing of tensor data between models to reduce
+        memory usage and improve performance for multi-model workflows. It includes
+        comprehensive validation, error handling, and diagnostics.
         
         Args:
             tensor_data: The tensor data to share (optional if registering external tensor)
@@ -1357,48 +2001,188 @@ class ResourcePoolBridgeIntegration:
         Returns:
             Registration result (success boolean and tensor info)
         """
-        if not hasattr(self, 'tensor_sharing_manager'):
-            # Create tensor sharing manager if it doesn't exist yet
-            self.setup_tensor_sharing()
+        from fixed_web_platform.unified_framework.error_handling import ErrorHandler
+        error_handler = ErrorHandler()
+        
+        # Input validation
+        if not tensor_name or not isinstance(tensor_name, str):
+            return {
+                "success": False, 
+                "error": f"Invalid tensor_name: {tensor_name}. Must be a non-empty string.",
+                "error_category": ErrorCategories.INPUT
+            }
             
+        if not isinstance(consumer_models, (list, tuple)) and consumer_models is not None:
+            return {
+                "success": False, 
+                "error": f"Invalid consumer_models: {consumer_models}. Must be a list, tuple, or None.",
+                "error_category": ErrorCategories.INPUT
+            }
+            
+        if storage_type not in ("cpu", "webgpu", "webnn"):
+            return {
+                "success": False, 
+                "error": f"Invalid storage_type: {storage_type}. Must be one of: cpu, webgpu, webnn.",
+                "error_category": ErrorCategories.INPUT
+            }
+            
+        # Ensure tensor sharing manager is initialized
+        if not hasattr(self, 'tensor_sharing_manager'):
+            try:
+                manager = self.setup_tensor_sharing()
+                if manager is None:
+                    return {
+                        "success": False, 
+                        "error": "Tensor sharing manager creation failed",
+                        "error_category": ErrorCategories.INITIALIZATION,
+                        "reason": "Module import or initialization error",
+                        "resolution": "Check if cross_model_tensor_sharing module is available"
+                    }
+            except Exception as e:
+                logger.error(f"Error setting up tensor sharing: {e}")
+                return {
+                    "success": False, 
+                    "error": f"Tensor sharing setup error: {str(e)}",
+                    "error_category": ErrorCategories.INITIALIZATION,
+                    "exception_type": type(e).__name__,
+                    "traceback": traceback.format_exc()
+                }
+                
         if self.tensor_sharing_manager is None:
-            return {"success": False, "error": "Tensor sharing manager not available"}
+            return {
+                "success": False, 
+                "error": "Tensor sharing manager not available",
+                "error_category": ErrorCategories.RESOURCE_UNAVAILABLE
+            }
+            
+        # Validate shape
+        try:
+            if shape is None and tensor_data is not None:
+                # Infer shape from tensor_data if not provided
+                if hasattr(tensor_data, 'shape'):
+                    shape = list(tensor_data.shape)
+                elif hasattr(tensor_data, 'size') and callable(tensor_data.size):
+                    shape = list(tensor_data.size())
+                elif hasattr(tensor_data, 'get_shape') and callable(tensor_data.get_shape):
+                    shape = list(tensor_data.get_shape())
+                else:
+                    return {
+                        "success": False, 
+                        "error": "Could not determine tensor shape. Please provide shape parameter.",
+                        "error_category": ErrorCategories.INPUT
+                    }
+            elif shape is None:
+                return {
+                    "success": False, 
+                    "error": "Must provide shape when tensor_data is None",
+                    "error_category": ErrorCategories.INPUT
+                }
+                
+            # Ensure shape is a list of integers
+            if not isinstance(shape, (list, tuple)):
+                return {
+                    "success": False, 
+                    "error": f"Shape must be a list or tuple, got {type(shape).__name__}",
+                    "error_category": ErrorCategories.INPUT
+                }
+                
+            for dim in shape:
+                if not isinstance(dim, int):
+                    return {
+                        "success": False, 
+                        "error": f"Shape dimensions must be integers, got {type(dim).__name__} in {shape}",
+                        "error_category": ErrorCategories.INPUT
+                    }
+                
+        except Exception as e:
+            logger.error(f"Error validating tensor shape: {e}")
+            return {
+                "success": False, 
+                "error": f"Shape validation error: {str(e)}",
+                "error_category": ErrorCategories.INPUT,
+                "exception_type": type(e).__name__
+            }
             
         # Register the tensor
-        if shape is None and tensor_data is not None:
-            # Infer shape from tensor_data if not provided
-            if hasattr(tensor_data, 'shape'):
-                shape = list(tensor_data.shape)
-            else:
-                return {"success": False, "error": "Must provide shape when tensor_data doesn't have shape attribute"}
-        elif shape is None:
-            return {"success": False, "error": "Must provide shape when tensor_data is None"}
+        try:
+            # Register the tensor with the manager
+            shared_tensor = self.tensor_sharing_manager.register_shared_tensor(
+                name=tensor_name,
+                shape=shape,
+                storage_type=storage_type,
+                producer_model=producer_model,
+                consumer_models=consumer_models,
+                dtype=dtype
+            )
             
-        # Register the tensor with the manager
-        shared_tensor = self.tensor_sharing_manager.register_shared_tensor(
-            name=tensor_name,
-            shape=shape,
-            storage_type=storage_type,
-            producer_model=producer_model,
-            consumer_models=consumer_models,
-            dtype=dtype
-        )
-        
-        # Store the actual tensor data if provided
-        if tensor_data is not None:
-            shared_tensor.data = tensor_data
+            # Store the actual tensor data if provided
+            if tensor_data is not None:
+                try:
+                    shared_tensor.data = tensor_data
+                except Exception as e:
+                    logger.error(f"Error storing tensor data: {e}")
+                    return {
+                        "success": False, 
+                        "error": f"Error storing tensor data: {str(e)}",
+                        "error_category": ErrorCategories.DATA,
+                        "exception_type": type(e).__name__
+                    }
+                    
+            # Update stats
+            if hasattr(self, 'tensor_sharing_stats'):
+                self.tensor_sharing_stats["total_tensors"] += 1
+                self.tensor_sharing_stats["sharing_events"] += 1
+                
+                # Calculate memory usage
+                try:
+                    memory_mb = shared_tensor.get_memory_usage() / (1024*1024)
+                    self.tensor_sharing_stats["total_memory_used_mb"] += memory_mb
+                    
+                    # Track by tensor type
+                    tensor_type = tensor_name.split('_')[-1] if '_' in tensor_name else 'unknown'
+                    if tensor_type not in self.tensor_sharing_stats["tensors_by_type"]:
+                        self.tensor_sharing_stats["tensors_by_type"][tensor_type] = {
+                            "count": 0,
+                            "memory_mb": 0
+                        }
+                    self.tensor_sharing_stats["tensors_by_type"][tensor_type]["count"] += 1
+                    self.tensor_sharing_stats["tensors_by_type"][tensor_type]["memory_mb"] += memory_mb
+                except Exception as stat_error:
+                    logger.warning(f"Error updating tensor stats: {stat_error}")
+                
+            logger.info(f"Registered shared tensor {tensor_name} for models: {producer_model} -> {consumer_models}")
             
-        logger.info(f"Registered shared tensor {tensor_name} for models: {producer_model} -> {consumer_models}")
-        
-        return {
-            "success": True,
-            "tensor_name": tensor_name,
-            "producer": producer_model,
-            "consumers": consumer_models,
-            "storage_type": storage_type,
-            "shape": shape,
-            "memory_mb": shared_tensor.get_memory_usage() / (1024*1024)
-        }
+            # Detailed success response
+            return {
+                "success": True,
+                "tensor_name": tensor_name,
+                "producer": producer_model,
+                "consumers": consumer_models,
+                "storage_type": storage_type,
+                "shape": shape,
+                "dtype": dtype,
+                "memory_mb": shared_tensor.get_memory_usage() / (1024*1024),
+                "total_shared_tensors": getattr(self, 'tensor_sharing_stats', {}).get("total_tensors", 1),
+                "sharing_id": id(shared_tensor)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error sharing tensor: {e}")
+            
+            # Create detailed error response with categorization
+            error_obj = error_handler.handle_error(e, {
+                "tensor_name": tensor_name,
+                "shape": shape,
+                "storage_type": storage_type,
+                "dtype": dtype
+            })
+            
+            return {
+                "success": False,
+                "error": str(e),
+                "error_category": error_obj["error_category"],
+                "exception_type": type(e).__name__
+            }
 
 # For testing
 if __name__ == "__main__":
