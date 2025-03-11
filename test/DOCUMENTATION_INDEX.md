@@ -1,25 +1,32 @@
 # IPFS Accelerate Python Framework Documentation Index
 
-Last Updated: March 10, 2025
+Last Updated: May 12, 2025
 
 This document provides a comprehensive index of all project documentation, organized by category and implementation phase.
 
+## Recently Added Documentation
+
+### WebNN/WebGPU Resource Pool May 2025 Enhancements (May 12, 2025)
+
+The WebNN/WebGPU Resource Pool Integration has been enhanced with fault tolerance, performance optimization, and browser-aware resource management. New documentation includes:
+
+- [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - Comprehensive overview of May 2025 enhancements
+- [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md) - Updated main integration guide (May 2025)
+- [WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md) - Guide to cross-browser model sharding with fault tolerance
+- [WEB_RESOURCE_POOL_RECOVERY_GUIDE.md](WEB_RESOURCE_POOL_RECOVERY_GUIDE.md) - Enhanced error recovery mechanisms
+- [WEB_PLATFORM_PERFORMANCE_HISTORY.md](WEB_PLATFORM_PERFORMANCE_HISTORY.md) - Guide to performance history tracking and trend analysis
+
+### Distributed Testing Framework Advanced Fault Tolerance (May 12, 2025)
+
+The Distributed Testing Framework has been enhanced with advanced fault tolerance mechanisms and comprehensive integration capabilities:
+
+- [DISTRIBUTED_TESTING_INTEGRATION_PR.md](DISTRIBUTED_TESTING_INTEGRATION_PR.md) - Latest status update on advanced fault tolerance implementation
+- [DISTRIBUTED_TESTING_GUIDE.md](DISTRIBUTED_TESTING_GUIDE.md) - Updated comprehensive user guide
+- [FAULT_TOLERANCE_UPDATE.md](FAULT_TOLERANCE_UPDATE.md) - Previous update on fault tolerance implementation
+- [distributed_testing/docs/ADVANCED_RECOVERY_STRATEGIES.md](distributed_testing/docs/ADVANCED_RECOVERY_STRATEGIES.md) - Advanced failure recovery mechanisms
+- [distributed_testing/docs/PERFORMANCE_TREND_ANALYSIS.md](distributed_testing/docs/PERFORMANCE_TREND_ANALYSIS.md) - Documentation of the performance trend analysis system
+
 ## Recently Archived Documentation
-
-### March 10, 2025 Archive
-
-A major cleanup of stale and unused files was performed:
-
-- Approximately 480 files were moved to `/test/archive/`
-- Categories included:
-  - Backup files (*.bak, *.bak_*)
-  - Old database backups
-  - Fixed/superseded implementation files
-  - Completed status reports
-  - Older benchmark reports
-  - One-time utility scripts
-  - Deprecated test runners
-- See `/test/cleanup_summary.md` for complete details
 
 ### April 2025 Archive
 
@@ -71,6 +78,38 @@ The migration of benchmark and test scripts to use the DuckDB database system is
 - **Benefits**: 50-80% size reduction, 5-20x faster queries, consolidated analysis
 
 For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.md](DATABASE_MIGRATION_STATUS.md).
+
+## Current Focus Areas (May 2025)
+
+The project is currently focused on two key areas:
+
+### 1. WebGPU/WebNN Resource Pool Integration (85% Complete)
+
+The WebNN/WebGPU Resource Pool Integration enables concurrent execution of multiple AI models across heterogeneous browser backends with these key features:
+
+- **Fault-Tolerant Cross-Browser Model Sharding**: Ability to run large models distributed across multiple browser tabs
+- **Performance-Aware Browser Selection**: Intelligent browser selection based on historical performance data
+- **Performance History Tracking**: Time-series analysis of performance metrics
+- **Enhanced Error Recovery**: Comprehensive recovery mechanisms with progressive strategies
+
+Documentation:
+- [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - Latest enhancements
+- [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md) - Main integration guide
+- [IPFS_RESOURCE_POOL_INTEGRATION_GUIDE.md](IPFS_RESOURCE_POOL_INTEGRATION_GUIDE.md) - IPFS integration guide
+
+### 2. Distributed Testing Framework (90% Complete)
+
+The Distributed Testing Framework enables parallel execution of tests across multiple machines with these key features:
+
+- **Advanced Fault Tolerance**: Sophisticated recovery mechanisms with progressive strategies
+- **Coordinator Redundancy**: High-availability clustering with automatic failover
+- **Performance Trend Analysis**: Comprehensive tracking and analysis of performance metrics
+- **CI/CD Integration**: Integration with GitHub Actions, GitLab CI, and Jenkins
+
+Documentation:
+- [DISTRIBUTED_TESTING_INTEGRATION_PR.md](DISTRIBUTED_TESTING_INTEGRATION_PR.md) - Latest status update
+- [DISTRIBUTED_TESTING_GUIDE.md](DISTRIBUTED_TESTING_GUIDE.md) - Comprehensive user guide
+- [DISTRIBUTED_TESTING_DESIGN.md](DISTRIBUTED_TESTING_DESIGN.md) - Detailed design document
 
 ## Phase 16 Documentation (Completed March 2025)
 
@@ -160,34 +199,35 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [MODEL_FAMILY_GUIDE.md](MODEL_FAMILY_GUIDE.md) - Guide to model family classification
 - [MODEL_FAMILY_CLASSIFIER_GUIDE.md](MODEL_FAMILY_CLASSIFIER_GUIDE.md) - Model family classifier documentation
 
-## Advanced Features Documentation (April 2025)
+## Advanced Features Documentation (May 2025)
 
-- [MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md) - Comprehensive guide to the Model File Verification and Conversion Pipeline (NEW - March 9, 2025)
-- [ARCHIVE_STRUCTURE.md](ARCHIVE_STRUCTURE.md) - Documentation of the archive directory structure and management (NEW - March 10, 2025)
-- [DOCUMENTATION_CLEANUP_GUIDE.md](DOCUMENTATION_CLEANUP_GUIDE.md) - Guide for documentation and report cleanup (NEW - April 7, 2025)
+- [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - Latest enhancements to WebNN/WebGPU Resource Pool (NEW - May 12, 2025)
+- [DISTRIBUTED_TESTING_INTEGRATION_PR.md](DISTRIBUTED_TESTING_INTEGRATION_PR.md) - Status of Distributed Testing Framework advanced fault tolerance (NEW - May 12, 2025)
+- [MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md) - Comprehensive guide to the Model File Verification and Conversion Pipeline
+- [ARCHIVE_STRUCTURE.md](ARCHIVE_STRUCTURE.md) - Documentation of the archive directory structure and management
+- [DOCUMENTATION_CLEANUP_GUIDE.md](DOCUMENTATION_CLEANUP_GUIDE.md) - Guide for documentation and report cleanup
 - [TIME_SERIES_PERFORMANCE_GUIDE.md](TIME_SERIES_PERFORMANCE_GUIDE.md) - Time-series performance tracking system
-- [IPFS_ACCELERATION_TESTING.md](IPFS_ACCELERATION_TESTING.md) - IPFS acceleration testing with DuckDB integration (Updated March 2025)
+- [IPFS_ACCELERATION_TESTING.md](IPFS_ACCELERATION_TESTING.md) - IPFS acceleration testing with DuckDB integration
 - [MODEL_REGISTRY_INTEGRATION.md](MODEL_REGISTRY_INTEGRATION.md) - Model registry integration system
 - [MOBILE_EDGE_EXPANSION_PLAN.md](MOBILE_EDGE_EXPANSION_PLAN.md) - Mobile/edge support expansion plan
 - [BATTERY_IMPACT_ANALYSIS.md](BATTERY_IMPACT_ANALYSIS.md) - Battery impact analysis methodology
-- [SIMULATION_DETECTION_IMPROVEMENTS.md](SIMULATION_DETECTION_IMPROVEMENTS.md) - Simulation detection and flagging improvements (Updated April 7, 2025)
-- [STALE_REPORTS_CLEANUP_COMPLETED.md](STALE_REPORTS_CLEANUP_COMPLETED.md) - Completion report for stale reports cleanup (March 6, 2025)
-- [STALE_BENCHMARK_REPORTS_FIXED.md](STALE_BENCHMARK_REPORTS_FIXED.md) - Detailed documentation of the stale reports cleanup task (March 6, 2025)
-- [PHASE16_CLEANUP_SUMMARY.md](PHASE16_CLEANUP_SUMMARY.md) - Summary of Phase 16 cleanup activities (March 6, 2025)
-- [DOCUMENTATION_CLEANUP_SUMMARY.md](DOCUMENTATION_CLEANUP_SUMMARY.md) - Summary of documentation and report cleanup (April 7, 2025)
-- [NEXT_STEPS_IMPLEMENTATION.md](NEXT_STEPS_IMPLEMENTATION.md) - Implementation guide for next steps (March 2025)
+- [SIMULATION_DETECTION_IMPROVEMENTS.md](SIMULATION_DETECTION_IMPROVEMENTS.md) - Simulation detection and flagging improvements
+- [DOCUMENTATION_CLEANUP_SUMMARY.md](DOCUMENTATION_CLEANUP_SUMMARY.md) - Summary of documentation and report cleanup
+- [NEXT_STEPS_IMPLEMENTATION.md](NEXT_STEPS_IMPLEMENTATION.md) - Implementation guide for next steps
 - [NEXT_STEPS.md](NEXT_STEPS.md) - Next steps and roadmap for the framework
 
 ### Implementation Files
 
-- [model_file_verification.py](model_file_verification.py) - Core implementation of the Model File Verification and Conversion Pipeline (NEW - March 9, 2025)
-- [benchmark_model_verification.py](benchmark_model_verification.py) - Integration of the verification system with benchmarks (NEW - March 9, 2025)
-- [run_model_verification.sh](run_model_verification.sh) - Script to demonstrate model verification usage (NEW - March 9, 2025)
-- [archive/archive_backups.sh](archive/archive_backups.sh) - Script for archiving backup files and old reports (NEW - March 10, 2025)
-- [archive/archive_stale.sh](archive/archive_stale.sh) - Script for archiving stale scripts and documentation (NEW - March 10, 2025)
-- [archive_old_documentation.py](archive_old_documentation.py) - Utility for archiving outdated documentation (NEW - April 7, 2025)
-- [cleanup_stale_reports.py](cleanup_stale_reports.py) - Tool for cleaning up stale benchmark reports (UPDATED - April 7, 2025)
-- [run_documentation_cleanup.sh](run_documentation_cleanup.sh) - Script to run all documentation cleanup tools (NEW - April 7, 2025)
+- [WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md) - Guide to cross-browser model sharding with fault tolerance (NEW - May 12, 2025)
+- [distributed_testing/docs/ADVANCED_RECOVERY_STRATEGIES.md](distributed_testing/docs/ADVANCED_RECOVERY_STRATEGIES.md) - Advanced failure recovery mechanisms
+- [model_file_verification.py](model_file_verification.py) - Core implementation of the Model File Verification and Conversion Pipeline
+- [benchmark_model_verification.py](benchmark_model_verification.py) - Integration of the verification system with benchmarks
+- [run_model_verification.sh](run_model_verification.sh) - Script to demonstrate model verification usage
+- [archive/archive_backups.sh](archive/archive_backups.sh) - Script for archiving backup files and old reports
+- [archive/archive_stale.sh](archive/archive_stale.sh) - Script for archiving stale scripts and documentation
+- [archive_old_documentation.py](archive_old_documentation.py) - Utility for archiving outdated documentation
+- [cleanup_stale_reports.py](cleanup_stale_reports.py) - Tool for cleaning up stale benchmark reports
+- [run_documentation_cleanup.sh](run_documentation_cleanup.sh) - Script to run all documentation cleanup tools
 - [time_series_performance.py](time_series_performance.py) - Time-series performance tracking implementation
 - [test_ipfs_accelerate.py](test_ipfs_accelerate.py) - IPFS acceleration testing implementation with DuckDB integration
 - [model_registry_integration.py](model_registry_integration.py) - Model registry integration implementation

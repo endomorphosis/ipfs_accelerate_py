@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """
-Example script demonstrating the Predictive Performance System.
-This script shows how to use the system to predict performance,
-generate recommendations, and schedule benchmarks.
+Example script showcasing the Predictive Performance System.
+
+This script demonstrates how to use different components of the Predictive Performance
+System together, including prediction, active learning, and hardware recommendation.
+
+Usage:
+    python example.py --mode predict --model bert-base-uncased --hardware cuda
+    python example.py --mode active-learning --budget 10
+    python example.py --mode recommend-hardware --model vit-base --batch-size 8
+    python example.py --mode integrate --budget 5 --metric throughput
 """
 
 import os
@@ -404,6 +411,17 @@ def main()))))))))))))):
     recommend_benchmark_parser.add_argument()))))))))))))"--output", default="recommendations.json", 
     help="Output file for recommendations")
     
+    # Integration parser (Active Learning + Hardware Recommender)
+    integrate_parser = subparsers.add_parser()))))))))))))"integrate", 
+    help="Integrate active learning with hardware recommender")
+    integrate_parser.add_argument()))))))))))))"--budget", type=int, default=5, 
+    help="Number of configurations to recommend")
+    integrate_parser.add_argument()))))))))))))"--metric", default="throughput", 
+    choices=["throughput", "latency", "memory"], 
+    help="Metric to optimize for")
+    integrate_parser.add_argument()))))))))))))"--output", default="integrated_recommendations.json", 
+    help="Output file for integrated recommendations")
+    
     # Schedule benchmarks parser
     schedule_parser = subparsers.add_parser()))))))))))))"schedule-benchmarks", 
     help="Schedule benchmarks based on recommendations")
@@ -462,7 +480,10 @@ def main()))))))))))))):
     elif args.mode == "schedule-benchmarks":
         schedule_benchmarks()))))))))))))
         args.recommendations, execute=args.execute, db_path=args.db_path
-        )
+        
+    elif args.mode == "integrate":
+        # Run integration example with active learning and hardware recommender
+        integration_example(args)
     
     elif args.mode == "demo" or not args.mode:
         # Run a demonstration of the predictive performance system
@@ -488,6 +509,19 @@ def main()))))))))))))):
             budget=5, output_file="demo_recommendations.json"
             )
             
+            # Run integration example
+            print()))))))))))))"\nRunning integration example with active learning and hardware recommender...")
+            try:
+                # Set demo parameters
+                args.budget = 3
+                args.metric = "throughput"
+                args.output = "demo_integrated_recommendations.json"
+                integration_example(args)
+            except Exception as e:
+                print()))))))))))))f"Error running integration example: {)}))))))))))))e}")
+                print())))))))))))))"You can run the integration example directly with:")
+                print())))))))))))))"python example.py integrate --budget 5 --metric throughput")
+            
             # Show how to schedule benchmarks
             print()))))))))))))"\nYou can schedule benchmarks with:")
             print()))))))))))))"python example.py schedule-benchmarks --recommendations demo_recommendations.json")
@@ -495,6 +529,66 @@ def main()))))))))))))):
     else:
         parser.print_help())))))))))))))
 
+
+def integration_example(args):
+    """Run integration example to demonstrate active learning with hardware recommender."""
+    print("\n===== Integration Example: Active Learning with Hardware Recommender =====")
+    
+    try:
+        # Import the active learning system
+        from active_learning import ActiveLearningSystem
+        
+        # Import the hardware recommender
+        from hardware_recommender import HardwareRecommender
+        
+        # Import the prediction system for the hardware recommender
+        from predict import PerformancePredictor
+        
+        # Initialize components
+        predictor = PerformancePredictor()
+        active_learner = ActiveLearningSystem()
+        hw_recommender = HardwareRecommender(
+            predictor=predictor,
+            available_hardware=["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],
+            confidence_threshold=0.7
+        )
+        
+        # Run integrated recommendation
+        print(f"Generating integrated recommendations (budget: {args.budget}, metric: {args.metric})...")
+        integrated_results = active_learner.integrate_with_hardware_recommender(
+            hardware_recommender=hw_recommender,
+            test_budget=args.budget,
+            optimize_for=args.metric
+        )
+        
+        # Print results
+        print(f"\nGenerated {len(integrated_results['recommendations'])} integrated recommendations")
+        print(f"Total Candidates: {integrated_results['total_candidates']}")
+        print(f"Enhanced Candidates: {integrated_results['enhanced_candidates']}")
+        
+        print("\nRecommended Configurations:")
+        for i, config in enumerate(integrated_results["recommendations"]):
+            print(f"\nConfiguration #{i+1}:")
+            print(f"  - Model: {config['model_name']}")
+            print(f"  - Current Hardware: {config['hardware']}")
+            print(f"  - Recommended Hardware: {config.get('recommended_hardware', 'N/A')}")
+            print(f"  - Hardware Match: {config.get('hardware_match', False)}")
+            print(f"  - Batch Size: {config['batch_size']}")
+            print(f"  - Information Gain: {config.get('expected_information_gain', 0):.4f}")
+            print(f"  - Combined Score: {config.get('combined_score', 0):.4f}")
+        
+        # Save results if output file specified
+        if args.output:
+            os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+            with open(args.output, "w") as f:
+                json.dump(integrated_results, f, indent=2)
+            print(f"\nSaved integrated results to {args.output}")
+            
+    except ImportError as e:
+        print(f"Error importing required modules: {e}")
+        print("Make sure active_learning.py and hardware_recommender.py are in the same directory.")
+    except Exception as e:
+        print(f"Error running integration example: {e}")
 
 if __name__ == "__main__":
     main())))))))))))))

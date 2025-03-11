@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Resource Pool Bridge Integration with Recovery System
+Resource Pool Bridge Integration with Recovery System (March 2025)
 
-This module integrates the WebNN/WebGPU Resource Pool Bridge with the Recovery System,
-providing fault-tolerant operation with automatic error recovery, fallbacks, and
-performance monitoring.
+This module integrates the WebNN/WebGPU Resource Pool Bridge with the Recovery System
+and advanced features like connection pooling, health monitoring with circuit breaker pattern,
+cross-model tensor sharing, and ultra-low precision support.
 
 Key features:
 - Automatic error recovery for browser connection issues
@@ -37,7 +37,29 @@ import json
 import asyncio
 import logging
 import traceback
-from typing import Any, Dict, List, Optional, Tuple, Union, Callable
+from typing import Any, Dict, List, Optional, Tuple, Union, Callable, Set
+
+# Import connection pooling and health monitoring
+try:
+    from fixed_web_platform.connection_pool_manager import ConnectionPoolManager
+    from fixed_web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
+    ADVANCED_POOLING_AVAILABLE = True
+except ImportError:
+    ADVANCED_POOLING_AVAILABLE = False
+
+# Import tensor sharing
+try:
+    from fixed_web_platform.cross_model_tensor_sharing import TensorSharingManager
+    TENSOR_SHARING_AVAILABLE = True
+except ImportError:
+    TENSOR_SHARING_AVAILABLE = False
+    
+# Import ultra-low precision support
+try:
+    from fixed_web_platform.webgpu_ultra_low_precision import UltraLowPrecisionManager
+    ULTRA_LOW_PRECISION_AVAILABLE = True
+except ImportError:
+    ULTRA_LOW_PRECISION_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -65,10 +87,17 @@ except ImportError as e:
 
 class ResourcePoolBridgeIntegrationWithRecovery:
     """
-    Enhanced WebNN/WebGPU Resource Pool with Recovery System Integration.
+    Enhanced WebNN/WebGPU Resource Pool with Recovery System Integration (March 2025).
     
     This class integrates the ResourcePoolBridgeIntegration with the ResourcePoolBridgeRecovery
     system to provide fault-tolerant, resilient operation for web-based AI acceleration.
+    
+    The March 2025 enhancements include:
+    - Advanced connection pooling with browser-specific optimizations
+    - Health monitoring with circuit breaker pattern for graceful degradation
+    - Cross-model tensor sharing for memory efficiency
+    - Ultra-low bit quantization (2-bit, 3-bit) with shared KV cache
+    - Enhanced error recovery with performance-based strategies
     """
     
     def __init__(
@@ -84,7 +113,11 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         fallback_to_simulation: bool = True,
         monitoring_interval: int = 60,
         enable_ipfs: bool = True,
-        db_path: Optional[str] = None
+        db_path: Optional[str] = None,
+        enable_tensor_sharing: bool = True,
+        enable_ultra_low_precision: bool = True,
+        enable_circuit_breaker: bool = True,
+        max_memory_mb: int = 2048
     ):
         """
         Initialize the integrated resource pool with recovery.
@@ -102,6 +135,10 @@ class ResourcePoolBridgeIntegrationWithRecovery:
             monitoring_interval: Interval for monitoring in seconds
             enable_ipfs: Whether to enable IPFS acceleration
             db_path: Path to database for storing results
+            enable_tensor_sharing: Whether to enable cross-model tensor sharing for memory efficiency
+            enable_ultra_low_precision: Whether to enable 2-bit and 3-bit quantization support
+            enable_circuit_breaker: Whether to enable circuit breaker pattern for health monitoring
+            max_memory_mb: Maximum memory usage in MB for tensor sharing and browser connections
         """
         self.max_connections = max_connections
         self.enable_gpu = enable_gpu
@@ -116,15 +153,30 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         self.enable_ipfs = enable_ipfs
         self.db_path = db_path
         
+        # March 2025 enhancements
+        self.enable_tensor_sharing = enable_tensor_sharing and TENSOR_SHARING_AVAILABLE
+        self.enable_ultra_low_precision = enable_ultra_low_precision and ULTRA_LOW_PRECISION_AVAILABLE
+        self.enable_circuit_breaker = enable_circuit_breaker and ADVANCED_POOLING_AVAILABLE
+        self.max_memory_mb = max_memory_mb
+        
         # Initialize logger
         logger.info(f"ResourcePoolBridgeIntegrationWithRecovery created with max_connections={max_connections}, "
                    f"recovery={'enabled' if self.enable_recovery else 'disabled'}, "
-                   f"adaptive_scaling={'enabled' if adaptive_scaling else 'disabled'}")
+                   f"adaptive_scaling={'enabled' if adaptive_scaling else 'disabled'}, "
+                   f"tensor_sharing={'enabled' if self.enable_tensor_sharing else 'disabled'}, "
+                   f"ultra_low_precision={'enabled' if self.enable_ultra_low_precision else 'disabled'}, "
+                   f"circuit_breaker={'enabled' if self.enable_circuit_breaker else 'disabled'}")
         
         # Will be initialized in initialize()
         self.bridge = None
         self.bridge_with_recovery = None
         self.initialized = False
+        
+        # March 2025 enhancements
+        self.connection_pool = None
+        self.circuit_breaker = None
+        self.tensor_sharing_manager = None
+        self.ultra_low_precision_manager = None
     
     def initialize(self) -> bool:
         """
@@ -150,6 +202,18 @@ class ResourcePoolBridgeIntegrationWithRecovery:
                 db_path=self.db_path
             )
             
+            # Initialize March 2025 enhancements
+            
+            # Initialize tensor sharing if enabled
+            if self.enable_tensor_sharing and TENSOR_SHARING_AVAILABLE:
+                logger.info("Initializing cross-model tensor sharing")
+                self.tensor_sharing_manager = TensorSharingManager(max_memory_mb=self.max_memory_mb)
+            
+            # Initialize ultra-low precision if enabled
+            if self.enable_ultra_low_precision and ULTRA_LOW_PRECISION_AVAILABLE:
+                logger.info("Initializing ultra-low precision support")
+                self.ultra_low_precision_manager = UltraLowPrecisionManager()
+            
             # Initialize base bridge
             if hasattr(self.bridge, 'initialize'):
                 loop = asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else asyncio.new_event_loop()
@@ -174,8 +238,41 @@ class ResourcePoolBridgeIntegrationWithRecovery:
                     logger.error("Failed to initialize recovery bridge")
                     return False
             
+            # Initialize connection pool and circuit breaker if enabled
+            if self.enable_circuit_breaker and ADVANCED_POOLING_AVAILABLE:
+                logger.info("Initializing connection pool and circuit breaker")
+                
+                # Get browser connections from bridge
+                browser_connections = {}
+                if hasattr(self.bridge, 'browser_connections'):
+                    browser_connections = self.bridge.browser_connections
+                
+                if browser_connections:
+                    # Create connection pool manager
+                    self.connection_pool = ConnectionPoolManager(
+                        min_connections=1,
+                        max_connections=self.max_connections,
+                        browser_preferences=self.browser_preferences,
+                        adaptive_scaling=self.adaptive_scaling,
+                        db_path=self.db_path
+                    )
+                    
+                    # Create circuit breaker manager
+                    self.circuit_breaker = ResourcePoolCircuitBreakerManager(browser_connections)
+                    
+                    # Initialize them
+                    loop = asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else asyncio.new_event_loop()
+                    loop.run_until_complete(self.connection_pool.initialize())
+                    loop.run_until_complete(self.circuit_breaker.initialize())
+                    
+                    logger.info("Connection pool and circuit breaker initialized successfully")
+            
             self.initialized = True
-            logger.info(f"ResourcePoolBridgeIntegrationWithRecovery initialized successfully (recovery={'enabled' if self.enable_recovery else 'disabled'})")
+            logger.info(f"ResourcePoolBridgeIntegrationWithRecovery initialized successfully "
+                       f"(recovery={'enabled' if self.enable_recovery else 'disabled'}, "
+                       f"tensor_sharing={'enabled' if self.tensor_sharing_manager else 'disabled'}, "
+                       f"ultra_low_precision={'enabled' if self.ultra_low_precision_manager else 'disabled'}, "
+                       f"circuit_breaker={'enabled' if self.circuit_breaker else 'disabled'})")
             return True
             
         except ImportError as e:
@@ -277,35 +374,108 @@ class ResourcePoolBridgeIntegrationWithRecovery:
     
     def get_health_status(self) -> Dict[str, Any]:
         """
-        Get health status of the resource pool.
+        Get health status of the resource pool including all March 2025 enhancements.
         
         Returns:
-            Dict with health status information
+            Dict with comprehensive health status information
         """
         if not self.initialized:
             return {"status": "not_initialized"}
         
-        # Use recovery bridge if enabled
+        # Get base health status
         if self.enable_recovery and self.bridge_with_recovery and hasattr(self.bridge_with_recovery, 'get_health_status_sync'):
-            return self.bridge_with_recovery.get_health_status_sync()
-        
-        # Use base bridge if recovery not enabled
-        if hasattr(self.bridge, 'get_health_status_sync'):
-            return self.bridge.get_health_status_sync()
+            status = self.bridge_with_recovery.get_health_status_sync()
+        elif hasattr(self.bridge, 'get_health_status_sync'):
+            status = self.bridge.get_health_status_sync()
         elif hasattr(self.bridge, 'get_health_status'):
             loop = asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else asyncio.new_event_loop()
-            return loop.run_until_complete(self.bridge.get_health_status())
+            status = loop.run_until_complete(self.bridge.get_health_status())
+        else:
+            status = {"status": "unknown"}
+        
+        # Add circuit breaker health status if enabled
+        if self.enable_circuit_breaker and self.circuit_breaker:
+            circuit_health = {"status": "not_available"}
+            try:
+                loop = asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else asyncio.new_event_loop()
+                circuit_health = loop.run_until_complete(self.circuit_breaker.get_health_summary())
+            except Exception as e:
+                logger.error(f"Error getting circuit breaker health: {e}")
             
-        return {"status": "health_status_not_available"}
+            status["circuit_breaker"] = circuit_health
+            
+        # Add tensor sharing status if enabled
+        if self.enable_tensor_sharing and self.tensor_sharing_manager:
+            try:
+                tensor_stats = self.tensor_sharing_manager.get_stats()
+                status["tensor_sharing"] = tensor_stats
+            except Exception as e:
+                logger.error(f"Error getting tensor sharing stats: {e}")
+                status["tensor_sharing"] = {"error": str(e)}
+                
+        # Add ultra-low precision status if enabled
+        if self.enable_ultra_low_precision and self.ultra_low_precision_manager:
+            try:
+                ulp_stats = self.ultra_low_precision_manager.get_stats()
+                status["ultra_low_precision"] = ulp_stats
+            except Exception as e:
+                logger.error(f"Error getting ultra-low precision stats: {e}")
+                status["ultra_low_precision"] = {"error": str(e)}
+        
+        return status
     
     def close(self) -> bool:
         """
-        Close all resources with proper cleanup.
+        Close all resources with proper cleanup, including March 2025 enhancements.
         
         Returns:
             Success status
         """
         success = True
+        
+        # Close March 2025 enhancements first
+        
+        # Close circuit breaker if enabled
+        if self.enable_circuit_breaker and self.circuit_breaker:
+            try:
+                logger.info("Closing circuit breaker manager")
+                loop = asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else asyncio.new_event_loop()
+                loop.run_until_complete(self.circuit_breaker.close())
+                logger.info("Circuit breaker manager closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing circuit breaker manager: {e}")
+                success = False
+        
+        # Close connection pool if enabled
+        if self.enable_circuit_breaker and self.connection_pool:
+            try:
+                logger.info("Closing connection pool manager")
+                loop = asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else asyncio.new_event_loop()
+                loop.run_until_complete(self.connection_pool.shutdown())
+                logger.info("Connection pool manager closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing connection pool manager: {e}")
+                success = False
+        
+        # Clean up tensor sharing if enabled
+        if self.enable_tensor_sharing and self.tensor_sharing_manager:
+            try:
+                logger.info("Cleaning up tensor sharing manager")
+                self.tensor_sharing_manager.cleanup()
+                logger.info("Tensor sharing manager cleaned up successfully")
+            except Exception as e:
+                logger.error(f"Error cleaning up tensor sharing manager: {e}")
+                success = False
+        
+        # Clean up ultra-low precision if enabled
+        if self.enable_ultra_low_precision and self.ultra_low_precision_manager:
+            try:
+                logger.info("Cleaning up ultra-low precision manager")
+                self.ultra_low_precision_manager.cleanup()
+                logger.info("Ultra-low precision manager cleaned up successfully")
+            except Exception as e:
+                logger.error(f"Error cleaning up ultra-low precision manager: {e}")
+                success = False
         
         # Close recovery bridge if enabled
         if self.enable_recovery and self.bridge_with_recovery:
@@ -330,20 +500,37 @@ class ResourcePoolBridgeIntegrationWithRecovery:
                 success = False
         
         self.initialized = False
+        logger.info(f"ResourcePoolBridgeIntegrationWithRecovery closed (success={'yes' if success else 'no'}, "
+                   f"closed tensor_sharing={'yes' if self.tensor_sharing_manager else 'n/a'}, "
+                   f"closed ultra_low_precision={'yes' if self.ultra_low_precision_manager else 'n/a'}, "
+                   f"closed circuit_breaker={'yes' if self.circuit_breaker else 'n/a'})")
         return success
     
     def setup_tensor_sharing(self, max_memory_mb: Optional[int] = None) -> Any:
         """
-        Set up cross-model tensor sharing.
+        Set up cross-model tensor sharing for memory efficiency.
+        
+        This feature enables multiple models to share tensors, significantly
+        improving memory efficiency and performance for multi-model workloads.
         
         Args:
-            max_memory_mb: Maximum memory to allocate for shared tensors (in MB)
+            max_memory_mb: Maximum memory in MB to use for tensor sharing (overrides the initial setting)
             
         Returns:
-            TensorSharingManager instance or None on failure
+            TensorSharingManager instance or None if not available
         """
         if not self.initialized:
             logger.error("ResourcePoolBridgeIntegrationWithRecovery not initialized")
+            return None
+            
+        # Check if tensor sharing is enabled
+        if not self.enable_tensor_sharing:
+            logger.warning("Tensor sharing is not enabled")
+            return None
+            
+        # Check if tensor sharing is available
+        if not TENSOR_SHARING_AVAILABLE:
+            logger.warning("Tensor sharing is not available (missing dependencies)")
             return None
         
         # Use recovery bridge if enabled
@@ -354,7 +541,24 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         if hasattr(self.bridge, 'setup_tensor_sharing'):
             return self.bridge.setup_tensor_sharing(max_memory_mb=max_memory_mb)
             
-        return None
+        # Use local tensor sharing implementation if no bridge implementation available
+        try:
+            # Use existing manager if already created
+            if self.tensor_sharing_manager:
+                if max_memory_mb is not None:
+                    # Update memory limit if specified
+                    self.tensor_sharing_manager.set_max_memory(max_memory_mb)
+                return self.tensor_sharing_manager
+                
+            # Create new manager if not already created
+            memory_limit = max_memory_mb if max_memory_mb is not None else self.max_memory_mb
+            self.tensor_sharing_manager = TensorSharingManager(max_memory_mb=memory_limit)
+            logger.info(f"Tensor sharing manager created with {memory_limit} MB memory limit")
+            return self.tensor_sharing_manager
+            
+        except Exception as e:
+            logger.error(f"Error setting up tensor sharing: {e}")
+            return None
 
     def share_tensor_between_models(
         self, 

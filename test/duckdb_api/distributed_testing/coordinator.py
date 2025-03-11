@@ -32,6 +32,21 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Set, Tuple
 from pathlib import Path
 
+# Import the new components
+try:
+    from duckdb_api.distributed_testing.auto_recovery import AutoRecovery
+    AUTO_RECOVERY_AVAILABLE = True
+except ImportError:
+    logger.warning("Auto Recovery system not available. High availability features disabled.")
+    AUTO_RECOVERY_AVAILABLE = False
+
+try:
+    from duckdb_api.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
+    PERFORMANCE_ANALYZER_AVAILABLE = True
+except ImportError:
+    logger.warning("Performance Trend Analyzer not available. Performance analysis features disabled.")
+    PERFORMANCE_ANALYZER_AVAILABLE = False
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -1547,7 +1562,9 @@ class CoordinatorServer:
     
     def __init__(self, host: str = "localhost", port: int = 8080,
                  db_path: str = None, token_secret: str = None,
-                 heartbeat_timeout: int = 60):
+                 heartbeat_timeout: int = 60, auto_recovery: bool = False,
+                 coordinator_id: str = None, coordinator_addresses: List[str] = None,
+                 performance_analyzer: bool = False, visualization_path: str = None):
         """Initialize the coordinator server.
         
         Args:
@@ -1556,12 +1573,19 @@ class CoordinatorServer:
             db_path: Path to the DuckDB database
             token_secret: Secret for signing JWT tokens
             heartbeat_timeout: Timeout in seconds for worker heartbeats
+            auto_recovery: Enable auto recovery system for high availability
+            coordinator_id: Unique identifier for this coordinator instance
+            coordinator_addresses: List of other coordinator addresses for clustering
+            performance_analyzer: Enable performance trend analyzer
+            visualization_path: Path for performance visualizations
         """
         self.host = host
         self.port = port
         self.db_path = db_path
         self.token_secret = token_secret
         self.heartbeat_timeout = heartbeat_timeout
+        self.coordinator_id = coordinator_id or f"coordinator-{uuid.uuid4().hex[:8]}"
+        self.coordinator_addresses = coordinator_addresses or []
         
         # Initialize database manager if path is provided
         self.db_manager = None
@@ -1581,6 +1605,56 @@ class CoordinatorServer:
         # Initialize worker manager
         self.worker_manager = WorkerManager(self.db_manager, heartbeat_timeout)
         
+        # Initialize auto recovery system if enabled
+        self.auto_recovery = None
+        if auto_recovery and AUTO_RECOVERY_AVAILABLE:
+            try:
+                self.auto_recovery = AutoRecovery(
+                    coordinator_id=self.coordinator_id,
+                    db_manager=self.db_manager,
+                    coordinator_manager=self.worker_manager,
+                    task_scheduler=self.task_manager
+                )
+                
+                # Configure auto recovery system
+                self.auto_recovery.configure({
+                    "coordinator_port": self.port,
+                    "coordinator_addresses": self.coordinator_addresses,
+                    "failover_enabled": True,
+                    "auto_leader_election": True,
+                    "auto_discover_coordinators": True
+                })
+                
+                logger.info(f"Auto recovery system initialized with ID: {self.coordinator_id}")
+            except Exception as e:
+                logger.error(f"Error initializing auto recovery system: {e}")
+                self.auto_recovery = None
+        
+        # Initialize performance trend analyzer if enabled
+        self.performance_analyzer = None
+        if performance_analyzer and PERFORMANCE_ANALYZER_AVAILABLE:
+            try:
+                self.performance_analyzer = PerformanceTrendAnalyzer(
+                    db_manager=self.db_manager,
+                    task_scheduler=self.task_manager
+                )
+                
+                # Configure performance analyzer
+                analyzer_config = {
+                    "visualization_enabled": visualization_path is not None,
+                    "database_enabled": self.db_manager is not None
+                }
+                
+                if visualization_path:
+                    analyzer_config["visualization_path"] = visualization_path
+                    
+                self.performance_analyzer.configure(analyzer_config)
+                
+                logger.info("Performance trend analyzer initialized")
+            except Exception as e:
+                logger.error(f"Error initializing performance trend analyzer: {e}")
+                self.performance_analyzer = None
+        
         # WebSocket server
         self.websocket_server = None
         self.running = False
@@ -1596,6 +1670,21 @@ class CoordinatorServer:
             return False
             
         try:
+            # Start auto recovery system if enabled
+            if self.auto_recovery:
+                self.auto_recovery.start()
+                
+                # Register event callbacks
+                self.auto_recovery.on_become_leader(self._on_become_leader)
+                self.auto_recovery.on_leader_changed(self._on_leader_changed)
+                
+                logger.info("Auto recovery system started")
+            
+            # Start performance trend analyzer if enabled
+            if self.performance_analyzer:
+                self.performance_analyzer.start()
+                logger.info("Performance trend analyzer started")
+            
             # Start WebSocket server
             logger.info(f"Starting WebSocket server on {self.host}:{self.port}")
             self.websocket_server = await websockets.serve(
@@ -1639,6 +1728,16 @@ class CoordinatorServer:
         # Set stop event
         self.stop_event.set()
         
+        # Stop auto recovery system if enabled
+        if self.auto_recovery:
+            self.auto_recovery.stop()
+            logger.info("Auto recovery system stopped")
+        
+        # Stop performance trend analyzer if enabled
+        if self.performance_analyzer:
+            self.performance_analyzer.stop()
+            logger.info("Performance trend analyzer stopped")
+        
         # Close WebSocket server
         if self.websocket_server:
             self.websocket_server.close()
@@ -1652,6 +1751,28 @@ class CoordinatorServer:
         self.running = False
         
         logger.info("Coordinator server stopped")
+        
+    def _on_become_leader(self):
+        """Callback for when this coordinator becomes the leader."""
+        logger.info(f"Coordinator {self.coordinator_id} has become the leader")
+        
+        # Perform leader-specific initialization
+        # For example, you could start additional services or enable certain features
+        
+    def _on_leader_changed(self, old_leader: str, new_leader: str):
+        """Callback for when the leader coordinator changes.
+        
+        Args:
+            old_leader: ID of the previous leader coordinator
+            new_leader: ID of the new leader coordinator
+        """
+        logger.info(f"Leader changed from {old_leader} to {new_leader}")
+        
+        # Adjust behavior based on new leader
+        if new_leader == self.coordinator_id:
+            logger.info("This coordinator is now the leader")
+        else:
+            logger.info(f"Following leader: {new_leader}")
     
     async def _handle_websocket(self, websocket, path):
         """Handle WebSocket connections from workers.
@@ -1912,6 +2033,95 @@ class CoordinatorServer:
                 "worker_id": worker_id
             }))
         
+        elif message_type == "coordinator_heartbeat" and self.auto_recovery:
+            # Process coordinator heartbeat (for auto recovery system)
+            response = self.auto_recovery.handle_heartbeat(message)
+            await websocket.send(json.dumps({
+                "type": "coordinator_heartbeat_response",
+                "success": True,
+                "term": response["term"],
+                "match_index": response.get("match_index", 0),
+                "vote_granted": False
+            }))
+        
+        elif message_type == "coordinator_request_vote" and self.auto_recovery:
+            # Process coordinator vote request (for auto recovery system)
+            response = self.auto_recovery.handle_vote_request(message)
+            await websocket.send(json.dumps({
+                "type": "coordinator_vote_response",
+                "term": response["term"],
+                "vote_granted": response["vote_granted"]
+            }))
+            
+        elif message_type == "coordinator_sync" and self.auto_recovery:
+            # Process coordinator sync request (for auto recovery system)
+            response = self.auto_recovery.handle_sync_request(message)
+            await websocket.send(json.dumps({
+                "type": "coordinator_sync_response",
+                "success": response["success"],
+                "snapshot": response.get("snapshot", {}),
+                "reason": response.get("reason", "")
+            }))
+            
+        elif message_type == "get_performance_trends" and self.performance_analyzer:
+            # Get performance trends
+            entity_type = message.get("entity_type", "worker")
+            entity_id = message.get("entity_id")
+            metric = message.get("metric")
+            significant_only = message.get("significant_only", True)
+            
+            if entity_type == "worker":
+                trends = self.performance_analyzer.get_worker_trends(
+                    entity_id, metric, significant_only
+                )
+            else:
+                trends = self.performance_analyzer.get_task_trends(
+                    entity_id, metric, significant_only
+                )
+                
+            await websocket.send(json.dumps({
+                "type": "performance_trends_result",
+                "success": True,
+                "trends": trends
+            }))
+            
+        elif message_type == "get_performance_anomalies" and self.performance_analyzer:
+            # Get performance anomalies
+            entity_type = message.get("entity_type", "worker")
+            entity_id = message.get("entity_id")
+            metric = message.get("metric")
+            limit = message.get("limit", 10)
+            
+            if entity_type == "worker":
+                anomalies = self.performance_analyzer.get_worker_anomalies(
+                    entity_id, metric, limit
+                )
+            else:
+                anomalies = self.performance_analyzer.get_task_anomalies(
+                    entity_id, metric, limit
+                )
+                
+            await websocket.send(json.dumps({
+                "type": "performance_anomalies_result",
+                "success": True,
+                "anomalies": anomalies
+            }))
+            
+        elif message_type == "get_performance_report" and self.performance_analyzer:
+            # Get performance report
+            entity_type = message.get("entity_type", "worker")
+            significant_only = message.get("significant_only", True)
+            
+            report = self.performance_analyzer.get_performance_report(
+                entity_type, significant_only
+            )
+                
+            await websocket.send(json.dumps({
+                "type": "performance_report_result",
+                "success": True,
+                "report": report
+            }))
+                
         else:
             # Unknown message type
             logger.warning(f"Unknown message type: {message_type}")
@@ -1993,6 +2203,28 @@ def main():
     parser.add_argument("--security-config", default=None,
                       help="Path to security configuration file")
     
+    # Auto recovery system options
+    parser.add_argument("--auto-recovery", action="store_true",
+                      help="Enable auto recovery system for high availability")
+    parser.add_argument("--coordinator-id", default=None,
+                      help="Unique identifier for this coordinator instance")
+    parser.add_argument("--coordinator-addresses", default=None,
+                      help="Comma-separated list of other coordinator addresses (host:port)")
+    parser.add_argument("--failover-enabled", action="store_true", default=True,
+                      help="Enable automatic failover (default: true)")
+    parser.add_argument("--auto-leader-election", action="store_true", default=True,
+                      help="Enable automatic leader election (default: true)")
+    
+    # Performance trend analyzer options
+    parser.add_argument("--performance-analyzer", action="store_true",
+                      help="Enable performance trend analyzer")
+    parser.add_argument("--visualization-path", default=None,
+                      help="Path for performance visualizations")
+    parser.add_argument("--report", action="store_true",
+                      help="Generate a performance report when enabled")
+    parser.add_argument("--report-output", default="performance_report.html",
+                      help="Output file for the performance report")
+    
     args = parser.parse_args()
     
     # Load security configuration if provided
@@ -2005,13 +2237,23 @@ def main():
         except Exception as e:
             logger.error(f"Error loading security configuration: {e}")
     
+    # Parse coordinator addresses if provided
+    coordinator_addresses = []
+    if args.coordinator_addresses:
+        coordinator_addresses = args.coordinator_addresses.split(",")
+    
     # Create coordinator
     coordinator = CoordinatorServer(
         host=args.host,
         port=args.port,
         db_path=args.db_path,
         token_secret=token_secret,
-        heartbeat_timeout=args.heartbeat_timeout
+        heartbeat_timeout=args.heartbeat_timeout,
+        auto_recovery=args.auto_recovery,
+        coordinator_id=args.coordinator_id,
+        coordinator_addresses=coordinator_addresses,
+        performance_analyzer=args.performance_analyzer,
+        visualization_path=args.visualization_path
     )
     
     # Generate worker key if requested
@@ -2024,6 +2266,50 @@ def main():
         print(f"Role: {key_info['role']}")
         print("\nUse this key to authenticate worker nodes with the coordinator.")
         return 0
+        
+    # Generate performance report if requested
+    if args.report and coordinator.performance_analyzer:
+        try:
+            print(f"Generating performance report to {args.report_output}...")
+            
+            # Initialize the analyzer to load data from database
+            coordinator.performance_analyzer.start()
+            
+            # Generate the report
+            entity_type = "worker"  # Default to worker report
+            significant_only = True
+            
+            report = coordinator.performance_analyzer.get_performance_report(
+                entity_type, significant_only
+            )
+            
+            # Export the report
+            output_format = "html" if args.report_output.endswith(".html") else "json"
+            
+            if output_format == "html":
+                # Generate HTML report (simplified example)
+                with open(args.report_output, "w") as f:
+                    f.write("<html><head><title>Performance Report</title></head><body>")
+                    f.write(f"<h1>Performance Report - {datetime.now().isoformat()}</h1>")
+                    f.write("<h2>Trends</h2>")
+                    f.write("<pre>" + json.dumps(report["trends"], indent=2) + "</pre>")
+                    f.write("<h2>Anomalies</h2>")
+                    f.write("<pre>" + json.dumps(report["anomalies"], indent=2) + "</pre>")
+                    f.write("</body></html>")
+            else:
+                # Export JSON report
+                with open(args.report_output, "w") as f:
+                    json.dump(report, f, indent=2)
+                    
+            print(f"Report generated successfully to {args.report_output}")
+            
+            # Stop the analyzer
+            coordinator.performance_analyzer.stop()
+            return 0
+        except Exception as e:
+            logger.error(f"Error generating performance report: {e}")
+            traceback.print_exc()
+            return 1
     
     # Start coordinator
     try:

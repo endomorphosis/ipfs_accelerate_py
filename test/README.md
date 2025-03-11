@@ -20,14 +20,18 @@ Phase 16 has been successfully completed (March 2025), with all planned features
 2. **Model File Verification and Conversion Pipeline** ✅ - Pre-benchmark ONNX file verification and PyTorch conversion (COMPLETED - March 9, 2025)
 3. **WebGPU/WebNN Resource Pool Integration** 🔄 - Implementing parallel model execution across browser backends (IN PROGRESS - Started March 7, 2025)
 4. **Cross-Browser Model Sharding** ✅ - Run large models distributed across multiple browser types (COMPLETED - March 8, 2025)
-5. **Predictive Performance System** 🔄 - Implementing ML-based performance prediction (IN PROGRESS - Started March 9, 2025)
+5. **Predictive Performance System** 🔄 - Implementing ML-based performance prediction with active learning, test batch generation, and hardware recommendation integration (IN PROGRESS - 70% complete)
 
 See the [Next Steps](NEXT_STEPS.md) document for the detailed roadmap of current and future initiatives. For information about the completed Phase 16, see the [Phase 16 Completion Report](PHASE16_COMPLETION_REPORT.md).
 
 ## Recent Documentation
 
+- **[TEST_BATCH_GENERATOR_GUIDE.md](predictive_performance/TEST_BATCH_GENERATOR_GUIDE.md)** - NEW! Comprehensive guide to the Test Batch Generator for creating optimized test batches
+- **[INTEGRATED_ACTIVE_LEARNING_GUIDE.md](predictive_performance/INTEGRATED_ACTIVE_LEARNING_GUIDE.md)** - NEW! Comprehensive guide to the integration between Active Learning and Hardware Recommendation
+- **[INTEGRATION_QUICK_REFERENCE.md](predictive_performance/INTEGRATION_QUICK_REFERENCE.md)** - NEW! Quick reference for using the integrated recommendation system
+- **[TESTING_GUIDE.md](predictive_performance/TESTING_GUIDE.md)** - NEW! Comprehensive testing guide for the Predictive Performance System
 - **[MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md)** - NEW! Comprehensive guide to the Model File Verification and Conversion Pipeline
-- **[PREDICTIVE_PERFORMANCE_GUIDE.md](predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md)** - NEW! Comprehensive guide to the ML-based performance prediction system
+- **[PREDICTIVE_PERFORMANCE_GUIDE.md](predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md)** - UPDATED! Comprehensive guide to the ML-based performance prediction system
 - **[WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md)** - NEW! Comprehensive guide to cross-browser model sharding for large models
 - **[OPENVINO_BENCHMARKING_GUIDE.md](OPENVINO_BENCHMARKING_GUIDE.md)** - NEW! Comprehensive guide to benchmarking models with OpenVINO across multiple precision formats (FP32, FP16, INT8)
 - **[ENHANCED_OPENVINO_INTEGRATION.md](ENHANCED_OPENVINO_INTEGRATION.md)** - NEW! Comprehensive guide to enhanced OpenVINO integration with optimum.intel and INT8 quantization

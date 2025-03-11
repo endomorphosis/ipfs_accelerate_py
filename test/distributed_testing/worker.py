@@ -96,7 +96,13 @@ class DistributedTestingWorker:
         # Task state
             self.current_task: Optional[],Dict[],str, Any]] = None
             self.current_task_future: Optional[],asyncio.Future] = None
-            self.task_executors: Dict[],str, Callable] = self._register_task_executors())))
+            self.task_executors: Dict[],str, Callable] = self._register_task_executors()))
+            
+        # Heartbeat and health tracking
+            self.last_heartbeat_time = datetime.now()
+            self.heartbeat_interval = 10  # seconds
+            self.health_metrics: Dict[str, Any] = {}
+            self.is_healthy = True)
         
         # WebSocket connection
             self.ws: Optional[],websockets.WebSocketClientProtocol] = None
@@ -381,13 +387,27 @@ class DistributedTestingWorker:
             hardware_metrics = self._collect_hardware_metrics())))
             self.current_hardware_metrics = hardware_metrics
             
+            # Update last heartbeat time
+            self.last_heartbeat_time = datetime.now())))
+            
+            # Check health before sending heartbeat
+            await self.check_health())))
+            
             # Prepare heartbeat message
             heartbeat = {}}}}}}}}}}}}}}}}}}}}}}}}}
             "type": "heartbeat",
             "worker_id": self.worker_id,
             "timestamp": datetime.now()))).isoformat()))),
             "hardware_metrics": hardware_metrics,
-            }
+            "health_status": {}}}}}}}}}}}}}}}}}}}}}}}}}
+                "is_healthy": self.is_healthy,
+                "health_metrics": self.health_metrics,
+                "recovery_status": {}}}}}}}}}}}}}}}}}}}}}}}}}
+                    "needs_recovery": not self.is_healthy,
+                    "auto_recovery_enabled": True,
+                    "last_recovery_attempt": None  # Will be set by coordinator
+                }
+            },
             
             # Add current task status if running::
             if self.current_task:
@@ -887,20 +907,77 @@ class DistributedTestingWorker:
         
             return results
     
-    async def start()))self):
+    async def check_health)))self):
+        """
+        Perform health check and update health status.
+        
+        This method checks various aspects of the worker's health, including:
+        - Current resource availability
+        - Task execution status
+        - Recent failed heartbeats
+        - Connection status
+        
+        The results are used to update the is_healthy flag.
+        """
+        try:
+            # Check resource availability
+            cpu_percent = psutil.cpu_percent())))
+            memory_percent = psutil.virtual_memory())))).percent
+            
+            # Determine health based on resource usage
+            resource_healthy = cpu_percent < 95 and memory_percent < 95
+            
+            # Check connection status
+            connection_healthy = self.ws_connected
+            
+            # Update health status
+            self.is_healthy = resource_healthy and connection_healthy
+            
+            # Update health metrics
+            self.health_metrics = {}}}}}}}}}}}}}}}}}}}}}}}}}
+                "is_healthy": self.is_healthy,
+                "resource_healthy": resource_healthy,
+                "connection_healthy": connection_healthy,
+                "cpu_percent": cpu_percent,
+                "memory_percent": memory_percent,
+                "current_task": self.current_task["task_id"] if self.current_task else None,
+                "check_time": datetime.now())))).isoformat())))
+            }
+            
+            # Log health status if not healthy
+            if not self.is_healthy:
+                logger.warning)))f"Worker health check failed: {}}}}}}}}}}}}}}}}}}}}}}}}}self.health_metrics}")
+                
+            return self.is_healthy
+        
+        except Exception as e:
+            logger.error)))f"Error performing health check: {}}}}}}}}}}}}}}}}}}}}}}}}}str)))e)}")
+            self.is_healthy = False
+            return False
+    
+    async def health_check_loop)))self):
+        """Background task to periodically check worker health."""
+        health_check_interval = 30  # seconds
+        
+        while True:
+            await self.check_health())))
+            await asyncio.sleep)))health_check_interval)
+    
+    async def start)))self):
         """Start the worker node."""
         # Connect to coordinator
         connection_successful = await self.connect_to_coordinator())))
         if not connection_successful:
             logger.error()))"Failed to connect to coordinator, exiting")
-        return
+            return
         
         # Start background tasks
-        heartbeat_task = asyncio.create_task()))self.heartbeat_loop()))))
-        listen_task = asyncio.create_task()))self.listen_for_tasks()))))
+        heartbeat_task = asyncio.create_task)))self.heartbeat_loop()))))
+        listen_task = asyncio.create_task)))self.listen_for_tasks()))))
+        health_task = asyncio.create_task)))self.health_check_loop()))))
         
-        # Wait for tasks to complete ()))they won't unless they fail)
-        await asyncio.gather()))heartbeat_task, listen_task)
+        # Wait for tasks to complete )))they won't unless they fail)
+        await asyncio.gather)))heartbeat_task, listen_task, health_task)
 
 
 async def main()))):

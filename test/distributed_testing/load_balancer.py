@@ -1,94 +1,387 @@
 #!/usr/bin/env python3
 """
-Distributed Testing Framework - Load Balancer
+Distributed Testing Framework - Advanced Adaptive Load Balancer
 
-This module implements adaptive load balancing for the distributed testing framework.
-It monitors worker performance in real-time and redistributes tasks for optimal utilization.
+This module implements advanced adaptive load balancing for the distributed testing framework.
+It monitors worker performance in real-time and redistributes tasks for optimal utilization
+using dynamic thresholds, predictive analysis, and hardware-specific strategies.
 
 Usage:
-    Import this module in coordinator.py to enable adaptive load balancing.
-    """
+    Import this module in coordinator.py to enable advanced adaptive load balancing.
+"""
 
-    import asyncio
-    import json
-    import logging
-    import time
-    from datetime import datetime, timedelta
-    from typing import Dict, List, Optional, Any, Set, Tuple
+import asyncio
+import json
+import logging
+import time
+import math
+import statistics
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any, Set, Tuple, NamedTuple
 
 # Configure logging
-    logging.basicConfig()))
+logging.basicConfig(
     level=logging.INFO,
-    format='%()))asctime)s - %()))name)s - %()))levelname)s - %()))message)s'
-    )
-    logger = logging.getLogger()))__name__)
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+class WorkloadTrend(NamedTuple):
+    """Represents a workload trend with direction and magnitude."""
+    direction: str  # 'increasing', 'decreasing', 'stable'
+    magnitude: float  # Rate of change (0.0-1.0)
+    confidence: float  # Confidence in prediction (0.0-1.0)
+
+class HardwareProfile(NamedTuple):
+    """Represents a hardware profile for balancing strategies."""
+    hardware_type: str  # 'cpu', 'cuda', 'rocm', etc.
+    performance_weight: float  # Relative performance weight
+    energy_efficiency: float  # Energy efficiency score (0.0-1.0)
+    thermal_efficiency: float  # Thermal efficiency score (0.0-1.0)
+
+class TaskProfile(NamedTuple):
+    """Represents a task profile for migration decisions."""
+    type: str
+    estimated_completion_time: float
+    resource_requirements: Dict[str, Any]
+    migration_cost: float
+    priority: int
 
 class AdaptiveLoadBalancer:
-    """Adaptive load balancer for distributed testing framework."""
+    """Advanced adaptive load balancer for distributed testing framework."""
     
-    def __init__()))
-    self,
-    coordinator,
-    check_interval: int = 30,
-    utilization_threshold_high: float = 0.85,
-    utilization_threshold_low: float = 0.2,
-    performance_window: int = 5,
-    enable_task_migration: bool = True,
-    max_simultaneous_migrations: int = 2
+    def __init__(
+        self,
+        coordinator,
+        check_interval: int = 30,
+        utilization_threshold_high: float = 0.85,
+        utilization_threshold_low: float = 0.2,
+        performance_window: int = 5,
+        enable_task_migration: bool = True,
+        max_simultaneous_migrations: int = 2,
+        enable_dynamic_thresholds: bool = True,
+        enable_predictive_balancing: bool = True,
+        enable_cost_benefit_analysis: bool = True,
+        enable_hardware_specific_strategies: bool = True,
+        enable_resource_efficiency: bool = True,
+        threshold_adjustment_rate: float = 0.05,
+        prediction_window: int = 3,
+        db_metrics_table: str = "load_balancer_metrics"
     ):
         """
-        Initialize the adaptive load balancer.
+        Initialize the advanced adaptive load balancer.
         
         Args:
             coordinator: Reference to the coordinator instance
             check_interval: Interval for load balance checks in seconds
-            utilization_threshold_high: Threshold for high utilization ()))0.0-1.0)
-            utilization_threshold_low: Threshold for low utilization ()))0.0-1.0)
+            utilization_threshold_high: Initial threshold for high utilization (0.0-1.0)
+            utilization_threshold_low: Initial threshold for low utilization (0.0-1.0)
             performance_window: Window size for performance measurements in minutes
             enable_task_migration: Whether to enable task migration
             max_simultaneous_migrations: Maximum number of simultaneous task migrations
-            """
-            self.coordinator = coordinator
-            self.check_interval = check_interval
-            self.utilization_threshold_high = utilization_threshold_high
-            self.utilization_threshold_low = utilization_threshold_low
-            self.performance_window = performance_window
-            self.enable_task_migration = enable_task_migration
-            self.max_simultaneous_migrations = max_simultaneous_migrations
+            enable_dynamic_thresholds: Whether to dynamically adjust thresholds based on system load
+            enable_predictive_balancing: Whether to predict future load and proactively balance
+            enable_cost_benefit_analysis: Whether to analyze cost vs benefit of migrations
+            enable_hardware_specific_strategies: Whether to use hardware-specific balancing strategies
+            enable_resource_efficiency: Whether to consider resource efficiency in balancing
+            threshold_adjustment_rate: Rate at which thresholds are adjusted (0.0-1.0)
+            prediction_window: Window size for load prediction in minutes
+            db_metrics_table: Database table name for storing metrics
+        """
+        self.coordinator = coordinator
+        self.check_interval = check_interval
+        self.initial_threshold_high = utilization_threshold_high
+        self.initial_threshold_low = utilization_threshold_low
+        self.utilization_threshold_high = utilization_threshold_high
+        self.utilization_threshold_low = utilization_threshold_low
+        self.performance_window = performance_window
+        self.enable_task_migration = enable_task_migration
+        self.max_simultaneous_migrations = max_simultaneous_migrations
+        self.enable_dynamic_thresholds = enable_dynamic_thresholds
+        self.enable_predictive_balancing = enable_predictive_balancing
+        self.enable_cost_benefit_analysis = enable_cost_benefit_analysis
+        self.enable_hardware_specific_strategies = enable_hardware_specific_strategies
+        self.enable_resource_efficiency = enable_resource_efficiency
+        self.threshold_adjustment_rate = threshold_adjustment_rate
+        self.prediction_window = prediction_window
+        self.db_metrics_table = db_metrics_table
         
         # Performance measurements
-            self.worker_performance_history: Dict[]]],,str, List[]]],,Dict[]]],,str, Any]]] = {}}}}}}}}}
-            ,
+        self.worker_performance_history: Dict[str, List[Dict[str, Any]]] = {}
+        
         # Current migrations
-            self.active_migrations: Dict[]]],,str, Dict[]]],,str, Any]] = {}}}}}}}}}  # task_id -> migration info
-            ,
+        self.active_migrations: Dict[str, Dict[str, Any]] = {}  # task_id -> migration info
+        
         # Migration history
-            self.migration_history: List[]]],,Dict[]]],,str, Any]] = []]],,]
-            ,
-            logger.info()))"Adaptive load balancer initialized")
+        self.migration_history: List[Dict[str, Any]] = []
+        
+        # System load history for dynamic thresholds
+        self.system_load_history: List[Dict[str, Any]] = []
+        
+        # Migration cost metrics
+        self.migration_cost_history: Dict[str, List[float]] = {}  # task_type -> [costs]
+        
+        # Hardware profiles for specific strategies
+        self.hardware_profiles: Dict[str, HardwareProfile] = {}
+        
+        # Task type profiles
+        self.task_profiles: Dict[str, TaskProfile] = {}
+        
+        # Previous workload prediction for comparison
+        self.previous_workload_prediction: Optional[Dict[str, Any]] = None
+        
+        # Migration success rate tracking
+        self.migration_success_rates: Dict[str, float] = {}  # worker_id -> success_rate
+        
+        # Initialize database table if needed
+        self._init_database_table()
+        
+        logger.info("Advanced adaptive load balancer initialized")
     
-    async def start_balancing()))self):
-        """Start the load balancing loop."""
-        logger.info()))"Starting adaptive load balancing")
+    def _init_database_table(self):
+        """Initialize database table for metrics if it doesn't exist."""
+        try:
+            self.coordinator.db.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.db_metrics_table} (
+                id INTEGER PRIMARY KEY,
+                timestamp TIMESTAMP,
+                system_load FLOAT,
+                threshold_high FLOAT,
+                threshold_low FLOAT,
+                imbalance_score FLOAT,
+                migrations_initiated INTEGER,
+                migrations_successful INTEGER,
+                prediction_accuracy FLOAT,
+                metrics JSON
+            )
+            """)
+            logger.info(f"Initialized database table: {self.db_metrics_table}")
+        except Exception as e:
+            logger.error(f"Error initializing database table: {str(e)}")
+    
+    async def _initialize_hardware_profiles(self):
+        """Initialize hardware profiles for specific balancing strategies."""
+        # Create base profiles
+        self.hardware_profiles = {
+            "cpu": HardwareProfile(
+                hardware_type="cpu",
+                performance_weight=1.0,
+                energy_efficiency=0.7,
+                thermal_efficiency=0.8
+            ),
+            "cuda": HardwareProfile(
+                hardware_type="cuda",
+                performance_weight=3.0,
+                energy_efficiency=0.5,
+                thermal_efficiency=0.4
+            ),
+            "rocm": HardwareProfile(
+                hardware_type="rocm",
+                performance_weight=2.8,
+                energy_efficiency=0.5,
+                thermal_efficiency=0.4
+            ),
+            "mps": HardwareProfile(
+                hardware_type="mps",
+                performance_weight=2.5,
+                energy_efficiency=0.6,
+                thermal_efficiency=0.6
+            ),
+            "openvino": HardwareProfile(
+                hardware_type="openvino",
+                performance_weight=1.8,
+                energy_efficiency=0.8,
+                thermal_efficiency=0.7
+            ),
+            "qnn": HardwareProfile(
+                hardware_type="qnn",
+                performance_weight=1.4,
+                energy_efficiency=0.9,
+                thermal_efficiency=0.9
+            ),
+            "webnn": HardwareProfile(
+                hardware_type="webnn",
+                performance_weight=1.0,
+                energy_efficiency=0.7,
+                thermal_efficiency=0.8
+            ),
+            "webgpu": HardwareProfile(
+                hardware_type="webgpu",
+                performance_weight=1.2,
+                energy_efficiency=0.6,
+                thermal_efficiency=0.7
+            )
+        }
+        
+        # Update with any specific worker hardware profiles from current workers
+        for worker_id, worker in self.coordinator.workers.items():
+            capabilities = worker.get("capabilities", {})
+            hardware_list = capabilities.get("hardware", [])
+            
+            for hw_type in hardware_list:
+                if hw_type in self.hardware_profiles:
+                    # Get specific metrics if available
+                    gpu_info = capabilities.get("gpu", {})
+                    
+                    # Customize based on specific hardware
+                    if hw_type == "cuda" and isinstance(gpu_info, dict):
+                        cuda_compute = float(gpu_info.get("cuda_compute", 0))
+                        if cuda_compute >= 8.0:
+                            # High-end GPU with high performance but lower efficiency
+                            self.hardware_profiles[hw_type] = HardwareProfile(
+                                hardware_type=hw_type,
+                                performance_weight=4.0,  # Very high performance
+                                energy_efficiency=0.4,  # Lower efficiency
+                                thermal_efficiency=0.3   # Lower thermal efficiency
+                            )
+                        elif cuda_compute >= 6.0:
+                            # Mid-range GPU
+                            self.hardware_profiles[hw_type] = HardwareProfile(
+                                hardware_type=hw_type,
+                                performance_weight=3.0,
+                                energy_efficiency=0.5,
+                                thermal_efficiency=0.4
+                            )
+        
+        logger.info(f"Initialized hardware profiles for {len(self.hardware_profiles)} hardware types")
+    
+    async def start_balancing(self):
+        """Start the load balancing loop with enhanced strategies."""
+        logger.info("Starting advanced adaptive load balancing")
+        
+        # Initialize hardware profiles
+        await self._initialize_hardware_profiles()
         
         while True:
             try:
                 # Update performance metrics
-                await self.update_performance_metrics())))
+                await self.update_performance_metrics()
                 
-                # Check for load imbalance
-                if await self.detect_load_imbalance()))):
-                    # Balance load if imbalance detected
-                    await self.balance_load())))
+                # Update dynamic thresholds if enabled
+                if self.enable_dynamic_thresholds:
+                    await self._update_dynamic_thresholds()
+                
+                # Predict future load if enabled
+                future_load_prediction = None
+                if self.enable_predictive_balancing:
+                    future_load_prediction = await self._predict_future_load()
+                
+                # Check for load imbalance (considering predictions if available)
+                imbalance_detected = await self.detect_load_imbalance(future_load_prediction)
+                
+                if imbalance_detected:
+                    # Balance load with enhanced strategies
+                    await self.balance_load(future_load_prediction)
                 
                 # Clean up completed migrations
-                    await self.cleanup_migrations())))
-                :
+                await self.cleanup_migrations()
+                
+                # Record metrics in database
+                await self._record_metrics()
             except Exception as e:
-                logger.error()))f"Error in load balancing loop: {}}}}}}}}str()))e)}")
+                logger.error(f"Error in load balancing loop: {str(e)}")
             
             # Sleep until next check
-                await asyncio.sleep()))self.check_interval)
+            await asyncio.sleep(self.check_interval)
+    
+    async def _record_metrics(self):
+        """Record load balancer metrics in database for analysis."""
+        try:
+            # Skip if no history
+            if not self.system_load_history:
+                return
+            
+            # Get latest metrics
+            now = datetime.now()
+            
+            # Calculate system-wide metrics
+            avg_utilization = 0
+            worker_utils = []
+            
+            for worker_id, history in self.worker_performance_history.items():
+                if history:
+                    latest = history[-1]
+                    worker_utils.append(latest["utilization"])
+            
+            if worker_utils:
+                avg_utilization = sum(worker_utils) / len(worker_utils)
+                max_util = max(worker_utils)
+                min_util = min(worker_utils)
+                imbalance_score = max_util - min_util
+            else:
+                avg_utilization = 0
+                imbalance_score = 0
+            
+            # Get migration metrics
+            migrations_initiated = 0
+            migrations_successful = 0
+            
+            # Count migrations in the last interval
+            cutoff_time = now - timedelta(seconds=self.check_interval * 2)
+            for migration in self.migration_history:
+                try:
+                    end_time = datetime.fromisoformat(migration.get("end_time", "1970-01-01T00:00:00"))
+                    if end_time >= cutoff_time:
+                        migrations_initiated += 1
+                        if migration.get("success", False):
+                            migrations_successful += 1
+                except (ValueError, TypeError):
+                    pass
+            
+            # Calculate prediction accuracy if available
+            prediction_accuracy = None
+            if hasattr(self, "previous_workload_prediction") and self.previous_workload_prediction:
+                if "previous_prediction_accuracy" in self.previous_workload_prediction:
+                    prediction_accuracy = self.previous_workload_prediction["previous_prediction_accuracy"]
+            
+            # Create metrics record
+            metrics = {
+                "worker_count": len(self.worker_performance_history),
+                "active_migrations": len(self.active_migrations),
+                "thresholds": {
+                    "high": self.utilization_threshold_high,
+                    "low": self.utilization_threshold_low,
+                    "initial_high": self.initial_threshold_high,
+                    "initial_low": self.initial_threshold_low
+                },
+                "migrations": {
+                    "initiated": migrations_initiated,
+                    "successful": migrations_successful,
+                    "success_rate": migrations_successful / migrations_initiated if migrations_initiated > 0 else None
+                },
+                "features": {
+                    "dynamic_thresholds": self.enable_dynamic_thresholds,
+                    "predictive_balancing": self.enable_predictive_balancing,
+                    "cost_benefit_analysis": self.enable_cost_benefit_analysis,
+                    "hardware_specific": self.enable_hardware_specific_strategies,
+                    "resource_efficiency": self.enable_resource_efficiency
+                }
+            }
+            
+            # Insert into database
+            self.coordinator.db.execute(
+                f"""
+                INSERT INTO {self.db_metrics_table} (
+                    timestamp, system_load, threshold_high, threshold_low,
+                    imbalance_score, migrations_initiated, migrations_successful,
+                    prediction_accuracy, metrics
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    avg_utilization,
+                    self.utilization_threshold_high,
+                    self.utilization_threshold_low,
+                    imbalance_score,
+                    migrations_initiated,
+                    migrations_successful,
+                    prediction_accuracy,
+                    json.dumps(metrics)
+                )
+            )
+            
+        except Exception as e:
+            logger.error(f"Error recording metrics: {str(e)}")
     
     async def update_performance_metrics()))self):
         """Update performance metrics for all workers."""

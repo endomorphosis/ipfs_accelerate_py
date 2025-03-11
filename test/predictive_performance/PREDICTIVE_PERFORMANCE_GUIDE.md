@@ -16,7 +16,7 @@ The Predictive Performance System consists of four core modules:
 
 3. **Prediction Module (`predict.py`)**: Makes predictions for specific configurations, generates prediction matrices, and visualizes results with confidence scores.
 
-4. **Active Learning Module (planned)**: Implements a targeted data collection approach to improve model accuracy by identifying and prioritizing high-value tests.
+4. **Active Learning Module (`active_learning.py`)**: Implements a targeted data collection approach to improve model accuracy by identifying and prioritizing high-value tests based on uncertainty, diversity, and expected information gain.
 
 ## Key Features
 
@@ -25,8 +25,9 @@ The Predictive Performance System consists of four core modules:
 - **Cross-Platform Coverage**: Covers all supported hardware platforms (CPU, CUDA, ROCm, MPS, OpenVINO, QNN, WebNN, WebGPU)
 - **Comprehensive Metrics**: Predicts throughput, latency, memory usage, and power consumption
 - **Visualization Tools**: Generates heatmaps, comparative charts, and prediction matrices
-- **Active Learning Pipeline**: Identifies high-value test configurations to improve model accuracy (planned)
-- **Hardware Recommender**: Suggests optimal hardware configurations for specific models and tasks (planned)
+- **Active Learning Pipeline**: Identifies high-value test configurations to improve model accuracy using uncertainty sampling, diversity weighting, and expected model change techniques
+- **Hardware Recommender**: Suggests optimal hardware configurations for specific models and tasks based on predicted performance
+- **Integrated Recommendation**: Combines active learning and hardware recommendation for optimized test selection
 
 ## Usage Guide
 
@@ -178,20 +179,72 @@ Key functions:
 - `visualize_prediction_matrix()`: Creates visual representations of predictions
 - `calculate_confidence_score()`: Estimates prediction reliability
 
-### Active Learning Module (planned)
+### Active Learning Module (`active_learning.py`)
 
-This module will implement a targeted data collection approach:
+This module implements a targeted data collection approach that intelligently identifies which configurations to benchmark next:
 
-1. Identifies configurations with high uncertainty
-2. Prioritizes tests that would improve model accuracy
-3. Suggests configurations for benchmark testing
-4. Updates models with new benchmark data
+1. **Uncertainty Estimation**: Identifies configurations with high prediction uncertainty
+2. **Diversity-Weighted Sampling**: Ensures coverage of different regions in the feature space
+3. **Expected Model Change**: Estimates how much a new datapoint would improve the model
+4. **Information Gain Calculation**: Combines multiple metrics to rank test configurations
+5. **Hardware Recommender Integration**: Aligns active learning with hardware optimization
 
-Planned functions:
-- `identify_high_value_tests()`: Finds tests that would improve accuracy
-- `prioritize_tests()`: Ranks tests by expected information gain
-- `suggest_test_batch()`: Generates a batch of tests to run
-- `update_models()`: Retrains models with new data
+Key functions:
+- `recommend_configurations()`: Recommends high-value configurations to benchmark
+- `update_with_benchmark_results()`: Updates the system with new benchmark data
+- `integrate_with_hardware_recommender()`: Combines active learning with hardware recommendations
+- `suggest_test_batch()`: Generates optimized test batches with diversity and hardware constraints
+- `save_state()`: Saves the current state of the active learning system
+
+Example usage:
+```python
+# Initialize active learning system
+active_learner = ActiveLearningSystem()
+
+# Get high-value configurations to benchmark
+configurations = active_learner.recommend_configurations(budget=20)
+
+# Print recommended configurations
+for i, config in enumerate(configurations[:5]):  # Show first 5
+    print(f"Recommendation #{i+1}:")
+    print(f"  Model: {config['model_name']} ({config['model_type']})")
+    print(f"  Hardware: {config['hardware']}")
+    print(f"  Batch Size: {config['batch_size']}")
+    print(f"  Expected Information Gain: {config['expected_information_gain']:.4f}")
+
+# Integrate with hardware recommender
+from hardware_recommender import HardwareRecommender
+hw_recommender = HardwareRecommender()
+integrated_results = active_learner.integrate_with_hardware_recommender(
+    hardware_recommender=hw_recommender,
+    test_budget=20,
+    optimize_for="throughput"
+)
+
+# Create an optimized test batch from recommended configurations
+test_batch = active_learner.suggest_test_batch(
+    configurations=integrated_results["recommendations"],
+    batch_size=10,
+    ensure_diversity=True,
+    hardware_constraints={
+        'cuda': 3,  # Maximum 3 CUDA configurations
+        'cpu': 2,   # Maximum 2 CPU configurations
+        'webgpu': 1 # Maximum 1 WebGPU configuration
+    },
+    hardware_availability={
+        'cuda': 0.8,  # CUDA is 80% available
+        'webgpu': 0.5  # WebGPU is 50% available
+    },
+    diversity_weight=0.6  # Balance between diversity and information gain
+)
+
+# Process the optimized test batch
+print(f"\nOptimized Test Batch (from {len(integrated_results['recommendations'])} recommendations):")
+for index, config in test_batch.iterrows():
+    print(f"Batch Item #{config['selection_order']}: {config['model_name']} on {config['hardware']}")
+```
+
+For more details, see [ACTIVE_LEARNING_DESIGN.md](ACTIVE_LEARNING_DESIGN.md), [INTEGRATED_ACTIVE_LEARNING_GUIDE.md](INTEGRATED_ACTIVE_LEARNING_GUIDE.md), and [TEST_BATCH_GENERATOR_GUIDE.md](TEST_BATCH_GENERATOR_GUIDE.md).
 
 ## Integration with Existing Systems
 
@@ -215,11 +268,15 @@ The Predictive Performance System integrates with the existing IPFS Accelerate P
    - Handles model-specific parameters that impact performance (attention heads, layers, etc.)
    - Analyzes model dependencies to predict resource requirements
 
-4. **Test Generator Integration**: Can suggest tests for the test generator to create
+4. **Test Batch Generator Integration**: Creates optimized batches of tests to execute
    - Identifies high-value test configurations that would improve prediction accuracy
-   - Generates test configurations optimized for specific hardware platforms
+   - Generates diverse test batches that respect hardware constraints
    - Prioritizes tests based on prediction uncertainty and potential information gain
-   - Integrates with the template-based test generation system
+   - Applies hardware availability weights to account for resource limitations
+   - Allows customizable diversity weighting between exploration and exploitation
+   - Provides a sophisticated diversity-aware selection algorithm
+   - Fully integrated with the Hardware Recommender
+   - For complete details, see [TEST_BATCH_GENERATOR_GUIDE.md](TEST_BATCH_GENERATOR_GUIDE.md)
 
 ## Performance and Accuracy
 

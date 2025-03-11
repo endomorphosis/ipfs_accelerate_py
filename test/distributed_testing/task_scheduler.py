@@ -26,7 +26,7 @@ Usage:
     logger = logging.getLogger())))__name__)
 
 class TaskScheduler:
-    """Task scheduler for distributed testing framework."""
+    """Intelligent task scheduler for distributed testing framework."""
     
     def __init__())))
     self,
@@ -34,7 +34,10 @@ class TaskScheduler:
     prioritize_hardware_match: bool = True,
     load_balance: bool = True,
     consider_worker_performance: bool = True,
-    max_tasks_per_worker: int = 1
+    max_tasks_per_worker: int = 1,
+    enable_task_affinity: bool = True,
+    enable_worker_specialization: bool = True,
+    enable_predictive_scheduling: bool = True
     ):
         """
         Initialize the task scheduler.
@@ -45,29 +48,50 @@ class TaskScheduler:
             load_balance: Whether to balance load across workers
             consider_worker_performance: Whether to consider worker performance in scheduling
             max_tasks_per_worker: Maximum number of tasks per worker ())))default: 1)
+            enable_task_affinity: Whether to enable task affinity for similar tasks
+            enable_worker_specialization: Whether to enable worker specialization for specific task types
+            enable_predictive_scheduling: Whether to enable predictive scheduling for better task distribution
             """
             self.coordinator = coordinator
             self.prioritize_hardware_match = prioritize_hardware_match
             self.load_balance = load_balance
             self.consider_worker_performance = consider_worker_performance
             self.max_tasks_per_worker = max_tasks_per_worker
+            self.enable_task_affinity = enable_task_affinity
+            self.enable_worker_specialization = enable_worker_specialization
+            self.enable_predictive_scheduling = enable_predictive_scheduling
         
         # Worker performance metrics
             self.worker_performance: Dict[str, Dict[str, Any]] = {}}}}}}}}}}}}}}
-            ,
+            
         # Task execution history ())))task_type -> execution_time)
             self.task_execution_history: Dict[str, List[float]] = {}}}}}}}}}}}}}}
-            ,
-        # Hardware compatibility scoring factors
+            
+        # Worker specialization metrics (worker_id -> task_type -> success_score)
+            self.worker_specialization: Dict[str, Dict[str, float]] = {}}}}}}}}}}}}}}
+            
+        # Task affinity map (model_name -> list of related models)
+            self.task_affinity_map: Dict[str, List[str]] = {}}}}}}}}}}}}}}
+            
+        # Task type stats for predictive scheduling (task_type -> stats)
+            self.task_type_stats: Dict[str, Dict[str, Any]] = {}}}}}}}}}}}}}}
+            
+        # Hardware scoring factors with additional intelligent scheduling factors
             self.hardware_scoring_factors = {}}}}}}}}}}}}}
             "hardware_match": 5.0,      # Base score for matching required hardware
             "memory_margin": 0.5,       # Score factor for available memory margin
             "compute_capability": 0.3,  # Score factor for CUDA compute capability
-            "cores": 0.2,              # Score factor for CPU cores
-            "device_match": 1.0        # Score for exact device match
+            "cores": 0.2,               # Score factor for CPU cores
+            "device_match": 1.0,        # Score for exact device match
+            "specialization": 2.0,      # Score for worker specialization
+            "affinity": 1.5,            # Score for task affinity
+            "efficiency": 1.0           # Score for energy/thermal efficiency
             }
+            
+        # Initialize task affinity map with known model relationships
+            self._initialize_task_affinity_map()
         
-            logger.info())))"Task scheduler initialized")
+            logger.info())))"Intelligent task scheduler initialized")
     
     async def schedule_pending_tasks())))self) -> int:
         """
@@ -156,7 +180,55 @@ class TaskScheduler:
         
                 return tasks_assigned
     
-                async def find_best_worker_for_task())))
+                def _initialize_task_affinity_map(self):
+        """
+        Initialize the task affinity map with known model relationships.
+        This helps with scheduling similar tasks to the same worker for better cache utilization.
+        """
+        # Model family affinities - keeps models from the same family together
+        self.task_affinity_map = {
+            # Text embedding models
+            "bert-base-uncased": ["bert-base-cased", "bert-large-uncased", "roberta-base", "distilbert-base-uncased"],
+            "roberta-base": ["roberta-large", "bert-base-uncased", "distilbert-base-uncased"],
+            "distilbert-base-uncased": ["bert-base-uncased", "roberta-base"],
+            
+            # Text generation models
+            "t5-small": ["t5-base", "t5-large", "t5-3b", "t5-11b"],
+            "t5-base": ["t5-small", "t5-large", "t5-3b"],
+            "llama-7b": ["llama-13b", "llama-30b", "llama-65b", "opt-125m", "opt-1.3b"],
+            "opt-125m": ["opt-350m", "opt-1.3b", "opt-2.7b", "llama-7b"],
+            
+            # Vision models
+            "vit-base": ["vit-large", "vit-huge", "deit-base"],
+            "clip-vit": ["clip-resnet", "vit-base", "blip-vit"],
+            "resnet50": ["resnet101", "resnet152", "efficientnet-b0"],
+            
+            # Audio models
+            "whisper-tiny": ["whisper-base", "whisper-small", "whisper-medium"],
+            "whisper-base": ["whisper-tiny", "whisper-small", "whisper-medium"],
+            "wav2vec2-base": ["wav2vec2-large", "hubert-base", "hubert-large"],
+            
+            # Multimodal models
+            "llava-onevision-base": ["llava-onevision-large", "llava-1.5", "clip-vit", "llama-7b"],
+            "blip-base": ["blip-large", "clip-vit", "vit-base", "t5-base"]
+        }
+        
+        # Add inverse relationships to make lookup more efficient
+        additional_affinities = {}
+        for model, related_models in self.task_affinity_map.items():
+            for related_model in related_models:
+                if related_model not in self.task_affinity_map:
+                    additional_affinities[related_model] = [model]
+                elif model not in self.task_affinity_map[related_model]:
+                    additional_affinities[related_model] = self.task_affinity_map[related_model] + [model]
+        
+        # Update the map with additional affinities
+        for model, related_models in additional_affinities.items():
+            self.task_affinity_map[model] = related_models
+            
+        logger.info(f"Task affinity map initialized with {len(self.task_affinity_map)} model entries")
+    
+    async def find_best_worker_for_task())))
                 self,
                 task: Dict[str, Any],
                 available_workers: Dict[str, Dict[str, Any]],
@@ -176,11 +248,33 @@ class TaskScheduler:
             task_id = task["task_id"],
             task_requirements = task.get())))"requirements", {}}}}}}}}}}}}}})
             task_type = task.get())))"type", "unknown")
+            task_config = task.get))))"config", {}}}}}}}}}}}}}})
+            model_name = task_config.get))))"model", "")  # For benchmark tasks
+            
+            # Log detailed task information for intelligent scheduling
+            if self.enable_predictive_scheduling:
+                logger.debug)))f"Finding best worker for task {}}}}}}}}}}}}}}task_id} (type: {}}}}}}}}}}}}}}task_type}, model: {}}}}}}}}}}}}}}model_name})")
         
-        # Check if there's a preferred worker for migration
-            preferred_worker_id = task.get())))"preferred_worker_id")
+            # Check if there's a preferred worker for migration or recovery
+            preferred_worker_id = task.get))))"preferred_worker_id")
+            
+            # Get list of models with affinity to current model
+            related_models = self.task_affinity_map.get)))model_name, []) if model_name and self.enable_task_affinity else []
+            
+            # Get currently running models on each worker for affinity matching
+            worker_running_models = {}
+            for running_task_id, running_worker_id in self.coordinator.running_tasks.items))):
+                if running_task_id in self.coordinator.tasks:
+                    running_task = self.coordinator.tasks[running_task_id]
+                    running_task_config = running_task.get))))"config", {}}}}}}}}}}}}}})
+                    running_model = running_task_config.get))))"model", "")
+                    
+                    if running_model:
+                        if running_worker_id not in worker_running_models:
+                            worker_running_models[running_worker_id] = []
+                        worker_running_models[running_worker_id].append)))running_model)
         
-        # Calculate a score for each worker
+            # Calculate a score for each worker using intelligent algorithm
             worker_scores = [],,
         :
         for worker_id, worker in available_workers.items())))):
@@ -361,18 +455,147 @@ class TaskScheduler:
             ,
         # Update success rate
             perf["success_rate"] = perf["successful_tasks"] / perf["total_tasks"] if perf["total_tasks"] > 0 else 0.0
-            ,
+            
+        # Update worker specialization metrics if task has a model
+        if task_result.get("config", {}).get("model", ""):
+            model_name = task_result["config"]["model"]
+            
+            # Initialize worker specialization record if it doesn't exist
+            if worker_id not in self.worker_specialization:
+                self.worker_specialization[worker_id] = {}
+                
+            # Add or update specialization score for this model
+            if model_name not in self.worker_specialization[worker_id]:
+                # Initial score is based on success/failure
+                self.worker_specialization[worker_id][model_name] = 1.0 if task_status == "completed" else 0.0
+            else:
+                # Update score with exponential moving average
+                current_score = self.worker_specialization[worker_id][model_name]
+                success_value = 1.0 if task_status == "completed" else 0.0
+                alpha = 0.3  # Same as performance metrics
+                self.worker_specialization[worker_id][model_name] = (1 - alpha) * current_score + alpha * success_value
+                
+            # Also store execution time for this model
+            if execution_time > 0:
+                self.worker_specialization[worker_id][f"{model_name}_time"] = execution_time
+                
+            # Update task affinity map based on successful task execution
+            if task_status == "completed":
+                self._update_task_affinity(model_name, worker_id)
+            
         # Update task execution history
-        task_key = task_type:
+        task_key = task_type
         if task_key not in self.task_execution_history:
-            self.task_execution_history[task_key] = [],,
+            self.task_execution_history[task_key] = []
         
         if execution_time > 0:
-            self.task_execution_history[task_key].append())))execution_time),
+            self.task_execution_history[task_key].append())))execution_time)
             # Keep only last 100 records
-            if len())))self.task_execution_history[task_key]) > 100:,
-            self.task_execution_history[task_key] = self.task_execution_history[task_key][-100:]
+            if len())))self.task_execution_history[task_key]) > 100:
+                self.task_execution_history[task_key] = self.task_execution_history[task_key][-100:]
+                
+            # Also store model-specific execution time if available
+            if task_result.get("config", {}).get("model", ""):
+                model_name = task_result["config"]["model"]
+                specific_key = f"{task_type}_{model_name}"
+                
+                if specific_key not in self.task_execution_history:
+                    self.task_execution_history[specific_key] = []
+                    
+                self.task_execution_history[specific_key].append(execution_time)
+                # Keep only last 50 records for specific models (to prevent excessive memory usage)
+                if len(self.task_execution_history[specific_key]) > 50:
+                    self.task_execution_history[specific_key] = self.task_execution_history[specific_key][-50:]
             ,
+            def _predict_execution_time(self, task: Dict[str, Any], worker_id: str) -> float:
+                """
+                Predict execution time for a task on a specific worker using historical data
+                and intelligent prediction models.
+                
+                Args:
+                    task: Task information
+                    worker_id: Worker ID
+                    
+                Returns:
+                    Predicted execution time in seconds
+                """
+                task_type = task.get("type", "unknown")
+                task_config = task.get("config", {})
+                model_name = task_config.get("model", "")
+                
+                # Create a more specific task key based on task type and model
+                if model_name:
+                    task_key = f"{task_type}_{model_name}"
+                else:
+                    task_key = task_type
+                    
+                # Check if we have worker-specific historical data
+                if (worker_id in self.worker_performance and 
+                    "task_type_metrics" in self.worker_performance[worker_id] and
+                    task_type in self.worker_performance[worker_id]["task_type_metrics"]):
+                    
+                    # Use worker-specific execution time for this task type
+                    worker_metrics = self.worker_performance[worker_id]["task_type_metrics"][task_type]
+                    if worker_metrics.get("avg_execution_time", 0) > 0:
+                        # Return worker-specific execution time
+                        return worker_metrics["avg_execution_time"]
+                        
+                # Check if we have model-specific historical data for this worker
+                if (model_name and worker_id in self.worker_specialization and 
+                    f"{model_name}_time" in self.worker_specialization[worker_id]):
+                    return self.worker_specialization[worker_id][f"{model_name}_time"]
+                    
+                # Check if we have historical data for this specific task type+model combination
+                specific_key = f"{task_type}_{model_name}" if model_name else None
+                if specific_key and specific_key in self.task_execution_history and len(self.task_execution_history[specific_key]) > 0:
+                    # Use average of historical execution times for this specific task
+                    return sum(self.task_execution_history[specific_key]) / len(self.task_execution_history[specific_key])
+                
+                # Check if we have historical data for this task type
+                if task_type in self.task_execution_history and len(self.task_execution_history[task_type]) > 0:
+                    # Use average of historical execution times
+                    return sum(self.task_execution_history[task_type]) / len(self.task_execution_history[task_type])
+                    
+                # Apply model-based adjustments for specific task types
+                if task_type == "benchmark" and model_name:
+                    # Adjust based on model size if available
+                    if "model_size" in task_config:
+                        size_mapping = {
+                            "tiny": 0.5,     # 50% of base time
+                            "small": 0.75,   # 75% of base time
+                            "base": 1.0,     # Base time
+                            "large": 2.0,    # 2x base time
+                            "xl": 4.0,       # 4x base time
+                            "xxl": 8.0       # 8x base time
+                        }
+                        size_factor = size_mapping.get(task_config["model_size"].lower(), 1.0)
+                        
+                        # For large models, predict longer execution times
+                        if size_factor > 1.0:
+                            return 180 * size_factor  # 3 minutes * size factor
+                    
+                    # Batch size affects execution time
+                    if "batch_sizes" in task_config:
+                        batch_sizes = task_config["batch_sizes"]
+                        if isinstance(batch_sizes, list) and len(batch_sizes) > 0:
+                            # Larger batch sizes take longer, especially for large batches
+                            max_batch = max(batch_sizes)
+                            if max_batch > 8:
+                                return 240  # 4 minutes for large batch benchmarks
+                            elif max_batch > 1:
+                                return 180  # 3 minutes for multi-batch benchmarks
+                
+                # Default estimates if no historical data
+                default_estimates = {
+                    "benchmark": 120,  # 2 minutes
+                    "test": 60,        # 1 minute
+                    "custom": 90,      # 1.5 minutes
+                    "long_running": 300,  # 5 minutes
+                    "data_processing": 180  # 3 minutes
+                }
+                
+                return default_estimates.get(task_type, 60)
+                    
             def estimate_task_execution_time())))self, task: Dict[str, Any]) -> float:,
             """
             Estimate execution time for a task based on historical data.
@@ -383,24 +606,82 @@ class TaskScheduler:
         Returns:
             Estimated execution time in seconds
             """
+            # Use the more advanced prediction method, but average across workers
+            # since we don't know which worker will execute the task
             task_type = task.get())))"type", "unknown")
-        
-        # Check if we have historical data for this task type
-        task_key = task_type:
+            task_config = task.get("config", {})
+            model_name = task_config.get("model", "")
+            
+            # For task types with historical data, use that data
+            task_key = task_type
             if task_key in self.task_execution_history and len())))self.task_execution_history[task_key]) > 0:,
-            # Use average of historical execution times
-            return sum())))self.task_execution_history[task_key]) / len())))self.task_execution_history[task_key])
-            ,
-        # Default estimates if no historical data
-        default_estimates = {}}}}}}}}}}}}}:
-            "benchmark": 120,  # 2 minutes
-            "test": 60,        # 1 minute
-            "custom": 90,      # 1.5 minutes
-            }
-        
+                # Use average of historical execution times
+                return sum())))self.task_execution_history[task_key]) / len())))self.task_execution_history[task_key])
+            
+            # If we have a specific model, check for model-specific executions
+            specific_key = f"{task_type}_{model_name}" if model_name else None
+            if specific_key and specific_key in self.task_execution_history and len(self.task_execution_history[specific_key]) > 0:
+                return sum(self.task_execution_history[specific_key]) / len(self.task_execution_history[specific_key])
+            
+            # Default estimates if no historical data
+            default_estimates = {}}}}}}}}}}}}}:
+                "benchmark": 120,  # 2 minutes
+                "test": 60,        # 1 minute
+                "custom": 90,      # 1.5 minutes
+                "long_running": 300,  # 5 minutes
+                "data_processing": 180  # 3 minutes
+                }
+            
             return default_estimates.get())))task_type, 60)
     
-            def get_scheduler_stats())))self) -> Dict[str, Any]:,,,
+            def _update_task_affinity(self, model_name: str, worker_id: str):
+        """
+        Update task affinity map based on successful task execution.
+        This method looks at other models running on the same worker to establish affinity relationships.
+        
+        Args:
+            model_name: Model that was successfully executed
+            worker_id: Worker that executed the model
+        """
+        if not self.enable_task_affinity or not model_name:
+            return
+            
+        # Get other models currently running on this worker
+        other_models = []
+        for running_task_id, running_worker_id in self.coordinator.running_tasks.items():
+            if running_worker_id == worker_id and running_task_id in self.coordinator.tasks:
+                running_task = self.coordinator.tasks[running_task_id]
+                running_config = running_task.get("config", {})
+                running_model = running_config.get("model", "")
+                
+                if running_model and running_model != model_name:
+                    other_models.append(running_model)
+        
+        # If no other models, check for recent successful completions
+        if not other_models and worker_id in self.worker_specialization:
+            # Use models with high specialization scores as potential affinity candidates
+            for other_model, score in self.worker_specialization[worker_id].items():
+                if other_model != model_name and not other_model.endswith("_time") and score > 0.8:
+                    other_models.append(other_model)
+        
+        # Update affinity map with discovered relationships
+        if other_models:
+            if model_name not in self.task_affinity_map:
+                self.task_affinity_map[model_name] = []
+                
+            # Add new related models to the affinity map
+            for other_model in other_models:
+                if other_model not in self.task_affinity_map[model_name]:
+                    self.task_affinity_map[model_name].append(other_model)
+                    logger.debug(f"Added affinity between {model_name} and {other_model}")
+                    
+                # Add reverse relationship if it doesn't exist
+                if other_model not in self.task_affinity_map:
+                    self.task_affinity_map[other_model] = [model_name]
+                elif model_name not in self.task_affinity_map[other_model]:
+                    self.task_affinity_map[other_model].append(model_name)
+    
+    def get_scheduler_stats())))self) -> Dict[str, Any]:,,,
             """
             Get statistics about the task scheduler.
         
@@ -435,25 +716,58 @@ class TaskScheduler:
             if times:
                 execution_times[task_type] = sum())))times) / len())))times)
                 ,
+        # Get worker specialization metrics
+        specialization_metrics = {}
+        for worker_id, specialization in self.worker_specialization.items():
+            # Filter out execution time entries
+            worker_specializations = {model: score for model, score in specialization.items() 
+                                   if not model.endswith("_time") and score > 0.7}
+            
+            if worker_specializations:
+                specialization_metrics[worker_id] = worker_specializations
+        
+        # Get task affinity statistics
+        affinity_stats = {
+            "model_count": len(self.task_affinity_map),
+            "relationship_count": sum(len(related) for related in self.task_affinity_map.values()),
+            "models_with_affinities": list(self.task_affinity_map.keys())[:10]  # Show first 10
+        }
+        
+        # Count models by family (derived from affinity map)
+        model_families = {}
+        for model in self.task_affinity_map:
+            family = model.split("-")[0] if "-" in model else model.split("_")[0]
+            model_families[family] = model_families.get(family, 0) + 1
+            
         # Build stats dictionary
-                stats = {}}}}}}}}}}}}}
-                "tasks_by_type": task_types,
-                "tasks_by_status": task_status,
-                "workers": {}}}}}}}}}}}}}
-                "total": total_workers,
-                "active": active_workers,
-                "busy": busy_workers,
-                "idle": idle_workers,
-                "utilization": worker_utilization,
-                },
-                "avg_execution_times": execution_times,
-                "scheduler_config": {}}}}}}}}}}}}}
-                "prioritize_hardware_match": self.prioritize_hardware_match,
-                "load_balance": self.load_balance,
-                "consider_worker_performance": self.consider_worker_performance,
-                "max_tasks_per_worker": self.max_tasks_per_worker,
-                }
-                }
+        stats = {}}}}}}}}}}}}}
+        "tasks_by_type": task_types,
+        "tasks_by_status": task_status,
+        "workers": {}}}}}}}}}}}}}
+            "total": total_workers,
+            "active": active_workers,
+            "busy": busy_workers,
+            "idle": idle_workers,
+            "utilization": worker_utilization,
+        },
+        "avg_execution_times": execution_times,
+        "scheduler_config": {}}}}}}}}}}}}}
+            "prioritize_hardware_match": self.prioritize_hardware_match,
+            "load_balance": self.load_balance,
+            "consider_worker_performance": self.consider_worker_performance,
+            "max_tasks_per_worker": self.max_tasks_per_worker,
+            "enable_task_affinity": self.enable_task_affinity,
+            "enable_worker_specialization": self.enable_worker_specialization,
+            "enable_predictive_scheduling": self.enable_predictive_scheduling
+        },
+        "intelligent_scheduling": {}}}}}}}}}}}}}
+            "worker_specialization": specialization_metrics,
+            "task_affinity": affinity_stats,
+            "model_families": model_families,
+            "performance_metrics_count": sum(len(history) for history in self.task_execution_history.values()),
+            "model_specific_metrics_count": sum(1 for key in self.task_execution_history.keys() if "_" in key)
+        }
+        }
         
             return stats
     

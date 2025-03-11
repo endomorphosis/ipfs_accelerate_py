@@ -1,0 +1,110 @@
+stages:
+  - test
+
+variables:
+  COORDINATOR_URL: "${COORDINATOR_URL:-http://localhost:8080}"
+  API_KEY: "${COORDINATOR_API_KEY:-test_key}"
+  TEST_TIMEOUT: "${TEST_TIMEOUT:-3600}"
+  HARDWARE: "${HARDWARE:-cpu}"
+  PYTHON_VERSION: "3.10"
+
+.test_template: &test_template
+  stage: test
+  image: python:${PYTHON_VERSION}
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pip install -e .
+  artifacts:
+    paths:
+      - test_reports/
+    expire_in: 1 week
+    reports:
+      junit: test_reports/test_report.xml
+
+# CPU Tests
+cpu_tests:
+  <<: *test_template
+  script:
+    - python -m duckdb_api.distributed_testing.cicd_integration
+      --provider gitlab
+      --coordinator $COORDINATOR_URL
+      --api-key $API_KEY
+      --test-pattern "test/**/test_*cpu*.py"
+      --timeout $TEST_TIMEOUT
+      --output-dir ./test_reports
+      --report-formats json md html
+      --verbose
+  rules:
+    - if: $HARDWARE =~ /cpu/
+    - if: $HARDWARE == "all"
+
+# CUDA Tests
+cuda_tests:
+  <<: *test_template
+  tags:
+    - cuda
+  script:
+    - python -m duckdb_api.distributed_testing.cicd_integration
+      --provider gitlab
+      --coordinator $COORDINATOR_URL
+      --api-key $API_KEY
+      --test-pattern "test/**/test_*cuda*.py"
+      --timeout $TEST_TIMEOUT
+      --output-dir ./test_reports
+      --report-formats json md html
+      --verbose
+  rules:
+    - if: $HARDWARE =~ /cuda/
+    - if: $HARDWARE == "all"
+
+# WebGPU Tests
+webgpu_tests:
+  <<: *test_template
+  script:
+    - python -m duckdb_api.distributed_testing.cicd_integration
+      --provider gitlab
+      --coordinator $COORDINATOR_URL
+      --api-key $API_KEY
+      --test-pattern "test/**/test_*webgpu*.py"
+      --timeout $TEST_TIMEOUT
+      --output-dir ./test_reports
+      --report-formats json md html
+      --verbose
+  rules:
+    - if: $HARDWARE =~ /webgpu/
+    - if: $HARDWARE == "all"
+
+# WebNN Tests
+webnn_tests:
+  <<: *test_template
+  script:
+    - python -m duckdb_api.distributed_testing.cicd_integration
+      --provider gitlab
+      --coordinator $COORDINATOR_URL
+      --api-key $API_KEY
+      --test-pattern "test/**/test_*webnn*.py"
+      --timeout $TEST_TIMEOUT
+      --output-dir ./test_reports
+      --report-formats json md html
+      --verbose
+  rules:
+    - if: $HARDWARE =~ /webnn/
+    - if: $HARDWARE == "all"
+
+# All Tests
+all_tests:
+  <<: *test_template
+  script:
+    - python -m duckdb_api.distributed_testing.cicd_integration
+      --provider gitlab
+      --coordinator $COORDINATOR_URL
+      --api-key $API_KEY
+      --test-pattern "test/**/test_*.py"
+      --timeout $TEST_TIMEOUT
+      --output-dir ./test_reports
+      --report-formats json md html
+      --verbose
+  rules:
+    - if: $RUN_ALL_TESTS == "true"
+  when: manual

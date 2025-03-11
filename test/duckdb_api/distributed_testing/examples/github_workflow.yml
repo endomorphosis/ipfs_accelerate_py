@@ -1,0 +1,102 @@
+name: Distributed Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      test_pattern:
+        description: 'Test pattern to run (e.g., "test_*.py")'
+        required: false
+        default: ''
+      hardware:
+        description: 'Hardware to test on (comma-separated: cpu,cuda,webgpu)'
+        required: false
+        default: 'cpu'
+      timeout:
+        description: 'Timeout in seconds'
+        required: false
+        default: '3600'
+
+jobs:
+  distributed-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+      
+      - name: Set up environment variables
+        run: |
+          echo "COORDINATOR_URL=${{ secrets.COORDINATOR_URL || 'http://localhost:8080' }}" >> $GITHUB_ENV
+          echo "API_KEY=${{ secrets.COORDINATOR_API_KEY || 'test_key' }}" >> $GITHUB_ENV
+      
+      - name: Filter tests based on hardware
+        id: filter-tests
+        run: |
+          if [ -n "${{ github.event.inputs.test_pattern }}" ]; then
+            echo "TEST_PATTERN=${{ github.event.inputs.test_pattern }}" >> $GITHUB_ENV
+          else
+            # Default pattern based on hardware selection
+            HARDWARE="${{ github.event.inputs.hardware || 'cpu' }}"
+            PATTERNS=()
+            
+            # Create patterns for each hardware type
+            if [[ "$HARDWARE" == *"cpu"* ]]; then
+              PATTERNS+=("test/**/test_*cpu*.py")
+            fi
+            if [[ "$HARDWARE" == *"cuda"* ]]; then
+              PATTERNS+=("test/**/test_*cuda*.py")
+            fi
+            if [[ "$HARDWARE" == *"rocm"* ]]; then
+              PATTERNS+=("test/**/test_*rocm*.py")
+            fi
+            if [[ "$HARDWARE" == *"openvino"* ]]; then
+              PATTERNS+=("test/**/test_*openvino*.py")
+            fi
+            if [[ "$HARDWARE" == *"webgpu"* ]]; then
+              PATTERNS+=("test/**/test_*webgpu*.py")
+            fi
+            if [[ "$HARDWARE" == *"webnn"* ]]; then
+              PATTERNS+=("test/**/test_*webnn*.py")
+            fi
+            
+            # If none matched, use all tests
+            if [ ${#PATTERNS[@]} -eq 0 ]; then
+              PATTERNS+=("test/**/test_*.py")
+            fi
+            
+            # Join patterns with space
+            PATTERN=$(IFS=" "; echo "${PATTERNS[*]}")
+            echo "TEST_PATTERN=$PATTERN" >> $GITHUB_ENV
+          fi
+      
+      - name: Run distributed tests
+        run: |
+          python -m duckdb_api.distributed_testing.cicd_integration \
+            --provider github \
+            --coordinator $COORDINATOR_URL \
+            --api-key $API_KEY \
+            --test-pattern $TEST_PATTERN \
+            --timeout ${{ github.event.inputs.timeout || '3600' }} \
+            --output-dir ./test_reports \
+            --report-formats json md html \
+            --verbose
+      
+      - name: Upload test reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports
+          path: ./test_reports
+          retention-days: 14

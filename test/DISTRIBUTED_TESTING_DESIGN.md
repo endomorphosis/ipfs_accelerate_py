@@ -1,361 +1,343 @@
 # Distributed Testing Framework Design
 
-**Status**: Draft  
-**Version**: 0.1  
-**Date**: April 11, 2025  
-**Target Completion**: June 20, 2025
+This document outlines the design and implementation status of the Distributed Testing Framework.
 
-## 1. Introduction
+## Overview
 
-This document outlines the architecture and implementation plan for a high-performance distributed testing framework for the IPFS Accelerate Python package. The framework will enable parallel execution of benchmarks and tests across multiple machines with heterogeneous hardware, with intelligent workload distribution and result aggregation.
+The Distributed Testing Framework enables parallel execution of benchmarks and tests across multiple machines with heterogeneous hardware. This provides several key benefits:
 
-## 2. Goals and Requirements
+1. **Scalability**: Run thousands of tests in parallel across multiple machines
+2. **Hardware Efficiency**: Automatically match tests to machines with appropriate hardware
+3. **Centralized Results**: Aggregate all test results in a single database
+4. **Test Prioritization**: Schedule tests based on importance and dependencies
+5. **Fault Tolerance**: Automatically recover from worker and coordinator failures
 
-### 2.1 Primary Goals
+## Architecture
 
-- Enable parallel execution of tests and benchmarks across multiple machines
-- Reduce overall execution time for comprehensive test suites
-- Support heterogeneous hardware environments (different GPU types, CPU configurations)
-- Provide intelligent workload distribution based on hardware capabilities
-- Ensure reliable result aggregation and analysis
-- Implement fault tolerance with automatic retries and fallbacks
-
-### 2.2 Key Requirements
-
-- **Scalability**: Support from 2 to 100+ worker nodes
-- **Security**: Secure communication between coordinator and worker nodes
-- **Flexibility**: Dynamic workload adjustment based on worker capabilities
-- **Reliability**: Fault tolerance with automatic recovery mechanisms
-- **Observability**: Comprehensive monitoring and reporting
-- **Integration**: Seamless integration with existing test framework and DuckDB
-
-## 3. Architecture Overview
-
-The distributed testing framework will follow a coordinator-worker architecture:
+The framework uses a coordinator-worker architecture:
 
 ```
-┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-│  Coordinator  │     │  Database     │     │  Dashboard    │
-│  Server       │◄────┤  (DuckDB)     │────►│  Server       │
-└───────┬───────┘     └───────────────┘     └───────────────┘
-        │
-        │ (Secure WebSocket/gRPC)
-        │
-┌───────┴───────┐     ┌───────────────┐     ┌───────────────┐
-│               │     │               │     │               │
-│  Worker Node  │     │  Worker Node  │     │  Worker Node  │
-│  (Machine 1)  │     │  (Machine 2)  │     │  (Machine N)  │
-│               │     │               │     │               │
-└───────────────┘     └───────────────┘     └───────────────┘
+                             ┌────────────┐
+                             │            │
+                             │  DuckDB    │
+                             │  Database  │
+                             │            │
+                             └─────┬──────┘
+                                   │
+                                   ▼
+┌───────────────┐           ┌────────────┐           ┌───────────────┐
+│               │           │            │           │               │
+│   Web UI      │◄─────────►│ Coordinator │◄─────────►│  REST API     │
+│               │           │            │           │               │
+└───────────────┘           └─────┬──────┘           └───────────────┘
+                                  │
+                                  │
+         ┌──────────────┬─────────┴──────────┬──────────────┐
+         │              │                    │              │
+         ▼              ▼                    ▼              ▼
+┌─────────────┐  ┌─────────────┐    ┌─────────────┐  ┌─────────────┐
+│             │  │             │    │             │  │             │
+│  Worker 1   │  │  Worker 2   │    │  Worker 3   │  │  Worker N   │
+│ (CPU, CUDA) │  │ (ROCm, MPS) │    │ (CPU, QNN)  │  │ (WebNN, CPU)│
+│             │  │             │    │             │  │             │
+└─────────────┘  └─────────────┘    └─────────────┘  └─────────────┘
 ```
 
-### 3.1 System Components
+### Core Components
 
-#### 3.1.1 Coordinator Server
+1. **Coordinator**: Central server that schedules tasks and manages workers
+2. **Workers**: Machines that execute tests with specific hardware capabilities
+3. **Task Scheduler**: Assigns tasks to workers based on hardware requirements and priorities
+4. **Result Collector**: Aggregates and stores test results in the database
+5. **Web UI**: Provides visualization and management of tests and results
+6. **REST API**: Enables programmatic interaction with the framework
 
-The Coordinator Server will be responsible for:
+## Implementation Phases
 
-- Managing worker node registration and capabilities
-- Distributing test tasks based on worker capabilities
-- Monitoring worker health and task execution
-- Handling result aggregation and storage
-- Providing administration API for test orchestration
-- Implementing job scheduling and prioritization
+The Distributed Testing Framework is being implemented in multiple phases:
 
-#### 3.1.2 Worker Nodes
+### Phase 1: Core Functionality ✅ COMPLETED
 
-Worker Nodes will be responsible for:
+- ✅ Basic coordinator implementation
+- ✅ Worker registration and heartbeat mechanism
+- ✅ Task submission and assignment
+- ✅ Result collection and storage
+- ✅ Simple scheduling algorithm
 
-- Self-registration with the coordinator
-- Reporting hardware capabilities and status
-- Executing assigned test tasks
-- Reporting results and execution metrics
-- Implementing local caching for efficient testing
-- Handling graceful shutdown and recovery
+### Phase 2: Advanced Scheduling ✅ COMPLETED
 
-#### 3.1.3 Database Integration
+- ✅ Hardware-aware task scheduling
+- ✅ Priority-based queue management
+- ✅ Task dependencies and DAG execution
+- ✅ Resource-aware scheduling
+- ✅ Deadline-based scheduling
 
-Database integration will provide:
+### Phase 3: Performance and Monitoring ✅ COMPLETED
 
-- Central storage for all test results in DuckDB
-- Result aggregation and analysis capabilities
-- Historical data for comparison and trending
-- Integration with existing benchmark reporting tools
-- Schema enhancements for distributed execution tracking
+- ✅ Real-time performance monitoring
+- ✅ Worker statistics collection
+- ✅ Performance visualization dashboard
+- ✅ Telemetry and metrics
+- ✅ Resource utilization tracking
 
-#### 3.1.4 Monitoring Dashboard
+### Phase 4: Scalability ✅ COMPLETED
 
-The monitoring dashboard will offer:
+- ✅ Database optimization for high throughput
+- ✅ Connection pooling for workers
+- ✅ Batch operations for efficiency
+- ✅ Coordinator horizontal scaling
+- ✅ Task partitioning for large workloads
 
-- Real-time visibility into test execution
-- Worker node status and utilization metrics
-- Job queue and execution status
-- Test result summaries and trends
-- System health indicators and alerts
+### Phase 5: Fault Tolerance ✅ COMPLETED
 
-## 4. Implementation Plan
+- ✅ Worker failure detection and recovery
+- ✅ Task retry mechanisms
+- ✅ Circuit breaker pattern implementation
+- ✅ Graceful degradation under load
+- ✅ Coordinator redundancy and failover
 
-The implementation will be divided into the following phases:
+### Phase 6: Security and Access Control 🔄 IN PROGRESS
 
-### 4.1 Phase 1: Core Infrastructure (May 8-15, 2025)
+- ✅ API authentication and authorization
+- ✅ Role-based access control
+- ✅ Secure communication (TLS)
+- 🔄 Credential management
+- 🔄 Security auditing and logging
 
-- Design and implement the Coordinator Server with basic functionality:
-  - Basic HTTP/WebSocket API for worker communication
-  - Worker registration and capability tracking
-  - Simple task distribution logic
-  - Basic result aggregation
-- Implement Worker Node client with:
-  - Auto-registration with coordinator
-  - Hardware capability reporting
-  - Basic task execution
-  - Result reporting
-- Set up development environment with simulated workers for testing
+### Phase 7: Integration and Extensibility 🔲 PLANNED
 
-### 4.2 Phase 2: Security and Worker Management (May 15-22, 2025)
+- 🔲 CI/CD system integration
+- 🔲 Plugin architecture
+- 🔲 Custom scheduler support
+- 🔲 Notification system
+- 🔲 External system integrations
 
-- Implement secure communication between coordinator and workers:
-  - TLS for all connections
-  - Authentication and authorization
-  - API keys and token management
-- Enhance worker management:
-  - Advanced worker capability detection
-  - Health monitoring and status tracking
-  - Auto-recovery mechanisms
-  - Worker resource limits and quotas
+## Detailed Component Design
 
-### 4.3 Phase 3: Intelligent Task Distribution (May 22-29, 2025)
+### Coordinator
 
-- Develop advanced task distribution algorithms:
-  - Hardware-aware task assignment
-  - Test-specific requirements matching
-  - Priority-based scheduling
-  - Workload balancing across workers
-- Implement result aggregation and analysis pipeline:
-  - Consistent result formatting
-  - Result validation and verification
-  - Metadata enrichment
-  - DuckDB integration for storage
+The coordinator is the central component of the framework, responsible for:
 
-### 4.4 Phase 4: Adaptive Load Balancing (May 29-June 5, 2025)
+- Managing worker registration and status
+- Scheduling tasks to appropriate workers
+- Tracking task status and results
+- Providing APIs for task submission and result retrieval
+- Implementing fault tolerance mechanisms
 
-- Implement adaptive load balancing:
-  - Dynamic worker capability reassessment
-  - Real-time performance monitoring
-  - Workload redistribution based on performance
-  - Automatic task timeout and retry mechanisms
-- Support for heterogeneous hardware:
-  - Hardware-specific test configuration
-  - Specialized task assignment for different GPUs
-  - Optimal batch size selection per hardware
-  - Test compatibility checking
+Key coordinator features include:
 
-### 4.5 Phase 5: Fault Tolerance (June 5-12, 2025)
+- **Worker Management**: Track worker capabilities, status, and load
+- **Task Queue**: Prioritized queue of pending tasks
+- **Scheduler**: Assign tasks to workers based on requirements and priorities
+- **State Management**: Maintain consistent state across coordinator instances
+- **API Server**: Expose REST API for client interactions
+- **Database Integration**: Store and retrieve data from DuckDB
 
-- Develop comprehensive fault tolerance:
-  - Worker failure detection and handling
-  - Coordinator redundancy and failover
-  - Task retry with configurable policies
-  - Partial result handling and recovery
-  - Automatic error classification and reporting
-- Database reliability enhancements:
-  - Transaction management for result storage
-  - Backup and recovery mechanisms
-  - Conflict resolution for concurrent updates
+### Worker
 
-### 4.6 Phase 6: Monitoring Dashboard (June 12-19, 2025)
+Workers are responsible for:
 
-- Create comprehensive monitoring dashboard:
-  - Real-time test execution status
-  - Worker status and resource utilization
-  - Test results visualization
-  - System health metrics
-  - Alert configuration and notification
-- Documentation and final integration
+- Registering with the coordinator
+- Reporting capabilities and status
+- Executing assigned tasks
+- Reporting results and logs
+- Handling task failures gracefully
 
-## 5. Technical Specifications
+Key worker features include:
 
-### 5.1 Communication Protocol
+- **Hardware Detection**: Identify available hardware capabilities
+- **Resource Monitoring**: Track resource usage during test execution
+- **Task Execution**: Run tests with appropriate parameters
+- **Result Reporting**: Send results back to the coordinator
+- **Fault Handling**: Detect and report task failures
 
-The communication between the coordinator and workers will use:
+### Task Scheduler
 
-- WebSocket for real-time bidirectional communication
-- gRPC for high-performance RPC calls
-- JSON for configuration and result data
-- MessagePack for binary data transfer
-- Protocol Buffers for structured data serialization
+The task scheduler is responsible for:
 
-### 5.2 Task Distribution Format
+- Assigning tasks to workers based on requirements
+- Balancing load across workers
+- Prioritizing tasks based on importance
+- Handling task dependencies
+- Managing resource constraints
 
-Tasks will be distributed in a structured format:
+Key scheduler features include:
 
-```json
-{
-  "task_id": "benchmark-bert-cuda-001",
-  "type": "benchmark",
-  "priority": 1,
-  "requirements": {
-    "hardware": ["cuda"],
-    "min_memory_gb": 8,
-    "min_cuda_compute": 7.5
-  },
-  "config": {
-    "model": "bert-base-uncased",
-    "batch_sizes": [1, 2, 4, 8, 16],
-    "precision": "fp16",
-    "iterations": 100
-  },
-  "timeout_seconds": 1800,
-  "retry_policy": {
-    "max_retries": 3,
-    "retry_delay_seconds": 60
-  }
-}
+- **Hardware Matching**: Match task requirements to worker capabilities
+- **Priority Handling**: Execute high-priority tasks first
+- **Dependency Resolution**: Handle task execution order based on DAG
+- **Resource Allocation**: Ensure workers have sufficient resources
+- **Fair Scheduling**: Prevent worker starvation and ensure fairness
+
+### Result Collector
+
+The result collector is responsible for:
+
+- Receiving and validating test results
+- Storing results in the database
+- Aggregating results for reporting
+- Tracking test status and completion
+- Providing query interfaces for result analysis
+
+Key result collector features include:
+
+- **Schema Management**: Define and maintain result schema
+- **Validation**: Ensure result data is complete and valid
+- **Storage**: Efficiently store results in the database
+- **Aggregation**: Compute summary statistics and metrics
+- **Querying**: Provide interfaces for result retrieval and analysis
+
+## Fault Tolerance Implementation
+
+### Worker Failure Handling
+
+- ✅ Heartbeat mechanism to detect worker failures
+- ✅ Task reassignment when workers fail
+- ✅ Stateless worker design for easy recovery
+- ✅ Circuit breaker for unstable workers
+- ✅ Graceful worker shutdown and task handoff
+
+### Coordinator Fault Tolerance
+
+- ✅ Persistent state storage in DuckDB
+- ✅ Task state tracking for recovery
+- ✅ Idempotent operations for safe retries
+- ✅ Coordinator redundancy with Raft algorithm
+- ✅ Automatic failover to backup coordinators
+
+### Coordinator Redundancy Implementation
+
+The coordinator redundancy feature provides high availability through:
+
+- ✅ **Leader Election**: Automatic election of a leader coordinator
+- ✅ **Log Replication**: Consistent replication of operations
+- ✅ **State Synchronization**: Full state transfer between coordinators
+- ✅ **Failure Detection**: Heartbeat-based detection of failures
+- ✅ **Automatic Failover**: Seamless transition to new leaders
+- ✅ **Crash Recovery**: Persistence for crash recovery
+- ✅ **Request Forwarding**: Automatic forwarding to the leader
+
+The implementation uses a simplified Raft consensus algorithm with:
+
+- ✅ Leader, follower, and candidate roles
+- ✅ Term-based leader election
+- ✅ Log-based replication
+- ✅ Majority-based decision making
+- ✅ Persistent state for crash recovery
+
+Implementation Status:
+- ✅ RedundancyManager class with Raft algorithm
+- ✅ Coordinator integration with redundancy
+- ✅ Persistent state storage
+- ✅ API routes for Raft protocol
+- ✅ Automatic recovery mechanisms
+- ✅ Comprehensive testing
+- ✅ Deployment documentation
+- ✅ Monitoring and recovery tools
+
+## API Reference
+
+The Distributed Testing Framework exposes a REST API for interacting with the system:
+
+### Coordinator API
+
+- `POST /api/workers/register`: Register a new worker
+- `POST /api/workers/status`: Update worker status
+- `GET /api/workers`: List all registered workers
+- `POST /api/tasks/submit`: Submit a new task
+- `GET /api/tasks`: List all tasks
+- `GET /api/tasks/{task_id}`: Get task details
+- `GET /api/results/{task_id}`: Get task results
+- `GET /api/status`: Get coordinator status
+
+### Raft Protocol API (Internal)
+
+- `POST /api/raft/request_vote`: Handle vote requests in Raft protocol
+- `POST /api/raft/append_entries`: Handle log append requests in Raft protocol
+- `POST /api/raft/sync_state`: Handle state synchronization requests
+
+### Health and Monitoring API
+
+- `GET /api/health`: Overall health check
+- `GET /api/health/db`: Database health status
+- `GET /api/health/resources`: Resource usage metrics
+- `GET /api/metrics`: Prometheus metrics endpoint
+
+## Deployment Models
+
+The framework supports several deployment models:
+
+### Single Coordinator Deployment
+
+Simplest deployment with one coordinator and multiple workers:
+
+```
+┌────────────┐
+│            │
+│ Coordinator │
+│            │
+└─────┬──────┘
+      │
+      │
+┌─────┴──────┬─────────────┬─────────────┐
+│            │             │             │
+│  Worker 1  │  Worker 2   │  Worker 3   │
+│            │             │             │
+└────────────┴─────────────┴─────────────┘
 ```
 
-### 5.3 Result Reporting Format
+### High-Availability Deployment
 
-Results will be reported in a structured format:
+Redundant coordinator deployment with automatic failover:
 
-```json
-{
-  "task_id": "benchmark-bert-cuda-001",
-  "worker_id": "worker-gpu-001",
-  "status": "completed",
-  "execution_time_seconds": 320,
-  "hardware_metrics": {
-    "gpu_utilization_percent": 95,
-    "memory_usage_mb": 3265,
-    "power_consumption_watts": 180
-  },
-  "results": {
-    "batch_sizes": {
-      "1": {
-        "latency_ms": 12.5,
-        "throughput_items_per_second": 80.0,
-        "memory_mb": 2048
-      },
-      "2": {
-        "latency_ms": 18.7,
-        "throughput_items_per_second": 107.0,
-        "memory_mb": 2150
-      }
-      // ... other batch sizes
-    }
-  },
-  "simulation_status": {
-    "is_simulated": false
-  },
-  "logs": "base64-encoded-logs"
-}
+```
+┌────────────┐     ┌────────────┐     ┌────────────┐
+│            │     │            │     │            │
+│ Coordinator │◄────┤ Coordinator │◄────┤ Coordinator │
+│  (Leader)   │     │ (Follower) │     │ (Follower) │
+└─────┬──────┘     └────────────┘     └────────────┘
+      │
+      │
+┌─────┴──────┬─────────────┬─────────────┐
+│            │             │             │
+│  Worker 1  │  Worker 2   │  Worker 3   │
+│            │             │             │
+└────────────┴─────────────┴─────────────┘
 ```
 
-### 5.4 Database Schema Enhancements
+### Geographic Distribution
 
-The following schema enhancements will be added to the DuckDB database:
+Distributed deployment across multiple regions:
 
-```sql
--- Worker node tracking
-CREATE TABLE worker_nodes (
-    worker_id VARCHAR PRIMARY KEY,
-    hostname VARCHAR,
-    registration_time TIMESTAMP,
-    last_heartbeat TIMESTAMP,
-    status VARCHAR,
-    capabilities JSON,
-    hardware_metrics JSON,
-    tags JSON
-);
-
--- Distributed task tracking
-CREATE TABLE distributed_tasks (
-    task_id VARCHAR PRIMARY KEY,
-    type VARCHAR,
-    priority INTEGER,
-    status VARCHAR,
-    create_time TIMESTAMP,
-    start_time TIMESTAMP,
-    end_time TIMESTAMP,
-    worker_id VARCHAR,
-    attempts INTEGER,
-    config JSON,
-    requirements JSON,
-    FOREIGN KEY (worker_id) REFERENCES worker_nodes(worker_id)
-);
-
--- Task execution history
-CREATE TABLE task_execution_history (
-    id INTEGER PRIMARY KEY,
-    task_id VARCHAR,
-    worker_id VARCHAR,
-    attempt INTEGER,
-    status VARCHAR,
-    start_time TIMESTAMP,
-    end_time TIMESTAMP,
-    execution_time_seconds FLOAT,
-    error_message VARCHAR,
-    hardware_metrics JSON,
-    FOREIGN KEY (task_id) REFERENCES distributed_tasks(task_id),
-    FOREIGN KEY (worker_id) REFERENCES worker_nodes(worker_id)
-);
+```
+┌─────────────────────┐      ┌─────────────────────┐
+│                     │      │                     │
+│  Region A           │      │  Region B           │
+│                     │      │                     │
+│  ┌────────────┐     │      │  ┌────────────┐     │
+│  │            │     │      │  │            │     │
+│  │ Coordinator │◄─────────────►│ Coordinator │     │
+│  │  (Leader)   │     │      │  │ (Follower) │     │
+│  └────┬───────┘     │      │  └─────┬──────┘     │
+│       │             │      │        │            │
+│  ┌────┴───────┐     │      │  ┌─────┴──────┐     │
+│  │            │     │      │  │            │     │
+│  │  Workers   │     │      │  │  Workers   │     │
+│  │            │     │      │  │            │     │
+│  └────────────┘     │      │  └────────────┘     │
+└─────────────────────┘      └─────────────────────┘
 ```
 
-## 6. Security Considerations
+## Monitoring and Management
 
-The distributed testing framework will implement several security measures:
+The framework includes monitoring and management tools:
 
-- **Authentication**: Mutual TLS authentication between coordinator and workers
-- **Authorization**: Role-based access control for API endpoints
-- **Data Encryption**: Encryption for all data in transit and at rest
-- **Secure Configuration**: Secrets management for API keys and credentials
-- **Input Validation**: Strict validation for all inputs to prevent injection attacks
-- **Resource Limits**: Configurable limits for resource usage to prevent DoS
-- **Audit Logging**: Comprehensive logging for security events and access
-- **Secure Coding Practices**: Following OWASP guidelines for secure coding
+- **Web Dashboard**: Visual monitoring of workers, tasks, and results
+- **Cluster Health Monitor**: Monitor coordinator cluster health
+- **Performance Metrics**: Track throughput, latency, and resource usage
+- **Automated Recovery**: Tools for automatic recovery from failures
+- **Alerts and Notifications**: Notify administrators of issues
 
-## 7. Testing Strategy
+## Conclusion
 
-The distributed testing framework will be tested using:
-
-- **Unit Tests**: Test individual components in isolation
-- **Integration Tests**: Test interaction between components
-- **System Tests**: Test end-to-end system behavior
-- **Load Tests**: Verify performance under heavy load
-- **Security Tests**: Verify security measures
-- **Fault Injection**: Test system behavior under failure conditions
-- **Chaos Testing**: Randomly introduce failures to test resilience
-
-## 8. Initial Implementation Tasks
-
-The following tasks will be implemented as part of the initial development:
-
-1. Create skeleton projects for coordinator and worker components
-2. Implement basic coordinator server with API endpoints
-3. Implement worker node client with hardware detection
-4. Set up secure communication between coordinator and workers
-5. Implement worker registration and capability reporting
-6. Develop basic task distribution logic
-7. Create result reporting and storage pipeline
-8. Implement health monitoring and basic fault tolerance
-9. Develop simple CLI for managing the system
-10. Create basic monitoring dashboard
-
-## 9. Future Enhancements (Post-June 2025)
-
-Potential future enhancements include:
-
-- **Kubernetes Integration**: Deployment and orchestration with Kubernetes
-- **Cloud Provider Support**: Native integration with AWS, GCP, Azure
-- **Auto-Scaling**: Automatic scaling of worker nodes based on workload
-- **Cost Optimization**: Intelligent resource allocation to minimize cost
-- **Advanced Analytics**: Machine learning for test result analysis
-- **Test Generation**: Automatic test generation based on code changes
-- **CI/CD Integration**: Deep integration with CI/CD systems
-- **Multi-Region Support**: Distributed testing across geographic regions
-
-## 10. Conclusion
-
-The distributed testing framework will significantly enhance the testing capabilities of the IPFS Accelerate Python package by enabling parallel execution across multiple machines. This will reduce the time required for comprehensive testing and enable testing on a wider variety of hardware configurations.
-
-The phased implementation approach ensures that the system will be developed incrementally, with each phase building on the previous one. The initial implementation will focus on core functionality, with advanced features added in later phases.
-
-This design document will serve as a guide for the implementation of the distributed testing framework, with detailed implementation plans to be developed for each phase.
+The Distributed Testing Framework provides a comprehensive solution for parallel test execution across heterogeneous hardware. With the completion of Phase 5 (Fault Tolerance), the framework now offers both high performance and high availability, ensuring reliable operation even in the presence of failures.

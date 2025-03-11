@@ -17,59 +17,58 @@ Usage:
     python predict.py --model-dir ./models --visualize --matrix-file matrix.json --output-dir ./visualizations
     """
 
-    import os
-    import sys
-    import json
-    import logging
-    import argparse
-    import numpy as np
-    import pandas as pd
-    from pathlib import Path
-    from datetime import datetime
-    from typing import Dict, Any, Optional, Tuple, List, Union
+import os
+import sys
+import json
+import logging
+import argparse
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, Any, Optional, Tuple, List, Union
 
 # Add parent directory to path to allow imports
-    sys.path.append()))))))))))))))os.path.dirname()))))))))))))))os.path.dirname()))))))))))))))os.path.abspath()))))))))))))))__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import model_performance_predictor module
 try:
-    from model_performance_predictor import ()))))))))))))))
-    load_prediction_models,
-    predict_performance,
-    generate_prediction_matrix,
-    visualize_predictions,
-    PREDICTION_METRICS,
-    MODEL_CATEGORIES,
-    HARDWARE_CATEGORIES
+    from model_performance_predictor import (
+        load_prediction_models,
+        predict_performance,
+        generate_prediction_matrix,
+        visualize_predictions,
+        PREDICTION_METRICS,
+        MODEL_CATEGORIES,
+        HARDWARE_CATEGORIES
     )
     MODELS_AVAILABLE = True
 except ImportError:
-    logger = logging.getLogger()))))))))))))))"predictive_performance.predict")
-    logger.warning()))))))))))))))"model_performance_predictor module not available, using simulation mode")
+    logger = logging.getLogger("predictive_performance.predict")
+    logger.warning("model_performance_predictor module not available, using simulation mode")
     MODELS_AVAILABLE = False
     
     # Define constants for simulation mode
-    PREDICTION_METRICS = [],"throughput", "latency", "memory", "power"],
-    MODEL_CATEGORIES = [],"text_embedding", "text_generation", "vision", "audio", "multimodal"],
-    HARDWARE_CATEGORIES = [],"cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
-    ,
+    PREDICTION_METRICS = ["throughput", "latency", "memory", "power"]
+    MODEL_CATEGORIES = ["text_embedding", "text_generation", "vision", "audio", "multimodal"]
+    HARDWARE_CATEGORIES = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
 # Configure logging
-    logging.basicConfig()))))))))))))))
+logging.basicConfig(
     level=logging.INFO,
-    format='%()))))))))))))))asctime)s - %()))))))))))))))name)s - %()))))))))))))))levelname)s - %()))))))))))))))message)s'
-    )
-    logger = logging.getLogger()))))))))))))))"predictive_performance.predict")
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("predictive_performance.predict")
 
 # Default paths
-    PROJECT_ROOT = Path()))))))))))))))os.path.dirname()))))))))))))))os.path.dirname()))))))))))))))os.path.abspath()))))))))))))))__file__))))
-    TEST_DIR = PROJECT_ROOT
-    PREDICTIVE_DIR = TEST_DIR / "predictive_performance"
-    MODELS_DIR = PREDICTIVE_DIR / "models" / "trained_models" / "latest"
-    OUTPUT_DIR = PREDICTIVE_DIR / "predictions"
-    VISUALIZATIONS_DIR = PREDICTIVE_DIR / "visualizations"
+PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TEST_DIR = PROJECT_ROOT
+PREDICTIVE_DIR = TEST_DIR / "predictive_performance"
+MODELS_DIR = PREDICTIVE_DIR / "models" / "trained_models" / "latest"
+OUTPUT_DIR = PREDICTIVE_DIR / "predictions"
+VISUALIZATIONS_DIR = PREDICTIVE_DIR / "visualizations"
 
-    def make_prediction()))))))))))))))
-    model_dir: Optional[],str] = None,,,
+def make_prediction(
+    model_dir: Optional[str] = None,
     model_name: str = "",
     model_category: str = "",
     hardware: str = "",
@@ -79,8 +78,8 @@ except ImportError:
     gpu_count: int = 1,
     is_distributed: bool = False,
     sequence_length: int = 128,
-    output_file: Optional[],str] = None,,
-    ) -> Tuple[],bool, Dict[],str, Any]]:,,
+    output_file: Optional[str] = None,
+) -> Tuple[bool, Dict[str, Any]]:
     """
     Make a performance prediction for a specific configuration.
     
