@@ -5,8 +5,8 @@
  * (WebGPU, WebNN, WebAssembly) with automatic fallback capability.
  */
 
-import { WebGPUBackend, isWebGPUSupported, getWebGPUInfo } from './backends/webgpu_backend';
-import { WebNNBackend, isWebNNSupported, getWebNNInfo } from './backends/webnn_backend';
+import { WebGPUBackend, isWebGPUSupported, getWebGPUInfo } from ".\/webgpu_backend";
+import { WebNNBackend, isWebNNSupported, getWebNNInfo } from ".\/webnn_backend";
 
 export type HardwareBackendType = 'webgpu' | 'webnn' | 'wasm' | 'cpu';
 

@@ -4,11 +4,11 @@
  * Main entry point that provides access to all SDK functionality.
  */
 
-import { HardwareAbstraction, createHardwareAbstraction, HardwareBackendType } from './hardware/hardware_abstraction';
-import { WebGPUBackend, isWebGPUSupported, getWebGPUInfo } from './hardware/backends/webgpu_backend';
-import { WebNNBackend, isWebNNSupported, getWebNNInfo } from './hardware/backends/webnn_backend';
-import { ModelLoader, ModelLoadOptions, Model, ModelType, ModelConfig } from './model/model_loader';
-import { QuantizationEngine, QuantizationConfig, UltraLowPrecisionEngine } from './quantization/quantization_engine';
+import { HardwareAbstraction, createHardwareAbstraction, HardwareBackendType } from "./hardware_abstraction";
+import { WebGPUBackend, isWebGPUSupported, getWebGPUInfo } from "./webgpu_backend";
+import { WebNNBackend, isWebNNSupported, getWebNNInfo } from "./webnn_backend";
+import { ModelLoader, ModelLoadOptions, Model, ModelType, ModelConfig } from "./model_loader";
+import { QuantizationEngine, QuantizationConfig, UltraLowPrecisionEngine } from "./quantization_engine";
 
 // Export types
 export { HardwareBackendType, ModelType, ModelConfig, QuantizationConfig };

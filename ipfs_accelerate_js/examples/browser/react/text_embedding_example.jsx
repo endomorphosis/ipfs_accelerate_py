@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { useModel, useHardwareInfo, useP2PStatus } from '../../../src/react/hooks';
+import { useModel, useHardwareInfo, useP2PStatus } from "./react_hooks";
 
 /**
  * Text Embedding Component using IPFS Accelerate SDK

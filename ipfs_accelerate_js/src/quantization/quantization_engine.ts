@@ -6,8 +6,8 @@
  * for WebGPU and WebNN backends.
  */
 
-import { WebGPUBackend } from '../hardware/backends/webgpu_backend';
-import { WebNNBackend } from '../hardware/backends/webnn_backend';
+import { WebGPUBackend } from ".\/webgpu_backend";
+import { WebNNBackend } from ".\/webnn_backend";
 
 export interface QuantizationConfig {
   /** Number of bits for quantization (2, 3, 4, 8, 16) */

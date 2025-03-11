@@ -10,7 +10,9 @@ This guide covers the integration and extensibility capabilities of the Distribu
 4. [Custom Scheduler Implementation](#custom-scheduler-implementation)
 5. [Creating Your Own Plugins](#creating-your-own-plugins)
 6. [Plugin Deployment](#plugin-deployment)
-7. [API Reference](#api-reference)
+7. [Running the Example](#running-the-example)
+8. [API Reference](#api-reference)
+9. [Troubleshooting](#troubleshooting)
 
 ## Plugin Architecture Overview
 
@@ -320,6 +322,61 @@ coordinator = DistributedTestingCoordinator(
 await coordinator.start()
 ```
 
+## Running the Example
+
+The repository includes an example script that demonstrates the use of the plugins. This example creates and configures a notification plugin, simulates worker registration and task execution, and shows how to handle events through the plugin system.
+
+### Prerequisites
+
+- Python 3.8 or higher
+- The Distributed Testing Framework must be installed
+
+### Running the Example
+
+```bash
+# Navigate to the distributed_testing directory
+cd /path/to/distributed_testing
+
+# Run the example script
+python examples/plugin_example.py
+```
+
+### Example Output
+
+When you run the example, you should see output similar to the following:
+
+```
+2025-03-11 10:15:23,456 - __main__ - INFO - Starting coordinator...
+2025-03-11 10:15:23,789 - __main__ - INFO - Discovered plugins: ['notification_plugin']
+2025-03-11 10:15:24,123 - __main__ - INFO - Loaded notification plugin: SimpleNotification-1.0.0
+2025-03-11 10:15:24,456 - __main__ - INFO - NOTIFICATION: Worker worker-001 registered with capabilities: {'hardware_type': 'gpu', 'cpu_cores': 8, 'memory_gb': 16, 'gpu_memory_gb': 8, 'supports_cuda': True, 'supports_webgpu': True, 'supports_webnn': True}
+2025-03-11 10:15:24,789 - __main__ - INFO - NOTIFICATION: Task task-1 created with type: model_test
+2025-03-11 10:15:25,123 - __main__ - INFO - NOTIFICATION: Task task-1 failed: Model test failed due to out of memory error
+...
+2025-03-11 10:15:30,456 - __main__ - INFO - Notification Summary:
+2025-03-11 10:15:30,457 - __main__ - INFO - Total notifications: 11
+2025-03-11 10:15:30,458 - __main__ - INFO -   info: 9
+2025-03-11 10:15:30,459 - __main__ - INFO -   error: 1
+2025-03-11 10:15:30,460 - __main__ - INFO -   warning: 1
+2025-03-11 10:15:30,461 - __main__ - INFO - Last 3 notifications:
+2025-03-11 10:15:30,462 - __main__ - INFO -   [info] Task task-5 created with type: model_test
+2025-03-11 10:15:30,463 - __main__ - INFO -   [info] Task task-5 completed successfully
+2025-03-11 10:15:30,464 - __main__ - INFO -   [warning] Worker worker-001 disconnected
+2025-03-11 10:15:30,465 - __main__ - INFO - Shutting down coordinator...
+2025-03-11 10:15:31,789 - __main__ - INFO - Demo completed successfully
+```
+
+### Understanding the Example
+
+The example demonstrates several key aspects of the plugin architecture:
+
+1. **Coordinator Initialization**: Creating a coordinator with plugin support
+2. **Plugin Discovery and Loading**: Discovering and loading plugins from the plugin directory
+3. **Plugin Configuration**: Setting configuration options for plugins
+4. **Hook Invocation**: Simulating events that trigger plugin hooks
+5. **Event Handling**: Handling events in the plugin and taking appropriate action
+6. **Plugin Shutdown**: Properly shutting down plugins when the coordinator shuts down
+
 ## API Reference
 
 ### Plugin Base Class
@@ -437,3 +494,51 @@ class PluginType(Enum):
     SECURITY = "security"
     CUSTOM = "custom"
 ```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Plugin Not Found
+
+**Symptom**: `Plugin module not found` error when trying to load a plugin.
+
+**Solution**:
+- Ensure the plugin file is in the correct directory
+- Check that the plugin file name matches the module name
+- Verify that the plugin directory is correctly specified in plugin_dirs
+
+#### Hook Not Called
+
+**Symptom**: A hook handler in your plugin is not being called for an event.
+
+**Solution**:
+- Verify that you registered the hook with the correct HookType
+- Check that the plugin is enabled
+- Ensure the hook handler signature matches the expected parameters
+- Add debug logging in your hook handler to confirm it's registered
+
+#### Plugin Initialization Failed
+
+**Symptom**: `Failed to initialize plugin` error when loading a plugin.
+
+**Solution**:
+- Check for errors in the plugin's initialize method
+- Ensure the plugin has the required dependencies
+- Verify that the plugin can access the resources it needs
+
+### Debugging Tips
+
+1. **Enable Detailed Logging**: Set logging level to DEBUG for more detailed information
+2. **Check Plugin Registration**: Verify that hooks are properly registered in the plugin's `__init__` method
+3. **Inspect Plugin Configuration**: Print plugin configuration to ensure it's correctly set
+4. **Test Hooks Individually**: Trigger hooks manually to test specific functionality
+5. **Plugin Isolation**: Test plugins in isolation to identify interaction issues
+
+### Getting Help
+
+If you encounter issues that aren't covered here, please:
+1. Check the framework documentation for additional information
+2. Review the plugin API reference to ensure correct usage
+3. Examine the example plugins for best practices
+4. Create detailed bug reports with steps to reproduce the issue

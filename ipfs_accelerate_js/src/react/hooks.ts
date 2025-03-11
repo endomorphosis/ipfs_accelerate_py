@@ -12,8 +12,8 @@ import {
   HardwareBackendType,
   ModelType,
   ModelConfig
-} from '../index';
-import { Model } from '../model/model_loader';
+} from "./index";
+import { Model } from "./model_loader";
 
 /**
  * Hook for loading a model
