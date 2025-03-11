@@ -38,6 +38,9 @@ from task_scheduler import TaskScheduler
 # Import load balancer module
 from load_balancer import AdaptiveLoadBalancer
 
+# Import plugin architecture
+from plugin_architecture import PluginManager, HookType
+
 # Try to import coordinator redundancy
 try:
     from coordinator_redundancy import RedundancyManager
@@ -63,6 +66,7 @@ class DistributedTestingCoordinator:
                  security_config: str = None, enable_advanced_scheduler: bool = True,
                  enable_health_monitor: bool = True, enable_load_balancer: bool = True,
                  enable_auto_recovery: bool = True, enable_redundancy: bool = True,
+                 enable_plugins: bool = True, plugin_dirs: List[str] = None,
                  cluster_nodes: List[str] = None, node_id: str = None):
         """
         Initialize the coordinator.
@@ -77,6 +81,8 @@ class DistributedTestingCoordinator:
             enable_load_balancer: Enable adaptive load balancer
             enable_auto_recovery: Enable auto recovery
             enable_redundancy: Enable coordinator redundancy
+            enable_plugins: Enable plugin system
+            plugin_dirs: List of directories to search for plugins
             cluster_nodes: List of coordinator nodes in the cluster (for redundancy)
             node_id: Unique identifier for this node (for redundancy)
         """
@@ -103,6 +109,7 @@ class DistributedTestingCoordinator:
         self.load_balancer = None
         self.auto_recovery = None
         self.redundancy_manager = None
+        self.plugin_manager = None
         
         # Features enabled
         self.enable_advanced_scheduler = enable_advanced_scheduler
@@ -110,13 +117,30 @@ class DistributedTestingCoordinator:
         self.enable_load_balancer = enable_load_balancer
         self.enable_auto_recovery = enable_auto_recovery
         self.enable_redundancy = enable_redundancy and REDUNDANCY_AVAILABLE
+        self.enable_plugins = enable_plugins
+        
+        # Plugin configuration
+        self.plugin_dirs = plugin_dirs or ["plugins"]
         
         # Redundancy configuration
         self.cluster_nodes = cluster_nodes or [f"http://{host}:{port}"]
         self.node_id = node_id or f"node-{uuid.uuid4().hex[:8]}"
         
+        # Worker and task tracking
+        self.workers = {}
+        self.tasks = {}
+        self.pending_tasks = set()
+        self.running_tasks = {}
+        self.completed_tasks = set()
+        self.failed_tasks = set()
+        self.worker_connections = {}
+        
         # Initialize security manager
         self._init_security_manager()
+        
+        # Initialize plugin manager if enabled
+        if self.enable_plugins:
+            self._init_plugin_manager()
         
         # Initialize task scheduler if enabled
         if self.enable_advanced_scheduler:
@@ -210,6 +234,18 @@ class DistributedTestingCoordinator:
             logger.error(f"Error initializing redundancy manager: {e}")
             self.redundancy_manager = None
     
+    def _init_plugin_manager(self):
+        """Initialize the plugin manager."""
+        try:
+            self.plugin_manager = PluginManager(
+                coordinator=self,
+                plugin_dirs=self.plugin_dirs
+            )
+            logger.info(f"Plugin manager initialized with plugin directories: {self.plugin_dirs}")
+        except Exception as e:
+            logger.error(f"Error initializing plugin manager: {e}")
+            self.plugin_manager = None
+    
     async def start(self):
         """Start the coordinator server."""
         # Create web application
@@ -217,6 +253,23 @@ class DistributedTestingCoordinator:
         
         # Setup routes
         self._setup_routes()
+        
+        # Discover and load plugins if enabled
+        if self.enable_plugins and self.plugin_manager:
+            try:
+                # Discover available plugins
+                discovered_plugins = await self.plugin_manager.discover_plugins()
+                logger.info(f"Discovered {len(discovered_plugins)} plugins: {', '.join(discovered_plugins)}")
+                
+                # Load discovered plugins
+                for plugin_module in discovered_plugins:
+                    plugin_id = await self.plugin_manager.load_plugin(plugin_module)
+                    if plugin_id:
+                        logger.info(f"Loaded plugin: {plugin_id}")
+                    else:
+                        logger.warning(f"Failed to load plugin: {plugin_module}")
+            except Exception as e:
+                logger.error(f"Error loading plugins: {str(e)}")
         
         # Start health monitor if enabled
         if self.health_monitor:
@@ -239,10 +292,21 @@ class DistributedTestingCoordinator:
         
         logger.info(f"Coordinator server started on {self.host}:{self.port}")
         
+        # Invoke startup hook for plugins
+        if self.enable_plugins and self.plugin_manager:
+            await self.plugin_manager.invoke_hook(HookType.COORDINATOR_STARTUP, self)
+        
         return site, runner
     
     async def stop(self):
         """Stop the coordinator server."""
+        # Invoke shutdown hook for plugins
+        if self.enable_plugins and self.plugin_manager:
+            await self.plugin_manager.invoke_hook(HookType.COORDINATOR_SHUTDOWN, self)
+            
+            # Shutdown plugin manager
+            await self.plugin_manager.shutdown()
+        
         # Stop redundancy manager if enabled
         if self.redundancy_manager:
             await self.redundancy_manager.stop()
@@ -431,6 +495,13 @@ async def main():
     parser.add_argument("--cluster-nodes", help="Comma-separated list of coordinator nodes in the cluster")
     parser.add_argument("--node-id", help="Unique identifier for this node")
     
+    # Plugin configuration
+    parser.add_argument("--disable-plugins", action="store_true", help="Disable plugin system")
+    parser.add_argument("--plugin-dirs", help="Comma-separated list of plugin directories")
+    parser.add_argument("--list-plugins", action="store_true", help="List available plugins and exit")
+    parser.add_argument("--enable-plugin", action="append", help="Enable specific plugin(s) by name")
+    parser.add_argument("--disable-plugin", action="append", help="Disable specific plugin(s) by name")
+    
     # API key generation
     parser.add_argument("--generate-api-key", help="Generate an API key for a worker")
     parser.add_argument("--generate-admin-key", action="store_true", help="Generate an admin API key")
@@ -470,6 +541,28 @@ async def main():
     if args.cluster_nodes:
         cluster_nodes = args.cluster_nodes.split(",")
     
+    # Parse plugin directories
+    plugin_dirs = None
+    if args.plugin_dirs:
+        plugin_dirs = args.plugin_dirs.split(",")
+    
+    # Handle list plugins option
+    if args.list_plugins:
+        # Create temporary plugin manager
+        plugin_manager = PluginManager(coordinator=None, plugin_dirs=plugin_dirs or ["plugins"])
+        
+        # Discover plugins
+        discovered_plugins = asyncio.run(plugin_manager.discover_plugins())
+        
+        print("Discovered plugins:")
+        if discovered_plugins:
+            for plugin in discovered_plugins:
+                print(f"  - {plugin}")
+        else:
+            print("  No plugins found")
+            
+        return 0
+    
     # Create coordinator
     coordinator = DistributedTestingCoordinator(
         db_path=args.db_path,
@@ -481,6 +574,8 @@ async def main():
         enable_load_balancer=not args.disable_load_balancer,
         enable_auto_recovery=not args.disable_auto_recovery,
         enable_redundancy=not args.disable_redundancy,
+        enable_plugins=not args.disable_plugins,
+        plugin_dirs=plugin_dirs,
         cluster_nodes=cluster_nodes,
         node_id=args.node_id
     )

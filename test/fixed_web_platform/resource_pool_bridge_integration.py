@@ -61,6 +61,13 @@ try:
 except ImportError:
     ULTRA_LOW_PRECISION_AVAILABLE = False
 
+# Import browser performance history tracking
+try:
+    from fixed_web_platform.browser_performance_history import BrowserPerformanceHistory
+    BROWSER_HISTORY_AVAILABLE = True
+except ImportError:
+    BROWSER_HISTORY_AVAILABLE = False
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -87,7 +94,7 @@ except ImportError as e:
 
 class ResourcePoolBridgeIntegrationWithRecovery:
     """
-    Enhanced WebNN/WebGPU Resource Pool with Recovery System Integration (March 2025).
+    Enhanced WebNN/WebGPU Resource Pool with Recovery System Integration (May 2025).
     
     This class integrates the ResourcePoolBridgeIntegration with the ResourcePoolBridgeRecovery
     system to provide fault-tolerant, resilient operation for web-based AI acceleration.
@@ -98,6 +105,13 @@ class ResourcePoolBridgeIntegrationWithRecovery:
     - Cross-model tensor sharing for memory efficiency
     - Ultra-low bit quantization (2-bit, 3-bit) with shared KV cache
     - Enhanced error recovery with performance-based strategies
+    
+    The May 2025 enhancements include:
+    - Browser performance history tracking and analysis
+    - Automatic browser-specific optimizations based on performance history
+    - Browser capability scoring based on historical performance
+    - Intelligent model-to-browser routing based on past performance data
+    - Browser performance anomaly detection
     """
     
     def __init__(
@@ -117,6 +131,7 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         enable_tensor_sharing: bool = True,
         enable_ultra_low_precision: bool = True,
         enable_circuit_breaker: bool = True,
+        enable_browser_history: bool = True,
         max_memory_mb: int = 2048
     ):
         """
@@ -138,6 +153,7 @@ class ResourcePoolBridgeIntegrationWithRecovery:
             enable_tensor_sharing: Whether to enable cross-model tensor sharing for memory efficiency
             enable_ultra_low_precision: Whether to enable 2-bit and 3-bit quantization support
             enable_circuit_breaker: Whether to enable circuit breaker pattern for health monitoring
+            enable_browser_history: Whether to enable browser performance history tracking (May 2025 enhancement)
             max_memory_mb: Maximum memory usage in MB for tensor sharing and browser connections
         """
         self.max_connections = max_connections
@@ -159,13 +175,17 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         self.enable_circuit_breaker = enable_circuit_breaker and ADVANCED_POOLING_AVAILABLE
         self.max_memory_mb = max_memory_mb
         
+        # May 2025 enhancements
+        self.enable_browser_history = enable_browser_history and BROWSER_HISTORY_AVAILABLE
+        
         # Initialize logger
         logger.info(f"ResourcePoolBridgeIntegrationWithRecovery created with max_connections={max_connections}, "
                    f"recovery={'enabled' if self.enable_recovery else 'disabled'}, "
                    f"adaptive_scaling={'enabled' if adaptive_scaling else 'disabled'}, "
                    f"tensor_sharing={'enabled' if self.enable_tensor_sharing else 'disabled'}, "
                    f"ultra_low_precision={'enabled' if self.enable_ultra_low_precision else 'disabled'}, "
-                   f"circuit_breaker={'enabled' if self.enable_circuit_breaker else 'disabled'}")
+                   f"circuit_breaker={'enabled' if self.enable_circuit_breaker else 'disabled'}, "
+                   f"browser_history={'enabled' if self.enable_browser_history else 'disabled'}")
         
         # Will be initialized in initialize()
         self.bridge = None
@@ -177,6 +197,9 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         self.circuit_breaker = None
         self.tensor_sharing_manager = None
         self.ultra_low_precision_manager = None
+        
+        # May 2025 enhancements
+        self.browser_history = None
     
     def initialize(self) -> bool:
         """
@@ -213,6 +236,13 @@ class ResourcePoolBridgeIntegrationWithRecovery:
             if self.enable_ultra_low_precision and ULTRA_LOW_PRECISION_AVAILABLE:
                 logger.info("Initializing ultra-low precision support")
                 self.ultra_low_precision_manager = UltraLowPrecisionManager()
+                
+            # Initialize browser performance history if enabled
+            if self.enable_browser_history and BROWSER_HISTORY_AVAILABLE:
+                logger.info("Initializing browser performance history tracking (May 2025)")
+                self.browser_history = BrowserPerformanceHistory(db_path=self.db_path)
+                # Start automatic updates 
+                self.browser_history.start_automatic_updates()
             
             # Initialize base bridge
             if hasattr(self.bridge, 'initialize'):
@@ -298,27 +328,164 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         if not self.initialized:
             logger.error("ResourcePoolBridgeIntegrationWithRecovery not initialized")
             return None
+            
+        # Apply browser-specific optimizations based on performance history if enabled
+        if self.enable_browser_history and self.browser_history:
+            try:
+                # Use the enhanced BrowserPerformanceOptimizer if available
+                try:
+                    from fixed_web_platform.browser_performance_optimizer import BrowserPerformanceOptimizer
+                    
+                    # Create optimizer if not already created
+                    if not hasattr(self, 'performance_optimizer'):
+                        self.performance_optimizer = BrowserPerformanceOptimizer(
+                            browser_history=self.browser_history,
+                            confidence_threshold=0.6,
+                            logger=logger
+                        )
+                    
+                    # Get optimized configuration
+                    optimized_config_recommendation = self.performance_optimizer.get_optimized_configuration(
+                        model_type=model_type,
+                        model_name=model_name,
+                        available_browsers=["chrome", "firefox", "edge", "safari"] # All available browsers
+                    )
+                    
+                    # Convert recommendation to dict
+                    optimized_config = {
+                        "browser": optimized_config_recommendation.browser_type,
+                        "platform": optimized_config_recommendation.platform,
+                        "confidence": optimized_config_recommendation.confidence,
+                        "reason": optimized_config_recommendation.reason
+                    }
+                    
+                    # Add all parameters to config
+                    for key, value in optimized_config_recommendation.parameters.items():
+                        optimized_config[key] = value
+                        
+                    logger.info(f"Using BrowserPerformanceOptimizer for {model_type}/{model_name}")
+                    
+                except ImportError:
+                    # Fall back to basic optimization if enhanced optimizer not available
+                    logger.debug("BrowserPerformanceOptimizer not available, using basic optimization")
+                    optimized_config = self.browser_history.get_optimized_browser_config(
+                        model_type=model_type,
+                        model_name=model_name
+                    )
+                
+                # Only override preferences if we have high confidence
+                if optimized_config.get("confidence", 0) >= 0.6:
+                    # Create hardware preferences if not provided
+                    if hardware_preferences is None:
+                        hardware_preferences = {}
+                    
+                    # Add recommended browser if not explicitly specified by user
+                    if "browser" not in hardware_preferences:
+                        recommended_browser = optimized_config.get("browser")
+                        if recommended_browser:
+                            hardware_preferences["browser"] = recommended_browser
+                            logger.info(f"Using recommended browser '{recommended_browser}' for {model_type}/{model_name} "
+                                       f"(confidence: {optimized_config.get('confidence', 0):.2f})")
+                    
+                    # Add recommended platform if not explicitly specified by user
+                    if "priority_list" not in hardware_preferences and "platform" not in hardware_preferences:
+                        recommended_platform = optimized_config.get("platform")
+                        if recommended_platform:
+                            # Create priority list with recommended platform first
+                            if recommended_platform == "webnn":
+                                hardware_preferences["priority_list"] = ["webnn", "webgpu", "cpu"]
+                            elif recommended_platform == "webgpu":
+                                hardware_preferences["priority_list"] = ["webgpu", "webnn", "cpu"]
+                            else:
+                                hardware_preferences["priority_list"] = [recommended_platform, "webgpu", "webnn", "cpu"]
+                                
+                            logger.info(f"Using recommended platform '{recommended_platform}' for {model_type}/{model_name} "
+                                       f"(confidence: {optimized_config.get('confidence', 0):.2f})")
+                    
+                    # Add any specific optimizations from the config
+                    for key, value in optimized_config.items():
+                        if key not in ["browser", "platform", "confidence", "based_on", "model_type", "reason", "metrics"]:
+                            # Only add optimization if not already specified
+                            if key not in hardware_preferences:
+                                hardware_preferences[key] = value
+                    
+                    # Log optimizations if detailed logging is enabled
+                    if logger.isEnabledFor(logging.DEBUG):
+                        optimizations = {k: v for k, v in optimized_config.items() 
+                                       if k not in ["browser", "platform", "confidence", "based_on", "model_type", "reason", "metrics"]}
+                        if optimizations:
+                            logger.debug(f"Applied optimizations for {model_type}/{model_name}: {optimizations}")
+            
+            except Exception as e:
+                logger.warning(f"Error applying browser-specific optimizations: {e}")
+                # Continue without optimizations
         
         # Use recovery bridge if enabled
         if self.enable_recovery and self.bridge_with_recovery:
-            return self.bridge_with_recovery.get_model(
+            model = self.bridge_with_recovery.get_model(
                 model_type=model_type,
                 model_name=model_name,
                 hardware_preferences=hardware_preferences
             )
-        
         # Fall back to base bridge if recovery not enabled
-        if hasattr(self.bridge, 'get_model'):
+        elif hasattr(self.bridge, 'get_model'):
             loop = asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else asyncio.new_event_loop()
-            return loop.run_until_complete(
+            model = loop.run_until_complete(
                 self.bridge.get_model(
                     model_type=model_type,
                     model_name=model_name,
                     hardware_preferences=hardware_preferences
                 )
             )
+        else:
+            return None
+            
+        # Record execution metrics after model is loaded
+        if model is not None and self.enable_browser_history and self.browser_history:
+            # Get browser and platform information from model if available
+            browser = None
+            platform = None
+            
+            if hasattr(model, 'browser'):
+                browser = model.browser
+            elif hasattr(model, '_browser'):
+                browser = model._browser
+            elif hardware_preferences and "browser" in hardware_preferences:
+                browser = hardware_preferences["browser"]
+                
+            if hasattr(model, 'platform'):
+                platform = model.platform
+            elif hasattr(model, '_platform'):
+                platform = model._platform
+            elif hardware_preferences and "platform" in hardware_preferences:
+                platform = hardware_preferences.get("platform")
+            elif hardware_preferences and "priority_list" in hardware_preferences:
+                # Use first item in priority list
+                platform = hardware_preferences["priority_list"][0]
+                
+            # Record model instantiation if we have browser and platform info
+            if browser and platform:
+                try:
+                    # Get initial metrics if available
+                    metrics = {}
+                    
+                    if hasattr(model, 'get_startup_metrics'):
+                        startup_metrics = model.get_startup_metrics()
+                        if startup_metrics:
+                            metrics.update(startup_metrics)
+                    
+                    # Record execution in performance history
+                    self.browser_history.record_execution(
+                        browser=browser,
+                        model_type=model_type,
+                        model_name=model_name,
+                        platform=platform,
+                        metrics=metrics
+                    )
+                except Exception as e:
+                    logger.warning(f"Error recording model instantiation metrics: {e}")
         
-        return None
+        return model
     
     def execute_concurrent(self, model_and_inputs_list: List[Tuple[Any, Any]]) -> List[Dict[str, Any]]:
         """
@@ -333,19 +500,185 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         if not self.initialized:
             logger.error("ResourcePoolBridgeIntegrationWithRecovery not initialized")
             return [{"success": False, "error": "Not initialized"} for _ in model_and_inputs_list]
+            
+        # Start time for performance tracking
+        start_time = time.time()
+        
+        # Apply runtime optimizations if browser performance optimizer is available
+        if self.enable_browser_history and hasattr(self, 'performance_optimizer'):
+            try:
+                # Apply model-specific optimizations to each model
+                for i, (model, inputs) in enumerate(model_and_inputs_list):
+                    if model is None:
+                        continue
+                        
+                    # Extract model browser
+                    browser_type = None
+                    if hasattr(model, 'browser'):
+                        browser_type = model.browser
+                    elif hasattr(model, '_browser'):
+                        browser_type = model._browser
+                    
+                    if browser_type:
+                        # Get existing execution context if available
+                        execution_context = {}
+                        if hasattr(model, 'execution_context'):
+                            execution_context = model.execution_context
+                        elif hasattr(model, '_execution_context'):
+                            execution_context = model._execution_context
+                        
+                        # Apply runtime optimizations
+                        optimized_context = self.performance_optimizer.apply_runtime_optimizations(
+                            model=model,
+                            browser_type=browser_type,
+                            execution_context=execution_context
+                        )
+                        
+                        # Apply optimized context back to model
+                        if hasattr(model, 'set_execution_context'):
+                            model.set_execution_context(optimized_context)
+                        elif hasattr(model, 'execution_context'):
+                            model.execution_context = optimized_context
+                        elif hasattr(model, '_execution_context'):
+                            model._execution_context = optimized_context
+                        
+                        # Log optimization if debug enabled
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(f"Applied runtime optimizations to model {i} ({browser_type})")
+            except Exception as e:
+                logger.warning(f"Error applying runtime optimizations: {e}")
         
         # Use recovery bridge if enabled
         if self.enable_recovery and self.bridge_with_recovery:
-            return self.bridge_with_recovery.execute_concurrent(model_and_inputs_list)
-        
+            results = self.bridge_with_recovery.execute_concurrent(model_and_inputs_list)
         # Fall back to base bridge if recovery not enabled
-        if hasattr(self.bridge, 'execute_concurrent_sync'):
-            return self.bridge.execute_concurrent_sync(model_and_inputs_list)
+        elif hasattr(self.bridge, 'execute_concurrent_sync'):
+            results = self.bridge.execute_concurrent_sync(model_and_inputs_list)
         elif hasattr(self.bridge, 'execute_concurrent'):
             loop = asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else asyncio.new_event_loop()
-            return loop.run_until_complete(self.bridge.execute_concurrent(model_and_inputs_list))
+            results = loop.run_until_complete(self.bridge.execute_concurrent(model_and_inputs_list))
+        else:
+            return [{"success": False, "error": "execute_concurrent not available"} for _ in model_and_inputs_list]
             
-        return [{"success": False, "error": "execute_concurrent not available"} for _ in model_and_inputs_list]
+        # End time for performance tracking
+        end_time = time.time()
+        total_duration_ms = (end_time - start_time) * 1000
+        
+        # Record performance metrics if browser history is enabled
+        if self.enable_browser_history and self.browser_history:
+            # Group models by browser, model_type, model_name, and platform
+            models_by_group = {}
+            
+            for i, (model, _) in enumerate(model_and_inputs_list):
+                if model is None:
+                    continue
+                    
+                # Extract model info
+                browser = None
+                platform = None
+                model_type = None
+                model_name = None
+                
+                # Get browser
+                if hasattr(model, 'browser'):
+                    browser = model.browser
+                elif hasattr(model, '_browser'):
+                    browser = model._browser
+                
+                # Get platform
+                if hasattr(model, 'platform'):
+                    platform = model.platform
+                elif hasattr(model, '_platform'):
+                    platform = model._platform
+                
+                # Get model type and name
+                if hasattr(model, 'model_type'):
+                    model_type = model.model_type
+                elif hasattr(model, '_model_type'):
+                    model_type = model._model_type
+                    
+                if hasattr(model, 'model_name'):
+                    model_name = model.model_name
+                elif hasattr(model, '_model_name'):
+                    model_name = model._model_name
+                
+                # Skip if we don't have all required info
+                if not all([browser, platform, model_type, model_name]):
+                    continue
+                
+                # Create group key
+                group_key = (browser, model_type, model_name, platform)
+                
+                # Add to group
+                if group_key not in models_by_group:
+                    models_by_group[group_key] = []
+                    
+                models_by_group[group_key].append((i, model))
+            
+            # Record metrics for each group
+            for (browser, model_type, model_name, platform), models in models_by_group.items():
+                # Count successful results
+                success_count = 0
+                for i, _ in models:
+                    if i < len(results) and results[i].get("success", False):
+                        success_count += 1
+                
+                # Calculate performance metrics
+                avg_per_model_ms = total_duration_ms / len(model_and_inputs_list)
+                throughput = len(model_and_inputs_list) * 1000 / total_duration_ms if total_duration_ms > 0 else 0
+                success_rate = success_count / len(models) if len(models) > 0 else 0
+                
+                # Create metrics dictionary
+                metrics = {
+                    "latency_ms": avg_per_model_ms,
+                    "throughput_models_per_sec": throughput,
+                    "success_rate": success_rate,
+                    "batch_size": len(models),
+                    "concurrent_models": len(model_and_inputs_list),
+                    "total_duration_ms": total_duration_ms,
+                    "success": success_rate > 0.9  # Consider successful if >90% of models succeeded
+                }
+                
+                # Add execution metrics from results if available
+                for i, model in models:
+                    if i < len(results):
+                        result = results[i]
+                        if "execution_metrics" in result:
+                            for metric, value in result["execution_metrics"].items():
+                                # Add to metrics with model index
+                                metrics[f"model_{i}_{metric}"] = value
+                                
+                        # Add optimization information if available
+                        if hasattr(model, 'execution_context') and model.execution_context:
+                            metrics["optimizations_applied"] = True
+                            # Add key optimization parameters to metrics
+                            for opt_key in ["batch_size", "compute_precision", "parallel_execution"]:
+                                if opt_key in model.execution_context:
+                                    metrics[f"optimization_{opt_key}"] = model.execution_context[opt_key]
+                
+                try:
+                    # Record execution in performance history
+                    self.browser_history.record_execution(
+                        browser=browser,
+                        model_type=model_type,
+                        model_name=model_name,
+                        platform=platform,
+                        metrics=metrics
+                    )
+                    
+                    # Log performance metrics at INFO level if exceptionally good
+                    if throughput > 10 or avg_per_model_ms < 50:  # Very good performance
+                        logger.info(f"Excellent performance for {model_type}/{model_name} on {browser}/{platform}: "
+                                   f"{throughput:.1f} models/sec, {avg_per_model_ms:.1f}ms per model")
+                    # Log at DEBUG level otherwise
+                    elif logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Performance for {model_type}/{model_name} on {browser}/{platform}: "
+                                    f"{throughput:.1f} models/sec, {avg_per_model_ms:.1f}ms per model")
+                    
+                except Exception as e:
+                    logger.warning(f"Error recording concurrent execution metrics: {e}")
+        
+        return results
     
     def get_metrics(self) -> Dict[str, Any]:
         """
@@ -421,6 +754,29 @@ class ResourcePoolBridgeIntegrationWithRecovery:
             except Exception as e:
                 logger.error(f"Error getting ultra-low precision stats: {e}")
                 status["ultra_low_precision"] = {"error": str(e)}
+                
+        # Add browser performance history status if enabled
+        if self.enable_browser_history and self.browser_history:
+            try:
+                # Get browser capability scores
+                capability_scores = self.browser_history.get_capability_scores()
+                
+                # Get sample recommendations for common model types
+                sample_recommendations = {
+                    "text_embedding": self.browser_history.get_browser_recommendations("text_embedding"),
+                    "vision": self.browser_history.get_browser_recommendations("vision"),
+                    "audio": self.browser_history.get_browser_recommendations("audio")
+                }
+                
+                # Add to status
+                status["browser_performance_history"] = {
+                    "status": "active",
+                    "capability_scores": capability_scores,
+                    "sample_recommendations": sample_recommendations
+                }
+            except Exception as e:
+                logger.error(f"Error getting browser performance history stats: {e}")
+                status["browser_performance_history"] = {"error": str(e)}
         
         return status
     
@@ -475,6 +831,16 @@ class ResourcePoolBridgeIntegrationWithRecovery:
                 logger.info("Ultra-low precision manager cleaned up successfully")
             except Exception as e:
                 logger.error(f"Error cleaning up ultra-low precision manager: {e}")
+                success = False
+                
+        # Clean up browser performance history if enabled
+        if self.enable_browser_history and self.browser_history:
+            try:
+                logger.info("Closing browser performance history tracker")
+                self.browser_history.close()
+                logger.info("Browser performance history tracker closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing browser performance history tracker: {e}")
                 success = False
         
         # Close recovery bridge if enabled
@@ -658,7 +1024,9 @@ def run_example():
         adaptive_scaling=True,
         enable_recovery=True,
         max_retries=3,
-        fallback_to_simulation=True
+        fallback_to_simulation=True,
+        enable_browser_history=True,
+        db_path="./browser_performance.duckdb"
     )
     
     # Initialize 
@@ -668,10 +1036,13 @@ def run_example():
         return
     
     try:
+        # First run with explicit browser preferences for initial performance data collection
+        logging.info("=== Initial Run with Explicit Browser Preferences ===")
+        
         # Load models
         logging.info("Loading text model (BERT)")
         text_model = pool.get_model(
-            model_type="text",
+            model_type="text_embedding",
             model_name="bert-base-uncased",
             hardware_preferences={
                 "priority_list": ["webgpu", "webnn", "cpu"],
@@ -729,13 +1100,121 @@ def run_example():
         # Run concurrent inference
         logging.info("Running concurrent inference")
         model_inputs = [
-            (text_model.model_id, text_input),
-            (vision_model.model_id, vision_input),
-            (audio_model.model_id, audio_input)
+            (text_model, text_input),
+            (vision_model, vision_input),
+            (audio_model, audio_input)
         ]
         
         concurrent_results = pool.execute_concurrent(model_inputs)
         logging.info(f"Concurrent results count: {len(concurrent_results)}")
+        
+        # Run more instances to build up performance history
+        logging.info("Running additional inference for performance history...")
+        
+        # Run models multiple times to build up performance history
+        for i in range(5):
+            # Text model with different browsers
+            for browser in ["chrome", "edge", "firefox"]:
+                text_model = pool.get_model(
+                    model_type="text_embedding",
+                    model_name="bert-base-uncased",
+                    hardware_preferences={
+                        "priority_list": ["webgpu", "webnn", "cpu"] if browser != "edge" else ["webnn", "webgpu", "cpu"],
+                        "browser": browser
+                    }
+                )
+                if text_model:
+                    text_result = text_model(text_input)
+            
+            # Vision model with different browsers
+            for browser in ["chrome", "firefox", "edge"]:
+                vision_model = pool.get_model(
+                    model_type="vision",
+                    model_name="vit-base-patch16-224",
+                    hardware_preferences={
+                        "priority_list": ["webgpu", "cpu"],
+                        "browser": browser
+                    }
+                )
+                if vision_model:
+                    vision_result = vision_model(vision_input)
+            
+            # Audio model with different browsers
+            for browser in ["firefox", "chrome", "edge"]:
+                audio_model = pool.get_model(
+                    model_type="audio",
+                    model_name="whisper-tiny",
+                    hardware_preferences={
+                        "priority_list": ["webgpu", "cpu"],
+                        "browser": browser
+                    }
+                )
+                if audio_model:
+                    audio_result = audio_model(audio_input)
+        
+        # Get browser recommendations from performance history
+        if pool.browser_history:
+            logging.info("=== Browser Performance Recommendations Based on History ===")
+            text_recommendation = pool.browser_history.get_browser_recommendations("text_embedding", "bert-base-uncased")
+            logging.info(f"Text embedding recommendation: {text_recommendation.get('recommended_browser', 'unknown')} "
+                        f"with {text_recommendation.get('recommended_platform', 'unknown')} "
+                        f"(confidence: {text_recommendation.get('confidence', 0):.2f})")
+            
+            vision_recommendation = pool.browser_history.get_browser_recommendations("vision", "vit-base-patch16-224")
+            logging.info(f"Vision recommendation: {vision_recommendation.get('recommended_browser', 'unknown')} "
+                        f"with {vision_recommendation.get('recommended_platform', 'unknown')} "
+                        f"(confidence: {vision_recommendation.get('confidence', 0):.2f})")
+            
+            audio_recommendation = pool.browser_history.get_browser_recommendations("audio", "whisper-tiny")
+            logging.info(f"Audio recommendation: {audio_recommendation.get('recommended_browser', 'unknown')} "
+                        f"with {audio_recommendation.get('recommended_platform', 'unknown')} "
+                        f"(confidence: {audio_recommendation.get('confidence', 0):.2f})")
+            
+            # Get browser capability scores
+            logging.info("=== Browser Capability Scores ===")
+            capability_scores = pool.browser_history.get_capability_scores()
+            for browser, scores in capability_scores.items():
+                for model_type, score_data in scores.items():
+                    logging.info(f"Browser {browser} for {model_type}: Score {score_data.get('score', 0):.1f} "
+                                f"(confidence: {score_data.get('confidence', 0):.2f})")
+        
+        # Second run with automatic browser selection based on performance history
+        logging.info("\n=== Second Run with Automatic Browser Selection ===")
+        
+        # Load models without specifying browser (will use performance history)
+        logging.info("Loading text model (BERT) with automatic browser selection")
+        text_model = pool.get_model(
+            model_type="text_embedding",
+            model_name="bert-base-uncased"
+        )
+        
+        logging.info("Loading vision model (ViT) with automatic browser selection")
+        vision_model = pool.get_model(
+            model_type="vision",
+            model_name="vit-base-patch16-224"
+        )
+        
+        logging.info("Loading audio model (Whisper) with automatic browser selection")
+        audio_model = pool.get_model(
+            model_type="audio",
+            model_name="whisper-tiny"
+        )
+        
+        # Run inference with automatic browser selection
+        logging.info("Running inference on text model")
+        if text_model:
+            text_result = text_model(text_input)
+            logging.info(f"Text result status: {text_result.get('success', False)}")
+        
+        logging.info("Running inference on vision model")
+        if vision_model:
+            vision_result = vision_model(vision_input)
+            logging.info(f"Vision result status: {vision_result.get('success', False)}")
+        
+        logging.info("Running inference on audio model")
+        if audio_model:
+            audio_result = audio_model(audio_input)
+            logging.info(f"Audio result status: {audio_result.get('success', False)}")
         
         # Get metrics and recovery statistics
         metrics = pool.get_metrics()
@@ -748,6 +1227,9 @@ def run_example():
         # Get health status
         health = pool.get_health_status()
         logging.info(f"Health status: {health.get('status', 'unknown')}")
+        
+        if 'browser_performance_history' in health:
+            logging.info(f"Browser performance history status: {health['browser_performance_history'].get('status', 'unknown')}")
         
     finally:
         # Close the pool

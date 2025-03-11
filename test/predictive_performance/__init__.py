@@ -5,12 +5,30 @@ This package provides a machine learning-based framework for predicting
 performance metrics of AI models on various hardware platforms.
 """
 
-# Make key classes available at the package level
-try:
-    from .predict import PerformancePredictor
-    from .active_learning import ActiveLearningSystem
-    from .benchmark_integration import BenchmarkScheduler
-except ImportError as e:
-    print(f"\1{e}\3")
+__version__ = "1.0.0"
 
-    __version__ = "1.0.0"
+# Import only the modules needed for the multi-model web integration
+try:
+    from .multi_model_execution import MultiModelPredictor
+except ImportError:
+    pass
+
+try:
+    from .multi_model_empirical_validation import MultiModelEmpiricalValidator
+except ImportError:
+    pass
+
+try:
+    from .multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
+except ImportError:
+    pass
+
+try:
+    from .web_resource_pool_adapter import WebResourcePoolAdapter
+except ImportError:
+    pass
+
+try:
+    from .multi_model_web_integration import MultiModelWebIntegration
+except ImportError:
+    pass

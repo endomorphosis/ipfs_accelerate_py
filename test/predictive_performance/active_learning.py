@@ -110,23 +110,23 @@ class ActiveLearningSystem:
         
         return None
     
-    def _generate_synthetic_data()self) -> pd.DataFrame:
+    def _generate_synthetic_data(self) -> pd.DataFrame:
         """Generate synthetic benchmark data for testing."""
         # Create a small dataset of "already benchmarked" configurations
-        data = [,,
+        data = []
         
         # Add some synthetic benchmark results
-        for model_type in self.model_types[:2]:  # Just use first 2 model types,
-        for hardware in self.hardware_platforms[:3]:  # Just use first 3 hardware platforms,
-        for batch_size in [1, 4]:  # Just use batch sizes 1 and 4,
+        for model_type in self.model_types[:2]:  # Just use first 2 model types
+            for hardware in self.hardware_platforms[:3]:  # Just use first 3 hardware platforms
+                for batch_size in [1, 4]:  # Just use batch sizes 1 and 4
                     # Create a synthetic benchmark result
-        throughput_base = {}}
-        "text_embedding": 200,
-        "text_generation": 20,
-        "vision": 50,
-        "audio": 10,
-        "multimodal": 5
-        }.get()model_type, 100)
+                    throughput_base = {
+                        "text_embedding": 200,
+                        "text_generation": 20,
+                        "vision": 50,
+                        "audio": 10,
+                        "multimodal": 5
+                    }.get(model_type, 100)
                     
         latency_base = {}}
         "text_embedding": 10,
