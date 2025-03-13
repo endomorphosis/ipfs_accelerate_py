@@ -38,6 +38,8 @@ The Enhanced Worker Reconnection System collects detailed performance metrics th
 | `checkpoints_created` | Number of task checkpoints created | Proportional to long tasks |
 | `checkpoints_restored` | Number of tasks restored from checkpoints | Should be ≤ checkpoints_created |
 
+> **Note**: With the recent fix to the task execution recursion error (March 13, 2025), these task metrics are now fully reliable for all worker types.
+
 #### Compression Metrics
 
 | Metric | Description | Normal Range |
@@ -241,3 +243,15 @@ For message-intensive applications:
 ## Conclusion
 
 Effective monitoring of the Worker Reconnection System is essential for maintaining reliable communication in the Distributed Testing Framework. By tracking performance metrics, setting up alerts, and analyzing logs, you can ensure optimal operation and quickly diagnose any issues that arise.
+
+## Recent Updates
+
+### March 13, 2025: Task Execution Metrics Reliability
+
+The task execution metrics are now fully reliable with the fix of the task execution recursion error that previously affected the Enhanced Worker Reconnection System. See [Task Execution Recursion Fix](TASK_EXECUTION_RECURSION_FIX.md) for details on this important improvement.
+
+This fix ensures that:
+- Task success rate metrics accurately reflect actual task execution outcomes
+- Task duration measurements are correct and not affected by recursion
+- Checkpoint creation and restoration metrics are accurate
+- Task execution performance can be reliably analyzed for optimization

@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E2E Test Monitoring - Distributed Testing Framework</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/{{ theme }}.css">
+    <style>
+        .monitoring-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .monitoring-card {
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        .monitoring-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .monitoring-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: var(--heading-color);
+            margin: 0;
+        }
+        
+        .monitoring-status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-initializing {
+            background-color: var(--info-color);
+            color: white;
+        }
+        
+        .status-running {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .status-completed {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .status-failed {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .progress-container {
+            margin-bottom: 20px;
+        }
+        
+        .progress-bar {
+            height: 10px;
+            background-color: var(--border-color);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .phase-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .phase-card {
+            background-color: var(--bg-lighter);
+            border-radius: 5px;
+            padding: 15px;
+            position: relative;
+        }
+        
+        .phase-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--heading-color);
+        }
+        
+        .phase-status {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .status-indicator-pending {
+            background-color: var(--text-muted);
+        }
+        
+        .status-indicator-running {
+            background-color: var(--primary-color);
+            animation: pulse 1.5s infinite;
+        }
+        
+        .status-indicator-completed {
+            background-color: var(--success-color);
+        }
+        
+        .status-indicator-failed {
+            background-color: var(--danger-color);
+        }
+        
+        .component-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .component-card {
+            background-color: var(--bg-lighter);
+            border-radius: 5px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .component-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .component-title {
+            font-weight: bold;
+            color: var(--heading-color);
+        }
+        
+        .component-status {
+            font-size: 0.9em;
+            font-weight: bold;
+            color: var(--text-muted);
+        }
+        
+        .component-details {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: var(--text-color);
+        }
+        
+        .task-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .task-card {
+            background-color: var(--bg-lighter);
+            border-radius: 5px;
+            padding: 15px;
+        }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .task-title {
+            font-weight: bold;
+            color: var(--heading-color);
+            text-transform: capitalize;
+        }
+        
+        .task-progress {
+            margin-top: 10px;
+        }
+        
+        .task-progress-bar {
+            height: 6px;
+            background-color: var(--border-color);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        
+        .task-progress-fill {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .task-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        
+        .task-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .task-stat-value {
+            font-weight: bold;
+            color: var(--heading-color);
+        }
+        
+        .task-stat-label {
+            color: var(--text-muted);
+            font-size: 0.8em;
+        }
+        
+        .error-list {
+            margin-top: 20px;
+        }
+        
+        .error-list-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--heading-color);
+        }
+        
+        .error-card {
+            background-color: var(--danger-color-light);
+            border-left: 4px solid var(--danger-color);
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        .error-message {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--danger-color);
+        }
+        
+        .error-details {
+            font-size: 0.9em;
+            color: var(--text-color);
+        }
+        
+        .error-timestamp {
+            font-size: 0.8em;
+            color: var(--text-muted);
+            margin-top: 5px;
+            text-align: right;
+        }
+        
+        .no-active-test {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+        
+        .no-active-test-title {
+            font-size: 1.4em;
+            margin-bottom: 10px;
+            color: var(--heading-color);
+        }
+        
+        .no-active-test-description {
+            margin-bottom: 20px;
+        }
+        
+        .start-test-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        .start-test-btn:hover {
+            background-color: var(--primary-color-hover);
+        }
+        
+        .phases-header, .components-header, .tasks-header, .errors-header {
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: var(--heading-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+        
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+            100% {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Dashboard Sidebar -->
+        {% include 'sidebar.html' %}
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1>E2E Test Real-Time Monitoring</h1>
+                <div class="header-controls">
+                    <div class="theme-toggle">
+                        <span>Theme:</span>
+                        <select id="themeSelector" onchange="changeTheme()">
+                            <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
+                            <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
+                        </select>
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-content" id="monitoring-content">
+                <!-- Content will be populated by JavaScript -->
+                <div class="no-active-test" id="no-active-test">
+                    <h2 class="no-active-test-title">No Active Test Monitoring</h2>
+                    <p class="no-active-test-description">There are no end-to-end tests being monitored at the moment.</p>
+                    <p>Start a new test with real-time monitoring:</p>
+                    <button class="start-test-btn" onclick="startNewTestMonitoring()">Start Test Monitoring</button>
+                </div>
+                
+                <!-- Active test monitoring (hidden initially) -->
+                <div class="monitoring-container" id="active-test-monitoring" style="display: none;">
+                    <div class="monitoring-card">
+                        <div class="monitoring-header">
+                            <h2 class="monitoring-title" id="test-id">Test: <span id="test-id-value">-</span></h2>
+                            <span class="monitoring-status status-initializing" id="test-status">Initializing</span>
+                        </div>
+                        
+                        <div class="progress-container">
+                            <div class="progress-label">Progress: <span id="progress-value">0%</span></div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progress-bar"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="test-time">
+                            <div><strong>Start time:</strong> <span id="start-time">-</span></div>
+                            <div><strong>Elapsed time:</strong> <span id="elapsed-time">-</span></div>
+                        </div>
+                    </div>
+                    
+                    <h3 class="phases-header">Test Phases</h3>
+                    <div class="phase-grid" id="phase-grid">
+                        <!-- Phases will be populated here -->
+                    </div>
+                    
+                    <h3 class="components-header">Components</h3>
+                    <div class="component-grid" id="component-grid">
+                        <!-- Components will be populated here -->
+                    </div>
+                    
+                    <h3 class="tasks-header">Tasks</h3>
+                    <div class="task-grid" id="task-grid">
+                        <!-- Tasks will be populated here -->
+                    </div>
+                    
+                    <h3 class="errors-header">Errors</h3>
+                    <div class="error-list" id="error-list">
+                        <div id="no-errors" style="display: none;">No errors reported.</div>
+                        <div id="error-container">
+                            <!-- Errors will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // WebSocket connection
+        let socket = null;
+        
+        // Test state
+        let testState = null;
+        let testStartTime = null;
+        let updateInterval = null;
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Connect to WebSocket
+            connectWebSocket();
+        });
+        
+        function connectWebSocket() {
+            // Get dashboard URL
+            const dashboardUrl = window.location.origin;
+            
+            // Convert HTTP URL to WebSocket URL
+            let wsUrl = dashboardUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+            
+            // Create WebSocket connection
+            socket = new WebSocket(`${wsUrl}/ws/e2e-test-monitoring`);
+            
+            // Handle WebSocket open
+            socket.onopen = function(event) {
+                console.log('WebSocket connection established');
+            };
+            
+            // Handle WebSocket messages
+            socket.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message:', e);
+                }
+            };
+            
+            // Handle WebSocket errors
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+            
+            // Handle WebSocket close
+            socket.onclose = function(event) {
+                console.log('WebSocket connection closed');
+                
+                // Try to reconnect after a short delay
+                setTimeout(connectWebSocket, 5000);
+            };
+        }
+        
+        function handleWebSocketMessage(data) {
+            const messageType = data.type;
+            
+            if (messageType === 'e2e_test_monitoring_init') {
+                // Test monitoring initialized
+                console.log('Test monitoring initialized:', data);
+                
+                // Initialize UI for monitoring
+                initializeMonitoring(data.test_id);
+            }
+            else if (messageType === 'e2e_test_monitoring_update') {
+                // Test monitoring update
+                const testData = data.data;
+                
+                // Update UI with test data
+                updateMonitoring(testData);
+            }
+        }
+        
+        function initializeMonitoring(testId) {
+            // Hide no active test message
+            document.getElementById('no-active-test').style.display = 'none';
+            
+            // Show active test monitoring
+            document.getElementById('active-test-monitoring').style.display = 'block';
+            
+            // Initialize test state
+            testState = {
+                test_id: testId,
+                status: 'initializing',
+                phases: {},
+                components: {},
+                resources: {},
+                errors: []
+            };
+            
+            // Set test ID in UI
+            document.getElementById('test-id-value').textContent = testId;
+            
+            // Start timer for updating elapsed time
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+            
+            updateInterval = setInterval(updateElapsedTime, 1000);
+        }
+        
+        function updateMonitoring(testData) {
+            // Update test state with new data
+            testState = testData;
+            
+            // Update UI elements
+            updateTestStatus();
+            updateTestProgress();
+            updateTestTime();
+            updatePhases();
+            updateComponents();
+            updateTasks();
+            updateErrors();
+        }
+        
+        function updateTestStatus() {
+            // Update test status
+            const statusElement = document.getElementById('test-status');
+            statusElement.textContent = capitalize(testState.status);
+            
+            // Update status class
+            statusElement.className = 'monitoring-status status-' + testState.status;
+        }
+        
+        function updateTestProgress() {
+            // Update progress percentage
+            const progressValue = Math.round(testState.progress || 0);
+            document.getElementById('progress-value').textContent = progressValue + '%';
+            
+            // Update progress bar
+            document.getElementById('progress-bar').style.width = progressValue + '%';
+        }
+        
+        function updateTestTime() {
+            // Update start time
+            if (testState.start_time) {
+                const startDate = new Date(testState.start_time);
+                document.getElementById('start-time').textContent = formatDateTime(startDate);
+                
+                // Store start time for elapsed time calculation
+                if (!testStartTime) {
+                    testStartTime = startDate;
+                }
+            }
+        }
+        
+        function updateElapsedTime() {
+            if (testStartTime) {
+                const now = new Date();
+                const elapsedMs = now - testStartTime;
+                document.getElementById('elapsed-time').textContent = formatElapsedTime(elapsedMs);
+            }
+        }
+        
+        function updatePhases() {
+            const phasesGrid = document.getElementById('phase-grid');
+            phasesGrid.innerHTML = '';
+            
+            // Add each phase
+            for (const [phaseName, phaseData] of Object.entries(testState.phases || {})) {
+                const phaseCard = document.createElement('div');
+                phaseCard.className = 'phase-card';
+                
+                const phaseTitle = document.createElement('div');
+                phaseTitle.className = 'phase-title';
+                phaseTitle.textContent = formatPhraseName(phaseName);
+                
+                const phaseStatus = document.createElement('div');
+                phaseStatus.className = 'phase-status status-indicator-' + (phaseData.status || 'pending');
+                
+                const phaseDetails = document.createElement('div');
+                phaseDetails.className = 'phase-details';
+                
+                // Add time information if available
+                if (phaseData.start_time) {
+                    const timeInfo = document.createElement('div');
+                    timeInfo.textContent = 'Started: ' + formatTime(new Date(phaseData.start_time));
+                    phaseDetails.appendChild(timeInfo);
+                }
+                
+                if (phaseData.end_time) {
+                    const timeInfo = document.createElement('div');
+                    timeInfo.textContent = 'Completed: ' + formatTime(new Date(phaseData.end_time));
+                    phaseDetails.appendChild(timeInfo);
+                }
+                
+                phaseCard.appendChild(phaseTitle);
+                phaseCard.appendChild(phaseStatus);
+                phaseCard.appendChild(phaseDetails);
+                
+                phasesGrid.appendChild(phaseCard);
+            }
+        }
+        
+        function updateComponents() {
+            const componentGrid = document.getElementById('component-grid');
+            componentGrid.innerHTML = '';
+            
+            // Process worker components separately if present
+            let workers = null;
+            let components = { ...testState.components || {} };
+            
+            if (components.workers) {
+                workers = components.workers;
+                delete components.workers;
+            }
+            
+            // Add each component
+            for (const [componentName, componentData] of Object.entries(components)) {
+                const componentCard = createComponentCard(componentName, componentData);
+                componentGrid.appendChild(componentCard);
+            }
+            
+            // Process workers if present
+            if (workers) {
+                if (typeof workers === 'object') {
+                    // If workers is an object with individual worker data
+                    for (const [workerName, workerData] of Object.entries(workers)) {
+                        const workerCard = createComponentCard(workerName, workerData, true);
+                        componentGrid.appendChild(workerCard);
+                    }
+                } else {
+                    // If workers is just a status object
+                    const workerCard = createComponentCard('Workers', workers);
+                    componentGrid.appendChild(workerCard);
+                }
+            }
+        }
+        
+        function createComponentCard(name, data, isWorker = false) {
+            const componentCard = document.createElement('div');
+            componentCard.className = 'component-card';
+            
+            const componentHeader = document.createElement('div');
+            componentHeader.className = 'component-header';
+            
+            const componentTitle = document.createElement('div');
+            componentTitle.className = 'component-title';
+            componentTitle.textContent = formatPhraseName(name);
+            
+            const componentStatus = document.createElement('div');
+            componentStatus.className = 'component-status';
+            componentStatus.textContent = capitalize(data.status || 'unknown');
+            
+            componentHeader.appendChild(componentTitle);
+            componentHeader.appendChild(componentStatus);
+            
+            componentCard.appendChild(componentHeader);
+            
+            // Add component details
+            const componentDetails = document.createElement('div');
+            componentDetails.className = 'component-details';
+            
+            // Add hardware type for workers
+            if (isWorker && data.hardware_type) {
+                const hardwareInfo = document.createElement('div');
+                hardwareInfo.innerHTML = '<strong>Hardware:</strong> ' + capitalize(data.hardware_type);
+                componentDetails.appendChild(hardwareInfo);
+            }
+            
+            // Add time information if available
+            if (data.start_time) {
+                const timeInfo = document.createElement('div');
+                timeInfo.innerHTML = '<strong>Started:</strong> ' + formatTime(new Date(data.start_time));
+                componentDetails.appendChild(timeInfo);
+            }
+            
+            componentCard.appendChild(componentDetails);
+            
+            return componentCard;
+        }
+        
+        function updateTasks() {
+            const taskGrid = document.getElementById('task-grid');
+            taskGrid.innerHTML = '';
+            
+            // Process task_execution if present
+            const taskExecution = testState.resources?.task_execution || {};
+            
+            // Process tasks if present
+            const tasks = testState.resources?.tasks || {};
+            
+            // Combine task data
+            const combinedTasks = {};
+            
+            // Add from task_execution
+            for (const [taskType, taskData] of Object.entries(taskExecution)) {
+                combinedTasks[taskType] = { ...taskData };
+            }
+            
+            // Add from tasks
+            for (const [taskType, taskData] of Object.entries(tasks)) {
+                if (!combinedTasks[taskType]) {
+                    combinedTasks[taskType] = {};
+                }
+                
+                Object.assign(combinedTasks[taskType], taskData);
+            }
+            
+            // Add each task type
+            for (const [taskType, taskData] of Object.entries(combinedTasks)) {
+                const taskCard = document.createElement('div');
+                taskCard.className = 'task-card';
+                
+                const taskHeader = document.createElement('div');
+                taskHeader.className = 'task-header';
+                
+                const taskTitle = document.createElement('div');
+                taskTitle.className = 'task-title';
+                taskTitle.textContent = formatPhraseName(taskType);
+                
+                taskHeader.appendChild(taskTitle);
+                taskCard.appendChild(taskHeader);
+                
+                // Add task progress if available
+                if (taskData.total) {
+                    const completed = taskData.completed || taskData.submitted || 0;
+                    const total = taskData.total || 0;
+                    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    
+                    const taskProgress = document.createElement('div');
+                    taskProgress.className = 'task-progress';
+                    
+                    const progressText = document.createElement('div');
+                    progressText.textContent = `${completed} / ${total} (${percentage}%)`;
+                    
+                    const progressBar = document.createElement('div');
+                    progressBar.className = 'task-progress-bar';
+                    
+                    const progressFill = document.createElement('div');
+                    progressFill.className = 'task-progress-fill';
+                    progressFill.style.width = percentage + '%';
+                    
+                    progressBar.appendChild(progressFill);
+                    taskProgress.appendChild(progressText);
+                    taskProgress.appendChild(progressBar);
+                    
+                    taskCard.appendChild(taskProgress);
+                }
+                
+                // Add task statistics if available
+                if (taskData.succeeded !== undefined || taskData.failed !== undefined) {
+                    const taskStats = document.createElement('div');
+                    taskStats.className = 'task-stats';
+                    
+                    // Completed
+                    const completedStat = document.createElement('div');
+                    completedStat.className = 'task-stat';
+                    const completedValue = document.createElement('div');
+                    completedValue.className = 'task-stat-value';
+                    completedValue.textContent = taskData.completed || 0;
+                    const completedLabel = document.createElement('div');
+                    completedLabel.className = 'task-stat-label';
+                    completedLabel.textContent = 'Completed';
+                    completedStat.appendChild(completedValue);
+                    completedStat.appendChild(completedLabel);
+                    taskStats.appendChild(completedStat);
+                    
+                    // Succeeded
+                    const succeededStat = document.createElement('div');
+                    succeededStat.className = 'task-stat';
+                    const succeededValue = document.createElement('div');
+                    succeededValue.className = 'task-stat-value';
+                    succeededValue.textContent = taskData.succeeded || 0;
+                    const succeededLabel = document.createElement('div');
+                    succeededLabel.className = 'task-stat-label';
+                    succeededLabel.textContent = 'Succeeded';
+                    succeededStat.appendChild(succeededValue);
+                    succeededStat.appendChild(succeededLabel);
+                    taskStats.appendChild(succeededStat);
+                    
+                    // Failed
+                    const failedStat = document.createElement('div');
+                    failedStat.className = 'task-stat';
+                    const failedValue = document.createElement('div');
+                    failedValue.className = 'task-stat-value';
+                    failedValue.textContent = taskData.failed || 0;
+                    const failedLabel = document.createElement('div');
+                    failedLabel.className = 'task-stat-label';
+                    failedLabel.textContent = 'Failed';
+                    failedStat.appendChild(failedValue);
+                    failedStat.appendChild(failedLabel);
+                    taskStats.appendChild(failedStat);
+                    
+                    taskCard.appendChild(taskStats);
+                }
+                
+                taskGrid.appendChild(taskCard);
+            }
+        }
+        
+        function updateErrors() {
+            const errorContainer = document.getElementById('error-container');
+            const noErrorsElem = document.getElementById('no-errors');
+            
+            errorContainer.innerHTML = '';
+            
+            const errors = testState.errors || [];
+            
+            if (errors.length === 0) {
+                noErrorsElem.style.display = 'block';
+                return;
+            }
+            
+            noErrorsElem.style.display = 'none';
+            
+            // Add each error
+            for (const error of errors) {
+                const errorCard = document.createElement('div');
+                errorCard.className = 'error-card';
+                
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'error-message';
+                errorMessage.textContent = error.message || 'Unknown error';
+                
+                const errorDetails = document.createElement('div');
+                errorDetails.className = 'error-details';
+                
+                // Add error details if available
+                if (error.details) {
+                    for (const [key, value] of Object.entries(error.details)) {
+                        const detailItem = document.createElement('div');
+                        detailItem.textContent = `${formatPhraseName(key)}: ${value}`;
+                        errorDetails.appendChild(detailItem);
+                    }
+                }
+                
+                const errorTimestamp = document.createElement('div');
+                errorTimestamp.className = 'error-timestamp';
+                errorTimestamp.textContent = formatDateTime(new Date(error.timestamp || new Date()));
+                
+                errorCard.appendChild(errorMessage);
+                errorCard.appendChild(errorDetails);
+                errorCard.appendChild(errorTimestamp);
+                
+                errorContainer.appendChild(errorCard);
+            }
+        }
+        
+        function startNewTestMonitoring() {
+            // Redirect to the script that starts a test with monitoring
+            window.location.href = '/start-e2e-test-monitoring';
+        }
+        
+        function changeTheme() {
+            var theme = document.getElementById("themeSelector").value;
+            var url = new URL(window.location.href);
+            url.searchParams.set('theme', theme);
+            window.location.href = url.toString();
+        }
+        
+        // Utility functions
+        function capitalize(str) {
+            if (!str) return '';
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+        
+        function formatPhraseName(name) {
+            if (!name) return '';
+            
+            // Convert snake_case or camelCase to Title Case With Spaces
+            return name
+                .replace(/_/g, ' ')
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+        }
+        
+        function formatDateTime(date) {
+            return date.toLocaleString();
+        }
+        
+        function formatTime(date) {
+            return date.toLocaleTimeString();
+        }
+        
+        function formatElapsedTime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            
+            const displaySeconds = seconds % 60;
+            const displayMinutes = minutes % 60;
+            
+            if (hours > 0) {
+                return `${hours}h ${displayMinutes}m ${displaySeconds}s`;
+            } else if (displayMinutes > 0) {
+                return `${displayMinutes}m ${displaySeconds}s`;
+            } else {
+                return `${displaySeconds}s`;
+            }
+        }
+    </script>
+</body>
+</html>

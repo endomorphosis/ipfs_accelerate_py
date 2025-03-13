@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whisper Speech Recognition with Hardware Acceleration - IPFS Accelerate JS</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    
+    header {
+      background-color: #4a90e2;
+      color: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 5px;
+    }
+    
+    h1 {
+      margin: 0;
+    }
+    
+    h2 {
+      color: #4a90e2;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 10px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .row {
+      display: flex;
+      margin-bottom: 20px;
+    }
+    
+    .col {
+      flex: 1;
+      padding: 0 10px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    select, input[type="checkbox"], button {
+      margin-bottom: 15px;
+      padding: 8px;
+      border-radius: 3px;
+      border: 1px solid #ddd;
+    }
+    
+    button {
+      background-color: #4a90e2;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    
+    button:hover {
+      background-color: #3a80d2;
+    }
+    
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .audio-controls {
+      margin-bottom: 20px;
+      padding: 15px;
+      background-color: #f9f9f9;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+    }
+    
+    .audio-visualizer {
+      width: 100%;
+      height: 100px;
+      background-color: #f0f8ff;
+      border-radius: 3px;
+      margin-top: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .audio-wave {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    
+    #status {
+      padding: 10px;
+      margin-top: 20px;
+      background-color: #f8f8f8;
+      border-left: 4px solid #4a90e2;
+    }
+    
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f8f8f8;
+      border-radius: 3px;
+      min-height: 200px;
+    }
+    
+    .transcription {
+      font-size: 1.2rem;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      padding: 15px;
+      background-color: #f0f8ff;
+      border-radius: 5px;
+      border-left: 4px solid #4a90e2;
+    }
+    
+    .metrics {
+      display: flex;
+      background-color: #eef6ff;
+      padding: 10px;
+      border-radius: 3px;
+      margin-bottom: 15px;
+    }
+    
+    .metric {
+      flex: 1;
+      text-align: center;
+    }
+    
+    .metric-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #4a90e2;
+    }
+    
+    .segments {
+      margin-top: 20px;
+    }
+    
+    .segment {
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #f9f9f9;
+      border-radius: 3px;
+      border-left: 3px solid #4a90e2;
+    }
+    
+    .segment-time {
+      font-size: 0.9rem;
+      color: #777;
+      margin-bottom: 5px;
+    }
+    
+    footer {
+      margin-top: 30px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #777;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Whisper Speech Recognition</h1>
+      <p>IPFS Accelerate JS Example - Hardware-Accelerated Speech Recognition</p>
+    </header>
+
+    <h2>Model Configuration</h2>
+    <div class="row">
+      <div class="col">
+        <label for="model-id">Model</label>
+        <select id="model-id">
+          <option value="openai/whisper-tiny">Whisper Tiny</option>
+          <option value="openai/whisper-base">Whisper Base</option>
+        </select>
+        
+        <label for="backend">Hardware Backend</label>
+        <select id="backend">
+          <option value="webgpu">WebGPU</option>
+          <option value="webnn">WebNN</option>
+          <option value="cpu">CPU</option>
+        </select>
+        
+        <label>
+          <input type="checkbox" id="use-optimizations" checked>
+          Use browser-specific optimizations
+        </label>
+        
+        <label>
+          <input type="checkbox" id="return-timestamps" checked>
+          Return timestamps
+        </label>
+        
+        <label>
+          <input type="checkbox" id="multilingual">
+          Multilingual detection
+        </label>
+      </div>
+      
+      <div class="col">
+        <div class="audio-controls">
+          <label>Audio Input</label>
+          <button id="record-button">Record Audio</button>
+          <button id="stop-button" disabled>Stop Recording</button>
+          <button id="upload-button">Upload Audio File</button>
+          <input type="file" id="audio-file" accept="audio/*" style="display:none">
+          
+          <div class="audio-visualizer">
+            <canvas id="audio-wave" class="audio-wave"></canvas>
+          </div>
+          
+          <audio id="audio-player" controls style="width:100%; margin-top:10px; display:none"></audio>
+        </div>
+      </div>
+    </div>
+    
+    <button id="run-button" disabled>Transcribe Audio</button>
+    
+    <div class="metrics">
+      <div class="metric">
+        <div>Inference Time</div>
+        <div class="metric-value" id="time">-</div>
+      </div>
+      <div class="metric">
+        <div>Audio Duration</div>
+        <div class="metric-value" id="duration">-</div>
+      </div>
+    </div>
+    
+    <div id="status">Initializing...</div>
+    
+    <div id="result"></div>
+    
+    <footer>
+      <p>IPFS Accelerate JS SDK - Hardware-accelerated machine learning in the browser</p>
+      <p>Whisper model implementation with WebGPU/WebNN acceleration</p>
+    </footer>
+  </div>
+  
+  <script src="./whisper_example.js"></script>
+</body>
+</html>

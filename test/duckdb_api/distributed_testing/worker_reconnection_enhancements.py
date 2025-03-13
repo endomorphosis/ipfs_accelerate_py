@@ -805,32 +805,49 @@ class EnhancedWorkerReconnectionManager(WorkerReconnectionManager):
         if not task_executor:
             return {"error": "No task executor available"}
         
-        # Track task execution start time
-        start_time = time.time()
+        # Check if we have a checkpoint to resume from
+        checkpoint_data = self.get_latest_checkpoint(task_id)
+        if checkpoint_data:
+            # Track checkpoint resumption
+            self.metrics.add_checkpoint_resumed()
+            
+            # Add checkpoint data to task config so worker can resume
+            updated_config = task_config.copy()
+            updated_config["_checkpoint_data"] = checkpoint_data
+            task_config = updated_config
         
-        try:
-            # Check if we have a checkpoint to resume from
-            checkpoint_data = self.get_latest_checkpoint(task_id)
-            if checkpoint_data:
-                # Track checkpoint resumption
-                self.metrics.add_checkpoint_resumed()
+        # Note: The actual execution of the task is now handled by the caller,
+        # typically EnhancedWorkerReconnectionPlugin._task_executor_wrapper,
+        # which directly calls worker.execute_task and updates the metrics.
+        # This method is now used primarily for checkpoint handling and
+        # for direct execution in scenarios where task_executor is not the plugin wrapper.
+        
+        # For direct execution cases (not through the plugin), execute the task:
+        if task_executor and task_executor.__qualname__ != 'EnhancedWorkerReconnectionPlugin._task_executor_wrapper':
+            # Track task execution start time
+            start_time = time.time()
             
-            # Execute task
-            result = task_executor(task_id, task_config)
-            
-            # Track successful task completion
-            duration = time.time() - start_time
-            self.metrics.add_task_execution(duration, True)
-            
-            return result
-            
-        except Exception as e:
-            # Track failed task completion
-            duration = time.time() - start_time
-            self.metrics.add_task_execution(duration, False)
-            
-            # Re-raise exception
-            raise
+            try:
+                # Execute task using the provided executor
+                result = task_executor(task_id, task_config)
+                
+                # Track successful task completion
+                duration = time.time() - start_time
+                self.metrics.add_task_execution(duration, True)
+                
+                return result
+                
+            except Exception as e:
+                # Track failed task completion
+                duration = time.time() - start_time
+                self.metrics.add_task_execution(duration, False)
+                
+                # Re-raise exception
+                raise
+        
+        # For execution through the plugin, just pass through to the task executor
+        # which will handle metrics tracking
+        return task_executor(task_id, task_config)
     
     def create_checkpoint(self, task_id: str, checkpoint_data: Dict[str, Any]) -> str:
         """
@@ -1070,8 +1087,26 @@ class EnhancedWorkerReconnectionPlugin(WorkerReconnectionPlugin):
         """
         # Call worker's execute_task method if available
         if hasattr(self.worker, "execute_task"):
-            # Track task execution with metrics
-            return self.reconnection_manager.execute_task_with_metrics(task_id, task_config)
+            # Track task execution start time
+            start_time = time.time()
+            
+            try:
+                # Execute task directly using the worker's implementation
+                result = self.worker.execute_task(task_id, task_config)
+                
+                # Track successful task completion in metrics
+                duration = time.time() - start_time
+                self.reconnection_manager.metrics.add_task_execution(duration, True)
+                
+                return result
+                
+            except Exception as e:
+                # Track failed task completion in metrics
+                duration = time.time() - start_time
+                self.reconnection_manager.metrics.add_task_execution(duration, False)
+                
+                # Re-raise exception
+                raise
         
         # Default implementation
         return {"error": "Worker does not implement execute_task method"}

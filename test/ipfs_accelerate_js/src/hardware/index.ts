@@ -11,12 +11,18 @@ export * from './webgpu/backend';
 export * from './webgpu/buffer_manager';
 export * from './webgpu/shaders';
 
+// WebNN backend
+export * from './webnn/backend';
+export * from './webnn/capabilities';
+
 // Hardware detection utilities
 export * from './detection/hardware_detector';
 
 // Factory function to create the optimal backend
 import { HardwareBackend } from './interfaces/hardware_backend';
 import { WebGPUBackend, createWebGPUBackend } from './webgpu/backend';
+import { WebNNBackend, createWebNNBackend } from './webnn/backend';
+import { detectWebNNFeatures } from './webnn/capabilities';
 import {
   detectHardware,
   optimizeHardwareSelection,
@@ -35,6 +41,12 @@ export async function createOptimalBackend(
     // Detect available hardware
     const hardware = await detectHardware();
     
+    // Detect WebNN features
+    let webnnFeatures = { supported: false, hardwareAccelerated: false };
+    if (hardware.hasWebNN) {
+      webnnFeatures = await detectWebNNFeatures();
+    }
+    
     // Select optimal backend type
     const backendType = optimizeHardwareSelection(hardware, preferences);
     
@@ -43,14 +55,23 @@ export async function createOptimalBackend(
       case 'webgpu':
         return await createWebGPUBackend();
       
-      // WebNN backend will be implemented next
       case 'webnn':
-        // TODO: Implement WebNN backend
-        console.warn('WebNN backend not yet implemented, falling back to WebGPU');
-        if (hardware.hasWebGPU) {
+        // Check if WebNN is truly hardware accelerated
+        if (webnnFeatures.supported && webnnFeatures.hardwareAccelerated) {
+          try {
+            return await createWebNNBackend();
+          } catch (webnnError) {
+            console.warn('WebNN backend initialization failed, falling back to WebGPU:', webnnError);
+            if (hardware.hasWebGPU) {
+              return await createWebGPUBackend();
+            }
+            throw webnnError;
+          }
+        } else if (hardware.hasWebGPU) {
+          console.warn('WebNN not hardware accelerated, falling back to WebGPU');
           return await createWebGPUBackend();
         }
-        throw new Error('WebNN backend not implemented');
+        throw new Error('WebNN backend not available with hardware acceleration');
       
       // WASM backend will be implemented next
       case 'wasm-simd':
@@ -69,4 +90,40 @@ export async function createOptimalBackend(
     console.error('Error creating optimal backend:', error);
     throw error;
   }
+}
+
+/**
+ * Creates a multi-backend with priority fallback
+ * @param backends Array of backend types to try in order of preference
+ * @returns Promise resolving to the first available backend
+ */
+export async function createMultiBackend(
+  backends: ('webgpu' | 'webnn' | 'wasm' | 'cpu')[] = ['webnn', 'webgpu', 'wasm', 'cpu']
+): Promise<HardwareBackend> {
+  for (const backend of backends) {
+    try {
+      switch (backend) {
+        case 'webgpu': {
+          const hardware = await detectHardware();
+          if (hardware.hasWebGPU) {
+            return await createWebGPUBackend();
+          }
+          break;
+        }
+        case 'webnn': {
+          const features = await detectWebNNFeatures();
+          if (features.supported) {
+            return await createWebNNBackend();
+          }
+          break;
+        }
+        // Additional backends will be added in the future
+      }
+    } catch (error) {
+      console.warn(`Failed to initialize ${backend} backend:`, error);
+      // Continue to next backend
+    }
+  }
+  
+  throw new Error('No suitable hardware backend available');
 }

@@ -21,6 +21,8 @@ Options:
     --browser               Open dashboard in browser
     --no-alerts             Disable alert generation
     --real-time             Enable real-time updates via WebSockets
+    --time-range DAYS       Time range in days for result aggregation (default: 7)
+    --disable-aggregator    Disable result aggregator integration
     --debug                 Enable debug logging
 """
 
@@ -48,6 +50,20 @@ try:
     RESULT_AGGREGATOR_AVAILABLE = True
 except ImportError:
     RESULT_AGGREGATOR_AVAILABLE = False
+
+# Import result aggregator integration if available
+try:
+    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_result_aggregator_integration import ResultAggregatorIntegration
+    RESULT_AGGREGATOR_INTEGRATION_AVAILABLE = True
+except ImportError:
+    RESULT_AGGREGATOR_INTEGRATION_AVAILABLE = False
+
+# Import E2E test integration if available
+try:
+    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_e2e_integration import E2ETestResultsIntegration
+    E2E_TEST_INTEGRATION_AVAILABLE = True
+except ImportError:
+    E2E_TEST_INTEGRATION_AVAILABLE = False
 
 # Import database manager if available
 try:
@@ -81,6 +97,18 @@ def main():
                        help="Disable alert generation")
     parser.add_argument("--real-time", action="store_true", 
                        help="Enable real-time updates via WebSockets")
+    parser.add_argument("--time-range", type=int, default=7,
+                       help="Time range in days for result aggregation")
+    parser.add_argument("--disable-aggregator", action="store_true",
+                       help="Disable result aggregator integration")
+    
+    # E2E test integration options
+    parser.add_argument("--enable-e2e-test-integration", action="store_true",
+                       help="Enable integration with E2E testing framework")
+    parser.add_argument("--e2e-report-dir", default="./e2e_test_reports",
+                       help="Directory for E2E test reports")
+    parser.add_argument("--e2e-visualization-dir", default="./e2e_visualizations",
+                       help="Directory for E2E test visualizations")
     
     # Database options
     parser.add_argument("--db-path", 
@@ -104,23 +132,66 @@ def main():
         print("Error: Monitoring dashboard is not available. Make sure all dependencies are installed.")
         sys.exit(1)
     
+    # Create database manager if available
+    db_manager = None
+    if DB_MANAGER_AVAILABLE:
+        try:
+            db_path = args.db_path or "./benchmark_db.duckdb"
+            db_manager = BenchmarkDBManager(db_path)
+            print(f"Using database at: {db_path}")
+        except Exception as e:
+            print(f"Warning: Failed to initialize database manager: {e}")
+            print("Some dashboard features will be limited")
+    
     # Create result aggregator if available
     result_aggregator = None
-    if RESULT_AGGREGATOR_AVAILABLE:
+    if RESULT_AGGREGATOR_AVAILABLE and not args.disable_aggregator:
         try:
-            # First try to create database manager if needed
-            db_manager = None
-            if DB_MANAGER_AVAILABLE:
-                db_path = args.db_path or "./benchmark_db.duckdb"
-                db_manager = BenchmarkDBManager(db_path)
-                print(f"Using database at: {db_path}")
-            
-            # Create result aggregator
             result_aggregator = ResultAggregatorService(db_manager=db_manager)
             print("Result aggregator initialized successfully")
         except Exception as e:
             print(f"Warning: Failed to initialize result aggregator: {e}")
-            print("Monitoring dashboard will run with limited functionality")
+            print("Dashboard will run with limited result aggregation functionality")
+    
+    # Create enhanced result aggregator integration if available
+    result_aggregator_integration = None
+    if RESULT_AGGREGATOR_INTEGRATION_AVAILABLE and result_aggregator and not args.disable_aggregator:
+        try:
+            result_aggregator_integration = ResultAggregatorIntegration(
+                result_aggregator=result_aggregator,
+                output_dir=args.output_dir
+            )
+            # Configure integration
+            result_aggregator_integration.configure({
+                "theme": args.theme,
+                "max_items_in_charts": 10,
+                "chart_height": 500,
+                "chart_width": 900,
+                "enable_annotations": True
+            })
+            print("Enhanced result aggregator integration initialized successfully")
+            
+            # Generate initial dashboard summary
+            print(f"Generating initial dashboard summary for the last {args.time_range} days...")
+            dashboard_summary = result_aggregator_integration.create_dashboard_result_summary(args.time_range)
+            if "error" not in dashboard_summary:
+                print("Initial dashboard summary generated successfully")
+                if args.debug:
+                    # Print summary statistics in debug mode
+                    stats = dashboard_summary.get("overall_stats", {})
+                    print(f"Total tests run: {stats.get('total_tests_run', 0)}")
+                    print(f"Model-hardware pairs: {stats.get('total_model_hardware_pairs', 0)}")
+                    print(f"Compatibility rate: {stats.get('compatibility_rate', 0):.1f}%")
+                    print(f"Integration test pass rate: {stats.get('integration_pass_rate', 0):.1f}%")
+                    print(f"Web platform success rate: {stats.get('web_platform_success_rate', 0):.1f}%")
+            else:
+                print(f"Warning: Failed to generate initial dashboard summary: {dashboard_summary['error']}")
+        except Exception as e:
+            print(f"Warning: Failed to initialize enhanced result aggregator integration: {e}")
+            print("Advanced result visualization will be limited")
+            if args.debug:
+                import traceback
+                traceback.print_exc()
     
     # Create output directory if needed
     os.makedirs(args.output_dir, exist_ok=True)
@@ -141,6 +212,39 @@ def main():
         "enable_alerts": not args.no_alerts,
         "real_time_enabled": args.real_time or False
     })
+    
+    # Store result aggregator integration in dashboard for access in templates
+    if result_aggregator_integration:
+        dashboard.result_aggregator_integration = result_aggregator_integration
+        dashboard.result_aggregator_time_range = args.time_range
+    
+    # Initialize E2E test integration if enabled
+    e2e_test_integration = None
+    if args.enable_e2e_test_integration and E2E_TEST_INTEGRATION_AVAILABLE:
+        try:
+            # Create directories if needed
+            os.makedirs(args.e2e_report_dir, exist_ok=True)
+            os.makedirs(args.e2e_visualization_dir, exist_ok=True)
+            
+            # Create E2E test integration
+            e2e_test_integration = E2ETestResultsIntegration(
+                report_dir=args.e2e_report_dir,
+                visualization_dir=args.e2e_visualization_dir
+            )
+            
+            # Store in dashboard
+            dashboard.e2e_test_integration = e2e_test_integration
+            dashboard.enable_e2e_test_integration = True
+            
+            print(f"E2E test integration initialized with report dir: {args.e2e_report_dir}")
+        except Exception as e:
+            print(f"Warning: Failed to initialize E2E test integration: {e}")
+            dashboard.enable_e2e_test_integration = False
+            if args.debug:
+                import traceback
+                traceback.print_exc()
+    else:
+        dashboard.enable_e2e_test_integration = False
     
     print(f"Dashboard configured with theme: {args.theme}, refresh: {args.refresh}s")
     

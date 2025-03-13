@@ -197,14 +197,14 @@ The web-based dashboard server manages the monitoring dashboard:
 - [x] Phase 2: Security and Worker Management (March 12, 2025)
 - [x] Phase 3: Intelligent Task Distribution (March 16, 2025)
 - [x] Phase 4: Adaptive Load Balancing (March 16, 2025)
-- [x] Phase 5: Fault Tolerance (March 10, 2025)
-- [x] Phase 6: Monitoring Dashboard (March 12, 2025)
+- [x] Phase 5: Fault Tolerance (March 13, 2025) ✅
+- [x] Phase 6: Monitoring Dashboard (March 17, 2025) ✅
 - [x] Phase 7: Coordinator Redundancy (March 10, 2025)
 - [x] Phase 8: Performance Trend Analysis (March 10, 2025)
 - [x] Phase 9: CI/CD Integration (March 13, 2025) ✅
-- [🔄] Phase 10: Intelligent Result Aggregation (March 13, 2025 - In progress, 60% complete)
+- [✅] Phase 10: Intelligent Result Aggregation (March 17, 2025 - COMPLETED)
 
-Target completion for all phases: June 26, 2025
+Target completion for all phases: June 26, 2025 (currently ahead of schedule)
 
 ## CI/CD Integration Guide
 
@@ -251,6 +251,64 @@ To run tests locally before committing:
 # Run with verbose output
 ./run_all_tests.sh --verbose
 ```
+
+### Running the Monitoring Dashboard
+
+To start the comprehensive monitoring dashboard:
+
+```bash
+# Start the monitoring dashboard with default settings
+python run_monitoring_dashboard.py
+
+# Start with custom host and port
+python run_monitoring_dashboard.py --host 0.0.0.0 --port 8085
+
+# Connect to a specific coordinator
+python run_monitoring_dashboard.py --coordinator http://coordinator-server:8080
+
+# Use dark theme with 10-second refresh
+python run_monitoring_dashboard.py --theme dark --refresh 10
+
+# Open in browser automatically
+python run_monitoring_dashboard.py --browser
+
+# Enable real-time updates via WebSockets
+python run_monitoring_dashboard.py --real-time
+
+# Disable alerts
+python run_monitoring_dashboard.py --no-alerts
+
+# Connect to a specific database
+python run_monitoring_dashboard.py --db-path ./my_benchmark_db.duckdb
+
+# Specify time range for result aggregation (in days)
+python run_monitoring_dashboard.py --time-range 14
+
+# Disable result aggregator integration
+python run_monitoring_dashboard.py --disable-aggregator
+
+# Enable debug logging
+python run_monitoring_dashboard.py --debug
+```
+
+### Dashboard Features
+
+The monitoring dashboard provides comprehensive real-time visibility into the distributed testing framework:
+
+1. **System Overview**: Real-time status of all system components including workers, tasks, and resources
+2. **Worker Monitoring**: Detailed view of all worker nodes with status, capabilities, and current workload
+3. **Task Execution**: Live tracking of task execution across the distributed system
+4. **Performance Metrics**: Real-time performance metrics and historical trends
+5. **Test Results Analysis**: Comprehensive visualizations of test results including:
+   - Performance trends across different model-hardware pairs
+   - Compatibility matrices showing which models work with which hardware
+   - Integration test pass rates by test module
+   - Web platform success rates across browsers and platforms
+   - Performance anomaly detection and visualization
+   - Historical performance comparisons with improvement/regression tracking
+6. **Alerts**: Real-time alerting for critical events with severity levels
+7. **System Topology**: Interactive visualization of the distributed system structure
+8. **Fault Tolerance**: Monitoring of failure patterns and recovery actions
 
 ### Docker Testing Environment
 

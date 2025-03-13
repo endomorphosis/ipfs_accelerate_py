@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser-Optimized Matrix Multiplication Example</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        header {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        h1 {
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+        
+        .description {
+            color: #718096;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+        }
+        
+        #output {
+            background-color: #2d3748;
+            color: #f7fafc;
+            padding: 20px;
+            border-radius: 5px;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            white-space: pre-wrap;
+            line-height: 1.5;
+            overflow-x: auto;
+            height: 500px;
+            overflow-y: auto;
+        }
+        
+        .info-box {
+            background-color: #ebf8ff;
+            border-left: 4px solid #4299e1;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .hardware-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background-color: #f7fafc;
+            border: 1px solid #e2e8f0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .stat-title {
+            font-weight: bold;
+            color: #4a5568;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 1.2rem;
+            color: #2b6cb0;
+        }
+        
+        button {
+            background-color: #4299e1;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-right: 10px;
+            margin-bottom: 20px;
+        }
+        
+        button:hover {
+            background-color: #3182ce;
+        }
+        
+        footer {
+            margin-top: 30px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+            font-size: 0.9rem;
+            color: #718096;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Browser-Optimized Matrix Multiplication</h1>
+        <p class="description">This example demonstrates how matrix multiplication performance can be improved with browser-specific optimizations</p>
+    </header>
+
+    <div class="info-box">
+        <p><strong>Browser Detection:</strong> This example will automatically detect your browser type and apply optimizations specifically for Chrome, Firefox, Safari, or Edge.</p>
+        <p><strong>Hardware Detection:</strong> GPU vendor and architecture will be detected to further optimize performance.</p>
+    </div>
+    
+    <div class="hardware-stats" id="hardware-stats">
+        <!-- Will be populated by JavaScript -->
+    </div>
+    
+    <button id="run-benchmark">Run Benchmark</button>
+    <button id="clear-output">Clear Output</button>
+    
+    <h2>Output</h2>
+    <div id="output">Waiting to start benchmark...</div>
+    
+    <footer>
+        <p>IPFS Accelerate TypeScript SDK - WebGPU Matrix Operations Example</p>
+        <p>Using browser-specific optimizations for WebGPU compute shaders</p>
+    </footer>
+
+    <script type="module" src="browser_optimized_matmul_example.js"></script>
+    <script>
+        document.getElementById('clear-output').addEventListener('click', () => {
+            document.getElementById('output').innerHTML = 'Output cleared...\n';
+        });
+        
+        document.getElementById('run-benchmark').addEventListener('click', () => {
+            document.getElementById('output').innerHTML = 'Running benchmark...\n';
+            // The module will automatically run when loaded
+            // We're just clearing the output here
+            
+            // Reload the script to run the benchmark again
+            const oldScript = document.querySelector('script[src="browser_optimized_matmul_example.js"]');
+            const newScript = document.createElement('script');
+            newScript.type = 'module';
+            newScript.src = 'browser_optimized_matmul_example.js?' + new Date().getTime(); // Add cache-busting
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+        });
+        
+        // Add browser info to hardware stats
+        window.addEventListener('load', () => {
+            const statsContainer = document.getElementById('hardware-stats');
+            
+            // Browser info
+            const browserInfo = document.createElement('div');
+            browserInfo.className = 'stat-card';
+            browserInfo.innerHTML = `
+                <div class="stat-title">Browser</div>
+                <div class="stat-value">${navigator.userAgent}</div>
+            `;
+            statsContainer.appendChild(browserInfo);
+            
+            // WebGPU support
+            const webGPUInfo = document.createElement('div');
+            webGPUInfo.className = 'stat-card';
+            webGPUInfo.innerHTML = `
+                <div class="stat-title">WebGPU Support</div>
+                <div class="stat-value">${'gpu' in navigator ? 'Available' : 'Not Available'}</div>
+            `;
+            statsContainer.appendChild(webGPUInfo);
+        });
+    </script>
+</body>
+</html>

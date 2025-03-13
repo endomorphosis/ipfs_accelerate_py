@@ -1,160 +1,121 @@
-# Distributed Testing Framework - Integration Testing
+# End-to-End Testing Framework for Distributed Testing
 
-This directory contains integration tests for the distributed testing framework, ensuring all components work together seamlessly.
+This directory contains comprehensive end-to-end testing tools for the Distributed Testing Framework, focused on validating the integration between all components, especially the Monitoring Dashboard and Result Aggregator.
 
 ## Overview
 
-The distributed testing framework consists of several key components:
+The end-to-end testing framework creates a complete testing environment that:
 
-- **Coordinator** (`coordinator.py`): Central server managing tasks and workers
-- **Worker** (`worker.py`): Worker nodes that execute tasks
-- **Task Scheduler** (`task_scheduler.py`): Intelligent task scheduling and distribution
-- **Load Balancer** (`load_balancer.py`): Adaptive workload distribution
-- **Health Monitor** (`health_monitor.py`): Worker health monitoring and recovery
-- **Dashboard** (`dashboard_server.py`): Web-based monitoring interface
+1. Launches all framework components (Result Aggregator, Coordinator, Monitoring Dashboard)
+2. Starts multiple simulated worker nodes with various hardware profiles
+3. Submits diverse test workloads to exercise all system components
+4. Optionally injects failures to test fault tolerance
+5. Validates that all components function correctly and are properly integrated
+6. Generates comprehensive test reports
 
-These tests verify that these components integrate correctly and handle various scenarios appropriately.
+## Main Components
 
-## Test Structure
-
-- **`test_integration.py`**: End-to-end tests of the entire framework
-- **`test_scheduler.py`**: Tests of the task scheduler component
-- **`test_health_monitor.py`**: Tests of the health monitoring component
-- **`test_load_balancer.py`**: Tests of the load balancer component
-- **`test_benchmark.py`**: Performance benchmarks for all components
-- **`run_integration_tests.py`**: Script to run all tests
+- `test_end_to_end_framework.py`: Core testing framework that sets up the complete environment and runs tests
+- `run_e2e_tests.py`: Helper script to run test suites with various configurations
+- `e2e_test_reports/`: Directory containing generated test reports
 
 ## Running the Tests
 
-### Running All Tests
+### Quick Test
 
-To run all integration tests:
-
-```bash
-python run_integration_tests.py
-```
-
-For detailed output:
+To run a quick validation test (useful for CI/CD):
 
 ```bash
-python run_integration_tests.py --verbose
+python -m duckdb_api.distributed_testing.tests.run_e2e_tests --quick
 ```
 
-### Running Individual Test Files
+### Basic Test Suite
 
-To run specific test files:
+To run the basic test suite:
 
 ```bash
-python test_integration.py
-python test_scheduler.py
-python test_health_monitor.py
-python test_load_balancer.py
-python test_benchmark.py
+python -m duckdb_api.distributed_testing.tests.run_e2e_tests
 ```
 
-### Running Performance Benchmarks
+### Comprehensive Test Suite
 
-The benchmark tests measure the performance of various components:
+To run the comprehensive test suite, including more workers and longer duration:
 
 ```bash
-# Run all benchmarks
-python test_benchmark.py
-
-# Run a specific benchmark test
-python test_benchmark.py DistributedFrameworkBenchmark.test_03_benchmark_task_assignment
+python -m duckdb_api.distributed_testing.tests.run_e2e_tests --comprehensive
 ```
 
-## Test Categories
+### Fault Tolerance Testing
 
-### Integration Tests (`test_integration.py`)
+To include fault tolerance tests (with simulated failures):
 
-End-to-end tests that ensure all components work together correctly:
+```bash
+python -m duckdb_api.distributed_testing.tests.run_e2e_tests --fault-tolerance
+```
 
-1. **Initialization Tests**: Verify all components initialize correctly
-2. **Worker Registration Tests**: Verify workers register with the coordinator
-3. **Task Distribution Tests**: Verify tasks are distributed to appropriate workers
-4. **Task Execution Tests**: Verify workers execute tasks and report results
-5. **Worker Health Tests**: Verify health monitoring detects worker failures
-6. **Dashboard Connectivity Tests**: Verify dashboard connects to coordinator and displays data
-7. **Fault Tolerance Tests**: Verify system recovers from worker failures
+### Generate HTML Report
 
-### Task Scheduler Tests (`test_scheduler.py`)
+To generate an HTML report with test results:
 
-Tests focusing on the task scheduler component:
+```bash
+python -m duckdb_api.distributed_testing.tests.run_e2e_tests --generate-report
+```
 
-1. **Task Matching Tests**: Verify tasks are matched to appropriate workers
-2. **Hardware Requirement Tests**: Verify hardware requirements are enforced
-3. **Priority-Based Scheduling Tests**: Verify tasks are scheduled according to priority
+### Running Individual Test
 
-### Health Monitor Tests (`test_health_monitor.py`)
+To run an individual test with custom configuration:
 
-Tests focusing on the health monitoring component:
+```bash
+python -m duckdb_api.distributed_testing.tests.test_end_to_end_framework \
+  --workers 5 \
+  --test-duration 60 \
+  --hardware-profiles all \
+  --include-failures
+```
 
-1. **Heartbeat Timeout Tests**: Verify timeouts are detected correctly
-2. **Recovery Tests**: Verify workers can recover from failures
-3. **Alert Tests**: Verify alerts are generated for failures
+## Test Validation
 
-### Load Balancer Tests (`test_load_balancer.py`)
+The framework validates:
 
-Tests focusing on the load balancer component:
+1. **Dashboard Accessibility**: Verifies that the monitoring dashboard is accessible
+2. **Results Page**: Validates that the results page is accessible and displays proper tabs
+3. **Result Aggregation**: Confirms that test results are being properly aggregated
+4. **Integration**: Validates the integration between the dashboard and result aggregator
+5. **Visualization Data**: Checks that visualization data is properly generated and accessible
 
-1. **Worker Scoring Tests**: Verify workers are scored correctly based on capabilities
-2. **Task Assignment Tests**: Verify tasks are assigned to the most appropriate workers
-3. **Load Balancing Tests**: Verify workloads are balanced across workers
-4. **Workload Detection Tests**: Verify overloaded and underutilized workers are identified
-5. **Task Migration Tests**: Verify tasks are migrated between workers to balance load
-6. **Performance-Based Balancing Tests**: Verify balancing considers worker performance
+## Test Reports
 
-### Benchmark Tests (`test_benchmark.py`)
+Reports are generated in JSON format with a summary of validation results. When using `--generate-report` with the test runner, an HTML report is also created with:
 
-Performance benchmarks for various components:
+- Overall test success/failure summary
+- Details for each test configuration
+- Test duration and exit code information
+- Configuration details for each test
 
-1. **Database Benchmarks**: Measure database operation performance
-2. **Worker Registration Benchmarks**: Measure worker registration performance
-3. **Task Creation Benchmarks**: Measure task creation performance
-4. **Task Assignment Benchmarks**: Measure task assignment performance with different loads
-5. **Load Balancing Benchmarks**: Measure load balancing performance with different imbalances
-6. **Health Monitoring Benchmarks**: Measure health monitoring performance
-7. **Concurrent Operation Benchmarks**: Measure performance with multiple components running
+## Fault Tolerance Testing
 
-## Test Environment
+When using `--include-failures` or running fault tolerance tests, the framework:
 
-The tests create a controlled environment with:
+1. Terminates a random worker node during test execution
+2. Sends malformed requests to the coordinator and result aggregator
+3. Validates that the system properly recovers and continues functioning
 
-- Temporary database files
-- In-memory coordinator server
-- Simulated worker processes
-- Web dashboard
+## Hardware Profiles
 
-The environment is cleaned up after each test run.
+Tests can be run with the following hardware profiles:
 
-## Requirements
+- **cpu**: CPU-only hardware
+- **gpu**: GPU hardware
+- **webgpu**: WebGPU hardware (browser-based)
+- **webnn**: WebNN hardware (browser-based)
+- **multi**: Multi-device hardware
+- **all**: All hardware types (default for comprehensive tests)
 
-- Python 3.8+
-- DuckDB
-- websockets
-- requests
-- pytest (optional, for additional test features)
+## Advanced Configuration
 
-## Adding New Tests
+See `--help` on either script for additional configuration options:
 
-When adding new tests, follow these patterns:
-
-1. Create appropriate setup in `setUp()` method
-2. Clean up resources in `tearDown()` method
-3. Use meaningful test method names like `test_worker_registration()`
-4. Include detailed docstrings explaining the test purpose
-5. Use assertions to verify expected behavior
-
-Example:
-
-```python
-def test_something_important(self):
-    """Test that something important works correctly."""
-    # Setup specific to this test
-    
-    # Perform the action being tested
-    
-    # Assert expected outcomes
-    self.assertEqual(actual, expected, "Something important should work")
+```bash
+python -m duckdb_api.distributed_testing.tests.test_end_to_end_framework --help
+python -m duckdb_api.distributed_testing.tests.run_e2e_tests --help
 ```

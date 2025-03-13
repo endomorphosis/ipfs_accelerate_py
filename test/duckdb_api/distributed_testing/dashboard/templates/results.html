@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+
+{% block title %}Monitoring Dashboard - Test Results{% endblock %}
+
+{% block head_extra %}
+    <style>
+        .metrics-card {
+            background-color: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px var(--shadow-color);
+        }
+        
+        .metrics-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+        
+        .metrics-title {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .metrics-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .metric-item {
+            text-align: center;
+            padding: 15px;
+            background-color: rgba(0,0,0,0.05);
+            border-radius: 6px;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .metric-label {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        .chart-container {
+            width: 100%;
+            overflow: hidden;
+            margin-top: 20px;
+            position: relative;
+        }
+        
+        .chart-container iframe {
+            width: 100%;
+            height: 500px;
+            border: none;
+        }
+        
+        .chart-tabs {
+            display: flex;
+            gap: 2px;
+            margin-top: 20px;
+            margin-bottom: 5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .chart-tab {
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 4px 4px 0 0;
+            background-color: var(--bg-secondary);
+            opacity: 0.7;
+        }
+        
+        .chart-tab.active {
+            background-color: var(--primary-color);
+            opacity: 1;
+            color: white;
+        }
+        
+        .chart-content {
+            display: none;
+        }
+        
+        .chart-content.active {
+            display: block;
+        }
+        
+        .improvement-badge {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .regression-badge {
+            background-color: var(--danger-color);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .anomaly-badge {
+            background-color: var(--warning-color);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .time-range-selector {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: var(--bg-secondary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .time-range-selector select {
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+        
+        .time-range-selector button {
+            padding: 5px 15px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            background-color: var(--primary-color);
+            color: white;
+            cursor: pointer;
+        }
+        
+        @media (max-width: 768px) {
+            .metrics-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <h1>Test Results Analysis</h1>
+    
+    <div class="time-range-selector">
+        <label for="time-range">Time Range:</label>
+        <select id="time-range" name="time-range">
+            <option value="1" {% if time_range == 1 %}selected{% endif %}>Last 24 hours</option>
+            <option value="3" {% if time_range == 3 %}selected{% endif %}>Last 3 days</option>
+            <option value="7" {% if time_range == 7 %}selected{% endif %}>Last 7 days</option>
+            <option value="14" {% if time_range == 14 %}selected{% endif %}>Last 14 days</option>
+            <option value="30" {% if time_range == 30 %}selected{% endif %}>Last 30 days</option>
+        </select>
+        <button id="update-time-range">Update</button>
+    </div>
+    
+    <!-- Overall Summary Section -->
+    {% if result_summary %}
+    <div class="metrics-card">
+        <div class="metrics-header">
+            <div class="metrics-title">Overall Test Results Summary</div>
+            <div class="metrics-actions">
+                <button class="refresh-btn" onclick="refreshResults()">⟳ Refresh</button>
+            </div>
+        </div>
+        
+        <div class="metrics-grid">
+            <div class="metric-item">
+                <div class="metric-value">{{ result_summary.overall_stats.total_tests_run|default(0) }}</div>
+                <div class="metric-label">Total Tests Run</div>
+            </div>
+            
+            <div class="metric-item">
+                <div class="metric-value">{{ result_summary.overall_stats.total_model_hardware_pairs|default(0) }}</div>
+                <div class="metric-label">Model-Hardware Pairs</div>
+            </div>
+            
+            <div class="metric-item">
+                <div class="metric-value">{{ result_summary.overall_stats.compatibility_rate|default(0)|round(1) }}%</div>
+                <div class="metric-label">Compatibility Rate</div>
+            </div>
+            
+            <div class="metric-item">
+                <div class="metric-value">{{ result_summary.overall_stats.integration_pass_rate|default(0)|round(1) }}%</div>
+                <div class="metric-label">Integration Pass Rate</div>
+            </div>
+            
+            <div class="metric-item">
+                <div class="metric-value">{{ result_summary.overall_stats.web_platform_success_rate|default(0)|round(1) }}%</div>
+                <div class="metric-label">Web Platform Success</div>
+            </div>
+            
+            <div class="metric-item">
+                <div class="metric-value">{{ result_summary.overall_stats.total_anomalies|default(0) }}</div>
+                <div class="metric-label">Performance Anomalies</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Performance Section -->
+    <div class="metrics-card">
+        <div class="metrics-header">
+            <div class="metrics-title">Performance Metrics</div>
+            <div class="metrics-actions">
+                {% if result_summary.summaries.performance.total_improvements > 0 %}
+                <span class="improvement-badge">{{ result_summary.summaries.performance.total_improvements }} Improvements</span>
+                {% endif %}
+                
+                {% if result_summary.summaries.performance.total_regressions > 0 %}
+                <span class="regression-badge">{{ result_summary.summaries.performance.total_regressions }} Regressions</span>
+                {% endif %}
+                
+                {% if result_summary.summaries.performance.total_anomalies > 0 %}
+                <span class="anomaly-badge">{{ result_summary.summaries.performance.total_anomalies }} Anomalies</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="chart-tabs">
+            <div class="chart-tab active" data-tab="performance-trend">Performance Trend</div>
+            <div class="chart-tab" data-tab="performance-comparison">Performance Comparison</div>
+            <div class="chart-tab" data-tab="performance-anomalies">Anomalies</div>
+        </div>
+        
+        <div class="chart-content active" data-content="performance-trend">
+            {% if result_summary.visualizations.performance_trend %}
+            <div class="chart-container">
+                <iframe src="{{ result_summary.visualizations.performance_trend }}"></iframe>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No performance trend data available for the selected time range.</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="chart-content" data-content="performance-comparison">
+            {% if result_summary.visualizations.performance_comparison %}
+            <div class="chart-container">
+                <iframe src="{{ result_summary.visualizations.performance_comparison }}"></iframe>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No performance comparison data available for the selected time range.</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="chart-content" data-content="performance-anomalies">
+            {% if result_summary.visualizations.anomalies %}
+            <div class="chart-container">
+                <iframe src="{{ result_summary.visualizations.anomalies }}"></iframe>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No performance anomalies detected in the selected time range.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Compatibility Section -->
+    <div class="metrics-card">
+        <div class="metrics-header">
+            <div class="metrics-title">Compatibility Matrix</div>
+            <div class="metrics-actions">
+                <span class="status-badge primary">{{ result_summary.summaries.compatibility.compatible_pairs|default(0) }} Compatible Pairs</span>
+                <span class="status-badge warning">{{ result_summary.summaries.compatibility.incompatible_pairs|default(0) }} Incompatible Pairs</span>
+            </div>
+        </div>
+        
+        {% if result_summary.visualizations.compatibility_matrix %}
+        <div class="chart-container">
+            <iframe src="{{ result_summary.visualizations.compatibility_matrix }}"></iframe>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No compatibility matrix data available for the selected time range.</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Integration Tests Section -->
+    <div class="metrics-card">
+        <div class="metrics-header">
+            <div class="metrics-title">Integration Test Results</div>
+            <div class="metrics-actions">
+                <span class="status-badge success">{{ result_summary.summaries.integration.tests_passed|default(0) }} Passed</span>
+                <span class="status-badge danger">{{ result_summary.summaries.integration.tests_failed|default(0) }} Failed</span>
+            </div>
+        </div>
+        
+        {% if result_summary.visualizations.test_pass_rate %}
+        <div class="chart-container">
+            <iframe src="{{ result_summary.visualizations.test_pass_rate }}"></iframe>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No integration test data available for the selected time range.</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Web Platform Section -->
+    <div class="metrics-card">
+        <div class="metrics-header">
+            <div class="metrics-title">Web Platform Results</div>
+            <div class="metrics-actions">
+                <span class="status-badge success">{{ result_summary.summaries.web_platform.successful_tests|default(0) }} Successful</span>
+                <span class="status-badge danger">{{ result_summary.summaries.web_platform.failed_tests|default(0) }} Failed</span>
+            </div>
+        </div>
+        
+        {% if result_summary.visualizations.web_platform_browsers %}
+        <div class="chart-container">
+            <iframe src="{{ result_summary.visualizations.web_platform_browsers }}"></iframe>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No web platform data available for the selected time range.</p>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state metrics-card">
+        <h2>No Results Data Available</h2>
+        <p>Result aggregator integration is not available or no results have been collected.</p>
+        <p>Make sure the result aggregator is properly configured and connected to the database.</p>
+    </div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Tab switching functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const tabs = document.querySelectorAll('.chart-tab');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Get the tab content id
+                const tabId = this.getAttribute('data-tab');
+                
+                // Remove active class from all tabs and contents
+                document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.chart-content').forEach(c => c.classList.remove('active'));
+                
+                // Add active class to clicked tab and corresponding content
+                this.classList.add('active');
+                document.querySelector(`.chart-content[data-content="${tabId}"]`).classList.add('active');
+            });
+        });
+        
+        // Time range update functionality
+        document.getElementById('update-time-range').addEventListener('click', function() {
+            const timeRange = document.getElementById('time-range').value;
+            window.location.href = `/results?time_range=${timeRange}`;
+        });
+    });
+    
+    function refreshResults() {
+        const timeRange = document.getElementById('time-range').value;
+        window.location.href = `/results?time_range=${timeRange}&refresh=true`;
+    }
+</script>
+{% endblock %}

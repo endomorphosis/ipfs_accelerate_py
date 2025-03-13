@@ -443,6 +443,90 @@ function handleWebNNExperimentalError(error) {
 
 ## Advanced WebGPU Features
 
+### WebGPU Optimizer Integration (June 2025)
+
+The June 2025 update introduces a powerful WebGPU Optimizer that automatically applies performance optimizations based on operation type, tensor shape, and browser capabilities.
+
+```javascript
+// Import WebGPU Optimizer
+import { WebGPUBackend, WebGPUOptimizer } from './webgpu_backend.js';
+
+// Initialize WebGPU backend with optimizer
+async function initializeOptimizedWebGPU() {
+  // Create WebGPU backend with optimizer configuration
+  const backend = new WebGPUBackend({
+    enableOperationFusion: true,
+    enableSpecializedShaders: true,
+    enableBrowserOptimizations: true,
+    enableMemoryOptimizations: true,
+    fusionConfig: {
+      maxFusionLength: 5,
+      enableAutoFusion: true,
+      enabledPatterns: [
+        'linear_activation',
+        'elementwise_chain',
+        'binary_unary',
+        'norm_activation',
+        'attention_pattern'
+      ]
+    }
+  });
+  
+  // Initialize backend
+  await backend.initialize();
+  
+  // Get the optimizer for advanced configuration
+  const optimizer = backend.getOptimizer();
+  
+  // Analyze model architecture for optimization opportunities
+  const modelOperations = [
+    { type: 'matmul', inputs: ['input', 'weights'], output: 'hidden' },
+    { type: 'add', inputs: ['hidden', 'bias'], output: 'biased' },
+    { type: 'relu', inputs: ['biased'], output: 'activated' }
+  ];
+  
+  const tensors = {
+    'input': { shape: [32, 512], dataType: 'float32' },
+    'weights': { shape: [512, 1024], dataType: 'float32' },
+    'bias': { shape: [1024], dataType: 'float32' }
+  };
+  
+  // Get optimization recommendations
+  const analysis = backend.analyzeLayerForFusionOpportunities(modelOperations, tensors);
+  console.log('Optimization opportunities:', analysis.fusionPatterns);
+  console.log('Optimization tips:', analysis.optimizationTips);
+  
+  return backend;
+}
+
+// Use optimized backend for model inference
+async function runOptimizedInference(backend, inputTensor) {
+  // Create optimized tensors with appropriate memory layout
+  const optimizedInput = await backend.createOptimizedTensor(inputTensor, 'matmul');
+  
+  // Execute fused operations for high performance
+  const result = await backend.executeFusedOperations(
+    [optimizedInput, weightsTensor, biasTensor],
+    ['matmul', 'add', 'relu']
+  );
+  
+  // Clean up resources after processing
+  backend.garbageCollect();
+  
+  return result;
+}
+```
+
+Key features of the WebGPU Optimizer include:
+
+1. **Operation Fusion**: Automatically combines multiple operations into a single GPU shader
+2. **Browser-Specific Optimizations**: Custom optimizations for Chrome, Firefox, Safari, and Edge
+3. **Memory Layout Optimization**: Selects optimal memory layout (row vs. column-major)
+4. **Workgroup Size Optimization**: Dynamically selects optimal GPU workgroup configuration
+5. **Neural Network Pattern Recognition**: Auto-detects common patterns in neural networks
+
+For detailed implementation, see [WEBGPU_OPTIMIZATION_GUIDE.md](WEBGPU_OPTIMIZATION_GUIDE.md).
+
 ### Firefox Audio Optimizations
 
 ```javascript
@@ -453,10 +537,13 @@ async function loadAudioModelWithFirefoxOptimizations(modelId) {
   // Check if running in Firefox
   const isFirefox = browserInfo.name === 'firefox';
   
+  // Initialize WebGPU backend with optimizer
+  const backend = await initializeOptimizedWebGPU();
+  
   // Get optimal workgroup size based on browser
-  const workgroupSize = isFirefox ? 
-    { x: 256, y: 1, z: 1 } :  // Optimized for Firefox
-    { x: 128, y: 2, z: 1 };   // Default for other browsers
+  const workgroupSize = backend.getOptimalWorkgroupSize('elementwise', {
+    audioProcessing: true
+  });
   
   // Create optimized shader code
   const shaderCode = generateOptimizedAudioShader(workgroupSize);
@@ -921,8 +1008,11 @@ Before deploying to production, ensure that:
 
 ## Further Resources
 
+- [WEBGPU_OPTIMIZATION_GUIDE.md](WEBGPU_OPTIMIZATION_GUIDE.md): Comprehensive guide to WebGPU optimizations (NEW - June 2025)
 - [WEBNN_WEBGPU_QUANTIZATION_GUIDE.md](WEBNN_WEBGPU_QUANTIZATION_GUIDE.md): Comprehensive guide to all quantization options
 - [WEBNN_WEBGPU_QUANTIZATION_MARCH2025_UPDATE.md](WEBNN_WEBGPU_QUANTIZATION_MARCH2025_UPDATE.md): March 2025 update details
 - [WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md](WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md): Technical details of quantization
+- [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md): Guide to resource pool integration for parallel execution
+- [WEBNN_WEBGPU_BENCHMARK_README.md](WEBNN_WEBGPU_BENCHMARK_README.md): Benchmark system and performance analysis
 - [WebNN API Documentation](https://webmachinelearning.github.io/webnn/): Official WebNN API documentation
 - [WebGPU API Documentation](https://gpuweb.github.io/gpuweb/): Official WebGPU API documentation

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGPU Optimization Benchmark</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    
+    h1, h2, h3 {
+      color: #333;
+    }
+    
+    #status {
+      margin: 20px 0;
+      padding: 15px;
+      border-radius: 5px;
+      border-left: 5px solid #ccc;
+    }
+    
+    .supported {
+      background-color: #e6f7e6;
+      border-color: #28a745;
+    }
+    
+    .not-supported {
+      background-color: #f8d7da;
+      border-color: #dc3545;
+    }
+    
+    #loading {
+      font-style: italic;
+      color: #666;
+    }
+    
+    .benchmark-container {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #eee;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    
+    .progress-bar-container {
+      width: 100%;
+      background-color: #eee;
+      border-radius: 4px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      height: 20px;
+      background-color: #4caf50;
+      width: 0%;
+      transition: width 0.5s;
+      text-align: center;
+      color: white;
+      line-height: 20px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    
+    table th, table td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: left;
+    }
+    
+    table th {
+      background-color: #f2f2f2;
+    }
+    
+    .chart-container {
+      height: 500px; 
+      margin-top: 20px;
+    }
+    
+    .optimization-card {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #e0e0e0;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    
+    .optimization-card h3 {
+      margin-top: 0;
+      color: #333;
+    }
+    
+    .optimization-card p {
+      color: #666;
+    }
+    
+    .code-block {
+      background-color: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      font-family: monospace;
+      margin: 10px 0;
+    }
+    
+    .comparison-bars {
+      display: flex;
+      margin: 20px 0;
+    }
+    
+    .bar-group {
+      flex: 1;
+      margin: 0 10px;
+      text-align: center;
+    }
+    
+    .bar-container {
+      height: 200px;
+      position: relative;
+      margin-bottom: 10px;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+    }
+    
+    .bar {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      transition: height 1s;
+      border-radius: 0 0 4px 4px;
+    }
+    
+    .standard-bar {
+      background-color: #f44336;
+    }
+    
+    .optimized-bar {
+      background-color: #2196F3;
+    }
+    
+    .bar-label {
+      position: absolute;
+      width: 100%;
+      text-align: center;
+      bottom: -25px;
+      font-weight: bold;
+    }
+    
+    .bar-value {
+      position: absolute;
+      width: 100%;
+      text-align: center;
+      top: -25px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebGPU Optimization Benchmark</h1>
+  
+  <div id="status">
+    <p id="loading">Detecting WebGPU support and running benchmarks...</p>
+  </div>
+  
+  <div class="benchmark-container">
+    <h2>Benchmark Results</h2>
+    <p>This benchmark compares the standard WebGPU implementation with an optimized version using:</p>
+    <ul>
+      <li>Operation fusion</li>
+      <li>Specialized shaders for different tensor shapes</li>
+      <li>Browser-specific optimizations</li>
+      <li>Memory optimizations</li>
+    </ul>
+    
+    <div id="benchmark-results">
+      <!-- Results will be inserted here -->
+    </div>
+    
+    <div id="operation-progress" style="display: none;">
+      <h3>Current Operation: <span id="current-operation">Initializing...</span></h3>
+      <div class="progress-bar-container">
+        <div id="progress-bar" class="progress-bar">0%</div>
+      </div>
+    </div>
+  </div>
+  
+  <div id="webgpu-optimization-output">
+    <!-- Output will be inserted here by the script -->
+  </div>
+  
+  <div class="optimization-cards">
+    <div class="optimization-card">
+      <h3>1. Operation Fusion</h3>
+      <p>By combining multiple tensor operations into a single GPU compute pass, we eliminate intermediate memory transfers and reduce kernel launch overhead.</p>
+      <div class="code-block">
+        <pre>// Before: Multiple separate operations
+const intermediate = await backend.matmul(a, b);
+const result = await backend.relu(intermediate);
+
+// After: Fused operation
+const result = await backend.fusedMatmulRelu(a, b);</pre>
+      </div>
+    </div>
+    
+    <div class="optimization-card">
+      <h3>2. Specialized Shaders</h3>
+      <p>Custom-generated compute shaders optimized for specific tensor shapes and operations.</p>
+      <div class="code-block">
+        <pre>// Generate specialized matrix multiplication shader
+const shader = getSpecializedMatmulShader(
+  matrixA.shape[0], // M
+  matrixA.shape[1], // K
+  matrixB.shape[1], // N
+  {
+    workgroupSize: 256,
+    useFastMath: true,
+    browserOptimized: 'chrome'
+  }
+);</pre>
+      </div>
+    </div>
+    
+    <div class="optimization-card">
+      <h3>3. Browser-Specific Optimizations</h3>
+      <p>Different browsers have different WebGPU implementations. We adapt our shaders and parameters based on the detected browser.</p>
+      <div class="code-block">
+        <pre>// Chrome tends to do well with larger workgroups
+if (browserType === 'chrome') {
+  options.workgroupSize = 256;
+}
+
+// Firefox tends to do better with smaller workgroups
+if (browserType === 'firefox') {
+  options.workgroupSize = 128;
+}</pre>
+      </div>
+    </div>
+    
+    <div class="optimization-card">
+      <h3>4. Memory Optimizations</h3>
+      <p>Efficient GPU memory management through buffer pooling and reuse.</p>
+      <div class="code-block">
+        <pre>// Before: Creating new buffers for each operation
+const outputBuffer = device.createBuffer({
+  size: byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+});
+
+// After: Reusing buffers from a pool
+const outputBuffer = bufferManager.allocateBuffer(byteLength, {
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+});</pre>
+      </div>
+    </div>
+  </div>
+  
+  <script type="module">
+    import { runWebGPUOptimizationBenchmark } from './webgpu_optimization_example.js';
+    
+    // Main function to initialize the demo
+    async function initDemo() {
+      const statusElement = document.getElementById('status');
+      const loadingElement = document.getElementById('loading');
+      
+      try {
+        // Check if WebGPU is supported
+        if (!navigator.gpu) {
+          statusElement.className = 'not-supported';
+          statusElement.innerHTML = `
+            <h2>WebGPU Not Supported</h2>
+            <p>Your browser does not support WebGPU, which is required for this benchmark.</p>
+            <p>Try using Chrome 113+, Edge 113+, or Safari 17.4+.</p>
+          `;
+          return;
+        }
+        
+        // Update status to show WebGPU is supported
+        statusElement.className = 'supported';
+        statusElement.innerHTML = `
+          <h2>WebGPU Supported</h2>
+          <p>Your browser supports WebGPU! Running benchmarks...</p>
+        `;
+        
+        // Show progress element
+        document.getElementById('operation-progress').style.display = 'block';
+        
+        // Run the benchmark
+        const currentOpElement = document.getElementById('current-operation');
+        const progressBar = document.getElementById('progress-bar');
+        
+        // Helper function to update progress
+        function updateProgress(operation, percent) {
+          currentOpElement.textContent = operation;
+          progressBar.style.width = `${percent}%`;
+          progressBar.textContent = `${percent}%`;
+        }
+        
+        // Run benchmark
+        updateProgress('Initializing WebGPU backends', 10);
+        
+        // Simulate progress updates for different operations
+        const operations = [
+          'Initializing WebGPU backends',
+          'Preparing benchmark data',
+          'Running small matrix multiplication',
+          'Running medium matrix multiplication',
+          'Running large matrix multiplication',
+          'Running activation functions',
+          'Running element-wise operations',
+          'Analyzing results'
+        ];
+        
+        for (let i = 0; i < operations.length; i++) {
+          updateProgress(operations[i], Math.round((i / operations.length) * 100));
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        const result = await runWebGPUOptimizationBenchmark();
+        
+        if (result.supported) {
+          // Show results
+          updateProgress('Completed', 100);
+          
+          // Show comparison visualization
+          const comparisonSection = document.createElement('div');
+          comparisonSection.innerHTML = `
+            <h2>Performance Comparison</h2>
+            <p>Visual comparison of standard vs. optimized implementation performance.</p>
+            <div class="comparison-bars" id="comparison-bars">
+              <!-- Bars will be inserted here -->
+            </div>
+          `;
+          
+          // Insert comparison section before the optimization cards
+          const optimizationCards = document.querySelector('.optimization-cards');
+          document.body.insertBefore(comparisonSection, optimizationCards);
+          
+          // Create comparison bars
+          const comparisonBars = document.getElementById('comparison-bars');
+          
+          // Create bars for key operations
+          const keyOperations = result.results.filter(r => 
+            r.operation === 'matmul' || r.operation === 'relu'
+          );
+          
+          keyOperations.forEach(op => {
+            const barGroup = document.createElement('div');
+            barGroup.className = 'bar-group';
+            
+            // Standard implementation bar
+            const standardBarContainer = document.createElement('div');
+            standardBarContainer.className = 'bar-container';
+            
+            const standardBar = document.createElement('div');
+            standardBar.className = 'bar standard-bar';
+            standardBar.style.height = '0%';
+            
+            const standardBarValue = document.createElement('div');
+            standardBarValue.className = 'bar-value';
+            standardBarValue.textContent = `${op.standardTime.toFixed(2)}ms`;
+            
+            const standardBarLabel = document.createElement('div');
+            standardBarLabel.className = 'bar-label';
+            standardBarLabel.textContent = 'Standard';
+            
+            standardBarContainer.appendChild(standardBar);
+            standardBarContainer.appendChild(standardBarValue);
+            standardBarContainer.appendChild(standardBarLabel);
+            
+            // Optimized implementation bar
+            const optimizedBarContainer = document.createElement('div');
+            optimizedBarContainer.className = 'bar-container';
+            
+            const optimizedBar = document.createElement('div');
+            optimizedBar.className = 'bar optimized-bar';
+            optimizedBar.style.height = '0%';
+            
+            const optimizedBarValue = document.createElement('div');
+            optimizedBarValue.className = 'bar-value';
+            optimizedBarValue.textContent = `${op.optimizedTime.toFixed(2)}ms`;
+            
+            const optimizedBarLabel = document.createElement('div');
+            optimizedBarLabel.className = 'bar-label';
+            optimizedBarLabel.textContent = 'Optimized';
+            
+            optimizedBarContainer.appendChild(optimizedBar);
+            optimizedBarContainer.appendChild(optimizedBarValue);
+            optimizedBarContainer.appendChild(optimizedBarLabel);
+            
+            // Operation title
+            const title = document.createElement('h3');
+            title.textContent = op.name;
+            
+            // Improvement percentage
+            const improvement = document.createElement('p');
+            improvement.textContent = `${op.improvement}% faster`;
+            improvement.style.fontWeight = 'bold';
+            improvement.style.color = '#28a745';
+            
+            // Append to group
+            barGroup.appendChild(title);
+            barGroup.appendChild(standardBarContainer);
+            barGroup.appendChild(optimizedBarContainer);
+            barGroup.appendChild(improvement);
+            
+            // Append to container
+            comparisonBars.appendChild(barGroup);
+            
+            // Animate bars after a small delay
+            setTimeout(() => {
+              // Scale heights based on the largest value
+              const maxTime = Math.max(op.standardTime, op.optimizedTime);
+              standardBar.style.height = `${(op.standardTime / maxTime) * 100}%`;
+              optimizedBar.style.height = `${(op.optimizedTime / maxTime) * 100}%`;
+            }, 500);
+          });
+          
+          // Update status
+          statusElement.innerHTML = `
+            <h2>Benchmark Complete</h2>
+            <p>WebGPU optimizations provide significant performance improvements, especially for large matrices and neural network operations.</p>
+          `;
+        } else {
+          // Show error
+          statusElement.className = 'not-supported';
+          statusElement.innerHTML = `
+            <h2>Benchmark Failed</h2>
+            <p>An error occurred while running the benchmark:</p>
+            <p>${result.error}</p>
+          `;
+          
+          // Hide progress
+          document.getElementById('operation-progress').style.display = 'none';
+        }
+      } catch (error) {
+        // Show error
+        statusElement.className = 'not-supported';
+        statusElement.innerHTML = `
+          <h2>Error Running Demo</h2>
+          <p>An error occurred while running the WebGPU optimization benchmark:</p>
+          <p>${error.message}</p>
+        `;
+        
+        // Hide progress
+        document.getElementById('operation-progress').style.display = 'none';
+      }
+    }
+    
+    // Initialize the demo when the page loads
+    window.addEventListener('DOMContentLoaded', initDemo);
+  </script>
+</body>
+</html>

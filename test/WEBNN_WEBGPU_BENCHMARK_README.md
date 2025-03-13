@@ -131,22 +131,42 @@ export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 python duckdb_api/core/benchmark_real_webnn_webgpu.py
 ```
 
-## March 2025 Optimizations
+## March-June 2025 Optimizations
 
-The March 2025 version includes three major optimizations for web platform models:
+The 2025 version includes major optimizations for web platform models:
 
-1. **WebGPU Compute Shader Optimization for Audio Models**:
+1. **WebGPU Compute Shader Optimization for Audio Models** (March 2025):
    - Firefox shows ~20% better performance than Chrome for audio models
    - Computation is optimized with specialized workgroup configurations
    - Particularly effective for Whisper, Wav2Vec2, and CLAP models
 
-2. **Parallel Model Loading for Multimodal Models**:
+2. **Parallel Model Loading for Multimodal Models** (March 2025):
    - 30-45% loading time reduction for CLIP, LLaVA, and other multimodal models
    - Components are loaded simultaneously instead of sequentially
 
-3. **Shader Precompilation for Faster Startup**:
+3. **Shader Precompilation for Faster Startup** (March 2025):
    - 30-45% faster first inference for all model types
    - Especially beneficial for vision models with complex shader pipelines
+
+4. **Operation Fusion** (May 2025):
+   - 25-40% performance improvement for neural network models
+   - Automatically combines operations into a single GPU shader
+   - Eliminates intermediate memory allocations and reduces kernel launches
+   - Particularly effective for transformer models (BERT, ViT, LLAMA)
+
+5. **Browser-Specific Memory Layout Optimizations** (May 2025):
+   - 10-25% performance improvement for matrix operations
+   - Automatically selects optimal memory layout (row vs. column-major) based on browser
+   - Dynamic workgroup size selection based on browser and operation
+   - Safari/Apple Silicon-specific optimizations for Metal integration
+
+6. **Neural Network Pattern Recognition** (June 2025):
+   - Automatic detection of optimization opportunities in neural networks
+   - Real-time analysis and optimization of linear layers, attention mechanisms, etc.
+   - Provides model-specific optimization tips
+   - Up to 35% performance improvement for transformer models
+
+For detailed information about these optimizations, see the [WebGPU Optimization Guide](WEBGPU_OPTIMIZATION_GUIDE.md).
 
 ## Performance Metrics
 

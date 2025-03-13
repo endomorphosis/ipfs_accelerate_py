@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGPU Optimizer Performance Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+  <style>
+    body {
+      padding-top: 20px;
+      padding-bottom: 40px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+      margin-bottom: 30px;
+    }
+    .table-container {
+      margin-top: 20px;
+      margin-bottom: 30px;
+    }
+    .optimization-badge {
+      display: inline-block;
+      padding: 0.25em 0.4em;
+      font-size: 75%;
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      white-space: nowrap;
+      vertical-align: baseline;
+      border-radius: 0.25rem;
+      margin-right: 5px;
+      margin-bottom: 5px;
+    }
+    .optimization-fusion {
+      background-color: #4CAF50;
+      color: white;
+    }
+    .optimization-memory-layout {
+      background-color: #2196F3;
+      color: white;
+    }
+    .optimization-browser-specific {
+      background-color: #FFC107;
+      color: black;
+    }
+    .optimization-neural-pattern {
+      background-color: #9C27B0;
+      color: white;
+    }
+    .optimization-all {
+      background-color: #3F51B5;
+      color: white;
+    }
+    .optimization-none {
+      background-color: #F44336;
+      color: white;
+    }
+    .browser-icon {
+      max-width: 20px;
+      margin-right: 5px;
+    }
+    .hardware-info {
+      font-size: 0.85rem;
+      color: #666;
+    }
+    .nav-tabs {
+      margin-bottom: 20px;
+    }
+    .result-highlight {
+      font-weight: bold;
+      animation: highlight-fade 2s;
+    }
+    @keyframes highlight-fade {
+      from { background-color: #fff3cd; }
+      to { background-color: transparent; }
+    }
+    .speedup-high {
+      color: #28a745;
+      font-weight: bold;
+    }
+    .speedup-medium {
+      color: #007bff;
+    }
+    .speedup-low {
+      color: #6c757d;
+    }
+    .filter-container {
+      margin-bottom: 15px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+    }
+    .dashboard-header {
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #dee2e6;
+    }
+    #lastUpdated {
+      font-style: italic;
+      color: #6c757d;
+      font-size: 0.9rem;
+    }
+    .comparison-card {
+      margin-bottom: 20px;
+    }
+    .comparison-card .card-header {
+      font-weight: bold;
+    }
+    .progress-bar-green {
+      background-color: #28a745;
+    }
+    .progress-bar-blue {
+      background-color: #007bff;
+    }
+    .progress-bar-purple {
+      background-color: #6f42c1;
+    }
+    .progress-bar-orange {
+      background-color: #fd7e14;
+    }
+    .table-responsive {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="dashboard-header">
+      <div class="row align-items-center">
+        <div class="col-md-6">
+          <h1>WebGPU Optimizer Performance Dashboard</h1>
+          <p class="lead">Performance metrics for WebGPU optimization techniques</p>
+        </div>
+        <div class="col-md-6 text-end">
+          <p id="lastUpdated">Last updated: {{LAST_UPDATED}}</p>
+          <div class="btn-group">
+            <button class="btn btn-outline-primary btn-sm" id="refreshButton">Refresh Data</button>
+            <a href="run_benchmarks.html" class="btn btn-primary btn-sm">Run New Benchmark</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary" type="button" role="tab" aria-controls="summary" aria-selected="true">Summary</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="operation-fusion-tab" data-bs-toggle="tab" data-bs-target="#operation-fusion" type="button" role="tab" aria-controls="operation-fusion" aria-selected="false">Operation Fusion</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="memory-layout-tab" data-bs-toggle="tab" data-bs-target="#memory-layout" type="button" role="tab" aria-controls="memory-layout" aria-selected="false">Memory Layout</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="browser-specific-tab" data-bs-toggle="tab" data-bs-target="#browser-specific" type="button" role="tab" aria-controls="browser-specific" aria-selected="false">Browser-Specific</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="neural-pattern-tab" data-bs-toggle="tab" data-bs-target="#neural-pattern" type="button" role="tab" aria-controls="neural-pattern" aria-selected="false">Neural Network Patterns</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="browser-comparison-tab" data-bs-toggle="tab" data-bs-target="#browser-comparison" type="button" role="tab" aria-controls="browser-comparison" aria-selected="false">Browser Comparison</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab" aria-controls="history" aria-selected="false">Historical Trends</button>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="dashboardTabContent">
+      <!-- Summary Tab -->
+      <div class="tab-pane fade show active" id="summary" role="tabpanel" aria-labelledby="summary-tab">
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Overall Speedup by Optimization Type</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="optimizationSummaryChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Memory Savings by Optimization Type</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="memorySavingsChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Top Performance Improvements</h5>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-striped table-hover">
+                    <thead>
+                      <tr>
+                        <th>Operation</th>
+                        <th>Optimization</th>
+                        <th>Shape/Config</th>
+                        <th>Browser</th>
+                        <th>Std Time (ms)</th>
+                        <th>Opt Time (ms)</th>
+                        <th>Speedup</th>
+                        <th>Memory Savings</th>
+                      </tr>
+                    </thead>
+                    <tbody id="topImprovementsTable">
+                      <!-- Will be filled with JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Browser Performance Comparison</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="browserComparisonChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Operation Type Performance</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="operationTypeChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Operation Fusion Tab -->
+      <div class="tab-pane fade" id="operation-fusion" role="tabpanel" aria-labelledby="operation-fusion-tab">
+        <div class="filter-container">
+          <div class="row">
+            <div class="col-md-4">
+              <label for="fusionPatternFilter" class="form-label">Fusion Pattern:</label>
+              <select class="form-select" id="fusionPatternFilter">
+                <option value="all">All Patterns</option>
+                <option value="LinearActivation">Linear + Activation</option>
+                <option value="ElementWiseActivation">Element-wise + Activation</option>
+                <option value="ElementWiseChain">Element-wise Chain</option>
+                <option value="NormActivation">Normalization + Activation</option>
+                <option value="AttentionPattern">Attention Pattern</option>
+                <option value="FFNPattern">Feed-forward Network</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="fusionOperationFilter" class="form-label">Operation:</label>
+              <select class="form-select" id="fusionOperationFilter">
+                <option value="all">All Operations</option>
+                <!-- Will be filled with JavaScript -->
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="fusionBrowserFilter" class="form-label">Browser:</label>
+              <select class="form-select" id="fusionBrowserFilter">
+                <option value="all">All Browsers</option>
+                <option value="chrome">Chrome</option>
+                <option value="firefox">Firefox</option>
+                <option value="edge">Edge</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Operation Fusion Speedup</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="fusionSpeedupChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Fusion Pattern Comparison</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="fusionPatternComparisonChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Memory Reduction by Fusion Pattern</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="fusionMemoryReductionChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Operation Fusion Detailed Results</h5>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-striped table-hover">
+                    <thead>
+                      <tr>
+                        <th>Operation</th>
+                        <th>Fusion Pattern</th>
+                        <th>Shape/Config</th>
+                        <th>Browser</th>
+                        <th>Unfused Time (ms)</th>
+                        <th>Fused Time (ms)</th>
+                        <th>Speedup</th>
+                        <th>Memory Savings</th>
+                      </tr>
+                    </thead>
+                    <tbody id="fusionResultsTable">
+                      <!-- Will be filled with JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Memory Layout Tab -->
+      <div class="tab-pane fade" id="memory-layout" role="tabpanel" aria-labelledby="memory-layout-tab">
+        <div class="filter-container">
+          <div class="row">
+            <div class="col-md-4">
+              <label for="memoryLayoutOperationFilter" class="form-label">Operation:</label>
+              <select class="form-select" id="memoryLayoutOperationFilter">
+                <option value="all">All Operations</option>
+                <option value="MatMul">Matrix Multiplication</option>
+                <option value="Transpose">Transpose</option>
+                <option value="Conv2D">Convolution 2D</option>
+                <option value="BatchMatMul">Batch Matrix Multiplication</option>
+                <option value="ElementWise">Element-wise Operations</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="memoryLayoutShapeFilter" class="form-label">Shape Type:</label>
+              <select class="form-select" id="memoryLayoutShapeFilter">
+                <option value="all">All Shapes</option>
+                <option value="square">Square Matrices</option>
+                <option value="tall">Tall Matrices</option>
+                <option value="wide">Wide Matrices</option>
+                <option value="3d">3D Tensors</option>
+                <option value="4d">4D Tensors</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="memoryLayoutBrowserFilter" class="form-label">Browser:</label>
+              <select class="form-select" id="memoryLayoutBrowserFilter">
+                <option value="all">All Browsers</option>
+                <option value="chrome">Chrome</option>
+                <option value="firefox">Firefox</option>
+                <option value="edge">Edge</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Memory Layout Performance Comparison</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="memoryLayoutComparisonChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Optimal Layout by Operation</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="optimalLayoutChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Layout Impact by Matrix Shape</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="layoutShapeImpactChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Memory Layout Optimization Detailed Results</h5>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-striped table-hover">
+                    <thead>
+                      <tr>
+                        <th>Operation</th>
+                        <th>Shape</th>
+                        <th>Browser</th>
+                        <th>Row-Major Time (ms)</th>
+                        <th>Column-Major Time (ms)</th>
+                        <th>Optimal Time (ms)</th>
+                        <th>Optimal Layout</th>
+                        <th>Speedup vs. Worst</th>
+                      </tr>
+                    </thead>
+                    <tbody id="memoryLayoutResultsTable">
+                      <!-- Will be filled with JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Browser-Specific Tab -->
+      <div class="tab-pane fade" id="browser-specific" role="tabpanel" aria-labelledby="browser-specific-tab">
+        <div class="filter-container">
+          <div class="row">
+            <div class="col-md-4">
+              <label for="browserSpecificOperationFilter" class="form-label">Operation:</label>
+              <select class="form-select" id="browserSpecificOperationFilter">
+                <option value="all">All Operations</option>
+                <option value="MatMul">Matrix Multiplication</option>
+                <option value="Conv2D">Convolution</option>
+                <option value="Reduction">Reduction Operations</option>
+                <option value="ElementWise">Element-wise Operations</option>
+                <option value="BatchNorm">Batch Normalization</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="browserFilter" class="form-label">Browser:</label>
+              <select class="form-select" id="browserFilter">
+                <option value="all">Compare All</option>
+                <option value="chrome">Chrome</option>
+                <option value="firefox">Firefox</option>
+                <option value="edge">Edge</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="shapeComplexityFilter" class="form-label">Shape Complexity:</label>
+              <select class="form-select" id="shapeComplexityFilter">
+                <option value="all">All Shapes</option>
+                <option value="small">Small (≤ 128)</option>
+                <option value="medium">Medium (129-512)</option>
+                <option value="large">Large (> 512)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Browser-Specific Optimization Impact</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="browserSpecificImpactChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Optimization Type by Browser</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="optimizationByBrowserChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Operation Performance by Browser</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="operationByBrowserChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Browser-Specific Optimization Detailed Results</h5>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-striped table-hover">
+                    <thead>
+                      <tr>
+                        <th>Operation</th>
+                        <th>Shape</th>
+                        <th>Browser</th>
+                        <th>Generic Time (ms)</th>
+                        <th>Browser-Optimized Time (ms)</th>
+                        <th>Speedup</th>
+                        <th>Applied Optimizations</th>
+                      </tr>
+                    </thead>
+                    <tbody id="browserSpecificResultsTable">
+                      <!-- Will be filled with JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Neural Network Patterns Tab -->
+      <div class="tab-pane fade" id="neural-pattern" role="tabpanel" aria-labelledby="neural-pattern-tab">
+        <div class="filter-container">
+          <div class="row">
+            <div class="col-md-4">
+              <label for="neuralPatternFilter" class="form-label">Neural Network Pattern:</label>
+              <select class="form-select" id="neuralPatternFilter">
+                <option value="all">All Patterns</option>
+                <option value="EncoderLayerPattern">Transformer Encoder</option>
+                <option value="DecoderLayerPattern">Transformer Decoder</option>
+                <option value="AttentionPattern">Multi-Head Attention</option>
+                <option value="FFNPattern">Feed-Forward Network</option>
+                <option value="ResidualPattern">Residual Connection</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="neuralNetworkSizeFilter" class="form-label">Network Size:</label>
+              <select class="form-select" id="neuralNetworkSizeFilter">
+                <option value="all">All Sizes</option>
+                <option value="small">Small (Hidden < 256)</option>
+                <option value="medium">Medium (Hidden 256-768)</option>
+                <option value="large">Large (Hidden > 768)</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="neuralBrowserFilter" class="form-label">Browser:</label>
+              <select class="form-select" id="neuralBrowserFilter">
+                <option value="all">All Browsers</option>
+                <option value="chrome">Chrome</option>
+                <option value="firefox">Firefox</option>
+                <option value="edge">Edge</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Neural Network Pattern Recognition Performance</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="neuralPatternPerformanceChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Pattern Detection Rate by Network Type</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="patternDetectionRateChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Memory Savings by Neural Network Pattern</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="neuralMemorySavingsChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Neural Network Pattern Recognition Detailed Results</h5>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-striped table-hover">
+                    <thead>
+                      <tr>
+                        <th>Network Type</th>
+                        <th>Pattern</th>
+                        <th>Configuration</th>
+                        <th>Browser</th>
+                        <th>Standard Time (ms)</th>
+                        <th>Optimized Time (ms)</th>
+                        <th>Speedup</th>
+                        <th>Memory Savings</th>
+                        <th>Detected Patterns</th>
+                      </tr>
+                    </thead>
+                    <tbody id="neuralPatternResultsTable">
+                      <!-- Will be filled with JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Browser Comparison Tab -->
+      <div class="tab-pane fade" id="browser-comparison" role="tabpanel" aria-labelledby="browser-comparison-tab">
+        <div class="filter-container">
+          <div class="row">
+            <div class="col-md-4">
+              <label for="comparisonOperationFilter" class="form-label">Operation Type:</label>
+              <select class="form-select" id="comparisonOperationFilter">
+                <option value="all">All Operations</option>
+                <option value="MatMul">Matrix Operations</option>
+                <option value="Conv">Convolution Operations</option>
+                <option value="ElementWise">Element-wise Operations</option>
+                <option value="Attention">Attention Mechanisms</option>
+                <option value="FFN">Feed-forward Networks</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="optimizationTypeFilter" class="form-label">Optimization Type:</label>
+              <select class="form-select" id="optimizationTypeFilter">
+                <option value="all">All Optimizations</option>
+                <option value="fusion">Operation Fusion</option>
+                <option value="memory-layout">Memory Layout</option>
+                <option value="browser-specific">Browser-Specific</option>
+                <option value="neural-pattern">Neural Network Patterns</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="browserSetFilter" class="form-label">Browser Set:</label>
+              <select class="form-select" id="browserSetFilter">
+                <option value="all">All Browsers</option>
+                <option value="chrome-firefox">Chrome vs Firefox</option>
+                <option value="chrome-edge">Chrome vs Edge</option>
+                <option value="firefox-edge">Firefox vs Edge</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Overall Browser Performance Comparison</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="overallBrowserComparisonChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Browser Performance by Matrix Size</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="browserMatrixSizeChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Browser Performance by Optimization Type</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="browserOptimizationTypeChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Browser Optimization Effectiveness</h5>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="showRelativeValues" checked>
+                  <label class="form-check-label" for="showRelativeValues">Show Relative Values</label>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-striped table-hover">
+                    <thead>
+                      <tr>
+                        <th>Operation</th>
+                        <th>Optimization</th>
+                        <th>Chrome Speedup</th>
+                        <th>Firefox Speedup</th>
+                        <th>Edge Speedup</th>
+                        <th>Best Browser</th>
+                      </tr>
+                    </thead>
+                    <tbody id="browserEffectivenessTable">
+                      <!-- Will be filled with JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Historical Trends Tab -->
+      <div class="tab-pane fade" id="history" role="tabpanel" aria-labelledby="history-tab">
+        <div class="filter-container">
+          <div class="row">
+            <div class="col-md-4">
+              <label for="historyMetricFilter" class="form-label">Metric:</label>
+              <select class="form-select" id="historyMetricFilter">
+                <option value="speedup">Speedup Factor</option>
+                <option value="memory-savings">Memory Savings</option>
+                <option value="absolute-time">Absolute Time (ms)</option>
+                <option value="pattern-detection">Pattern Detection Rate</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="historyOptimizationFilter" class="form-label">Optimization Type:</label>
+              <select class="form-select" id="historyOptimizationFilter">
+                <option value="all">All Optimizations</option>
+                <option value="operation-fusion">Operation Fusion</option>
+                <option value="memory-layout">Memory Layout</option>
+                <option value="browser-specific">Browser-Specific</option>
+                <option value="neural-pattern">Neural Network Patterns</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="historyTimeRangeFilter" class="form-label">Time Range:</label>
+              <select class="form-select" id="historyTimeRangeFilter">
+                <option value="1w">Last Week</option>
+                <option value="1m">Last Month</option>
+                <option value="3m" selected>Last 3 Months</option>
+                <option value="6m">Last 6 Months</option>
+                <option value="1y">Last Year</option>
+                <option value="all">All Time</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Historical Performance Trends</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="historicalTrendsChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Performance by Version</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="versionPerformanceChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Regression Analysis</h5>
+              </div>
+              <div class="card-body">
+                <div class="chart-container">
+                  <canvas id="regressionAnalysisChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-12">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="card-title mb-0">Performance Change Log</h5>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-striped table-hover">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Version</th>
+                        <th>Metric</th>
+                        <th>Previous Value</th>
+                        <th>New Value</th>
+                        <th>Change</th>
+                        <th>Commit/PR</th>
+                      </tr>
+                    </thead>
+                    <tbody id="performanceChangeLogTable">
+                      <!-- Will be filled with JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // This will be replaced with actual data when generating the dashboard
+    const dashboardData = {{DASHBOARD_DATA}};
+    
+    // Dashboard initialization will be added here
+    document.addEventListener('DOMContentLoaded', function() {
+      initDashboard(dashboardData);
+    });
+
+    function initDashboard(data) {
+      // Initialize charts and tables based on data
+      // This function will be implemented when generating the dashboard
+    }
+  </script>
+</body>
+</html>

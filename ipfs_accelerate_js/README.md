@@ -11,6 +11,7 @@ A hardware-accelerated AI model framework for web browsers using WebGPU, WebNN, 
 - ⚛️ **React Integration**: Easy integration with React applications using custom hooks
 - 📱 **Mobile Support**: Optimized for mobile devices with power-efficient execution
 - 🔄 **Resource Pooling**: Efficient resource management for running multiple models
+- ⚡ **Advanced WebGPU Optimization**: Operation fusion, memory layout optimization, and neural network pattern recognition
 
 ## Installation
 
@@ -107,6 +108,7 @@ For detailed documentation, see:
 - [TypeScript Implementation](docs/TYPESCRIPT_IMPLEMENTATION_SUMMARY.md)
 - [Developer Guide](docs/DEVELOPER_GUIDE.md)
 - [Model Support](docs/MODEL_SUPPORT.md)
+- [WebGPU Optimization Guide](test/performance/webgpu_optimizer/OPTIMIZER_TESTING_GUIDE.md)
 
 ## Browser Support
 
@@ -115,6 +117,49 @@ For detailed documentation, see:
 - Firefox 114+ (WebGPU support through flags)
 - Safari 17+ (WebGPU support)
 - All modern browsers (Fallback to WASM/CPU)
+
+## Testing and Benchmarking
+
+The project includes comprehensive testing and benchmarking tools:
+
+```bash
+# Run all tests
+npm test
+
+# Run WebGPU optimizer correctness tests
+npm run test:webgpu:correctness
+
+# Run WebGPU optimizer benchmarks (simulated environment)
+npm run benchmark:webgpu
+
+# Run specific benchmarks
+npm run benchmark:webgpu:matmul
+npm run benchmark:webgpu:memory-layout
+npm run benchmark:webgpu:operation-fusion
+npm run benchmark:webgpu:neural-network
+
+# Run comprehensive benchmarks (all types)
+npm run benchmark:webgpu:comprehensive
+
+# Run benchmarks in real browsers (with Selenium)
+npm run benchmark:webgpu:browser
+
+# Generate HTML dashboard with visualizations
+npm run benchmark:webgpu:dashboard
+
+# Use the shell script for more options
+./test/run_webgpu_benchmarks.sh --help
+```
+
+The benchmark framework includes an interactive dashboard that visualizes results, allowing you to:
+
+- Compare performance of different optimization techniques
+- Analyze memory savings from optimizations
+- View browser-specific performance differences
+- Track performance trends over time
+- Identify top-performing optimization patterns
+
+For more details, see the [WebGPU Optimization Testing Guide](test/performance/webgpu_optimizer/OPTIMIZER_TESTING_GUIDE.md).
 
 ## License
 
