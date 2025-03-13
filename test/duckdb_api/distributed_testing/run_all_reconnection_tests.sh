@@ -53,14 +53,11 @@ run_test() {
         echo "✅ $test_name - PASSED"
         echo "SUCCESS" >> "$output_file"
     else
-        # Check if test is among known issues where failures are expected
-        if [[ "$test_name" == "Unit Tests" || "$test_name" == "Integration Tests" ]]; then
-            echo "⚠️ $test_name - FAILED (expected failure due to known issues)"
-            echo "EXPECTED_FAILURE" >> "$output_file"
-        else
-            echo "❌ $test_name - FAILED"
-            echo "FAILURE" >> "$output_file"
-        fi
+        # Note: Task execution recursion issue has been fixed, so unit tests and integration
+        # tests should now pass. Only the Message Type Handling and Worker URL Format 
+        # issues remain, which don't affect the test pass/fail status
+        echo "❌ $test_name - FAILED"
+        echo "FAILURE" >> "$output_file"
         # Don't exit on error, continue with other tests
     fi
     echo ""

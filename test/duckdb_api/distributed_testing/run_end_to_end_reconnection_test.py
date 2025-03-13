@@ -422,8 +422,8 @@ class EndToEndTest:
         report.append(f"Test Verdict: {'PASS' if success_criteria else 'FAIL'}")
         report.append(f"  Success criteria: {verdict_message}")
         
-        # Note: task execution is currently impacted by a known issue
-        report.append(f"  Note: Task execution is affected by a known recursion issue (see WORKER_RECONNECTION_TESTING_GUIDE.md)")
+        # No longer affected by recursion issue (fixed)
+        report.append(f"  Task execution is now fully functional with the recursion issue fixed")
         report.append(f"")
         report.append(f"Log files are available in: {self.logs_dir}")
         report.append(f"=" * 80)

@@ -524,6 +524,17 @@ class WorkerReconnectionManager:
                 self._handle_resume_task(data)
             elif msg_type == "error":
                 self._handle_error_message(data)
+            elif msg_type == "welcome":
+                self._handle_welcome(data)
+            elif msg_type == "registration_ack":
+                self._handle_registration_ack(data)
+            # Add handlers for other message types below:
+            elif msg_type == "task_result_ack":
+                self._handle_task_result_ack(data)
+            elif msg_type == "task_state_ack":
+                self._handle_task_state_ack(data)
+            elif msg_type == "checkpoint_ack":
+                self._handle_checkpoint_ack(data)
             else:
                 logger.warning(f"Received unknown message type: {msg_type}")
             
@@ -1125,6 +1136,85 @@ class WorkerReconnectionManager:
         """
         error_message = data.get("message", "Unknown error")
         logger.error(f"Received error from coordinator: {error_message}")
+        
+    def _handle_welcome(self, data: Dict[str, Any]):
+        """
+        Handle a welcome message from coordinator.
+        
+        Args:
+            data: Welcome message data
+        """
+        worker_id = data.get("worker_id", "unknown")
+        timestamp = data.get("timestamp", datetime.now().isoformat())
+        logger.info(f"Received welcome message from coordinator for worker {worker_id}")
+        
+        # We don't need to do anything specific here, but we could
+        # update internal state if needed
+        pass
+    
+    def _handle_registration_ack(self, data: Dict[str, Any]):
+        """
+        Handle a registration acknowledgement message from coordinator.
+        
+        Args:
+            data: Registration acknowledgement message data
+        """
+        worker_id = data.get("worker_id", "unknown")
+        timestamp = data.get("timestamp", datetime.now().isoformat())
+        logger.info(f"Registration confirmed by coordinator for worker {worker_id}")
+        
+        # Registration is successful, we could update internal state if needed
+        pass
+    
+    def _handle_task_result_ack(self, data: Dict[str, Any]):
+        """
+        Handle a task result acknowledgement message from coordinator.
+        
+        Args:
+            data: Task result acknowledgement message data
+        """
+        task_id = data.get("task_id", "unknown")
+        worker_id = data.get("worker_id", "unknown")
+        timestamp = data.get("timestamp", datetime.now().isoformat())
+        logger.debug(f"Task result acknowledged by coordinator for task {task_id}")
+        
+        # We could clean up any stored task results here if needed
+        with self.task_lock:
+            if task_id in self.task_results:
+                # We know the coordinator received the result, so we can safely remove it
+                # from our local storage to save memory
+                del self.task_results[task_id]
+    
+    def _handle_task_state_ack(self, data: Dict[str, Any]):
+        """
+        Handle a task state acknowledgement message from coordinator.
+        
+        Args:
+            data: Task state acknowledgement message data
+        """
+        task_id = data.get("task_id", "unknown")
+        worker_id = data.get("worker_id", "unknown")
+        state_timestamp = data.get("state_timestamp", "unknown")
+        logger.debug(f"Task state update acknowledged by coordinator for task {task_id}")
+        
+        # No specific action needed here, but we could update internal state if needed
+        pass
+    
+    def _handle_checkpoint_ack(self, data: Dict[str, Any]):
+        """
+        Handle a checkpoint acknowledgement message from coordinator.
+        
+        Args:
+            data: Checkpoint acknowledgement message data
+        """
+        checkpoint_id = data.get("checkpoint_id", "unknown")
+        task_id = data.get("task_id", "unknown")
+        worker_id = data.get("worker_id", "unknown")
+        logger.debug(f"Checkpoint {checkpoint_id} acknowledged by coordinator for task {task_id}")
+        
+        # We could clean up older checkpoints here if needed
+        # For now, we'll keep them all for resilience
+        pass
     
     def _resend_task_results(self, task_ids: List[str]):
         """
@@ -1237,7 +1327,12 @@ class WorkerReconnectionManager:
         # Add worker endpoint
         if not url.endswith("/"):
             url += "/"
-        url += f"api/v1/worker/{self.worker_id}/ws"
+            
+        # Check if the URL already contains the worker endpoint pattern
+        # This prevents duplicated path segments
+        worker_path = f"api/v1/worker/{self.worker_id}/ws"
+        if f"api/v1/worker/" not in url:
+            url += worker_path
         
         return url
     

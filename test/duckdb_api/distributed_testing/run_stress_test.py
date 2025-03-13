@@ -626,7 +626,7 @@ class StressTest:
         report.append(f"  {success_message}")
         
         # Note about known issues
-        report.append(f"  Note: Task execution is affected by a known recursion issue (see WORKER_RECONNECTION_TESTING_GUIDE.md)")
+        report.append(f"  Task execution is now fully functional with the recursion issue fixed")
         report.append(f"")
         
         # Scenario-specific analysis

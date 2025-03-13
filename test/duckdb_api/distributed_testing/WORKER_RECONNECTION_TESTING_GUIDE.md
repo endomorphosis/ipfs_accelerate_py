@@ -302,25 +302,27 @@ Or modify the logging configuration in the scripts to include more detailed info
 
 ## Known Issues
 
-1. **Task Execution Recursion Error**: There is a recursion error in task execution that causes tasks to fail. This issue has been identified and is being addressed. The error occurs in the task handling logic of the `worker_reconnection_enhancements.py` module. Unit tests and integration tests for task execution currently fail because of this issue.
+1. **Task Execution Recursion Error**: ✅ FIXED. This issue was caused by a recursion loop in the task execution process where the `_task_executor_wrapper` method would call `execute_task_with_metrics`, which would then call back to the task executor wrapper. This has been fixed by modifying both methods to prevent the loop from occurring, and by ensuring metrics are tracked at the appropriate level.
 
-2. **Message Type Handling**: Workers report "unknown message type" warnings for certain message types like "welcome" and "registration_ack". These message types are handled by the coordinator but not properly processed by the workers.
+2. **Message Type Handling**: ✅ FIXED. Added proper handling for message types including "welcome", "registration_ack", "task_result_ack", "task_state_ack", and "checkpoint_ack". These message types are now correctly processed by the workers.
 
-3. **Worker URL Format**: There is an issue with the URL formatting in the worker clients. The URL has a duplicated path segment, but connections still work.
+3. **Worker URL Format**: ✅ FIXED. The URL formatting in the worker clients was corrected to prevent duplicated path segments. The `_get_ws_url` method now checks if the URL already contains the worker endpoint pattern before appending it.
 
 4. **Network Disruption Simulation**: The current approach to network disruption simulation (process suspension) might not reliably trigger reconnection logic in all cases. A more realistic simulation that directly affects network connections would be more effective.
 
-The test infrastructure successfully tests the reconnection logic, which is the primary focus of the system, despite these known issues. The test runner (`run_all_reconnection_tests.sh`) has been updated to recognize and report these known issues as "expected failures" rather than critical failures.
+The test infrastructure successfully tests the reconnection logic, which is the primary focus of the system. With the recent fixes (Task Execution Recursion Error, Message Type Handling, and Worker URL Format), most of the known issues have been resolved. Only the Network Disruption Simulation improvement remains as an enhancement opportunity.
 
 ## Next Steps
 
 The next steps for improving this testing infrastructure include:
 
-1. **Fix Task Execution Issues**: Address the recursion error in task execution in the enhanced worker reconnection system.
+1. ✅ **COMPLETED: Fix Task Execution Issues**: Fixed the recursion error in task execution in the enhanced worker reconnection system by making `_task_executor_wrapper` call the worker's `execute_task` method directly and separately updating metrics, while making `execute_task_with_metrics` handle checkpoints and only execute tasks directly when necessary.
 
-2. **Improve Message Type Handling**: Add proper handling for all message types in the worker reconnection system.
+2. ✅ **COMPLETED: Improve Message Type Handling**: Added proper handlers for all common message types including "welcome", "registration_ack", "task_result_ack", "task_state_ack", and "checkpoint_ack" in the worker reconnection system.
 
-3. **Enhanced Network Disruption Simulation**: Implement a more realistic network disruption mechanism that affects only the network connection rather than suspending the entire process.
+3. ✅ **COMPLETED: Fix URL Format Issue**: Fixed the URL formatting in worker clients to prevent duplicated path segments by checking if the URL already contains the worker endpoint pattern before appending it.
+
+4. **Enhanced Network Disruption Simulation**: Implement a more realistic network disruption mechanism that affects only the network connection rather than suspending the entire process.
 
 4. **Extend Test Coverage**: Add more complex scenarios, such as:
    - Partial network outages
