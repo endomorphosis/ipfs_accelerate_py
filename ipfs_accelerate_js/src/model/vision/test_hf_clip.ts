@@ -1,703 +1,499 @@
-/**
- * Converted from Python: test_hf_clip.py
- * Conversion date: 2025-03-11 04:08:55
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+import {VisionModel} import { ImageProces: any;} f: any;";"
 
-#!/usr/bin/env python3
-"""
-Class-based test file for all CLIP-family models.
-This file provides a unified testing interface for:
-  - CLIPModel
-  - CLIPForImageClassification
+// WebG: any;
+/** Cla: any;
+This file provides a unified testing interface for) {
+  - CLIPMo: any;
+  - CLIPForImageClassificat: any;
 
-Includes hardware support for:
-  - CPU: Standard CPU implementation
-  - CUDA: NVIDIA GPU implementation
-  - MPS: Apple Silicon GPU implementation
-  - OpenVINO: Intel hardware acceleration
-  - ROCm: AMD GPU implementation
-  - WebNN: Web Neural Network API ()))browser)
-  - WebGPU: Web GPU API ()))browser)
-  """
+Includes hardware support for) {
+  - CPU) { Standa: any;
+  - C: any;
+  - M: an: any;
+  - OpenV: any;
+  - R: any;
+  - We: any;
+  - Web: any;
 
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  from unittest.mock import * as $1, MagicMock, Mock
-  import ${$1} from "$1"
-  import ${$1} from "$1"
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  import {* a: an: any;
+  // Configu: any;
+  logging.basicConfig())level = logging.INFO, format: any: any: any: any: any: any = '%())asctime)s - %())levelname)s - %())message)s');'
+  logger: any: any: any = loggi: any;
 
-# Configure logging
-  logging.basicConfig()))level=logging.INFO, format='%()))asctime)s - %()))levelname)s - %()))message)s')
-  logger = logging.getLogger()))__name__)
+// A: any;
+  sys.path.insert() {)0, o: an: any;
 
-# Add parent directory to path for imports
-  sys.path.insert()))0, os.path.dirname()))os.path.dirname()))os.path.abspath()))__file__))))
-
-# Third-party imports
-  import * as $1 as np
-
-# Try to import * as $1
-try ${$1} catch($2: $1) {
-  torch = MagicMock())))
-  HAS_TORCH = false
-  logger.warning()))"torch !available, using mock")
-
-}
-# Try to import * as $1
-try ${$1} catch($2: $1) {
-  transformers = MagicMock())))
-  HAS_TRANSFORMERS = false
-  logger.warning()))"transformers !available, using mock")
-
-}
-# Try to import * as $1
-try {:
-  import ${$1} from "$1"
-  import * as $1
-  import ${$1} from "$1"
-  HAS_PIL = true
-} catch($2: $1) {
-  Image = MagicMock())))
-  requests = MagicMock())))
-  BytesIO = MagicMock())))
-  HAS_PIL = false
-  logger.warning()))"PIL || requests !available, using mock")
-
-}
-# Try to import * as $1 platform support
-try {:
-  import ${$1} from "$1"
-  HAS_WEB_PLATFORM = true
-} catch($2: $1) {
-  HAS_WEB_PLATFORM = false
-  logger.warning()))"web platform support !available, using mock")
-  
-}
+// Thi: any;
+  impo: any;
+;
+// T: any;
+try ${$1} catch(error) { any)) { any {torch: any: any: any = MagicMo: any;
+  HAS_TORCH: any: any: any = fa: any;
+  logg: any;
+try ${$1} catch(error: any): any {transformers: any: any: any = MagicMo: any;
+  HAS_TRANSFORMERS: any: any: any = fa: any;
+  logg: any;
+try {) {import * a: an: any;
+  HAS_PIL: any: any: any = t: any;} catch(error: any): any {Image: any: any: any = MagicMo: any;
+  requests: any: any: any = MagicMo: any;
+  BytesIO: any: any: any = MagicMo: any;
+  HAS_PIL: any: any: any = fa: any;
+  logg: any;
+try {:;
+  HAS_WEB_PLATFORM: any: any: any = t: any;} catch(error: any): any {HAS_WEB_PLATFORM: any: any: any = fa: any;
+  logg: any;
   $1($2) {
-  return {}}}}}}}}}}}}}}}}}"vision": lambda x: {}}}}}}}}}}}}}}}}}"vision": x}}
-  }
+  return {}"vision": lambda x: {}"vision": x}"
   
-  $1($2) {
-  return `$1`
-  }
+  $1($2) {return `$1`}
 
-# Mock implementations for missing dependencies
-if ($1) {
+// Mo: any;
+if ((((((($1) {
   class $1 extends $2 {
-    @staticmethod
+    @staticmethod;
     $1($2) {
       class $1 extends $2 {
         $1($2) {
-          this.size = ()))224, 224)
+          this.size = ())224, 224) { any) { an) { an: any;
         $1($2) {
-          return self
-        $1($2) {
-          return self
-        return MockImg())))
-        }
-      
-        }
+          retur) { an: any;
+        $1($2) {return t: any;
+        return MockImg())}
   class $1 extends $2 {
-    @staticmethod
+    @staticmethod;
     $1($2) {
       class $1 extends $2 {
         $1($2) {
-          this.content = b"mock image data"
-        $1($2) {
-          pass
-        return MockResponse())))
-        }
-
-        }
-        Image.open = MockImage.open
-        requests.get = MockRequests.get
+          this.content = b: a: any;
+        $1($2) {pass;
+        return MockResponse())}
+        Image.open = MockIma: any;
+        requests.get = MockReques: any;
 
       }
-# Hardware detection
-    }
+// Hardwa: any;
+    };
 $1($2) {
-  """Check available hardware && return capabilities."""
-  capabilities = {}}}}}}}}}}}}}}}}}
-  "cpu": true,
-  "cuda": false,
-  "cuda_version": null,
-  "cuda_devices": 0,
-  "mps": false,
-  "openvino": false,
-  "rocm": false,
-  "webnn": false,
-  "webgpu": false
+  /** Che: any;
+  capabilities) { any) { any: any = {}
+  "cpu") { tr: any;"
+  "cuda") { fal: any;"
+  "cuda_version") {null,;"
+  "cuda_devices": 0: a: any;"
+  "mps": fal: any;"
+  "openvino": fal: any;"
+  "rocm": fal: any;"
+  "webnn": fal: any;"
+  "webgpu": fal: any;"
   }
-  
-}
-  # Check CUDA
-  }
-  if ($1) {
-    capabilities[],"cuda"] = torch.cuda.is_available()))),
-    if ($1) {,
-    capabilities[],"cuda_devices"] = torch.cuda.device_count()))),
-    capabilities[],"cuda_version"] = torch.version.cuda
-    ,
-  # Check MPS ()))Apple Silicon)
-  }
-  if ($1) {
-    capabilities[],"mps"] = torch.mps.is_available())))
-    ,
-  # Check OpenVINO
-  }
-  try ${$1} catch($2: $1) {
-    pass
-  
-  }
-  # Check ROCm
+  if ((((((($1) {
+    capabilities[],"cuda"] = torch) { an) { an: any;"
+    if ((($1) {,;
+    capabilities[],"cuda_devices"] = torch) { an) { an: any;"
+    capabilities[],"cuda_version"] = torc) { an: any;"
+    ,;
+  // Check MPS ())Apple Silicon)}
+  if (((($1) {capabilities[],"mps"] = torch) { an) { an: any;"
+    ,;
+  // Check OpenVINO}
+  try ${$1} catch(error) { any)) { any {pass}
+  // Chec) { an: any;
         }
-    if ($1) {,
-      }
-    capabilities[],"rocm"] = true
+    if (((((($1) {}
+    capabilities[],"rocm"] = tru) { an) { an: any;"
     }
-    ,
-  # Web capabilities are mocked in test environments
+    ,;
+  // We) { an: any;
   }
-    capabilities[],"webnn"] = HAS_WEB_PLATFORM,
-    capabilities[],"webgpu"] = HAS_WEB_PLATFORM
-    ,
-    return capabilities
+    capabilities[],"webnn"] = HAS_WEB_PLATFO: any;"
+    capabilities[],"webgpu"] = HAS_WEB_PLATF: any;"
+    ,;
+    retu: any;
 
 }
-# Get hardware capabilities
-    HW_CAPABILITIES = check_hardware())))
-
-# Models registry { - Maps model IDs to their specific configurations
-    CLIP_MODELS_REGISTRY = {}}}}}}}}}}}}}}}}}
-    "openai/clip-vit-base-patch32": {}}}}}}}}}}}}}}}}}
-    "description": "CLIP ViT-Base-Patch32 model",
-    "class": "CLIPModel",
-    "vision_model": "ViT"
-    },
-    "openai/clip-vit-base-patch16": {}}}}}}}}}}}}}}}}}
-    "description": "CLIP ViT-Base-Patch16 model",
-    "class": "CLIPModel",
-    "vision_model": "ViT"
-    },
-    "openai/clip-vit-large-patch14": {}}}}}}}}}}}}}}}}}
-    "description": "CLIP ViT-Large-Patch14 model",
-    "class": "CLIPModel",
-    "vision_model": "ViT"
-    }
-    }
-
-class $1 extends $2 {
-  """Mock handler for platforms that don't have real implementations."""
-  
-}
-  $1($2) {
-    this.model_path = model_path
-    this.platform = platform
-    logger.info()))`$1`)
-  
-  }
-  $1($2) {
-    """Return mock output."""
-    logger.info()))`$1`)
-    return {}}}}}}}}}}}}}}}}}
-    "mock_output": `$1`,
-    "implementation_type": "MOCK",
-    "logits": np.random.rand()))1, 2)
+// G: any;
+    HW_CAPABILITIES) { any) { any: any = check_hardwa: any;
+;
+// Models registry { - Ma: any;
+    CLIP_MODELS_REGISTRY: any: any = {}
+    "openai/clip-vit-base-patch32") { }"
+    "description": "CLIP V: any;"
+    "class": "CLIPModel",;"
+    "vision_model": "ViT";"
+    },;
+    "openai/clip-vit-base-patch16": {}"
+    "description": "CLIP V: any;"
+    "class": "CLIPModel",;"
+    "vision_model": "ViT";"
+    },;
+    "openai/clip-vit-large-patch14": {}"
+    "description": "CLIP V: any;"
+    "class": "CLIPModel",;"
+    "vision_model": "ViT";"
     }
 
-  }
-class $1 extends $2 {
-  """Base class for CLIP model testing."""
-  
-}
+class $1 extends $2 {/** Mock handler for ((((((platforms that don't have real implementations. */}'
+  $1($2) {this.model_path = model_pat) { an) { an: any;
+    this.platform = platfo) { an: any;
+    logg: any;
   $1($2) {
-    """Initialize the CLIP test class."""
-    this.model_id = model_id
-    this.resources = resources || {}}}}}}}}}}}}}}}}}}
-    this.metadata = metadata || {}}}}}}}}}}}}}}}}}}
-    
-  }
-    # Set model path || use default
-    this.model_path = model_path || model_id
-    
-    # Get model config from registry {
-    this.model_config = CLIP_MODELS_REGISTRY.get()))model_id, {}}}}}}}}}}}}}}}}}
-    }
-    "description": "Unknown CLIP model",
-    "class": "CLIPModel",
-    "vision_model": "ViT"
-    })
-    
-    # Hardware settings
-    this.device = "cpu"  # Default device
-    this.platform = "CPU"  # Default platform
-    this.device_name = "cpu"  # Hardware device name
-    
-    # Track examples && status
-    this.examples = [],],
-    this.status_messages = {}}}}}}}}}}}}}}}}}}
-    
-    # Test input data
-    this.test_image_url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    this.candidate_labels = [],
-    "a photo of a cat",
-    "a photo of a dog",
-    ]
-    
-    # Create a dummy image for testing
-    this.test_image = this._create_dummy_image())))
-  
+    /** Retu: any;
+    logg: any;
+    return {}
+    "mock_output") { `$1`,;"
+    "implementation_type") {"MOCK",;"
+    "logits") { np.random.rand())1, 2: any)}"
+class $1 extends $2 {/** Base class for ((((((CLIP model testing. */}
   $1($2) {
-    """Create a dummy image for testing."""
-    try {:
-      # Check if ($1) {
-      if ($1) ${$1} catch($2: $1) {
-      logger.error()))`$1`)
+    /** Initialize) { an) { an: any;
+    this.model_id = model_) { an: any;
+    this.resources = resources || {}
+    this.metadata = metadata || {}
+    // S: any;
+    this.model_path = model_pa: any;
+    ;
+    // Get model config from registry {
+    this.model_config = CLIP_MODELS_REGISTRY.get())model_id, {}
+    "description") { "Unknown CL: any;"
+    "class") {"CLIPModel",;"
+    "vision_model") { "ViT"});"
+    
+    // Hardwa: any;
+    this.device = "cpu"  // Defau: any;"
+    this.platform = "CPU"  // Defau: any;"
+    this.device_name = "cpu"  // Hardwa: any;"
+    
+    // Tra: any;
+    this.examples = []],;
+    this.status_messages = {}
+    
+    // Te: any;
+    this.test_image_url = "http://images.cocodataset.org/val2017/000000039769.jpg";"
+    this.candidate_labels = [],;
+    "a pho: any;"
+    "a pho: any;"
+    ];
+    
+    // Crea: any;
+    this.test_image = this._create_dummy_image() {);
+  ;
+  $1($2) {
+    /** Crea: any;
+    try {) {
+      // Check if ((((((($1) {
+      if ($1) { ${$1} catch(error) { any)) { any {logger.error())`$1`)}
+    return) { an) { an: any;
       }
-    return null
-      }
-  
-  }
+  $1($2) {/** Ge) { an: any;
+    return this.model_path}
+  $1($2) {/** Initiali: any;
+    this.platform = "CPU";"
+    this.device = "cpu";"
+    this.device_name = "cpu";"
+    retu: any;
   $1($2) {
-    """Get model path || name."""
-    return this.model_path
-  
-  }
+    /** Initiali: any;
+    if (((((($1) {return false}
+    this.platform = "CUDA";"
+    this.device = "cuda";"
+    this.device_name = "cuda" if ($1) {"
+    if ($1) {logger.warning())"CUDA !available, falling) { an) { an: any;"
+      return true}
   $1($2) {
-    """Initialize for CPU platform."""
-    this.platform = "CPU"
-    this.device = "cpu"
-    this.device_name = "cpu"
-    return true
-  
-  }
+    /** Initializ) { an: any;
+    try ${$1} catch(error) { any)) { any {logger.warning())"OpenVINO !available");"
+    return false}
   $1($2) {
-    """Initialize for CUDA platform."""
-    if ($1) {
-    return false
+    /** Initiali: any;
+    if (((((($1) {return false}
+    this.platform = "MPS";"
     }
-    
-  }
-    this.platform = "CUDA"
-    this.device = "cuda"
-    this.device_name = "cuda" if ($1) {
-    if ($1) {
-      logger.warning()))"CUDA !available, falling back to CPU")
-      return true
-  
-    }
+    this.device = "mps";"
+    this.device_name = "mps" if ($1) {"
+    if ($1) {logger.warning())"MPS !available, falling) { an) { an: any;"
+      return true}
   $1($2) {
-    """Initialize for OpenVINO platform."""
-    try ${$1} catch($2: $1) {
-      logger.warning()))"OpenVINO !available")
-    return false
+    /** Initializ) { an: any;
+    if (((($1) {return false}
+    this.platform = "ROCM";"
     }
-  
-  }
+    this.device = "rocm";"
+    this.device_name = "cuda" if ($1) {"
+    if ($1) {logger.warning())"ROCm !available, falling) { an) { an: any;"
+      return true}
+  $1($2) {/** Initializ) { an: any;
+    this.platform = "WEBNN";"
+    this.device = "webnn";"
+    this.device_name = "webnn";"
+      retu: any;
+  $1($2) {/** Initiali: any;
+    this.platform = "WEBGPU";"
+    this.device = "webgpu";"
+    this.device_name = "webgpu";"
+      retu: any;
   $1($2) {
-    """Initialize for MPS ()))Apple Silicon) platform."""
-    if ($1) {
-    return false
-    }
-    
-  }
-    this.platform = "MPS"
-    }
-    this.device = "mps"
-    this.device_name = "mps" if ($1) {
-    if ($1) {
-      logger.warning()))"MPS !available, falling back to CPU")
-      return true
-  
-    }
-  $1($2) {
-    """Initialize for ROCm ()))AMD) platform."""
-    if ($1) {
-    return false
-    }
-    
-  }
-    this.platform = "ROCM"
-    }
-    this.device = "rocm"
-    this.device_name = "cuda" if ($1) {
-    if ($1) {
-      logger.warning()))"ROCm !available, falling back to CPU")
-      return true
-  
-    }
-  $1($2) {
-    """Initialize for WebNN platform."""
-    this.platform = "WEBNN"
-    this.device = "webnn"
-    this.device_name = "webnn"
-      return true
-  
-  }
-  $1($2) {
-    """Initialize for WebGPU platform."""
-    this.platform = "WEBGPU"
-    this.device = "webgpu"
-    this.device_name = "webgpu"
-      return true
-  
-  }
-  $1($2) {
-    """Create handler for CPU platform."""
-    if ($1) {
-    return MockHandler()))this.model_path, platform="cpu")
-    }
-    
-  }
-    try {:
-    }
-      # Import model class dynamically
-      model_class = getattr()))transformers, this.model_config[],"class"])
+    /** Crea: any;
+    if (((($1) {
+    return MockHandler())this.model_path, platform) { any) {any = "cpu");};"
+    try {) {}
+      // Import) { an) { an: any;
+      model_class) { any) { any) { any = getat: any;
       
-      # Load model && processor
-      model = model_class.from_pretrained()))this.model_path)
-      processor = transformers.CLIPProcessor.from_pretrained()))this.model_path)
+      // Lo: any;
+      model: any: any: any = model_cla: any;
+      processor: any: any: any = transforme: any;
       
-      # Create handler function
-      $1($2) {
-        # Process image
-        inputs = processor()))
-        text=this.candidate_labels,
-        images=image,
-      return_tensors="pt",
-      }
-      padding=true
-      )
+      // Crea: any;
+      $1($2) {// Proce: any;
+        inputs: any: any: any = process: any;
+        text: any: any: any = th: any;
+        images: any: any: any = ima: any;
+      return_tensors: any: any: any: any: any: any = "pt",;}"
+      padding: any: any: any = t: any;
+      );
         
-        # Run model
-      outputs = model()))**inputs)
+        // R: any;
+      outputs: any: any: any = mod: any;
         
-        # Return formatted output
-    return {}}}}}}}}}}}}}}}}}
-    "logits": outputs.logits_per_image.detach()))).numpy()))),
-    "implementation_type": "REAL_CPU"
-    }
+        // Retu: any;
+    return {}
+    "logits") {outputs.logits_per_image.detach()).numpy()),;"
+    "implementation_type": "REAL_CPU"}"
       
-      return handler
-    } catch($2: $1) {
-      logger.error()))`$1`)
-      traceback.print_exc())))
-      return MockHandler()))this.model_path, platform="cpu")
-  
-    }
+      retu: any;
+    } catch(error: any): any {logger.error())`$1`);
+      traceba: any;
+      return MockHandler())this.model_path, platform: any: any: any: any: any: any = "cpu");};"
   $1($2) {
-    """Create handler for CUDA platform."""
-    if ($1) {
-    return MockHandler()))this.model_path, platform="cuda")
-    }
-    
-  }
-    try {:
-      # Import model class dynamically
-      model_class = getattr()))transformers, this.model_config[],"class"])
+    /** Crea: any;
+    if ((((((($1) {
+    return MockHandler())this.model_path, platform) { any) {any = "cuda");};"
+    try {) {
+      // Import) { an) { an: any;
+      model_class) { any) { any) { any = getat: any;
       
-      # Load model && processor
-      model = model_class.from_pretrained()))this.model_path).to()))this.device_name)
-      processor = transformers.CLIPProcessor.from_pretrained()))this.model_path)
+      // Lo: any;
+      model: any: any: any = model_cla: any;
+      processor: any: any: any = transforme: any;
       
-      # Create handler function
-      $1($2) {
-        # Process image
-        inputs = processor()))
-        text=this.candidate_labels,
-        images=image,
-      return_tensors="pt",
-      }
-      padding=true
-      )
+      // Crea: any;
+      $1($2) {// Proce: any;
+        inputs: any: any: any = process: any;
+        text: any: any: any = th: any;
+        images: any: any: any = ima: any;
+      return_tensors: any: any: any: any: any: any = "pt",;}"
+      padding: any: any: any = t: any;
+      );
         
-        # Move inputs to GPU
-      inputs = {}}}}}}}}}}}}}}}}}k: v.to()))this.device_name) for k, v in Object.entries($1))))}
+        // Mo: any;
+      inputs: any: any: any = {}k) { v.to())this.device_name) for ((((((k) { any, v in Object.entries($1) {)}
         
-        # Run model
-      outputs = model()))**inputs)
+        // Run) { an) { an: any;
+      outputs) { any) { any: any = mod: any;
         
-        # Return formatted output
-    return {}}}}}}}}}}}}}}}}}
-    "logits": outputs.logits_per_image.detach()))).cpu()))).numpy()))),
-    "implementation_type": "REAL_CUDA"
-    }
+        // Retu: any;
+    return {}
+    "logits") {outputs.logits_per_image.detach()).cpu()).numpy()),;"
+    "implementation_type": "REAL_CUDA"}"
       
-      return handler
-    } catch($2: $1) {
-      logger.error()))`$1`)
-      traceback.print_exc())))
-      return MockHandler()))this.model_path, platform="cuda")
-  
-    }
+      retu: any;
+    } catch(error: any): any {logger.error())`$1`);
+      traceba: any;
+      return MockHandler())this.model_path, platform: any: any: any: any: any: any = "cuda");};"
   $1($2) {
-    """Create handler for OPENVINO platform."""
-    try ${$1} catch($2: $1) {
-      logger.error()))`$1`)
-    return MockHandler()))this.model_path, platform="openvino")
-    }
-  
-  }
+    /** Crea: any;
+    try ${$1} catch(error) { any) {: any {) { any {logger.error())`$1`);
+    return MockHandler())this.model_path, platform: any: any: any: any: any: any = "openvino");};"
   $1($2) {
-    """Create handler for MPS ()))Apple Silicon) platform."""
-    if ($1) {
-    return MockHandler()))this.model_path, platform="mps")
-    }
-    
-  }
-    try {:
-      # Import model class dynamically
-      model_class = getattr()))transformers, this.model_config[],"class"])
+    /** Create handler for (((((MPS () {)Apple Silicon) { an) { an: any;
+    if ((((((($1) {
+    return MockHandler())this.model_path, platform) { any) {any = "mps");};"
+    try {) {
+      // Import) { an) { an: any;
+      model_class) { any) { any) { any = getatt) { an: any;
       
-      # Load model && processor
-      model = model_class.from_pretrained()))this.model_path).to()))this.device_name)
-      processor = transformers.CLIPProcessor.from_pretrained()))this.model_path)
+      // Lo: any;
+      model: any: any: any = model_cla: any;
+      processor: any: any: any = transforme: any;
       
-      # Create handler function
-      $1($2) {
-        # Process image
-        inputs = processor()))
-        text=this.candidate_labels,
-        images=image,
-      return_tensors="pt",
-      }
-      padding=true
-      )
+      // Crea: any;
+      $1($2) {// Proce: any;
+        inputs: any: any: any = process: any;
+        text: any: any: any = th: any;
+        images: any: any: any = ima: any;
+      return_tensors: any: any: any: any: any: any = "pt",;}"
+      padding: any: any: any = t: any;
+      );
         
-        # Move inputs to MPS
-      inputs = {}}}}}}}}}}}}}}}}}k: v.to()))this.device_name) for k, v in Object.entries($1))))}
+        // Mo: any;
+      inputs: any: any: any = {}k) { v.to())this.device_name) for ((((((k) { any, v in Object.entries($1) {)}
         
-        # Run model
-      outputs = model()))**inputs)
+        // Run) { an) { an: any;
+      outputs) { any) { any: any = mod: any;
         
-        # Return formatted output
-    return {}}}}}}}}}}}}}}}}}
-    "logits": outputs.logits_per_image.detach()))).cpu()))).numpy()))),
-    "implementation_type": "REAL_MPS"
-    }
+        // Retu: any;
+    return {}
+    "logits") {outputs.logits_per_image.detach()).cpu()).numpy()),;"
+    "implementation_type": "REAL_MPS"}"
       
-    return handler
-    } catch($2: $1) {
-      logger.error()))`$1`)
-      traceback.print_exc())))
-    return MockHandler()))this.model_path, platform="mps")
-    }
-  
+    retu: any;
+    } catch(error: any): any {logger.error())`$1`);
+      traceba: any;
+    return MockHandler())this.model_path, platform: any: any: any: any: any: any = "mps");}"
+  ;
   $1($2) {
-    """Create handler for ROCm ()))AMD) platform."""
-    # ROCm uses the same interface as CUDA, so we can reuse that handler
-    try ${$1} catch($2: $1) {
-      logger.error()))`$1`)
-    return MockHandler()))this.model_path, platform="rocm")
-    }
-  
-  }
+    /** Create handler for ((((((ROCm () {)AMD) platform) { an) { an: any;
+    // ROC) { an: any;
+    try ${$1} catch(error) { any)) { any {logger.error())`$1`);
+    return MockHandler())this.model_path, platform: any: any: any: any: any: any = "rocm");};"
   $1($2) {
-    """Create handler for WEBNN platform."""
-    # Check if ($1) {:
-    if ($1) {
-      model_path = this.get_model_path_or_name())))
-      # Use the enhanced WebNN handler from fixed_web_platform
-      web_processors = create_mock_processors())))
-      # Create a WebNN-compatible handler with the right implementation type
-      handler = lambda x: {}}}}}}}}}}}}}}}}}
-      "logits": np.random.rand()))1, 2),
-      "implementation_type": "REAL_WEBNN"
-      }
-    return handler
-    } else {
-      # Fallback to basic mock handler
-      handler = MockHandler()))this.model_path, platform="webnn")
-    return handler
-    }
-  
-    }
+    /** Crea: any;
+    // Check if ((((((($1) {) {
+    if (($1) {
+      model_path) { any) { any) { any) { any = this) { an) { an: any;
+      // U: any;
+      web_processors) { any: any: any = create_mock_processo: any;
+      // Crea: any;
+      handler: any: any = lambda x) { }
+      "logits") {np.random.rand())1, 2: a: any;"
+      "implementation_type": "REAL_WEBNN"}"
+    retu: any;
+    } else {// Fallba: any;
+      handler: any: any = MockHandler())this.model_path, platform: any: any: any: any: any: any = "webnn");"
+    retu: any;
   $1($2) {
-    """Create handler for WEBGPU platform."""
-    # Check if ($1) {:
-    if ($1) {
-      model_path = this.get_model_path_or_name())))
-      # Use the enhanced WebGPU handler from fixed_web_platform
-      web_processors = create_mock_processors())))
-      # Create a WebGPU-compatible handler with the right implementation type
-      handler = lambda x: {}}}}}}}}}}}}}}}}}
-      "logits": np.random.rand()))1, 2),
-      "implementation_type": "REAL_WEBGPU"
-      }
-    return handler
-    } else {
-      # Fallback to basic mock handler
-      handler = MockHandler()))this.model_path, platform="webgpu")
-    return handler
-    }
-  
-    }
+    /** Crea: any;
+    // Check if ((((((($1) {) {
+    if (($1) {
+      model_path) { any) { any) { any) { any = this) { an) { an: any;
+      // U: any;
+      web_processors) { any: any: any = create_mock_processo: any;
+      // Crea: any;
+      handler: any: any = lambda x) { }
+      "logits") {np.random.rand())1, 2: a: any;"
+      "implementation_type": "REAL_WEBGPU"}"
+    retu: any;
+    } else {// Fallba: any;
+      handler: any: any = MockHandler())this.model_path, platform: any: any: any: any: any: any = "webgpu");"
+    retu: any;
   $1($2) {
-    """Run test for the specified platform."""
-    if ($1) {
-      test_image = this.test_image
-    
-    }
-      platform = platform.lower())))
-      results = {}}}}}}}}}}}}}}}}}}
-    
-  }
-    # Initialize platform
-      init_method = getattr()))self, `$1`, null)
-    if ($1) {
-      results[],"error"] = `$1`
-      return results
-    
-    }
-    try {:
-      init_success = init_method())))
-      results[],"init"] = "Success" if init_success else "Failed"
-      :
-      if ($1) {
-        results[],"error"] = `$1`
-        return results
+    /** R: any;
+    if ((((((($1) {
+      test_image) {any = this) { an) { an: any;}
+      platform) { any) { any) { any = platfor) { an: any;
+      results: any: any: any = {}
+    // Initiali: any;
+      init_method: any: any = getat: any;
+    if (((((($1) {results[],"error"] = `$1`;"
+      return results}
+    try {) {
+      init_success) { any) { any) { any) { any = init_metho) { an: any;
+      results[],"init"] = "Success" if ((((((init_success else { "Failed";"
+      ) {
+      if (($1) {results[],"error"] = `$1`;"
+        return) { an) { an: any;
+        handler_method) { any) { any = getatt) { an: any;
+      if (((((($1) {results[],"error"] = `$1`;"
+        return results}
+        handler) { any) { any) { any) { any = handler_metho) { an: any;
+        results[],"handler_created"] = "Success" if (((((handler is !null else { "Failed";"
+      ) {
+      if (($1) {results[],"error"] = `$1`;"
+        return) { an) { an: any;
+        start_time) {any = tim) { an: any;
+        output) { any: any: any = handl: any;
+        end_time: any: any: any = ti: any;}
+      // Proce: any;
+        results[],"execution_time"] = end_ti: any;"
+        results[],"output_type"] = s: any;"
       
-      }
-      # Create handler
-        handler_method = getattr()))self, `$1`, null)
-      if ($1) {
-        results[],"error"] = `$1`
-        return results
-      
-      }
-        handler = handler_method())))
-        results[],"handler_created"] = "Success" if handler is !null else "Failed"
-      :
-      if ($1) {
-        results[],"error"] = `$1`
-        return results
-      
-      }
-      # Run handler
-        start_time = time.time())))
-        output = handler()))test_image)
-        end_time = time.time())))
-      
-  }
-      # Process results
-        results[],"execution_time"] = end_time - start_time
-        results[],"output_type"] = str()))type()))output))
-      
-  }
-      if ($1) {
-        results[],"implementation_type"] = output.get()))"implementation_type", "UNKNOWN")
-        
-      }
-        # Extract logits if ($1) {
-        if ($1) {
-          results[],"logits_shape"] = str()))output[],"logits"].shape)
-          
-        }
-          # For classification, get the highest probability class
-          if ($1) {
-            max_idx = np.argmax()))output[],"logits"])
-            results[],"top_label"] = this.candidate_labels[],max_idx] if ($1) ${$1} else {
-        results[],"implementation_type"] = "UNKNOWN"
-            }
-      
-          }
-        results[],"success"] = true
+  };
+      if (((((($1) {results[],"implementation_type"] = output.get())"implementation_type", "UNKNOWN")}"
+        // Extract logits if ($1) {
+        if ($1) {results[],"logits_shape"] = str) { an) { an: any;"
+          if ((($1) {
+            max_idx) { any) { any) { any) { any = n) { an: any;
+            results[],"top_label"] = this.candidate_labels[],max_idx] if (((((($1) { ${$1} else {results[],"implementation_type"] = "UNKNOWN"}"
+        results[],"success"] = tru) { an) { an: any;"
         }
       
-      # Add to examples
-        this.$1.push($2))){}}}}}}}}}}}}}}}}}
-        "platform": platform.upper()))),
-        "input": "Test image",
-        "output_type": results[],"output_type"],
-        "implementation_type": results[],"implementation_type"],
-        "execution_time": results[],"execution_time"],
-        "timestamp": datetime.datetime.now()))).isoformat())))
-        })
+      // Ad) { an: any;
+        this.$1.push($2)){}
+        "platform") { platfo: any;"
+        "input") { "Test ima: any;"
+        "output_type") {results[],"output_type"],;"
+        "implementation_type") { resul: any;"
+        "execution_time": resul: any;"
+        "timestamp": dateti: any;"
       
-    } catch($2: $1) {
-      results[],"error"] = str()))e)
-      results[],"traceback"] = traceback.format_exc())))
-      results[],"success"] = false
-    
-    }
-        return results
+    } catch(error: any): any {results[],"error"] = s: any;"
+      results[],"traceback"] = traceba: any;"
+      results[],"success"] = fal: any;"
   
   $1($2) {
-    """Run tests on all supported platforms."""
-    platforms = [],"cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"]
-    results = {}}}}}}}}}}}}}}}}}}
-    
-  }
-    for (const $1 of $2) {
-      results[],platform] = this.run_test()))platform)
-    
-    }
-    return {}}}}}}}}}}}}}}}}}
-    "results": results,
-    "examples": this.examples,
-    "metadata": {}}}}}}}}}}}}}}}}}
-    "model_id": this.model_id,
-    "model_path": this.model_path,
-    "model_config": this.model_config,
-    "hardware_capabilities": HW_CAPABILITIES,
-    "timestamp": datetime.datetime.now()))).isoformat())))
-    }
+    /** R: any;
+    platforms: any: any: any: any: any: any = [],"cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"];"
+    results: any: any: any: any = {}
+    for (((((((const $1 of $2) {results[],platform] = this.run_test())platform)}
+    return {}
+    "results") { results) { an) { an: any;"
+    "examples") { thi) { an: any;"
+    "metadata") { }"
+    "model_id": th: any;"
+    "model_path": th: any;"
+    "model_config": th: any;"
+    "hardware_capabilities": HW_CAPABILITI: any;"
+    "timestamp": dateti: any;"
     }
 
 $1($2) {
-  """Run model tests."""
-  parser = argparse.ArgumentParser()))description="Test CLIP models")
-  parser.add_argument()))"--model", default="openai/clip-vit-base-patch32", help="Model ID to test")
-  parser.add_argument()))"--platform", default="all", help="Platform to test ()))cpu, cuda, openvino, mps, rocm, webnn, webgpu, all)")
-  parser.add_argument()))"--output", default="clip_test_results.json", help="Output file for test results")
-  args = parser.parse_args())))
+  /** R: any;
+  parser: any: any: any = argparse.ArgumentParser())description="Test CL: any;"
+  parser.add_argument())"--model", default: any: any = "openai/clip-vit-base-patch32", help: any: any: any = "Model I: an: any;"
+  parser.add_argument())"--platform", default: any: any = "all", help: any: any = "Platform t: an: any;"
+  parser.add_argument())"--output", default: any: any = "clip_test_results.json", help: any: any: any: any: any: any = "Output file for ((((((test results") {;"
+  args) {any = parser) { an) { an: any;}
+  // Initialize test class test { any) { any) { any: any: any: any = CLIPTestBase())model_id=args.model);
   
-}
-  # Initialize test class
-  test = CLIPTestBase()))model_id=args.model)
-  
-  # Run tests
-  if ($1) ${$1} else {
-    results = {}}}}}}}}}}}}}}}}}
-    "results": {}}}}}}}}}}}}}}}}}args.platform: test.run_test()))args.platform)},
-    "examples": test.examples,
-    "metadata": {}}}}}}}}}}}}}}}}}
-    "model_id": test.model_id,
-    "model_path": test.model_path,
-    "model_config": test.model_config,
-    "hardware_capabilities": HW_CAPABILITIES,
-    "timestamp": datetime.datetime.now()))).isoformat())))
+  // R: any;
+  if ((((((($1) { ${$1} else {
+    results) { any) { any) { any) { any) { any: any = {}
+    "results") { }args.platform) {test.run_test())args.platform)},;"
+    "examples": te: any;"
+    "metadata": {}"
+    "model_id": te: any;"
+    "model_path": te: any;"
+    "model_config": te: any;"
+    "hardware_capabilities": HW_CAPABILITI: any;"
+    "timestamp": dateti: any;"
     }
-    }
-  
-  }
-  # Print summary
-    console.log($1)))`$1`)
-  for platform, platform_results in results[],"results"].items()))):
-    success = platform_results.get()))"success", false)
-    impl_type = platform_results.get()))"implementation_type", "UNKNOWN")
-    error = platform_results.get()))"error", "")
-    
-    if ($1) ${$1} else {
-      console.log($1)))`$1`)
-  
-    }
-  # Save results
-  with open()))args.output, "w") as f:
-    json.dump()))results, f, indent=2, default=str)
-  
-    console.log($1)))`$1`)
-
-if ($1) {
-  main())))
+  // Pri: any;
+    conso: any;
+  for ((((((platform) { any, platform_results in results[],"results"].items() {)) {"
+    success) { any) { any) { any = platform_result) { an: any;
+    impl_type: any: any: any = platform_resul: any;
+    error: any: any: any = platform_resul: any;
+    ;
+    if ((((((($1) { ${$1} else {console.log($1))`$1`)}
+  // Save) { an) { an: any;
+  with open())args.output, "w") as f) {"
+    json.dump())results, f) { any, indent) { any) { any: any: any: any: any = 2, default: any: any: any = s: any;
+  ;
+    cons: any;
+if (((($1) {;
+  main) { an) { an) { an: any;

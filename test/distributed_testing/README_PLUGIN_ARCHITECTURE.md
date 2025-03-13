@@ -146,11 +146,32 @@ This plugin hooks into task lifecycle events and reports task status to an exter
 
 This plugin integrates with CI/CD systems to report test results:
 
-- Supports GitHub Actions, Jenkins, and GitLab CI
+- Supports GitHub Actions, Jenkins, GitLab CI, Azure DevOps, CircleCI, and more
 - Creates test runs in the CI system
 - Updates test status in real-time
 - Provides final test reports with pass/fail status
 - Automatically detects the CI environment
+
+### 3. Notification Plugin
+
+This plugin provides real-time notifications about framework events through various channels:
+
+- Supports multiple notification channels:
+  - Slack: Messages sent to Slack channels via API
+  - Discord: Messages and embeds sent via webhook or Bot API
+  - Telegram: Messages sent via Telegram Bot API
+  - Email: Messages sent via SMTP
+  - MS Teams: Messages sent via webhook or Graph API
+  - JIRA: Issues created for error events
+- Features include:
+  - Event filtering: Configure which events trigger notifications
+  - Notification grouping: Group similar notifications to reduce noise
+  - Throttling: Control notification frequency
+  - Customizable formatting: Format notifications for each channel
+  - Metadata support: Include additional data in notifications
+  - Standardized API: Consistent interface across channels
+
+For detailed documentation, see [Notification System Guide](docs/NOTIFICATION_SYSTEM_GUIDE.md).
 
 ## Usage
 
@@ -181,7 +202,7 @@ A test script is provided to demonstrate the plugin architecture functionality:
 python run_test_plugins.py
 
 # Test specific plugins
-python run_test_plugins.py --plugins sample_reporter_plugin.py,ci_integration_plugin.py
+python run_test_plugins.py --plugins sample_reporter_plugin.py,ci_integration_plugin.py,notification_plugin.py
 
 # Enable external reporting in the reporter plugin
 python run_test_plugins.py --enable-external-reporting
@@ -191,6 +212,16 @@ python run_test_plugins.py --ci-system jenkins
 
 # Simulate task lifecycle events
 python run_test_plugins.py --simulate-tasks 10
+
+# Run notification system example with Discord notifications
+export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/your-webhook-url"
+python examples/notification_system_example.py --discord
+
+# Run notification system example with multiple notification channels
+python examples/notification_system_example.py --discord --telegram --slack
+
+# Run custom scheduler example
+python examples/custom_scheduler_example.py --scheduler fairness --fairness-window-hours 24
 ```
 
 ## Plugin Directory Structure
@@ -199,13 +230,33 @@ Plugins are organized in the `plugins` directory:
 
 ```
 plugins/
-├── sample_reporter_plugin.py   # Task reporter plugin
-├── ci_integration_plugin.py    # CI integration plugin
-├── notification_plugins/       # Notification plugins
-│   ├── email_notifier.py
-│   └── slack_notifier.py
-└── custom_plugins/             # Custom plugins
+├── sample_reporter_plugin.py        # Task reporter plugin
+├── ci_integration_plugin.py         # CI integration plugin
+├── notification_plugin.py           # Main notification plugin
+├── scheduler/                       # Scheduler plugins
+│   ├── base_scheduler_plugin.py     # Base scheduler implementation
+│   ├── fairness_scheduler_plugin.py # Fair resource allocation scheduler
+│   ├── scheduler_plugin_interface.py # Scheduler plugin interface
+│   ├── scheduler_plugin_registry.py # Plugin registry for schedulers
+│   └── scheduler_coordinator.py     # Scheduler coordinator
+├── external_systems/                # External system connectors
+│   ├── api_interface.py             # Standardized API interface
+│   ├── slack_connector.py           # Slack integration
+│   ├── jira_connector.py            # JIRA integration
+│   ├── discord_connector.py         # Discord integration
+│   ├── telegram_connector.py        # Telegram integration
+│   └── ms_teams_connector.py        # MS Teams integration
+└── custom_plugins/                  # Custom plugins
     └── my_custom_plugin.py
+
+examples/
+├── plugin_example.py                # Basic plugin usage example
+├── notification_system_example.py   # Notification system example
+└── custom_scheduler_example.py      # Custom scheduler example
+
+docs/
+├── NOTIFICATION_SYSTEM_GUIDE.md     # Notification system documentation
+└── CI_CD_INTEGRATION_GUIDE.md       # CI/CD integration documentation
 ```
 
 ## Future Enhancements
@@ -229,5 +280,22 @@ The Plugin Architecture is part of Phase 8 (Integration and Extensibility) and i
 - ✅ Configuration mechanism
 - ✅ Sample plugins
 - ✅ Integration with coordinator
+- ✅ Custom scheduler extensibility
+- ✅ External systems integration
+- ✅ Notification system
+  - ✅ Slack integration
+  - ✅ Discord integration
+  - ✅ Telegram integration
+  - ✅ Email integration
+  - ✅ MS Teams integration
+  - ✅ JIRA integration
+- ✅ CI/CD system integration
+  - ✅ GitHub Actions
+  - ✅ GitLab CI
+  - ✅ Jenkins
+  - ✅ Azure DevOps
+  - ✅ CircleCI
+  - ✅ Bitbucket Pipelines
+  - ✅ TeamCity
 
-Next steps will focus on expanding the plugin ecosystem with additional plugin types and functionality.
+All planned components for Phase 8 (Integration and Extensibility) have been successfully implemented as of May 28, 2025, ahead of the originally planned completion date of June 25, 2025. The framework now provides a comprehensive plugin ecosystem with standardized interfaces for extending functionality without modifying core code.

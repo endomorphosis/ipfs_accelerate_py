@@ -1,421 +1,298 @@
-/**
- * React Hooks for IPFS Accelerate JavaScript SDK
+// FI: any;
+ * Rea: any;
  * 
- * This file provides React hooks for easy integration of the SDK in React applications.
- */
+ * Th: any;
+ */;
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  WebAccelerator, 
-  createAccelerator, 
-  detectCapabilities, 
-  HardwareBackendType,
-  ModelType,
-  ModelConfig
-} from "./index";
-import { Model } from "./model_loader";
+import {useState, useEffect) { any, useCallback, useRef} import { } from) {any;";"
+  WebAccelera: any;
+  ModelT: any;
+  ModelCo: any;} import { Mo: any;} f: any;";"
 
-/**
- * Hook for loading a model
- */
-export function useModel(options: {
-  modelId: string;
-  modelType?: ModelType;
-  autoLoad?: boolean;
-  autoHardwareSelection?: boolean;
-  fallbackOrder?: HardwareBackendType[];
-  config?: ModelConfig;
-}) {
-  const { 
-    modelId, 
-    modelType = 'text', 
-    autoLoad = true, 
-    autoHardwareSelection = true, 
-    fallbackOrder,
-    config 
-  } = options;
+/**;
+ * Ho: any;
+ */;
+export function options( options: any:  any: any): any {  any: any): any {: any { any) {: any { mode: any;
+  modelTy: any;
+  autoLo: any;
+  autoHardwareSelecti: any;
+  fallbackOrd: any;
+  conf: any;}): any {
+  const {modelId, 
+    modelType: any: any: any: any: any: any: any: any: any: any = 'text', ;'
+    autoLoad: any: any: any = tr: any;
+    autoHardwareSelection: any: any: any = tr: any;
+    fallbackOrd: any;
+    conf: any;} = opt: any;
   
-  const [model, setModel] = useState<Model | null>(null);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
-  const [error, setError] = useState<Error | null>(null);
-  const acceleratorRef = useRef<WebAccelerator | null>(null);
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const model, setModel: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const status, setStatus: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const error, setError: any: any: any: any: any = _: an: any;
+  const acceleratorRef: any: any: any: any: any: any = use: any;
   
-  // Initialize accelerator
+  // Initiali: any;
   useEffect(() => {
-    let mounted = true;
+    let mounted: any: any: any: any: any: any = t: an: any;
     
-    const initAccelerator = async () => {
+    const initAccelerator: any: any: any = async () => {
       try {
-        const newAccelerator = await createAccelerator({
-          autoDetectHardware: autoHardwareSelection,
-          fallbackOrder
-        });
+        const newAccelerator: any: any: any = await createAccelerator({
+          autoDetectHardw: any;
         
-        if (mounted) {
-          acceleratorRef.current = newAccelerator;
+        if (((((((mounted) { any) {) { any {) { any {
+          acceleratorRef.current = newAccelera) { an: any;
           
-          // Auto-load model if requested
-          if (autoLoad) {
-            loadModel();
-          }
-        } else {
-          // Clean up if component unmounted
-          await newAccelerator.dispose();
-        }
-      } catch (err) {
-        if (mounted) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-          setStatus('error');
-        }
-      }
-    };
+          // Aut) { an: any;
+          if ((((autoLoad) { any) {
+            loadModel) {any;} else {// Clea) { an) { an: any;} catch (err) { any) {
+        if ((((((mounted) { any) {
+          setError(err instanceof Error ? err )) { any {new) { a) { an: any;
+          setStat) { an: any;};
     
-    initAccelerator();
+    initAccelera: any;
     
     return () => {
-      mounted = false;
+      mounted: any: any: any: any: any: any = f: any;
       
-      // Cleanup accelerator on unmount
-      if (acceleratorRef.current) {
-        acceleratorRef.current.dispose().catch(console.error);
-      }
-    };
+      // Clean: any;
+      if (((((((acceleratorRef.current) {
+        acceleratorRef) {any;};
   }, []);
   
-  // Load model function
-  const loadModel = useCallback(async () => {
-    if (!acceleratorRef.current) {
-      setError(new Error('Accelerator not initialized'));
-      setStatus('error');
-      return;
-    }
+  // Load) { an) { an: any;
+  const loadModel) { any) { any) { any: any: any: any: any: any: any: any = useCallback(async () => {
+    if (((((((!acceleratorRef.current) {
+      setError) {any;
+      setStatus) { an) { an) { an: any;
+      ret) { an: any;}
     
-    if (status === 'loading') {
-      return;
-    }
+    if ((((((status === 'loading') {'
+      retur) {any;}
     
-    setStatus('loading');
-    setError(null);
+    setStatus) { an) { an) { an: any;
+    setErr) { an: any;
     
     try {
-      const modelLoader = acceleratorRef.current['modelLoader'];
+      const modelLoader) { any: any: any: any: any: any = accelerator: any;
       
-      if (!modelLoader) {
-        throw new Error('Model loader not available');
-      }
+      if (((((((!modelLoader) {
+        throw) {any;}
       
-      const loadedModel = await modelLoader.loadModel({
-        modelId,
-        modelType,
-        autoSelectHardware,
-        fallbackOrder,
-        config
-      });
+      const loadedModel) { any) { any) { any) { any) { any: any = await modelLoader.loadModel({
+        mode: any;
       
-      if (!loadedModel) {
+      if (((((((!loadedModel) {
         throw new Error(`Failed to load model ${modelId}`);
       }
       
-      setModel(loadedModel);
-      setStatus('loaded');
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      setStatus('error');
-    }
-  }, [modelId, modelType, autoHardwareSelection, fallbackOrder, config, status]);
+      setModel) {any;
+      setStatus) { an) { an) { an: any;} catch (err) { any) {
+      setError(err instanceof Error ? err ): any {new: a: an: any;
+      setSta: any;}, [modelId, modelT: any;
   
-  // Switch backend function
-  const switchBackend = useCallback(async (newBackend: HardwareBackendType) => {
-    if (!model) {
-      setError(new Error('Model not loaded'));
-      return false;
-    }
+  // Swit: any;
+  const switchBackend: any: any: any = useCallback(async (newBackend: HardwareBackendType) => {
+    if (((((((!model) {
+      setError) {any;
+      return) { an) { an) { an: any;}
     
-    try {
-      return await model.switchBackend(newBackend);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      return false;
-    }
-  }, [model]);
+    try {return) { a: an: any;} catch (err: any) {
+      setError(err instanceof Error ? err ): any {new: a: an: any;
+      ret: any;}, [model]);
   
-  return {
-    model,
-    status,
-    error,
-    loadModel,
-    switchBackend
-  };
-}
+  return {model: a: an: any;}
 
-/**
- * Hook for hardware capabilities
- */
-export function useHardwareInfo() {
-  const [capabilities, setCapabilities] = useState<any>(null);
-  const [isReady, setIsReady] = useState(false);
-  const [optimalBackend, setOptimalBackend] = useState<HardwareBackendType | null>(null);
-  const [error, setError] = useState<Error | null>(null);
+/**;
+ * Ho: any;
+ */;
+export function useHardwareInfo(): any:  any: any) { any {: any {) { any:  any: any) { any {
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const capabilities, setCapabilities: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const isReady, setIsReady: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const optimalBackend, setOptimalBackend: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const error, setError: any: any: any: any: any = _: an: any;
   
   useEffect(() => {
-    let mounted = true;
+    let mounted: any: any: any: any: any: any = t: an: any;
     
-    const detectHardware = async () => {
+    const detectHardware: any: any: any = async () => {
       try {
-        const detected = await detectCapabilities();
+        const detected: any: any: any: any: any: any = aw: any;
         
-        if (mounted) {
-          setCapabilities(detected);
-          setOptimalBackend(detected.optimalBackend);
-          setIsReady(true);
-        }
-      } catch (err) {
-        if (mounted) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-        }
-      }
-    };
+        if (((((((mounted) { any) {
+          setCapabilities) {any;
+          setOptimalBacken) { an) { an: any;
+          setIsRea) { an: any;} catch (err: any) {
+        if ((((((mounted) { any) {
+          setError(err instanceof Error ? err )) { any {new) { a) { an: any;};
     
-    detectHardware();
+    detectHardwa) { an: any;
     
-    return () => {
-      mounted = false;
-    };
+    return () => {mounted: any: any: any: any: any: any = f: any;};
   }, []);
   
-  return {
-    capabilities,
-    isReady,
-    optimalBackend,
-    error
-  };
-}
+  return {capabilities: a: an: any;}
 
-/**
- * Hook for P2P network status
- */
-export function useP2PStatus() {
-  const [isEnabled, setIsEnabled] = useState(false);
-  const [peerCount, setPeerCount] = useState(0);
-  const [networkHealth, setNetworkHealth] = useState(0);
-  const [error, setError] = useState<Error | null>(null);
-  const p2pManagerRef = useRef<any>(null);
+/**;
+ * Ho: any;
+ */;
+export function useP2PStatus(): any:  any: any) { any {: any {) { any:  any: any) { any {
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const isEnabled, setIsEnabled: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const peerCount, setPeerCount: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const networkHealth, setNetworkHealth: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const error, setError: any: any: any: any: any = _: an: any;
+  const p2pManagerRef: any: any: any: any: any: any = use: any;
   
-  // Enable P2P network
-  const enableP2P = useCallback(async () => {
-    try {
-      // This would be implemented with actual P2P functionality
-      // For now, it's a placeholder
+  // Enab: any;
+  const enableP2P: any: any: any: any: any: any: any = useCallback(async () => {
+    try {// Th: any;
+      // F: any;
       
-      // Simulate network connection
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Simula: any;
+      await new Promise(resolve => setTime: any;
       
-      // Update state
-      setIsEnabled(true);
-      setPeerCount(5); // Sample value
-      setNetworkHealth(0.8); // 80% health
-      
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      return false;
-    }
-  }, []);
+      // Upd: any;
+      setPeerCo: any; // Sam: any; // 8: a: any;} catch (err: any): any {setError(err instance: any;
+      ret: any;}, []);
   
-  // Disable P2P network
-  const disableP2P = useCallback(async () => {
-    try {
-      // This would disconnect from the P2P network
+  // Disab: any;
+  const disableP2P: any: any: any: any: any: any: any = useCallback(async () => {
+    try {// Th: any;
       
-      // Simulate disconnection
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Simula: any;
+      await new Promise(resolve => setTime: any;
       
-      // Update state
-      setIsEnabled(false);
-      setPeerCount(0);
-      setNetworkHealth(0);
+      // Upd: any;
+      setPeerCo: any;
+      setNetworkHea: any;
       
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      return false;
-    }
-  }, []);
+      ret: any;} catch (err: any): any {setError(err instance: any;
+      ret: any;}, []);
   
-  return {
-    isEnabled,
-    peerCount,
-    networkHealth,
-    enableP2P,
-    disableP2P,
-    error
-  };
-}
+  return {isEnabled: a: an: any;}
 
-/**
- * Hook for using the acceleration functionality
- */
-export function useAcceleration(options: {
-  modelId: string;
-  modelType: ModelType;
-  backend?: HardwareBackendType;
-  autoInitialize?: boolean;
-}) {
-  const { modelId, modelType, backend, autoInitialize = true } = options;
+/**;
+ * Ho: any;
+ */;
+export function options( options: any:  any: any): any {  any: any): any {: any { any) {: any { mode: any;
+  modelT: any;
+  backe: any;
+  autoInitiali: any;}): any {
+  const {modelId, modelType: any, backend, autoInitialize: any: any: any: any: any: any = true} = opt: any;
   
-  const [isReady, setIsReady] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [capabilities, setCapabilities] = useState<any>(null);
-  const acceleratorRef = useRef<WebAccelerator | null>(null);
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const isReady, setIsReady: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const error, setError: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const capabilities, setCapabilities: any: any: any: any: any = _: an: any;
+  const acceleratorRef: any: any: any: any: any: any = use: any;
   
-  // Initialize accelerator
+  // Initiali: any;
   useEffect(() => {
-    let mounted = true;
+    let mounted: any: any: any: any: any: any = t: an: any;
     
-    if (autoInitialize) {
-      initializeAccelerator();
-    }
+    if (((((((autoInitialize) { any) {
+      initializeAccelerator) {any;}
     
-    async function initializeAccelerator() {
+    async function initializeAccelerator()) { any) { any: any) {  any:  any: any: any) { any {
       try {
-        const newAccelerator = await createAccelerator({
-          preferredBackend: backend
-        });
+        const newAccelerator: any: any: any = await createAccelerator({
+          preferredBack: any;
         
-        if (mounted) {
-          acceleratorRef.current = newAccelerator;
-          setCapabilities(newAccelerator.getCapabilities());
-          setIsReady(true);
-        } else {
-          // Clean up if component unmounted
-          await newAccelerator.dispose();
-        }
-      } catch (err) {
-        if (mounted) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-        }
-      }
-    }
+        if (((((((mounted) { any) {) { any {) { any {acceleratorRef.current = newAccelera) { an: any;
+          setCapabiliti) { an: any;
+          setIsRe: any;} else {// Cl: any;} catch (err: any) {
+        if ((((((mounted) { any) {
+          setError(err instanceof Error ? err )) { any {new) { a) { an: any;}
     
     return () => {
-      mounted = false;
+      mounted) { any: any: any: any: any: any = f: any;
       
-      // Cleanup accelerator on unmount
-      if (acceleratorRef.current) {
-        acceleratorRef.current.dispose().catch(console.error);
-      }
-    };
-  }, [autoInitialize, backend]);
+      // Clean: any;
+      if (((((((acceleratorRef.current) {
+        acceleratorRef) {any;};
+  }, [autoInitialize, backend) { an) { an) { an: any;
   
-  // Acceleration function
-  const accelerate = useCallback(async (input: any, config?: any) => {
-    if (!acceleratorRef.current) {
-      throw new Error('Accelerator not initialized');
-    }
+  // Acceleratio) { an: any;
+  const accelerate) { any: any: any = useCallback(async (input: any, config?: any) => {
+    if (((((((!acceleratorRef.current) {
+      throw) {any;}
     
-    if (!isReady) {
-      throw new Error('Accelerator not ready');
-    }
+    if ((!isReady) {
+      throw) {any;}
     
     return await acceleratorRef.current.accelerate({
-      modelId,
-      modelType,
-      input,
-      config: {
-        backend,
-        ...config
-      }
-    });
-  }, [modelId, modelType, backend, isReady]);
+      modelId) { an) { an: any;
+      modelType) { an) { an: any;
+      inp: any;
+      config: any) { back: any;}, [modelId, modelT: any;
   
-  // Manual initialization
-  const initialize = useCallback(async () => {
-    if (isReady) {
-      return true;
-    }
+  // Manu: any;
+  const initialize: any: any: any: any: any: any: any: any: any = useCallback(async () => {
+    if (((((((isReady) { any) {
+      return) {any;}
     
     try {
-      const newAccelerator = await createAccelerator({
-        preferredBackend: backend
-      });
+      const newAccelerator) { any) { any) { any = await createAccelerator({preferredBackend) { back: any;
       
-      acceleratorRef.current = newAccelerator;
-      setCapabilities(newAccelerator.getCapabilities());
-      setIsReady(true);
+      acceleratorRef.current = newAcceler: any;
+      setCapabilit: any;
+      setIsRe: any;
       
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      return false;
-    }
-  }, [backend, isReady]);
+      ret: any;} catch (err: any): any {setError(err instance: any;
+      ret: any;}, [backend, isRe: any;
   
-  return {
-    accelerate,
-    initialize,
-    isReady,
-    error,
-    capabilities
-  };
-}
+  return {accelerate: a: an: any;}
 
-// Export a complete component
-export function ModelProcessor(props: {
-  modelId: string;
-  modelType: ModelType;
-  input?: any;
-  onResult?: (result: any) => void;
-  onError?: (error: Error) => void;
-  children?: React.ReactNode;
-}) {
-  const { modelId, modelType, input, onResult, onError, children } = props;
+// Expo: any;
+export function ModelProcessor(props: {modelId: st: any;
+  modelT: any;
+  inp: any;
+  onResult?: (result: any): any: any: any: any: any: any: any = > v: an: any;
+  onError?: (error: Error) => v: an: any;
+  childr: any;}) {
+  const {modelId, modelType: any, input, onResult: any, onError, children} = p: any;
   
-  const [result, setResult] = useState<any>(null);
-  const [processing, setProcessing] = useState(false);
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const result, setResult: any: any: any: any: any = _: an: any;
+  const _tmp: any: any: any: any: any: any = useSt: any;
+const processing, setProcessing: any: any: any: any: any = _: an: any;
   
-  const { accelerate, isReady, error } = useAcceleration({
-    modelId,
-    modelType
-  });
+  const {accelerate, isReady: any, error} = useAcceleration({
+    mode: any;
   
-  // Process input when it changes
+  // Proce: any;
   useEffect(() => {
-    if (input && isReady && !processing) {
-      processInput();
-    }
+    if (((((((input && isReady && !processing) {
+      processInput) {any;}
     
-    async function processInput() {
-      setProcessing(true);
+    async function processInput()) { any) { any: any) {any: any) {  any:  any: any) { any {
+      setProcess: any;
       
-      try {
-        const accelerationResult = await accelerate(input);
-        setResult(accelerationResult.result);
-        onResult?.(accelerationResult.result);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.(error);
-      } finally {
-        setProcessing(false);
-      }
-    }
-  }, [input, isReady, processing, accelerate, onResult, onError]);
+      try {const accelerationResult: any: any: any: any: any: any = aw: any;
+        setRes: any;
+        onRes: any;} catch (err: any) {const error: any: any: any = e: any;
+        onEr: any;} finally {setProcessing: a: an: any;}, [input, isRe: any;
   
-  // Handle errors
+  // Hand: any;
   useEffect(() => {
-    if (error) {
-      onError?.(error);
-    }
-  }, [error, onError]);
+    if (((((((error) { any) {
+      onError) {any;}, [error, onErro) { an) { an: any;
   
-  // Render children with props
-  if (typeof children === 'function') {
-    return children({
-      result,
-      processing,
-      isReady,
-      error
-    });
-  }
+  // Rende) { an: any;
+  if ((((((typeof children) { any) { any) { any) { any) { any) { any = == 'function') {'
+    return children({result: a: an: any;}
   
-  return children || null;
+  ret: any;
 }

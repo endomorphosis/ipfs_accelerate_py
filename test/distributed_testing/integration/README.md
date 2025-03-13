@@ -19,17 +19,44 @@ Key features:
 
 ### CI/CD Integration
 
-**File**: `ci_cd_integration_plugin.py`
+**File**: `ci_cd_integration_plugin.py`  
+**Client Modules**: Located in `../ci` directory
 
-This plugin integrates the Distributed Testing Framework with CI/CD systems like GitHub Actions, Jenkins, GitLab CI, and Azure DevOps.
+This plugin integrates the Distributed Testing Framework with CI/CD systems like GitHub Actions, Jenkins, GitLab CI, and Azure DevOps. It includes specialized client implementations for each supported CI/CD system.
 
 Key features:
-- Automatic CI environment detection
-- Test run management in CI systems
-- Status updates to CI systems
-- Artifact management
-- PR comments with test results
-- Multi-format reporting (JUnit XML, HTML, JSON)
+- Automatic CI environment detection and configuration
+- Test run management in CI systems with real-time status updates
+- Comprehensive reporting in multiple formats (JUnit XML, HTML, JSON)
+- Pull request/merge request comments with detailed test results
+- Artifact management and upload to CI systems
+- Graceful degradation when CI systems are unavailable
+
+Example usage:
+
+```python
+from distributed_testing.plugin_architecture import PluginType
+from distributed_testing.integration.ci_cd_integration_plugin import CICDIntegrationPlugin
+
+# Access CI/CD plugin from coordinator
+ci_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.INTEGRATION)["CICDIntegration-1.0.0"]
+
+# Check CI status
+ci_status = ci_plugin.get_ci_status()
+print(f"CI System: {ci_status['ci_system']}")
+print(f"Test Run: {ci_status['test_run_id']}")
+print(f"Status: {ci_status['test_run_status']}")
+```
+
+Configuration options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `ci_system` | auto | CI system to use (auto, github, jenkins, gitlab, azure) |
+| `api_token` | None | API token for authentication |
+| `update_interval` | 60 | Status update interval in seconds |
+| `result_format` | junit | Result format (junit, json, html, all) |
+| `enable_pr_comments` | true | Enable PR comments with results |
 
 ### Custom Scheduler
 

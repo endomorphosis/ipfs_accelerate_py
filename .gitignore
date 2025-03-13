@@ -41,3 +41,6 @@ test/webnn_webgpu_test_results/*.json
 */webnn_webgpu_test_results/*.log
 */webnn_webgpu_test_results/*.log
 */archive/*
+node_modules/
+node_modules/*
+*node_modules/*

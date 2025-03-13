@@ -1,106 +1,80 @@
-/**
- * Converted from Python: api_test_bert.py
- * Conversion date: 2025-03-11 04:08:35
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+import {TransformerModel} import { TokenizerCon: any;} f: any;";"
 
-#!/usr/bin/env python3
-"""
-Test file for bert with cross-platform hardware support
-"""
+// WebG: any;
+/** Te: any;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1.util
-import * as $1
-import * as $1
-import ${$1} from "$1"
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+// Configu: any;
+logging.basicConfig() {)level = logging.INFO, format) { any) { any: any: any: any: any: any = '%())asctime)s - %())name)s - %())levelname)s - %())message)s');'
+logger: any: any: any = loggi: any;
 
-# Configure logging
-logging.basicConfig()))level=logging.INFO, format='%()))asctime)s - %()))name)s - %()))levelname)s - %()))message)s')
-logger = logging.getLogger()))__name__)
-
-# Hardware detection
-HAS_CUDA = torch.cuda.is_available()))) if hasattr()))torch, "cuda") else false
-HAS_MPS = hasattr()))torch, "mps") && torch.mps.is_available()))) if hasattr()))torch, "mps") else false
-HAS_ROCM = ()))hasattr()))torch, "_C") && hasattr()))torch._C, "_rocm_version")) if hasattr()))torch, "_C") else false
-HAS_OPENVINO = importlib.util.find_spec()))"openvino") is !null
-HAS_QUALCOMM = ()))
-importlib.util.find_spec()))"qnn_wrapper") is !null or
-importlib.util.find_spec()))"qti") is !null or
-"QUALCOMM_SDK" in os.environ
-)
-HAS_WEBNN = ()))
-importlib.util.find_spec()))"webnn") is !null or
-"WEBNN_AVAILABLE" in os.environ or
-"WEBNN_SIMULATION" in os.environ
-)
-HAS_WEBGPU = ()))
-importlib.util.find_spec()))"webgpu") is !null or
-importlib.util.find_spec()))"wgpu") is !null or
-"WEBGPU_AVAILABLE" in os.environ or
-"WEBGPU_SIMULATION" in os.environ
-)
-:
-class TestBert()))unittest.TestCase):
-  """Test bert model with hardware platform support."""
+// Hardwa: any;
+HAS_CUDA: any: any: any: any = torch.cuda.is_available()) if ((((((hasattr() {)torch, "cuda") else { fals) { an) { an: any;"
+HAS_MPS) { any) { any) { any: any = hasattr())torch, "mps") && torch.mps.is_available()) if (((((hasattr() {)torch, "mps") else { fals) { an) { an: any;"
+HAS_ROCM) { any) { any) { any: any = ())hasattr())torch, "_C") && hasattr())torch._C, "_rocm_version")) if (((((hasattr() {)torch, "_C") else { fals) { an) { an: any;"
+HAS_OPENVINO) { any) { any) { any = importl: any;
+HAS_QUALCOMM: any: any: any: any: any: any = ());
+importl: any;
+importl: any;
+"QUALCOMM_SDK" i: an: any;"
+);
+HAS_WEBNN: any: any: any: any: any: any = ());
+importl: any;
+"WEBNN_AVAILABLE" i: an: any;"
+"WEBNN_SIMULATION" i: an: any;"
+);
+HAS_WEBGPU: any: any: any: any: any: any = ());
+importl: any;
+importl: any;
+"WEBGPU_AVAILABLE" i: an: any;"
+"WEBGPU_SIMULATION" i: an: any;"
+);
+) {
+class TestBert())unittest.TestCase)) {
+  /** Te: any;
   
-  $1($2) {
-    """Set up the test environment."""
-    this.model_name = "bert"
-    this.tokenizer = null
-    this.model = null
-
-  }
-  $1($2) {
-    """Test bert on cpu platform."""
-    # Skip if hardware !available
-    
-  }
-    
-    # Set up device
-    device = "cpu"
-    :
-    try {
-      # Load tokenizer
-      this.tokenizer = AutoTokenizer.from_pretrained()))this.model_name)
+  $1($2) {/** S: any;
+    this.model_name = "bert";"
+    this.tokenizer = n: any;
+    this.model = n: any;};
+  $1($2) {/** Te: any;
+    // Sk: any;
+    device) { any) { any: any: any: any: any = "cpu";"
+    ) {
+    try {// Lo: any;
+      this.tokenizer = AutoTokeniz: any;}
+      // Lo: any;
+      this.model = AutoMod: any;
+      ;
+      // Move model to device if ((((((($1) {) {
+      if (($1) {this.model = this) { an) { an: any;}
+      // Tes) { an: any;
+        inputs) { any) { any = this.tokenizer())"Hello, world!", return_tensors: any: any: any: any: any: any = "pt");"
+      ;
+      // Move inputs to device if (((((($1) {) {
+      if (($1) {
+        inputs) { any) { any) { any) { any = ${$1}
+      // Ru) { an: any;
+      with torch.no_grad())) {outputs: any: any: any: any: any: any: any = th: any;
       
-    }
-      # Load model
-      this.model = AutoModel.from_pretrained()))this.model_name)
+      // Veri: any;
+        th: any;
       
-      # Move model to device if ($1) {:
-      if ($1) {
-        this.model = this.model.to()))device)
-      
-      }
-      # Test basic functionality
-        inputs = this.tokenizer()))"Hello, world!", return_tensors="pt")
-      
-      # Move inputs to device if ($1) {:
-      if ($1) {
-        inputs = ${$1}
-      
-      }
-      # Run inference
-      with torch.no_grad()))):
-        outputs = this.model()))**inputs)
-      
-      # Verify outputs
-        this.assertIsNotnull()))outputs)
-      
-      # Log success
-        logger.info()))`$1`)
-      
-    } catch($2: $1) {
-      logger.error()))`$1`)
-        raise
-
-    }
-if ($1) {
-  unittest.main())))
+      // L: any;
+        logg: any;
+      ;} catch(error: any): any {
+      log: any;
+if (((($1) {;
+  unittest) { an) { an) { an: any;

@@ -1,243 +1,214 @@
-/**
- * Converted from Python: test_hf_vit.py
- * Conversion date: 2025-03-11 04:09:38
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+// WebG: any;
+import {HardwareBackend} import * as module} import { {  * a: a: any;"";" } from ""{*";"
+impo: any;
+impo: any;
+import ${$1} fr: any;
 
-#!/usr/bin/env python3
+// Hardwa: any;
+HAS_CUDA: any: any: any = torch.cuda.is_available() if ((((((hasattr(torch) { any, "cuda") { else { fals) { an) { an: any;"
+HAS_MPS) { any) { any = hasattr(torch: any, "mps") && torch.mps.is_available() if (((((hasattr(torch) { any, "mps") { else { fals) { an) { an: any;"
+HAS_ROCM) { any) { any = hasattr(torch: any, "_C") && hasattr(torch._C, "_rocm_version") if (((((hasattr(torch) { any, "_C") { else { fals) { an) { an: any;"
+;
+class TestVit extends unittest.TestCase) {
+  /** Tes) { an: any;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import ${$1} from "$1"
 
-# Hardware detection
-HAS_CUDA = torch.cuda.is_available() if hasattr(torch, "cuda") else false
-HAS_MPS = hasattr(torch, "mps") && torch.mps.is_available() if hasattr(torch, "mps") else false
-HAS_ROCM = hasattr(torch, "_C") && hasattr(torch._C, "_rocm_version") if hasattr(torch, "_C") else false
-
-class TestVit(unittest.TestCase):
-  """Test vit model."""
   
-  $1($2) {
-    this.model_name = "vit"
-    this.tokenizer = null
-    this.model = null
-  
-  }
-  $1($2) {
-    """Test on cpu platform."""
-    # Skip if hardware !available
-    if ($1) {
-      this.skipTest("CUDA !available")
-    elif ($1) {
-      this.skipTest("MPS !available")
-    elif ($1) {
-      this.skipTest("ROCm !available")
-      
-    }
-    # Load tokenizer && model
-    }
-    this.tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-    }
-    this.model = AutoModel.from_pretrained(this.model_name)
-    
-  }
-    # Test basic functionality
-    inputs = this.tokenizer("Hello, world!", return_tensors="pt")
-    outputs = this.model(**inputs)
-    
-    # Verify outputs
-    this.assertIsNotnull(outputs)
-    console.log($1)
-    
-  $1($2) {
-    """Test on cuda platform."""
-    # Skip if hardware !available
-    if ($1) {
-      this.skipTest("CUDA !available")
-    elif ($1) {
-      this.skipTest("MPS !available")
-    elif ($1) {
-      this.skipTest("ROCm !available")
-      
-    }
-    # Load tokenizer && model
-    }
-    this.tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-    }
-    this.model = AutoModel.from_pretrained(this.model_name)
-    
-  }
-    # Test basic functionality
-    inputs = this.tokenizer("Hello, world!", return_tensors="pt")
-    outputs = this.model(**inputs)
-    
-    # Verify outputs
-    this.assertIsNotnull(outputs)
-    console.log($1)
-    
-  $1($2) {
-    """Test on rocm platform."""
-    # Skip if hardware !available
-    if ($1) {
-      this.skipTest("CUDA !available")
-    elif ($1) {
-      this.skipTest("MPS !available")
-    elif ($1) {
-      this.skipTest("ROCm !available")
-      
-    }
-    # Load tokenizer && model
-    }
-    this.tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-    }
-    this.model = AutoModel.from_pretrained(this.model_name)
-    
-  }
-    # Test basic functionality
-    inputs = this.tokenizer("Hello, world!", return_tensors="pt")
-    outputs = this.model(**inputs)
-    
-    # Verify outputs
-    this.assertIsNotnull(outputs)
-    console.log($1)
-    
-  $1($2) {
-    """Test on mps platform."""
-    # Skip if hardware !available
-    if ($1) {
-      this.skipTest("CUDA !available")
-    elif ($1) {
-      this.skipTest("MPS !available")
-    elif ($1) {
-      this.skipTest("ROCm !available")
-      
-    }
-    # Load tokenizer && model
-    }
-    this.tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-    }
-    this.model = AutoModel.from_pretrained(this.model_name)
-    
-  }
-    # Test basic functionality
-    inputs = this.tokenizer("Hello, world!", return_tensors="pt")
-    outputs = this.model(**inputs)
-    
-    # Verify outputs
-    this.assertIsNotnull(outputs)
-    console.log($1)
-    
-  $1($2) {
-    """Test on openvino platform."""
-    # Skip if hardware !available
-    if ($1) {
-      this.skipTest("CUDA !available")
-    elif ($1) {
-      this.skipTest("MPS !available")
-    elif ($1) {
-      this.skipTest("ROCm !available")
-      
-    }
-    # Load tokenizer && model
-    }
-    this.tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-    }
-    this.model = AutoModel.from_pretrained(this.model_name)
-    
-  }
-    # Test basic functionality
-    inputs = this.tokenizer("Hello, world!", return_tensors="pt")
-    outputs = this.model(**inputs)
-    
-    # Verify outputs
-    this.assertIsNotnull(outputs)
-    console.log($1)
-    
-  $1($2) {
-    """Test on qualcomm platform."""
-    # Skip if hardware !available
-    if ($1) {
-      this.skipTest("CUDA !available")
-    elif ($1) {
-      this.skipTest("MPS !available")
-    elif ($1) {
-      this.skipTest("ROCm !available")
-      
-    }
-    # Load tokenizer && model
-    }
-    this.tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-    }
-    this.model = AutoModel.from_pretrained(this.model_name)
-    
-  }
-    # Test basic functionality
-    inputs = this.tokenizer("Hello, world!", return_tensors="pt")
-    outputs = this.model(**inputs)
-    
-    # Verify outputs
-    this.assertIsNotnull(outputs)
-    console.log($1)
-    
-  $1($2) {
-    """Test on webnn platform."""
-    # Skip if hardware !available
-    if ($1) {
-      this.skipTest("CUDA !available")
-    elif ($1) {
-      this.skipTest("MPS !available")
-    elif ($1) {
-      this.skipTest("ROCm !available")
-      
-    }
-    # Load tokenizer && model
-    }
-    this.tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-    }
-    this.model = AutoModel.from_pretrained(this.model_name)
-    
-  }
-    # Test basic functionality
-    inputs = this.tokenizer("Hello, world!", return_tensors="pt")
-    outputs = this.model(**inputs)
-    
-    # Verify outputs
-    this.assertIsNotnull(outputs)
-    console.log($1)
-    
-  $1($2) {
-    """Test on webgpu platform."""
-    # Skip if hardware !available
-    if ($1) {
-      this.skipTest("CUDA !available")
-    elif ($1) {
-      this.skipTest("MPS !available")
-    elif ($1) {
-      this.skipTest("ROCm !available")
-      
-    }
-    # Load tokenizer && model
-    }
-    this.tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-    }
-    this.model = AutoModel.from_pretrained(this.model_name)
-    
-  }
-    # Test basic functionality
-    inputs = this.tokenizer("Hello, world!", return_tensors="pt")
-    outputs = this.model(**inputs)
-    
-    # Verify outputs
-    this.assertIsNotnull(outputs)
-    console.log($1)
-    
+  $1($2) {this.model_name = "vit";"
+    this.tokenizer = n: any;
 
-if ($1) {
-  unittest.main()
+
+    this.model = n: any;
+
+};
+  $1($2) {
+    /** Te: any;
+
+
+    // Sk: any;
+
+
+    if (((($1) {
+      this) { a) { an: any;
+
+
+    else if (((($1) {this.skipTest("MPS !available")} else if (($1) {this.skipTest("ROCm !available")}"
+    // Load) { a) { an: any;
+
+
+    }
+    this.tokenizer = AutoTokenize) { an: any;
+
+
+    }
+    this.model = AutoMod: any;
+
+
+    
+  }
+    // Te: any;
+    inputs) { any) { any) { any) { any) { any: any: any = this.tokenizer("Hello, world!", return_tensors: any: any: any: any: any: any = "pt");"
+    outputs: any: any: any = th: any;
+    
+    // Veri: any;
+    th: any;
+    conso: any;
+    ;
+  $1($2) {
+    /** Te: any;
+    // Sk: any;
+    if (((($1) {this.skipTest("CUDA !available")} else if (($1) {"
+      this) { an) { an: any;
+    else if (((($1) {this.skipTest("ROCm !available")}"
+    // Load) { an) { an: any;
+    }
+    this.tokenizer = AutoTokenize) { an: any;
+    }
+    this.model = AutoMod: any;
+    
+  }
+    // Te: any;
+    inputs) { any) { any = this.tokenizer("Hello, world!", return_tensors) { any) { any: any: any: any: any: any = "pt");"
+    outputs: any: any: any = th: any;
+    
+    // Veri: any;
+    th: any;
+    conso: any;
+    ;
+  $1($2) {
+    /** Te: any;
+    // Sk: any;
+    if (((($1) {this.skipTest("CUDA !available")} else if (($1) {"
+      this) { an) { an: any;
+    else if (((($1) {this.skipTest("ROCm !available")}"
+    // Load) { an) { an: any;
+    }
+    this.tokenizer = AutoTokenize) { an: any;
+    }
+    this.model = AutoMod: any;
+    
+  }
+    // Te: any;
+    inputs) { any) { any = this.tokenizer("Hello, world!", return_tensors) { any) { any: any: any: any: any: any = "pt");"
+    outputs: any: any: any = th: any;
+    
+    // Veri: any;
+    th: any;
+    conso: any;
+    ;
+  $1($2) {
+    /** Te: any;
+    // Sk: any;
+    if (((($1) {this.skipTest("CUDA !available")} else if (($1) {"
+      this) { an) { an: any;
+    else if (((($1) {this.skipTest("ROCm !available")}"
+    // Load) { an) { an: any;
+    }
+    this.tokenizer = AutoTokenize) { an: any;
+    }
+    this.model = AutoMod: any;
+    
+  }
+    // Te: any;
+    inputs) { any) { any = this.tokenizer("Hello, world!", return_tensors) { any) { any: any: any: any: any: any = "pt");"
+    outputs: any: any: any = th: any;
+    
+    // Veri: any;
+    th: any;
+    conso: any;
+    ;
+  $1($2) {
+    /** Te: any;
+    // Sk: any;
+    if (((($1) {this.skipTest("CUDA !available")} else if (($1) {"
+      this) { an) { an: any;
+    else if (((($1) {this.skipTest("ROCm !available")}"
+    // Load) { an) { an: any;
+    }
+    this.tokenizer = AutoTokenize) { an: any;
+    }
+    this.model = AutoMod: any;
+    
+  }
+    // Te: any;
+    inputs) { any) { any = this.tokenizer("Hello, world!", return_tensors) { any) { any: any: any: any: any: any = "pt");"
+    outputs: any: any: any = th: any;
+    
+    // Veri: any;
+    th: any;
+    conso: any;
+    ;
+  $1($2) {
+    /** Te: any;
+    // Sk: any;
+    if (((($1) {this.skipTest("CUDA !available")} else if (($1) {"
+      this) { an) { an: any;
+    else if (((($1) {this.skipTest("ROCm !available")}"
+    // Load) { an) { an: any;
+    }
+    this.tokenizer = AutoTokenize) { an: any;
+    }
+    this.model = AutoMod: any;
+    
+  }
+    // Te: any;
+    inputs) { any) { any = this.tokenizer("Hello, world!", return_tensors) { any) { any: any: any: any: any: any = "pt");"
+    outputs: any: any: any = th: any;
+    
+    // Veri: any;
+    th: any;
+    conso: any;
+    ;
+  $1($2) {
+    /** Te: any;
+    // Sk: any;
+    if (((($1) {this.skipTest("CUDA !available")} else if (($1) {"
+      this) { an) { an: any;
+    else if (((($1) {this.skipTest("ROCm !available")}"
+    // Load) { an) { an: any;
+    }
+    this.tokenizer = AutoTokenize) { an: any;
+    }
+    this.model = AutoMod: any;
+    
+  }
+    // Te: any;
+    inputs) { any) { any = this.tokenizer("Hello, world!", return_tensors) { any) { any: any: any: any: any: any = "pt");"
+    outputs: any: any: any = th: any;
+    
+    // Veri: any;
+    th: any;
+    conso: any;
+    ;
+  $1($2) {
+    /** Te: any;
+    // Sk: any;
+    if (((($1) {this.skipTest("CUDA !available")} else if (($1) {"
+      this) { an) { an: any;
+    else if (((($1) {this.skipTest("ROCm !available")}"
+    // Load) { an) { an: any;
+    }
+    this.tokenizer = AutoTokenize) { an: any;
+    }
+    this.model = AutoMod: any;
+    
+  }
+    // Te: any;
+    inputs) { any) { any = this.tokenizer("Hello, world!", return_tensors) { any) { any: any: any: any: any: any = "pt");"
+    outputs: any: any: any = th: any;
+    
+    // Veri: any;
+    th: any;
+    conso: any;
+    
+;
+if (((($1) {;;
+  unittest) { an) { an) { an: any;
+;

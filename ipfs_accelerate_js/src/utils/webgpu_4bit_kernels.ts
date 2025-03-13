@@ -1,398 +1,327 @@
-/**
- * Converted from Python: webgpu_4bit_kernels.py
- * Conversion date: 2025-03-11 04:09:36
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+import { HardwareAbstract: any;
 
-#!/usr/bin/env python3
-"""
-WebGPU 4-bit Matrix Multiplication Kernels
+// WebG: any;
+/** WebG: any;
 
-This module provides optimized WebGPU compute shader implementations for 4-bit matrix 
-operations, enabling high-performance LLM inference in browser environments with 
-significantly reduced memory usage.
+Th: any;
 
-These kernels are designed to work with the WebGPU quantization system for:
-1. Efficient matrix multiplication with 4-bit weights
-2. Mixed-precision operations (4-bit weights with higher precision activations)
-3. Optimized attention calculation for transformer models
+These kernels are designed to work with the WebGPU quantization system for) {
+1: a: any;
+2: a: any;
+3: a: any;
 
-Implementation Notes:
-- WGSL (WebGPU Shading Language) shaders for hardware acceleration
-- Python simulation for validation && testing
-- WebGPU-specific kernel optimizations
-"""
+Implementation Notes) {
+- WG: any;
+- Pyth: any;
+- WebG: any;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1 as np
-import ${$1} from "$1"
-import ${$1} from "$1"
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("webgpu_4bit_kernels")
-
-# WGSL shader for 4-bit matrix multiplication
-MATRIX_MUL_4BIT_SHADER = """
-// WebGPU 4-bit matrix multiplication compute shader
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+// Configu: any;
+logging.basicConfig(level=logging.INFO, format) { any) { any) { any: any: any: any: any = '%(asctime: a: any;'
+logger: any: any = logg: any;
+// W: any;
+MATRIX_MUL_4BIT_SHADER) { any: any: any: any = /** // Web: any;
 struct Matrix4BitData ${$1};
 
 struct InputMatrix ${$1};
 
 struct OutputMatrix ${$1};
 
-@group(0) @binding(0) var<storage, read> weightMatrix: Matrix4BitData;
-@group(0) @binding(1) var<storage, read> inputMatrix: InputMatrix;
-@group(0) @binding(2) var<storage, write> outputMatrix: OutputMatrix;
+@group(0: a: any;
+@group(0: a: any;
+@group(0: a: any;
 
-// Helper function to unpack 4-bit values
+// Help: any;
 fn unpack_4bit(packed: u32, index: u32) -> i32 ${$1}
 
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-  let row = global_id.x;
-  let col = global_id.y;
+@compute @workgroup_size(16: a: any;
+fn main(@builtin(global_invocation_id: any) global_id: vec3<u32>) {let row: any: any: any: any: any: any = global: any;
+  let col: any: any: any: any: any: any = global: any;}
+  // Che: any;
+  if ((((row >= outputMatrix.rows || col >= outputMatrix.cols) { ${$1}
   
-}
-  // Check if we're within bounds
-  if (row >= outputMatrix.rows || col >= outputMatrix.cols) ${$1}
+  var sum) { f32) { any) { any) { any) { any) { any: any = 0: a: an: any;
   
-  var sum: f32 = 0.0;
+  // Compu: any;
+  for (((((((var k) { u32) { any) { any) { any) { any) { any: any: any: any: any: any: any = 0; k: a: an: any; k: any: any: any: any = k + 2) {// G: any;
+    let input_value: any: any: any: any: any: any = inputMat: any;}
+    // Calcula: any;
+    let packed_idx: any: any: any: any: any: any = (row * weightMat: any;
+    let sub_idx: any: any: any: any: any: any = (row * weightMat: any;
+    
+    // G: any;
+    let packed_weight: any: any: any: any: any: any = weightMat: any;
+    
+    // Unpa: any;
+    let weight1: any: any: any: any: any: any = unpack_4: any;
+    
+    // Dequanti: any;
+    let dequantized_weight1: any: any: any: any: any: any = f: an: any;
+    
+    // Multip: any;
+    sum: any: any: any: any: any: any = s: an: any;
+    
+    // I: an: any;
+    if (((((((k + 1 < inputMatrix.cols) { ${$1}
   
-  // Compute the dot product
-  for (var k: u32 = 0; k < inputMatrix.cols; k = k + 2) {
-    // Get the input activation value
-    let input_value = inputMatrix.data[col * inputMatrix.cols + k];
-    
-  }
-    // Calculate packed 4-bit weight index
-    let packed_idx = (row * weightMatrix.cols + k) / 8;
-    let sub_idx = (row * weightMatrix.cols + k) % 8;
-    
-    // Get the packed weight value
-    let packed_weight = weightMatrix.data[packed_idx];
-    
-    // Unpack first 4-bit weight
-    let weight1 = unpack_4bit(packed_weight, sub_idx);
-    
-    // Dequantize the weight
-    let dequantized_weight1 = f32(weight1 - weightMatrix.zero_point) * weightMatrix.scale;
-    
-    // Multiply && accumulate
-    sum = sum + dequantized_weight1 * input_value;
-    
-    // If we have another weight (and haven't gone out of bounds)
-    if (k + 1 < inputMatrix.cols) ${$1}
-  }
-  
-  // Write output
-  outputMatrix.data[row * outputMatrix.cols + col] = sum;
-}
-"""
+  // Write) { an) { an: any;
+  outputMatrix.data[row * outputMatrix.cols + col] = su) {any;} */;
 
-# WGSL shader for attention with 4-bit weights
-ATTENTION_4BIT_SHADER = """
-// WebGPU 4-bit attention compute shader optimized for transformer models
+// WGS) { an: any;
+ATTENTION_4BIT_SHADER) { any) { any) { any) { any) { any: any: any: any = /** // WebG: any;
 struct Matrix4BitData ${$1};
 
 struct FloatMatrix ${$1};
 
 struct AttentionParams ${$1};
 
-@group(0) @binding(0) var<storage, read> query_weights: Matrix4BitData;
-@group(0) @binding(1) var<storage, read> key_weights: Matrix4BitData;
-@group(0) @binding(2) var<storage, read> value_weights: Matrix4BitData;
-@group(0) @binding(3) var<storage, read> input_data: FloatMatrix;
-@group(0) @binding(4) var<storage, write> attention_output: FloatMatrix;
-@group(0) @binding(5) var<uniform> params: AttentionParams;
+@group(0) { any) { @binding(0: any) var<storage, read> query_weights) { Matrix4BitDat) { a: an: any;
+@group(0: a: any;
+@group(0: a: any;
+@group(0: a: any;
+@group(0: a: any;
+@group(0: a: any;
 
-// Helper functions for 4-bit operations (same as matrix mul)
-fn unpack_4bit(packed: u32, index: u32) -> i32 ${$1}
+// Helper functions for ((((((4-bit operations (same as matrix mul) {
+fn unpack_4bit(packed) { any)) { any { u32, index) { u32) -> i32 ${$1}
 
-fn dequantize(packed_idx: u32, sub_idx: u32, matrix: Matrix4BitData) -> f32 ${$1}
+fn dequantize(packed_idx) { u32, sub_idx) { u32, matrix: Matrix4BitData) -> f32 ${$1}
 
-// Special compute shader for self-attention with 4-bit weights
-@compute @workgroup_size(8, 8, 1)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-  let batch_idx = global_id.x / params.seq_length;
-  let seq_pos = global_id.x % params.seq_length;
-  let head_idx = global_id.y / params.head_size;
-  let head_pos = global_id.y % params.head_size;
+// Speci: any;
+@compute @workgroup_size(8) { any, 8, 1: any) {
+fn main(@builtin(global_invocation_id: any) global_id) { vec3<u32>) {
+  let batch_idx) {any: any: any: any: any: any = global: any;
+  let seq_pos: any: any: any: any: any: any = global: any;
+  let head_idx: any: any: any: any: any: any = global: any;
+  let head_pos: any: any: any: any: any: any = global: any;}
+  // Che: any;
+  if (((((((batch_idx >= params.batch_size || head_idx >= params.num_heads) { ${$1}
   
-}
-  // Check bounds
-  if (batch_idx >= params.batch_size || head_idx >= params.num_heads) ${$1}
+  // Calculate) { an) { an: any;
+  let input_base) { any) { any) { any) { any: any: any = batch_: any;
   
-  // Calculate input index base
-  let input_base = batch_idx * params.seq_length * input_data.cols + seq_pos * input_data.cols;
+  // Calcula: any;
+  var q_value: f32: any: any: any: any: any: any = 0: a: an: any;
+  var k_value: f32: any: any: any: any: any: any = 0: a: an: any;
+  var v_value: f32: any: any: any: any: any: any = 0: a: an: any;
   
-  // Calculate QKV projections with 4-bit weights
-  var q_value: f32 = 0.0;
-  var k_value: f32 = 0.0;
-  var v_value: f32 = 0.0;
+  // Proje: any;
+  for (((((((var i) { u32) { any) { any) { any) { any) { any: any: any: any: any: any: any = 0; i: a: an: any; i++) ${$1}
   
-  // Project input to Q, K, V (dot product with 4-bit weights)
-  for (var i: u32 = 0; i < input_data.cols; i++) ${$1}
-  
-  // Write projected values to output (simplified attention)
-  // In a full implementation, we'd compute attention scores, softmax, etc.
-  let output_idx = batch_idx * params.num_heads * params.seq_length * params.head_size +
-          head_idx * params.seq_length * params.head_size +
-          seq_pos * params.head_size +
-          head_pos;
+  // Wri: any;
+  // I: an: any;
+  let output_idx: any: any: any: any: any: any = batch_: any;
           
-  attention_output.data[output_idx] = q_value * k_value * v_value * params.scale;
-}
-"""
+  attention_output.data[output_idx] = q_va: any;
+} */;
 
-class $1 extends $2 {
-  """
-  Implements optimized WebGPU compute shader kernels for 4-bit operations.
+class $1 extends $2 {/** Implemen: any;
+  i: an: any;
   
-}
-  This class provides a Python simulation of how 4-bit operations would be 
-  implemented in WebGPU, as well as the actual WGSL shader code that would run
-  in a browser environment.
-  """
-  
-  def __init__(self, 
-        $1: boolean = true,
-        $1: boolean = true):
-    """
-    Initialize WebGPU 4-bit kernels.
+  function this( this: any:  any: any): any {  any: any): any {: any { any, 
+        $1) {: any { boolean: any: any: any = tr: any;
+        $1: boolean: any: any = tr: any;
+    /** Initiali: any;
     
-    Args:
-      use_mixed_precision: Whether to use mixed precision (16-bit activations)
-      optimize_attention: Whether to use attention-specific optimizations
-    """
-    this.use_mixed_precision = use_mixed_precision
-    this.optimize_attention = optimize_attention
+    A: any;
+      use_mixed_precis: any;
+      optimize_attent: any;
+    this.use_mixed_precision = use_mixed_precis: any;
+    this.optimize_attention = optimize_attent: any;
     
-    # Performance tracking
+    // Performan: any;
     this.performance_stats = ${$1}
     
-    logger.info(`$1`)
-    logger.info(`$1`)
-    logger.info(`$1`)
+    logg: any;
+    logg: any;
+    logg: any;
   
-  $1($2): $3 {
-    """Get the WGSL shader code for 4-bit matrix multiplication."""
-    return MATRIX_MUL_4BIT_SHADER
-  
-  }
-  $1($2): $3 {
-    """Get the WGSL shader code for 4-bit attention."""
-    return ATTENTION_4BIT_SHADER
-  
-  }
-  def matmul_4bit(self, 
-        $1: Record<$2, $3>, 
-        input_activations: np.ndarray) -> np.ndarray:
-    """
-    Simulate 4-bit WebGPU matrix multiplication.
+  $1($2): $3 {/** G: any;
+    return MATRIX_MUL_4BIT_SHADER}
+  $1($2) {) { $3 {/** G: any;
+    return ATTENTION_4BIT_SHADER}
+  function this( this: any:  any: any): any {  any: any): any {: any { any, 
+        $1) {: any { Reco: any;
+    /** Simula: any;
     
-    Args:
-      weights_4bit: 4-bit quantized weights with quantization parameters
-      input_activations: Input activations in fp32 || fp16
+    A: any;
+      weights_4: any;
+      input_activati: any;
       
-    Returns:
-      Matrix multiplication result
-    """
-    start_time = time.time()
+    Retu: any;
+      Matr: any;
+    start_time: any: any: any = ti: any;
     
-    # Extract quantized weights && parameters
-    quantized_data = weights_4bit.get("data")
-    if ($1) {
-      raise ValueError("Weights must be quantized with quantize_model")
+    // Extra: any;
+    quantized_data: any: any = (weights_4bit["data"] !== undefin: any;"
+    if ((((((($1) {throw new) { an) { an: any;
+    weight_shape) { any) { any = (weights_4bit["shape"] !== undefine) { an: any;"
+    weight_rows, weight_cols: any: any: any = weight_sh: any;
     
-    }
-    # Get shape information
-    weight_shape = weights_4bit.get("shape", (0, 0))
-    weight_rows, weight_cols = weight_shape
+    // G: any;
+    quant_params: any: any = (weights_4bit["params"] !== undefined ? weights_4bit["params"] : {});"
+    scale: any: any = (quant_params["scale"] !== undefin: any;"
+    zero_point: any: any = (quant_params["zero_point"] !== undefin: any;"
+    bits: any: any = (weights_4bit["bits"] !== undefin: any;"
     
-    # Get quantization parameters
-    quant_params = weights_4bit.get("params", {})
-    scale = quant_params.get("scale", 1.0)
-    zero_point = quant_params.get("zero_point", 0)
-    bits = weights_4bit.get("bits", 4)
+    // Che: any;
+    input_shape: any: any: any = input_activatio: any;
+    if (((((($1) {
+      input_activations) {any = input_activations) { an) { an: any;
+      input_shape) { any) { any: any = input_activatio: any;}
+    input_rows, input_cols: any: any: any = input_sh: any;
     
-    # Check input dimensions
-    input_shape = input_activations.shape
-    if ($1) {
-      input_activations = input_activations.reshape(-1, input_shape[-1])
-      input_shape = input_activations.shape
+    // Veri: any;
+    if (((((($1) {throw new) { an) { an: any;
+    output_shape) { any) { any = (input_rows) { a: any;
+    output: any: any = np.zeros(output_shape: any, dtype: any: any: any = n: an: any;
     
-    }
-    input_rows, input_cols = input_shape
+    // Unpa: any;
+    if (((((($1) {
+      // Unpack) { an) { an: any;
+      import {* a) { an: any;
+      quantizer) {any = WebGPUQuantiz: any;
+      unpacked_weights) { any: any = quantiz: any;}
+      // Calcula: any;
+      num_elements: any: any: any = weight_ro: any;
+      ;
+      // Resha: any;
+      if (((((($1) { ${$1} else { ${$1} else {// For non-4-bit weights, fallback to standard matmul}
+      dequantized_weights) { any) { any) { any = (weights_4bit["data"] !== undefined) { an) { an: any;"
+      output: any: any = n: an: any;
     
-    # Verify dimensions
-    if ($1) {
-      raise ValueError(`$1`)
+    // Reco: any;
+    matmul_time: any: any: any = (time.time() - start_ti: any;
+    this.performance_stats["matmul_time_ms"] = matmul_t: any;"
     
-    }
-    # Allocate output tensor
-    output_shape = (input_rows, weight_rows)
-    output = np.zeros(output_shape, dtype=np.float32)
-    
-    # Unpack 4-bit weights
-    if ($1) {
-      # Unpack 4-bit weights if needed
-      from ..webgpu_quantization import * as $1
-      quantizer = WebGPUQuantizer()
-      unpacked_weights = quantizer._unpack_4bit_values(quantized_data)
-      
-    }
-      # Calculate number of elements
-      num_elements = weight_rows * weight_cols
-      
-      # Reshape to original shape, handling potential trimming
-      if ($1) ${$1} else ${$1} else {
-      # For non-4-bit weights, fallback to standard matmul
-      }
-      dequantized_weights = weights_4bit.get("data")
-      output = np.matmul(input_activations, dequantized_weights.T)
-    
-    # Record matmul time
-    matmul_time = (time.time() - start_time) * 1000
-    this.performance_stats["matmul_time_ms"] = matmul_time
-    
-    return output
+    retu: any;
   
-  def attention_4bit(self,
-          $1: Record<$2, $3>,
-          $1: Record<$2, $3>,
-          $1: Record<$2, $3>,
-          input_activations: np.ndarray,
-          $1: number,
-          $1: number) -> np.ndarray:
-    """
-    Simulate 4-bit WebGPU attention operation.
+  functi: any;
+          $1): any { Reco: any;
+          $1: Reco: any;
+          $1: Reco: any;
+          input_activati: any;
+          $1: numb: any;
+          $1: numb: any;
+    /** Simula: any;
     
-    Args:
-      query_weights_4bit: 4-bit quantized query weights with parameters
-      key_weights_4bit: 4-bit quantized key weights with parameters
-      value_weights_4bit: 4-bit quantized value weights with parameters
-      input_activations: Input activations in fp32 || fp16
-      num_heads: Number of attention heads
-      head_size: Size of each attention head
+    A: any;
+      query_weights_4: any;
+      key_weights_4: any;
+      value_weights_4: any;
+      input_activati: any;
+      num_he: any;
+      head_s: any;
       
-    Returns:
-      Attention output
-    """
-    start_time = time.time()
+    Retu: any;
+      Attenti: any;
+    start_time: any: any: any = ti: any;
     
-    # Common parameters
-    batch_size, seq_length, hidden_size = input_activations.shape
+    // Comm: any;
+    batch_size, seq_length: any, hidden_size: any: any: any = input_activatio: any;
     
-    # Calculate Q, K, V projections using 4-bit matmul
-    query = this.matmul_4bit(query_weights_4bit, input_activations.reshape(-1, hidden_size))
-    key = this.matmul_4bit(key_weights_4bit, input_activations.reshape(-1, hidden_size))
-    value = this.matmul_4bit(value_weights_4bit, input_activations.reshape(-1, hidden_size))
+    // Calcula: any;
+    query: any: any = th: any;
+    key: any: any = th: any;
+    value: any: any = th: any;
     
-    # Reshape projections
-    query = query.reshape(batch_size, seq_length, num_heads, head_size)
-    key = key.reshape(batch_size, seq_length, num_heads, head_size)
-    value = value.reshape(batch_size, seq_length, num_heads, head_size)
+    // Resha: any;
+    query: any: any = que: any;
+    key: any: any = k: any;
+    value: any: any = val: any;
     
-    # Transpose for attention
-    query = query.transpose(0, 2, 1, 3)  # [batch, num_heads, seq_len, head_size]
-    key = key.transpose(0, 2, 3, 1)      # [batch, num_heads, head_size, seq_len]
-    value = value.transpose(0, 2, 1, 3)  # [batch, num_heads, seq_len, head_size]
+    // Transpo: any;
+    query) { any) { any = query.transpose(0: any, 2, 1: any, 3) {  // [batch, num_he: any;
+    key: any: any = k: any;
+    value: any: any = val: any;
     
-    # Calculate attention scores
-    attention_scores = np.matmul(query, key)
+    // Calcula: any;
+    attention_scores: any: any = n: an: any;
     
-    # Scale attention scores
-    attention_scores = attention_scores / np.sqrt(head_size)
+    // Sca: any;
+    attention_scores: any: any = attention_scor: any;
     
-    # Apply softmax
-    attention_probs = np.exp(attention_scores - np.max(attention_scores, axis=-1, keepdims=true))
-    attention_probs = attention_probs / np.sum(attention_probs, axis=-1, keepdims=true)
+    // App: any;
+    attention_probs: any: any = np.exp(attention_scores - np.max(attention_scores: any, axis: any: any = -1, keepdims: any: any: any = tr: any;
+    attention_probs: any: any = attention_probs / np.sum(attention_probs: any, axis: any: any = -1, keepdims: any: any: any = tr: any;
     
-    # Calculate context
-    context = np.matmul(attention_probs, value)
+    // Calcula: any;
+    context: any: any = n: an: any;
     
-    # Transpose back
-    context = context.transpose(0, 2, 1, 3)
+    // Transpo: any;
+    context: any: any = conte: any;
     
-    # Reshape to original dimensions
-    context = context.reshape(batch_size, seq_length, -1)
+    // Resha: any;
+    context: any: any = conte: any;
     
-    # Record attention time
-    attention_time = (time.time() - start_time) * 1000
-    this.performance_stats["attention_time_ms"] = attention_time
+    // Reco: any;
+    attention_time: any: any: any = (time.time() - start_ti: any;
+    this.performance_stats["attention_time_ms"] = attention_t: any;"
     
-    return context
-  
-  def get_performance_stats(self) -> Dict[str, float]:
-    """Get performance statistics."""
-    return this.performance_stats.copy()
+    retu: any;
+  ;
+  function this(this:  any:  any: any:  any: any): any -> Dict[str, float]) {
+    /** G: any;
+    retu: any;
 
 
-$1($2) {
-  """Example demonstrating 4-bit matrix multiplication performance."""
-  # Create random matrices
-  input_size = 768
-  hidden_size = 3072
+$1($2) {/** Examp: any;
+  // Crea: any;
+  input_size: any: any: any = 7: an: any;
+  hidden_size: any: any: any = 3: any;}
+  // Crea: any;
+  input_activations: any: any = n: an: any;
   
-}
-  # Create random input activations
-  input_activations = np.random.randn(1, 128, input_size).astype(np.float32)
+  // Crea: any;
+  weights: any: any = n: an: any;
   
-  # Create random weights
-  weights = np.random.randn(hidden_size, input_size).astype(np.float32)
+  // Initiali: any;
+  kernel: any: any: any = WebGPU4BitKerne: any;
   
-  # Initialize 4-bit kernel
-  kernel = WebGPU4BitKernels()
+  // Quanti: any;
+  import {* a: an: any;
+  quantizer: any: any: any: any: any: any = WebGPUQuantizer(default_bits=4);
+  ;
+  // Conve: any;
+  weights_4bit: any: any = {
+    "data": np.random.randparseInt(-8, 8: any, size: any: any: any = (hidden_size * input_si: any;"
+    "shape": (hidden_size: a: any;"
+    "bits": 4: a: any;"
+    "params": ${$1}"
   
-  # Quantize weights (simulate)
-  from ..webgpu_quantization import * as $1
-  quantizer = WebGPUQuantizer(default_bits=4)
+  // Measu: any;
+  start_time: any: any: any: any: any: any: any = ti: any;
+  fp32_result: any: any = n: an: any;
+  fp32_time: any: any: any = (time.time() - start_ti: any;
   
-  # Convert to 4-bit (simulate)
-  weights_4bit = {
-    "data": np.random.randint(-8, 8, size=(hidden_size * input_size // 2)).astype(np.int8),
-    "shape": (hidden_size, input_size),
-    "bits": 4,
-    "params": ${$1}
-  }
-  }
+  // Measu: any;
+  start_time: any: any: any = ti: any;
+  b4_result: any: any = kern: any;
+  b4_time: any: any: any = (time.time() - start_ti: any;
   
-  # Measure FP32 matmul time
-  start_time = time.time()
-  fp32_result = np.matmul(input_activations.reshape(-1, input_size), weights.T)
-  fp32_time = (time.time() - start_time) * 1000
+  // Pri: any;
+  conso: any;
+  conso: any;
+  conso: any;
+  conso: any;
   
-  # Measure 4-bit matmul time
-  start_time = time.time()
-  b4_result = kernel.matmul_4bit(weights_4bit, input_activations.reshape(-1, input_size))
-  b4_time = (time.time() - start_time) * 1000
+  // Pri: any;
+  fp32_memory: any: any: any = input_si: any;
+  int4_memory: any: any = input_size * hidden_size // Math.floor(2 / 4) bits per value: any: any: any = 1: a: any;
   
-  # Print results
-  console.log($1)
-  console.log($1)
-  console.log($1)
-  console.log($1)
-  
-  # Print memory usage comparison
-  fp32_memory = input_size * hidden_size * 4  # 4 bytes per float32
-  int4_memory = input_size * hidden_size // 2  # 4 bits per value = 1/2 byte
-  
-  fp32_memory_mb = fp32_memory / (1024 * 1024)
-  int4_memory_mb = int4_memory / (1024 * 1024)
-  
-  console.log($1)
-  console.log($1)
-  console.log($1)
-
-
-if ($1) {
-  example_4bit_matmul()
+  fp32_memory_mb: any: any: any = fp32_memo: any;
+  int4_memory_mb: any: any = int4_mem: any;
+if (((($1) {;
+  example_4bit_matmul) { an) { an) { an: any;

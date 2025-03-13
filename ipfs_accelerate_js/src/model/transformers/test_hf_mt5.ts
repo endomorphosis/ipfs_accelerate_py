@@ -1,1160 +1,853 @@
-/**
- * Converted from Python: test_hf_mt5.py
- * Conversion date: 2025-03-11 04:08:48
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+import {TransformerModel} import { TokenizerCon: any;} f: any;";"
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1 as np
-from unittest.mock import * as $1, patch
+// WebG: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+import {* a: an: any;
 
-# Use direct import * as $1 the absolute path
+// U: any;
 
-# Import hardware detection capabilities if ($1) {::
-try ${$1} catch($2: $1) {
-  HAS_HARDWARE_DETECTION = false
-  # We'll detect hardware manually as fallback
-  sys.path.insert()))))))))0, "/home/barberb/ipfs_accelerate_py")
-  from ipfs_accelerate_py.worker.skillset.hf_t5 import * as $1
+// Import hardware detection capabilities if ((((((($1) {) {
+try ${$1} catch(error) { any)) { any {
+  HAS_HARDWARE_DETECTION) { any) { any) { any = fa: any;
+  // W: an: any;
+  s: any;
+  import {* a: an: any;
 
 }
-# Define init_cuda method to be added to hf_t5 for MT5
-$1($2) {
-  """
-  Initialize MT5 model with CUDA support.
+// Defi: any;
+$1($2) {/** Initialize MT5 model with CUDA support.}
+  Args) {
+    model_name) { Na: any;
+    model_type) { Ty: any;
+    device_la: any;
+    
+  Retu: any;
+    tu: any;
+    impo: any;
+    impo: any;
+    impo: any;
+    impo: any;
   
-}
-  Args:
-    model_name: Name || path of the model
-    model_type: Type of model ()))))))))text2text-generation)
-    device_label: CUDA device label ()))))))))e.g., "cuda:0")
-    
-  Returns:
-    tuple: ()))))))))endpoint, tokenizer, handler, queue, batch_size)
-    """
-    import * as $1
-    import * as $1
-    import * as $1.mock
-    import * as $1
-  
-  # Try to import * as $1 utility functions
-  try {
-    sys.path.insert()))))))))0, "/home/barberb/ipfs_accelerate_py/test")
-    import * as $1 as test_utils
-    
-  }
-    # Check if CUDA is available
-    import * as $1:
-    if ($1) {
-      console.log($1)))))))))"CUDA !available, falling back to mock implementation")
-      tokenizer = unittest.mock.MagicMock())))))))))
-      endpoint = unittest.mock.MagicMock())))))))))
-      handler = lambda text: null
-      return endpoint, tokenizer, handler, null, 0
-    
-    }
-    # Get the CUDA device
-      device = test_utils.get_cuda_device()))))))))device_label)
-    if ($1) {
-      console.log($1)))))))))"Failed to get valid CUDA device, falling back to mock implementation")
-      tokenizer = unittest.mock.MagicMock())))))))))
-      endpoint = unittest.mock.MagicMock())))))))))
-      handler = lambda text: null
-      return endpoint, tokenizer, handler, null, 0
-    
-    }
-    # Try to load the real model with CUDA
-    try {
-      import ${$1} from "$1"
-      console.log($1)))))))))`$1`)
-      
-    }
-      # First try to load tokenizer
-      try ${$1} catch($2: $1) {
-        console.log($1)))))))))`$1`)
-        tokenizer = unittest.mock.MagicMock())))))))))
-        tokenizer.is_real_simulation = true
-        
-      }
-      # Try to load model
-      try {
-        model = AutoModelForSeq2SeqLM.from_pretrained()))))))))model_name)
-        console.log($1)))))))))`$1`)
-        # Move to device && optimize
-        model = test_utils.optimize_cuda_memory()))))))))model, device, use_half_precision=true)
-        model.eval())))))))))
-        console.log($1)))))))))`$1`)
-        
-      }
-        # Create a real handler function 
+  // T: any;
+  try {sys.path.insert())0, "/home/barberb/ipfs_accelerate_py/test");"
+    impo: any;
+    import: any; {;"
+    if ((((($1) {;
+      console) { an) { an: any;
+      tokenizer) { any) { any) { any = unitte: any;
+      endpoint: any: any: any = unitte: any;
+      handler: any: any: any: any: any: any = lambda text) {null;
+      retu: any;
+      device: any: any: any = test_uti: any;
+    if ((((((($1) {
+      console) { an) { an: any;
+      tokenizer) { any) { any) { any = unitte: any;
+      endpoint: any: any: any = unitte: any;
+      handler: any: any: any: any: any: any = lambda text) {null;
+      retu: any;
+    try {console.log($1))`$1`)}
+      // Fir: any;
+      try ${$1} catch(error: any): any {console.log($1))`$1`);
+        tokenizer: any: any: any = unitte: any;
+        tokenizer.is_real_simulation = t: any;}
+      // T: any;
+      try {model: any: any: any = AutoModelForSeq2Seq: any;
+        conso: any;
+        // Mo: any;
+        model: any: any = test_utils.optimize_cuda_memory())model, device: any, use_half_precision: any: any: any = tr: any;
+        mod: any;
+        conso: any;
         $1($2) {
-          try {
-            start_time = time.time())))))))))
-            
-          }
-            # Check if ($1) {
+          try {start_time: any: any: any = ti: any;};
+            // Check if ((((((($1) {
             if ($1) {
-              # For MT5, we handle translation tasks by prefixing with the target language
-              prefix = ""
-              if ($1) {
-                prefix = `$1`
-              
-              }
-              # Tokenize the input
-                inputs = tokenizer()))))))))prefix + text, return_tensors="pt", padding=true, truncation=true)
-              # Move to device
-                inputs = {}}}}}}}}}}}}}}}}}}}}}}}}}}}k: v.to()))))))))device) for k, v in Object.entries($1))))))))))}
-              
-            }
-              # Track GPU memory
-              if ($1) ${$1} else {
-                gpu_mem_before = 0
-                
-              }
-              # Run inference
-              with torch.no_grad()))))))))):
-                if ($1) {
-                  torch.cuda.synchronize())))))))))
-                # Generate translation
+              // For) { an) { an: any;
+              prefix) { any) { any) { any: any: any: any = "";"
+              if (((((($1) {
+                prefix) {any = `$1`;}
+              // Tokenize) { an) { an: any;
+                inputs) { any) { any = tokenizer())prefix + text, return_tensors: any: any = "pt", padding: any: any = true, truncation: any: any: any = tr: any;"
+              // Mo: any;
+                inputs: any: any: any = {}k) { v.to())device) for ((((((k) { any, v in Object.entries($1) {)}
+              // Track) { an) { an: any;
+              if ((((((($1) { ${$1} else {
+                gpu_mem_before) {any = 0;}
+              // Run) { an) { an: any;
+              with torch.no_grad())) {
+                if ((((($1) {torch.cuda.synchronize());
+                // Generate translation}
+                  outputs) { any) { any) { any) { any = mode) { an: any;
+                  input_ids) { any) { any: any = inpu: any;
+                  attention_mask: any: any = inpu: any;
+                  max_length: any: any: any = 1: any;
+                  num_beams: any: any: any = 4: a: any;
+                  length_penalty: any: any: any = 0: a: any;
+                  early_stopping: any: any: any = t: any;
+                  );
+                if (((((($1) {torch.cuda.synchronize())}
+              // Decode) { an) { an: any;
+                  translated_text) { any) { any = tokenizer.decode())outputs[],0], skip_special_tokens) { any: any: any = tr: any;
+                  ,;
+              // Measu: any;
+              if (((((($1) { ${$1} else {
+                gpu_mem_used) {any = 0;};
+                return {}
+                "translated_text") { translated_text) { an) { an: any;"
+                "implementation_type") {"REAL",;"
+                "inference_time_seconds") { tim) { an: any;"
+                "gpu_memory_mb": gpu_mem_us: any;"
+                "device": str())device)} else {"
+              // Hand: any;
+                return {}
+                "error": "Unsupported inp: any;"
+                "implementation_type": "REAL",;"
+                "device": s: any;"
+                } catch(error: any): any {
+            conso: any;
+            conso: any;
+            // Retu: any;
+                return {}
+                "error": s: any;"
+                "implementation_type": "REAL",;"
+                "device": s: any;"
                 }
-                  outputs = model.generate()))))))))
-                  input_ids=inputs[],"input_ids"],
-                  attention_mask=inputs.get()))))))))"attention_mask", null),
-                  max_length=128,
-                  num_beams=4,
-                  length_penalty=0.6,
-                  early_stopping=true
-                  )
-                if ($1) {
-                  torch.cuda.synchronize())))))))))
-              
-                }
-              # Decode the generated tokens
-                  translated_text = tokenizer.decode()))))))))outputs[],0], skip_special_tokens=true)
-                  ,
-              # Measure GPU memory
-              if ($1) ${$1} else {
-                gpu_mem_used = 0
-                
-              }
-                return {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "translated_text": translated_text,
-                "implementation_type": "REAL",
-                "inference_time_seconds": time.time()))))))))) - start_time,
-                "gpu_memory_mb": gpu_mem_used,
-                "device": str()))))))))device)
-                }
-            } else {
-              # Handle batch inputs || other formats
-                return {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "error": "Unsupported input format",
-                "implementation_type": "REAL",
-                "device": str()))))))))device)
-                }
-          } catch($2: $1) {
-            console.log($1)))))))))`$1`)
-            console.log($1)))))))))`$1`)
-            # Return fallback embedding
-                return {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "error": str()))))))))e),
-                "implementation_type": "REAL",
-                "device": str()))))))))device)
-                }
+                  retu: any;
         
-          }
-                  return model, tokenizer, real_handler, null, 4
-        
-      } catch($2: $1) ${$1} catch($2: $1) {
-      console.log($1)))))))))`$1`)
-      }
-      # Fall through to simulated implementation
+      } catch(error: any) ${$1} catch(error: any): any {console.log($1))`$1`)}
+      // Fa: any;
             }
-      
-            }
-    # Simulate a successful CUDA implementation for testing
+    // Simula: any;
         }
-      console.log($1)))))))))"Creating simulated REAL implementation for demonstration purposes")
+      console.log($1) {)"Creating simulat: any;"
     
-    # Create a realistic model simulation
-      endpoint = unittest.mock.MagicMock())))))))))
-      endpoint.to.return_value = endpoint  # For .to()))))))))device) call
-      endpoint.half.return_value = endpoint  # For .half()))))))))) call
-      endpoint.eval.return_value = endpoint  # For .eval()))))))))) call
+    // Crea: any;
+      endpoint) { any) { any: any = unitte: any;
+      endpoint.to.return_value = endpoi: any;
+      endpoint.half.return_value = endpoi: any;
+      endpoint.eval.return_value = endpoi: any;
     
-    # Add config with model_type to make it look like a real model
-      config = unittest.mock.MagicMock())))))))))
-      config.model_type = "mt5"
-      endpoint.config = config
+    // A: any;
+      config: any: any: any = unitte: any;
+      config.model_type = "mt5";"
+      endpoint.config = con: any;
     
-    # Set up realistic tokenizer simulation
-      tokenizer = unittest.mock.MagicMock())))))))))
+    // S: any;
+      tokenizer: any: any: any = unitte: any;
     
-    # Mark these as simulated real implementations
-      endpoint.is_real_simulation = true
-      tokenizer.is_real_simulation = true
+    // Ma: any;
+      endpoint.is_real_simulation = t: any;
+      tokenizer.is_real_simulation = t: any;
     
-    # Create a simulated handler that returns realistic translations
+    // Crea: any;
     $1($2) {
-      # Simulate model processing with realistic timing
-      start_time = time.time())))))))))
-      if ($1) {
-        torch.cuda.synchronize())))))))))
-      
-      }
-      # Simulate processing time
-        time.sleep()))))))))0.2)  # Slightly longer for translation
+      // Simula: any;
+      start_time: any: any: any = ti: any;
+      if ((((((($1) {torch.cuda.synchronize())}
+      // Simulate) { an) { an: any;
+        tim) { an: any;
       
     }
-      # Create a realistic translated text response
-        translation_mapping = {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "English": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "Hello world": "Hello world",
-        "How are you?": "How are you?",
-        },
-        "Spanish": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "Hello world": "Hola mundo",
-        "How are you?": "¿Cómo estás?",
-        },
-        "French": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "Hello world": "Bonjour le monde",
-        "How are you?": "Comment ça va?",
-        },
-        "German": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "Hello world": "Hallo Welt",
-        "How are you?": "Wie geht es dir?",
-        },
-        "Japanese": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "Hello world": "こんにちは世界",
-        "How are you?": "お元気ですか？",
-        }
-        }
+      // Crea: any;
+        translation_mapping) { any) { any) { any = {}
+        "English") { }"
+        "Hello world") { "Hello wor: any;"
+        "How are you?") {"How a: any;"
+        "Spanish": {}"
+        "Hello wor: any;"
+        "How a: any;"
+},;
+        "French": {}"
+        "Hello wor: any;"
+        "How a: any;"
+},;
+        "German": {}"
+        "Hello wor: any;"
+        "How a: any;"
+},;
+        "Japanese": {}"
+        "Hello wor: any;"
+        "How a: any;"
+}
       
-      # Default translation result
-        translated_text = `$1`
+      // Defau: any;
+        translated_text: any: any: any: any: any: any = `$1`;
       
-      # If we have a target language, try to use it to generate a realistic response
-      if ($1) {
+      // I: an: any;
+      if ((((((($1) {
         if ($1) {
-          # Check if ($1) {
-          for src, tgt in translation_mapping[],target_language].items()))))))))):,
-          }
-            if ($1) {
-              translated_text = tgt
-          break
-            }
-        # Add language marker
+          // Check if ($1) {
+          for ((((((src) { any, tgt in translation_mapping[],target_language].items() {)) {}
+            if ((($1) {
+              translated_text) {any = tg) { an) { an: any;
+          break) { an) { an: any;
         }
-          translated_text = `$1`
-          ,
-      # Simulate memory usage
-      }
-          gpu_memory_allocated = 2.0  # GB, simulated for MT5
+          translated_text) {any = `$1`;
+          ,;
+      // Simulate memory usage}
+          gpu_memory_allocated) { any) { any) { any = 2) { a: any;
       
-      # Return a dictionary with REAL implementation markers
-        return {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "translated_text": translated_text,
-        "implementation_type": "REAL",
-        "inference_time_seconds": time.time()))))))))) - start_time,
-        "gpu_memory_mb": gpu_memory_allocated * 1024,  # Convert to MB
-        "device": str()))))))))device),
-        "is_simulated": true
-        }
+      // Retu: any;
+        return {}
+        "translated_text") { translated_te: any;"
+        "implementation_type") { "REAL",;"
+        "inference_time_seconds") {time.time()) - start_ti: any;"
+        "gpu_memory_mb") { gpu_memory_allocat: any;"
+        "device": s: any;"
+        "is_simulated": tr: any;"
+        retu: any;
       
-        console.log($1)))))))))`$1`)
-        return endpoint, tokenizer, simulated_handler, null, 4  # Batch size for CUDA
-      
-  } catch($2: $1) {
-    console.log($1)))))))))`$1`)
-    console.log($1)))))))))`$1`)
-    
-  }
-  # Fallback to mock implementation
-    tokenizer = unittest.mock.MagicMock())))))))))
-    endpoint = unittest.mock.MagicMock())))))))))
-    handler = lambda text, target_language=null: {}}}}}}}}}}}}}}}}}}}}}}}}}}}"translated_text": `$1`, "implementation_type": "MOCK"}
-        return endpoint, tokenizer, handler, null, 0
+  } catch(error) { any) {: any {) { any {console.log($1))`$1`);
+    conso: any;
+    tokenizer: any: any: any = unitte: any;
+    endpoint: any: any: any = unitte: any;
+    handler: any: any = lambda text, target_language: any: any = null) { }"translated_text": `$1`, "implementation_type": "MOCK"}"
+        retu: any;
 
-# Add the method to the class
-        hf_t5.init_cuda = init_cuda
-
+// A: any;
+        hf_t5.init_cuda = init_c: any;
+;
 class $1 extends $2 {
-  $1($2) {
-    """
-    Initialize the MT5 test class.
+  $1($2) {/** Initiali: any;
+      resourc: any;
+      metada: any;
+    this.resources = resources if ((((((($1) { ${$1}
+      this.metadata = metadata if metadata else {}
+      this.t5 = hf_t5())resources=this.resources, metadata) { any) {any = this) { an) { an: any;}
+    // Us) { an: any;
+      this.model_name = "google/mt5-small"  // ~300MB, multilingu: any;"
     
-  }
-    Args:
-      resources ()))))))))dict, optional): Resources dictionary
-      metadata ()))))))))dict, optional): Metadata dictionary
-      """
-    this.resources = resources if ($1) ${$1}
-      this.metadata = metadata if metadata else {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      this.t5 = hf_t5()))))))))resources=this.resources, metadata=this.metadata)
-    
-}
-    # Use a small open-access MT5 model by default
-      this.model_name = "google/mt5-small"  # ~300MB, multilingual T5 model
-    
-    # Alternative models in increasing size order
-      this.alternative_models = [],
-      "google/mt5-small",      # Default
-      "google/mt5-base",       # Medium size
-      "t5-small",              # English-only fallback
-      "google/mt5-efficient-tiny"  # Efficient alternative
-      ]
-    :
-    try {
-      console.log($1)))))))))`$1`)
-      
-    }
-      # Try to import * as $1 for validation
-      if ($1) {
-        import ${$1} from "$1"
-        try ${$1} catch($2: $1) {
-          console.log($1)))))))))`$1`)
-          
-        }
-          # Try alternatives one by one
-          for alt_model in this.alternative_models[],1:]:  # Skip first as it's the same as primary
-            try ${$1} catch($2: $1) {
-              console.log($1)))))))))`$1`)
-              
-            }
-          # If all alternatives failed, check local cache
-          if ($1) {
-            # Try to find cached models
-            cache_dir = os.path.join()))))))))os.path.expanduser()))))))))"~"), ".cache", "huggingface", "hub", "models")
-            if ($1) {
-              # Look for any MT5 models in cache
-              mt5_models = [],name for name in os.listdir()))))))))cache_dir) if ($1) {
-              if ($1) ${$1} else ${$1} else ${$1} else ${$1} catch($2: $1) {
-      console.log($1)))))))))`$1`)
+    // Alternati: any;
+      this.alternative_models = [],;
+      "google/mt5-small",      // Defa: any;"
+      "google/mt5-base",       // Medi: any;"
+      "t5-small",              // Engli: any;"
+      "google/mt5-efficient-tiny"  // Efficie: any;"
+      ];
+    ) {
+    try {console.log($1))`$1`)}
+      // T: any;
+      if ((((((($1) {
+        try ${$1} catch(error) { any)) { any {console.log($1))`$1`)}
+          // Try) { an) { an: any;
+          for (((alt_model in this.alternative_models[],1) { any) {]) {  // Skip) { an) { an: any;
+            try ${$1} catch(error) { any)) { any {console.log($1))`$1`)}
+          // I) { an: any;
+          if ((((((($1) {
+            // Try) { an) { an: any;
+            cache_dir) { any) { any) { any = o: an: any;
+            if (((((($1) {
+              // Look) { an) { an: any;
+              mt5_models) { any) { any) { any = [],name for (((name in os.listdir() {)cache_dir) if (((((($1) {
+              if ($1) { ${$1} else { ${$1} else { ${$1} else { ${$1} catch(error) { any)) { any {console.log($1))`$1`)}
+      // Fall) { an) { an: any;
               }
-      # Fall back to small t5 model as last resort
-              }
-      this.model_name = "t5-small"
+      this.model_name = "t5-small";"
             }
-      console.log($1)))))))))"Falling back to t5-small due to error")
+      console) { an) { an: any;
           }
-      
-      }
-      console.log($1)))))))))`$1`)
+      consol) { an: any;
     
-    # Define test inputs for translation
-      this.test_texts = {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "Hello world": [],"German", "French", "Spanish"],
-      "How are you?": [],"German", "Spanish"]
-      }
-      this.test_input = list()))))))))this.Object.keys($1)))))))))))[],0]  # Use first text as default
-      this.test_target = this.test_texts[],this.test_input][],0]  # Use first target language
+    // Defin) { an: any;
+      this.test_texts = {}
+      "Hello world") { [],"German", "French", "Spanish"],;"
+      "How are you?") {[],"German", "Spanish"]}"
+      this.test_input = li: any;
+      this.test_target = th: any;
     
-    # Initialize collection arrays for examples && status
-      this.examples = [],]
-      this.status_messages = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        return null
+    // Initiali: any;
+      this.examples = []];
+      this.status_messages = {}
+        retu: any;
     
-  $1($2) {
-    """
-    Run all tests for the MT5 translation model, organized by hardware platform.
-    Tests CPU, CUDA, && OpenVINO implementations.
+  $1($2) {/** R: any;
+    Tests CPU, CUDA) { any, && OpenVINO implementations.}
+    Returns) {
+      dict) { Structur: any;
+      results: any: any: any = {}
     
-  }
-    Returns:
-      dict: Structured test results with status, examples && metadata
-      """
-      results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-    
-    # Test basic initialization
+    // Te: any;
     try {
-      results[],"init"] = "Success" if ($1) ${$1} catch($2: $1) {
-      results[],"init"] = `$1`
-      }
-
-    }
-    # ====== CPU TESTS ======
+      results[],"init"] = "Success" if ((((((($1) { ${$1} catch(error) { any)) { any {results[],"init"] = `$1`}"
+    // ====== CPU TESTS) { any) { any) { any: any: any: any = =====;
     try {
-      console.log($1)))))))))"Testing MT5 on CPU...")
-      # Initialize for CPU without mocks
-      endpoint, tokenizer, handler, queue, batch_size = this.t5.init_cpu()))))))))
-      this.model_name,
-      "text2text-generation",
-      "cpu"
-      )
+      conso: any;
+      // Initiali: any;
+      endpoint, tokenizer) { any, handler, queue: any, batch_size) { any: any: any: any: any: any = this.t5.init_cpu() {);
+      th: any;
+      "text2text-generation",;"
+      "cpu";"
+      )}
+      valid_init: any: any: any = endpoi: any;
+      results[],"cpu_init"] = "Success ())REAL)" if (((((valid_init else { "Failed CPU) { an) { an: any;"
       
-    }
-      valid_init = endpoint is !null && tokenizer is !null && handler is !null
-      results[],"cpu_init"] = "Success ()))))))))REAL)" if valid_init else "Failed CPU initialization"
+      // Ge) { an: any;
+      test_handler) { any) { any) { any = hand: any;
       
-      # Get handler for CPU directly from initialization
-      test_handler = handler
+      // R: any;
+      start_time) { any: any: any = ti: any;
+      output: any: any: any = test_handl: any;
+      elapsed_time: any: any: any = ti: any;
       
-      # Run actual inference with translation input
-      start_time = time.time())))))))))
-      output = test_handler()))))))))this.test_input, this.test_target)
-      elapsed_time = time.time()))))))))) - start_time
+      // Veri: any;
+      is_valid_output: any: any: any = false) {
+      if ((((((($1) {
+        is_valid_output) { any) { any) { any = tr) { an: any;
+      else if (((((($1) {
+        // Handle) { an) { an: any;
+        is_valid_output) { any) { any) { any = t: any;
+        // Wr: any;
+        output) { any) { any: any: any = {}"translated_text") {output}"
+        results[],"cpu_handler"] = "Success ())REAL)" if ((((((is_valid_output else {"Failed CPU) { an) { an: any;"
+      this.$1.push($2) {){}) {
+        "input") { thi) { an: any;"
+        "target_language") { th: any;"
+        "output") { }"
+        "translated_text") { output.get())"translated_text", str())output)) if ((((((is_valid_output else {null},) {"
+          "timestamp") {datetime.datetime.now()).isoformat()),;"
+          "elapsed_time") { elapsed_time) { an) { an: any;"
+          "implementation_type") { "REAL",;"
+          "platform": "CPU"});"
       
-      # Verify the output is a valid translation response
-      is_valid_output = false:
-      if ($1) {
-        is_valid_output = true
-      elif ($1) {
-        # Handle direct string output
-        is_valid_output = true
-        # Wrap in dict for consistent handling
-        output = {}}}}}}}}}}}}}}}}}}}}}}}}}}}"translated_text": output}
-      
-      }
-        results[],"cpu_handler"] = "Success ()))))))))REAL)" if is_valid_output else "Failed CPU handler"
-      
-      }
-      # Record example
-      this.$1.push($2))))))))){}}}}}}}}}}}}}}}}}}}}}}}}}}}:
-        "input": this.test_input,
-        "target_language": this.test_target,
-        "output": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "translated_text": output.get()))))))))"translated_text", str()))))))))output)) if is_valid_output else null,
-        },:
-          "timestamp": datetime.datetime.now()))))))))).isoformat()))))))))),
-          "elapsed_time": elapsed_time,
-          "implementation_type": "REAL",
-          "platform": "CPU"
-          })
-      
-      # Add translation result to results
-      if ($1) ${$1} catch($2: $1) {
-      console.log($1)))))))))`$1`)
-      }
-      traceback.print_exc())))))))))
-      results[],"cpu_tests"] = `$1`
-      this.status_messages[],"cpu"] = `$1`
+      // A: any;
+      if ((((((($1) { ${$1} catch(error) { any)) { any {console.log($1))`$1`)}
+      traceback) { an) { an: any;
+      results[],"cpu_tests"] = `$1`;"
+      this.status_messages[],"cpu"] = `$1`;"
 
-    # ====== CUDA TESTS ======
-    if ($1) {
+    // ====== CUDA TESTS) { any: any: any: any: any: any = =====;
+    if (((((($1) {
       try {
-        console.log($1)))))))))"Testing MT5 on CUDA...")
-        # Import utilities if ($1) {::
-        try ${$1} catch($2: $1) {
-          console.log($1)))))))))`$1`)
-          cuda_utils_available = false
-          console.log($1)))))))))"CUDA utilities !available, using basic implementation")
+        console) { an) { an: any;
+        // Import utilities if ((($1) {) {
+        try ${$1} catch(error) { any)) { any {console.log($1))`$1`);
+          cuda_utils_available) { any) { any) { any = fa: any;
+          conso: any;
+          endpoint, tokenizer) { any, handler, queue: any, batch_size) { any: any: any: any: any: any = this.t5.init_cuda() {);
+          th: any;
+          "text2text-generation",;"
+          "cuda) {0";"
+          )}
+        // Che: any;
+          valid_init) {any = endpoi: any;}
+        // Mo: any;
+          is_mock_endpoint) { any) { any) { any = fa: any;
+          implementation_type) { any: any: any = "() {)REAL)"  // Defau: any;"
+        ;
+        // Check for (((((various indicators of mock implementations) {
+        if ((((((($1) {
+          is_mock_endpoint) { any) { any) { any) { any = tru) { an) { an: any;
+          implementation_type) {any = "())MOCK)";"
+          console) { an) { an: any;
+        if (((((($1) {
+          // This) { an) { an: any;
+          is_mock_endpoint) { any) { any) { any = fal) { an: any;
+          implementation_type) {any = "())REAL)";"
+          consol) { an: any;
+        if (((((($1) { ${$1}");"
         
-        }
-        # Initialize for CUDA without mocks - try to use real implementation
-          endpoint, tokenizer, handler, queue, batch_size = this.t5.init_cuda()))))))))
-          this.model_name,
-          "text2text-generation",
-          "cuda:0"
-          )
-        
-      }
-        # Check if initialization succeeded
-          valid_init = endpoint is !null && tokenizer is !null && handler is !null
-        
-    }
-        # More robust check for determining if we got a real implementation
-          is_mock_endpoint = false
-          implementation_type = "()))))))))REAL)"  # Default to REAL
-        
-        # Check for various indicators of mock implementations:
-        if ($1) {
-          is_mock_endpoint = true
-          implementation_type = "()))))))))MOCK)"
-          console.log($1)))))))))"Detected mock endpoint based on direct MagicMock instance check")
-        
-        }
-        # Double-check by looking for attributes that real models have
-        if ($1) {
-          # This is likely a real model, !a mock
-          is_mock_endpoint = false
-          implementation_type = "()))))))))REAL)"
-          console.log($1)))))))))`$1`)
-        
-        }
-        # Check for simulated real implementation
-        if ($1) ${$1}")
-        
-        # Get handler for CUDA directly from initialization && enhance it
-        if ($1) ${$1} else {
-          test_handler = handler
-        
-        }
-        # Run benchmark to warm up CUDA ()))))))))if ($1) {::)
-        if ($1) {
-          try {
-            console.log($1)))))))))"Running CUDA benchmark as warmup...")
-            
-          }
-            # Try direct handler warmup first - more reliable
-            console.log($1)))))))))"Running direct handler warmup...")
-            start_time = time.time())))))))))
-            warmup_output = handler()))))))))this.test_input, this.test_target)
-            warmup_time = time.time()))))))))) - start_time
-            
-        }
-            # If handler works, check its output for implementation type
-            if ($1) {
-              # Check for dict output with implementation info
-              if ($1) {
+        // Get) { an) { an: any;
+        if ((($1) { ${$1} else {
+          test_handler) {any = handle) { an) { an: any;};
+        // Run benchmark to warm up CUDA ())if ((($1) {) {);
+        if ((($1) {
+          try {console.log($1))"Running CUDA) { an) { an: any;"
+            consol) { an: any;
+            start_time) { any) { any) { any = ti: any;
+            warmup_output) {any = handl: any;
+            warmup_time: any: any: any = ti: any;}
+            // I: an: any;
+            if (((((($1) {
+              // Check) { an) { an: any;
+              if ((($1) {
                 if ($1) {
-                  console.log($1)))))))))"Handler confirmed REAL implementation")
-                  is_mock_endpoint = false
-                  implementation_type = "()))))))))REAL)"
-            
-                }
-                  console.log($1)))))))))`$1`)
+                  console) { an) { an: any;
+                  is_mock_endpoint) { any) { any) { any = fal) { an: any;
+                  implementation_type) {any = "())REAL)";}"
+                  conso: any;
             
               }
-            # Create a simpler benchmark result
-            }
-                  benchmark_result = {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                  "average_inference_time": warmup_time,
-                  "iterations": 1,
-              "cuda_device": torch.cuda.get_device_name()))))))))0) if ($1) ${$1}
-            :
-              console.log($1)))))))))`$1`)
+            // Crea: any;
+            };
+                  benchmark_result: any: any: any = {}
+                  "average_inference_time") { warmup_ti: any;"
+                  "iterations") { 1: a: any;"
+              "cuda_device": torch.cuda.get_device_name())0) if ((((((($1) { ${$1}"
+            ) {
+              console) { an) { an: any;
             
-            # Check if ($1) {
+            // Check if (((($1) {
             if ($1) {
-              # A real benchmark result should have these keys
-              if ($1) {
-                # Real implementations typically use more memory
-                mem_allocated = benchmark_result.get()))))))))'cuda_memory_used_mb', 0)
-                if ($1) {  # If using more than 100MB, likely real
-                console.log($1)))))))))`$1`)
-                is_mock_endpoint = false
-                implementation_type = "()))))))))REAL)"
-                
-              }
-                console.log($1)))))))))"CUDA warmup completed successfully with valid benchmarks")
-                # If benchmark_result contains real device info, it's definitely real
-                if ($1) ${$1}")
-                  # If we got here, we definitely have a real implementation
-                  is_mock_endpoint = false
-                  implementation_type = "()))))))))REAL)"
-              
+              // A) { an) { an: any;
+              if ((($1) {
+                // Real) { an) { an: any;
+                mem_allocated) { any) { any = benchmark_resul) { an: any;
+                if (((((($1) {  // If) { an) { an: any;
+                consol) { an: any;
+                is_mock_endpoint) {any = fa: any;
+                implementation_type) { any: any: any: any: any: any = "())REAL)";}"
+                conso: any;
+                // I: an: any;
+                if (((((($1) { ${$1}");"
+                  // If) { an) { an: any;
+                  is_mock_endpoint) {any = fal) { an: any;
+                  implementation_type) { any: any: any: any: any: any = "())REAL)";}"
+              // Sa: any;
+                  results[],"cuda_benchmark"] = benchmark_res: any;"
+            ;
+          } catch(error) { any) {: any {) { any {console.log($1))`$1`);
+            conso: any;
+            // D: any;
             }
-              # Save the benchmark info for reporting
-                  results[],"cuda_benchmark"] = benchmark_result
-            
-          } catch($2: $1) {
-            console.log($1)))))))))`$1`)
-            console.log($1)))))))))`$1`)
-            # Don't assume it's a mock just because benchmark failed
+            start_time: any: any: any = ti: any;
+        try ${$1} catch(error: any): any {
+          elapsed_time: any: any: any = ti: any;
+          conso: any;
+          // Crea: any;
+          output) { any) { any = {}"translated_text") { "Error during translation.", "implementation_type") {"MOCK", "error": s: any;"
+          is_valid_output: any: any: any = fa: any;
+        // D: any;
+          output_implementation_type: any: any: any = implementation_t: any;
         
+        // Enhanc: any;
+        if ((((((($1) {
+          console) { an) { an: any;
+          implementation_type) { any) { any) { any) { any: any: any = "())REAL)";"
+          output_implementation_type) {any = "())REAL)";};"
+        if (((((($1) {
+          // Check if ($1) {
+          if ($1) { ${$1})";"
           }
-        # Run actual inference with more detailed error handling
-            }
-            start_time = time.time())))))))))
-        try ${$1} catch($2: $1) {
-          elapsed_time = time.time()))))))))) - start_time
-          console.log($1)))))))))`$1`)
-          # Create mock output for graceful degradation
-          output = {}}}}}}}}}}}}}}}}}}}}}}}}}}}"translated_text": "Error during translation.", "implementation_type": "MOCK", "error": str()))))))))handler_error)}
-        
-        }
-        # More robust verification of the output to detect real implementations
-          is_valid_output = false
-        # Don't reset implementation_type here - use what we already detected
-          output_implementation_type = implementation_type
-        
-        # Enhanced detection for simulated real implementations
-        if ($1) {
-          console.log($1)))))))))"Detected simulated REAL handler function - updating implementation type")
-          implementation_type = "()))))))))REAL)"
-          output_implementation_type = "()))))))))REAL)"
-        
-        }
-        if ($1) {
-          # Check if ($1) {
-          if ($1) ${$1})"
-          }
-            console.log($1)))))))))`$1`implementation_type']}")
+            console) { an) { an: any;
           
         }
-          # Check if ($1) {
+          // Check if ((($1) {
           if ($1) {
-            if ($1) ${$1} else {
-              output_implementation_type = "()))))))))MOCK)"
-              console.log($1)))))))))"Detected simulated MOCK implementation from output")
-              
-            }
-          # Check for memory usage - real implementations typically use more memory
+            if ($1) { ${$1} else {
+              output_implementation_type) {any = "())MOCK)";"
+              console) { an) { an: any;
+          };
+          if (((($1) { ${$1} MB) { an) { an: any;
           }
-          if ($1) ${$1} MB")
-          }
-            output_implementation_type = "()))))))))REAL)"
+            output_implementation_type) { any) { any) { any) { any: any: any = "())REAL)";"
             
-          # Check for device info that indicates real CUDA
-          if ($1) ${$1}")
-            output_implementation_type = "()))))))))REAL)"
+          // Che: any;
+          if (((((($1) { ${$1}");"
+            output_implementation_type) { any) { any) { any) { any) { any) { any = "())REAL)";"
             
-          # Check for translated_text in dict output
+          // Che: any;
+          if (((((($1) {
+            is_valid_output) { any) { any) { any) { any) { any) { any = ());
+            outp: any;
+            isinstan: any;
+            l: any;
+            );
+          else if ((((((($1) {
+            // Just) { an) { an: any;
+            is_valid_output) {any = tr) { an: any;};
+        } else if (((((($1) {
+          // Direct) { an) { an: any;
+          is_valid_output) { any) { any) { any = l: any;
+          // Wr: any;
+          output) { any) { any: any = {}"translated_text") {output}"
+        // U: any;
+          }
+        // I: an: any;
+        if ((((((($1) {
+          console) { an) { an: any;
+          implementation_type) { any) { any) { any: any: any: any = "())REAL)";"
+        // Similarly, if (((((($1) {} else if (($1) {
+          console) { an) { an: any;
+          implementation_type) {any = "())MOCK)";}"
+        // Us) { an: any;
+        }
+          results[],"cuda_handler"] = `$1` if ((((is_valid_output else {`$1`};"
+        // Record performance metrics if ($1) {) {
+          performance_metrics) { any) { any) { any) { any = {}
+        
+        // Extrac) { an: any;
+        if ((((((($1) {
           if ($1) {
-            is_valid_output = ()))))))))
-            output[],'translated_text'] is !null and
-            isinstance()))))))))output[],'translated_text'], str) and
-            len()))))))))output[],'translated_text']) > 0
-            )
-          elif ($1) {
-            # Just verify any output exists
-            is_valid_output = true
-            
+            performance_metrics[],'inference_time'] = output) { an) { an: any;'
+          if ((($1) {
+            performance_metrics[],'total_time'] = output) { an) { an: any;'
+          if ((($1) {
+            performance_metrics[],'gpu_memory_mb'] = output) { an) { an: any;'
+          if ((($1) {performance_metrics[],'gpu_memory_gb'] = output) { an) { an: any;'
           }
-        elif ($1) {
-          # Direct string output is valid
-          is_valid_output = len()))))))))output) > 0
-          # Wrap in dict for consistent handling
-          output = {}}}}}}}}}}}}}}}}}}}}}}}}}}}"translated_text": output}
-        
-        }
-        # Use the most reliable implementation type info
-          }
-        # If output says REAL but we know endpoint is mock, prefer the output info
-        if ($1) {
-          console.log($1)))))))))"Output indicates REAL implementation, updating from MOCK to REAL")
-          implementation_type = "()))))))))REAL)"
-        # Similarly, if ($1) {
-        elif ($1) {
-          console.log($1)))))))))"Output indicates MOCK implementation, updating from REAL to MOCK")
-          implementation_type = "()))))))))MOCK)"
-        
-        }
-        # Use detected implementation type in result status
-        }
-          results[],"cuda_handler"] = `$1` if is_valid_output else `$1`
-        
-        }
-        # Record performance metrics if ($1) {::
-          performance_metrics = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        
-        # Extract metrics from handler output
-        if ($1) {
+        if ((($1) {
+          performance_metrics[],'inference_time'] = output) { an) { an: any;'
+        if ((($1) {performance_metrics[],'total_time'] = output.total_time}'
+        // Strip outer parentheses for (((((const $1 of $2) {
+          impl_type_value) {any = implementation_type) { an) { an: any;};
+        // Extract GPU memory usage if ((($1) {) {in dictionary output}
+          gpu_memory_mb) {any = nul) { an) { an: any;};
+        if ((((($1) {
+          gpu_memory_mb) {any = output) { an) { an: any;};
+        // Extract inference time if (((($1) {) {}
+          inference_time) { any) { any) { any) { any = nul) { an) { an: any;
+        if ((((((($1) {
           if ($1) {
-            performance_metrics[],'inference_time'] = output[],'inference_time_seconds']
-          if ($1) {
-            performance_metrics[],'total_time'] = output[],'total_time']
-          if ($1) {
-            performance_metrics[],'gpu_memory_mb'] = output[],'gpu_memory_mb']
-          if ($1) {
-            performance_metrics[],'gpu_memory_gb'] = output[],'gpu_memory_allocated_gb']
-        
-          }
-        # Also try object attributes
-          }
-        if ($1) {
-          performance_metrics[],'inference_time'] = output.inference_time
-        if ($1) {
-          performance_metrics[],'total_time'] = output.total_time
-        
+            inference_time) { any) { any) { any) { any = output) { an) { an: any;
+          else if ((((((($1) {
+            inference_time) { any) { any) { any) { any = output) { an) { an: any;
+          else if ((((((($1) {
+            inference_time) {any = output) { an) { an: any;}
+        // Ad) { an: any;
+          };
+            cuda_metrics) { any) { any) { any) { any = {}
+        if (((((($1) {
+          cuda_metrics[],'gpu_memory_mb'] = gpu_memory_m) { an) { an: any;'
+        if ((($1) {cuda_metrics[],'inference_time'] = inference_time) { an) { an: any;'
         }
-        # Strip outer parentheses for (const $1 of $2) {
-          impl_type_value = implementation_type.strip()))))))))'())))))))))')
-        
+        is_simulated) { any) { any) { any: any = false) {}
+        if ((((((($1) {
+          is_simulated) {any = output) { an) { an: any;
+          cuda_metrics[],'is_simulated'] = is_simulate) { an: any;'
+        };
+        if ((((($1) {
+          if ($1) { ${$1} else {
+            performance_metrics) {any = cuda_metric) { an) { an: any;}
+        // Extrac) { an: any;
         }
-        # Extract GPU memory usage if ($1) {:: in dictionary output
-        }
-          gpu_memory_mb = null
-          }
-        if ($1) {
-          gpu_memory_mb = output[],'gpu_memory_mb']
-        
-        }
-        # Extract inference time if ($1) {::
-          }
-          inference_time = null
-        if ($1) {
-          if ($1) {
-            inference_time = output[],'inference_time_seconds']
-          elif ($1) {
-            inference_time = output[],'generation_time_seconds']
-          elif ($1) {
-            inference_time = output[],'total_time']
-        
-          }
-        # Add additional CUDA-specific metrics
-          }
-            cuda_metrics = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        if ($1) {
-          cuda_metrics[],'gpu_memory_mb'] = gpu_memory_mb
-        if ($1) {
-          cuda_metrics[],'inference_time'] = inference_time
+            translated_text) { any) { any) { any = n: any;
+        if (((((($1) {
+          translated_text) {any = output) { an) { an: any;} else if ((((($1) {
+          translated_text) {any = outpu) { an) { an: any;};
+          this.$1.push($2)){}
+          "input") { thi) { an: any;"
+          "target_language") { th: any;"
+          "output") { }"
+          "translated_text") { translated_te: any;"
+          "performance_metrics") { performance_metrics if ((((((performance_metrics else {null},) {"
+            "timestamp") {datetime.datetime.now()).isoformat()),;"
+            "elapsed_time") { elapsed_time) { an) { an: any;"
+            "implementation_type") { impl_type_val: any;"
+            "platform": "CUDA",;"
+            "is_simulated": is_simulat: any;"
         
         }
-        # Detect if this is a simulated implementation
+        // A: any;
         }
-        is_simulated = false:
-          }
-        if ($1) {
-          is_simulated = output[],'is_simulated']
-          cuda_metrics[],'is_simulated'] = is_simulated
-        
-        }
-        # Combine all performance metrics
-        }
-        if ($1) {
-          if ($1) ${$1} else {
-            performance_metrics = cuda_metrics
-        
-          }
-        # Extract the translation text for the example
-        }
-            translated_text = null
-        if ($1) {
-          translated_text = output[],'translated_text']
-        elif ($1) {
-          translated_text = output
-        
-        }
-          this.$1.push($2))))))))){}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "input": this.test_input,
-          "target_language": this.test_target,
-          "output": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "translated_text": translated_text,
-          "performance_metrics": performance_metrics if performance_metrics else null
-          },:
-            "timestamp": datetime.datetime.now()))))))))).isoformat()))))))))),
-            "elapsed_time": elapsed_time,
-            "implementation_type": impl_type_value,  # Use cleaned value without parentheses
-            "platform": "CUDA",
-            "is_simulated": is_simulated
-            })
-        
-        }
-        # Add output to results
-        }
-        if ($1) ${$1} catch($2: $1) ${$1} else {
-      results[],"cuda_tests"] = "CUDA !available"
-        }
-      this.status_messages[],"cuda"] = "CUDA !available"
+        if ((((((($1) { ${$1} catch(error) { any) ${$1} else {results[],"cuda_tests"] = "CUDA !available"}"
+      this.status_messages[],"cuda"] = "CUDA !available";"
 
-    # ====== OPENVINO TESTS ======
+    // ====== OPENVINO TESTS) { any) { any) { any) { any: any: any = =====;
     try {
-      # First check if ($1) {
-      try ${$1} catch($2: $1) {
-        has_openvino = false
-        results[],"openvino_tests"] = "OpenVINO !installed"
-        this.status_messages[],"openvino"] = "OpenVINO !installed"
+      // First check if (((((($1) {
+      try ${$1} catch(error) { any)) { any {has_openvino) { any) { any) { any = fa: any;
+        results[],"openvino_tests"] = "OpenVINO !installed";"
+        this.status_messages[],"openvino"] = "OpenVINO !installed"};"
+      if (((((($1) {
+        // Import) { an) { an: any;
+        import {* a) { an: any;
         
       }
-      if ($1) {
-        # Import the existing OpenVINO utils from the main package
-        from ipfs_accelerate_py.worker.openvino_utils import * as $1
-        
-      }
-        # Initialize openvino_utils
-        ov_utils = openvino_utils()))))))))resources=this.resources, metadata=this.metadata)
-        
-      }
-        # Create a custom model class for testing
+        // Initiali: any;
+        ov_utils) {any = openvino_utils())resources=this.resources, metadata) { any: any: any = th: any;};
+        // Crea: any;
         class $1 extends $2 {
-          $1($2) {
-          pass
-          }
-            
-        }
-          $1($2) {
-            # Create a simulated translation response
-            import * as $1 as np
-            # Return fake token IDs
-          return np.array()))))))))[],[],101, 102, 103, 104, 105]])
-          }
+          $1($2) {pass}
+          $1($2) {// Crea: any;
+            impo: any;
+            // Retu: any;
+          return np.array())[],[],101) { a: any;
+          mock_model) { any: any: any = CustomOpenVINOMod: any;
+        ;
+        // Crea: any;
+        $1($2) {console.log($1))`$1`);
+          retu: any;
+        $1($2) {console.log($1))`$1`);
+          return mock_model}
+        // Create mock get_openvino_pipeline_type function  
+        $1($2) {return "text2text-generation"}"
+        // Crea: any;
+        $1($2) {console.log($1))`$1`);
+          retu: any;
+          mock_tokenizer) { any) { any: any = MagicMo: any;
+          mock_tokenizer.decode = MagicMock())return_value="Translated te: any;"
+          mock_tokenizer.batch_decode = MagicMock())return_value=[],"Translated te: any;"
         
-    }
-        # Create a mock model instance
-          mock_model = CustomOpenVINOModel())))))))))
-        
-        # Create mock get_openvino_model function
-        $1($2) {
-          console.log($1)))))))))`$1`)
-          return mock_model
-          
-        }
-        # Create mock get_optimum_openvino_model function
-        $1($2) {
-          console.log($1)))))))))`$1`)
-          return mock_model
-          
-        }
-        # Create mock get_openvino_pipeline_type function  
-        $1($2) {
-          return "text2text-generation"
-          
-        }
-        # Create mock openvino_cli_convert function
-        $1($2) {
-          console.log($1)))))))))`$1`)
-          return true
-        
-        }
-        # Mock tokenizer for decoding
-          mock_tokenizer = MagicMock())))))))))
-          mock_tokenizer.decode = MagicMock()))))))))return_value="Translated text ()))))))))mock)")
-          mock_tokenizer.batch_decode = MagicMock()))))))))return_value=[],"Translated text ()))))))))mock)"])
-        
-        # Try with real OpenVINO utils first
+        // T: any;
         try {
-          console.log($1)))))))))"Trying real OpenVINO initialization...")
-          endpoint, tokenizer, handler, queue, batch_size = this.t5.init_openvino()))))))))
-          model=this.model_name,
-          model_type="text2text-generation",
-          device="CPU",
-          openvino_label="openvino:0",
-          get_optimum_openvino_model=ov_utils.get_optimum_openvino_model,
-          get_openvino_model=ov_utils.get_openvino_model,
-          get_openvino_pipeline_type=ov_utils.get_openvino_pipeline_type,
-          openvino_cli_convert=ov_utils.openvino_cli_convert
-          )
+          conso: any;
+          endpoint, tokenizer: any, handler, queue: any, batch_size: any: any: any = th: any;
+          model: any: any: any = th: any;
+          model_type: any: any: any: any: any: any = "text2text-generation",;"
+          device: any: any: any: any: any: any = "CPU",;"
+          openvino_label: any: any: any: any: any: any = "openvino) {0",;"
+          get_optimum_openvino_model: any: any: any = ov_uti: any;
+          get_openvino_model: any: any: any = ov_uti: any;
+          get_openvino_pipeline_type: any: any: any = ov_uti: any;
+          openvino_cli_convert: any: any: any = ov_uti: any;
+          )}
+          // I: an: any;
+          valid_init: any: any: any = handl: any;
+          is_real_impl: any: any: any = t: any;
+          results[],"openvino_init"] = "Success ())REAL)" if ((((((($1) { ${$1}");"
           
-        }
-          # If we got a handler back, we succeeded
-          valid_init = handler is !null
-          is_real_impl = true
-          results[],"openvino_init"] = "Success ()))))))))REAL)" if ($1) ${$1}")
+        } catch(error) { any)) { any {console.log($1))`$1`);
+          console) { an) { an: any;
+          endpoint, tokenizer) { any, handler, queue: any, batch_size: any: any: any = th: any;
+          model: any: any: any = th: any;
+          model_type: any: any: any: any: any: any = "text2text-generation",;"
+          device: any: any: any: any: any: any = "CPU",;"
+          openvino_label: any: any: any: any: any: any = "openvino) {0",;"
+          get_optimum_openvino_model: any: any: any = mock_get_optimum_openvino_mod: any;
+          get_openvino_model: any: any: any = mock_get_openvino_mod: any;
+          get_openvino_pipeline_type: any: any: any = mock_get_openvino_pipeline_ty: any;
+          openvino_cli_convert: any: any: any = mock_openvino_cli_conv: any;
+          );
           
-        } catch($2: $1) {
-          console.log($1)))))))))`$1`)
-          console.log($1)))))))))"Falling back to mock implementation...")
-          
-        }
-          # Fall back to mock implementation
-          endpoint, tokenizer, handler, queue, batch_size = this.t5.init_openvino()))))))))
-          model=this.model_name,
-          model_type="text2text-generation",
-          device="CPU",
-          openvino_label="openvino:0",
-          get_optimum_openvino_model=mock_get_optimum_openvino_model,
-          get_openvino_model=mock_get_openvino_model,
-          get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
-          openvino_cli_convert=mock_openvino_cli_convert
-          )
-          
-          # If tokenizer is null || MagicMock, use our mock tokenizer
-          if ($1) {
-            tokenizer = mock_tokenizer
-          
+          // I: an: any;
+          if ((((((($1) {
+            tokenizer) {any = mock_tokenize) { an) { an: any;}
+          // I) { an: any;
+            valid_init) { any: any: any = handl: any;
+            is_real_impl: any: any: any = fa: any;
+          results[],"openvino_init"] = "Success ())MOCK)" if (((((($1) {}"
+        // Run) { an) { an: any;
+            start_time) { any) { any) { any = ti: any;
+        try {output: any: any: any = handl: any;
+          elapsed_time: any: any: any = ti: any;}
+          // Che: any;
+          is_valid_output) { any) { any: any = false) {
+          if ((((((($1) {
+            is_valid_output) { any) { any = isinstance) { an) { an: any;
+          else if (((((($1) {
+            is_valid_output) { any) { any) { any) { any = le) { an: any;
+            // Wr: any;
+            output) { any) { any: any = {}"translated_text") {output}"
+          // S: any;
           }
-          # If we got a handler back, the mock succeeded
-            valid_init = handler is !null
-            is_real_impl = false
-          results[],"openvino_init"] = "Success ()))))))))MOCK)" if ($1) {
+            implementation_type: any: any: any: any: any: any = "REAL" if ((((((is_real_impl else { "MOCK";"
+            results[],"openvino_handler"] = `$1` if is_valid_output else { `$1`;"
+          
+          // Record) { an) { an: any;
+          this.$1.push($2) {){}) {
+            "input") { thi) { an: any;"
+            "target_language") { th: any;"
+            "output") { }"
+            "translated_text") { output.get())"translated_text", str())output)) if ((((((is_valid_output else {null},) {"
+              "timestamp") {datetime.datetime.now()).isoformat()),;"
+              "elapsed_time") { elapsed_time) { an) { an: any;"
+              "implementation_type") { implementation_ty: any;"
+              "platform": "OpenVINO"});"
+          
+          // A: any;
+          if ((((((($1) { ${$1} catch(error) { any)) { any {console.log($1))`$1`)}
+          traceback) { an) { an: any;
+          results[],"openvino_inference"] = `$1`;"
+          elapsed_time) { any: any: any = ti: any;
+          
+          // Reco: any;
+          this.$1.push($2)){}
+          "input") { th: any;"
+          "target_language": th: any;"
+          "output": {}"
+          "error": s: any;"
+},;
+          "timestamp": dateti: any;"
+          "elapsed_time": elapsed_ti: any;"
+            "implementation_type": "REAL" if ((((((($1) { ${$1});"
         
-          }
-        # Run inference
-            start_time = time.time())))))))))
-        try {
-          output = handler()))))))))this.test_input, this.test_target)
-          elapsed_time = time.time()))))))))) - start_time
-          
-        }
-          # Check if output is valid
-          is_valid_output = false:
-          if ($1) {
-            is_valid_output = isinstance()))))))))output[],"translated_text"], str) && len()))))))))output[],"translated_text"]) > 0
-          elif ($1) {
-            is_valid_output = len()))))))))output) > 0
-            # Wrap string output in dict for consistent handling
-            output = {}}}}}}}}}}}}}}}}}}}}}}}}}}}"translated_text": output}
-          
-          }
-          # Set the appropriate success message based on real vs mock implementation
-          }
-            implementation_type = "REAL" if is_real_impl else "MOCK"
-            results[],"openvino_handler"] = `$1` if is_valid_output else `$1`
-          
-          # Record example
-          this.$1.push($2))))))))){}}}}}}}}}}}}}}}}}}}}}}}}}}}:
-            "input": this.test_input,
-            "target_language": this.test_target,
-            "output": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "translated_text": output.get()))))))))"translated_text", str()))))))))output)) if is_valid_output else null,
-            },:
-              "timestamp": datetime.datetime.now()))))))))).isoformat()))))))))),
-              "elapsed_time": elapsed_time,
-              "implementation_type": implementation_type,
-              "platform": "OpenVINO"
-              })
-          
-          # Add output to results
-          if ($1) ${$1} catch($2: $1) {
-          console.log($1)))))))))`$1`)
-          }
-          traceback.print_exc())))))))))
-          results[],"openvino_inference"] = `$1`
-          elapsed_time = time.time()))))))))) - start_time
-          
-          # Record error example
-          this.$1.push($2))))))))){}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "input": this.test_input,
-          "target_language": this.test_target,
-          "output": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "error": str()))))))))e),
-          },
-          "timestamp": datetime.datetime.now()))))))))).isoformat()))))))))),
-          "elapsed_time": elapsed_time,
-            "implementation_type": "REAL" if ($1) ${$1})
-        
-    } catch($2: $1) ${$1} catch($2: $1) {
-      console.log($1)))))))))`$1`)
-      traceback.print_exc())))))))))
-      results[],"openvino_tests"] = `$1`
-      this.status_messages[],"openvino"] = `$1`
+    } catch(error) { any) ${$1} catch(error) { any)) { any {console.log($1))`$1`);
+      tracebac) { an: any;
+      results[],"openvino_tests"] = `$1`;"
+      this.status_messages[],"openvino"] = `$1`}"
+    // Creat) { an: any;
+      structured_results: any: any: any = {}
+      "status") { resul: any;"
+      "examples": th: any;"
+      "metadata": {}"
+      "model_name": th: any;"
+      "test_timestamp": dateti: any;"
+      "python_version": s: any;"
+        "torch_version": torch.__version__ if ((((((($1) {"
+        "transformers_version") { transformers.__version__ if (($1) { ${$1}"
+          return) { an) { an: any;
 
-    }
-    # Create structured results with status, examples && metadata
-      structured_results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "status": results,
-      "examples": this.examples,
-      "metadata": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "model_name": this.model_name,
-      "test_timestamp": datetime.datetime.now()))))))))).isoformat()))))))))),
-      "python_version": sys.version,
-        "torch_version": torch.__version__ if ($1) {
-        "transformers_version": transformers.__version__ if ($1) ${$1}
-          }
-
-        }
-          return structured_results
-
-  $1($2) {
-    """
-    Run tests && compare/save results.
-    Handles result collection, comparison with expected results, && storage.
-    
-  }
-    Returns:
-      dict: Test results
-      """
-      test_results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-    try ${$1} catch($2: $1) {
-      test_results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "status": {}}}}}}}}}}}}}}}}}}}}}}}}}}}"test_error": str()))))))))e)},
-      "examples": [],],
-      "metadata": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "error": str()))))))))e),
-      "traceback": traceback.format_exc())))))))))
+  $1($2) {/** Ru) { an: any;
+    Handles result collection, comparison with expected results, && storage.}
+    Returns) {
+      dict) { Te: any;
+      test_results) { any: any = {}
+    try ${$1} catch(error: any): any {
+      test_results: any: any = {}
+      "status": {}"test_error": s: any;"
+      "examples": []],;"
+      "metadata": {}"
+      "error": s: any;"
+      "traceback": traceba: any;"
       }
-      }
-    
-    }
-    # Create directories if they don't exist
-      base_dir = os.path.dirname()))))))))os.path.abspath()))))))))__file__))
-      expected_dir = os.path.join()))))))))base_dir, 'expected_results')
-      collected_dir = os.path.join()))))))))base_dir, 'collected_results')
-    
-    # Create directories with appropriate permissions:
-    for directory in [],expected_dir, collected_dir]:
-      if ($1) {
-        os.makedirs()))))))))directory, mode=0o755, exist_ok=true)
-    
-      }
-    # Save collected results
-        results_file = os.path.join()))))))))collected_dir, 'hf_mt5_test_results.json')
-    try ${$1} catch($2: $1) {
-      console.log($1)))))))))`$1`)
-      
-    }
-    # Compare with expected results if they exist
-    expected_file = os.path.join()))))))))expected_dir, 'hf_mt5_test_results.json'):
-    if ($1) {
+    // Crea: any;
+      base_dir) { any) { any: any: any: any: any = os.path.dirname() {)os.path.abspath())__file__));
+      expected_dir: any: any: any = o: an: any;
+      collected_dir: any: any: any = o: an: any;
+    ;
+    // Create directories with appropriate permissions) {
+    for ((((((directory in [],expected_dir) { any, collected_dir]) {
+      if ((((((($1) {
+        os.makedirs())directory, mode) { any) { any) { any) { any = 0o755, exist_ok) { any) {any = tru) { an: any;}
+    // Sav) { an: any;
+        results_file) { any: any: any = o: an: any;
+    try ${$1} catch(error: any): any {console.log($1))`$1`)}
+    // Compa: any;
+    expected_file) { any) { any: any: any = os.path.join())expected_dir, 'hf_mt5_test_results.json')) {'
+    if ((((((($1) {
       try {
-        with open()))))))))expected_file, 'r') as f:
-          expected_results = json.load()))))))))f)
-        
-      }
-        # Filter out variable fields for comparison
+        with open())expected_file, 'r') as f) {'
+          expected_results) {any = json) { an) { an: any;}
+        // Filte) { an: any;
         $1($2) {
-          if ($1) {
-            # Create a copy to avoid modifying the original
-            filtered = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            for k, v in Object.entries($1)))))))))):
-              # Skip timestamp && variable output data for comparison
-              if ($1) {
-                filtered[],k] = filter_variable_data()))))))))v)
-              return filtered
-              }
-          elif ($1) ${$1} else {
-              return result
-        
+          if (((((($1) {
+            // Create) { an) { an: any;
+            filtered) { any) { any) { any) { any = {}
+            for (((k, v in Object.entries($1)) {
+              // Skip) { an) { an: any;
+              if ((((((($1) {filtered[],k] = filter_variable_data) { an) { an: any;
+              return filtered}
+          else if (((($1) { ${$1} else {return result) { an) { an: any;
           }
-        # Compare only status keys for backward compatibility
-          }
-              status_expected = expected_results.get()))))))))"status", expected_results)
-              status_actual = test_results.get()))))))))"status", test_results)
+              status_expected) { any) { any = expected_results.get())"status", expected_results) { an) { an: any;"
+              status_actual) {any = test_result) { an: any;}
+        // Mo: any;
+              all_match: any: any: any = t: any;
+              mismatches: any: any: any: any: any: any = []];
         
-        }
-        # More detailed comparison of results
-              all_match = true
-              mismatches = [],]
-        
-    }
-        for key in set()))))))))Object.keys($1))))))))))) | set()))))))))Object.keys($1))))))))))):
-          if ($1) {
-            $1.push($2)))))))))`$1`)
-            all_match = false
-          elif ($1) {
-            $1.push($2)))))))))`$1`)
-            all_match = false
-          elif ($1) {
-            # If the only difference is the implementation_type suffix, that's acceptable
-            if ()))))))))
-            isinstance()))))))))status_expected[],key], str) and
-            isinstance()))))))))status_actual[],key], str) and
-            status_expected[],key].split()))))))))" ()))))))))")[],0] == status_actual[],key].split()))))))))" ()))))))))")[],0] and
-              "Success" in status_expected[],key] && "Success" in status_actual[],key]:
-            ):
-                continue
-            
-          }
-            # For translation, outputs will vary, so we don't compare them directly
-            if ($1) {
-                continue
-            
-            }
-                $1.push($2)))))))))`$1`{}}}}}}}}}}}}}}}}}}}}}}}}}}}key}' differs: Expected '{}}}}}}}}}}}}}}}}}}}}}}}}}}}status_expected[],key]}', got '{}}}}}}}}}}}}}}}}}}}}}}}}}}}status_actual[],key]}'")
-                all_match = false
-        
-          }
-        if ($1) {
-          console.log($1)))))))))"Test results differ from expected results!")
-          for (const $1 of $2) {
-            console.log($1)))))))))`$1`)
-            console.log($1)))))))))"\nWould you like to update the expected results? ()))))))))y/n)")
-            user_input = input()))))))))).strip()))))))))).lower())))))))))
-          if ($1) ${$1} else ${$1} else ${$1} catch($2: $1) ${$1} else {
-      # Create expected results file if ($1) {
-      try ${$1} catch($2: $1) {
-        console.log($1)))))))))`$1`)
+    };
+        for (((((key in set() {)Object.keys($1)) | set())Object.keys($1))) {
+          if ((((((($1) {
+            $1.push($2))`$1`);
+            all_match) {any = fals) { an) { an: any;} else if (((($1) {
+            $1.push($2))`$1`);
+            all_match) { any) { any) { any) { any = fals) { an) { an: any;
+          else if ((((((($1) {
+            // If) { an) { an: any;
+            if) { an) { an: any;
+            isinstance())status_expected[],key], str) { an) { an: any;
+            isinstance())status_actual[],key], str) { a: any;
+            status_expected[],key].split())" ())")[],0] == status_actu: any;"
+              "Success" in status_expected[],key] && "Success" in status_actual[],key]) {"
+            )) {continue}
+            // F: any;
+            if (((((($1) {continue}
+                $1.push($2))`$1`{}key}' differs) { Expected '{}status_expected[],key]}', got '{}status_actual[],key]}'");'
+                all_match) {any = fals) { an) { an: any;};
+        if ((((($1) {
+          console) { an) { an: any;
+          for (((((const $1 of $2) {
+            console) { an) { an: any;
+            consol) { an: any;
+            user_input) { any) { any) { any = inpu) { an: any;
+          if (((((($1) { ${$1} else { ${$1} else { ${$1} catch(error) { any) ${$1} else {
+      // Create expected results file if (($1) {
+      try ${$1} catch(error) { any)) { any {console.log($1))`$1`)}
+          return) { an) { an: any;
 
       }
-          return test_results
-
-      }
-if ($1) {
+if ((((($1) {
   try {
-    console.log($1)))))))))"Starting MT5 test...")
-    this_mt5 = test_hf_mt5())))))))))
-    results = this_mt5.__test__())))))))))
-    console.log($1)))))))))"MT5 test completed")
-    
-  }
-    # Print test results in detailed format for better parsing
-    status_dict = results.get()))))))))"status", {}}}}}}}}}}}}}}}}}}}}}}}}}}}})
-    examples = results.get()))))))))"examples", [],])
-    metadata = results.get()))))))))"metadata", {}}}}}}}}}}}}}}}}}}}}}}}}}}}})
+    console) { an) { an: any;
+    this_mt5) { any) { any) { any = test_hf_m: any;
+    results) {any = this_m: any;
+    conso: any;
+    status_dict) { any) { any: any: any: any: any = results.get())"status", {});"
+    examples: any: any: any = resul: any;
+    metadata: any: any: any: any: any: any = results.get())"metadata", {});"
     
 }
-    # Extract implementation status
+    // Extra: any;
           }
-    cpu_status = "UNKNOWN"
+    cpu_status: any: any: any: any: any: any = "UNKNOWN";"
           }
-    cuda_status = "UNKNOWN"
+    cuda_status: any: any: any: any: any: any = "UNKNOWN";"
         }
-    openvino_status = "UNKNOWN"
+    openvino_status: any: any: any: any: any: any = "UNKNOWN";"
           }
-    
-    for key, value in Object.entries($1)))))))))):
-      if ($1) {
-        cpu_status = "REAL"
-      elif ($1) {
-        cpu_status = "MOCK"
-        
+    ;
+    for (((((key) { any, value in Object.entries($1) {)) {
+      if ((((((($1) {
+        cpu_status) { any) { any) { any) { any) { any) { any = "REAL";"
+      else if (((((($1) {
+        cpu_status) {any = "MOCK";};"
+      if (($1) {
+        cuda_status) {any = "REAL";} else if ((($1) {"
+        cuda_status) {any = "MOCK";};"
+      if (($1) {
+        openvino_status) { any) { any) { any) { any) { any) { any = "REAL";"
+      else if ((((((($1) {
+        openvino_status) {any = "MOCK";}"
+    // Also) { an) { an: any;
+      };
+    for (((((const $1 of $2) {
+      platform) { any) { any) { any) { any = example) { an) { an: any;
+      impl_type) {any = exampl) { an: any;};
+      if (((((($1) {
+        cpu_status) {any = "REAL";} else if ((($1) {"
+        cpu_status) {any = "MOCK";};"
+      if (($1) {
+        cuda_status) { any) { any) { any) { any) { any) { any = "REAL";"
+      else if ((((((($1) {
+        cuda_status) {any = "MOCK";};"
+      if (($1) {
+        openvino_status) { any) { any) { any) { any) { any) { any = "REAL";"
+      else if ((((((($1) { ${$1}");"
       }
-      if ($1) {
-        cuda_status = "REAL"
-      elif ($1) {
-        cuda_status = "MOCK"
-        
-      }
-      if ($1) {
-        openvino_status = "REAL"
-      elif ($1) {
-        openvino_status = "MOCK"
-        
-      }
-    # Also look in examples
-      }
-    for (const $1 of $2) {
-      platform = example.get()))))))))"platform", "")
-      impl_type = example.get()))))))))"implementation_type", "")
-      
-    }
-      if ($1) {
-        cpu_status = "REAL"
-      elif ($1) {
-        cpu_status = "MOCK"
-        
-      }
-      if ($1) {
-        cuda_status = "REAL"
-      elif ($1) {
-        cuda_status = "MOCK"
-        
-      }
-      if ($1) {
-        openvino_status = "REAL"
-      elif ($1) ${$1}")
-      }
-        console.log($1)))))))))`$1`)
-        console.log($1)))))))))`$1`)
-        console.log($1)))))))))`$1`)
+        console) { an) { an: any;
+        consol) { an: any;
+        conso: any;
     
       }
-    # Print performance information if ($1) {::
+    // Print performance information if (((($1) {) {}
+    for ((((((const $1 of $2) {
+      platform) { any) { any) { any) { any = example) { an) { an: any;
+      output) { any) { any) { any) { any) { any: any = example.get())"output", {});"
+      elapsed_time) {any = examp: any;}
+      conso: any;
       }
-    for (const $1 of $2) {
-      platform = example.get()))))))))"platform", "")
-      output = example.get()))))))))"output", {}}}}}}}}}}}}}}}}}}}}}}}}}}}})
-      elapsed_time = example.get()))))))))"elapsed_time", 0)
-      
-    }
-      console.log($1)))))))))`$1`)
-      }
-      console.log($1)))))))))`$1`)
+      conso: any;
       }
         
-      # Check for detailed metrics
-      if ($1) {
-        metrics = output[],"performance_metrics"]
-        for k, v in Object.entries($1)))))))))):
-          console.log($1)))))))))`$1`)
-          
-      }
-      # Print translated text ()))))))))truncated)
-      if ($1) {
-        text = output[],"translated_text"]
-        if ($1) {
-          # Truncate long outputs
-          max_chars = 100
-          if ($1) {
-            text = text[],:max_chars] + "..."
-            console.log($1)))))))))`$1`{}}}}}}}}}}}}}}}}}}}}}}}}}}}text}\"")
+      // Che: any;
+      if ((((((($1) {
+        metrics) { any) { any) { any) { any = output) { an) { an: any;
+        for (((k, v in Object.entries($1)) {console.log($1))`$1`)}
+      // Print) { an) { an: any;
+      if ((((((($1) {
+        text) { any) { any) { any) { any = output) { an) { an: any;
+        if (((((($1) {
+          // Truncate) { an) { an: any;
+          max_chars) { any) { any) { any = 1) { an: any;
+          if (((((($1) {
+            text) { any) { any) { any) { any) { any: any = text[],) {max_chars] + "...";"
+            console.log($1))`$1`{}text}\"");"
     
           }
-    # Print a JSON representation to make it easier to parse
+    // Pri: any;
         }
-            console.log($1)))))))))"\nstructured_results")
-            console.log($1)))))))))json.dumps())))))))){}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "status": {}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "cpu": cpu_status,
-            "cuda": cuda_status,
-            "openvino": openvino_status
-            },
-            "model_name": metadata.get()))))))))"model_name", "Unknown"),
-            "examples": examples
-            }))
+            conso: any;
+            console.log($1))json.dumps()){}
+            "status") { }"
+            "cpu") { cpu_stat: any;"
+            "cuda") {cuda_status,;"
+            "openvino": openvino_stat: any;"
+            "model_name": metada: any;"
+            "examples": examp: any;"
+            }));
     
-  } catch($2: $1) ${$1} catch($2: $1) {
-    console.log($1)))))))))`$1`)
-    traceback.print_exc())))))))))
-    sys.exit()))))))))1)
-      }
+  } catch(error: any) ${$1} catch(error: any): any {console: a: an: any;
+    s: an: any;};

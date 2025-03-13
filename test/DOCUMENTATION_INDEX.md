@@ -1,10 +1,37 @@
 # IPFS Accelerate Python Framework Documentation Index
 
-Last Updated: May 15, 2025
+Last Updated: March 13, 2025
 
 This document provides a comprehensive index of all project documentation, organized by category and implementation phase.
 
 ## Recently Added Documentation
+
+### Basic Resource Pool Fault Tolerance Test (NEW - March 13, 2025)
+
+A new simplified test implementation for the WebGPU/WebNN Resource Pool Fault Tolerance system has been added:
+
+- [test_basic_resource_pool_fault_tolerance.py](test_basic_resource_pool_fault_tolerance.py) - Simple, standalone test case for the WebGPU/WebNN Resource Pool fault tolerance system
+- [BASIC_FAULT_TOLERANCE_TEST_README.md](BASIC_FAULT_TOLERANCE_TEST_README.md) - Comprehensive guide to using the basic fault tolerance test
+
+### WebGPU/WebNN Resource Pool Advanced Fault Tolerance (COMPLETED - May 22, 2025)
+
+The WebGPU/WebNN Resource Pool Integration has been completed with the addition of Advanced Fault Tolerance Visualization and Validation capabilities:
+
+- [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - May 2025 enhancements documentation (NEW - May 22, 2025)
+- [WEB_RESOURCE_POOL_FAULT_TOLERANCE_TESTING.md](WEB_RESOURCE_POOL_FAULT_TOLERANCE_TESTING.md) - Comprehensive fault tolerance testing guide (NEW - May 22, 2025)
+- [RESOURCE_POOL_FAULT_TOLERANCE_README.md](RESOURCE_POOL_FAULT_TOLERANCE_README.md) - Quick start guide for fault tolerance testing (NEW - May 22, 2025)
+- [BASIC_FAULT_TOLERANCE_TEST_README.md](BASIC_FAULT_TOLERANCE_TEST_README.md) - Basic fault tolerance test guide (NEW - March 13, 2025)
+- [run_web_resource_pool_fault_tolerance_test.py](run_web_resource_pool_fault_tolerance_test.py) - CLI tool for fault tolerance testing (NEW - May 22, 2025)
+- [run_advanced_fault_tolerance_visualization.py](run_advanced_fault_tolerance_visualization.py) - CLI tool for fault tolerance visualization (NEW - May 22, 2025)
+- [simple_fault_tolerance_test.py](simple_fault_tolerance_test.py) - Simplified fault tolerance test for CI/CD environments (NEW - May 22, 2025)
+- [test_basic_resource_pool_fault_tolerance.py](test_basic_resource_pool_fault_tolerance.py) - Basic resource pool fault tolerance test (NEW - March 13, 2025)
+- [test_web_resource_pool_fault_tolerance_integration.py](test_web_resource_pool_fault_tolerance_integration.py) - Integration test framework (NEW - May 22, 2025)
+- [fixed_web_platform/visualization/fault_tolerance_visualizer.py](fixed_web_platform/visualization/fault_tolerance_visualizer.py) - Visualization component (NEW - May 22, 2025)
+- [fixed_web_platform/fault_tolerance_visualization_integration.py](fixed_web_platform/fault_tolerance_visualization_integration.py) - Validation and visualization integration (NEW - May 22, 2025)
+- [fixed_mock_cross_browser_sharding.py](fixed_mock_cross_browser_sharding.py) - Fixed mock implementation for CI/CD testing (NEW - May 22, 2025)
+- [mock_cross_browser_sharding.py](mock_cross_browser_sharding.py) - Original mock implementation for testing (NEW - May 22, 2025)
+
+This completes the WebGPU/WebNN Resource Pool Integration project ahead of schedule, with enterprise-grade fault tolerance, visualization, and testing capabilities.
 
 ### Predictive Performance System Completion (May 11, 2025)
 
@@ -41,13 +68,6 @@ The Distributed Testing Framework has been enhanced with advanced fault toleranc
 - [distributed_testing/docs/PERFORMANCE_TREND_ANALYSIS.md](distributed_testing/docs/PERFORMANCE_TREND_ANALYSIS.md) - Documentation of the performance trend analysis system
 - [distributed_testing/README_PLUGIN_ARCHITECTURE.md](distributed_testing/README_PLUGIN_ARCHITECTURE.md) - Plugin architecture documentation (NEW - May 22, 2025)
 - [distributed_testing/docs/RESOURCE_POOL_INTEGRATION.md](distributed_testing/docs/RESOURCE_POOL_INTEGRATION.md) - Resource Pool integration documentation (NEW - May 22, 2025)
-
-### WebGPU/WebNN Resource Pool Integration Completed (April 18, 2025)
-
-The WebGPU/WebNN Resource Pool Integration has been completed ahead of schedule, with comprehensive documentation of all implemented features, performance improvements, and integration capabilities:
-
-- [WEB_RESOURCE_POOL_COMPLETION_REPORT.md](WEB_RESOURCE_POOL_COMPLETION_REPORT.md) - Comprehensive completion report
-- [WEB_RESOURCE_POOL_DATABASE_INTEGRATION.md](WEB_RESOURCE_POOL_DATABASE_INTEGRATION.md) - Detailed database integration documentation
 - [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md) - Updated main integration guide
 - [WEB_RESOURCE_POOL_RECOVERY_GUIDE.md](WEB_RESOURCE_POOL_RECOVERY_GUIDE.md) - Recovery system documentation
 - [WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md) - Guide to cross-browser model sharding

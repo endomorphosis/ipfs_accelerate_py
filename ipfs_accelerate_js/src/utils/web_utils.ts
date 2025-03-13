@@ -1,671 +1,478 @@
-/**
- * Converted from Python: web_utils.py
- * Conversion date: 2025-03-11 04:09:37
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
 
-#!/usr/bin/env python3
-"""
-Web Platform Utilities for WebNN/WebGPU Integration
 
-This module provides comprehensive utilities for integrating with WebNN && WebGPU 
-implementations in browsers, including model initialization, inference, && browser
-selection optimization.
+// WebG: any;
+/** W: any;
 
-Key features:
-- WebNN/WebGPU model initialization && inference via WebSocket
-- Browser-specific optimization for different model types
-- IPFS acceleration configuration with P2P optimization
-- Precision control (4-bit, 8-bit, 16-bit) with mixed precision support
-- Firefox audio optimizations with compute shader workgroups
-- Edge WebNN optimizations for text models
+This module provides comprehensive utilities for (((integrating with WebNN && WebGPU 
+implementations in browsers, including model initialization, inference) { any) { an) { an: any;
+selectio) { an: any;
 
-Updated: March 2025 with enhanced browser optimizations && IPFS integration
-"""
+Key features) {
+- Web: any;
+- Brows: any;
+- IP: any;
+- Precision control (4-bit, 8-bit, 16-bit) { wi: any;
+- Firef: any;
+- Ed: any;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1 as platform_module
-import ${$1} from "$1"
+Updated) { Mar: any;
 
-logger = logging.getLogger(__name__)
-
-# Browser capability database
-BROWSER_CAPABILITIES = {
-  "firefox": {
-    "webnn": ${$1},
-    "webgpu": ${$1}
-  },
-  }
-  "chrome": {
-    "webnn": ${$1},
-    "webgpu": ${$1}
-  },
-  }
-  "edge": {
-    "webnn": ${$1},
-    "webgpu": ${$1}
-  },
-  }
-  "safari": {
-    "webnn": ${$1},
-    "webgpu": ${$1}
-  }
-}
-  }
-
-}
-# Enhanced optimization configurations for different browser+model combinations
-OPTIMIZATION_CONFIGS = {
-  "firefox_audio": ${$1},
-  "firefox_default": ${$1},
-  "chrome_vision": ${$1},
-  "chrome_default": ${$1},
-  "edge_webnn": ${$1},
-  "edge_default": ${$1}
-}
-}
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+logger) { any) { any: any = loggi: any;
+;
+// Brows: any;
+BROWSER_CAPABILITIES: any: any = {
+  "firefox": {"
+    "webnn": ${$1},;"
+    "webgpu": ${$1}"
+  "chrome": {"
+    "webnn": ${$1},;"
+    "webgpu": ${$1}"
+  "edge": {"
+    "webnn": ${$1},;"
+    "webgpu": ${$1}"
+  "safari": {"
+    "webnn": ${$1},;"
+    "webgpu": ${$1}"
+// Enhanc: any;
+OPTIMIZATION_CONFIGS) { any) { any: any: any: any: any = {
+  "firefox_audio") { ${$1},;"
+  "firefox_default": ${$1},;"
+  "chrome_vision": ${$1},;"
+  "chrome_default": ${$1},;"
+  "edge_webnn": ${$1},;"
+  "edge_default": ${$1}"
 
 async initialize_web_model($1: string, $1: string, $1: string, 
-              options: Optional[Dict[str, Any]] = null,
-              websocket_bridge=null):
-  """
-  Initialize a model in the browser via WebSocket.
+              options: Record<str, Any | null> = nu: any;
+              websocket_bridge: any: any = nu: any;
+  /** Initiali: any;
   
-  Args:
-    model_id: Model ID
-    model_type: Model type (text, vision, audio, multimodal)
-    platform: WebNN || WebGPU
-    options: Additional options
-    websocket_bridge: WebSocket bridge instance
+  A: any;
+    model: any;
+    model_t: any;
+    platf: any;
+    opti: any;
+    websocket_bri: any;
     
-  Returns:
-    Initialization result
-  """
-  if ($1) {
-    logger.warning("No WebSocket bridge available, using simulation")
-    # Simulate initialization
-    await asyncio.sleep(0.5)
+  Retu: any;
+    Initializati: any;
+  if ((((((($1) {
+    logger) { an) { an: any;
+    // Simulat) { an: any;
+    awa: any;
     return ${$1}
-  
-  }
-  # Normalize platform && model type
-  normalized_platform = platform.lower() if platform else "webgpu"
+  // Normali: any;
+  normalized_platform) { any) { any: any: any: any: any = platform.lower() if (((((platform else { "webgpu";"
   if ($1) {
-    normalized_platform = "webgpu"
+    normalized_platform) {any = "webgpu";}"
+  normalized_model_type) { any) { any) { any = normalize_model_typ) { an: any;
   
-  }
-  normalized_model_type = normalize_model_type(model_type)
+  // App: any;
+  browser: any: any = getat: any;
+  optimization_config: any: any = get_browser_optimization_conf: any;
   
-  # Apply browser-specific optimizations
-  browser = getattr(websocket_bridge, "browser_name", null) || "chrome"
-  optimization_config = get_browser_optimization_config(browser, normalized_model_type, normalized_platform)
+  // Crea: any;
+  request: any: any: any = ${$1}
   
-  # Create initialization request
-  request = ${$1}
+  // A: any;
+  reque: any;
   
-  # Add optimization options
-  request.update(optimization_config)
-  
-  # Add user-specified options
-  if ($1) {
-    request.update(options)
-  
-  }
-  # Send request to browser
-  logger.info(`$1`)
-  response = await websocket_bridge.send_and_wait(request)
-  
-  if ($1) {
-    logger.warning(`$1`)
-    # Fallback to simulation
+  // A: any;
+  if (((((($1) {request.update(options) { any) { an) { an: any;
+  logge) { an: any;
+  response) { any: any = awa: any;
+  ;
+  if (((((($1) {
+    logger) { an) { an: any;
+    // Fallbac) { an: any;
     return ${$1}
+  // L: any;
+  logg: any;
   
-  }
-  # Log successful initialization
-  logger.info(`$1`)
-  
-  # Add additional context to response
-  if ($1) {
-    response["is_simulation"] = false
-  
-  }
-  return response
+  // A: any;
+  if (((($1) {response["is_simulation"] = false) { an) { an: any;"
 
-async run_web_inference($1: string, $1: Record<$2, $3>, $1: string,
-            options: Optional[Dict[str, Any]] = null,
-            websocket_bridge=null):
-  """
-  Run inference with a model in the browser via WebSocket.
+async run_web_inference($1)) { any { string, $1) { Recor) { an: any;
+            options: Record<str, Any | null> = nu: any;
+            websocket_bridge: any: any = nu: any;
+  /** R: any;
   
-  Args:
-    model_id: Model ID
-    inputs: Model inputs
-    platform: WebNN || WebGPU
-    options: Additional options
-    websocket_bridge: WebSocket bridge instance
+  A: any;
+    model: any;
+    inp: any;
+    platf: any;
+    opti: any;
+    websocket_bri: any;
     
-  Returns:
-    Inference result
-  """
-  if ($1) {
-    logger.warning("No WebSocket bridge available, using simulation")
-    # Simulate inference
-    await asyncio.sleep(0.5)
+  Retu: any;
+    Inferen: any;
+  if ((((((($1) {
+    logger) { an) { an: any;
+    // Simulat) { an: any;
+    awa: any;
     return {
-      "success": true,
-      "model_id": model_id,
-      "platform": platform,
-      "is_simulation": true,
-      "output": ${$1},
-      "performance_metrics": ${$1}
-    }
-    }
-  
-  }
-  # Normalize platform
-  normalized_platform = platform.lower() if platform else "webgpu"
+      "success") { tr: any;"
+      "model_id") { model_: any;"
+      "platform") { platfo: any;"
+      "is_simulation": tr: any;"
+      "output": ${$1},;"
+      "performance_metrics": ${$1}"
+  // Normali: any;
+  normalized_platform: any: any: any: any: any: any = platform.lower() if ((((((platform else { "webgpu";"
   if ($1) {
-    normalized_platform = "webgpu"
+    normalized_platform) {any = "webgpu";}"
+  // Create) { an) { an: any;
+  request) { any) { any: any = ${$1}
   
-  }
-  # Create inference request
-  request = ${$1}
+  // A: any;
+  if (((($1) {request["options"] = options) { an) { an: any;"
+  start_time) { any) { any) { any = ti: any;
   
-  # Add options if specified
-  if ($1) {
-    request["options"] = options
+  // Se: any;
+  logg: any;
+  response: any: any = await websocket_bridge.send_and_wait(request: any, timeout: any: any: any = 6: an: any;
   
-  }
-  # Track timing
-  start_time = time.time()
-  
-  # Send request to browser
-  logger.info(`$1`)
-  response = await websocket_bridge.send_and_wait(request, timeout=60.0)
-  
-  # Calculate total time
-  inference_time = time.time() - start_time
-  
-  if ($1) {
-    logger.warning(`$1`)
-    # Fallback to simulation
+  // Calcula: any;
+  inference_time: any: any: any = ti: any;
+  ;
+  if (((((($1) {
+    logger) { an) { an: any;
+    // Fallbac) { an: any;
     return {
-      "success": true,
-      "model_id": model_id,
-      "platform": platform,
-      "is_simulation": true,
-      "output": ${$1},
-      "performance_metrics": ${$1}
-    }
-    }
-  
-  }
-  # Format response for consistent interface
-  result = {
-    "success": response.get("status") == "success",
-    "model_id": model_id,
-    "platform": normalized_platform,
-    "output": response.get("result", {}),
-    "is_real_implementation": !response.get("is_simulation", false),
-    "performance_metrics": response.get("performance_metrics", ${$1})
-  }
+      "success") { tr: any;"
+      "model_id") { model_: any;"
+      "platform") { platfo: any;"
+      "is_simulation": tr: any;"
+      "output": ${$1},;"
+      "performance_metrics": ${$1}"
+  // Form: any;
+  result) { any) { any = {
+    "success") { (response["status"] !== undefined ? response["status"] : ) == "success",;"
+    "model_id": model_: any;"
+    "platform": normalized_platfo: any;"
+    "output": (response["result"] !== undefined ? response["result"] : {}),;"
+    "is_real_implementation": !(response["is_simulation"] !== undefin: any;"
+    "performance_metrics": (response["performance_metrics"] !== undefined ? response["performance_metrics"] : ${$1});"
   }
   
-  # Log performance metrics
-  logger.info(`$1`)
+  // L: any;
+  logg: any;
   
-  return result
+  retu: any;
 
 async load_model_with_ipfs($1: string, $1: Record<$2, $3>, $1: string, 
-              websocket_bridge=null) -> Dict[str, Any]:
-  """
-  Load model with IPFS acceleration in browser.
+              websocket_bridge: any: any = nu: any;
+  /** Lo: any;
   
-  Args:
-    model_name: Name of model to load
-    ipfs_config: IPFS configuration
-    platform: Platform (webgpu, webnn)
-    websocket_bridge: WebSocket bridge instance
+  A: any;
+    model_n: any;
+    ipfs_con: any;
+    platf: any;
+    websocket_bri: any;
     
-  Returns:
-    Dictionary with load result
-  """
-  if ($1) {
-    logger.warning("No WebSocket bridge available, using simulation")
-    await asyncio.sleep(0.5)
+  Retu: any;
+    Dictiona: any;
+  if ((((((($1) {
+    logger) { an) { an: any;
+    awai) { an: any;
     return ${$1}
+  // Crea: any;
+  request) { any) { any: any = ${$1}
   
-  }
-  # Create IPFS acceleration request
-  request = ${$1}
-  
-  # Send request && wait for response
-  start_time = time.time()
-  response = await websocket_bridge.send_and_wait(request)
-  load_time = time.time() - start_time
-  
-  if ($1) {
-    logger.warning(`$1`)
+  // Se: any;
+  start_time) { any) { any: any: any: any: any = time.time() {;
+  response: any: any = awa: any;
+  load_time: any: any: any = ti: any;
+  ;
+  if (((((($1) {
+    logger) { an) { an: any;
     return ${$1}
-  
-  }
-  # Add load time if !present
-  if ($1) {
-    response["ipfs_load_time"] = load_time
-  
-  }
-  return response
+  // Ad) { an: any;
+  if (((($1) {response["ipfs_load_time"] = load_time) { an) { an: any;"
 
-$1($2): $3 {
-  """
-  Get the optimal browser for a model type && platform.
-  
-}
-  Args:
-    model_type: Model type (text, vision, audio, multimodal)
-    platform: WebNN || WebGPU
+$1($2)) { $3 {/** Get the optimal browser for (((((a model type && platform.}
+  Args) {
+    model_type) { Model type (text) { any, vision, audio) { any) { an) { an: any;
+    platform) { WebN) { an: any;
     
-  Returns:
-    Browser name (chrome, firefox, edge, safari)
-  """
-  # Normalize inputs
-  normalized_platform = platform.lower() if platform else "webgpu"
+  Retur) { an: any;
+    Brows: any;
+  // Normali: any;
+  normalized_platform: any: any: any: any: any: any = platform.lower() if ((((((platform else { "webgpu";"
   if ($1) {
-    normalized_platform = "webgpu"
+    normalized_platform) {any = "webgpu";}"
+  normalized_model_type) { any) { any) { any = normalize_model_typ) { an: any;
   
-  }
-  normalized_model_type = normalize_model_type(model_type)
-  
-  # Platform-specific browser preferences
-  if ($1) {
-    # Edge has the best WebNN support
-    return "edge"
-  
-  }
-  if ($1) {
+  // Platfo: any;
+  if (((((($1) {// Edge) { an) { an: any;
+    return "edge"}"
+  if ((($1) {
     if ($1) {
-      # Firefox has excellent compute shader performance for audio models
-      return "firefox"
-    elif ($1) {
-      # Chrome has good general WebGPU support for vision models
-      return "chrome"
-    elif ($1) {
-      # Chrome is good for text models on WebGPU
-      return "chrome"
-    elif ($1) {
-      # Chrome for multimodal models
-      return "chrome"
+      // Firefox) { an) { an: any;
+      retur) { an: any;
+    else if ((((($1) {// Chrome) { an) { an: any;
+      return "chrome"} else if (((($1) {"
+      // Chrome) { an) { an: any;
+      retur) { an: any;
+    else if ((((($1) {// Chrome) { an) { an: any;
+      retur) { an: any;
+    }
+  retu: any;
+    }
+function $1($1) { any)) { any { string, $1) { string) -> Dict[str, Any]) {}
+  /** G: any;
   
-    }
-  # Default to Chrome for general purpose
-    }
-  return "chrome"
-    }
-
-    }
-def optimize_for_audio_models($1: string, $1: string) -> Dict[str, Any]:
-  }
-  """
-  Get optimizations for audio models on specific browsers.
-  
-  Args:
-    browser: Browser name
-    model_type: Model type
+  Args) {
+    browser) { Brows: any;
+    model_type) { Mod: any;
     
-  Returns:
-    Optimization configuration
-  """
-  normalized_browser = browser.lower() if browser else "chrome"
-  normalized_model_type = normalize_model_type(model_type)
+  Returns) {;
+    Optimizati: any;
+  normalized_browser) { any: any: any: any: any: any = browser.lower() if ((((((browser else { "chrome";"
+  normalized_model_type) { any) { any) { any = normalize_model_type(model_type) { any)) { any {;
   
-  # Get browser-specific optimizations
-  if ($1) {
-    # Firefox-specific optimizations for audio models
-    return OPTIMIZATION_CONFIGS["firefox_audio"]
-  
-  }
-  if ($1) {
-    # Chrome optimizations for audio
-    return OPTIMIZATION_CONFIGS["chrome_default"]
-  
-  }
-  if ($1) {
-    # Edge can use WebNN for some audio models
-    if ($1) ${$1} else {
-      return OPTIMIZATION_CONFIGS["edge_default"]
-  
-    }
-  # Default optimizations
+  // G: any;
+  if (((((($1) {// Firefox) { an) { an: any;
+    return OPTIMIZATION_CONFIGS["firefox_audio"]}"
+  if ((($1) {// Chrome) { an) { an: any;
+    return OPTIMIZATION_CONFIGS["chrome_default"]}"
+  if ((($1) {
+    // Edge) { an) { an: any;
+    if ((($1) { ${$1} else {return OPTIMIZATION_CONFIGS) { an) { an: any;
   }
   return ${$1}
 
-def configure_ipfs_acceleration($1: string, $1: string, 
-              $1: string, $1: string) -> Dict[str, Any]:
-  """
-  Configure IPFS acceleration for a specific model, platform, && browser.
+function $1($1) { any)) { any { string, $1) { string, 
+              $1) { string, $1) { strin) { an: any;
+  /** Configure IPFS acceleration for ((((((a specific model, platform) { any) { an) { an: any;
   
-  Args:
-    model_name: Model name
-    model_type: Model type
-    platform: WebNN || WebGPU
-    browser: Browser name
+  Args) {
+    model_name) { Mode) { an: any;
+    model_t: any;
+    platf: any;
+    brow: any;
     
-  Returns:
-    Acceleration configuration
-  """
-  # Normalize inputs
-  normalized_browser = browser.lower() if browser else "chrome"
-  normalized_model_type = normalize_model_type(model_type)
-  normalized_platform = platform.lower() if platform else "webgpu"
+  Retu: any;
+    Accelerati: any;
+  // Normali: any;
+  normalized_browser: any: any: any: any: any: any = browser.lower() if ((((((browser else { "chrome";"
+  normalized_model_type) { any) { any) { any = normalize_model_type(model_type) { any)) { any {;
+  normalized_platform: any: any: any: any: any: any = platform.lower() if (((((platform else { "webgpu";"
   
-  # Base configuration
-  config = ${$1}
+  // Base) { an) { an: any;
+  config) { any) { any) { any = ${$1}
   
-  # Add platform-specific settings
-  if ($1) {
-    # Add WebGPU-specific settings
-    webgpu_config = ${$1}
+  // A: any;
+  if (((((($1) {
+    // Add) { an) { an: any;
+    webgpu_config) { any) { any) { any = ${$1}
+    // Adju: any;
+    if (((((($1) {
+      webgpu_config["precision"] = 1) { an) { an: any;"
+      webgpu_config["mixed_precision"] = fal) { an: any;"
+    else if ((((($1) {webgpu_config["precision"] = 1) { an) { an: any;"
+      webgpu_config["mixed_precision"] = true}"
+    config.update(webgpu_config) { an) { an: any;
+    }
     
-  }
-    # Adjust precision based on model type
+    // A: any;
+    if ((((($1) {
+      config.update(${$1});
+  
+    } else if (($1) {
+    // Add) { an) { an: any;
+    webnn_config) { any) { any) { any = ${$1}
+    // Ad) { an: any;
+    if (((((($1) {
+      webnn_config.update(${$1});
+    
+    }
+    config.update(webnn_config) { any) { an) { an: any;
+  
+  retur) { an: any;
+
+function $1($1) { any)) { any { Record<$2, $3>, $1) { string) -> Dict[str, Any]) {
+  /** App: any;
+  
+  Args) {
+    model_config) { Mod: any;
+    platform) { Platfo: any;
+    
+  Retu: any;
+    Updat: any;
+  // Defau: any;
+  precision_config: any: any: any = ${$1}
+  
+  // G: any;
+  model_family: any: any = (model_config["family"] !== undefin: any;"
+  model_type: any: any = normalize_model_ty: any;
+  
+  // Platfo: any;
+  if ((((((($1) {
     if ($1) {
-      webgpu_config["precision"] = 16
-      webgpu_config["mixed_precision"] = false
-    elif ($1) {
-      webgpu_config["precision"] = 16
-      webgpu_config["mixed_precision"] = true
-    
-    }
-    config.update(webgpu_config)
-    }
-    
-    # Add Firefox-specific optimizations for audio models
-    if ($1) {
-      config.update(${$1})
+      // Text) { an) { an: any;
+      precision_config.update(${$1});
+    else if (((($1) {
+      // Vision) { an) { an: any;
+      precision_config.update(${$1}) {} else if (((($1) {
+      // Audio) { an) { an: any;
+      precision_config.update(${$1});
+    else if (((($1) {
+      // Multimodal) { an) { an: any;
+      precision_config.update(${$1});
+  else if (((($1) {
+    // WebNN) { an) { an: any;
+    precision_config.update(${$1});
   
-    }
-  elif ($1) {
-    # Add WebNN-specific settings
-    webnn_config = ${$1}
-    
   }
-    # Add Edge-specific optimizations for WebNN
-    if ($1) {
-      webnn_config.update(${$1})
-    
+  // Override) { an) { an: any;
     }
-    config.update(webnn_config)
+  if (((($1) {
+    precision_config["precision"] = model_config) { an) { an: any;"
+  if ((($1) {
+    precision_config["mixed_precision"] = model_config) { an) { an: any;"
+  if ((($1) {precision_config["experimental_precision"] = model_config) { an) { an: any;"
+  }
+  model_config.update(precision_config) { an) { an: any;
+  }
+  retu: any;
+    }
+function get_firefox_audio_optimization(): any:  any: any) { any: any) { any) { any -> Dict[str, Any]) {}
+  /** G: any;
   
-  return config
+  Returns) {
+    Aud: any;
+  retu: any;
 
-def apply_precision_config($1: Record<$2, $3>, $1: string) -> Dict[str, Any]:
-  """
-  Apply precision configuration for model.
+function get_edge_webnn_optimization(): any:  any: any) {  any:  any: any) { any -> Dict[str, Any]) {
+  /** G: any;
   
-  Args:
-    model_config: Model configuration
-    platform: Platform (webgpu, webnn)
-    
-  Returns:
-    Updated model configuration
-  """
-  # Default precision settings
-  precision_config = ${$1}
-  
-  # Get model family/category
-  model_family = model_config.get("family", "text")
-  model_type = normalize_model_type(model_family)
-  
-  # Platform-specific precision settings
-  if ($1) {
-    if ($1) {
-      # Text models work well with 8-bit precision on WebGPU
-      precision_config.update(${$1})
-    elif ($1) {
-      # Vision models need higher precision for accuracy
-      precision_config.update(${$1})
-    elif ($1) {
-      # Audio models can use 8-bit with mixed precision
-      precision_config.update(${$1})
-    elif ($1) {
-      # Multimodal models need full precision
-      precision_config.update(${$1})
-  elif ($1) {
-    # WebNN has more limited precision options
-    precision_config.update(${$1})
-  
-  }
-  # Override with user-specified precision if available
-    }
-  if ($1) {
-    precision_config["precision"] = model_config["precision"]
-  if ($1) {
-    precision_config["mixed_precision"] = model_config["mixed_precision"]
-  if ($1) {
-    precision_config["experimental_precision"] = model_config["experimental_precision"]
-  
-  }
-  # Update model configuration
-  }
-  model_config.update(precision_config)
-  }
-  
-    }
-  return model_config
-    }
+  Returns) {
+    Web: any;
+  retu: any;
 
-    }
-def get_firefox_audio_optimization() -> Dict[str, Any]:
-  }
-  """
-  Get Firefox-specific audio optimization configurations.
-  
-  Returns:
-    Audio optimization configuration for Firefox
-  """
-  return OPTIMIZATION_CONFIGS["firefox_audio"]
-
-def get_edge_webnn_optimization() -> Dict[str, Any]:
-  """
-  Get Edge-specific WebNN optimization configurations.
-  
-  Returns:
-    WebNN optimization configuration for Edge
-  """
-  return OPTIMIZATION_CONFIGS["edge_webnn"]
-
-def get_resource_requirements($1: string, $1: string = 'base') -> Dict[str, Any]:
-  """
-  Get resource requirements for model.
-  
-  Args:
-    model_type: Type of model
-    model_size: Size of model (tiny, base, large)
+function $1($1) { any) {) { any { string, $1: string: any: any = 'base') -> Di: any;'
+  /** G: any;
+  ;
+  Args) {
+    model_type) { Ty: any;
+    model_size) { Si: any;
     
-  Returns:
-    Resource requirements dictionary
-  """
-  # Base requirements
-  requirements = ${$1}
+  Retu: any;
+    Resour: any;
+  // Ba: any;
+  requirements: any: any: any = ${$1}
   
-  # Adjust based on model type
-  normalized_model_type = normalize_model_type(model_type)
+  // Adju: any;
+  normalized_model_type: any: any = normalize_model_ty: any;
   
-  # Adjust based on model size
-  size_multiplier = 1.0
+  // Adju: any;
+  size_multiplier: any: any: any = 1: a: any;
+  if ((((((($1) {
+    size_multiplier) { any) { any) { any = 0) { an) { an: any;
+  else if ((((((($1) {
+    size_multiplier) {any = 1) { an) { an: any;} else if ((((($1) {
+    size_multiplier) { any) { any) { any = 2) { an) { an: any;
+  else if ((((((($1) {
+    size_multiplier) {any = 4) { an) { an: any;}
+  // Typ) { an: any;
+  };
+  if ((((($1) {
+    requirements["memory_mb"] = parseInt) { an) { an: any;"
+    requirements["compute_units"] = max(1) { an) { an: any;"
+  else if (((((($1) {
+    requirements["memory_mb"] = parseInt) { an) { an: any;"
+    requirements["compute_units"] = max(1) { any) { an) { an: any;"
+  else if (((((($1) {
+    requirements["memory_mb"] = parseInt) { an) { an: any;"
+    requirements["compute_units"] = max(1) { any) { an) { an: any;"
+  else if (((((($1) {requirements["memory_mb"] = parseInt) { an) { an: any;"
+    requirements["compute_units"] = max(1) { any) { an) { an: any;"
+  }
+$1($2)) { $3 {
+  /** Normalize model type to one of) {text, vision) { any, audio, multimodal.}
+  Args) {}
+    model_type) {Input mod: any;
+  }
+    Normaliz: any;
+  model_type_lower: any: any: any: any: any: any = model_type.lower() if ((((((model_type else { "text";"
+  ;
   if ($1) {
-    size_multiplier = 0.5
-  elif ($1) {
-    size_multiplier = 1.0
-  elif ($1) {
-    size_multiplier = 2.0
-  elif ($1) {
-    size_multiplier = 4.0
+    return) { an) { an: any;
+  else if (((($1) {return "vision"} else if (($1) {"
+    return) { an) { an: any;
+  else if (((($1) { ${$1} else {return "text"  // Default to text for ((((((unknown types}"
+$1($2) {) { $3 {/** Check if (browser supports model type on specific platform.}
+  Args) {}
+    browser) { Browser) { an) { an: any;
+    platform) { Platform (webgpu) { any) { an) { an: any;
+    model_type) {Model type}
+  Returns) {}
+    tru) { an: any;
+  // Normaliz) { an: any;
+  normalized_browser) { any) { any) { any: any: any: any = browser.lower() { if (((((browser else { "chrome";"
+  normalized_platform) { any) { any) { any) { any) { any) { any = platform.lower() if (((((platform else { "webgpu";"
+  normalized_model_type) { any) { any) { any = normalize_model_type) { an) { an: any;
   
-  }
-  # Type-specific requirements
-  }
-  if ($1) {
-    requirements["memory_mb"] = int(500 * size_multiplier)
-    requirements["compute_units"] = max(1, int(1 * size_multiplier))
-  elif ($1) {
-    requirements["memory_mb"] = int(800 * size_multiplier)
-    requirements["compute_units"] = max(1, int(2 * size_multiplier))
-  elif ($1) {
-    requirements["memory_mb"] = int(1000 * size_multiplier)
-    requirements["compute_units"] = max(1, int(2 * size_multiplier))
-  elif ($1) {
-    requirements["memory_mb"] = int(1500 * size_multiplier)
-    requirements["compute_units"] = max(1, int(3 * size_multiplier))
+  // Che: any;
+  if (((((($1) {
+    browser_info) {any = BROWSER_CAPABILITIES) { an) { an: any;};
+    if (((($1) {
+      platform_info) {any = browser_info) { an) { an: any;}
+      // Chec) { an: any;
+      if (((($1) {return false) { an) { an: any;
+      if ((($1) {return true) { an) { an: any;
+      retur) { an: any;
   
-  }
-  return requirements
-  }
+  // Default to true for (((((Chrome WebGPU (generally well-supported) {
+  if (((($1) {return true) { an) { an: any;
+  if (($1) {return true) { an) { an: any;
 
-  }
-$1($2): $3 {
-  """
-  Normalize model type to one of: text, vision, audio, multimodal.
+function $1($1) { any)) { any { string, $1) { string, $1) { string) -> Dict[str, Any]) {;
+  /** Get) { an) { an: any;
   
-}
-  Args:
-  }
-    model_type: Input model type
+  Args) {
+    browser) { Browse) { an: any;
+    model_type) { Mod: any;
+    platf: any;
     
-  }
-  Returns:
-  }
-    Normalized model type
-  """
-  model_type_lower = model_type.lower() if model_type else "text"
+  Retu: any;
+    Optimizati: any;
+  // Normali: any;
+  normalized_browser: any: any: any: any: any: any: any: any: any: any = browser.lower() if (((((browser else { "chrome";"
+  normalized_model_type) { any) { any) { any = normalize_model_type) { an) { an: any;
+  normalized_platform: any: any: any: any: any: any = platform.lower() if ((((platform else { "webgpu";"
   
-  if ($1) {
-    return "text"
-  elif ($1) {
-    return "vision"
-  elif ($1) {
-    return "audio"
-  elif ($1) ${$1} else {
-    return "text"  # Default to text for unknown types
-
-  }
-$1($2): $3 {
-  """
-  Check if browser supports model type on specific platform.
-  
-}
-  Args:
-  }
-    browser: Browser name
-    platform: Platform (webgpu, webnn)
-    model_type: Model type
-    
-  }
-  Returns:
-  }
-    true if browser supports model type on platform, false otherwise
-  """
-  # Normalize inputs
-  normalized_browser = browser.lower() if browser else "chrome"
-  normalized_platform = platform.lower() if platform else "webgpu"
-  normalized_model_type = normalize_model_type(model_type)
-  
-  # Check browser capabilities
-  if ($1) {
-    browser_info = BROWSER_CAPABILITIES[normalized_browser]
-    
-  }
-    if ($1) {
-      platform_info = browser_info[normalized_platform]
-      
-    }
-      # Check if platform is supported
-      if ($1) {
-        return false
-      
-      }
-      # Check optimized categories
-      if ($1) {
-        return true
-      
-      }
-      # Default to supported if platform is supported but no model-specific info
-      return true
-  
-  # Default to true for Chrome WebGPU (generally well-supported)
-  if ($1) {
-    return true
-  
-  }
-  # Default to true for Edge WebNN
-  if ($1) {
-    return true
-  
-  }
-  return false
-
-def get_browser_optimization_config($1: string, $1: string, $1: string) -> Dict[str, Any]:
-  """
-  Get optimization configuration for specific browser, model type, && platform.
-  
-  Args:
-    browser: Browser name
-    model_type: Model type
-    platform: Platform (webgpu, webnn)
-    
-  Returns:
-    Optimization configuration
-  """
-  # Normalize inputs
-  normalized_browser = browser.lower() if browser else "chrome"
-  normalized_model_type = normalize_model_type(model_type)
-  normalized_platform = platform.lower() if platform else "webgpu"
-  
-  # WebNN platform
-  if ($1) {
-    if ($1) ${$1} else {
+  // WebNN) { an) { an: any;
+  if ((($1) {
+    if ($1) { ${$1} else {
       return ${$1}
-  
-    }
-  # WebGPU platform
+  // WebGPU) { an) { an: any;
   }
-  if ($1) {
-    # Firefox optimizations
-    if ($1) {
-      if ($1) ${$1} else {
-        return OPTIMIZATION_CONFIGS["firefox_default"]
-    
-      }
-    # Chrome optimizations
+  if ((($1) {
+    // Firefox) { an) { an: any;
+    if ((($1) {
+      if ($1) { ${$1} else {return OPTIMIZATION_CONFIGS) { an) { an: any;
+    } else if (((($1) {
+      if ($1) { ${$1} else {return OPTIMIZATION_CONFIGS) { an) { an: any;
     }
-    elif ($1) {
-      if ($1) ${$1} else {
-        return OPTIMIZATION_CONFIGS["chrome_default"]
-    
-      }
-    # Edge optimizations
-    }
-    elif ($1) {
-      return OPTIMIZATION_CONFIGS["edge_default"]
-  
-    }
-  # Default configuration
+    else if (((($1) {return OPTIMIZATION_CONFIGS) { an) { an: any;
   }
   return ${$1}
 
-if ($1) {
-  # Test functionality
-  console.log($1))
-  console.log($1))
-  console.log($1))
-  console.log($1))
-  console.log($1))
-  console.log($1))
+if ((($1) {
+  // Test) { an) { an) { an: any;
+  console) { an) { an) { an: any;

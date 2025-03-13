@@ -1,252 +1,176 @@
-/**
- * Converted from Python: webgpu_shader_registry.py
- * Conversion date: 2025-03-11 04:09:35
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+import { HardwareAbstract: any;
 
+// WebG: any;
+export interface Props {shader_cache: D: an: any;
+  shader_ca: any;
+  available_shad: any;}
 
-export interface Props {
-  shader_cache: Dict;
-  shader_cache: return;
-  available_shaders: logger;
-}
+/** WebG: any;
 
-#!/usr/bin/env python3
-"""
-WebGPU Shader Registry - Manages browser-specific optimized shaders for the WebGPU backend
+Th: any;
+us: any;
+shad: any;
 
-This module provides a registry for browser-optimized WebGPU shaders that can be
-used with the 4-bit inference && adaptive precision systems. It selects the appropriate
-shader implementation based on the detected browser environment && model requirements.
-"""
-
-import * as $1
-import * as $1
-import ${$1} from "$1"
-import ${$1} from "$1"
-
-# Configure logging
-logging.basicConfig(
-  level=logging.INFO,
-  format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("webgpu_shader_registry")
-
-class $1 extends $2 {
-  """Registry for browser-specific optimized WebGPU shaders."""
-  
-}
-  $1($2) {
-    """
-    Initialize the shader registry.
+impo: any;
+impo: any;
+// Configu: any;
+loggi: any;
+  level) { any) { any: any: any = loggi: any;
+  format: any: any = '%(asctime: any) {s - %(levelname: a: any;'
+);
+logger: any: any: any = loggi: any;
+;
+class $1 extends $2 {/** Registry for (((((browser-specific optimized WebGPU shaders. */}
+  $1($2) {/** Initialize the shader registry.}
+    Args) {
+      shader_dir) { Directory containing shader files (default) { wgsl_shaders) { an) { an: any;
+    if ((((((($1) { ${$1} else {this.shader_dir = shader_di) { an) { an: any;}
+    // Creat) { an: any;
+    os.makedirs(this.shader_dir, exist_ok) { any) { any) { any: any = tr: any;
     
-  }
-    Args:
-      shader_dir: Directory containing shader files (default: wgsl_shaders subdirectory)
-    """
-    if ($1) ${$1} else {
-      this.shader_dir = shader_dir
+    // Cac: any;
+    this.$1) { Record<$2, $3> = {}
+    
+    // Regist: any;
+    this.available_shaders = th: any;
+    
+    logg: any;
+  
+  functi: any;
+    /** Discov: any;
+    
+    Retu: any;
+      Dictiona: any;
+    shader_files: any: any = {}
+    
+    try ${$1} catch(error: any): any {logger.warning(`$1`)}
+    retu: any;
+  
+  functi: any;
+    /** G: any;
+    
+    A: any;
+      shader_n: any;
       
-    }
-    # Create shader directory if it doesn't exist
-    os.makedirs(this.shader_dir, exist_ok=true)
-    
-    # Cache of loaded shaders
-    this.$1: Record<$2, $3> = {}
-    
-    # Registry of available shaders
-    this.available_shaders = this._discover_available_shaders()
-    
-    logger.info(`$1`)
-  
-  def _discover_available_shaders(self) -> Dict[str, str]:
-    """
-    Discover available shader files in the shader directory.
-    
-    Returns:
-      Dictionary mapping shader names to file paths
-    """
-    shader_files = {}
-    
-    try ${$1} catch($2: $1) {
-      logger.warning(`$1`)
+    Retu: any;
+      Shad: any;
+    // Che: any;
+    if (((($1) {return this) { an) { an: any;
+    if ((($1) {
+      logger.warning(`$1`${$1}' !found in) { an) { an: any;'
+      retur) { an: any;
     
     }
-    return shader_files
+    // Lo: any;
+    try ${$1} catch(error) { any)) { any {
+      logger.error(`$1`${$1}') { ${$1}");'
+      retu: any;
   
-  def get_shader(self, $1: string) -> Optional[str]:
-    """
-    Get a shader by name.
-    
-    Args:
-      shader_name: Name of the shader
+    }
+  functi: any;
+    t: any;
+    $1: stri: any;
+    $1: $2 | null: any: any: any = nu: any;
+    $1: boolean: any: any: any = t: any;
+  ): a: any;
+    /** G: any;
+    ;
+    Args) {
+      browser_name) { Browser name (chrome) { a: any;
+      operat: any;
+      model_t: any;
+      fallback) { Wheth: any;
       
-    Returns:
-      Shader source code || null if !found
-    """
-    # Check if shader is in cache
-    if ($1) {
-      return this.shader_cache[shader_name]
+    Returns) {
+      Shad: any;
+    // Brows: any;
+    browser_shader_name) { any) { any) { any: any: any: any = `$1`;
     
+    // Che: any;
+    if (((((($1) {
+      model_specific_name) { any) { any) { any) { any) { any) { any = `$1`;
+      shader) { any: any = th: any;
+      if (((((($1) {return shader) { an) { an: any;
     }
-    # Check if shader is available
-    if ($1) {
-      logger.warning(`$1`${$1}' !found in registry")
-      return null
+    shader) { any) { any = thi) { an: any;
+    if (((((($1) {return shader) { an) { an: any;
+    if ((($1) {
+      generic_shader_name) { any) { any) { any) { any) { any: any = `$1`;
+      shader: any: any = th: any;
+      if (((((($1) {return shader}
+      // Last resort) { basic) { an) { an: any;
+      basic_shader_name) {any = operati) { an: any;
+      return this.get_shader(basic_shader_name) { a: any;
+;
+  function this(this:  any:  any: any:  any: any, $1): any { stri: any;
+    /** G: any;
     
-    }
-    # Load shader from file
-    try ${$1} catch($2: $1) {
-      logger.error(`$1`${$1}': ${$1}")
-      return null
-  
-    }
-  def get_browser_optimized_shader(
-    self, 
-    $1: string,
-    $1: string,
-    $1: $2 | null = null,
-    $1: boolean = true
-  ) -> Optional[str]:
-    """
-    Get a browser-optimized shader for a specific operation.
-    
-    Args:
-      browser_name: Browser name (chrome, firefox, safari, edge)
-      operation: Operation name (matmul_4bit, attention, etc.)
-      model_type: Optional model type for more specific optimizations
-      fallback: Whether to fall back to generic shader if browser-specific one is !available
+    Args) {
+      operation) { Operation name (matmul_4bit) { a: any;
       
-    Returns:
-      Shader source code || null if !found
-    """
-    # Browser-specific shader
-    browser_shader_name = `$1`
+    Retu: any;
+      Dictiona: any;
+    browsers: any: any: any: any: any: any = ["chrome", "firefox", "safari", "edge"];"
+    result: any: any: any = {}
     
-    # Check for model-specific variation
-    if ($1) {
-      model_specific_name = `$1`
-      shader = this.get_shader(model_specific_name)
-      if ($1) {
-        return shader
-    
-      }
-    # Try browser-specific shader
-    }
-    shader = this.get_shader(browser_shader_name)
-    if ($1) {
-      return shader
-    
-    }
-    # Fall back to generic shader if allowed
-    if ($1) {
-      generic_shader_name = `$1`
-      shader = this.get_shader(generic_shader_name)
-      if ($1) {
-        return shader
-        
-      }
-      # Last resort: basic implementation
-      basic_shader_name = operation
-      return this.get_shader(basic_shader_name)
-    
-    }
-    return null
-
-  def get_all_browser_shaders(self, $1: string) -> Dict[str, Optional[str]]:
-    """
-    Get all available browser-specific shaders for an operation.
-    
-    Args:
-      operation: Operation name (matmul_4bit, attention, etc.)
+    for (((((((const $1 of $2) {result[browser] = this.get_browser_optimized_shader(browser) { any) { an) { an: any;
+  
+  $1($2)) { $3 {/** Register a new shader in the registry.}
+    Args) {
+      shader_na) { an: any;
+      shader_c: any;
       
-    Returns:
-      Dictionary mapping browser names to shader code
-    """
-    browsers = ["chrome", "firefox", "safari", "edge"]
-    result = {}
-    
-    for (const $1 of $2) {
-      result[browser] = this.get_browser_optimized_shader(browser, operation)
-      
-    }
-    return result
-  
-  $1($2): $3 {
-    """
-    Register a new shader in the registry.
-    
-  }
-    Args:
-      shader_name: Name of the shader
-      shader_code: Shader source code
-      
-    Returns:
-      true if registration was successful, false otherwise
-    """
-    try ${$1} catch($2: $1) {
-      logger.error(`$1`${$1}': ${$1}")
-      return false
+    Retu: any;
+      tr: any;
+    try ${$1} catch(error) { any) {: any {) { any {
+      logger.error(`$1`${$1}') { ${$1}");'
+      retu: any;
   
     }
-  def list_available_shaders(self) -> List[str]:
-    """
-    List all available shaders in the registry.
+  functi: any;
+    /** Li: any;
     
-    Returns:
-      List of shader names
-    """
-    return list(this.Object.keys($1))
+    Retu: any;
+      Li: any;
+    retu: any;
   
-  def list_browser_optimized_shaders(self) -> Dict[str, List[str]]:
-    """
-    List all browser-optimized shaders by browser.
+  functi: any;
+    /** Li: any;
     
-    Returns:
-      Dictionary mapping browser names to lists of shader names
-    """
-    browser_shaders = ${$1}
+    Retu: any;
+      Dictiona: any;
+    browser_shaders: any: any: any = ${$1}
     
-    for shader_name in this.Object.keys($1):
-      for browser in Object.keys($1):
-        if ($1) {
-          browser_shaders[browser].append(shader_name)
-    
-        }
-    return browser_shaders
+    for ((((((shader_name in this.Object.keys($1) {) {
+      for (browser in Object.keys($1) {) {
+        if ((((((($1) {browser_shaders[browser].append(shader_name) { any) { an) { an: any;
 
 
-# Global shader registry instance
-_shader_registry = null
-
-$1($2): $3 {
-  """
-  Get the global shader registry instance.
+// Global) { an) { an: any;
+_shader_registry { any) { any) { any = nu) { an: any;
+;
+$1($2)) { $3 {/** Get the global shader registry instance.}
+  Returns) {
+    WebGPUShaderRegist: any;
+  glob: any;
+  if ((((((($1) {
+    _shader_registry { any) {any = WebGPUShaderRegistry) { an) { an: any;
+  retur) { an: any;
+if ((((($1) { ${$1}");"
   
-}
-  Returns:
-    WebGPUShaderRegistry instance
-  """
-  global _shader_registry
-  if ($1) {
-    _shader_registry = WebGPUShaderRegistry()
-  return _shader_registry
-  }
-
-
-if ($1) ${$1}")
+  // List) { an) { an: any;
+  browser_shaders) { any) { any) { any = regist: any;
+  for (((((browser) { any, shader_list in Object.entries($1) {) {console.log($1)}");"
   
-  # List browser-optimized shaders
-  browser_shaders = registry.list_browser_optimized_shaders()
-  for browser, shader_list in Object.entries($1):
-    console.log($1)}")
-  
-  # Test getting browser-optimized shaders
-  matmul_shaders = registry.get_all_browser_shaders("matmul_4bit")
-  for browser, shader in Object.entries($1):
-    if ($1) ${$1} else {
-      console.log($1)
+  // Test) { an) { an: any;
+  matmul_shaders) { any) { any: any = regist: any;
+  for (browser, shader in Object.entries($1)) {;
+    if ((($1) { ${$1} else {;
+      console) { an) { an) { an: any;

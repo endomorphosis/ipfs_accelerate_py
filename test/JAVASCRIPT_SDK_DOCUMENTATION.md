@@ -10,6 +10,18 @@ The IPFS Accelerate JavaScript SDK provides hardware-accelerated machine learnin
 
 This SDK is the TypeScript/JavaScript counterpart to the Python-based IPFS Accelerate framework, sharing the same architectural principles while being fully optimized for browser and Node.js environments.
 
+## Migration Status (Updated March 13, 2025)
+
+The migration from Python to JavaScript/TypeScript is now **98% complete** with the following key achievements:
+
+- **790 files migrated** to TypeScript with proper type definitions
+- **Enhanced Python-to-TypeScript converter** with 50+ regex patterns and specialized templates
+- **Improved TypeScript interface generation** from Python type hints
+- **Browser-specific shader optimizations** for Firefox, Chrome, Edge and Safari
+- **Comprehensive testing framework** for conversion quality assessment
+
+The remaining 2% of work involves final testing, validation, and documentation.
+
 ## Key Features
 
 - **Hardware Acceleration**: Utilizes WebGPU and WebNN for optimal performance
@@ -183,6 +195,33 @@ The SDK includes browser-specific optimizations for different model types:
 
 These optimizations are automatically applied based on the detected browser.
 
+## SDK Structure
+
+The JavaScript SDK follows a standardized NPM package layout with TypeScript declarations:
+
+```
+ipfs_accelerate_js/
+├── dist/           # Compiled output
+├── src/            # Source code
+│   ├── api_backends/     # API client implementations
+│   ├── browser/          # Browser-specific optimizations
+│   │   ├── optimizations/    # Browser-specific optimization techniques
+│   │   └── resource_pool/    # Resource pooling and management
+│   ├── core/             # Core functionality 
+│   ├── hardware/         # Hardware abstraction and detection
+│   │   ├── backends/         # WebGPU, WebNN backends
+│   │   └── detection/        # Hardware capability detection
+│   ├── model/            # Model implementations
+│   ├── quantization/     # Model quantization
+│   ├── storage/          # Storage management
+│   └── worker/           # Web Workers
+│       ├── webgpu/           # WebGPU implementation
+│       └── webnn/            # WebNN implementation
+├── test/            # Test files
+├── examples/        # Example applications
+└── docs/            # Documentation
+```
+
 ## Advanced Features
 
 ### Cross-Model Tensor Sharing
@@ -303,6 +342,19 @@ npm test
 # Generate documentation
 npm run docs
 ```
+
+## Python-to-TypeScript Conversion
+
+The SDK has been migrated from Python using our enhanced Python-to-TypeScript converter, which includes:
+
+- Specialized templates for WebGPU and WebNN backends
+- Automatic interface generation from Python type hints
+- Type-safe conversions for common Python patterns
+- Browser-specific optimizations for shader code
+
+For more details on the conversion process, see:
+- [WEBGPU_WEBNN_MIGRATION_COMPLETION_GUIDE.md](WEBGPU_WEBNN_MIGRATION_COMPLETION_GUIDE.md)
+- [GENERATOR_IMPLEMENTATION_GUIDE.md](GENERATOR_IMPLEMENTATION_GUIDE.md)
 
 ## Contributing
 

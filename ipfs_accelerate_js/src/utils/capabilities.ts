@@ -1,416 +1,295 @@
-/**
- * Converted from Python: capabilities.py
- * Conversion date: 2025-03-11 04:08:54
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
 
-#!/usr/bin/env python3
-"""
-Enhanced hardware detection module for Phase 16.
 
-This module provides reliable detection of various hardware backends including:
-  - CPU
-  - CUDA
-  - ROCm (AMD)
-  - OpenVINO
-  - MPS (Apple Metal)
-  - QNN (Qualcomm Neural Networks) - Added March 2025
-  - WebNN
-  - WebGPU
+// WebG: any;
+/** Enhanc: any;
 
-  The detection is done in a way that prevents variable scope issues && provides
-  a consistent interface for all generator modules to use.
-  """
+This module provides reliable detection of various hardware backends including) {
+  - C: an: any;
+  - C: any;
+  - ROCm (AMD) { a: any;
+  - OpenV: any;
+  - M: any;
+  - Q: any;
+  - We: any;
+  - Web: any;
 
-  import * as $1
-  import * as $1
-  import * as $1.util
-  import * as $1
-  import ${$1} from "$1"
+  T: any;
+  a: a: any;
 
-# Configure logging
-  logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-  logger = logging.getLogger("hardware_detection")
-
-  def detect_cpu() -> Dict[str, Any]:,,,,,,,,
-  """Detect CPU capabilities."""
-  import * as $1
-  import * as $1
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  // Configu: any;
+  logging.basicConfig(level = logging.INFO, format) { any) { any: any = '%(asctime: any) {s - %(levelname: a: any;'
+  logger: any: any: any = loggi: any;
+;
+  function detect_cpu(): any -> Dict[ str:  any: any:  any: any, Any]) {,;
+  /** Dete: any;
+  impo: any;
+  impo: any;
   
-  cores = multiprocessing.cpu_count()
-  architecture = platform.machine()
-  processor = platform.processor()
-  system = platform.system()
-  
-return {}}}}}}}}}}}}
-"detected": true,
-"cores": cores,
-"architecture": architecture,
-"processor": processor,
-"system": system
+  cores: any: any: any = multiprocessi: any;
+  architecture: any: any: any = platfo: any;
+  processor: any: any: any = platfo: any;
+  system: any: any: any = platfo: any;
+  ;
+return {}
+"detected": tr: any;"
+"cores": cor: any;"
+"architecture": architectu: any;"
+"processor": process: any;"
+"system": sys: any;"
 }
 
-def detect_cuda() -> Dict[str, Any]:,,,,,,,,
-"""Detect CUDA capabilities."""
-  try {
-    # Try to import * as $1 first
-    import * as $1
-    
-  }
-    if ($1) {
-      device_count = torch.cuda.device_count()
-      cuda_version = torch.version.cuda
-      devices = []
-      ,,,        ,
-      for (let $1 = 0; $1 < $2; $1++) {
-        device = torch.cuda.get_device_properties(i)
-        devices.append({}}}}}}}}}}}}
-        "name": device.name,
-        "total_memory": device.total_memory,
-        "major": device.major,
-        "minor": device.minor,
-        "multi_processor_count": device.multi_processor_count
-        })
+functi: any;
+/** Dete: any;
+  try {// T: any;
+    import: any; from: any;"
+    if ((((((($1) {;
+      device_count) { any) { any) { any) { any) { any) { any: any: any = tor: any;
+      cuda_version: any: any: any = tor: any;
+      devices: any: any: any: any: any: any = [];
+      ,        ,;
+      for (((((((let $1 = 0; $1 < $2; $1++) {
+        device) { any) { any) { any = torch) { an) { an: any;
+        devices.append({}
+        "name") {device.name,;"
+        "total_memory": devi: any;"
+        "major": devi: any;"
+        "minor": devi: any;"
+        "multi_processor_count": devi: any;"
       
       }
-      return {}}}}}}}}}}}}
-      "detected": true,
-      "version": cuda_version,
-      "device_count": device_count,
-      "devices": devices
-      }
-    } else {
-      return {}}}}}}}}}}}}"detected": false}
-  except (ImportError, Exception) as e:
+      return {}
+      "detected": tr: any;"
+      "version": cuda_versi: any;"
+      "device_count": device_cou: any;"
+      "devices": devi: any;"
+      } else {
+      return {}"detected": false}"
+  catch (error: any) {}
+    logg: any;
     }
-    logger.warning(`$1`)
-    }
-      return {}}}}}}}}}}}}"detected": false, "error": str(e)}
-
-      def detect_rocm() -> Dict[str, Any]:,,,,,,,,
-      """Detect ROCm (AMD) capabilities."""
+      return {}"detected": fal: any;"
+      /** Dete: any;
   try {
-    # Check if torch is available with ROCm
-    import * as $1
-    :
-    if ($1) {
-      # Check if it's actually ROCm
-      is_rocm = false:
-      if ($1) {
-        is_rocm = true
-        rocm_version = torch._C._rocm_version()
-      elif ($1) {
-        is_rocm = true
-        rocm_version = os.environ.get('ROCM_VERSION', 'unknown')
-      
-      }
-      if ($1) {
-        device_count = torch.cuda.device_count()
-        devices = []
-        ,,,        ,
-        for (let $1 = 0; $1 < $2; $1++) {
-          device = torch.cuda.get_device_properties(i)
-          devices.append({}}}}}}}}}}}}
-          "name": device.name,
-          "total_memory": device.total_memory,
-          "major": device.major,
-          "minor": device.minor,
-          "multi_processor_count": device.multi_processor_count
-          })
+    // Che: any;
+    impo: any;
+    ) {
+    if ((((($1) {
+      // Check) { an) { an: any;
+      is_rocm) { any) { any = false) {
+      if (((((($1) {
+        is_rocm) { any) { any) { any) { any) { any) { any: any: any = t: any;
+        rocm_version: any: any: any = tor: any;
+      else if (((((((($1) {
+        is_rocm) {any = tru) { an) { an: any;
+        rocm_version) { any) { any = os.(environ["ROCM_VERSION"] !== undefin: any;};"
+      if (((((($1) {
+        device_count) { any) { any) { any) { any = torc) { an: any;
+        devices: any: any: any: any: any: any = [];
+        ,        ,;
+        for (((((((let $1 = 0; $1 < $2; $1++) {
+          device) { any) { any) { any = torch) { an) { an: any;
+          devices.append({}
+          "name") { devi: any;"
+          "total_memory") { devi: any;"
+          "major") {device.major,;"
+          "minor": devi: any;"
+          "multi_processor_count": devi: any;"
         
         }
-        return {}}}}}}}}}}}}
-        "detected": true,
-        "version": rocm_version,
-        "device_count": device_count,
-        "devices": devices
+        return {}
+        "detected": tr: any;"
+        "version": rocm_versi: any;"
+        "device_count": device_cou: any;"
+        "devices": devi: any;"
         }
-    
-      }
-        return {}}}}}}}}}}}}"detected": false}
-  except (ImportError, Exception) as e:
-      }
-    logger.warning(`$1`)
+        return {}"detected": false}"
+  catch (error: any) {}
+    logg: any;
     }
-        return {}}}}}}}}}}}}"detected": false, "error": str(e)}
-
-  }
-        def detect_openvino() -> Dict[str, Any]:,,,,,,,,
-        """Detect OpenVINO capabilities."""
-        has_openvino = importlib.util.find_spec("openvino") is !null
-  
-  if ($1) {
-    try {
-      import * as $1
-      
-    }
-      # Handle deprecation - first try the recommended API
+        return {}"detected": fal: any;"
+        /** Dete: any;
+        has_openvino: any: any: any = importl: any;
+  ;
+  if ((((((($1) {
+    try {import * as) { an) { an: any;
       try {
-        # New recommended API
-        core = openvino.Core()
-      except (AttributeError, ImportError):
-      }
-        # Fall back to legacy API with deprecation warning
-        from openvino.runtime import * as $1
-        core = Core()
+        // Ne) { an: any;
+        core) { any) { any: any = openvi: any;
+      catch (error: any) {}
+        // Fa: any;
+        import {* a: an: any;
+        core: any: any: any = Co: any;
       
   }
-        version = openvino.__version__
-        available_devices = core.available_devices
-      
-        return {}}}}}}}}}}}}
-        "detected": true,
-        "version": version,
-        "available_devices": available_devices
-        }
-    } catch($2: $1) {
-      logger.warning(`$1`)
-        return {}}}}}}}}}}}}"detected": true, "version": "unknown", "error": str(e)}
-  } else {
-        return {}}}}}}}}}}}}"detected": false}
-
-  }
-        def detect_mps() -> Dict[str, Any]:,,,,,,,,
-        """Detect MPS (Apple Metal) capabilities."""
-  try {
-    # Try to import * as $1 first
-    import * as $1
-    
-  }
-    has_mps = false
-    }
-    if ($1) {
-      has_mps = torch.mps.is_available()
-    
-    }
-    if ($1) {
+        version: any: any: any = openvi: any;
+        available_devices: any: any: any = co: any;
+      ;
+        return {}
+        "detected") {true,;"
+        "version": versi: any;"
+        "available_devices": available_devices} catch(error: any): any {"
+      logg: any;
+        return {}"detected": true, "version": "unknown", "error": String(e: any)} else {"
+        return {}"detected": fal: any;"
+        /** Dete: any;
+  try {// T: any;
+    impor: any;
+    has_mps: any: any: any = fa: any;
+    };
+    if ((((((($1) {
+      has_mps) {any = torch) { an) { an: any;};
+    if (((($1) {
       if ($1) {
-        mem_info = {}}}}}}}}}}}}
-        "current_allocated": torch.mps.current_allocated_memory(),
-        "max_allocated": torch.mps.max_allocated_memory()
-        }
-      } else {
-        mem_info = {}}}}}}}}}}}}"available": true}
-      
+        mem_info) { any) { any) { any) { any) { any: any = {}
+        "current_allocated") {torch.mps.current_allocated_memory(),;"
+        "max_allocated": torch.mps.max_allocated_memory()} else {"
+        mem_info: any: any = {}"available": true}"
+        return {}
+        "detected": tr: any;"
+        "memory_info": mem_i: any;"
+        } else {
+        return {}"detected": false}"
+  catch (error: any) {}
+    logg: any;
       }
-        return {}}}}}}}}}}}}
-        "detected": true,
-        "memory_info": mem_info
-        }
-    } else {
-        return {}}}}}}}}}}}}"detected": false}
-  except (ImportError, Exception) as e:
-    }
-    logger.warning(`$1`)
-      }
-        return {}}}}}}}}}}}}"detected": false, "error": str(e)}
-
-    }
-        def detect_webnn() -> Dict[str, Any]:,,,,,,,,
-        """Detect WebNN capabilities."""
-  # Check for any WebNN-related packages
-        webnn_packages = ["webnn", "webnn_js", "webnn_runtime"],
-        detected_packages = []
-        ,,,
-  for (const $1 of $2) {
-    if ($1) {
-      $1.push($2)
-  
-    }
-  # Also check for environment variables
+        return {}"detected": fal: any;"
+        /** Dete: any;
+  // Che: any;
+        webnn_packages) { any) { any: any: any: any: any = ["webnn", "webnn_js", "webnn_runtime"],;"
+        detected_packages: any: any: any: any: any: any = [];
+        ,;
+  for ((((((const $1 of $2) {
+    if ((((((($1) {$1.push($2)}
+  // Also) { an) { an: any;
   }
-      env_detected = false
-  if ($1) {
-    env_detected = true
-  
+      env_detected) { any) { any) { any) { any = fals) { an) { an: any;
+  if (((((($1) {
+    env_detected) {any = tru) { an) { an: any;}
+  // WebN) { an: any;
+    detected) { any) { any) { any = detected_packag: any;
+  ;
+  return {}) {
+    "detected") { detect: any;"
+    "available_packages") {detected_packages,;"
+    "env_detected": env_detect: any;"
+    "simulation_available": tr: any;"
+    /** Dete: any;
+  // Che: any;
+    webgpu_packages) { any) { any: any: any: any: any = ["webgpu", "webgpu_js", "webgpu_runtime", "wgpu"],;"
+    detected_packages: any: any: any: any: any: any = [];
+    ,;
+  for ((((((const $1 of $2) {
+    if ((((((($1) {$1.push($2)}
+  // Also) { an) { an: any;
   }
-  # WebNN is considered detected if any package is found || env var is set
-    detected = len(detected_packages) > 0 || env_detected
-  
-  return {}}}}}}}}}}}}:
-    "detected": detected,
-    "available_packages": detected_packages,
-    "env_detected": env_detected,
-    "simulation_available": true  # We can always simulate WebNN
-    }
-
-    def detect_webgpu() -> Dict[str, Any]:,,,,,,,,
-    """Detect WebGPU capabilities."""
-  # Check for any WebGPU-related packages
-    webgpu_packages = ["webgpu", "webgpu_js", "webgpu_runtime", "wgpu"],
-    detected_packages = []
-    ,,,
-  for (const $1 of $2) {
-    if ($1) {
-      $1.push($2)
-  
-    }
-  # Also check for environment variables
-  }
-      env_detected = false
-  if ($1) {
-    env_detected = true
-  
-  }
-  # Also check for the libwebgpu library
-    lib_detected = false
+      env_detected) { any) { any) { any) { any = fals) { an) { an: any;
+  if (((((($1) {
+    env_detected) {any = tru) { an) { an: any;}
+  // Als) { an: any;
+    lib_detected) { any) { any) { any = fal) { an: any;
   try {
-    import * as $1
-    if ($1) ${$1} catch($2: $1) {
-    lib_detected = false
-    }
-  
+    impo: any;
+    if (((((($1) { ${$1} catch(error) { any)) { any {lib_detected) { any) { any) { any = fa: any;}
+  // WebG: any;
+    detected) { any) { any: any = detected_packag: any;
+  ;
+  return {}) {
+    "detected") {detected,;"
+    "available_packages": detected_packag: any;"
+    "env_detected": env_detect: any;"
+    "lib_detected": lib_detect: any;"
+    "simulation_available": tr: any;"
+    /** Dete: any;
+  // Che: any;
+    qnn_packages) { any) { any: any: any: any: any = ["qnn_sdk", "qnn_runtime", "qnn"],;"
+    detected_packages: any: any: any: any: any: any = [];
+    ,;
+  for ((((((const $1 of $2) {
+    if ((((((($1) {$1.push($2)}
+  // Also) { an) { an: any;
   }
-  # WebGPU is considered detected if any package is found, env var is set, || lib is found
-    detected = len(detected_packages) > 0 || env_detected || lib_detected
-  
-  return {}}}}}}}}}}}}:
-    "detected": detected,
-    "available_packages": detected_packages,
-    "env_detected": env_detected,
-    "lib_detected": lib_detected,
-    "simulation_available": true  # We can always simulate WebGPU
-    }
-
-    def detect_qnn() -> Dict[str, Any]:,,,,,,,,
-    """Detect QNN (Qualcomm Neural Networks) capabilities."""
-  # Check for QNN SDK
-    qnn_packages = ["qnn_sdk", "qnn_runtime", "qnn"],
-    detected_packages = []
-    ,,,
-  for (const $1 of $2) {
-    if ($1) {
-      $1.push($2)
-  
-    }
-  # Also check for environment variables
-  }
-      env_detected = false
-  if ($1) {
-    env_detected = true
-  
-  }
-  # Check for Snapdragon device (simplified for now)
-    device_detected = false
+      env_detected) { any) { any) { any) { any = fals) { an) { an: any;
+  if (((((($1) {
+    env_detected) {any = tru) { an) { an: any;}
+  // Chec) { an: any;
+    device_detected) { any) { any) { any = fal) { an: any;
   try {
-    with open("/proc/cpuinfo", "r") as f:
-      cpuinfo = f.read()
-      if ($1) ${$1} catch(error) {
-        pass
-  
-      }
-  # Also check if our mock QNN module is available
+    with open("/proc/cpuinfo", "r") as f) {"
+      cpuinfo: any: any: any = f: a: any;
+      if ((((((($1) { ${$1} catch(error) { any)) { any {pass}
+  // Also) { an) { an: any;
   }
-  mock_available = false:
+  mock_available) { any) { any) { any = false) {
   try {
-    from .qnn_support import * as $1
-    mock_available = true
-  except (ImportError, Exception):
-  }
-    pass
+    import {* a: an: any;
+    mock_available: any: any: any = t: any;
+  catch (error: any) {}
+    p: any;
   
-  # QNN is considered detected if any package is found, env var is set, || device is detected
-    detected = len(detected_packages) > 0 || env_detected || device_detected || mock_available
+  // Q: any;
+    detected) { any) { any: any = detected_packages.length { > 0: a: any;
   
-  # Get more detailed info if our QNN support module is available
-  detailed_info = {}}}}}}}}}}}}}:
-  if ($1) {
+  // G: any;
+  detailed_info) { any) { any: any: any = {}) {
+  if ((((((($1) {
     try {
-      from .qnn_support import * as $1
-      detector = QNNCapabilityDetector()
-      if ($1) ${$1} catch($2: $1) {
-      logger.warning(`$1`)
-      }
-  
-    }
-        return {}}}}}}}}}}}}
-        "detected": detected,
-        "available_packages": detected_packages,
-        "env_detected": env_detected,
-        "device_detected": device_detected,
-        "mock_available": mock_available,
-        "detailed_info": detailed_info,
-        "simulation_available": true  # We can always simulate QNN
-        }
-
-  }
-        def detect_all_hardware() -> Dict[str, Dict[str, Any]]:,
-        """Detect all hardware capabilities."""
-      return {}}}}}}}}}}}}
-      "cpu": detect_cpu(),
-      "cuda": detect_cuda(),
-      "rocm": detect_rocm(),
-      "openvino": detect_openvino(),
-      "mps": detect_mps(),
-      "qnn": detect_qnn(),
-      "webnn": detect_webnn(),
-      "webgpu": detect_webgpu()
+      import {* as) { an) { an: any;
+      detector) { any) { any) { any = QNNCapabilityDetect: any;
+      if (((((($1) { ${$1} catch(error) { any)) { any {logger.warning(`$1`)}
+        return {}
+        "detected") { detected) { an) { an: any;"
+        "available_packages") {detected_packages,;"
+        "env_detected") { env_detect: any;"
+        "device_detected": device_detect: any;"
+        "mock_available": mock_availab: any;"
+        "detailed_info": detailed_in: any;"
+        "simulation_available": tr: any;"
+        /** Dete: any;
+      return {}
+      "cpu": detect_c: any;"
+      "cuda": detect_cu: any;"
+      "rocm": detect_ro: any;"
+      "openvino": detect_openvi: any;"
+      "mps": detect_m: any;"
+      "qnn": detect_q: any;"
+      "webnn": detect_web: any;"
+      "webgpu": detect_webg: any;"
       }
 
-# Define constant hardware flags for use in test modules
-      HAS_CUDA = false
-      HAS_ROCM = false
-      HAS_OPENVINO = false
-      HAS_MPS = false
-      HAS_QNN = false
-      HAS_WEBNN = false
-      HAS_WEBGPU = false
+// Defi: any;
+      HAS_CUDA) { any) { any) { any: any: any: any: any = fa: any;
+      HAS_ROCM: any: any: any = fa: any;
+      HAS_OPENVINO: any: any: any = fa: any;
+      HAS_MPS: any: any: any = fa: any;
+      HAS_QNN: any: any: any = fa: any;
+      HAS_WEBNN: any: any: any = fa: any;
+      HAS_WEBGPU: any: any: any = fa: any;
 
-# Safe detection of hardware capabilities that sets the constants
-$1($2) {
-  """Initialize hardware flags for module imports."""
-  global HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_QNN, HAS_WEBNN, HAS_WEBGPU
-  
-}
-  try ${$1} catch($2: $1) {
-    HAS_CUDA = false
-  
-  }
-  try ${$1} catch($2: $1) {
-    HAS_ROCM = false
-  
-  }
-  try ${$1} catch($2: $1) {
-    HAS_OPENVINO = false
-  
-  }
-  try ${$1} catch($2: $1) {
-    HAS_MPS = false
-  
-  }
-  try ${$1} catch($2: $1) {
-    HAS_QNN = false
-  
-  }
-  try ${$1} catch($2: $1) {
-    HAS_WEBNN = false
-  
-  }
-  try ${$1} catch($2: $1) {
-    HAS_WEBGPU = false
-
-  }
-# Initialize the flags when the module is imported
-    initialize_hardware_flags()
-
-if ($1) {
-  # If run directly, print out hardware capabilities
-  import * as $1
-  
-}
-  hardware = detect_all_hardware()
-  console.log($1)
-  console.log($1))
-  
-  console.log($1)
-  console.log($1)
-  console.log($1)
-  console.log($1)
-  console.log($1)
-  console.log($1)
-  console.log($1)
-  console.log($1)
+// Sa: any;
+$1($2) {/** Initiali: any;
+  global HAS_CUDA, HAS_ROCM) { any, HAS_OPENVINO, HAS_MPS: any, HAS_QNN, HAS_WEBNN: any, HAS_WEBGPU}
+  try ${$1} catch(error: any) {) { any {HAS_CUDA: any: any: any = fa: any;};
+  try ${$1} catch(error: any): any {HAS_ROCM: any: any: any = fa: any;};
+  try ${$1} catch(error: any): any {HAS_OPENVINO: any: any: any = fa: any;};
+  try ${$1} catch(error: any): any {HAS_MPS: any: any: any = fa: any;};
+  try ${$1} catch(error: any): any {HAS_QNN: any: any: any = fa: any;};
+  try ${$1} catch(error: any): any {HAS_WEBNN: any: any: any = fa: any;};
+  try ${$1} catch(error: any): any {HAS_WEBGPU: any: any: any = fa: any;}
+// Initiali: any;
+    initialize_hardware_fla: any;
+;
+if (((((($1) {// If) { an) { an: any;
+  impor) { an: any;
+  hardware) { any) { any = detect_all_hardw: any;
+  cons: any;

@@ -1,328 +1,211 @@
-/**
- * Converted from Python: test_whisper-tiny.py
- * Conversion date: 2025-03-11 04:08:34
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+import {AudioModel} import { AudioProces: any;} f: any;";"
 
+// WebG: any;
+export interface Props {has_cuda: t: an: any;
+  has_: any;
+  has_r: any;
+  has_c: any;
+  has_: any;
+  has_r: any;
+  has_openv: any;
+  has_qualc: any;}
 
-export interface Props {
-  has_cuda: self;
-  has_mps: self;
-  has_rocm: self;
-  has_cuda: devices_to_test;
-  has_mps: devices_to_test;
-  has_rocm: devices_to_test;
-  has_openvino: devices_to_test;
-  has_qualcomm: devices_to_test;
-}
+/** Te: any;
 
-#!/usr/bin/env python3
-"""
-Test file for openai/whisper-tiny model.
+Th: any;
+Generated) { 2025-03-10 01) {36) {02 */;
 
-This file is auto-generated using the template-based test generator.
-Generated: 2025-03-10 01:36:02
-"""
-
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1 as np
-import ${$1} from "$1"
-
-# Set up logging
-logging.basicConfig(level=logging.INFO, 
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-class $1 extends $2 {
-  """Test class for openai/whisper-tiny model."""
-  
-}
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+// S: any;
+logging.basicConfig(level = loggi: any;
+        format: any: any = '%(asctime: a: any;'
+logger: any: any: any = loggi: any;
+;
+class $1 extends $2 {/** Test class for ((((((openai/whisper-tiny model. */}
+  $1($2) {/** Initialize) { an) { an: any;
+    this.model_name = "openai/whisper-tiny";"
+    this.model_type = "audio";"
+    thi) { an: any;
+  $1($2) {/** S: any;
+    // CU: any;
+    this.has_cuda = tor: any;
+    // M: any;
+    this.has_mps = hasat: any;
+    // ROCm support (AMD) { a: any;
+    this.has_rocm = hasat: any;
+    // OpenVI: any;
+    this.has_openvino = 'openvino' i: an: any;'
+    // Qualco: any;
+    this.has_qualcomm = 'qti' i: an: any;'
+    // Web: any;
+    this.has_webnn = fal: any;
+    this.has_webgpu = fal: any;}
+    // S: any;
+    if (((($1) {
+      this.device = 'cuda';'
+    else if (($1) {this.device = 'mps';} else if (($1) { ${$1} else {this.device = 'cpu';}'
+    logger) { an) { an: any;
+    };
   $1($2) {
-    """Initialize the test with model details && hardware detection."""
-    this.model_name = "openai/whisper-tiny"
-    this.model_type = "audio"
-    this.setup_hardware()
-  
-  }
+    /** Loa) { an: any;
+    try {}
+      // G: any;
+      tokenizer) {any = AutoTokeniz: any;}
+      // G: any;
+      model) { any) { any: any = AutoMod: any;
+      model) {any = mod: any;
+      
+      retu: any;} catch(error: any): any {logger.error(`$1`);
+      return null, null}
   $1($2) {
-    """Set up hardware detection for the template."""
-    # CUDA support
-    this.has_cuda = torch.cuda.is_available()
-    # MPS support (Apple Silicon)
-    this.has_mps = hasattr(torch.backends, 'mps') && torch.backends.mps.is_available()
-    # ROCm support (AMD)
-    this.has_rocm = hasattr(torch, 'version') && hasattr(torch.version, 'hip') && torch.version.hip is !null
-    # OpenVINO support
-    this.has_openvino = 'openvino' in sys.modules
-    # Qualcomm AI Engine support
-    this.has_qualcomm = 'qti' in sys.modules || 'qnn_wrapper' in sys.modules
-    # WebNN/WebGPU support
-    this.has_webnn = false  # Will be set by WebNN bridge if available
-    this.has_webgpu = false  # Will be set by WebGPU bridge if available
-    
-  }
-    # Set default device
-    if ($1) {
-      this.device = 'cuda'
-    elif ($1) {
-      this.device = 'mps'
-    elif ($1) ${$1} else {
-      this.device = 'cpu'
+    /** Lo: any;
+    try {}
+      // G: any;
+      processor) {any = AutoFeatureExtract: any;}
+      // G: any;
+      model) { any: any: any = AutoModelForAudioClassificati: any;
+        th: any;
+        torchscript: any: any: any: any = true if (((((this.device == 'cpu' else { fals) { an) { an: any;'
+      ) {
+      model) {any = mode) { an: any;
       
-    }
-    logger.info(`$1`)
-    }
-    
-    }
-  $1($2) {
-    """Load model from HuggingFace."""
-    try {
-      import ${$1} from "$1"
+      // P: any;
+      mod: any;
       
-    }
-      # Get tokenizer
-      tokenizer = AutoTokenizer.from_pretrained(this.model_name)
-      
-  }
-      # Get model
-      model = AutoModel.from_pretrained(this.model_name)
-      model = model.to(this.device)
-      
-      return model, tokenizer
-    } catch($2: $1) {
-      logger.error(`$1`)
-      return null, null
-  
-    }
-  $1($2) {
-    """Load model with specialized configuration for audio processing."""
-    try {
-      import ${$1} from "$1"
-      
-    }
-      # Get feature extractor
-      processor = AutoFeatureExtractor.from_pretrained(this.model_name)
-      
-  }
-      # Get model with audio-specific settings
-      model = AutoModelForAudioClassification.from_pretrained(
-        this.model_name,
-        torchscript=true if this.device == 'cpu' else false
-      )
-      model = model.to(this.device)
-      
-      # Put model in evaluation mode
-      model.eval()
-      
-      return model, processor
-    } catch($2: $1) {
-      logger.error(`$1`)
-      
-    }
-      # Try alternative model type (speech recognition)
-      try {
-        import ${$1} from "$1"
-        processor = AutoProcessor.from_pretrained(this.model_name)
-        model = AutoModelForSpeechSeq2Seq.from_pretrained(this.model_name)
-        model = model.to(this.device)
-        model.eval()
-        return model, processor
-      } catch($2: $1) {
-        logger.error(`$1`)
-        
-      }
-        # Fallback to generic model
-        try {
-          import ${$1} from "$1"
-          processor = AutoFeatureExtractor.from_pretrained(this.model_name)
-          model = AutoModel.from_pretrained(this.model_name)
-          model = model.to(this.device)
-          model.eval()
-          return model, processor
-        } catch($2: $1) {
-          logger.error(`$1`)
-          return null, null
-  
+      retu: any;} catch(error) { any): any {logger.error(`$1`)}
+      // T: any;
+      try {processor: any: any: any = AutoProcess: any;
+        model: any: any: any = AutoModelForSpeechSeq2S: any;
+        model: any: any: any = mod: any;
+        mod: any;
+        retu: any;} catch(error: any): any {logger.error(`$1`)}
+        // Fallba: any;
+        try {processor: any: any: any = AutoFeatureExtract: any;
+          model: any: any: any = AutoMod: any;
+          model: any: any: any = mod: any;
+          mod: any;
+          retu: any;} catch(error: any): any {logger.error(`$1`);
+          return null, null}
+  $1($2) {/** R: any;
+    model, tokenizer: any: any: any = th: any;};
+    if (((((($1) {logger.error("Failed to) { an) { an: any;"
+      return false}
+    try {// Prepar) { an: any;
+            // Prepa: any;
+      impo: any;
+      impo: any;
         }
-  $1($2) {
-    """Run a basic inference test with the model."""
-    model, tokenizer = this.get_model()
-    
-  }
-    if ($1) {
-      logger.error("Failed to load model || tokenizer")
-      return false
-    
-    }
-    try {
-      # Prepare input
-            # Prepare audio input
-      import * as $1
-      import * as $1 as np
-      import ${$1} from "$1"
+      test_audio_path) {any = "test_audio.wav";};"
+      if ((((($1) {
+        // Generate) { an) { an: any;
+        impor) { an: any;
+        sample_rate) {any = 16: any;
+        duration) { any: any: any = 3: a: any;
+        t: any: any = n: an: any;
+        audio: any: any: any = 0: a: any;
+        w: any;
+      sample_rate: any: any: any = 16: any;
+      audio: any: any: any = n: an: any;
+      try ${$1} catch(error: any): any {logger.warning("Could !load aud: any;"
+      feature_extractor: any: any: any = AutoFeatureExtract: any;
+      inputs: any: any = feature_extractor(audio: any, sampling_rate: any: any = sample_rate, return_tensors: any: any: any: any: any: any = "pt");"
+      inputs: any: any: any = ${$1}
       
-    }
-      # Create a test audio if none exists
-        }
-      test_audio_path = "test_audio.wav"
-      }
-      if ($1) {
-        # Generate a simple sine wave
-        import * as $1.io.wavfile as wav
-        sample_rate = 16000
-        duration = 3  # seconds
-        t = np.linspace(0, duration, int(sample_rate * duration))
-        audio = 0.5 * np.sin(2 * np.pi * 440 * t)  # 440 Hz sine wave
-        wav.write(test_audio_path, sample_rate, audio.astype(np.float32))
-      
-      }
-      # Load audio file
-      sample_rate = 16000
-      audio = np.zeros(sample_rate * 3)  # 3 seconds of silence as fallback
-      try ${$1} catch(error) {
-        logger.warning("Could !load audio, using zeros array")
-      
-      }
-      # Get feature extractor
-      feature_extractor = AutoFeatureExtractor.from_pretrained(this.model_name)
-      inputs = feature_extractor(audio, sampling_rate=sample_rate, return_tensors="pt")
-      inputs = ${$1}
-      
-      # Run inference
-      with torch.no_grad():
-        outputs = model(**inputs)
+      // R: any;
+      with torch.no_grad()) {
+        outputs: any: any: any = mod: any;
         
-      # Check outputs
-            # Check output shape && values
-      assert outputs is !null, "Outputs should !be null"
-      if ($1) ${$1} else ${$1}")
+      // Che: any;
+            // Che: any;
+      asse: any;
+      if ((((((($1) { ${$1} else { ${$1}");"
       
-      logger.info("Basic inference test passed")
-      return true
-    } catch($2: $1) {
-      logger.error(`$1`)
-      return false
-  
-    }
-  $1($2) {
-    """Test model compatibility with different hardware platforms."""
-    devices_to_test = []
-    
-  }
+      logger) { an) { an: any;
+      retur) { an: any;
+    } catch(error) { any)) { any {logger.error(`$1`);
+      return false}
+  $1($2) {/** Te: any;
+    devices_to_test: any: any: any: any: any: any = [];};
+    if (((((($1) {
+      $1.push($2);
     if ($1) {
-      $1.push($2)
+      $1.push($2);
     if ($1) {
-      $1.push($2)
-    if ($1) {
-      $1.push($2)  # ROCm uses CUDA compatibility layer
-    if ($1) {
-      $1.push($2)
-    if ($1) {
-      $1.push($2)
+      $1.push($2)  // ROCm) { an) { an: any;
+    if ((($1) {
+      $1.push($2);
+    if ($1) {$1.push($2)}
+    // Always) { an) { an: any;
+    }
+    if ((($1) {$1.push($2)}
+    results) { any) { any) { any) { any) { any = {}
+    for ((((((const $1 of $2) {
+      try ${$1} catch(error) { any)) { any {logger.error(`$1`);
+        results[device] = false) { an) { an: any;
+    }
+  $1($2) ${$1}");"
+    logger.info("- Hardware compatibility) {");"
+    for ((((device) { any, result in Object.entries($1) {) {
+      logger.info(`$1`PASS' if ((((((result else {'FAIL'}") {'
     
-    }
-    # Always test CPU
-    }
-    if ($1) {
-      $1.push($2)
-    
-    }
-    results = {}
-    }
-    
-    }
-    for (const $1 of $2) {
-      try ${$1} catch($2: $1) {
-        logger.error(`$1`)
-        results[device] = false
-    
-      }
-    return results
-    }
-  
-    }
-  $1($2) ${$1}")
-    logger.info("- Hardware compatibility:")
-    for device, result in Object.entries($1):
-      logger.info(`$1`PASS' if result else 'FAIL'}")
-    
-    return basic_result && all(Object.values($1))
+    return) { an) { an: any;
 
 
-# Additional methods for audio models
+// Additional) { an) { an: any;
 $1($2) {
-  """Test audio processing functionality."""
+  /** Tes) { an: any;
   try {
-    # Create a test audio if none exists
-    test_audio_path = "test_audio.wav"
-    if ($1) {
-      # Generate a simple sine wave
-      import * as $1.io.wavfile as wav
-      sample_rate = 16000
-      duration = 3  # seconds
-      t = np.linspace(0, duration, int(sample_rate * duration))
-      audio = 0.5 * np.sin(2 * np.pi * 440 * t)  # 440 Hz sine wave
-      wav.write(test_audio_path, sample_rate, audio.astype(np.float32))
-      
-    }
-    # Load audio file
-    sample_rate = 16000
-    try ${$1} catch(error) {
-      logger.warning("Could !load audio, using zeros array")
-      audio = np.zeros(sample_rate * 3)  # 3 seconds of silence
-      
-    }
-    # Try different model classes
-    try {
-      import ${$1} from "$1"
-      processor = AutoFeatureExtractor.from_pretrained(this.model_name)
-      model = AutoModelForAudioClassification.from_pretrained(this.model_name)
-    } catch(error) {
-      try {
-        # Try speech recognition model
-        import ${$1} from "$1"
-        processor = AutoProcessor.from_pretrained(this.model_name)
-        model = AutoModelForSpeechSeq2Seq.from_pretrained(this.model_name)
-      } catch(error) {
-        # Fallback to generic model
-        import ${$1} from "$1"
-        processor = AutoFeatureExtractor.from_pretrained(this.model_name)
-        model = AutoModel.from_pretrained(this.model_name)
-        
+    // Creat) { an: any;
+    test_audio_path) { any) { any) { any: any: any: any = "test_audio.wav";"
+    if (((((($1) {
+      // Generate) { an) { an: any;
+      impor) { an: any;
+      sample_rate) { any) { any: any = 16: any;
+      duration) {any = 3: a: any;
+      t: any: any = n: an: any;
+      audio: any: any: any = 0: a: any;
+      w: any;
+    sample_rate: any: any: any = 16: any;
+    try ${$1} catch(error: any): any {logger.warning("Could !load aud: any;"
+      audio: any: any: any = n: an: any;}
+    // T: any;
+    try {processor: any: any: any = AutoFeatureExtract: any;
+      model: any: any: any = AutoModelForAudioClassificati: any;} catch(error: any): any {
+      try {// T: any;
+        processor: any: any: any = AutoProcess: any;
+        model: any: any: any = AutoModelForSpeechSeq2S: any;} catch(error: any): any {// Fallba: any;
+        processor: any: any: any = AutoFeatureExtract: any;
+        model: any: any: any = AutoMod: any;}
+    model: any: any: any = mod: any;
       }
-    model = model.to(this.device)
-      }
-    
+    // Proce: any;
     }
-    # Process audio
-    }
-    inputs = processor(audio, sampling_rate=sample_rate, return_tensors="pt")
-    inputs = ${$1}
+    inputs: any: any = processor(audio: any, sampling_rate: any: any = sample_rate, return_tensors: any: any: any: any: any: any = "pt");"
+    inputs: any: any: any = ${$1}
+    // Perfo: any;
+    with torch.no_grad()) {
+      outputs) {any: any: any: any: any: any: any = mod: any;}
+    // Che: any;
+    asse: any;
     
-  }
-    # Perform inference
-    with torch.no_grad():
-      outputs = model(**inputs)
-      
-}
-    # Check outputs
-    assert outputs is !null, "Outputs should !be null"
-    
-    # If it's a classification model, try to get class probabilities
-    if ($1) ${$1} catch($2: $1) {
-    logger.error(`$1`)
-    }
-    return false
+    // I: an: any;
+    if (((((($1) { ${$1} catch(error) { any)) { any {logger.error(`$1`)}
+    return) { an) { an: any;
 
 
-if ($1) {
-  # Create && run the test
-  test = TestWhisperTiny()
-  test.run()
+if ((((($1) {
+  // Create) { an) { an: any;
+  test) { any) { any = TestWhisperTi) { an: any;
+  t: any;
+;

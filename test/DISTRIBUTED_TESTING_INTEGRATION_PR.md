@@ -194,26 +194,28 @@ The framework now includes comprehensive integration with CI/CD systems for auto
 ### Implementation
 
 The CI/CD integration is implemented through:
-- Specialized client modules for each CI/CD system
-- Standard interfaces for test discovery and execution
-- Result processing pipelines for report generation
+- Specialized client modules for each CI/CD system (GitHub, GitLab, Jenkins, Azure DevOps)
+- Comprehensive plugin architecture for extensibility and customization
+- Standardized interfaces for test discovery and execution
+- Result processing pipelines for report generation in multiple formats (JUnit XML, HTML, JSON)
 - Integration with the coordinator API for task submission and monitoring
+- Automatic CI environment detection for seamless operation
 
 ### Usage Examples
 
 ```bash
 # Run distributed tests in CI/CD pipeline (GitHub Actions)
-python -m duckdb_api.distributed_testing.cicd_integration \
+python -m distributed_testing.integration.ci_integration_runner \
   --provider github \
   --coordinator $COORDINATOR_URL \
   --api-key $API_KEY \
   --test-pattern "tests/**/*_test.py" \
   --output-dir ./test_reports \
-  --report-formats json md html \
+  --report-formats json xml html \
   --timeout 3600
 
 # Run tests with specific hardware requirements
-python -m duckdb_api.distributed_testing.cicd_integration \
+python -m distributed_testing.integration.ci_integration_runner \
   --provider gitlab \
   --coordinator $COORDINATOR_URL \
   --api-key $API_KEY \
@@ -221,6 +223,27 @@ python -m duckdb_api.distributed_testing.cicd_integration \
   --hardware-requirements cuda \
   --output-dir ./test_reports \
   --notify-on-failure
+
+# Run the example CI integration with GitHub
+python -m distributed_testing.run_test_ci_integration \
+  --ci-system github \
+  --repository user/repo \
+  --api-token $GITHUB_TOKEN \
+  --update-interval 5 \
+  --result-format all
+
+# Using the plugin in an application
+from distributed_testing.plugin_architecture import PluginType
+from distributed_testing.integration.ci_cd_integration_plugin import CICDIntegrationPlugin
+
+# Get CI plugin
+ci_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.INTEGRATION)["CICDIntegration-1.0.0"]
+
+# Get CI status
+ci_status = ci_plugin.get_ci_status()
+print(f"CI System: {ci_status['ci_system']}")
+print(f"Test Run: {ci_status['test_run_id']}")
+print(f"Status: {ci_status['test_run_status']}")
 ```
 
 ### Implementation Status

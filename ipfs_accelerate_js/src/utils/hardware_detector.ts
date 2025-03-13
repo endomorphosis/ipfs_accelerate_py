@@ -1,745 +1,557 @@
-/**
- * Converted from Python: hardware_detector.py
- * Conversion date: 2025-03-11 04:08:54
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+import { HardwareAbstract: any;
 
+// WebG: any;
+export interface Props {_legacy_detector: legacy_hard: any;
+  _hardware_detection_mod: any;
+  _web_platform_mod: any;
+  _deta: any;
+  _deta: any;
+  _deta: any;
+  _legacy_detec: any;
+  _available_hardw: any;
+  _legacy_detec: any;
+  _web_platform_mod: any;}
 
-export interface Props {
-  _legacy_detector: legacy_hardware;
-  _hardware_detection_module: try;
-  _web_platform_module: try;
-  _details: self;
-  _details: self;
-  _details: self;
-  _legacy_detector: return;
-  _available_hardware: return;
-  _legacy_detector: self;
-  _web_platform_module: try;
-}
+/** Hardwa: any;
 
-"""
-Hardware detection module for IPFS Accelerate SDK.
+Th: any;
+buildi: any;
+enhanc: any;
 
-This module provides comprehensive hardware detection capabilities,
-building on the existing HardwareDetector implementation while adding
-enhanced features && a cleaner API.
-"""
-
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import ${$1} from "$1"
-
-# Configure logging
-logging.basicConfig(level=logging.INFO,
-format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("ipfs_accelerate.hardware")
-:
-class $1 extends $2 {
-  """
-  Enhanced hardware detection for IPFS Accelerate SDK.
-  
-}
-  This class provides enhanced hardware detection capabilities,
-  building on the existing implementation while adding new features
-  && a cleaner API.
-  """
-  :
-  $1($2) {
-    """
-    Initialize the hardware detector.
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+// Configu: any;
+logging.basicConfig(level = loggi: any;
+format) { any) { any = '%(asctime) { any) {s - %(name: a: any;'
+logger) { any: any: any = loggi: any;
+) {
+class $1 extends $2 {/** Enhanc: any;
+  buildi: any;
+  && a: a: any;
+  ) {
+  $1($2) {/** Initialize the hardware detector.}
+    Args) {
+      config_instance) { Configuration instance (optional) { a: any;
+      this.config = config_insta: any;
+      this._details = {}
+      this._available_hardware = []],;
+      this._browser_details = {}
+      this._simulation_status = {}
+      this._hardware_capabilities = {}
     
-  }
-    Args:
-      config_instance: Configuration instance (optional)
-      """
-      this.config = config_instance
-      this._details = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      this._available_hardware = []]],,,],
-      this._browser_details = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      this._simulation_status = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      this._hardware_capabilities = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-    
-    # Try to import * as $1 legacy implementation for compatibility
+    // T: any;
     try {
-      import ${$1} from "$1"
-      this._legacy_detector = LegacyDetector(config_instance)
-      logger.info("Legacy hardware detection loaded for compatibility")
-    } catch($2: $1) {
-      this._legacy_detector = null
-      logger.info("Legacy hardware detection !available")
-      
-    }
-    # Try to load hardware_detection module if ($1) {
-    this._hardware_detection_module = null:
-    }
+      this._legacy_detector = LegacyDetector(config_instance) { any) {) { any {;
+      logg: any;} catch(error) { any)) { any {this._legacy_detector = n: any;
+      logg: any;
+    // Try to load hardware_detection module if ((((((($1) {
+    this._hardware_detection_module = null) {}
     try {
-      if ($1) ${$1} catch($2: $1) {
-      logger.info("Hardware detection module !available, using built-in detection")
-      }
-    
-    }
-    # Load the fixed_web_platform module if ($1) { (for WebNN/WebGPU)
-    }
-    this._web_platform_module = null:
+      if (($1) { ${$1} catch(error) { any)) { any {logger.info("Hardware detection module !available, using built-in detection")}"
+    // Load the fixed_web_platform module if ((($1) {(for ((((WebNN/WebGPU) {}
+    this._web_platform_module = null) {
     try {
-      if ($1) ${$1} catch($2: $1) {
-      logger.info("Web platform module !available")
-      }
-      
-    }
-    # Detect available hardware on initialization
-      this.detect_all()
+      if (($1) { ${$1} catch(error) { any)) { any {logger.info("Web platform) { an) { an: any;"
+      this) { an) { an: any;
     
-      def detect_all(self) -> Dict[]]],,,str, Any]:,,,,,
-      """
-      Detect all available hardware platforms.
+      function this( this) { any:  any: any): any {  any: any): any { any)) { any -> Dict[]],str: any, Any]) {,;
+      /** Dete: any;
     
-    Returns:
-      Dictionary with hardware details keyed by platform name.
-      """
-    # If legacy detector is available, use it for compatibility
-    if ($1) {
-      legacy_hardware = this._legacy_detector.detect_hardware()
-      legacy_details = this._legacy_detector.get_hardware_details()
-      this._available_hardware = legacy_hardware
-      this._details = legacy_details
-      
-    }
-      # Convert legacy format to enhanced format
-      return this._convert_legacy_to_enhanced(legacy_details)
+    Returns) {
+      Dictiona: any;
+    // I: an: any;
+    if ((((((($1) {
+      legacy_hardware) { any) { any) { any) { any = this) { an) { an: any;
+      legacy_details) {any = th: any;
+      this._available_hardware = legacy_hardw: any;
+      this._details = legacy_deta: any;}
+      // Conve: any;
+      retu: any;
     
-    # Otherwise, use built-in detection
-      return this._detect_hardware_enhanced()
-  
-      def _detect_hardware_enhanced(self) -> Dict[]]],,,str, Any]:,,,,,
-      """
-      Enhanced hardware detection implementation.
+    // Otherwi: any;
+      retu: any;
+  ;
+      function this(this:  any:  any: any:  any: any): any -> Dict[]],str: any, Any]) {,;
+      /** Enhanc: any;
     
-    Returns:
-      Dictionary with hardware details keyed by platform name.
-      """
-      available = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    Returns) {
+      Dictiona: any;
+      available: any: any: any = {}
     
-    # CPU is always available
-      available[]]],,,"cpu"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},
-      "available": true,
-      "name": platform.processor() || "Unknown CPU",
-      "platform": platform.platform(),
-      "simulation_enabled": false,
-      "performance_score": 1.0,
-      "recommended_batch_size": 32,
-      "recommended_models": []]],,,"bert", "t5", "vit", "clip"],
-      "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 15.0, "t5-small": 25.0, "vit-base": 30.0},
-      "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 67.0, "t5-small": 40.0, "vit-base": 33.0},
-      "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 500, "t5-small": 750, "vit-base": 600}
-      }
-      }
+    // C: any;
+      available[]],"cpu"] = {},;"
+      "available": tr: any;"
+      "name": platfo: any;"
+      "platform": platfo: any;"
+      "simulation_enabled": fal: any;"
+      "performance_score": 1: a: any;"
+      "recommended_batch_size": 3: an: any;"
+      "recommended_models": []],"bert", "t5", "vit", "clip"],;"
+      "performance_metrics": {}"
+      "latency_ms": {}"bert-base-uncased": 1: an: any;"
+      "throughput_items_per_sec": {}"bert-base-uncased": 6: an: any;"
+      "memory_usage_mb": {}"bert-base-uncased": 500, "t5-small": 750, "vit-base": 600}"
     
-    # Try to use external hardware_detection module if ($1) {
+    // Try to use external hardware_detection module if ((((((($1) {
     if ($1) {
       try {
-        detector = this._hardware_detection_module.HardwareDetector()
-        hardware_info = detector.detect_all()
-        
-      }
-        # Map hardware detection results to our format
-        if ($1) {
-          for hw_type, hw_data in Object.entries($1):
-            if ($1) ${$1} catch($2: $1) {
-        logger.warning(`$1`)
-            }
-        # Fall back to built-in detection
+        detector) {any = this) { an) { an: any;
+        hardware_info) { any) { any: any = detect: any;}
+        // M: any;
+        if (((((($1) {
+          for ((((((hw_type) { any, hw_data in Object.entries($1) {) {
+            if ((($1) { ${$1} catch(error) { any)) { any {logger.warning(`$1`)}
+        // Fall) { an) { an: any;
         }
-    
-    }
-    # Built-in hardware detection (similar to legacy but with enhanced metrics)
+    // Built) { an) { an: any;
     }
     try {
-      # Check CUDA
+      // Chec) { an: any;
       try {
-        if ($1) {
-          import * as $1
-          if ($1) {
-            cuda_info = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "available": true,
-            "device_count": torch.cuda.device_count(),
-              "name": torch.cuda.get_device_name(0) if ($1) {
-                "simulation_enabled": false,
-                "performance_score": 5.0,
-                "recommended_batch_size": 64,
-                "recommended_models": []]],,,"bert", "t5", "vit", "clip", "whisper", "llama"],
-                "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 3.0, "t5-small": 5.0, "vit-base": 6.0},
-                "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 333.0, "t5-small": 200.0, "vit-base": 167.0},
-                "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 600, "t5-small": 850, "vit-base": 700}
-                }
-                }
-                available[]]],,,"cuda"] = cuda_info,
-      } catch($2: $1) {
-                pass
-      
-      }
-      # Check ROCm (for AMD GPUs)
-              }
+        if (((((($1) {
+          import) { an) { an: any;
+          if ((($1) {
+            cuda_info) { any) { any) { any) { any = {}
+            "available") { true) { an) { an: any;"
+            "device_count") { torc) { an: any;"
+              "name") { torch.cuda.get_device_name(0: any) if ((((((($1) {"
+                "simulation_enabled") { false) { an) { an: any;"
+                "performance_score") { 5) { a: any;"
+                "recommended_batch_size") { 6: an: any;"
+                "recommended_models": []],"bert", "t5", "vit", "clip", "whisper", "llama"],;"
+                "performance_metrics": {}"
+                "latency_ms": {}"bert-base-uncased": 3: a: any;"
+                "throughput_items_per_sec": {}"bert-base-uncased": 3: any;"
+                "memory_usage_mb": {}"bert-base-uncased": 600, "t5-small": 850, "vit-base": 700}"
+                available[]],"cuda"] = cuda_i: any;"
+} catch(error: any): any {pass}
+      // Check ROCm (for (((((AMD GPUs) {}
       try {
-        if (importlib.util.find_spec("torch") is !null && 
-          hasattr(importlib.import_module("torch"), "hip") and:
-          importlib.import_module("torch").hip.is_available()):
-            rocm_info = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "available": true,
-            "device_count": importlib.import_module("torch").hip.device_count(),
-            "name": "AMD ROCm GPU",
-            "simulation_enabled": false,
-            "performance_score": 4.5,
-            "recommended_batch_size": 48,
-            "recommended_models": []]],,,"bert", "t5", "vit", "clip"],
-            "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 3.5, "t5-small": 5.5, "vit-base": 6.5},
-            "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 280.0, "t5-small": 180.0, "vit-base": 150.0},
-            "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 620, "t5-small": 870, "vit-base": 720}
-            }
-            }
-            available[]]],,,"rocm"] = rocm_info,
-      except (ImportError, AttributeError):
-      }
-            pass
+        if (((((((importlib.util.find_spec("torch") { is !null && "
+          hasattr(importlib.import_module("torch"), "hip") and) {"
+          importlib.import_module("torch").hip.is_available())) {"
+            rocm_info) { any) { any) { any) { any = {}
+            "available") { true) { an) { an: any;"
+            "device_count") { importli) { an: any;"
+            "name": "AMD RO: any;"
+            "simulation_enabled": fal: any;"
+            "performance_score": 4: a: any;"
+            "recommended_batch_size": 4: an: any;"
+            "recommended_models": []],"bert", "t5", "vit", "clip"],;"
+            "performance_metrics": {}"
+            "latency_ms": {}"bert-base-uncased": 3: a: any;"
+            "throughput_items_per_sec": {}"bert-base-uncased": 2: any;"
+            "memory_usage_mb": {}"bert-base-uncased": 620, "t5-small": 870, "vit-base": 720}"
+            available[]],"rocm"] = rocm_in: any;"
+      catch (error: any) {}
+            p: any;
       
           }
-      # Check MPS (for Apple Silicon)
-        }
+      // Check MPS (for (((((Apple Silicon) {}
       try {
-        if (importlib.util.find_spec("torch") is !null && 
-        hasattr(importlib.import_module("torch"), "backends") and
-          hasattr(importlib.import_module("torch").backends, "mps") and:
-          importlib.import_module("torch").backends.mps.is_available()):
-            mps_info = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "available": true,
-            "name": "Apple Metal Performance Shaders",
-            "simulation_enabled": false,
-            "performance_score": 3.5,
-            "recommended_batch_size": 32,
-            "recommended_models": []]],,,"bert", "vit", "clip", "whisper"],
-            "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 5.0, "vit-base": 8.0},
-            "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 200.0, "vit-base": 120.0},
-            "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 550, "vit-base": 650}
-            }
-            }
-            available[]]],,,"mps"] = mps_info,
-      except (ImportError, AttributeError):
-      }
-            pass
+        if (((((((importlib.util.find_spec("torch") { is) { an) { an: any;"
+          hasattr(importlib.import_module("torch").backends, "mps") and) {"
+          importlib.import_module("torch").backends.mps.is_available())) {"
+            mps_info) { any) { any) { any = {}
+            "available") { true) { an) { an: any;"
+            "name") { "Apple Met: any;"
+            "simulation_enabled": fal: any;"
+            "performance_score": 3: a: any;"
+            "recommended_batch_size": 3: an: any;"
+            "recommended_models": []],"bert", "vit", "clip", "whisper"],;"
+            "performance_metrics": {}"
+            "latency_ms": {}"bert-base-uncased": 5: a: any;"
+            "throughput_items_per_sec": {}"bert-base-uncased": 2: any;"
+            "memory_usage_mb": {}"bert-base-uncased": 550, "vit-base": 650}"
+            available[]],"mps"] = mps_in: any;"
+      catch (error: any) {}
+            p: any;
       
       }
-      # Check OpenVINO
+      // Che: any;
       try {
-        if ($1) {
-          openvino_info = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "available": true,
-          "name": "Intel OpenVINO",
-          "simulation_enabled": false,
-          "performance_score": 3.0,
-          "recommended_batch_size": 32,
-          "recommended_models": []]],,,"bert", "t5", "vit", "clip"],
-          "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 5.5, "vit-base": 9.0},
-          "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 180.0, "vit-base": 110.0},
-          "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 400, "vit-base": 500}
-          }
-          }
-          available[]]],,,"openvino"] = openvino_info,
-      } catch($2: $1) {
-          pass
-      
+        if ((((((($1) {
+          openvino_info) { any) { any) { any) { any = {}
+          "available") { tru) { an: any;"
+          "name": "Intel OpenVI: any;"
+          "simulation_enabled": fal: any;"
+          "performance_score": 3: a: any;"
+          "recommended_batch_size": 3: an: any;"
+          "recommended_models": []],"bert", "t5", "vit", "clip"],;"
+          "performance_metrics": {}"
+          "latency_ms": {}"bert-base-uncased": 5: a: any;"
+          "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+          "memory_usage_mb": {}"bert-base-uncased": 400, "vit-base": 500}"
+          available[]],"openvino"] = openvino_i: any;"
+} catch(error: any): any {pass}
+      // Che: any;
+        };
+          qualcomm_simulation: any: any: any = t: any;
+      if ((((((($1) {
+        qualcomm_simulation) {any = fals) { an) { an: any;};
+        qualcomm_info) { any) { any: any = {}
+        "available") { tr: any;"
+        "name": "Qualcomm Neur: any;"
+        "simulation_enabled": qualcomm_simulati: any;"
+        "performance_score": 2: a: any;"
+        "recommended_batch_size": 1: an: any;"
+        "recommended_models": []],"bert", "t5", "vit", "whisper"],;"
+        "performance_metrics": {}"
+        "latency_ms": {}"bert-base-uncased": 6: a: any;"
+        "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+        "memory_usage_mb": {}"bert-base-uncased": 300, "vit-base": 400}"
+        available[]],"qualcomm"] = qualcomm_i: any;"
+        ,;
+      // Web: any;
       }
-      # Check Qualcomm QNN (usually needs simulation unless on device)
-        }
-          qualcomm_simulation = true
-      if ($1) {
-        qualcomm_simulation = false
-      
-      }
-        qualcomm_info = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "available": true,  # Always available through simulation
-        "name": "Qualcomm Neural Network",
-        "simulation_enabled": qualcomm_simulation,
-        "performance_score": 2.5,
-        "recommended_batch_size": 16,
-        "recommended_models": []]],,,"bert", "t5", "vit", "whisper"],
-        "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 6.0, "vit-base": 10.0},
-        "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 160.0, "vit-base": 100.0},
-        "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 300, "vit-base": 400}
-        }
-        }
-        available[]]],,,"qualcomm"] = qualcomm_info
-        ,
-      # WebNN && WebGPU detection using fixed_web_platform
-      }
-      if ($1) {
+      if ((((((($1) {
         try {
-          browser_detector = this._web_platform_module.BrowserCapabilityDetector()
-          browser_capabilities = browser_detector.detect_capabilities()
-          
-        }
-          # Map browser capabilities to hardware format
-          if ($1) {
-            available[]]],,,"webgpu"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},,,
-            "available": true,
-            "name": "Web GPU API",
-            "simulation_enabled": !browser_capabilities.get("real_webgpu", false),
-            "browsers": browser_capabilities.get("webgpu_browsers", []]],,,],),
-            "performance_score": 3.5,
-            "recommended_batch_size": 16,
-            "recommended_models": []]],,,"bert", "vit", "clip"],
-            "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 8.0, "vit-base": 12.0},
-            "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 125.0, "vit-base": 83.0},
-            "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 250, "vit-base": 350}
-            }
-            }
-          
+          browser_detector) {any = this) { an) { an: any;
+          browser_capabilities) { any) { any: any = browser_detect: any;}
+          // M: any;
+          if (((((($1) {
+            available[]],"webgpu"] = {},;"
+            "available") { true) { an) { an: any;"
+            "name") { "Web GP) { an: any;"
+            "simulation_enabled") { !(browser_capabilities["real_webgpu"] !== undefin: any;"
+            "browsers": (browser_capabilities["webgpu_browsers"] !== undefin: any;"
+            "performance_score": 3: a: any;"
+            "recommended_batch_size": 1: an: any;"
+            "recommended_models": []],"bert", "vit", "clip"],;"
+            "performance_metrics": {}"
+            "latency_ms": {}"bert-base-uncased": 8: a: any;"
+            "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+            "memory_usage_mb": {}"bert-base-uncased": 250, "vit-base": 350}"
+          if ((((((($1) {
+            available[]],"webnn"] = {},;"
+            "available") { true) { an) { an: any;"
+            "name") { "Web Neura) { an: any;"
+            "simulation_enabled") { !(browser_capabilities["real_webnn"] !== undefin: any;"
+            "browsers": (browser_capabilities["webnn_browsers"] !== undefin: any;"
+            "performance_score": 3: a: any;"
+            "recommended_batch_size": 8: a: any;"
+            "recommended_models": []],"bert", "vit"],;"
+            "performance_metrics": {}"
+            "latency_ms": {}"bert-base-uncased": 1: an: any;"
+            "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+            "memory_usage_mb": {}"bert-base-uncased": 200, "vit-base": 300} catch(error: any): any {logger.warning(`$1`)}"
+          // Fallba: any;
           }
-          if ($1) {
-            available[]]],,,"webnn"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},,,
-            "available": true,
-            "name": "Web Neural Network API",
-            "simulation_enabled": !browser_capabilities.get("real_webnn", false),
-            "browsers": browser_capabilities.get("webnn_browsers", []]],,,],),
-            "performance_score": 3.0,
-            "recommended_batch_size": 8,
-            "recommended_models": []]],,,"bert", "vit"],
-            "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-            "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 10.0, "vit-base": 15.0},
-            "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 100.0, "vit-base": 67.0},
-            "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 200, "vit-base": 300}
-            }
-            }
-        } catch($2: $1) {
-          logger.warning(`$1`)
-          
-        }
-          # Fallback web platform detection
-          }
-          webgpu_simulation = !bool(os.environ.get("USE_BROWSER_AUTOMATION"))
-          available[]]],,,"webgpu"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},,,
-          "available": true,
-          "name": "Web GPU API",
-          "simulation_enabled": webgpu_simulation,
-          "browsers": []]],,,"chrome", "firefox", "edge", "safari"],
-          "performance_score": 3.5,
-          "recommended_batch_size": 16,
-          "recommended_models": []]],,,"bert", "vit", "clip"],
-          "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 8.0, "vit-base": 12.0},
-          "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 125.0, "vit-base": 83.0},
-          "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 250, "vit-base": 350}
-          }
-          }
-          
-      }
-          webnn_simulation = !bool(os.environ.get("USE_BROWSER_AUTOMATION"))
-          available[]]],,,"webnn"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},,,
-          "available": true,
-          "name": "Web Neural Network API",
-          "simulation_enabled": webnn_simulation,
-          "browsers": []]],,,"edge", "chrome", "safari"],
-          "performance_score": 3.0,
-          "recommended_batch_size": 8,
-          "recommended_models": []]],,,"bert", "vit"],
-          "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 10.0, "vit-base": 15.0},
-          "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 100.0, "vit-base": 67.0},
-          "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 200, "vit-base": 300}
-          }
-          }
-      } else {
-        # Basic web platform detection without module
-        webgpu_simulation = !bool(os.environ.get("USE_BROWSER_AUTOMATION"))
-        available[]]],,,"webgpu"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},,,
-        "available": true,
-        "name": "Web GPU API",
-        "simulation_enabled": webgpu_simulation,
-        "browsers": []]],,,"chrome", "firefox", "edge", "safari"],
-        "performance_score": 3.5,
-        "recommended_batch_size": 16,
-        "recommended_models": []]],,,"bert", "vit", "clip"],
-        "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 8.0, "vit-base": 12.0},
-        "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 125.0, "vit-base": 83.0},
-        "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 250, "vit-base": 350}
-        }
-        }
-        
-      }
-        webnn_simulation = !bool(os.environ.get("USE_BROWSER_AUTOMATION"))
-        available[]]],,,"webnn"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},,,
-        "available": true,
-        "name": "Web Neural Network API",
-        "simulation_enabled": webnn_simulation,
-        "browsers": []]],,,"edge", "chrome", "safari"],
-        "performance_score": 3.0,
-        "recommended_batch_size": 8,
-        "recommended_models": []]],,,"bert", "vit"],
-        "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 10.0, "vit-base": 15.0},
-        "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 100.0, "vit-base": 67.0},
-        "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 200, "vit-base": 300}
-        }
-        }
-      
-    }
-      # Store detected hardware
-        this._details = available
-        this._available_hardware = list(Object.keys($1))
-        logger.info(`$1`)
-          return available
-      
-    } catch($2: $1) {
-      logger.error(`$1`)
-      # Always return CPU as fallback
-          return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"cpu": available[]]],,,"cpu"]}
-          ,
-          def _convert_legacy_to_enhanced(self, legacy_details: Dict[]]],,,str, Any]) -> Dict[]]],,,str, Any]:,,,,,,
-          """
-          Convert legacy hardware details to enhanced format.
+          webgpu_simulation: any: any = !bool(os.(environ["USE_BROWSER_AUTOMATION"] !== undefin: any;"
+          available[]],"webgpu"] = {},;"
+          "available": tr: any;"
+          "name": "Web G: any;"
+          "simulation_enabled": webgpu_simulati: any;"
+          "browsers": []],"chrome", "firefox", "edge", "safari"],;"
+          "performance_score": 3: a: any;"
+          "recommended_batch_size": 1: an: any;"
+          "recommended_models": []],"bert", "vit", "clip"],;"
+          "performance_metrics": {}"
+          "latency_ms": {}"bert-base-uncased": 8: a: any;"
+          "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+          "memory_usage_mb": {}"bert-base-uncased": 250, "vit-base": 350}"
+          webnn_simulation: any: any = !bool(os.(environ["USE_BROWSER_AUTOMATION"] !== undefin: any;"
+          available[]],"webnn"] = {},;"
+          "available": tr: any;"
+          "name": "Web Neur: any;"
+          "simulation_enabled": webnn_simulati: any;"
+          "browsers": []],"edge", "chrome", "safari"],;"
+          "performance_score": 3: a: any;"
+          "recommended_batch_size": 8: a: any;"
+          "recommended_models": []],"bert", "vit"],;"
+          "performance_metrics": {}"
+          "latency_ms": {}"bert-base-uncased": 1: an: any;"
+          "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+          "memory_usage_mb": {}"bert-base-uncased": 200, "vit-base": 300} else {"
+        // Bas: any;
+        webgpu_simulation: any: any = !bool(os.(environ["USE_BROWSER_AUTOMATION"] !== undefin: any;"
+        available[]],"webgpu"] = {},;"
+        "available": tr: any;"
+        "name": "Web G: any;"
+        "simulation_enabled": webgpu_simulati: any;"
+        "browsers": []],"chrome", "firefox", "edge", "safari"],;"
+        "performance_score": 3: a: any;"
+        "recommended_batch_size": 1: an: any;"
+        "recommended_models": []],"bert", "vit", "clip"],;"
+        "performance_metrics": {}"
+        "latency_ms": {}"bert-base-uncased": 8: a: any;"
+        "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+        "memory_usage_mb": {}"bert-base-uncased": 250, "vit-base": 350}"
+        webnn_simulation: any: any = !bool(os.(environ["USE_BROWSER_AUTOMATION"] !== undefin: any;"
+        available[]],"webnn"] = {},;"
+        "available": tr: any;"
+        "name": "Web Neur: any;"
+        "simulation_enabled": webnn_simulati: any;"
+        "browsers": []],"edge", "chrome", "safari"],;"
+        "performance_score": 3: a: any;"
+        "recommended_batch_size": 8: a: any;"
+        "recommended_models": []],"bert", "vit"],;"
+        "performance_metrics": {}"
+        "latency_ms": {}"bert-base-uncased": 1: an: any;"
+        "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+        "memory_usage_mb": {}"bert-base-uncased": 2: any;"
+        this._details = availa: any;
+        this._available_hardware = Arr: any;
+        logg: any;
+          retu: any;
+      ;
+    } catch(error: any): any {
+      logg: any;
+      // Alwa: any;
+          return {}"cpu": availab: any;"
+          functi: any;
+          /** Conve: any;
     
     }
-    Args:
-      legacy_details: Hardware details in legacy format.
+    A: any;
+      legacy_deta: any;
       
-    Returns:
-      Hardware details in enhanced format.
-      """
-      enhanced = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    Retu: any;
+      Hardwa: any;
+      enhanced: any: any = {}
     
-    for hw_type, hw_data in Object.entries($1):
-      enhanced_data = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "available": hw_data.get("available", false),
-      "name": hw_data.get("name", `$1`),
-      "simulation_enabled": hw_data.get("simulation_enabled", false),
-      }
+    for ((((((hw_type) { any, hw_data in Object.entries($1) {) {
+      enhanced_data) { any) { any = {}
+      "available") { (hw_data["available"] !== undefine) { an: any;"
+      "name": (hw_data["name"] !== undefin: any;"
+      "simulation_enabled": (hw_data["simulation_enabled"] !== undefin: any;"
+}
       
-      # Add enhanced metrics based on hardware type
-      if ($1) {
-        enhanced_data.update({}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "performance_score": 5.0,
-        "recommended_batch_size": 64,
-        "recommended_models": []]],,,"bert", "t5", "vit", "clip", "whisper", "llama"],
-        "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 3.0, "t5-small": 5.0, "vit-base": 6.0},
-        "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 333.0, "t5-small": 200.0, "vit-base": 167.0},
-        "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 600, "t5-small": 850, "vit-base": 700}
-        }
-        })
-      elif ($1) {
-        enhanced_data.update({}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "performance_score": 1.0,
-        "recommended_batch_size": 32,
-        "recommended_models": []]],,,"bert", "t5", "vit", "clip"],
-        "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 15.0, "t5-small": 25.0, "vit-base": 30.0},
-        "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 67.0, "t5-small": 40.0, "vit-base": 33.0},
-        "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 500, "t5-small": 750, "vit-base": 600}
-        }
-        })
-      elif ($1) {
-        enhanced_data.update({}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "performance_score": 3.5,
-        "recommended_batch_size": 16,
-        "recommended_models": []]],,,"bert", "vit", "clip"],
-        "performance_metrics": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "latency_ms": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 8.0, "vit-base": 12.0},
-        "throughput_items_per_sec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 125.0, "vit-base": 83.0},
-        "memory_usage_mb": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"bert-base-uncased": 250, "vit-base": 350}
-        }
-        })
-      # Add other hardware types as needed
+      // A: any;
+      if ((((((($1) {
+        enhanced_data.update({}
+        "performance_score") { 5) { an) { an: any;"
+        "recommended_batch_size") { 6) { an: any;"
+        "recommended_models") { []],"bert", "t5", "vit", "clip", "whisper", "llama"],;"
+        "performance_metrics": {}"
+        "latency_ms": {}"bert-base-uncased": 3: a: any;"
+        "throughput_items_per_sec": {}"bert-base-uncased": 3: any;"
+        "memory_usage_mb": {}"bert-base-uncased": 6: any;"
+      else if (((((((($1) {
+        enhanced_data.update({}
+        "performance_score") { 1) { an) { an: any;"
+        "recommended_batch_size") { 3) { an: any;"
+        "recommended_models") { []],"bert", "t5", "vit", "clip"],;"
+        "performance_metrics") { }"
+        "latency_ms": {}"bert-base-uncased": 1: an: any;"
+        "throughput_items_per_sec": {}"bert-base-uncased": 6: an: any;"
+        "memory_usage_mb": {}"bert-base-uncased": 5: any;"
+      else if (((((((($1) {
+        enhanced_data.update({}
+        "performance_score") { 3) { an) { an: any;"
+        "recommended_batch_size") { 1) { an: any;"
+        "recommended_models") { []],"bert", "vit", "clip"],;"
+        "performance_metrics") { }"
+        "latency_ms": {}"bert-base-uncased": 8: a: any;"
+        "throughput_items_per_sec": {}"bert-base-uncased": 1: any;"
+        "memory_usage_mb": {}"bert-base-uncased": 2: any;"
+      // A: any;
       }
-      
-      }
-        enhanced[]]],,,hw_type] = enhanced_data
-        ,
-        return enhanced
+        enhanced[]],hw_type] = enhanced_d: any;
+        ,;
+        retu: any;
   
       }
-        def get_hardware_details(self, $1: string = null) -> Dict[]]],,,str, Any]:,,,,,
-        """
-        Get details about available hardware platforms.
+        function this(this:  any:  any: any:  any: any, $1: string: any: any = nu: any;
+        /** G: any;
     
-    Args:
-      hardware_type: Specific hardware type to get details for, || null for all.
-      
-    Returns:
-      Dictionary with hardware details.
-      """
+    A: any;
+      hardware_t: any;
+      ;
+    Returns): any {
+      Dictiona: any;
+    if ((((((($1) {this.detect_all()}
     if ($1) {
-      this.detect_all()
-      
+      return this.(_details[hardware_type] !== undefined ? _details[hardware_type] ) { });
+    } else {return this._details}
+  $1($2)) { $3 {
+    /** Check if ((real hardware is available (!simulation) {.;
+    ) {
+    Args) {
+      hardware_type) {Hardware type to check.}
+    Returns) {;
     }
-    if ($1) {
-      return this._details.get(hardware_type, {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}})
-    } else {
-      return this._details
+      true if (((real hardware is available, false if simulation. */) {
+    if (($1) {this.detect_all()}
+      details) { any) { any) { any) { any) { any = this.(_details[hardware_type] !== undefined ? _details[hardware_type] ) { });
+      return (details["available"] !== undefined ? details["available"] : false) && !(details["simulation_enabled"] !== undefin: any;"
   
-    }
-  $1($2): $3 {
-    """
-    Check if real hardware is available (!simulation).
-    :
-    Args:
-      hardware_type: Hardware type to check.
+  $1($2)) { $3 {/** Get the optimal hardware platform for ((((((a model.}
+    Args) {
+      model_name) { Name) { an) { an: any;
+      model_type) { Typ) { an: any;
+      batch_s: any;
       
-  }
-    Returns:
-    }
-      true if real hardware is available, false if simulation.
-    """:
+    Retu: any;
+      Hardwa: any;
+    if ((((((($1) {this.detect_all()}
+    // If) { an) { an: any;
+    if ((($1) {return this._legacy_detector.get_optimal_hardware(model_name) { any, model_type)}
+    // Determine model type based on model name if (($1) {
     if ($1) {
-      this.detect_all()
-      
+      model_type) { any) { any) { any) { any) { any) { any = "text";"
+      if (((((($1) {,;
+      model_type) { any) { any) { any) { any) { any: any: any = "audio";"
+      else if ((((((($1) {,;
+      model_type) { any) {any = "vision";} else if (((($1) {,;"
+      model_type) { any) {any = "multimodal";}"
+    // Hardware) { an) { an: any;
+    };
+      hardware_ranking) { any) { any: any: any: any: any = {}
+      "text") { }"
+      "small") { []],"cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu", "cpu"],;"
+      "medium") { []],"cuda", "rocm", "mps", "openvino", "qualcomm", "webgpu", "cpu", "webnn"],;"
+      "large") {[]],"cuda", "rocm", "mps", "openvino", "cpu", "qualcomm", "webgpu", "webnn"]},;"
+      "vision": {}"
+      "small": []],"cuda", "rocm", "mps", "openvino", "webgpu", "qualcomm", "webnn", "cpu"],;"
+      "medium": []],"cuda", "rocm", "mps", "webgpu", "openvino", "qualcomm", "cpu", "webnn"],;"
+      "large": []],"cuda", "rocm", "mps", "openvino", "webgpu", "cpu", "qualcomm", "webnn"];"
+},;
+      "audio": {}"
+      "small": []],"cuda", "qualcomm", "rocm", "mps", "webgpu", "openvino", "webnn", "cpu"],;"
+      "medium": []],"cuda", "qualcomm", "rocm", "mps", "webgpu", "openvino", "cpu", "webnn"],;"
+      "large": []],"cuda", "rocm", "qualcomm", "mps", "openvino", "cpu", "webgpu", "webnn"];"
+},;
+      "multimodal": {}"
+      "small": []],"cuda", "rocm", "mps", "openvino", "webgpu", "qualcomm", "webnn", "cpu"],;"
+      "medium": []],"cuda", "rocm", "mps", "openvino", "webgpu", "cpu", "qualcomm", "webnn"],;"
+      "large": []],"cuda", "rocm", "mps", "openvino", "cpu", "webgpu", "qualcomm", "webnn"];"
+}
+    
+    // Determi: any;
+    if ((((((($1) {
+      size_category) { any) { any) { any) { any) { any: any = "small";"
+    else if ((((((($1) { ${$1} else {
+      size_category) {any = "large";}"
+    // Special) { an) { an: any;
+    };
+    if (((($1) {
+      // Check) { an) { an: any;
+      firefox_webgpu) { any) { any) { any = this.get_browser_details().get("firefox", {}).get("webgpu_support", false) { any)) {"
+      if ((((((($1) {
+        // Firefox) { an) { an: any;
+        current_ranking) { any) { any) { any = hardware_rankin) { an: any;
+        webgpu_index) { any: any: any = current_ranki: any;
+        // Mo: any;
+        if (((((($1) {
+          new_ranking) { any) { any) { any) { any) { any) { any = []],"webgpu"] + current_ranking[]],) {webgpu_index] + current_ranking[]],webgpu_index+1) {],;"
+          hardware_ranking[]],model_type][]],size_category], = new_ranki: any;
+      }
+          for ((((hw in (hardware_ranking[model_type] !== undefined ? hardware_ranking[model_type] ) { hardware_ranking[]],"text"]).get(size_category) { any, []],"cuda", "cpu"])) {,;"
+      if ((((((($1) {return hw) { an) { an: any;
     }
-      details = this._details.get(hardware_type, {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}})
-      return details.get("available", false) && !details.get("simulation_enabled", true)
+        return) { an) { an: any;
   
-  $1($2): $3 {
-    """
-    Get the optimal hardware platform for a model.
-    
-  }
-    Args:
-      model_name: Name of the model.
-      model_type: Type of model (text, vision, audio, multimodal).
-      batch_size: Batch size to use.
+        function this( this) { any) {  any: any): any {  any: any): any { any, $1): any { boolean: any: any = fal: any;
+        /** G: any;
+    ;
+    Args) {
+      update) { Wheth: any;
       
-    Returns:
-      Hardware platform name.
-      """
-    if ($1) {
-      this.detect_all()
-      
-    }
-    # If legacy detector is available, delegate to it for compatibility
-    if ($1) {
-      return this._legacy_detector.get_optimal_hardware(model_name, model_type)
-      
-    }
-    # Determine model type based on model name if ($1) {
-    if ($1) {
-      model_type = "text"
-      if ($1) {,
-      model_type = "audio"
-      elif ($1) {,
-      model_type = "vision"
-      elif ($1) {,
-      model_type = "multimodal"
-    
-    }
-    # Hardware ranking by model type && batch size (best to worst)
-    }
-      hardware_ranking = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "text": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "small": []]],,,"cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu", "cpu"],
-      "medium": []]],,,"cuda", "rocm", "mps", "openvino", "qualcomm", "webgpu", "cpu", "webnn"],
-      "large": []]],,,"cuda", "rocm", "mps", "openvino", "cpu", "qualcomm", "webgpu", "webnn"],
-      },
-      "vision": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "small": []]],,,"cuda", "rocm", "mps", "openvino", "webgpu", "qualcomm", "webnn", "cpu"],
-      "medium": []]],,,"cuda", "rocm", "mps", "webgpu", "openvino", "qualcomm", "cpu", "webnn"],
-      "large": []]],,,"cuda", "rocm", "mps", "openvino", "webgpu", "cpu", "qualcomm", "webnn"],
-      },
-      "audio": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "small": []]],,,"cuda", "qualcomm", "rocm", "mps", "webgpu", "openvino", "webnn", "cpu"],
-      "medium": []]],,,"cuda", "qualcomm", "rocm", "mps", "webgpu", "openvino", "cpu", "webnn"],
-      "large": []]],,,"cuda", "rocm", "qualcomm", "mps", "openvino", "cpu", "webgpu", "webnn"],
-      },
-      "multimodal": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-      "small": []]],,,"cuda", "rocm", "mps", "openvino", "webgpu", "qualcomm", "webnn", "cpu"],
-      "medium": []]],,,"cuda", "rocm", "mps", "openvino", "webgpu", "cpu", "qualcomm", "webnn"],,
-      "large": []]],,,"cuda", "rocm", "mps", "openvino", "cpu", "webgpu", "qualcomm", "webnn"],
-      }
-      }
-    
-    # Determine batch size category
-    if ($1) {
-      size_category = "small"
-    elif ($1) ${$1} else {
-      size_category = "large"
-      
-    }
-    # Special case for audio models on Firefox WebGPU
-    }
-    if ($1) {
-      # Check if Firefox has WebGPU support
-      firefox_webgpu = this.get_browser_details().get("firefox", {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}).get("webgpu_support", false):
-      if ($1) {
-        # Firefox has optimized compute shaders for audio models
-        current_ranking = hardware_ranking[]]],,,model_type][]]],,,size_category],
-        webgpu_index = current_ranking.index("webgpu")
-        # Move WebGPU to the front for small batch sizes
-        if ($1) {
-          new_ranking = []]],,,"webgpu"] + current_ranking[]]],,,:webgpu_index] + current_ranking[]]],,,webgpu_index+1:],
-          hardware_ranking[]]],,,model_type][]]],,,size_category], = new_ranking
-    
-        }
-    # Get optimal hardware from ranking
-      }
-          for hw in hardware_ranking.get(model_type, hardware_ranking[]]],,,"text"]).get(size_category, []]],,,"cuda", "cpu"]):,
-      if ($1) {
-          return hw
-    
-      }
-    # Fallback to CPU
-    }
-        return "cpu"
-  
-        def get_browser_details(self, $1: boolean = false) -> Dict[]]],,,str, Any]:,,,,,
-        """
-        Get details about available browsers for WebNN/WebGPU.
-    
-    Args:
-      update: Whether to update browser details.
-      
-    Returns:
-      Dictionary with browser details.
-      """
-    if ($1) {
-      # If legacy detector is available, delegate to it for compatibility
-      if ($1) ${$1} else {
-        this._detect_browsers()
-        return this._browser_details
-  
-      }
-        def _detect_browsers(self) -> Dict[]]],,,str, Any]:,,,,,
-        """
-        Detect available browsers for WebNN/WebGPU.
-    
-    }
-    Returns:
-      Dictionary with browser details.
-      """
-    # If web platform module is available, use it for detection
-    if ($1) {
+    Returns) {;
+      Dictiona: any;
+    if ((((((($1) {
+      // If) { an) { an: any;
+      if ((($1) { ${$1} else {this._detect_browsers();
+        return this._browser_details}
+        function this( this) { any): any { any): any { any): any {  any) { any): any { any)) { any -> Dict[]],str: any, Any]) {,;
+        /** Detect available browsers for (((((WebNN/WebGPU.}
+    Returns) {
+      Dictionary) { an) { an: any;
+    // I) { an: any;
+    if ((((((($1) {
       try {
-        browser_detector = this._web_platform_module.BrowserCapabilityDetector()
-        browser_capabilities = browser_detector.detect_capabilities()
-        
-      }
-        # Convert to browser details format
-        browsers = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        for browser_name, browser_data in browser_capabilities.get("browsers", {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}).items():
-          browsers[]]],,,browser_name] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},
-          "available": browser_data.get("available", false),
-          "path": browser_data.get("path", ""),
-          "webgpu_support": browser_data.get("webgpu_support", false),
-          "webnn_support": browser_data.get("webnn_support", false),
-          "name": browser_data.get("name", browser_name.capitalize())
-          }
-        
-    }
-          this._browser_details = browsers
-        return browsers
-      } catch($2: $1) {
-        logger.warning(`$1`)
+        browser_detector) { any) { any) { any) { any = this) { an) { an: any;
+        browser_capabilities) {any = browser_detect: any;}
+        // Conve: any;
+        browsers: any: any: any: any: any = {}
+        for (((((browser_name) { any, browser_data in (browser_capabilities["browsers"] !== undefined ? browser_capabilities["browsers"] ) { }).items()) {"
+          browsers[]],browser_name] = {},;
+          "available") {(browser_data["available"] !== undefined) { an) { an: any;"
+          "path") { (browser_data["path"] !== undefin: any;"
+          "webgpu_support": (browser_data["webgpu_support"] !== undefin: any;"
+          "webnn_support": (browser_data["webnn_support"] !== undefin: any;"
+          "name": (browser_data["name"] !== undefined ? browser_data["name"] : browser_name.capitalize())}"
+          this._browser_details = brows: any;
+        retu: any;
+      } catch(error: any): any {logger.warning(`$1`)}
+    // Fa: any;
+        browsers: any: any: any = {}
     
-      }
-    # Fall back to basic detection similar to legacy implementation
-        browsers = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-    
-    # Check for browsers
+    // Che: any;
     try {
-      # Check Chrome
-      chrome_path = this._find_browser_path("chrome")
-      if ($1) {
-        browsers[]]],,,"chrome"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},
-        "available": true,
-        "path": chrome_path,
-        "webgpu_support": true,
-        "webnn_support": true,
-        "name": "Google Chrome"
+      // Che: any;
+      chrome_path) { any) { any: any: any: any: any = this._find_browser_path("chrome") {;"
+      if ((((((($1) {
+        browsers[]],"chrome"] = {},;"
+        "available") { true) { an) { an: any;"
+        "path") { chrome_pat) { an: any;"
+        "webgpu_support") {true,;"
+        "webnn_support") { tr: any;"
+        "name": "Google Chro: any;"
+        firefox_path: any: any: any = th: any;
+      if ((((((($1) {
+        browsers[]],"firefox"] = {},;"
+        "available") { true) { an) { an: any;"
+        "path") { firefox_pat) { an: any;"
+        "webgpu_support") { tr: any;"
+        "webnn_support": fal: any;"
+        "name") {"Mozilla Firef: any;"
+        edge_path) { any) { any: any = th: any;
+      if ((((((($1) {
+        browsers[]],"edge"] = {},;"
+        "available") { true) { an) { an: any;"
+        "path") {edge_path,;"
+        "webgpu_support") { tru) { an: any;"
+        "webnn_support": tr: any;"
+        "name": "Microsoft Ed: any;"
+      if ((((((($1) {
+        safari_path) { any) { any) { any) { any) { any: any = "/Applications/Safari.app/Contents/MacOS/Safari";"
+        if (((((($1) {
+          browsers[]],"safari"] = {},;"
+          "available") { true) { an) { an: any;"
+          "path") {safari_path,;"
+          "webgpu_support") { tru) { an: any;"
+          "webnn_support": tr: any;"
+          "name": "Apple Safari"} catch(error: any): any {logger.error(`$1`)}"
+      this._browser_details = brows: any;
         }
-      
-      }
-      # Check Firefox
-        firefox_path = this._find_browser_path("firefox")
-      if ($1) {
-        browsers[]]],,,"firefox"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},
-        "available": true,
-        "path": firefox_path,
-        "webgpu_support": true,
-        "webnn_support": false,  # Firefox support for WebNN is limited
-        "name": "Mozilla Firefox"
-        }
-      
-      }
-      # Check Edge
-        edge_path = this._find_browser_path("edge")
-      if ($1) {
-        browsers[]]],,,"edge"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},
-        "available": true,
-        "path": edge_path,
-        "webgpu_support": true,
-        "webnn_support": true,
-        "name": "Microsoft Edge"
-        }
-      
-      }
-      # Check Safari (macOS only)
-      if ($1) {
-        safari_path = "/Applications/Safari.app/Contents/MacOS/Safari"
-        if ($1) {
-          browsers[]]],,,"safari"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},
-          "available": true,
-          "path": safari_path,
-          "webgpu_support": true,
-          "webnn_support": true,
-          "name": "Apple Safari"
-          }
-    
-    } catch($2: $1) {
-      logger.error(`$1`)
-    
-    }
-      this._browser_details = browsers
-        }
-          return browsers
+          retu: any;
   
       }
-          def _find_browser_path(self, $1: string) -> Optional[]]],,,str]:,
-          """Find browser executable path."""
-          common_paths = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-          "chrome": []]],,,
-          "/usr/bin/google-chrome",
-          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-          "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
-          ],
-          "firefox": []]],,,
-          "/usr/bin/firefox",
-          "/Applications/Firefox.app/Contents/MacOS/firefox",
-          "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
-          "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe"
-          ],
-          "edge": []]],,,
-          "/usr/bin/microsoft-edge",
-          "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-          "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-          "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
-          ]
+          functi: any;
+          /** Fi: any;
+          common_paths: any: any = {}
+          "chrome": []],;"
+          "/usr/bin/google-chrome",;"
+          "/Applications/Google Chro: any;"
+          "C:\\Program Fil: any;"
+          "C:\\Program Fil: any;"
+          ],;
+          "firefox": []],;"
+          "/usr/bin/firefox",;"
+          "/Applications/Firefox.app/Contents/MacOS/firefox",;"
+          "C:\\Program Fil: any;"
+          "C:\\Program Fil: any;"
+          ],;
+          "edge": []],;"
+          "/usr/bin/microsoft-edge",;"
+          "/Applications/Microsoft Ed: any;"
+          "C:\\Program Fil: any;"
+          "C:\\Program Fil: any;"
+          ];
           }
-    
-    }
-    for path in common_paths.get(browser_name, []]],,,],):
-      if ($1) {
-      return path
-      }
-    
-          return null
+    for ((((path in (common_paths[browser_name] !== undefined ? common_paths[browser_name] ) { []],) {) {
+      if ((((($1) {
+      return) { an) { an) { an: any;
+    ;
+          return) { an) { an) { an: any;

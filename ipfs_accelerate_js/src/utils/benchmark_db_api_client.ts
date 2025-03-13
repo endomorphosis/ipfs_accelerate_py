@@ -1,347 +1,262 @@
-/**
- * Converted from Python: benchmark_db_api_client.py
- * Conversion date: 2025-03-11 04:08:55
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
 
-#!/usr/bin/env python
-"""
-Benchmark Database API Client
 
-This module provides a Python client for the Benchmark Database API.
-"""
+// WebG: any;
+/** Benchma: any;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import ${$1} from "$1"
-import ${$1} from "$1"
-import * as $1
+Th: any;
 
-# Configure logging
-logging.basicConfig())))))
-level=logging.INFO,
-format='%())))))asctime)s - %())))))name)s - %())))))levelname)s - %())))))message)s'
-)
-logger = logging.getLogger())))))"benchmark_db_client")
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
 
-class $1 extends $2 {
-  """Client API for the benchmark database"""
-  
-}
-  $1($2) {
-    """
-    Initialize the database API.
-    
-  }
-    Args:
-      database_path: Path to the DuckDB database file
-      server_url: URL of the database API server ())))))if using server mode)
-      """
-      this.database_path = database_path
-      this.server_url = server_url
-      this.conn = null
-    
-    # If using direct database access, create required tables if ($1) {
+// Configu: any;
+logging.basicConfig() {);
+level) { any) { any: any = loggi: any;
+format: any: any: any: any: any: any = '%())asctime)s - %())name)s - %())levelname)s - %())message)s';'
+);
+logger: any: any: any = loggi: any;
+;
+class $1 extends $2 {/** Client API for (((((the benchmark database */}
+  $1($2) {/** Initialize the database API.}
+    Args) {
+      database_path) { Path) { an) { an: any;
+      server_url) { URL of the database API server ())if (((((using server mode) { */;
+      this.database_path = database_pat) { an) { an: any;
+      this.server_url = server_u) { an: any;
+      this.conn = n: any;
+    ;
+    // If using direct database access, create required tables if (((($1) {
     if ($1) {
-      # Ensure the database directory exists
-      os.makedirs())))))os.path.dirname())))))os.path.abspath())))))database_path)), exist_ok=true)
-      this.ensure_database_initialized()))))))
-  
-    }
+      // Ensure) { an) { an: any;
+      os.makedirs())os.path.dirname())os.path.abspath())database_path)), exist_ok) { any) {any = tru) { an: any;
+      th: any;
   $1($2) {
-    """Get a connection to the database"""
-    if ($1) {
+    /** G: any;
+    if (((((($1) {
       try {
-        # Check if database file exists, create it if it doesn't
-        db_path = Path())))))this.database_path):
-        if ($1) ${$1} catch($2: $1) {
-        logger.error())))))`$1`)
-        }
-          raise
+        // Check) { an) { an: any;
+        db_path) { any) { any) { any = Path())this.database_path)) {
+        if ((((((($1) { ${$1} catch(error) { any)) { any {logger.error())`$1`)}
+          rais) { an) { an: any;
     
       }
-          return this.conn
+          retur) { an: any;
   
     }
   $1($2) {
-    """Close the database connection"""
-    if ($1) {
-      this.conn.close()))))))
-      this.conn = null
-  
-    }
+    /** Clo: any;
+    if (((((($1) {this.conn.close());
+      this.conn = nul) { an) { an: any;};
   $1($2) {
-    """Initialize the database if needed"""
-    this.ensure_web_platform_table_exists()))))))
-  :
-  }
+    /** Initializ) { an: any;
+    th: any;
+  ) {}
   $1($2) {
-    """Ensure the web_platform_results table exists"""
-    conn = this.get_connection()))))))
-    
-  }
+    /** Ensu: any;
+    conn) {any = th: any;};
     try {
-      # Check if table exists
-      table_exists = conn.execute())))))"""
-      SELECT name FROM sqlite_master
-      WHERE type='table' AND name='web_platform_results'
-      """).fetchone()))))))
-      :
-      if ($1) ${$1} catch($2: $1) {
-      logger.error())))))`$1`)
-      }
-        raise
+      // Che: any;
+      table_exists) { any) { any: any = conn.execute() {)/** SELE: any;
+      WHERE type: any: any = 'table' AND name: any: any: any: any: any: any = 'web_platform_results' */).fetchone());'
+      ) {
+      if ((((((($1) { ${$1} catch(error) { any)) { any {logger.error())`$1`)}
+        rais) { an) { an: any;
   
     }
-        def store_web_platform_result())))))self,
-        $1: string,
-        $1: string,
-        $1: string,
-        $1: string,
-        $1: string,
-        metrics: Optional[Dict[str, Any]] = null,
-        $1: $2 | null = null,
-        $1: $2 | null = null,
-        $1: $2 | null = null,
-        timestamp: Optional[datetime.datetime] = null) -> int:,
-        """
-        Store a web platform test result in the database.
-    
-  }
-    Args:
-      model_name: Name of the model tested
-      model_type: Type of model ())))))whisper, wav2vec2, clap, etc.)
-      browser: Browser used for testing ())))))chrome, firefox, safari, edge)
-      platform: Web platform tested ())))))webnn, webgpu)
-      status: Test status ())))))successful, failed, etc.)
-      metrics: Dictionary of test metrics ())))))optional)
-      execution_time: Execution time in seconds ())))))optional)
-      error_message: Error message if ($1) {
-        source_file: Source file containing the test results ())))))optional)
-        timestamp: Timestamp for the test result ())))))optional, defaults to now)
-      
-      }
-    Returns:
-      ID of the stored result
-      """
-    # Use REST API if ($1) {:
-    if ($1) {
+        functio) { an: any;
+        $1) {string,;
+        $1: stri: any;
+        $1: stri: any;
+        $1: stri: any;
+        $1: stri: any;
+        metrics: Record<str, Any | null> = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        timestamp: datetime.datetime | null: any = nu: any;
+        /** Sto: any;
+      model_n: any;
+      model_t: any;
+      browser: Browser used for ((((((testing () {)chrome, firefox) { any) { an) { an: any;
+      platform) { We) { an: any;
+      status) { Te: any;
+      metr: any;
+      execution_t: any;
+      error_message: Error message if ((((((($1) {
+        source_file) { Source) { an) { an: any;
+        timestamp) { Timestamp for ((((((the test result () {)optional, defaults to now)}
+    Returns) {
+      ID) { an) { an: any;
+    // Use REST API if ((((($1) {) {
+    if (($1) {
       try {
-        response = requests.post())))))
-        `$1`,
-        json={}}
-        "model_name": model_name,
-        "model_type": model_type,
-        "browser": browser,
-        "platform": platform,
-        "status": status,
-        "metrics": metrics,
-        "execution_time": execution_time,
-        "error_message": error_message,
-        "source_file": source_file,
-        "timestamp": timestamp.isoformat())))))) if timestamp else datetime.datetime.now())))))).isoformat()))))))
-        }
-        )
-        response.raise_for_status()))))))
-      return response.json()))))))["result_id"]:,
-      } catch($2: $1) {
-        logger.error())))))`$1`)
-      raise
-      }
-    
-      }
-    # Use direct database access
+        response) { any) { any) { any) { any = requests) { an) { an: any;
+        `$1`,;
+        json) { any) { any: any = {}
+        "model_name") { model_na: any;"
+        "model_type": model_ty: any;"
+        "browser": brows: any;"
+        "platform": platfo: any;"
+        "status": stat: any;"
+        "metrics": metri: any;"
+        "execution_time": execution_ti: any;"
+        "error_message": error_messa: any;"
+        "source_file": source_fi: any;"
+        "timestamp": timestamp.isoformat()) if ((((((timestamp else { datetime.datetime.now() {).isoformat())}"
+        );
+        response) { an) { an: any;
+      return response.json())["result_id"]) {} catch(error) { any)) { any {logger.error())`$1`);"
+      rais) { an: any;
     }
-      conn = this.get_connection()))))))
+      conn: any: any: any = th: any;
     
   }
-    # Ensure required table exists
+    // Ensu: any;
     }
-      this.ensure_web_platform_table_exists()))))))
-    
+      th: any;
+    ;
     try {
-      # Set default timestamp if ($1) {
+      // Set default timestamp if ((((((($1) {
       if ($1) {
-        timestamp = datetime.datetime.now()))))))
-      
-      }
-      # Convert metrics to JSON string if provided
-      }
-      metrics_json = null:
-      if ($1) ${$1} catch($2: $1) {
-      logger.error())))))`$1`)
-      }
-        raise
+        timestamp) {any = datetime) { an) { an: any;}
+      // Conver) { an: any;
+      };
+      metrics_json) { any) { any: any = null) {
+      if ((((((($1) { ${$1} catch(error) { any)) { any {logger.error())`$1`)}
+        rais) { an) { an: any;
   
     }
-        def query_web_platform_results())))))self,
-        $1: $2 | null = null,
-        $1: $2 | null = null,
-        $1: $2 | null = null,
-        $1: $2 | null = null,
-        $1: $2 | null = null,
-        $1: $2 | null = null,
-        $1: $2 | null = null,
-        $1: number = 100) -> List[Dict[str, Any]]:,
-        """
-        Query web platform test results from the database.
+        functio) { an: any;
+        $1) { $2 | null: any: any: any = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        $1: $2 | null: any: any: any = nu: any;
+        $1: number: any: any = 1: any;
+        /** Que: any;
     
-    Args:
-      model_name: Filter by model name ())))))optional)
-      model_type: Filter by model type ())))))optional)
-      browser: Filter by browser ())))))optional)
-      platform: Filter by platform ())))))optional)
-      status: Filter by status ())))))optional)
-      start_date: Filter by start date ())))))optional)
-      end_date: Filter by end date ())))))optional)
-      limit: Maximum number of results to return ())))))optional)
+    A: any;
+      model_n: any;
+      model_t: any;
+      brow: any;
+      platf: any;
+      sta: any;
+      start_d: any;
+      end_d: any;
+      li: any;
       
-    Returns:
-      List of web platform test results
-      """
-    # Use REST API if ($1) {:
-    if ($1) {
+    Retu: any;
+      Li: any;
+    // Use REST API if ((((((($1) {) {
+    if (($1) {
       try {
-        params = {}}
-        "limit": limit
-        }
-        
-      }
-        if ($1) {
-          params["model_name"] = model_name
-          ,
-        if ($1) {
-          params["model_type"] = model_type
-          ,
-        if ($1) {
-          params["browser"] = browser
-          ,
-        if ($1) {
-          params["platform"] = platform
-          ,
-        if ($1) {
-          params["status"] = status
-          ,
-        if ($1) {
-          params["start_date"] = start_date
-          ,
-        if ($1) ${$1} catch($2: $1) {
-        logger.error())))))`$1`)
-        }
-          raise
+        params) { any) { any) { any) { any = {}
+        "limit") {limit}"
+        if (((((($1) {
+          params["model_name"] = model_nam) { an) { an: any;"
+          ,;
+        if ((($1) {
+          params["model_type"] = model_typ) { an) { an: any;"
+          ,;
+        if ((($1) {
+          params["browser"] = browse) { an) { an: any;"
+          ,;
+        if ((($1) {
+          params["platform"] = platfor) { an) { an: any;"
+          ,;
+        if ((($1) {
+          params["status"] = statu) { an) { an: any;"
+          ,;
+        if ((($1) {
+          params["start_date"] = start_dat) { an) { an: any;"
+          ,;
+        if ((($1) { ${$1} catch(error) { any)) { any {logger.error())`$1`)}
+          rais) { an) { an: any;
     
         }
-    # Use direct database access
+    // Us) { an: any;
         }
-          conn = this.get_connection()))))))
+          conn: any: any: any = th: any;
     
         }
-    # Ensure table exists
-        }
-    try ${$1} catch($2: $1) {
-      # If table doesn't exist, return empty list
-      return [],,
-      ,
-    try {
-      # Build query with filters
-      query = """
-      SELECT 
-      result_id,
-      model_name,
-      model_type,
-      browser,
-      platform,
-      status,
-      execution_time,
-      metrics,
-      error_message,
-      source_file,
-      timestamp
+    // Ensu: any;
+        };
+    try ${$1} catch(error: any): any {
+      // I: an: any;
+      retu: any;
+      ,;
+    try {// Bui: any;
+      query: any: any: any = /** SELE: any;
+      result_: any;
+      model_n: any;
+      model_ty: any;
+      brow: any;
+      platfo: any;
+      sta: any;
+      execution_ti: any;
+      metr: any;
+      error_messa: any;
+      source_f: any;
+      timest: any;
       FROM 
-      web_platform_results
-      """
-      
-    }
-      params = [],,
-      ,    where_clauses = [],,
-      ,
+      web_platform_results */}
+      params: any: any: any: any: any: any = [],;
+      ,    where_clauses: any: any: any: any: any: any = [],;
+      ,;
+      if (((((($1) {$1.push($2))"model_name LIKE) { an) { an: any;"
+        $1.push($2))`$1`)}
+      if ((($1) {$1.push($2))"model_type = ?");"
+        $1.push($2))model_type)};
+      if ($1) {$1.push($2))"browser = ?");"
+        $1.push($2))browser)};
+      if ($1) {$1.push($2))"platform = ?");"
+        $1.push($2))platform)};
+      if ($1) {$1.push($2))"status = ?");"
+        $1.push($2))status)};
       if ($1) {
-        $1.push($2))))))"model_name LIKE ?")
-        $1.push($2))))))`$1`)
+        try ${$1} catch(error) { any)) { any {logger.error())`$1`);
+          throw new ValueError())`$1`)}
+      if ((($1) {
+        try ${$1} catch(error) { any)) { any {logger.error())`$1`);
+          throw new ValueError())`$1`)}
+      if ((($1) {query += " WHERE " + " AND ".join())where_clauses)}"
+        query += " ORDER) { an) { an: any;"
+        $1.push($2))limit);
       
       }
-      if ($1) {
-        $1.push($2))))))"model_type = ?")
-        $1.push($2))))))model_type)
-      
+      // Execut) { an: any;
       }
-      if ($1) {
-        $1.push($2))))))"browser = ?")
-        $1.push($2))))))browser)
-      
-      }
-      if ($1) {
-        $1.push($2))))))"platform = ?")
-        $1.push($2))))))platform)
-      
-      }
-      if ($1) {
-        $1.push($2))))))"status = ?")
-        $1.push($2))))))status)
-      
-      }
-      if ($1) {
-        try ${$1} catch($2: $1) {
-          logger.error())))))`$1`)
-          raise ValueError())))))`$1`)
-      
+        results) {any = conn.execute())query, params) { a: any;;}
+      // Conve: any;
         }
-      if ($1) {
-        try ${$1} catch($2: $1) {
-          logger.error())))))`$1`)
-          raise ValueError())))))`$1`)
-      
-        }
-      if ($1) {
-        query += " WHERE " + " AND ".join())))))where_clauses)
-      
-      }
-        query += " ORDER BY timestamp DESC LIMIT ?"
-        $1.push($2))))))limit)
-      
-      }
-      # Execute query
-      }
-        results = conn.execute())))))query, params).fetchdf()))))))
-      
-    }
-      # Convert to list of dicts && parse metrics JSON
-        }
-        results_list = [],,
-        }
-    ,    for _, row in results.iterrows())))))):
-    }
-      result = row.to_dict()))))))
+        results_list: any: any: any: any: any: any = [],;
+        };
+    ,    for (((((_) { any, row in results.iterrows() {)) {}
+      result) { any) { any) { any = ro) { an: any;
         
-        # Parse metrics JSON
-      if ($1) {,
+        // Par: any;
+      if (((((($1) {,;
           try {
-            result['metrics'] = json.loads())))))result['metrics']),
-          except json.JSONDecodeError:
-          }
-            result['metrics'] = {}}}
-            ,
-            $1.push($2))))))result)
+            result["metrics"] = json) { an) { an: any;"
+          catch (error) { any) {}
+            result["metrics"] = {}"
+            ,;
+            $1.push($2))result);
       
-            return results_list
-    } catch($2: $1) {
-      logger.error())))))`$1`)
-            raise
+            retur) { an: any;
+    } catch(error: any)) { any {
+      log: any;
+            r: any;

@@ -1,261 +1,181 @@
 # Distributed Testing Framework
 
-A high-performance, fault-tolerant framework for parallel execution of tests and benchmarks across heterogeneous hardware.
+> **🎉 MILESTONE ACHIEVED: Integration and Extensibility Phase (Phase 8) completed successfully on May 27, 2025! [Read the completion report](docs/INTEGRATION_EXTENSIBILITY_COMPLETION.md)**
 
 ## Overview
 
-The Distributed Testing Framework enables parallel execution of benchmarks and tests across multiple machines with heterogeneous hardware. It provides several key benefits:
+The Distributed Testing Framework provides a robust solution for executing tests across distributed hardware environments with a focus on AI model performance and compatibility testing. It enables parallel execution, intelligent scheduling, and comprehensive reporting while integrating with existing CI/CD pipelines and external systems.
 
-1. **Scalability**: Run thousands of tests in parallel across multiple machines
-2. **Hardware Efficiency**: Automatically match tests to machines with appropriate hardware
-3. **Centralized Results**: Aggregate all test results in a single database
-4. **Test Prioritization**: Schedule tests based on importance and dependencies
-5. **Fault Tolerance**: Automatically recover from worker and coordinator failures
+## Key Features
+
+- **Distributed Test Execution**: Run tests across multiple worker nodes for parallel execution
+- **Intelligent Scheduling**: Schedule tests based on hardware requirements and capabilities
+- **Fault Tolerance**: Handle worker failures and task recovery
+- **Comprehensive Reporting**: Generate detailed reports with benchmark metrics
+- **Resource Management**: Efficiently manage hardware resources
+- **CI/CD Integration**: Seamlessly integrate with CI/CD pipelines
+- **External System Integration**: Connect with JIRA, Slack, TestRail, and more
+- **Plugin Architecture**: Extend functionality through plugins
+- **WebGPU/WebNN Integration**: Leverage browser-based hardware acceleration
 
 ## Architecture
 
-The framework uses a coordinator-worker architecture:
+The framework consists of the following components:
 
-```
-                             ┌────────────┐
-                             │            │
-                             │  DuckDB    │
-                             │  Database  │
-                             │            │
-                             └─────┬──────┘
-                                   │
-                                   ▼
-┌───────────────┐           ┌────────────┐           ┌───────────────┐
-│               │           │            │           │               │
-│   Web UI      │◄─────────►│ Coordinator │◄─────────►│  REST API     │
-│               │           │            │           │               │
-└───────────────┘           └─────┬──────┘           └───────────────┘
-                                  │
-                                  │
-         ┌──────────────┬─────────┴──────────┬──────────────┐
-         │              │                    │              │
-         ▼              ▼                    ▼              ▼
-┌─────────────┐  ┌─────────────┐    ┌─────────────┐  ┌─────────────┐
-│             │  │             │    │             │  │             │
-│  Worker 1   │  │  Worker 2   │    │  Worker 3   │  │  Worker N   │
-│ (CPU, CUDA) │  │ (ROCm, MPS) │    │ (CPU, QNN)  │  │ (WebNN, CPU)│
-│             │  │             │    │             │  │             │
-└─────────────┘  └─────────────┘    └─────────────┘  └─────────────┘
-```
+- **Coordinator**: Central component that manages workers and schedules tasks
+- **Workers**: Nodes that execute tests on specific hardware
+- **Plugins**: Extensible components for adding functionality
+- **Resource Pool**: Manages hardware resources for optimal utilization
+- **External System Connectors**: Integrates with various external systems
+- **CI/CD Providers**: Connects with CI/CD systems for reporting
 
-## Features
-
-### Core Features
-
-- ✅ Worker registration and capability reporting
-- ✅ Task submission and scheduling
-- ✅ Result collection and aggregation
-- ✅ REST API for client interaction
-- ✅ DuckDB integration for result storage
-
-### Advanced Features
-
-- ✅ Hardware-aware task scheduling
-- ✅ Priority-based queue management
-- ✅ Task dependencies and DAG execution
-- ✅ Resource-aware scheduling
-- ✅ Real-time performance monitoring
-- ✅ Database optimization for high throughput
-- ✅ Worker failure detection and recovery
-- ✅ Coordinator redundancy with automatic failover
-- ✅ Secure communication (TLS)
-- ✅ API authentication and authorization
-
-## Installation
+## Getting Started
 
 ### Prerequisites
 
 - Python 3.8 or higher
-- aiohttp
-- DuckDB
-- psutil
+- PostgreSQL (for production) or SQLite (for development)
+- Redis (optional, for improved performance)
 
-### Basic Installation
+### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/ipfs_accelerate_py.git
-cd ipfs_accelerate_py
+git clone https://github.com/your-org/distributed-testing-framework.git
+cd distributed-testing-framework
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Initialize the database
+python -m distributed_testing.init_db
 ```
 
-## Usage
+### Basic Usage
 
-### Starting the Coordinator
+1. **Start the coordinator**:
 
 ```bash
-# Start a coordinator
-python -m distributed_testing.coordinator --port 8080 --db-path ./coordinator.duckdb
+python -m distributed_testing.coordinator --host 0.0.0.0 --port 8000
 ```
 
-### Starting a Worker
+2. **Register workers**:
 
 ```bash
-# Start a worker
-python -m distributed_testing.worker --coordinator http://localhost:8080 --worker-id worker-1
+python -m distributed_testing.worker --coordinator-url http://coordinator:8000 --hardware-config hardware.json
 ```
 
-### Submitting Tasks
+3. **Submit tasks**:
 
 ```bash
-# Submit a task
-python -m distributed_testing.client submit-task \
-  --coordinator http://localhost:8080 \
-  --type benchmark \
-  --model bert-base-uncased \
-  --hardware cuda \
-  --batch-sizes 1,2,4,8,16
+python -m distributed_testing.submit_task --coordinator-url http://coordinator:8000 --task-file task.json
 ```
 
-### Querying Results
+## Integration Examples
 
-```bash
-# Get results for a task
-python -m distributed_testing.client get-results \
-  --coordinator http://localhost:8080 \
-  --task-id 12345
+### Plugin Integration
+
+```python
+from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
+
+class MyReporterPlugin(Plugin):
+    """Custom reporter plugin."""
+    
+    def __init__(self):
+        super().__init__(
+            name="MyReporter",
+            version="1.0.0",
+            plugin_type=PluginType.REPORTER
+        )
+        
+        # Register hooks
+        self.register_hook(HookType.TASK_COMPLETED, self.on_task_completed)
+        
+    async def initialize(self, coordinator) -> bool:
+        """Initialize the plugin."""
+        self.coordinator = coordinator
+        self.results = []
+        return True
+        
+    async def on_task_completed(self, task_id: str, result: Any):
+        """Handle task completed event."""
+        self.results.append({
+            "task_id": task_id,
+            "result": result,
+            "timestamp": datetime.now().isoformat()
+        })
 ```
 
-## High-Availability Deployment
+### External System Integration
 
-For high-availability deployments, you can run a cluster of coordinator nodes with automatic failover:
+```python
+from distributed_testing.external_systems import ExternalSystemFactory
 
-```bash
-# Start a coordinator with redundancy enabled
-python -m distributed_testing.coordinator \
-  --port 8080 \
-  --db-path ./coordinator1.duckdb \
-  --node-id node-1 \
-  --enable-redundancy \
-  --peers localhost:8081,localhost:8082
+# Create JIRA connector
+jira = await ExternalSystemFactory.create_connector(
+    "jira", 
+    {
+        "email": "user@example.com",
+        "token": "api_token",
+        "server_url": "https://jira.example.com",
+        "project_key": "PROJECT"
+    }
+)
 
-# Start a second coordinator
-python -m distributed_testing.coordinator \
-  --port 8081 \
-  --db-path ./coordinator2.duckdb \
-  --node-id node-2 \
-  --enable-redundancy \
-  --peers localhost:8080,localhost:8082
-
-# Start a third coordinator
-python -m distributed_testing.coordinator \
-  --port 8082 \
-  --db-path ./coordinator3.duckdb \
-  --node-id node-3 \
-  --enable-redundancy \
-  --peers localhost:8080,localhost:8081
+# Create an issue
+issue = await jira.create_item("issue", {
+    "summary": "Test Issue",
+    "description": "This is a test issue",
+    "issue_type": "Bug",
+    "priority": "Medium"
+})
 ```
-
-For an easier setup, use the provided script:
-
-```bash
-./distributed_testing/examples/high_availability_cluster.sh start
-```
-
-## Monitoring and Management
-
-### Cluster Health Monitor
-
-Monitor the health of your coordinator cluster:
-
-```bash
-python -m distributed_testing.monitoring.cluster_health_monitor \
-  --nodes localhost:8080,localhost:8081,localhost:8082
-```
-
-### Recovery Strategies
-
-Automatically detect and recover from failures:
-
-```bash
-python -m distributed_testing.monitoring.recovery_strategies \
-  --config cluster_config.json \
-  --daemon
-```
-
-### Performance Benchmarks
-
-Benchmark different cluster configurations:
-
-```bash
-python -m distributed_testing.examples.benchmark.benchmark_redundancy \
-  --cluster-sizes 1,3,5 \
-  --operations 1000 \
-  --runs 3
-```
-
-## Development
-
-### Running Tests
-
-```bash
-# Run unit tests
-python -m unittest discover -s distributed_testing/tests
-
-# Run failover tests
-python -m distributed_testing.tests.test_coordinator_failover
-```
-
-### Building Documentation
-
-```bash
-# Generate documentation
-make docs
-```
-
-## Implementation Status
-
-The framework is implemented in multiple phases:
-
-- ✅ **Phase 1: Core Functionality** - COMPLETED
-- ✅ **Phase 2: Advanced Scheduling** - COMPLETED
-- ✅ **Phase 3: Performance and Monitoring** - COMPLETED
-- ✅ **Phase 4: Scalability** - COMPLETED
-- ✅ **Phase 5: Fault Tolerance** - COMPLETED
-  - Coordinator Redundancy with consensus-based leader election
-  - Distributed State Management with transaction-based updates
-  - Comprehensive Error Recovery Strategies with categorized handling
-- 🔲 **Phase 6: Monitoring Dashboard** - DEFERRED
-- 🔲 **Phase 7: Security and Access Control** - DEFERRED
-- ✅ **Phase 8: Integration and Extensibility** - COMPLETED
-  - ✅ Plugin Architecture for extending framework functionality
-  - ✅ WebGPU/WebNN Resource Pool Integration with fault tolerance
-  - ✅ CI/CD Integration with popular pipeline tools
-  - ✅ External system integrations using standardized interfaces
 
 ## Documentation
 
-For more detailed documentation, refer to:
+For comprehensive documentation, please refer to:
 
-- [Distributed Testing Design](../DISTRIBUTED_TESTING_DESIGN.md): Overall framework design
-- [Fault Tolerance](README_FAULT_TOLERANCE.md): Comprehensive fault tolerance features
-- [Auto Recovery](README_AUTO_RECOVERY.md): Auto recovery system details
-- [Coordinator Redundancy](docs/COORDINATOR_REDUNDANCY.md): Redundancy implementation details
-- [Plugin Architecture](README_PLUGIN_ARCHITECTURE.md): Plugin system for extending functionality
-- [WebGPU/WebNN Resource Pool](README_WEBGPU_RESOURCE_POOL.md): Browser-based resource pool integration
-- [Integration & Extensibility](docs/INTEGRATION_GUIDE.md): External system integration
-- [Deployment Guide](docs/deployment_guide.md): Deployment instructions
-- [API Reference](docs/api_reference.md): API documentation
-- [Security Guide](SECURITY.md): Security features and best practices
-- [Implementation Status](docs/IMPLEMENTATION_STATUS.md): Current development status and roadmap
+- [Documentation Index](docs/DOCUMENTATION_INDEX.md): Index of all documentation
+- [Implementation Status](docs/IMPLEMENTATION_STATUS.md): Current implementation status
+- [Next Steps](../NEXT_STEPS.md): Roadmap for future development
+- [Integration and Extensibility Completion](docs/INTEGRATION_EXTENSIBILITY_COMPLETION.md): Details of the completed Integration and Extensibility phase
+
+## Implementation Status
+
+| Phase | Description | Status | Completion |
+|-------|-------------|--------|------------|
+| Phase 1 | Core Functionality | ✅ COMPLETED | 100% |
+| Phase 2 | Advanced Scheduling | ✅ COMPLETED | 100% |
+| Phase 3 | Performance and Monitoring | ✅ COMPLETED | 100% |
+| Phase 4 | Scalability | ✅ COMPLETED | 100% |
+| Phase 5 | Fault Tolerance | ✅ COMPLETED | 100% |
+| Phase 6 | Monitoring Dashboard | 🔲 DEFERRED | 0% |
+| Phase 7 | Security and Access Control | 🔲 DEFERRED | 60% |
+| Phase 8 | Integration and Extensibility | ✅ COMPLETED | 100% |
+| Phase 9 | Distributed Testing Implementation | 🔄 IN PROGRESS | 25% |
+
+For detailed status, see the [Implementation Status](docs/IMPLEMENTATION_STATUS.md) document.
+
+## Completed Components
+
+### Integration and Extensibility (Phase 8)
+
+- ✅ Plugin architecture for framework extensibility
+- ✅ WebGPU/WebNN Resource Pool Integration with fault tolerance
+- ✅ CI/CD system integrations (GitHub, GitLab, Jenkins, Azure DevOps, etc.)
+- ✅ External system connectors (JIRA, Slack, TestRail, Prometheus, Email, MS Teams)
+- ✅ Custom scheduler extensibility through plugins
+- ✅ Notification system integration
+- ✅ API standardization with comprehensive documentation
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Contributing
+## Contact
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+For questions or support, please contact the Distributed Testing Framework team.
 
-## Acknowledgements
+---
 
-- The Raft consensus algorithm for coordinator redundancy
-- The DuckDB team for their excellent database engine
-- The aiohttp community for their robust async framework
+Developed by the Distributed Testing Framework Team, 2025.

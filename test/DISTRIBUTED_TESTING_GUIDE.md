@@ -20,6 +20,8 @@ The Distributed Testing Framework has been enhanced with the following features:
 
 6. **CI/CD Integration**: Seamless integration with GitHub Actions, GitLab CI, and Jenkins for automated testing and reporting with intelligent test discovery and requirement analysis.
 
+7. **Enhanced Result Aggregation**: Dual-layer result aggregation system with both high-level statistical processing and detailed multi-dimensional analysis capabilities working in tandem.
+
 ## Getting Started
 
 ### Prerequisites
@@ -387,9 +389,46 @@ The Distributed Testing Framework can be integrated with existing systems:
 | Dashboard | ✅ 100% | Real-time monitoring, visualizations, system management |
 | Coordinator Redundancy | ✅ 100% | Leader election, state replication, automatic failover |
 | Performance Trend Analysis | ✅ 100% | Time-series tracking, statistical analysis, anomaly detection |
+| Result Aggregation | ✅ 100% | Dual-layer analysis, multi-dimensional aggregation, real-time processing |
 | CI/CD Integration | ✅ 100% | GitHub Actions, GitLab CI, Jenkins integration |
 
 All components have now been fully implemented as of March 15, 2025.
+
+### Enhanced Result Aggregation
+
+The Distributed Testing Framework now features a sophisticated dual-layer result aggregation system:
+
+1. **ResultAggregatorService**: A high-level service that provides efficient statistical analysis and visualization of test results with real-time capabilities.
+
+2. **DetailedResultAggregator**: A more comprehensive implementation that offers in-depth multi-dimensional analysis with advanced visualization and reporting features.
+
+Both systems operate in tandem within the Coordinator to provide a complete result aggregation solution with the following capabilities:
+
+- Statistical aggregation across multiple dimensions (hardware, model, task type, etc.)
+- Performance regression detection with significance testing
+- Anomaly detection using Z-score analysis
+- Advanced correlation analysis to identify performance factors
+- Multi-dimensional variance analysis for performance consistency
+- Time-series trend analysis with forecasting
+- Advanced visualization generation for all metrics and analyses
+- Comprehensive reporting in multiple formats (JSON, HTML, Markdown)
+- Real-time aggregation accessible through WebSocket API
+
+To access aggregated results through the API:
+
+```json
+// Example WebSocket request to get aggregated results
+{
+    "type": "get_aggregated_results",
+    "result_type": "performance", 
+    "aggregation_level": "model_hardware",
+    "filter_params": {"model": "bert-base-uncased"},
+    "time_range": {"start": "2025-03-01T00:00:00Z", "end": "2025-03-15T00:00:00Z"},
+    "use_detailed": true  // Set to true to use DetailedResultAggregator
+}
+```
+
+For more details, see the [Result Aggregator documentation](duckdb_api/distributed_testing/result_aggregator/README.md).
 
 ## New Features (March 2025)
 
@@ -772,6 +811,117 @@ For advanced CI/CD integration scenarios, consider the following configurations:
 2. **Scheduled Testing**: Run tests on a regular schedule for performance tracking
 3. **Selective Testing**: Run only tests affected by changes
 4. **Hardware-Specific Branches**: Dedicated branches for hardware-specific testing
+
+## Result Aggregation System
+
+The Distributed Testing Framework features a sophisticated dual-layer result aggregation system that provides comprehensive analysis of test results.
+
+### Overview
+
+The result aggregation system consists of two complementary components:
+
+1. **High-Level Aggregator Service** (ResultAggregatorService): Provides efficient aggregation and statistical analysis with a focus on performance and caching.
+2. **Detailed Aggregator** (DetailedResultAggregator): Offers in-depth multi-dimensional analysis with advanced visualization capabilities.
+
+These components work together to provide both high-level insights and detailed analysis of test results.
+
+### Key Features
+
+- **Dual-Layer Architecture**: Both aggregators process the same data but provide different perspectives and analysis capabilities
+- **Unified Data Preparation**: Consistent data preparation for both aggregators ensures coherent analysis
+- **Statistical Analysis**: Comprehensive statistics including means, medians, percentiles, distributions
+- **Multi-Dimensional Analysis**: Analyze results across test, worker, hardware, and model dimensions
+- **Anomaly Detection**: Automatic detection of performance anomalies using statistical methods
+- **Regression Detection**: Compare current results with historical data to identify regressions
+- **Visualization Generation**: Create visual representations of performance trends and anomalies
+- **WebSocket API Access**: Query aggregated results through the coordinator's WebSocket API
+
+### Usage
+
+#### Querying Aggregated Results (WebSocket API)
+
+You can query aggregated results through the coordinator's WebSocket API:
+
+```python
+import json
+import websockets
+import asyncio
+
+async def get_aggregated_results(coordinator_url, api_key, result_type, aggregation_level, use_detailed=False):
+    async with websockets.connect(coordinator_url) as websocket:
+        # Authenticate
+        await websocket.send(json.dumps({
+            "type": "auth_response",
+            "api_key": api_key
+        }))
+        
+        auth_result = json.loads(await websocket.recv())
+        if not auth_result.get("success"):
+            raise Exception("Authentication failed")
+        
+        # Get aggregated results
+        await websocket.send(json.dumps({
+            "type": "get_aggregated_results",
+            "result_type": result_type,
+            "aggregation_level": aggregation_level,
+            "use_detailed": use_detailed
+        }))
+        
+        result = json.loads(await websocket.recv())
+        return result["results"]
+
+# Example: Get high-level performance aggregation by model
+results = asyncio.run(get_aggregated_results(
+    "ws://coordinator-host:8080",
+    "your-api-key",
+    "performance",
+    "model",
+    use_detailed=False
+))
+
+# Example: Get detailed performance aggregation by hardware
+detailed_results = asyncio.run(get_aggregated_results(
+    "ws://coordinator-host:8080",
+    "your-api-key",
+    "performance",
+    "hardware",
+    use_detailed=True
+))
+```
+
+#### Aggregation Levels
+
+Both aggregators support various aggregation levels:
+
+- **test_run**: Aggregate by test run
+- **model**: Aggregate by model type
+- **hardware**: Aggregate by hardware type
+- **model_hardware**: Aggregate by model-hardware combination 
+- **task_type**: Aggregate by task type
+- **worker**: Aggregate by worker node
+
+#### Result Types
+
+The aggregation system supports different result types:
+
+- **performance**: Performance benchmark results
+- **compatibility**: Hardware/software compatibility test results 
+- **integration**: Integration test results
+- **web_platform**: Web platform-specific test results
+
+### Implementation Details
+
+The dual-layer result aggregation system is integrated into the coordinator server:
+
+1. **Data Collection**: Test results from workers are collected by the coordinator
+2. **Data Preparation**: Results are prepared with a unified preparation method to ensure consistency
+3. **Dual Processing**: Both aggregators process the prepared results independently
+4. **API Access**: Aggregated results can be accessed through the coordinator's WebSocket API
+5. **Coordination**: The coordinator manages the lifecycle of both aggregators
+
+The system provides both statistical rigor and analytical depth, enabling comprehensive understanding of test results across the distributed testing environment.
+
+For more detailed information, see the [Result Aggregator README](/duckdb_api/distributed_testing/result_aggregator/README.md).
 
 ## Conclusion
 

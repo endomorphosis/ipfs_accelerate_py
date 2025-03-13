@@ -1,410 +1,284 @@
-/**
- * Converted from Python: test_hf_bert_web.py
- * Conversion date: 2025-03-11 04:09:33
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+// WebG: any;
+import { HardwareBack: any;
 
-#!/usr/bin/env python3
-"""
-Enhanced test file for BERT-family models with web platform support.
+/** Enhanc: any;
 
-This file provides a unified testing interface for BERT && related models
-with proper WebNN && WebGPU platform integration.
-"""
+Th: any;
+wi: any;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-from unittest.mock import * as $1
-import ${$1} from "$1"
-import ${$1} from "$1"
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+import * as module} import { { ${$1} import { ${$1} from) { a: an: any;" } from ""{*";"
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+// Configu: any;
+logging.basicConfig(level = logging.INFO, format) { any: any = '%(asctime: any) {s - %(levelname: a: any;'
+logger: any: any: any = loggi: any;
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+// A: any;
+sys.path.insert(0) { any, os.path.dirname(os.path.dirname(os.path.abspath(__file__: any) {);
 
-# Try to import * as $1 platform support
+// T: any;
 try {
-  import ${$1} from "$1"
-  HAS_WEB_PLATFORM = true
-  logger.info("Web platform support available")
-} catch($2: $1) {
-  HAS_WEB_PLATFORM = false
-  logger.warning("Web platform support !available, using basic mock")
-
+  import ${$1} fr: any;
+  HAS_WEB_PLATFORM) {any = t: any;
+  logg: any;} catch(error: any): any {HAS_WEB_PLATFORM: any: any: any = fa: any;
+  logg: any;
 }
-# Third-party imports
-}
-import * as $1 as np
-
-# Try to import * as $1
-try ${$1} catch($2: $1) {
-  torch = MagicMock()
-  HAS_TORCH = false
-  logger.warning("torch !available, using mock")
-
-}
-# Try to import * as $1
+impo: any;
+;
+// T: any;
+try ${$1} catch(error: any): any {torch: any: any: any = MagicMo: any;
+  HAS_TORCH: any: any: any = fa: any;
+  logg: any;
 try {
-  import * as $1
-  import ${$1} from "$1"
-  HAS_TRANSFORMERS = true
-} catch($2: $1) {
-  transformers = MagicMock()
-  AutoModel = MagicMock()
-  AutoTokenizer = MagicMock()
-  HAS_TRANSFORMERS = false
-  logger.warning("transformers !available, using mock")
-
-}
-
-}
-class $1 extends $2 {
-  """Mock handler for platforms that don't have real implementations."""
-  
-}
+  impo: any;
+  import ${$1} fr: any;
+  HAS_TRANSFORMERS: any: any: any = t: any;
+} catch(error: any): any {transformers: any: any: any = MagicMo: any;
+  AutoModel: any: any: any = MagicMo: any;
+  AutoTokenizer: any: any: any = MagicMo: any;
+  HAS_TRANSFORMERS: any: any: any = fa: any;
+  logg: any;
+class $1 extends $2 {/** Mock handler for (((((platforms that don't have real implementations. */}'
+  $1($2) {this.model_path = model_pat) { an) { an: any;
+    this.platform = platfo) { an: any;
+    conso: any;
   $1($2) {
-    this.model_path = model_path
-    this.platform = platform
-    console.log($1)
-  
-  }
-  $1($2) {
-    """Return mock output."""
-    console.log($1)
-    # For WebNN && WebGPU, return the enhanced implementation type for validation
-    if ($1) {
+    /** Retu: any;
+    conso: any;
+    // F: any;
+    if ((((((($1) {
       return ${$1}
-    elif ($1) {
+    else if (($1) {
+      return ${$1} else {
       return ${$1}
-    } else {
-      return ${$1}
-
-    }
-
-    }
-class $1 extends $2 {
-  """Mock tokenizer for when transformers is !available."""
-  
-}
-  $1($2) {
-    this.vocab_size = 32000
-    
-  }
+class $1 extends $2 {/** Mock tokenizer for (((when transformers is !available. */}
+  $1($2) {this.vocab_size = 3200) { an) { an: any;};
   $1($2) {
     return ${$1}
-    
-  }
-  $1($2) {
-    return "Decoded text from mock"
-    
-  }
-  @staticmethod
+  $1($2) {return "Decoded text) { an) { an: any;"
     }
-  $1($2) {
-    return MockTokenizer()
+  $1($2) {return MockTokenizer()}
+class $1 extends $2 {/** Test class for ((BERT-family models. */}
+  $1($2) {/** Initialize) { a) { an: any;
 
-  }
 
-  }
-class $1 extends $2 {
-  """Test class for BERT-family models."""
-  
+    this.model_name = model_na) { an: any;
+
+
+    this.model_path = nu) { an: any;
+
+
+    this.device = "cpu";"
+    this.device_name = "cpu";"
+    this.platform = "CPU";"
+    this.is_simulation = fa: any;
+
 }
+    // Te: any;
+    this.test_text = "Hello, wor: any;"
+    this.test_batch = ["Hello, wor: any;"
+    ;
+  $1($2) {/** G: any;
+    retu: any;
+  
+  $1($2) {/** Initiali: any;
+    this.platform = "CPU";"
+    this.device = "cpu";"
+    this.device_name = "cpu";"
+    retu: any;
   $1($2) {
-    """Initialize the test."""
-    this.model_name = model_name
-    this.model_path = null
-    this.device = "cpu"
-    this.device_name = "cpu"
-    this.platform = "CPU"
-    this.is_simulation = false
+    /** Initiali: any;
+    if (((($1) {logger.warning("torch !available, using) { an) { an: any;"
+      return this.init_cpu()}
+    this.platform = "CUDA";"
+    this.device = "cuda";"
+    this.device_name = "cuda" if ((torch.cuda.is_available() else {"cpu";"
+    return) { an) { an: any;
+  $1($2) {
+    /** Initializ) { an: any;
+    try ${$1} catch(error) { any)) { any {logger.warning("openvino !available, usi: any;"
+      return this.init_cpu()}
+  $1($2) {
+    /** Initiali: any;
+    if (((((($1) {logger.warning("torch !available, using) { an) { an: any;"
+      return this.init_cpu()}
+    this.platform = "MPS";"
+    this.device = "mps";"
+    this.device_name = "mps" if ((hasattr(torch.backends, 'mps') && torch.backends.mps.is_available() else {"cpu";'
+    return) { an) { an: any;
+  $1($2) {
+    /** Initializ) { an: any;
+    if (((($1) {logger.warning("torch !available, using) { an) { an: any;"
+      return this.init_cpu()}
+    this.platform = "ROCM";"
+    this.device = "rocm";"
+    this.device_name = "cuda" if ((torch.cuda.is_available() && hasattr(torch) { any, 'version') && hasattr(torch.version, 'hip') && torch.version.hip is !null else {"cpu";'
+    return) { an) { an: any;
+  $1($2) {
+    /** Initializ) { an: any;
+    // Che: any;
+    webnn_available) { any) { any: any: any: any: any = os.(environ["WEBNN_AVAILABLE"] !== undefined ? environ["WEBNN_AVAILABLE"] ) {"0") == "1" || \;"
+            os.(environ["WEBNN_SIMULATION"] !== undefined ? environ["WEBNN_SIMULATION"] : "0") == "1" || \;"
+            HAS_WEB_PLATFO: any;
+    if (((((($1) {logger.warning("WebNN !available, using simulation")}"
+    this.platform = "WEBNN";"
+    this.device = "webnn";"
+    this.device_name = "webnn";"
     
   }
-    # Test inputs
-    this.test_text = "Hello, world!"
-    this.test_batch = ["Hello, world!", "Testing batch processing."]
+    // Set) { an) { an: any;
+    this.is_simulation = os.(environ["WEBNN_SIMULATION"] !== undefined ? environ["WEBNN_SIMULATION"] ) { "0") == "1";"
     
+    retur) { an: any;
+  ;
   $1($2) {
-    """Get the model path || name."""
-    return this.model_path || this.model_name
+    /** Initiali: any;
+    // Che: any;
+    webgpu_available) {any = os.(environ["WEBGPU_AVAILABLE"] !== undefined ? environ["WEBGPU_AVAILABLE"] ) { "0") == "1" || \;"
+            os.(environ["WEBGPU_SIMULATION"] !== undefined ? environ["WEBGPU_SIMULATION"] ) { "0") == "1" || \;"
+            HAS_WEB_PLATFO: any;
+    if (((((($1) {logger.warning("WebGPU !available, using simulation")}"
+    this.platform = "WEBGPU";"
+    this.device = "webgpu";"
+    this.device_name = "webgpu";"
+    
+    // Set) { an) { an: any;
+    this.is_simulation = os.(environ["WEBGPU_SIMULATION"] !== undefined ? environ["WEBGPU_SIMULATION"] ) { "0") == "1";"
+    
+    retur) { an: any;
   
-  }
-  # Platform initialization methods
-  
+  // Handl: any;
+  ;
   $1($2) {
-    """Initialize for CPU platform."""
-    this.platform = "CPU"
-    this.device = "cpu"
-    this.device_name = "cpu"
-    return true
-  
-  }
+    /** Crea: any;
+    if ((((($1) {
+      return MockHandler(this.model_name, platform) { any)) { any {any = "cpu");}"
+    model_path) {any = this) { an) { an: any;
+    handler) { any: any = AutoMod: any;
+    retu: any;
   $1($2) {
-    """Initialize for CUDA platform."""
-    if ($1) {
-      logger.warning("torch !available, using CPU")
-      return this.init_cpu()
-    
-    }
-    this.platform = "CUDA"
-    this.device = "cuda"
-    this.device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    return true
-  
-  }
+    /** Crea: any;
+    if (((((($1) {
+      return MockHandler(this.model_name, platform) { any)) { any {any = "cuda");}"
+    model_path) {any = this) { an) { an: any;
+    handler) { any: any = AutoMod: any;
+    retu: any;
   $1($2) {
-    """Initialize for OPENVINO platform."""
-    try ${$1} catch($2: $1) {
-      logger.warning("openvino !available, using CPU")
-      return this.init_cpu()
-  
-    }
+    /** Crea: any;
+    try ${$1} catch(error) { any) {) { any {return MockHandler(this.model_name, platform: any: any: any: any: any: any = "cpu");};"
   $1($2) {
-    """Initialize for MPS platform."""
-    if ($1) {
-      logger.warning("torch !available, using CPU")
-      return this.init_cpu()
-    
-    }
-    this.platform = "MPS"
-    this.device = "mps"
-    this.device_name = "mps" if hasattr(torch.backends, 'mps') && torch.backends.mps.is_available() else "cpu"
-    return true
-  
-  }
+    /** Crea: any;
+    if (((((($1) {
+      return MockHandler(this.model_name, platform) { any)) { any {any = "mps");}"
+    model_path) {any = this) { an) { an: any;
+    handler) { any: any = AutoMod: any;
+    retu: any;
   $1($2) {
-    """Initialize for ROCM platform."""
-    if ($1) {
-      logger.warning("torch !available, using CPU")
-      return this.init_cpu()
-    
-    }
-    this.platform = "ROCM"
-    this.device = "rocm"
-    this.device_name = "cuda" if torch.cuda.is_available() && hasattr(torch, 'version') && hasattr(torch.version, 'hip') && torch.version.hip is !null else "cpu"
-    return true
-  
-  }
+    /** Crea: any;
+    if (((((($1) {
+      return MockHandler(this.model_name, platform) { any)) { any {any = "rocm");}"
+    model_path) {any = this) { an) { an: any;
+    handler) { any: any = AutoMod: any;
+    retu: any;
   $1($2) {
-    """Initialize for WEBNN platform."""
-    # Check for WebNN availability via environment variable || actual detection
-    webnn_available = os.environ.get("WEBNN_AVAILABLE", "0") == "1" || \
-            os.environ.get("WEBNN_SIMULATION", "0") == "1" || \
-            HAS_WEB_PLATFORM
-    
-  }
-    if ($1) {
-      logger.warning("WebNN !available, using simulation")
-    
-    }
-    this.platform = "WEBNN"
-    this.device = "webnn"
-    this.device_name = "webnn"
-    
-  }
-    # Set simulation flag if !using real WebNN
-    this.is_simulation = os.environ.get("WEBNN_SIMULATION", "0") == "1"
-    
-    return true
-  
+    /** Crea: any;
+    // Che: any;
+    if (((($1) {
+      model_path) { any) { any) { any) { any = this) { an) { an: any;
+      // U: any;
+      web_processors) { any: any: any = create_mock_processo: any;
+      // Crea: any;
+      handler: any: any: any = lambda x) { ${$1}
+      retu: any;
+    } else {// Fallba: any;
+      handler: any: any = MockHandler(this.model_path || this.model_name, platform: any: any: any: any: any: any = "webnn");"
+      retu: any;
   $1($2) {
-    """Initialize for WEBGPU platform."""
-    # Check for WebGPU availability via environment variable || actual detection
-    webgpu_available = os.environ.get("WEBGPU_AVAILABLE", "0") == "1" || \
-            os.environ.get("WEBGPU_SIMULATION", "0") == "1" || \
-            HAS_WEB_PLATFORM
-    
-  }
-    if ($1) {
-      logger.warning("WebGPU !available, using simulation")
-    
-    }
-    this.platform = "WEBGPU"
-    this.device = "webgpu"
-    this.device_name = "webgpu"
-    
-    # Set simulation flag if !using real WebGPU
-    this.is_simulation = os.environ.get("WEBGPU_SIMULATION", "0") == "1"
-    
-    return true
-  
-  # Handler creation methods
-  
-  $1($2) {
-    """Create handler for CPU platform."""
-    if ($1) {
-      return MockHandler(this.model_name, platform="cpu")
-    
-    }
-    model_path = this.get_model_path_or_name()
-    handler = AutoModel.from_pretrained(model_path)
-    return handler
-  
-  }
-  $1($2) {
-    """Create handler for CUDA platform."""
-    if ($1) {
-      return MockHandler(this.model_name, platform="cuda")
-    
-    }
-    model_path = this.get_model_path_or_name()
-    handler = AutoModel.from_pretrained(model_path).to(this.device_name)
-    return handler
-  
-  }
-  $1($2) {
-    """Create handler for OPENVINO platform."""
-    try ${$1} catch($2: $1) {
-      return MockHandler(this.model_name, platform="cpu")
-  
-    }
-  $1($2) {
-    """Create handler for MPS platform."""
-    if ($1) {
-      return MockHandler(this.model_name, platform="mps")
-    
-    }
-    model_path = this.get_model_path_or_name()
-    handler = AutoModel.from_pretrained(model_path).to(this.device_name)
-    return handler
-  
-  }
-  $1($2) {
-    """Create handler for ROCM platform."""
-    if ($1) {
-      return MockHandler(this.model_name, platform="rocm")
-    
-    }
-    model_path = this.get_model_path_or_name()
-    handler = AutoModel.from_pretrained(model_path).to(this.device_name)
-    return handler
-  
-  }
-  $1($2) {
-    """Create handler for WEBNN platform."""
-    # Check if enhanced web platform support is available
-    if ($1) {
-      model_path = this.get_model_path_or_name()
-      # Use the enhanced WebNN handler from fixed_web_platform
-      web_processors = create_mock_processors()
-      # Create a WebNN-compatible handler with the right implementation type
-      handler = lambda x: ${$1}
-      return handler
+    /** Crea: any;
+    // Che: any;
+    if (((($1) {
+      model_path) { any) { any) { any) { any = this) { an) { an: any;
+      // U: any;
+      web_processors) { any: any: any = create_mock_processo: any;
+      // Crea: any;
+      handler: any: any: any = lambda x) { ${$1}
+      retu: any;
     } else {
-      # Fallback to basic mock handler
-      handler = MockHandler(this.model_path || this.model_name, platform="webnn")
-      return handler
-  
+      // Fallba: any;
+      handler) { any) {any: any: any: any: any: any = MockHandler(this.model_path || this.model_name, platform: any: any: any: any: any: any = "webgpu");"
+      retu: any;
+  $1($2) {/** R: any;
+    console.log($1) {}
+    // Initiali: any;
     }
-  $1($2) {
-    """Create handler for WEBGPU platform."""
-    # Check if enhanced web platform support is available
-    if ($1) {
-      model_path = this.get_model_path_or_name()
-      # Use the enhanced WebGPU handler from fixed_web_platform
-      web_processors = create_mock_processors()
-      # Create a WebGPU-compatible handler with the right implementation type
-      handler = lambda x: ${$1}
-      return handler
-    } else {
-      # Fallback to basic mock handler
-      handler = MockHandler(this.model_path || this.model_name, platform="webgpu")
-      return handler
-  
-    }
-  $1($2) {
-    """Run the test for a specific platform."""
-    console.log($1)
-    
-  }
-    # Initialize platform
-    }
-    if ($1) {
-      this.init_cpu()
-      handler = this.create_cpu_handler()
-    elif ($1) {
-      this.init_cuda()
-      handler = this.create_cuda_handler()
-    elif ($1) {
-      this.init_openvino()
-      handler = this.create_openvino_handler()
-    elif ($1) {
-      this.init_mps()
-      handler = this.create_mps_handler()
-    elif ($1) {
-      this.init_rocm()
-      handler = this.create_rocm_handler()
-    elif ($1) {
-      this.init_webnn()
-      handler = this.create_webnn_handler()
-    elif ($1) ${$1} else {
-      console.log($1)
-      return
-    
-    }
-    # Run test
+    if (((((($1) {
+      this) { an) { an: any;
+      handler) {any = thi) { an: any;} else if (((((($1) {
+      this) { an) { an: any;
+      handler) { any) { any) { any = thi) { an: any;
+    else if ((((((($1) {
+      this) { an) { an: any;
+      handler) { any) { any) { any = thi) { an: any;
+    else if ((((((($1) {
+      this) { an) { an: any;
+      handler) { any) { any) { any = thi) { an: any;
+    else if ((((((($1) {
+      this) { an) { an: any;
+      handler) { any) { any) { any = thi) { an: any;
+    else if ((((((($1) {
+      this) { an) { an: any;
+      handler) { any) { any) { any = thi) { an: any;
+    else if ((((((($1) { ${$1} else {console.log($1);
+      return) { an) { an: any;
     }
     try {
-      # Prepare test input
-      test_input = this.test_text
+      // Prepar) { an: any;
+      test_input) {any = th: any;}
+      // Proce: any;
+      start_time) { any) { any) { any = ti: any;
+      result) {any = handl: any;
+      elapsed: any: any: any = ti: any;}
+      // Pri: any;
+      conso: any;
+      if (((((($1) { ${$1}");"
       
     }
-      # Process input
-      start_time = time.time()
-      result = handler(test_input)
-      elapsed = time.time() - start_time
-      
-    }
-      # Print result
-      console.log($1)
-      if ($1) ${$1}")
-      
-    }
-      # Try batch processing if this is a known platform
-      if ($1) {
-        # Use process_for_web for batch processing
-        if ($1) ${$1} catch($2: $1) {
-      console.log($1)
-        }
-      import * as $1
+      // Try) { an) { an: any;
+      if ((($1) {
+        // Use) { an) { an: any;
+        if ((($1) { ${$1} catch(error) { any)) { any {console.log($1)}
+      import) { an) { an: any;
       }
-      traceback.print_exc()
-      return null
-
-    }
+      tracebac) { an: any;
+      retu: any;
 
     }
 $1($2) {
-  """Main function to run the test."""
-  parser = argparse.ArgumentParser(description="Test BERT model on different platforms")
-  parser.add_argument("--model", type=str, default="bert-base-uncased",
-          help="Model name || path")
-  parser.add_argument("--platform", type=str, default="cpu",
-          choices=["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"],
-          help="Platform to test on")
-  args = parser.parse_args()
-  
-}
-  # Create && run test
+  /** Ma: any;
+  parser) {any = argparse.ArgumentParser(description="Test BE: any;"
+  parser.add_argument("--model", type) { any: any = str, default: any: any: any: any: any: any = "bert-base-uncased",;"
+          help: any: any: any = "Model na: any;"
+  parser.add_argument("--platform", type: any: any = str, default: any: any: any: any: any: any = "cpu",;"
+          choices: any: any: any: any: any: any = ["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"],;"
+          help: any: any: any = "Platform t: an: any;"
+  args: any: any: any = pars: any;}
+  // Crea: any;
     }
-  test = TestHFBert(model_name=args.model)
-  }
-  test.run_test(platform=args.platform)
-    }
-
-  }
-
-  }
-if ($1) {
-  main()
+  test: any: any: any: any: any: any = TestHFBert(model_name=args.model);
+  };
+  test.run_test(platform=args.platform);
+    };;
+if (((($1) {;
+  main) { an) { an) { an: any;

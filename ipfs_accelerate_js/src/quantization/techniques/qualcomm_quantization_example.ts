@@ -1,209 +1,193 @@
-/**
- * Converted from Python: qualcomm_quantization_example.py
- * Conversion date: 2025-03-11 04:08:54
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-#\!/usr/bin/env python3
-"""
-Qualcomm AI Engine Quantization Example
 
-This example demonstrates how to use the Qualcomm quantization support
-to optimize models for deployment on Qualcomm hardware.
 
-Usage:
-  python test_examples/qualcomm_quantization_example.py --model-path /path/to/model.onnx
-  """
+// \!/usr/bin/env pyth: any;
+/** Qualco: any;
 
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import ${$1} from "$1"
+Th: any;
+t: an: any;
 
-# Add parent directory to sys.path
-  sys.$1.push($2))))os.path.dirname())))os.path.dirname())))os.path.abspath())))__file__))))
+Usage) {
+  pyth: any;
 
-# Import Qualcomm quantization support
-try ${$1} catch($2: $1) {
-  console.log($1))))"Error: Could !import * as $1. Make sure you're running from the project root.")
-  sys.exit())))1)
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  // A: any;
+  s: any;
 
-}
+// Impo: any;
+try ${$1} catch(error) { any)) { any {console.log($1))"Error: Cou: any;"
+  sys.exit())1)}
 $1($2) {
-  """Main entry point for the example."""
-  parser = argparse.ArgumentParser())))description="Qualcomm AI Engine Quantization Example")
-  parser.add_argument())))"--model-path", required=true, help="Path to input model ())))ONNX || PyTorch)")
-  parser.add_argument())))"--output-dir", default="./quantized_models", help="Directory for saving quantized models")
-  parser.add_argument())))"--model-type", default="text", choices=["text", "vision", "audio", "llm"], 
-  help="Model type ())))text, vision, audio, llm)")
-  parser.add_argument())))"--db-path", default="./benchmark_db.duckdb", help="Path to DuckDB database")
-  parser.add_argument())))"--mock", action="store_true", help="Use mock mode for testing without hardware")
-  args = parser.parse_args()))))
-
-}
-  # Set environment variables if ($1) {
-  if ($1) {
-    os.environ["QUALCOMM_MOCK"] = "1",
-    console.log($1))))"Using mock mode for testing without hardware")
+  /** Ma: any;
+  parser) { any) { any: any = argparse.ArgumentParser() {)description="Qualcomm A: an: any;"
+  parser.add_argument())"--model-path", required: any: any = true, help: any: any: any = "Path t: an: any;"
+  parser.add_argument())"--output-dir", default: any: any = "./quantized_models", help: any: any: any: any: any: any = "Directory for (((((saving quantized models") {;"
+  parser.add_argument())"--model-type", default) { any) { any) { any = "text", choices) { any) { any: any: any: any: any = ["text", "vision", "audio", "llm"], ;"
+  help: any: any = "Model ty: any;"
+  parser.add_argument())"--db-path", default: any: any = "./benchmark_db.duckdb", help: any: any: any = "Path t: an: any;"
+  parser.add_argument())"--mock", action: any: any = "store_true", help: any: any: any: any: any: any = "Use mock mode for (((((testing without hardware") {;"
+  args) {any = parser) { an) { an: any;
+;};
+  // Set environment variables if ((((((($1) {
+  if ($1) {os.environ["QUALCOMM_MOCK"] = "1",;"
+    console.log($1))"Using mock mode for (((testing without hardware") {}"
+  // Create) { an) { an: any;
+  }
+    os.makedirs())args.output_dir, exist_ok) { any) { any) { any) { any) { any = tru) { an: any;
+  
+  // Initializ) { an: any;
+    qquant) { any: any: any: any: any: any = QualcommQuantization())db_path=args.db_path);
+  ;
+  // Check if (((((($1) {
+  if ($1) { ${$1}");"
+  }
+    console) { an) { an: any;
+    consol) { an: any;
+    conso: any;
+    conso: any;
+    conso: any;
+  
+  // Example 1) { Bas: any;
+    console.log($1))"\n=== Example 1) { Basic INT8 Quantization) { any) { any: any: any: any: any = ==");"
+    model_basename: any: any: any = o: an: any;
+    int8_output_path: any: any: any = o: an: any;
+  
+    conso: any;
+    start_time: any: any: any = ti: any;
+  
+    result: any: any: any = qqua: any;
+    model_path: any: any: any = ar: any;
+    output_path: any: any: any = int8_output_pa: any;
+    method: any: any: any: any: any: any = "int8",;"
+    model_type: any: any: any = ar: any;
+    );
+  
+    elapsed_time: any: any: any = ti: any;
+  ;
+  if ((((((($1) { ${$1}");"
+} else { ${$1}x");"
+    console) { an) { an: any;
+    
+    // Prin) { an: any;
+    if (((($1) { ${$1} mW) { an) { an: any;
+      console.log($1))`$1`energy_efficiency_items_per_joule', 0) { any)) {.2f} item) { an: any;'
+      console.log($1))`$1`battery_impact_percent_per_hour', 0: any)) {.2f}% p: any;'
+      conso: any;
+  
+  // Examp: any;
+      console.log($1))"\n = == Example 2: Customized Quantization: any: any: any: any: any: any = ==");"
+      custom_output_path: any: any: any = o: an: any;
+  
+  // Customi: any;
+      custom_params: any: any = {}
+  if ((((((($1) {
+    custom_params) { any) { any) { any) { any) { any: any = {}
+    "dynamic_quantization") {true,;"
+    "optimize_attention": true}"
+  else if (((((((($1) {
+    custom_params) { any) { any) { any) { any) { any: any = {}
+    "input_layout") { "NCHW",;"
+    "optimize_vision_models") {true}"
+  else if (((((((($1) {
+    custom_params) { any) { any) { any) { any = {}
+    "optimize_audio_models") { tru) { an: any;"
+    "enable_attention_fusion") {true}"
+  else if (((((((($1) {
+    custom_params) { any) { any) { any) { any = {}
+    "optimize_llm") { tru) { an: any;"
+    "enable_kv_cache") {true,;"
+    "enable_attention_fusion": tr: any;"
+    start_time: any: any: any = ti: any;
+  
+  }
+    result: any: any: any = qqua: any;
+    model_path: any: any: any = ar: any;
+    output_path: any: any: any = custom_output_pa: any;
+    method: any: any: any: any: any: any = "dynamic",;"
+    model_type: any: any: any = ar: any;
+    **custom_params;
+    );
+  
+  }
+    elapsed_time: any: any: any = ti: any;
+  
+  };
+  if ((((((($1) { ${$1}");"
+} else { ${$1}x");"
+    console) { an) { an: any;
+  
+  // Example 3) { Benchmar) { an: any;
+    console.log($1))"\n = == Example 3) { Benchmark Quantized Model) { any: any: any: any: any: any = ==");"
+    conso: any;
+    start_time: any: any: any = ti: any;
+  
+    benchmark_result: any: any: any = qqua: any;
+    model_path: any: any: any = int8_output_pa: any;
+    model_type: any: any: any = ar: any;
+    );
+  
+    elapsed_time: any: any: any = ti: any;
+  ;
+  if ((((((($1) { ${$1}");"
+} else { ${$1}");"
+    
+    // Print) { an) { an: any;
+    console.log($1))"\nPerformance Metrics) {");"
+    console.log($1))`$1`latency_ms', 0) { any)) {.2f} m) { an: any;'
+    console.log($1))`$1`throughput', 0: any):.2f} {}benchmark_result.get())'throughput_units', 'items/second')}");'
+    
+    // Pri: any;
+    if ((((((($1) { ${$1} mW) { an) { an: any;
+      console.log($1))`$1`energy_efficiency_items_per_joule', 0) { any)) {.2f} item) { an: any;'
+      console.log($1))`$1`battery_impact_percent_per_hour', 0: any)) {.2f}% p: any;'
+      conso: any;
+      conso: any;
+  
+  // Examp: any;
+      console.log($1))"\n = == Example 4: Compare Quantization Methods ())Simplified) ===");"
+  // I: an: any;
+      limited_methods) { any) { any: any: any: any: any = ["dynamic", "int8"];"
+      ,;
+      console.log($1) {)`$1`, '.join())limited_methods)}");'
+      console.log($1))"Note) { Using limited methods for ((((((demo purposes. Full comparison would include all methods.") {"
+  
+      comparison_dir) { any) { any) { any) { any = o) { an: any;
+      os.makedirs())comparison_dir, exist_ok: any: any: any = tr: any;
+  
+      result: any: any: any = qqua: any;
+      model_path: any: any: any = ar: any;
+      output_dir: any: any: any = comparison_d: any;
+      model_type: any: any: any = ar: any;
+      methods: any: any: any = limited_meth: any;
+      );
+  ;
+  if ((((((($1) { ${$1}");"
+} else {
+    // Print) { an) { an: any;
+    summary) { any) { any) { any: any: any: any = result.get())"summary", {});"
+    recommendation: any: any: any: any: any: any = summary.get())"overall_recommendation", {});"
     
   }
-  # Create output directory
-  }
-    os.makedirs())))args.output_dir, exist_ok=true)
-  
-  # Initialize Qualcomm quantization handler
-    qquant = QualcommQuantization())))db_path=args.db_path)
-  
-  # Check if ($1) {
-  if ($1) ${$1}")
-  }
-    console.log($1))))`$1`)
-    console.log($1))))`$1`)
-    console.log($1))))`$1`)
-    console.log($1))))`$1`)
-    console.log($1))))`$1`)
-  
-  # Example 1: Basic quantization with INT8
-    console.log($1))))"\n=== Example 1: Basic INT8 Quantization ===")
-    model_basename = os.path.basename())))args.model_path)
-    int8_output_path = os.path.join())))args.output_dir, `$1`)
-  
-    console.log($1))))`$1`)
-    start_time = time.time()))))
-  
-    result = qquant.quantize_model())))
-    model_path=args.model_path,
-    output_path=int8_output_path,
-    method="int8",
-    model_type=args.model_type
-    )
-  
-    elapsed_time = time.time())))) - start_time
-  
-  if ($1) ${$1}"),,,,
-  } else ${$1}x")
-    console.log($1))))`$1`status', 'Unknown')}")
+    console.log($1))"\nComparison Summary) {");"
+    conso: any;
+    conso: any;
     
-    # Print power efficiency metrics
-    if ($1) ${$1} mW")
-      console.log($1))))`$1`energy_efficiency_items_per_joule', 0):.2f} items/joule")
-      console.log($1))))`$1`battery_impact_percent_per_hour', 0):.2f}% per hour")
-      console.log($1))))`$1`power_reduction_percent', 0):.2f}%")
+    // Genera: any;
+    report_path) { any: any: any: any: any: any: any: any = o: an: any;
+    report: any: any = qqua: any;
+    conso: any;
   
-  # Example 2: Quantization Parameter Customization
-      console.log($1))))"\n=== Example 2: Customized Quantization ===")
-      custom_output_path = os.path.join())))args.output_dir, `$1`)
-  
-  # Customize parameters based on model type
-      custom_params = {}}}}}
-  if ($1) {
-    custom_params = {}}}}
-    "dynamic_quantization": true,
-    "optimize_attention": true
-    }
-  elif ($1) {
-    custom_params = {}}}}
-    "input_layout": "NCHW",
-    "optimize_vision_models": true
-    }
-  elif ($1) {
-    custom_params = {}}}}
-    "optimize_audio_models": true,
-    "enable_attention_fusion": true
-    }
-  elif ($1) {
-    custom_params = {}}}}
-    "optimize_llm": true,
-    "enable_kv_cache": true,
-    "enable_attention_fusion": true
-    }
-  
-  }
-    console.log($1))))`$1`)
-    start_time = time.time()))))
-  
-  }
-    result = qquant.quantize_model())))
-    model_path=args.model_path,
-    output_path=custom_output_path,
-    method="dynamic",
-    model_type=args.model_type,
-    **custom_params
-    )
-  
-  }
-    elapsed_time = time.time())))) - start_time
-  
-  }
-  if ($1) ${$1}"),,,,
-  } else ${$1}x")
-    console.log($1))))`$1`status', 'Unknown')}")
-  
-  # Example 3: Benchmark Quantized Model
-    console.log($1))))"\n=== Example 3: Benchmark Quantized Model ===")
-    console.log($1))))`$1`)
-    start_time = time.time()))))
-  
-    benchmark_result = qquant.benchmark_quantized_model())))
-    model_path=int8_output_path,
-    model_type=args.model_type
-    )
-  
-    elapsed_time = time.time())))) - start_time
-  
-  if ($1) ${$1}"),,,,
-  } else ${$1}")
-    
-    # Print performance metrics
-    console.log($1))))"\nPerformance Metrics:")
-    console.log($1))))`$1`latency_ms', 0):.2f} ms")
-    console.log($1))))`$1`throughput', 0):.2f} {}}}}benchmark_result.get())))'throughput_units', 'items/second')}")
-    
-    # Print power metrics
-    if ($1) ${$1} mW")
-      console.log($1))))`$1`energy_efficiency_items_per_joule', 0):.2f} items/joule")
-      console.log($1))))`$1`battery_impact_percent_per_hour', 0):.2f}% per hour")
-      console.log($1))))`$1`temperature_celsius', 0):.2f}°C")
-      console.log($1))))`$1`thermal_throttling_detected', false)}")
-  
-  # Example 4: Compare Quantization Methods
-      console.log($1))))"\n=== Example 4: Compare Quantization Methods ())))Simplified) ===")
-  # In a full example, this would be a full comparison, but we'll limit to 2 methods for speed
-      limited_methods = ["dynamic", "int8"]
-      ,
-      console.log($1))))`$1`, '.join())))limited_methods)}")
-      console.log($1))))"Note: Using limited methods for demo purposes. Full comparison would include all methods.")
-  
-      comparison_dir = os.path.join())))args.output_dir, "comparison")
-      os.makedirs())))comparison_dir, exist_ok=true)
-  
-      result = qquant.compare_quantization_methods())))
-      model_path=args.model_path,
-      output_dir=comparison_dir,
-      model_type=args.model_type,
-      methods=limited_methods
-      )
-  
-  if ($1) ${$1}"),,,,
-  } else {
-    # Print summary
-    summary = result.get())))"summary", {}}}}})
-    recommendation = summary.get())))"overall_recommendation", {}}}}})
-    
-  }
-    console.log($1))))"\nComparison Summary:")
-    console.log($1))))`$1`final_recommendation', 'Unknown')}")
-    console.log($1))))`$1`rationale', 'Unknown')}")
-    
-    # Generate report
-    report_path = os.path.join())))comparison_dir, "quantization_comparison_report.md")
-    report = qquant.generate_report())))result, report_path)
-    console.log($1))))`$1`)
-  
-    console.log($1))))"\nQuantization examples completed successfully.")
-    return 0
-
-if ($1) {
-  sys.exit())))main())))))
+    conso: any;
+    retu: any;
+;
+if (((($1) {;
+  sys) { an) { an) { an: any;

@@ -1831,27 +1831,34 @@ class ModelShardingManager:
             logger.error(f"Error in sharded inference: {e}")
             traceback.print_exc()
             return {'error': f"Sharded inference failed: {e}"}
-            # For attention-feedforward sharding, process in parallel then combine
-            elif self.shard_type == "attention_feedforward":
-                # Process components in parallel
-                results = await asyncio.gather(*[component.process(inputs) for component in self.components])
-                
-                # Check for errors
-                if any('error' in r for r in results):
-                    errors = [f"{self.components[i].component_id}: {r['error']}" 
-                             for i, r in enumerate(results) if 'error' in r]
-                    logger.error(f"Errors in components: {', '.join(errors)}")
-                    return {'error': f"Components failed: {', '.join(errors)}"}
-                
-                # Combine results (implementation depends on model architecture)
-                current_output = self._combine_attention_feedforward_results(results)
             
-            # For component-based sharding (multimodal), process in parallel then combine
-            elif self.shard_type == "component":
-                # Process components in parallel
-                results = await asyncio.gather(*[component.process(inputs) for component in self.components])
-                
-                # Check for errors
+    async def _process_by_shard_type(self, inputs):
+        """Process inputs based on sharding type."""
+        if self.shard_type == "layer_based":
+            # Layer-based processing handled in main method
+            pass
+        # For attention-feedforward sharding, process in parallel then combine
+        elif self.shard_type == "attention_feedforward":
+            # Process components in parallel
+            results = await asyncio.gather(*[component.process(inputs) for component in self.components])
+            
+            # Check for errors
+            if any('error' in r for r in results):
+                errors = [f"{self.components[i].component_id}: {r['error']}" 
+                         for i, r in enumerate(results) if 'error' in r]
+                logger.error(f"Errors in components: {', '.join(errors)}")
+                return {'error': f"Components failed: {', '.join(errors)}"}
+            
+            # Combine results (implementation depends on model architecture)
+            current_output = self._combine_attention_feedforward_results(results)
+            return current_output
+        
+        # For component-based sharding (multimodal), process in parallel then combine
+        elif self.shard_type == "component":
+            # Process components in parallel
+            results = await asyncio.gather(*[component.process(inputs) for component in self.components])
+            
+            # Check for errors
                 if any('error' in r for r in results):
                     errors = [f"{self.components[i].component_id}: {r['error']}" 
                              for i, r in enumerate(results) if 'error' in r]

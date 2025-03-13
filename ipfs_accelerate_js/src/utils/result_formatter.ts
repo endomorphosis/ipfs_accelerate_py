@@ -1,539 +1,389 @@
-/**
- * Converted from Python: result_formatter.py
- * Conversion date: 2025-03-11 04:09:38
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+// WebG: any;
+import { HardwareBack: any;
 
 
-export interface Props {
-  include_metadata: metadata;
-  include_raw_output: formatted_result;
-  include_raw_output: formatted;
-  include_metadata: error_response;
-  include_metadata: result;
-}
+export interface Props {include_metadata: meta: any;
+  include_raw_out: any;
+  include_raw_out: any;
+  include_metad: any;
+  include_metad: any;}
 
-"""
-Result Formatter for Unified Web Framework (August 2025)
+/** Result Formatter for ((((((Unified Web Framework (August 2025) {
 
-This module provides standardized formatting for inference results across
-different model types && browsers:
+This) { an) { an: any;
+different model types && browsers) {
 
-- Common result structure across different models
-- Detailed metadata for model inference
-- Performance statistics collection
-- Browser-specific result formatting
-- Error handling integration
+- Commo) { an: any;
+- Detail: any;
+- Performan: any;
+- Brows: any;
+- Err: any;
 
-Usage:
-  from fixed_web_platform.unified_framework.result_formatter import (
-    ResultFormatter,
-    format_inference_result,
-    format_error_response
-  )
+Usage) {
+  import {(} fr: any;
+    ResultFormatt: any;
+    format_inference_result) { a: any;
+    format_error_respo: any;
+  );
   
-  # Create formatter for specific model type
-  formatter = ResultFormatter(model_type="text")
+  // Crea: any;
+  formatter) { any) { any = ResultFormatter(model_type="text"): any {;"
   
-  # Format raw inference result
-  formatted_result = formatter.format_result(raw_result)
+  // Form: any;
+  formatted_result: any: any = formatt: any;
+  ;
+  // A: any;
+  formatter.add_performance_metrics(formatted_result: any, ${$1});
   
-  # Add performance metrics
-  formatter.add_performance_metrics(formatted_result, ${$1})
-  
-  # Format error response
-  error_response = formatter.format_error(
-    error_type="configuration_error",
-    message="Invalid precision setting"
-  )
-"""
+  // Form: any;
+  error_response: any: any: any = formatt: any;
+    error_type: any: any: any: any: any: any = "configuration_error",;"
+    message: any: any: any = "Invalid precisi: any;"
+  ) */;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import ${$1} from "$1"
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+import ${$1} fr: any;
 
-# Initialize logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("unified_framework.result_formatter")
-
-class $1 extends $2 {
-  """
-  Standardized result formatting for web platform inference.
+// Initiali: any;
+logging.basicConfig(level = loggi: any;
+logger: any: any: any = loggi: any;
+;
+class $1 extends $2 {/** Standardiz: any;
+  acro: any;
+  statisti: any;
   
-}
-  This class provides consistent formatting for inference results
-  across different model types, with detailed metadata && performance
-  statistics.
-  """
-  
-  def __init__(self, 
-        $1: string = "text",
-        $1: $2 | null = null,
-        $1: boolean = true,
-        $1: boolean = false):
-    """
-    Initialize result formatter.
+  function this( this: any:  any: any): any {  any: any): any {: any { any, 
+        $1): any { string: any: any: any: any: any: any = "text",;"
+        $1: $2 | null: any: any: any = nu: any;
+        $1: boolean: any: any: any = tr: any;
+        $1: boolean: any: any = fal: any;
+    /** Initiali: any;
     
-    Args:
-      model_type: Type of model (text, vision, audio, multimodal)
-      browser: Browser information for browser-specific formatting
-      include_metadata: Whether to include metadata in results
-      include_raw_output: Whether to include raw model output
-    """
-    this.model_type = model_type
-    this.browser = browser
-    this.include_metadata = include_metadata
-    this.include_raw_output = include_raw_output
+    A: any;
+      model_t: any;
+      brow: any;
+      include_metadata) { Wheth: any;
+      include_raw_output) { Wheth: any;
+    this.model_type = model_t: any;
+    this.browser = brow: any;
+    this.include_metadata = include_metad: any;
+    this.include_raw_output = include_raw_out: any;
   
-  def format_result(self, 
-          $1: Record<$2, $3>,
-          $1: $2 | null = null,
-          input_summary: Optional[Dict[str, Any]] = null) -> Dict[str, Any]:
-    """
-    Format inference result into standardized structure.
+  function this( this: any:  any: any): any {  a: an: any;
+          $1: $2 | null: any: any: any = nu: any;
+          input_summary: Record<str, Any | null> = nu: any;
+    /** Form: any;
     
-    Args:
-      result: Raw inference result from model
-      model_name: Name of the model used
-      input_summary: Summary of input data
+    A: any;
+      res: any;
+      model_n: any;
+      input_summ: any;
       
-    Returns:
-      Formatted result dictionary
-    """
-    # Start with base structure
-    formatted_result = ${$1}
+    Retu: any;
+      Formatt: any;
+    // Sta: any;
+    formatted_result: any: any: any = ${$1}
     
-    # Add metadata if enabled
-    if ($1) {
-      metadata = ${$1}
+    // A: any;
+    if (((($1) {
+      metadata) { any) { any) { any) { any = ${$1}
+      // Ad) { an: any;
+      if (((($1) {metadata["input_summary"] = input_summary}"
+      formatted_result["metadata"] = metadat) { an) { an: any;"
       
-    }
-      # Add input summary if provided
-      if ($1) {
-        metadata["input_summary"] = input_summary
-        
+    // Ad) { an: any;
+    if (((($1) {formatted_result["raw_output"] = result) { an) { an: any;"
+  
+  function this( this) { any:  any: any): any {  any: any): any { any, result: any): any { A: any;
+    /** Form: any;
+    
+    A: any;
+      res: any;
+      
+    Retu: any;
+      Formatt: any;
+    // Hand: any;
+    if ((((((($1) {
+      // Process) { an) { an: any;
+      if ((($1) {
+        return this._format_text_result(result) { any) { an) { an: any;
+      else if ((((($1) {return this._format_vision_result(result) { any)} else if ((($1) {
+        return this._format_audio_result(result) { any) { an) { an: any;
+      else if ((((($1) { ${$1} else {// Default) { an) { an: any;
+        retur) { an: any;
       }
-      formatted_result["metadata"] = metadata
-      
-    # Add raw output if enabled
-    if ($1) {
-      formatted_result["raw_output"] = result
-    
-    }
-    return formatted_result
-  
-  def _format_output_by_type(self, result: Any) -> Dict[str, Any]:
-    """
-    Format output based on model type.
-    
-    Args:
-      result: Raw result from model
-      
-    Returns:
-      Formatted result specific to model type
-    """
-    # Handle dictionary results
-    if ($1) {
-      # Process based on model type
-      if ($1) {
-        return this._format_text_result(result)
-      elif ($1) {
-        return this._format_vision_result(result)
-      elif ($1) {
-        return this._format_audio_result(result)
-      elif ($1) ${$1} else {
-        # Default formatting for unknown types
-        return result
-        
-      }
-    # Handle string results
-      }
-    elif ($1) {
+    else if ((((($1) {
       return ${$1}
-      
-    }
-    # Handle list results
+    // Handle) { an) { an: any;
       }
-    elif ($1) {
+    else if ((($1) {
       return ${$1}
-      
-    }
-    # Return as is for other types
+    // Return) { an) { an: any;
       }
     return ${$1}
-    }
   
-  def _format_text_result(self, $1: Record<$2, $3>) -> Dict[str, Any]:
-    """Format text model results."""
-    # Extract common text output fields
-    formatted = {}
+  function this(this) {  any: any): any { any): any {  any) { any)) { any { any, $1)) { any { Record<$2, $3>) -> Dict[str, Any]) {
+    /** Form: any;
+    // Extra: any;
+    formatted) { any: any: any: any = {}
     
-    if ($1) {
-      formatted["text"] = result["text"]
-    elif ($1) {
-      formatted["text"] = result["generated_text"]
-    elif ($1) {
-      formatted["text"] = result["output"]
-    
+    if ((((((($1) {
+      formatted["text"] = result) { an) { an: any;"
+    else if (((($1) {formatted["text"] = result["generated_text"]} else if (($1) {formatted["text"] = result) { an) { an: any;"
     }
-    # Extract token counts if available
+    if ((($1) {formatted["token_count"] = result) { an) { an: any;"
     }
-    if ($1) {
-      formatted["token_count"] = result["token_count"]
-    
-    }
-    # Extract embeddings if available
-    }
-    if ($1) {
-      formatted["embeddings"] = ${$1}
-      
-    }
-    return formatted
+    if ((($1) {
+      formatted["embeddings"] = ${$1}"
+    return) { an) { an: any;
   
-  def _format_vision_result(self, $1: Record<$2, $3>) -> Dict[str, Any]:
-    """Format vision model results."""
-    # Extract common vision output fields
-    formatted = {}
+  function this( this) { any:  any: any): any {  any: any): any { any, $1)) { any { Record<$2, $3>) -> Dict[str, Any]) {
+    /** Form: any;
+    // Extra: any;
+    formatted: any: any: any = {}
     
-    # Handle different vision outputs
-    if ($1) {
-      # Classification model
-      formatted["classifications"] = result["classifications"]
-      
-    }
-    elif ($1) {
-      # Object detection model
-      formatted["detections"] = result.get("bounding_boxes", result.get("detections", []))
-      
-    }
-    elif ($1) {
-      # Segmentation model
-      formatted["segmentation"] = ${$1}
-      
-    }
-      if ($1) {
-        formatted["segmentation"]["map"] = result["segmentation_map"]
-    
-      }
-    # Extract embeddings if available
-    if ($1) {
-      formatted["embeddings"] = ${$1}
-      
-    }
-    return formatted
+    // Hand: any;
+    if ((((((($1) {// Classification) { an) { an: any;
+      formatted["classifications"] = result["classifications"]}"
+    else if (((($1) {
+      // Object) { an) { an: any;
+      formatted["detections"] = (result["bounding_boxes"] !== undefined ? result["bounding_boxes"] ) {(result["detections"] !== undefined ? result["detections"] ) { []))} else if (((((($1) {"
+      // Segmentation) { an) { an: any;
+      formatted["segmentation"] = ${$1}"
+      if ((($1) {formatted["segmentation"]["map"] = result) { an) { an: any;"
+    if ((($1) {
+      formatted["embeddings"] = ${$1}"
+    return) { an) { an: any;
   
-  def _format_audio_result(self, $1: Record<$2, $3>) -> Dict[str, Any]:
-    """Format audio model results."""
-    # Extract common audio output fields
-    formatted = {}
+  function this( this) { any:  any: any): any {  any: any): any { any, $1)) { any { Record<$2, $3>) -> Dict[str, Any]) {
+    /** Form: any;
+    // Extra: any;
+    formatted: any: any: any = {}
     
-    # Handle different audio outputs
-    if ($1) {
-      # Speech recognition model
-      formatted["transcription"] = result["transcription"]
-      
-    }
-    elif ($1) {
-      # Audio classification model
-      formatted["classifications"] = result["classification"]
-      
-    }
-    elif ($1) {
-      # Audio embedding model
-      formatted["embeddings"] = ${$1}
-    
-    }
-    return formatted
+    // Hand: any;
+    if ((((((($1) {// Speech) { an) { an: any;
+      formatted["transcription"] = result["transcription"]}"
+    else if (((($1) {// Audio) { an) { an: any;
+      formatted["classifications"] = result["classification"]} else if (((($1) {"
+      // Audio) { an) { an: any;
+      formatted["embeddings"] = ${$1}"
+    retur) { an: any;
   
-  def _format_multimodal_result(self, $1: Record<$2, $3>) -> Dict[str, Any]:
-    """Format multimodal model results."""
-    # Extract common multimodal output fields
-    formatted = {}
+  function this( this: any:  any: any): any {  any: any): any { any, $1)) { any { Record<$2, $3>) -> Dict[str, Any]) {
+    /** Form: any;
+    // Extra: any;
+    formatted: any: any: any = {}
     
-    # Handle different multimodal outputs
-    if ($1) {
-      # Text output from multimodal model
-      formatted["text"] = result.get("text", result.get("generated_text", ""))
-      
-    }
-    if ($1) {
-      # Multimodal embeddings
-      formatted["embeddings"] = {
-        "visual": ${$1},
-        "text": ${$1}
-      }
-      }
-    
-    }
-    return formatted
+    // Hand: any;
+    if ((((((($1) {
+      // Text) { an) { an: any;
+      formatted["text"] = (result["text"] !== undefined ? result["text"] ) {(result["generated_text"] !== undefined ? result["generated_text"] ) { ""))}"
+    if ((((($1) {
+      // Multimodal) { an) { an: any;
+      formatted["embeddings"] = {"
+        "visual") { ${$1},;"
+        "text") { ${$1}"
+    retur) { an: any;
   
-  def add_performance_metrics(self, $1: Record<$2, $3>, 
-              $1: Record<$2, $3>) -> Dict[str, Any]:
-    """
-    Add performance metrics to formatted result.
+  function this( this: any:  any: any): any {  any: any): any { a: any;
+    /** A: any;
     
-    Args:
-      result: Formatted result dictionary
-      metrics: Performance metrics to add
+    A: any;
+      res: any;
+      metr: any;
       
-    Returns:
-      Updated result dictionary with performance metrics
-    """
-    # Create performance section if it doesn't exist
-    if ($1) {
-      result["performance"] = {}
-      
-    }
-    # Process common metrics
-    if ($1) {
-      result["performance"]["inference_time_ms"] = metrics["inference_time_ms"]
-      
-    }
-    if ($1) {
-      result["performance"]["preprocessing_time_ms"] = metrics["preprocessing_time_ms"]
-      
-    }
-    if ($1) {
-      result["performance"]["postprocessing_time_ms"] = metrics["postprocessing_time_ms"]
-      
-    }
-    # Calculate total time if components are available
-    if ($1) {
-      result["performance"]["total_time_ms"] = (
-        result["performance"]["inference_time_ms"] +
-        result["performance"]["preprocessing_time_ms"] +
-        result["performance"]["postprocessing_time_ms"]
-      )
-      
-    }
-    # Add text generation metrics
-    if ($1) {
-      result["performance"]["tokens_per_second"] = metrics["tokens_per_second"]
-      
-    }
-    # Add memory usage metrics
-    if ($1) {
-      result["performance"]["peak_memory_mb"] = metrics["peak_memory_mb"]
-      
-    }
-    # Add browser-specific metrics
-    if ($1) {
-      result["performance"]["browser"] = metrics["browser_metrics"]
-      
-    }
-    return result
+    Retu: any;
+      Updat: any;
+    // Crea: any;
+    if (((($1) {
+      result["performance"] = {}"
+    // Process) { an) { an: any;
+    if ((($1) {result["performance"]["inference_time_ms"] = metrics["inference_time_ms"]}"
+    if ($1) {result["performance"]["preprocessing_time_ms"] = metrics["preprocessing_time_ms"]}"
+    if ($1) {result["performance"]["postprocessing_time_ms"] = metrics) { an) { an: any;"
+    if ((($1) {result["performance"]["total_time_ms"] = (;"
+        result) { an) { an: any;
+        resul) { an: any;
+        resu: any;
+      )}
+    // A: any;
+    if (((($1) {result["performance"]["tokens_per_second"] = metrics) { an) { an: any;"
+    if ((($1) {result["performance"]["peak_memory_mb"] = metrics) { an) { an: any;"
+    if ((($1) {result["performance"]["browser"] = metrics) { an) { an: any;"
     
-  def format_error(self, 
+  function this( this) { any:  any: any): any {  any: any): any { any, 
+          $1): any { string, 
           $1: string, 
-          $1: string, 
-          details: Optional[Dict[str, Any]] = null) -> Dict[str, Any]:
-    """
-    Format error response.
+          details: Record<str, Any | null> = nu: any;
+    /** Form: any;
     
-    Args:
-      error_type: Type of error
-      message: Error message
-      details: Optional error details
+    A: any;
+      error_t: any;
+      mess: any;
+      deta: any;
       
-    Returns:
-      Formatted error response
-    """
-    error_response = {
-      "success": false,
-      "timestamp": time.time(),
-      "error": ${$1}
-    }
-    }
+    Retu: any;
+      Formatt: any;
+    error_response: any: any = {
+      "success": fal: any;"
+      "timestamp": ti: any;"
+      "error": ${$1}"
     
-    # Add details if provided
-    if ($1) {
-      error_response["error"]["details"] = details
-      
-    }
-    # Add metadata if enabled
-    if ($1) {
-      error_response["metadata"] = ${$1}
-      
-    }
-    return error_response
+    // A: any;
+    if (((($1) {error_response["error"]["details"] = details) { an) { an: any;"
+    if ((($1) {
+      error_response["metadata"] = ${$1}"
+    return) { an) { an: any;
   
-  def create_progressive_result(self) -> Dict[str, Any]:
-    """
-    Create an empty result structure for progressive updates.
+  function this( this) { any:  any: any): any {  any: any): any { any): any -> Dict[str, Any]) {
+    /** Crea: any;
     
-    Returns:
-      Empty result dictionary for progressive updates
-    """
-    result = {
-      "success": true,
-      "timestamp": time.time(),
-      "result": {},
-      "complete": false,
-      "progress": 0.0
-    }
+    Returns) {
+      Emp: any;
+    result) { any) { any: any = {
+      "success") { tr: any;"
+      "timestamp": ti: any;"
+      "result": {},;"
+      "complete": fal: any;"
+      "progress": 0: a: any;"
     }
     
-    # Add metadata if enabled
-    if ($1) {
-      result["metadata"] = ${$1}
-      
-    }
-    return result
+    // A: any;
+    if (((($1) {
+      result["metadata"] = ${$1}"
+    return) { an) { an: any;
   
-  def update_progressive_result(self, 
-                $1: Record<$2, $3>,
-                $1: Record<$2, $3>,
-                $1: number) -> Dict[str, Any]:
-    """
-    Update progressive result with new data.
+  function this( this) { any:  any: any): any {  any: any): any { any, 
+                $1): any { Reco: any;
+                $1: Reco: any;
+                $1: numb: any;
+    /** Upda: any;
     
-    Args:
-      result: Progressive result to update
-      update: New data to add
-      progress: Current progress (0.0-1.0)
+    A: any;
+      res: any;
+      upd: any;
+      progr: any;
       
-    Returns:
-      Updated progressive result
-    """
-    # Update progress
-    result["progress"] = progress
-    result["timestamp"] = time.time()
+    Retu: any;
+      Updat: any;
+    // Upda: any;
+    result["progress"] = progr: any;"
+    result["timestamp"] = ti: any;"
     
-    # Merge new data into result
-    if ($1) ${$1} else {
-      # Assume update is the result data directly
-      result["result"].update(update)
-      
-    }
-    # Mark as complete if progress is 100%
-    if ($1) {
-      result["complete"] = true
-      
-    }
-    return result
+    // Mer: any;
+    if ((((((($1) { ${$1} else {// Assume) { an) { an: any;
+      result["result"].update(update) { an) { an: any;"
+    if (((($1) {result["complete"] = true) { an) { an: any;"
   
-  @classmethod
-  def merge_results(cls, results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Merge multiple formatted results into a single result.
+  @classmethod;
+  function cls( cls) { any:  any: any): any {  any: any): any { any, results: any): any { Li: any;
+    /** Mer: any;
     
-    Args:
-      results: List of formatted results to merge
+    A: any;
+      resu: any;
       
-    Returns:
-      Merged result dictionary
-    """
-    if ($1) {
-      return {"success": false, "error": ${$1}}
-      
-    }
-    # Start with the first result as base
-    merged = results[0].copy()
+    Retu: any;
+      Merg: any;
+    if ((((((($1) {
+      return {"success") { false, "error") { ${$1}"
+    // Start) { an) { an: any;
+    merged) { any) { any: any = resul: any;
     
-    # Track if any result failed
-    all_succeeded = all(result.get("success", false) for result in results)
-    merged["success"] = all_succeeded
+    // Tra: any;
+    all_succeeded) { any) { any = all((result["success"] !== undefined ? result["success"] : false): any { for ((((((result in results) {;"
+    merged["success"] = all_succeede) { an) { an: any;"
     
-    # Merge result data
-    for result in results[1:]:
-      if ($1) {
-        merged["result"].update(result["result"])
-        
-      }
-    # Merge performance metrics
-    if ($1) {
-      for result in results[1:]:
-        if ($1) {
-          for key, value in result["performance"].items():
-            if ($1) {
-              # Average numeric values
-              if ($1) ${$1} else {
-              # Add new metrics
-              }
-              merged["performance"][key] = value
+    // Merg) { an: any;
+    for (((result in results[1) {]) {
+      if ((((((($1) {merged["result"].update(result["result"])}"
+    // Merge) { an) { an: any;
+    if (($1) {
+      for ((result in results[1) {]) {
+        if (($1) {
+          for (key) { any, value in result["performance"].items() {) {"
+            if ((($1) {
+              // Average) { an) { an: any;
+              if (($1) { ${$1} else {// Add new metrics}
+              merged["performance"][key] = valu) { an) { an: any;"
               
             }
-    return merged
+    return) { an) { an: any;
         }
 
-    }
+// Utilit) { an: any;
 
-# Utility functions
-
-def format_inference_result($1: Record<$2, $3>, 
-            $1: string = "text",
-            $1: $2 | null = null,
-            $1: $2 | null = null,
-            $1: boolean = true) -> Dict[str, Any]:
-  """
-  Format inference result with standard utility function.
+function $1($1) { any)) { any { Record<$2, $3>, 
+            $1) { string) { any) { any: any: any: any: any = "text",;"
+            $1: $2 | null: any: any: any = nu: any;
+            $1: $2 | null: any: any: any = nu: any;
+            $1: boolean: any: any = tr: any;
+  /** Form: any;
   
-  Args:
-    result: Raw inference result
-    model_type: Type of model
-    model_name: Name of model
-    browser: Browser information
-    include_metadata: Whether to include metadata
+  A: any;
+    res: any;
+    model_t: any;
+    model_n: any;
+    brow: any;
+    include_metad: any;
     
-  Returns:
-    Formatted result dictionary
-  """
-  formatter = ResultFormatter(
-    model_type=model_type,
-    browser=browser,
-    include_metadata=include_metadata
-  )
+  Retu: any;
+    Formatt: any;
+  formatter: any: any: any = ResultFormatt: any;
+    model_type: any: any: any = model_ty: any;
+    browser: any: any: any = brows: any;
+    include_metadata: any: any: any = include_metad: any;
+  );
   
-  return formatter.format_result(result, model_name)
+  retu: any;
 
 
-def format_error_response($1: string,
-            $1: string,
-            details: Optional[Dict[str, Any]] = null,
-            $1: string = "text",
-            $1: $2 | null = null) -> Dict[str, Any]:
-  """
-  Format error response with standard utility function.
+functi: any;
+            $1: stri: any;
+            details: Record<str, Any | null> = nu: any;
+            $1: string: any: any: any: any: any: any = "text",;"
+            $1: $2 | null: any: any = nu: any;
+  /** Form: any;
   
-  Args:
-    error_type: Type of error
-    message: Error message
-    details: Optional error details
-    model_type: Type of model
-    browser: Browser information
+  A: any;
+    error_t: any;
+    mess: any;
+    deta: any;
+    model_t: any;
+    brow: any;
     
-  Returns:
-    Formatted error response
-  """
-  formatter = ResultFormatter(
-    model_type=model_type,
-    browser=browser
-  )
+  Retu: any;
+    Formatt: any;
+  formatter: any: any: any = ResultFormatt: any;
+    model_type: any: any: any = model_ty: any;
+    browser: any: any: any = brow: any;
+  );
   
-  return formatter.format_error(error_type, message, details)
+  retu: any;
 
 
-def parse_raw_output(raw_output: Any, $1: string = "text") -> Dict[str, Any]:
-  """
-  Parse raw model output into structured format.
+function parse_raw_output(raw_output:  Any:  any: any:  any: any, $1: string: any: any = "text"): a: any;"
+  /** Par: any;
   
-  Args:
-    raw_output: Raw output from model inference
-    model_type: Type of model
+  A: any;
+    raw_out: any;
+    model_t: any;
     
-  Returns:
-    Parsed && structured output
-  """
-  # Create appropriate formatter
-  formatter = ResultFormatter(model_type=model_type)
+  Retu: any;
+    Pars: any;
+  // Crea: any;
+  formatter: any: any: any: any: any: any: any: any: any: any = ResultFormatter(model_type=model_type);
   
-  # Format the output
-  formatted = formatter._format_output_by_type(raw_output)
-  
-  return formatted
+  // Form: any;
+  formatted: any: any = format: any;;
+  ;
+  ret: any;

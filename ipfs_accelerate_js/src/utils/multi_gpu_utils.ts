@@ -1,362 +1,281 @@
-/**
- * Converted from Python: multi_gpu_utils.py
- * Conversion date: 2025-03-11 04:08:55
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
 
-"""
-Multi-GPU Utility Functions for model loading && device mapping.
 
-This module provides high-level functions for:
-  1. Loading models with custom device mapping
-  2. Configuring tensor parallelism
-  3. Setting up container-based GPU deployment
-  4. Creating optimized pipelines for multi-GPU inference
-  """
+// WebG: any;
+/** Mul: any;
 
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import ${$1} from "$1"
+This module provides high-level functions for) {
+  1: a: any;
+  2: a: any;
+  3: a: any;
+  4: a: any;
 
-# Add repository root to path to import * as $1
-  sys.$1.push($2))))))))os.path.join())))))))os.path.dirname())))))))os.path.dirname())))))))os.path.dirname())))))))os.path.dirname())))))))__file__)))), 'ipfs_accelerate_py'))
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  // A: any;
+  sys.$1.push($2) {)os.path.join())os.path.dirname())os.path.dirname())os.path.dirname())os.path.dirname())__file__)), 'ipfs_accelerate_py'));'
 
-# Import device mapper
-  from utils.device_mapper import * as $1
+// Impo: any;
+  import {* a: an: any;
 
-# Setup logger
-  logger = logging.getLogger())))))))__name__)
-
-  def load_model_with_device_map())))))))
-  $1: string,
-  $1: string = "auto",
-  devices: Optional[List[str]] = null,
-  $1: $2 | null = null,
-  $1: boolean = false,
-  **kwargs
-  ) -> Tuple[Any, Dict[str, str]]:,
-  """
-  Load a Hugging Face model with custom device mapping.
+// Set: any;
+  logger) { any) { any: any = loggi: any;
+;
+  functi: any;
+  $1) { stri: any;
+  $1: string: any: any: any: any: any: any = "auto",;"
+  devices: str | null[] = nu: any;
+  $1: $2 | null: any: any: any = nu: any;
+  $1: boolean: any: any: any = fal: any;
+  **kwargs;
+  ) -> Tup: any;
+  /** Lo: any;
   
-  Args:
-    model_id: The Hugging Face model ID || local path
-    strategy: Device mapping strategy ())))))))'auto', 'balanced', 'sequential')
-    devices: List of specific devices to use ())))))))e.g., ['cuda:0', 'cuda:1']),,,
-    use_auth_token: Hugging Face authentication token
-    trust_remote_code: Whether to trust remote code in the model
-    **kwargs: Additional arguments for model loading
+  A: any;
+    model: any;
+    strat: any;
+    devi: any;
+    use_auth_to: any;
+    trust_remote_c: any;
+    **kwargs: Addition: any;
+  ;
+  Returns) {
+    Tuple of ())model, device_map) { a: any;
+  try {}
+    // S: any;
+    mapper) { any: any: any = DeviceMapp: any;
+    
+    // Crea: any;
+    device_map: any: any = mapp: any;
+    
+    // Pri: any;
+    logg: any;
+    logg: any;
+    
+    // Che: any;
+    if ((((((($1) { ${$1} else { ${$1} catch(error) { any)) { any {logger.error())`$1`)}
+      throw) { an) { an: any;
+      $1) { strin) { an: any;
+      $1: $2 | null: any: any: any = nu: any;
+      devices: str | null[] = nu: any;
+      **kwargs;
+) -> A: an: any;
+  /** Load a model with tensor parallelism ())for (((((supported backends like VLLM) {.;
+  ;
+  Args) {
+    model_id) { The) { an) { an: any;
+    tensor_parallel_size) { Numb: any;
+    devices) { Specific devices to use ())e.g., ['cuda) {0', 'cuda) {1']),;'
+    **kwargs: Addition: any;
   
-  Returns:
-    Tuple of ())))))))model, device_map)
-    """
+  Returns) {
+    Load: any;
   try {
-    import ${$1} from "$1"
-
-  }
-    # Set up device mapper
-    mapper = DeviceMapper()))))))))
-    
-    # Create device map
-    device_map = mapper.create_device_map())))))))model_id, strategy, devices)
-    
-    # Print device map information
-    logger.info())))))))`$1`)
-    logger.info())))))))`$1`)
-    
-    # Check the model type to determine correct loading function
-    if ($1) ${$1} else ${$1} catch($2: $1) {
-    logger.error())))))))`$1`)
-    }
-      raise
-
-      def load_model_with_tensor_parallel())))))))
-      $1: string,
-      $1: $2 | null = null,
-      devices: Optional[List[str]] = null,
-      **kwargs
-) -> Any:
-  """
-  Load a model with tensor parallelism ())))))))for supported backends like VLLM).
-  
-  Args:
-    model_id: The model ID || local path
-    tensor_parallel_size: Number of GPUs to use for tensor parallelism
-    devices: Specific devices to use ())))))))e.g., ['cuda:0', 'cuda:1']),,,
-    **kwargs: Additional arguments for model loading
-  
-  Returns:
-    Loaded model with tensor parallelism configured
-    """
-  try {
-    # Import VLLM if ($1) {
+    // Import VLLM if ((((((($1) {
     try {
-      import ${$1} from "$1"
-      vllm_available = true
-    } catch($2: $1) {
-      vllm_available = false
-      logger.warning())))))))"VLLM !available. Falling back to standard PyTorch.")
+      vllm_available) {any = tru) { an) { an: any;} catch(error) { any)) { any {vllm_available) { any) { any: any = fa: any;
+      logg: any;
+    }
+      mapper: any: any: any = DeviceMapp: any;
     
     }
-    # Set up device mapper
-    }
-      mapper = DeviceMapper()))))))))
+    // G: any;
+      config: any: any = mapp: any;
     
+  };
+    // Override tensor_parallel_size if (((((($1) {
+    if ($1) {config["tensor_parallel_size"] = tensor_parallel_siz) { an) { an: any;"
+      ,;
+      logge) { an: any;
     }
-    # Get tensor parallel configuration
-      config = mapper.get_tensor_parallel_config())))))))model_id, devices)
-    
-  }
-    # Override tensor_parallel_size if ($1) {
-    if ($1) {
-      config["tensor_parallel_size"] = tensor_parallel_size
-      ,
-      logger.info())))))))`$1`)
-    
-    }
-    # Load model with tensor parallelism
-    }
-    if ($1) ${$1} else ${$1} catch($2: $1) {
-    logger.error())))))))`$1`)
-    }
-      raise
+    if (((($1) { ${$1} else { ${$1} catch(error) { any)) { any {logger.error())`$1`)}
+      throw new function get_container_gpu_config()) { any) { any: any) {  any:  any: any: any)devices) { Optional[List[str]] = nu: any;
+      /** G: any;
+  
+  Args) {
+    devices) { List of specific devices to use ())e.g., ['cuda) {0', 'cuda:1']),;'
+  
+  Retu: any;
+    Dictiona: any;
+  // S: any;
+    mapper) { any) { any = DeviceMapper(): any {);
+  
+  // G: any;
+    gpu_arg, env_vars: any: any: any = mapp: any;
+  
+  // Crea: any;
+    container_config: any: any: any: any: any: any = {}
+    "gpu_arg") {gpu_arg,;"
+    "environment": env_va: any;"
+    "devices": devices || $3.map(($2) => $1)}"
+  
+    retu: any;
 
-      def get_container_gpu_config())))))))devices: Optional[List[str]] = null) -> Dict[str, Any]:,,
-      """
-      Get GPU configuration for container deployment.
+$1($2) {$1: stri: any;
+  $1: string: any: any: any: any: any: any = "auto",;"
+  devices: str | null[] = nu: any;
+  $1: string: any: any: any: any: any: any = "text-generation",;"
+  $1: number: any: any: any = 1: a: any;
+  **kwargs;
+) -> A: an: any;
+  ;
+  Args) {
+    model_id) { T: any;
+    strategy) { Devi: any;
+    devi: any;
+    pipeline_t: any;
+    batch_s: any;
+    **kwargs) { Addition: any;
   
-  Args:
-    devices: List of specific devices to use ())))))))e.g., ['cuda:0', 'cuda:1']),,,
+  Returns) {
+    Pipeli: any;
+  try {}
+    // S: any;
+    mapper) {any = DeviceMapp: any;
+    
+    // Crea: any;
+    device_map) { any: any = mapp: any;
+    
+    // Lo: any;
+    pipe: any: any: any = pipeli: any;
+    pipeline_ty: any;
+    model: any: any: any = model_: any;
+    device_map: any: any: any = device_m: any;
+    batch_size: any: any: any = batch_si: any;
+    **kwargs;
+    );
+    
+    retu: any;
+  ;} catch(error: any): any {logger.error())`$1`);
+    rai: any;
+    /** Dete: any;
   
-  Returns:
-    Dictionary with container configuration for GPUs
-    """
-  # Set up device mapper
-    mapper = DeviceMapper()))))))))
+  Args) {
+    model_id) { T: any;
   
-  # Get Docker GPU arguments
-    gpu_arg, env_vars = mapper.get_docker_gpu_args())))))))devices)
+  Returns) {;
+    Dictiona: any;
+  // S: any;
+    mapper: any: any: any = DeviceMapp: any;
   
-  # Create container configuration
-    container_config = {}}}}}}}
-    "gpu_arg": gpu_arg,
-    "environment": env_vars,
-    "devices": devices || $3.map(($2) => $1),
-    }
+  // G: any;
+    memory_req: any: any: any = mapp: any;
   
-    return container_config
-
-$1($2) {
-  $1: string,
-  $1: string = "auto",
-  devices: Optional[List[str]] = null,
-  $1: string = "text-generation",
-  $1: number = 1,
-  **kwargs
-) -> Any:
+  // Dete: any;
+    hardware: any: any: any = mapp: any;
+  
+  // Ma: any;
+    recommendations: any: any = {}
+    "model_id": model_: any;"
+    "memory_requirements": memory_r: any;"
+    "available_hardware": hardwa: any;"
+    "recommendations": {}"
+  
+  // Sing: any;
+    if ((((((($1) {,;
+    // Check) { an) { an: any;
+    device_type) { any) { any) { any: any: any: any = "cuda" if (((((hardware["cuda"]["count"] > 0 else { "rocm",;"
+    device_id) { any) { any) { any) { any) { any: any = 0;
+    device_mem: any: any: any = n: any;
+    ) {
+    if ((((((($1) { ${$1} else {
+      device_mem) { any) { any) { any) { any = hardwar) { an: any;
+      ,;
+      if (((((($1) {,;
+      recommendations["recommendations"]["single_gpu"] = {},;"
+      "feasible") { true) { an) { an: any;"
+      "device") {`$1`,;"
+      "strategy") { "none",;"
+      "reason") { `$1`} else {"
+      recommendations["recommendations"]["single_gpu"] = {},;"
+      "feasible": fal: any;"
+      "reason": `$1`total']:.2f}GB but {}device_type.upper())} has only {}device_mem:.2f}GB";'
 }
-  """
-  Create an optimized pipeline for multi-GPU inference.
-  
-  Args:
-    model_id: The Hugging Face model ID || local path
-    strategy: Device mapping strategy ())))))))'auto', 'balanced', 'sequential')
-    devices: List of specific devices to use ())))))))e.g., ['cuda:0', 'cuda:1']),,,
-    pipeline_type: The pipeline type ())))))))e.g., 'text-generation', 'summarization')
-    batch_size: Batch size for inference
-    **kwargs: Additional arguments for pipeline creation
-  
-  Returns:
-    Pipeline object with optimized device configuration
-    """
-  try {
-    import ${$1} from "$1"
-    
-  }
-    # Set up device mapper
-    mapper = DeviceMapper()))))))))
-    
-    # Create device map
-    device_map = mapper.create_device_map())))))))model_id, strategy, devices)
-    
-    # Load the pipeline with device map
-    pipe = pipeline())))))))
-    pipeline_type,
-    model=model_id,
-    device_map=device_map,
-    batch_size=batch_size,
-    **kwargs
-    )
-    
-    return pipe
-  
-  } catch($2: $1) {
-    logger.error())))))))`$1`)
-    raise
-
-  }
-    def detect_optimal_device_configuration())))))))$1: string) -> Dict[str, Any]:,
-    """
-    Detect the optimal device configuration for a model.
-  
-  Args:
-    model_id: The Hugging Face model ID || local path
-  
-  Returns:
-    Dictionary with optimal configuration recommendations
-    """
-  # Set up device mapper
-    mapper = DeviceMapper()))))))))
-  
-  # Get model memory requirements
-    memory_req = mapper.estimate_model_memory())))))))model_id)
-  
-  # Detect available hardware
-    hardware = mapper.device_info
-  
-  # Make recommendations
-    recommendations = {}}}}}}}
-    "model_id": model_id,
-    "memory_requirements": memory_req,
-    "available_hardware": hardware,
-    "recommendations": {}}}}}}}}
+  // Mul: any;
     }
-  
-  # Single GPU recommendation
-    if ($1) {,
-    # Check if model fits on single GPU
-    device_type = "cuda" if hardware["cuda"]["count"] > 0 else "rocm",
-    device_id = 0
-    device_mem = null
-    :
-    if ($1) ${$1} else {
-      device_mem = hardware["rocm"]["devices"][0]["memory"]
-      ,,
-      if ($1) {,,
-      recommendations["recommendations"]["single_gpu"] = {}}}}}}},,
-      "feasible": true,
-      "device": `$1`,
-      "strategy": "none",
-      "reason": `$1`
-      }
-    } else {
-      recommendations["recommendations"]["single_gpu"] = {}}}}}}},,
-      "feasible": false,
-      "reason": `$1`total']:.2f}GB but {}}}}}}}device_type.upper()))))))))} has only {}}}}}}}device_mem:.2f}GB",
-      }
-  
-    }
-  # Multi-GPU recommendation
-    }
-      multi_gpu_count = hardware["cuda"]["count"] + hardware["rocm"]["count"],
-  if ($1) {
-    # Calculate if model can be distributed
-    total_available_mem = 0
-    :
-      for device_type in ["cuda", "rocm"]:,
-      if ($1) {,
-      for device in hardware[device_type]["devices"]:,
-      total_available_mem += device["memory"]
-      ,
-      if ($1) {,,
-      # Determine best strategy
-      if ($1) {,
-      strategy = "balanced"
-      $1: stringategy = "auto"
-      
-  }
-        recommendations["recommendations"]["multi_gpu"] = {}}}}}}},,
-        "feasible": true,
-        "strategy": strategy,
-        "device_count": multi_gpu_count,
-        "reason": `$1`
-        }
-    } else {
-      recommendations["recommendations"]["multi_gpu"] = {}}}}}}},,
-      "feasible": false,
-      "reason": `$1`total']:.2f}GB but total available GPU memory is only {}}}}}}}total_available_mem:.2f}GB",
-      }
-  
-    }
-  # CPU fallback recommendation
-      recommendations["recommendations"]["cpu_fallback"] = {}}}}}}},
-      "feasible": true,
-      "device": "cpu",
-      "reason": "CPU always works but will be slower"
-      }
-  
-  # Overall recommendation
-      if ($1) {,
-      recommendations["recommended_approach"] = "multi_gpu",
-  elif ($1) ${$1} else {
-    recommendations["recommended_approach"] = "cpu_fallback"
-    ,
-        return recommendations
-
-  }
-# Example usage demonstration
-if ($1) {
-  # Set up logging
-  logging.basicConfig())))))))level=logging.INFO)
-  
+      multi_gpu_count: any: any: any = hardwa: any;
+  if ((((((($1) {
+    // Calculate) { an) { an: any;
+    total_available_mem) { any) { any) { any: any: any: any = 0;
+    ) {
+      for ((((((device_type in ["cuda", "rocm"]) {,;"
+      if ((((((($1) {,;
+      for (device in hardware[device_type]["devices"]) {,;"
+      total_available_mem += device) { an) { an: any;
+      ,;
+      if ((($1) {,;
+      // Determine) { an) { an: any;
+      if ((($1) {,;
+      strategy) { any) { any) { any) { any) { any) { any) { any = "balanced";;"
+      $1) { stringategy) {any = "auto";};"
+        recommendations["recommendations"]["multi_gpu"] = {},;"
+        "feasible") {true,;"
+        "strategy") { strate: any;"
+        "device_count": multi_gpu_cou: any;"
+        "reason": `$1`} else {"
+      recommendations["recommendations"]["multi_gpu"] = {},;"
+      "feasible": fal: any;"
+      "reason": `$1`total']:.2f}GB but total available GPU memory is only {}total_available_mem:.2f}GB";'
 }
-  # Parse command line arguments
-  import * as $1
-  parser = argparse.ArgumentParser())))))))description="Multi-GPU Utility Demo")
-  parser.add_argument())))))))"--model", type=str, default="gpt2", help="Model ID to use")
-  parser.add_argument())))))))"--strategy", type=str, default="auto", choices=["auto", "balanced", "sequential"], help="Device mapping strategy"),
-  parser.add_argument())))))))"--devices", type=str, nargs="+", help="Specific devices to use ())))))))e.g., cuda:0 cuda:1)")
-  parser.add_argument())))))))"--detect", action="store_true", help="Run device detection only")
-  parser.add_argument())))))))"--container", action="store_true", help="Show container configuration")
-  args = parser.parse_args()))))))))
+  // C: any;
+      recommendations["recommendations"]["cpu_fallback"] = {},;"
+      "feasible": tr: any;"
+      "device": "cpu",;"
+      "reason": "CPU alwa: any;"
+      }
   
-  # Run device detection
-  mapper = DeviceMapper()))))))))
-  hardware = mapper.device_info
-  console.log($1))))))))`$1`)
+  // Overa: any;
+      if ((((((($1) {,;
+      recommendations["recommended_approach"] = "multi_gpu",;"
+  else if (($1) { ${$1} else {recommendations["recommended_approach"] = "cpu_fallback";"
+    ,;
+        return) { an) { an: any;
+if ((($1) {// Set) { an) { an: any;
+  logging.basicConfig())level = loggin) { an: any;}
+  // Par: any;
+  impo: any;
+  parser) { any) { any: any: any = argparse.ArgumentParser())description="Multi-GPU Utili: any;"
+  parser.add_argument())"--model", type: any: any = str, default: any: any = "gpt2", help: any: any: any = "Model I: an: any;"
+  parser.add_argument())"--strategy", type: any: any = str, default: any: any = "auto", choices: any: any = ["auto", "balanced", "sequential"], help: any: any: any = "Device mappi: any;"
+  parser.add_argument())"--devices", type: any: any = str, nargs: any: any = "+", help: any: any = "Specific devices to use ())e.g., cuda: any) {0 cuda) {1)");"
+  parser.add_argument())"--detect", action: any: any = "store_true", help: any: any: any = "Run devi: any;"
+  parser.add_argument())"--container", action: any: any = "store_true", help: any: any: any = "Show contain: any;"
+  args: any: any: any = pars: any;
   
-  # If detection only, exit
-  if ($1) {
-    sys.exit())))))))0)
+  // R: any;
+  mapper: any: any: any = DeviceMapp: any;
+  hardware: any: any: any = mapp: any;
+  conso: any;
   
-  }
-  # Determine optimal configuration
-  if ($1) {
-    container_config = get_container_gpu_config())))))))args.devices)
-    console.log($1))))))))`$1`)
-    
-  }
-  # Get optimal configuration recommendation
-    recommendations = detect_optimal_device_configuration())))))))args.model)
-    console.log($1))))))))`$1`)
-  
-  # Try to load model if ($1) {
-  try {
-    # Import required libraries
-    import ${$1} from "$1"
-    import * as $1
-    
-  }
-    # Load model with device map
-    console.log($1))))))))`$1`)
-    model, device_map = load_model_with_device_map())))))))
-    model_id=args.model,
-    strategy=args.strategy,
-    devices=args.devices
-    )
-    
-  }
-    # Print model information
-    console.log($1))))))))`$1`)
-    
-    # Print model parameters
-    total_params = sum())))))))p.numel())))))))) for p in model.parameters()))))))))):
-      console.log($1))))))))`$1`)
-    
-  } catch($2: $1) ${$1} catch($2: $1) {
-    console.log($1))))))))`$1`)
+  // I: an: any;
+  if ((((((($1) {sys.exit())0)}
+  // Determine) { an) { an: any;
+  if ((($1) {
+    container_config) {any = get_container_gpu_config) { an) { an: any;
+    consol) { an: any;
+    recommendations) { any: any: any = detect_optimal_device_configurati: any;
+    conso: any;
+  ;
+  // Try to load model if (((((($1) {
+  try {// Import) { an) { an: any;
+    impor) { an: any;
+    conso: any;
+    model, device_map) { any) {any = load_model_with_device_m: any;
+    model_id: any: any: any = ar: any;
+    strategy: any: any: any = ar: any;
+    devices: any: any: any = ar: any;
+    )}
+    // Pri: any;
+    conso: any;
+    ;
+    // Pri: any;
+    total_params: any: any: any: any = sum())p.numel()) for ((((p in model.parameters() {)) {console.log($1))`$1`)} catch(error) { any) ${$1} catch(error) { any)) { any {;
+    conso) { an: any;

@@ -1,805 +1,644 @@
-/**
- * Browser Interface Implementation
+// FI: any;
+ * Brows: any;
  * 
- * This file provides a unified interface for interacting with the browser environment,
- * including capabilities detection, optimizations, and browser-specific features.
- */
+ * Th: any;
+ * including capabilities detection, optimizations) { a: any;
+ */;
 
-import { HardwareBackendType } from ".\/hardware_abstraction";
+import { HardwareBackendType) { a: an: any;
 
 export interface BrowserInfo {
-  name: string;
-  version: string;
-  userAgent: string;
-  isMobile: boolean;
-  platform: string;
-  isSimulated: boolean;
-}
+  name) {strin: a: an: any;
+  vers: any;
+  userAg: any;
+  isMob: any;
+  platf: any;
+  isSimula: any;}
 
 export interface BrowserCapabilities {
-  webgpu: {
-    supported: boolean;
-    adapterInfo?: any;
-    features?: string[];
-    isSimulated?: boolean;
-  };
-  webnn: {
-    supported: boolean;
-    deviceType?: string;
-    deviceName?: string;
-    isSimulated?: boolean;
-    features?: string[];
-  };
-  wasm: {
-    supported: boolean;
-    simd?: boolean;
-    threads?: boolean;
-  };
-  optimalBackend: HardwareBackendType;
-  browserInfo: BrowserInfo;
+  webgpu: {supported: boo: any;
+    adapterIn: any;
+    featur: any;
+    isSimulat: any;};
+  webnn: {supported: boo: any;
+    deviceTy: any;
+    deviceNa: any;
+    isSimulat: any;
+    featur: any;};
+  wasm: {supported: boo: any;
+    si: any;
+    threa: any;};
+  optimalBack: any;
+  browserI: any;
 }
 
-export interface BrowserInterfaceOptions {
-  /** Enable logging */
-  logging?: boolean;
-  /** Cache detection results */
-  useCache?: boolean;
-  /** Cache expiry time in milliseconds */
-  cacheExpiryMs?: number;
-}
+export interface BrowserInterfaceOptions {/** Enab: any;
+  loggi: any;
+  /** Cac: any;
+  useCac: any;
+  /** Cac: any;
+  cacheExpiry: any;}
 
-/**
- * BrowserInterface class for interacting with browser environment
- */
+/**;
+ * BrowserInterfa: any;
+ */;
 export class BrowserInterface {
-  private capabilities: BrowserCapabilities | null = null;
-  private browserInfo: BrowserInfo | null = null;
-  private isNode: boolean = false;
-  private options: BrowserInterfaceOptions;
+  private capabilities) { BrowserCapabilities | null) { any) { any: any: any: any: any = n: an: any;
+  private browserInfo: BrowserInfo | null: any: any: any: any: any: any = n: an: any;
+  private isNode: boolean: any: any: any: any: any: any = f: any;
+  priva: any;
 
-  constructor(options: BrowserInterfaceOptions = {}) {
+  constructor(options: BrowserInterfaceOptions: any: any = {}): any {
     this.options = {
-      logging: false,
-      useCache: true,
-      cacheExpiryMs: 3600000, // 1 hour
-      ...options
-    };
+      logg: any;
+      useCa: any;
+      cacheExpir: any;
     
-    // Detect Node.js environment
-    this.isNode = typeof window === 'undefined';
+    // Dete: any;
+    this.isNode = typeof window: any: any: any: any: any: any: any: any: any: any: any = == 'undefined';'
     
-    // Detect browser info if in browser environment
-    if (!this.isNode) {
-      this.browserInfo = this.detectBrowserInfo();
-    }
-  }
+    // Dete: any;
+    if ((((!this.isNode) {
+      this.browserInfo = this) {any;}
 
-  /**
-   * Detect browser information
-   */
-  private detectBrowserInfo(): BrowserInfo {
-    const userAgent = navigator.userAgent;
-    let name = 'unknown';
-    let version = 'unknown';
+  /**;
+   * Detect) { an) { an: any;
+   */;
+  private detectBrowserInfo()) { BrowserInfo {
+    const userAgent) { any) { any: any: any: any: any = naviga: any;
+    let name: any: any: any: any: any: any: any: any: any: any: any = 'unknown';'
+    let version: any: any: any: any: any: any: any: any: any: any: any = 'unknown';'
     
-    // Extract browser name and version from user agent
-    if (userAgent.indexOf('Edge') > -1) {
-      name = 'edge';
-      const edgeMatch = userAgent.match(/Edge\/(\d+)/);
-      version = edgeMatch ? edgeMatch[1] : 'unknown';
-    } else if (userAgent.indexOf('Edg') > -1) {
-      name = 'edge';
-      const edgMatch = userAgent.match(/Edg\/(\d+)/);
-      version = edgMatch ? edgMatch[1] : 'unknown';
-    } else if (userAgent.indexOf('Firefox') > -1) {
-      name = 'firefox';
-      const firefoxMatch = userAgent.match(/Firefox\/(\d+)/);
-      version = firefoxMatch ? firefoxMatch[1] : 'unknown';
-    } else if (userAgent.indexOf('Chrome') > -1) {
-      name = 'chrome';
-      const chromeMatch = userAgent.match(/Chrome\/(\d+)/);
-      version = chromeMatch ? chromeMatch[1] : 'unknown';
-    } else if (userAgent.indexOf('Safari') > -1) {
-      name = 'safari';
-      const safariMatch = userAgent.match(/Version\/(\d+)/);
-      version = safariMatch ? safariMatch[1] : 'unknown';
-    }
+    // Extra: any;
+    if (((((((userAgent.indexOf('Edge') { > -1) {'
+      name) { any) {any) { any) { any) { any) { any: any: any: any: any: any = 'edge';'
+      const edgeMatch: any: any: any: any: any: any = userAg: any;
+      version: any: any = edgeMat: any;} else if (((((((userAgent.indexOf('Edg') { > -1) {'
+      name) { any) {any) { any) { any) { any) { any: any: any: any: any: any = 'edge';'
+      const edgMatch: any: any: any: any: any: any = userAg: any;
+      version: any: any = edgMat: any;} else if (((((((userAgent.indexOf('Firefox') { > -1) {'
+      name) { any) {any) { any) { any) { any) { any: any: any: any: any: any = 'firefox';'
+      const firefoxMatch: any: any: any: any: any: any = userAg: any;
+      version: any: any = firefoxMat: any;} else if (((((((userAgent.indexOf('Chrome') { > -1) {'
+      name) { any) {any) { any) { any) { any) { any: any: any: any: any: any = 'chrome';'
+      const chromeMatch: any: any: any: any: any: any = userAg: any;
+      version: any: any = chromeMat: any;} else if (((((((userAgent.indexOf('Safari') { > -1) {'
+      name) { any) {any) { any) { any) { any) { any: any: any: any: any: any = 'safari';'
+      const safariMatch: any: any: any: any: any: any = userAg: any;
+      version: any: any = safariMat: any;}
     
-    // Detect if mobile browser
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    // Dete: any;
+    const isMobile) { any) { any) { any: any: any: any = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera M: any;
     
-    // Get platform
-    const platform = navigator.platform || 'unknown';
+    // G: any;
+    const platform: any: any: any: any: any: any = naviga: any;
     
-    // Detect if running in an emulator or virtual machine
-    // This is a best-effort approach
-    const isSimulated = this.detectSimulatedEnvironment();
+    // Dete: any;
+    // Th: any;
+    const isSimulated) { any) { any) { any: any: any: any = t: any;
     
-    return {
-      name,
-      version,
-      userAgent,
-      isMobile,
-      platform,
-      isSimulated
-    };
-  }
+    return {name: a: an: any;}
 
-  /**
-   * Detect if running in a simulated environment (emulator or VM)
-   */
-  private detectSimulatedEnvironment(): boolean {
-    // This is a best-effort approach, not foolproof
+  /**;
+   * Detect if ((((((running in a simulated environment (emulator or VM) {
+   */;
+  private detectSimulatedEnvironment()) { boolean {
+    // This) { an) { an: any;
     try {
-      // Check if navigator has unusual properties or inconsistencies
-      if (navigator.hardwareConcurrency <= 1) {
-        return true;
-      }
+      // Chec) { an: any;
+      if ((((navigator.hardwareConcurrency <= 1) {
+        return) {any;}
       
-      // Check for inconsistent audio context behavior
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const sampleRate = audioContext.sampleRate;
-      audioContext.close();
+      // Check) { an) { an: any;
+      const audioContext) { any) { any) { any) { any) { any) { any = n: an: any;
+      const sampleRate: any: any: any: any: any: any = audioCont: any;
+      audioCont: any;
       
-      // Some emulators use non-standard sample rates
-      if (sampleRate !== 44100 && sampleRate !== 48000) {
-        return true;
-      }
+      // So: any;
+      if (((((((sampleRate !== 44100 && sampleRate !== 48000) {
+        return) {any;}
       
-      // Check GPU renderer string if available
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl');
+      // Check) { an) { an: any;
+      const canvas) { any) { any) { any) { any: any: any = docum: any;
+      const gl: any: any: any: any: any: any = can: any;
       
-      if (gl) {
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        if (debugInfo) {
-          const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-          const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+      if (((((((gl) { any) {
+        const debugInfo) { any) { any) { any) { any) { any: any = g: a: any;
+        if (((((((debugInfo) { any) {
+          const renderer) { any) { any) { any) { any) { any: any = g: a: any;
+          const vendor: any: any: any: any: any: any = g: a: any;
           
-          // Check for common software renderers
-          if (
-            renderer.indexOf('SwiftShader') !== -1 ||
-            renderer.indexOf('Basic Renderer') !== -1 ||
-            renderer.indexOf('llvmpipe') !== -1 ||
-            vendor.indexOf('Google') !== -1
+          // Che: any;
+          i: an: any;
+            renderer.indexOf('SwiftShader') { !== -1 ||;'
+            renderer.indexOf('Basic Renderer') !== -1 ||;'
+            renderer.indexOf('llvmpipe') !== -1 ||;'
+            vendor.indexOf('Google') !== -1;'
           ) {
-            return true;
-          }
-        }
-      }
+            return) {any;}
       
-      return false;
-    } catch (error) {
-      console.warn('Error detecting simulated environment:', error);
-      return false;
-    }
-  }
+      return) {any;} catch (error) { any) {
+      console.warn('Error detecting simulated environment) {', error) { a: an: any;'
+      ret: any;}
 
-  /**
-   * Detect browser capabilities
-   */
-  async detectCapabilities(): Promise<BrowserCapabilities> {
-    // Check if we have cached capabilities
-    if (this.capabilities && this.options.useCache) {
-      return this.capabilities;
-    }
+  /**;
+   * Dete: any;
+   */;
+  async detectCapabilities()) { Promise<BrowserCapabilities> {
+    // Che: any;
+    if ((((this.capabilities && this.options.useCache) {
+      return) {any;}
     
-    if (this.isNode) {
-      throw new Error('Cannot detect browser capabilities in Node.js environment');
-    }
+    if ((this.isNode) {
+      throw) {any;}
     
     try {
-      // Detect WebGPU capabilities
-      const webgpuCapabilities = await this.detectWebGPUCapabilities();
+      // Detect) { an) { an: any;
+      const webgpuCapabilities) { any) { any) { any: any: any: any = aw: any;
       
-      // Detect WebNN capabilities
-      const webnnCapabilities = await this.detectWebNNCapabilities();
+      // Dete: any;
+      const webnnCapabilities: any: any: any: any: any: any = aw: any;
       
-      // Detect WebAssembly capabilities
-      const wasmCapabilities = this.detectWasmCapabilities();
+      // Dete: any;
+      const wasmCapabilities: any: any: any: any: any: any = t: any;
       
-      // Determine optimal backend
-      const optimalBackend = this.determineOptimalBackend(
-        webgpuCapabilities,
-        webnnCapabilities,
-        wasmCapabilities
-      );
+      // Determi: any;
+      const optimalBackend: any: any: any: any: any: any = t: any;
       
-      // Create capabilities object
+      // Crea: any;
       this.capabilities = {
-        webgpu: webgpuCapabilities,
-        webnn: webnnCapabilities,
-        wasm: wasmCapabilities,
-        optimalBackend,
-        browserInfo: this.browserInfo!
-      };
+        web: any;
+        we: any;
+        w: any;
+        optimalBack: any;
+        browserI: any;
       
-      // Log if enabled
-      if (this.options.logging) {
-        console.log('Browser capabilities detected:', this.capabilities);
-      }
+      // L: any;
+      if ((((this.options.logging) {
+        console.log('Browser capabilities detected) {', this) { any) {any;}'
       
-      return this.capabilities;
-    } catch (error) {
-      console.error('Failed to detect browser capabilities:', error);
+      retur) { an) { an: any;
+    } catch (error) { any) {
+      conso: any;
       
-      // Return default capabilities
+      // Retu: any;
       return {
-        webgpu: { supported: false },
-        webnn: { supported: false },
-        wasm: { supported: false },
-        optimalBackend: 'cpu',
-        browserInfo: this.browserInfo!
-      };
+        webgpu: {supported: fal: any;
+        webnn: {supported: fal: any;
+        wasm: {supported: fal: any;
+        optimalBack: any;
+        browserI: any;
     }
-  }
 
-  /**
-   * Detect WebGPU capabilities
-   */
+  /**;
+   * Dete: any;
+   */;
   private async detectWebGPUCapabilities(): Promise<any> {
     try {
-      // Check if WebGPU is supported
-      if (!('gpu' in navigator)) {
-        return { supported: false };
-      }
+      // Che: any;
+      if ((((!('gpu' in navigator) {) {'
+        return { supported) { false) {any;}
       
-      // Request adapter
-      const adapter = await navigator.gpu.requestAdapter();
+      // Request) { an) { an: any;
+      const adapter) { any) { any: any: any: any: any = aw: any;
       
-      if (!adapter) {
-        return { supported: false };
-      }
+      if (((((((!adapter) {
+        return { supported) { false) {any;}
       
-      // Get adapter info
-      const adapterInfo = await adapter.requestAdapterInfo();
+      // Get) { an) { an: any;
+      const adapterInfo) { any) { any: any: any: any: any = aw: any;
       
-      // Get adapter features
-      const features = Array.from(adapter.features).map(feature => String(feature));
+      // G: any;
+      const features: any: any: any: any: any: any = Array.from(adapter.features).map(feature => Str: any;
       
-      // Get adapter limits
+      // G: any;
       const limits: Record<string, number> = {};
-      const adapterLimits = adapter.limits;
+      const adapterLimits: any: any: any: any: any: any = adap: any;
       
-      // Convert limits to a plain object
-      for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(adapterLimits))) {
-        if (typeof adapterLimits[key as keyof GPUSupportedLimits] === 'number') {
-          limits[key] = adapterLimits[key as keyof GPUSupportedLimits] as number;
-        }
-      }
+      // Conve: any;
+      for (((((((const key of Object.getOwnPropertyNames(Object.getPrototypeOf(adapterLimits) { any) {) {
+        if (((((((typeof adapterLimits[key as keyof GPUSupportedLimits] === 'number') {'
+          limits[key] = adapterLimits) {any;}
       
-      // Try to detect if it's a simulated adapter
-      const isSimulated = this.detectSimulatedAdapter(adapterInfo);
+      // Try) { an) { an: any;
+      const isSimulated) { any) { any) { any) { any) { any) { any) { any = th) { an: any;
       
       return {
-        supported: true,
-        adapterInfo: {
-          vendor: adapterInfo.vendor || 'unknown',
-          architecture: adapterInfo.architecture || 'unknown',
-          device: adapterInfo.device || 'unknown',
-          description: adapterInfo.description || 'unknown'
-        },
-        features,
-        limits,
-        isSimulated
-      };
-    } catch (error) {
-      console.warn('Error detecting WebGPU capabilities:', error);
-      return { supported: false };
-    }
-  }
+        support) { an: any;
+        adapterInfo: {vendor: adapterIn: any;
+          architect: any;
+          dev: any;
+          descript: any;} catch (error: any) {
+      conso: any;
+      return {supported: fa: any;}
 
-  /**
-   * Detect WebNN capabilities
-   */
+  /**;
+   * Dete: any;
+   */;
   private async detectWebNNCapabilities(): Promise<any> {
     try {
-      // Check if WebNN is supported
-      if (!('ml' in navigator)) {
-        return { supported: false };
-      }
+      // Che: any;
+      if ((((!('ml' in navigator) {) {'
+        return { supported) { false) {any;}
       
-      // Create context
-      const context = await (navigator as any).ml.createContext();
+      // Create) { an) { an: any;
+      const context) { any) { any: any: any: any: any = aw: any;
       
-      if (!context) {
-        return { supported: false };
-      }
+      if (((((((!context) {
+        return { supported) { false) {any;}
       
-      // Get device info
-      const deviceType = (context as any).deviceType || null;
-      const deviceName = await this.getWebNNDeviceName(context);
+      // Get) { an) { an: any;
+      const deviceType) { any) { any: any: any: any: any = (context a: a: any;
+      const deviceName: any: any: any: any: any: any = aw: any;
       
-      // Try to detect if it's a simulated device
-      const isSimulated = this.detectSimulatedWebNN(deviceName);
+      // T: any;
+      const isSimulated) { any) { any) { any: any: any: any = t: any;
       
-      // Try to detect supported operations
-      const features = await this.detectWebNNFeatures(context);
+      // T: any;
+      const features: any: any: any: any: any: any = aw: any;
       
-      return {
-        supported: true,
-        deviceType,
-        deviceName,
-        features,
-        isSimulated
-      };
-    } catch (error) {
-      console.warn('Error detecting WebNN capabilities:', error);
-      return { supported: false };
-    }
-  }
+      return {supported: t: any;} catch (error: any) {
+      conso: any;
+      return {supported: fa: any;}
 
-  /**
-   * Get WebNN device name
-   */
+  /**;
+   * G: any;
+   */;
   private async getWebNNDeviceName(context: any): Promise<string | null> {
     try {
-      // This is a best-effort attempt as WebNN API doesn't standardize this
+      // Th: any;
       
-      // Try to access device name (implementation varies)
-      const deviceInfo = context.deviceInfo;
-      if (deviceInfo && typeof deviceInfo === 'object') {
-        return deviceInfo.name || null;
-      }
+      // T: any;
+      const deviceInfo: any: any: any: any: any: any = cont: any;
+      if (((((((deviceInfo && typeof deviceInfo) { any) { any) { any) { any) { any) { any = == 'object') {return: a: an: any;}'
       
-      // If WebGPU is available, we could use that as a fallback to identify hardware
-      if ('gpu' in navigator) {
-        const adapter = await navigator.gpu.requestAdapter();
-        if (adapter) {
-          const adapterInfo = await adapter.requestAdapterInfo();
-          return adapterInfo.device || null;
-        }
-      }
+      // I: an: any;
+      if ((((((('gpu' in navigator) {'
+        const adapter) { any) { any) { any) { any) { any) { any = aw: any;
+        if (((((((adapter) { any) {
+          const adapterInfo) { any) {any) { any) { any) { any: any = aw: any;
+          ret: any;}
       
-      return null;
-    } catch (error) {
-      console.warn('Failed to get WebNN device name:', error);
-      return null;
-    }
-  }
+      ret: any;
+    } catch (error: any) {console.warn('Failed t: an: any;'
+      ret: any;}
 
-  /**
-   * Detect WebNN features
-   */
+  /**;
+   * Dete: any;
+   */;
   private async detectWebNNFeatures(context: any): Promise<string[]> {
     try {
       const features: string[] = [];
-      const builder = new (window as any).MLGraphBuilder(context);
+      const builder: any: any: any: any: any: any = n: an: any;
       
-      // Create a small test tensor
-      const desc = {
-        type: 'float32',
-        dimensions: [2, 2]
-      };
+      // Crea: any;
+      const desc: any: any: any = {
+        t: any;
+        dimensi: any;
       
-      const data = new Float32Array([1, 2, 3, 4]);
-      const testTensor = context.createOperand(desc, data);
+      const data: any: any: any: any: any: any = n: an: any;
+      const testTensor: any: any: any: any: any: any = cont: any;
       
-      // Test if various operations are supported by trying to call them
-      try { builder.relu(testTensor); features.push('relu'); } catch {}
-      try { builder.sigmoid(testTensor); features.push('sigmoid'); } catch {}
-      try { builder.tanh(testTensor); features.push('tanh'); } catch {}
-      try { builder.add(testTensor, testTensor); features.push('add'); } catch {}
-      try { builder.matmul(testTensor, testTensor); features.push('matmul'); } catch {}
-      try { builder.conv2d(testTensor, testTensor, { padding: [0, 0, 0, 0] }); features.push('conv2d'); } catch {}
+      // Te: any;
+      try { builder) {any; features) { a: an: any;} catch {}
+      try {builder: a: an: any; featu: any;} catch {}
+      try {builder: a: an: any; featu: any;} catch {}
+      try {builder: a: an: any; featu: any;} catch {}
+      try {builder: a: an: any; featu: any;} catch {}
+      try { builder.conv2d(testTensor: any, testTensor, { padding) {[0, 0: a: an: any; featu: any;} catch {}
       
-      return features;
-    } catch (error) {
-      console.warn('Error detecting WebNN features:', error);
-      return [];
-    }
-  }
+      ret: any;
+    } catch (error: any) {console.warn('Error detecti: any;'
+      ret: any;}
 
-  /**
-   * Detect WebAssembly capabilities
-   */
+  /**;
+   * Dete: any;
+   */;
   private detectWasmCapabilities(): any {
     try {
-      // Check basic WebAssembly support
-      if (typeof WebAssembly !== 'object') {
-        return { supported: false };
-      }
+      // Che: any;
+      if (((((((typeof WebAssembly !== 'object') {'
+        return { supported) { false) {any;}
       
-      // Check SIMD support
-      const simdSupported = WebAssembly.validate(new Uint8Array([
-        0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3,
-        2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
-      ]));
+      // Check) { an) { an: any;
+      const simdSupported) { any) { any: any: any: any: any = WebAssem: any;
       
-      // Check threads support
-      const threadsSupported = typeof SharedArrayBuffer === 'function';
+      // Che: any;
+      const threadsSupported: any: any: any: any: any: any: any = typeof SharedArrayBuffer: any: any: any: any: any: any = == 'function';'
       
-      return {
-        supported: true,
-        simd: simdSupported,
-        threads: threadsSupported
-      };
-    } catch (error) {
-      console.warn('Error detecting WebAssembly capabilities:', error);
-      return { supported: false };
-    }
-  }
+      return {supported: tr: any;
+        s: any;
+        thre: any;} catch (error: any) {
+      conso: any;
+      return {supported: fa: any;}
 
-  /**
-   * Detect if adapter is simulated
-   */
-  private detectSimulatedAdapter(adapterInfo: GPUAdapterInfo): boolean {
-    // Common patterns for simulated/software adapters
-    const softwarePatterns = [
-      'swiftshader',
-      'llvmpipe',
-      'software',
-      'basic',
-      'lavapipe',
-      'microsoft basic'
-    ];
+  /**;
+   * Dete: any;
+   */;
+  private detectSimulatedAdapter(adapterInfo) { any) {: any {) { any { GPUAdapterInfo): boolean {
+    // Comm: any;
+    const softwarePatterns) { any) { any) { any: any: any: any: any: any: any: any = [;
+      'swiftshader',;'
+      'llvmpipe',;'
+      'software',;'
+      'basic',;'
+      'lavapipe',;'
+      'microsoft ba: any;'
     
-    const vendor = (adapterInfo.vendor || '').toLowerCase();
-    const device = (adapterInfo.device || '').toLowerCase();
-    const description = (adapterInfo.description || '').toLowerCase();
+    const vendor: any: any: any: any: any: any: any: any: any: any: any = (adapterInfo.vendor || '').toLowerCase();'
+    const device: any: any: any: any: any: any: any: any: any: any: any = (adapterInfo.device || '').toLowerCase();'
+    const description: any: any: any: any: any: any: any: any: any: any: any = (adapterInfo.description || '').toLowerCase();'
     
-    // Check if any software pattern is in the adapter info
-    return softwarePatterns.some(pattern => 
-      vendor.includes(pattern) || 
-      device.includes(pattern) || 
-      description.includes(pattern)
-    );
-  }
+    // Che: any;
+    return softwarePatterns.some(pattern = > ;
+      vendor) {any;}
 
-  /**
-   * Detect if WebNN is simulated
-   */
-  private detectSimulatedWebNN(deviceName: string | null): boolean {
-    if (!deviceName) {
-      return false;
-    }
+  /**;
+   * Dete: any;
+   */;
+  private detectSimulatedWebNN(deviceName) { any) {: any {) { any { string | null): boolean {
+    if (((((((!deviceName) {
+      return) {any;}
     
-    // Common patterns for simulated devices
-    const softwarePatterns = [
-      'swiftshader',
-      'llvmpipe',
-      'software',
-      'basic',
-      'emulation',
-      'reference',
-      'microsoft basic'
-    ];
+    // Common) { an) { an: any;
+    const softwarePatterns) { any) { any) {any) { any) { any) { any: any: any: any: any = [;
+      'swiftshader',;'
+      'llvmpipe',;'
+      'software',;'
+      'basic',;'
+      'emulation',;'
+      'reference',;'
+      'microsoft ba: any;'
     
-    const deviceLower = deviceName.toLowerCase();
-    return softwarePatterns.some(pattern => deviceLower.includes(pattern));
-  }
+    const deviceLower: any: any: any: any: any: any = deviceN: any;
+    return softwarePatterns.some(pattern => deviceLo: any;}
 
-  /**
-   * Determine the optimal backend based on capabilities
-   */
-  private determineOptimalBackend(
-    webgpuCapabilities: any,
-    webnnCapabilities: any,
-    wasmCapabilities: any
+  /**;
+   * Determi: any;
+   */;
+  priva: any;
+    webgpuCapabilit: any;
+    webnnCapabilit: any;
+    wasmCapabilit: any;
   ): HardwareBackendType {
-    // Order of preference depends on browser
-    if (!this.browserInfo) {
-      // Default preference order
-      if (webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
-        return 'webgpu';
-      } else if (webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
-        return 'webnn';
-      } else if (wasmCapabilities.supported) {
-        return 'wasm';
-      } else {
-        return 'cpu';
-      }
-    }
+    // Ord: any;
+    if (((((((!this.browserInfo) {
+      // Default) { an) { an: any;
+      if (((webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
+        return) {any;} else if ((webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
+        return) {any;} else if ((wasmCapabilities.supported) {
+        return) {any;} else {return) { an) { an) { an: any;}
     
-    const browser = this.browserInfo.name;
+    const browser) { any) { any: any: any: any: any = t: any;
     
-    switch (browser) {
-      case 'edge':
-        // Edge has good WebNN support
-        if (webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
-          return 'webnn';
-        } else if (webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
-          return 'webgpu';
-        } else if (wasmCapabilities.supported) {
-          return 'wasm';
-        }
-        break;
+    switch (browser: any) {
+      ca: any;
+        // Ed: any;
+        if (((((((webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
+          return) {any;} else if ((webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
+          return) {any;} else if ((wasmCapabilities.supported) {
+          return) {any;}
+        brea) { an) { an) { an: any;
         
-      case 'chrome':
-        // Chrome has good WebGPU support
-        if (webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
-          return 'webgpu';
-        } else if (webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
-          return 'webnn';
-        } else if (wasmCapabilities.supported) {
-          return 'wasm';
-        }
-        break;
+      case 'chrome') {'
+        // Chrom) { an: any;
+        if (((((((webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
+          return) {any;} else if ((webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
+          return) {any;} else if ((wasmCapabilities.supported) {
+          return) {any;}
+        brea) { an) { an) { an: any;
         
-      case 'firefox':
-        // Firefox has good WebGPU support
-        if (webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
-          return 'webgpu';
-        } else if (wasmCapabilities.supported) {
-          return 'wasm';
-        } else if (webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
-          return 'webnn';
-        }
-        break;
+      case 'firefox') {'
+        // Firefo) { an: any;
+        if (((((((webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
+          return) {any;} else if ((wasmCapabilities.supported) {
+          return) {any;} else if ((webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
+          return) {any;}
+        brea) { an) { an) { an: any;
         
-      case 'safari':
-        // Safari has limited WebGPU support
-        if (webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
-          return 'webgpu';
-        } else if (webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
-          return 'webnn';
-        } else if (wasmCapabilities.supported) {
-          return 'wasm';
-        }
-        break;
+      case 'safari') {'
+        // Safar) { an: any;
+        if (((((((webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
+          return) {any;} else if ((webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
+          return) {any;} else if ((wasmCapabilities.supported) {
+          return) {any;}
+        brea) { an) { an) { an: any;
         
-      default:
-        // Default preference order
-        if (webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
-          return 'webgpu';
-        } else if (webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
-          return 'webnn';
-        } else if (wasmCapabilities.supported) {
-          return 'wasm';
-        }
-    }
+      default) {
+        // Defaul) { an: any;
+        if (((((((webgpuCapabilities.supported && !webgpuCapabilities.isSimulated) {
+          return) {any;} else if ((webnnCapabilities.supported && !webnnCapabilities.isSimulated) {
+          return) {any;} else if ((wasmCapabilities.supported) {
+          return) {any;}
     
-    // Fallback to CPU
-    return 'cpu';
+    // Fallback) { an) { an) { an: any;
   }
 
-  /**
-   * Get browser information
-   */
-  getBrowserInfo(): BrowserInfo | null {
-    return this.browserInfo;
+  /**;
+   * Ge) { an: any;
+   */;
+  getBrowserInfo()) { BrowserInfo | null {return: a: an: any;}
+
+  /**;
+   * G: any;
+   */;
+  async getOptimalBackend(modelType) { any) {: any {) { any { 'text' | 'vision' | 'audio' | 'multimodal'): Promise<HardwareBackendType> {'
+    // Ma: any;
+    const capabilities: any: any: any: any: any: any = aw: any;
+    
+    // Brows: any;
+    const browser: any: any: any: any: any: any = capabilit: any;
+    
+    // Fi: any;
+    if (((((((modelType === 'audio' && browser) { any) { any) { any) { any) { any) { any = == 'firefox' && capabilities.webgpu.supported) {// Fire: any;} else if (((((((modelType === 'text' && browser) { any) { any) { any) { any) { any) { any = == 'edge' && capabilities.webnn.supported) {// E: any;} else if (((((((modelType === 'vision' && capabilities.webgpu.supported) {'
+      // Vision) {any;}
+    
+    // Default) { an) { an) { an: any;
   }
 
-  /**
-   * Get optimal backend for a specific model type
-   */
-  async getOptimalBackend(modelType: 'text' | 'vision' | 'audio' | 'multimodal'): Promise<HardwareBackendType> {
-    // Make sure capabilities are detected
-    const capabilities = await this.detectCapabilities();
-    
-    // Browser-specific optimizations
-    const browser = capabilities.browserInfo.name;
-    
-    // Fine-tune based on model type and browser
-    if (modelType === 'audio' && browser === 'firefox' && capabilities.webgpu.supported) {
-      // Firefox has optimized audio compute shaders
-      return 'webgpu';
-    } else if (modelType === 'text' && browser === 'edge' && capabilities.webnn.supported) {
-      // Edge has good WebNN text model support
-      return 'webnn';
-    } else if (modelType === 'vision' && capabilities.webgpu.supported) {
-      // Vision models generally work best on WebGPU
-      return 'webgpu';
-    }
-    
-    // Default to the general optimal backend
-    return capabilities.optimalBackend;
-  }
-
-  /**
-   * Get browser-specific optimizations
-   */
-  async getBrowserOptimizations(
-    modelType: 'text' | 'vision' | 'audio' | 'multimodal',
-    backend: HardwareBackendType
+  /**;
+   * Ge) { an: any;
+   */;
+  asy: any;
+    modelType: any): any { 'text' | 'vision' | 'audio' | 'multimodal',;'
+    back: any;
   ): Promise<any> {
-    // Make sure capabilities are detected
-    const capabilities = await this.detectCapabilities();
+    // Ma: any;
+    const capabilities: any: any: any: any: any: any = aw: any;
     
-    const browser = capabilities.browserInfo.name;
-    const result: any = {
-      browser,
-      modelType,
-      backend,
-      optimizations: {}
-    };
+    const browser: any: any: any: any: any: any = capabilit: any;
+    const result: any: any: any: any = {
+      brows: any;
+      modelT: any;
+      backe: any;
+      optimizations: {};
     
-    // Common optimizations
-    result.optimizations.shaderPrecompilation = true;
+    // Comm: any;
+    result.optimizations.shaderPrecompilation = t: an: any;
     
-    // Browser-specific optimizations
-    switch (browser) {
-      case 'firefox':
-        // Firefox-specific optimizations
-        if (backend === 'webgpu') {
-          result.optimizations.useCustomWorkgroups = true;
-          result.optimizations.audioComputeShaders = modelType === 'audio';
-          result.optimizations.reduceBarrierSynchronization = true;
-          result.optimizations.aggressiveBufferReuse = true;
+    // Brows: any;
+    switch (browser: any) {
+      ca: any;
+        // Firef: any;
+        if (((((((backend === 'webgpu') {'
+          result.optimizations.useCustomWorkgroups = tru) { an) { an) { an: any;
+          result.optimizations.audioComputeShaders = modelType) { any) { any) { any: any: any: any: any: any: any: any: any = == 'audio';'
+          result.optimizations.reduceBarrierSynchronization = t: an: any;
+          result.optimizations.aggressiveBufferReuse = t: an: any;
           
-          if (modelType === 'audio') {
-            result.optimizations.preferredShaderFormat = 'firefox_optimized';
-            result.optimizations.audioWorkgroupSize = [8, 8, 1];
-          }
-        }
-        break;
+          if (((((((modelType === 'audio') {'
+            result.optimizations.preferredShaderFormat = 'firefox_optimized';'
+            result.optimizations.audioWorkgroupSize = [8, 8) { any) {any;}
+        bre) { an) { an: any;
         
-      case 'chrome':
-        // Chrome-specific optimizations
-        if (backend === 'webgpu') {
-          result.optimizations.useAsyncCompile = true;
-          result.optimizations.batchedOperations = true;
-          result.optimizations.useBindGroupLayoutCache = true;
+      case 'chrome') {'
+        // Chrom) { an: any;
+        if (((((((backend === 'webgpu') {'
+          result.optimizations.useAsyncCompile = tru) { an) { an) { an: any;
+          result.optimizations.batchedOperations = tru) { a) { an: any;
+          result.optimizations.useBindGroupLayoutCache = t: an: any;
           
-          if (modelType === 'vision') {
-            result.optimizations.preferredShaderFormat = 'chrome_optimized';
-            result.optimizations.visionWorkgroupSize = [16, 16, 1];
-          }
-        }
-        break;
+          if ((((((modelType === 'vision') {'
+            result.optimizations.preferredShaderFormat = 'chrome_optimized';'
+            result.optimizations.visionWorkgroupSize = [16, 16) { any) {any;}
+        bre) { an) { an: any;
         
-      case 'edge':
-        // Edge-specific optimizations
-        if (backend === 'webnn') {
-          result.optimizations.useOperationFusion = true;
-          result.optimizations.useHardwareDetection = true;
-        }
-        break;
+      case 'edge') {'
+        // Edg) { an: any;
+        if (((((((backend === 'webnn') {'
+          result.optimizations.useOperationFusion = tru) {any;
+          result.optimizations.useHardwareDetection = tru) { an) { an) { an: any;}
+        br) { an: any;
         
-      case 'safari':
-        // Safari-specific optimizations
-        if (backend === 'webgpu') {
-          result.optimizations.conservativeWorkgroupSizes = true;
-          result.optimizations.simplifiedShaders = true;
-          result.optimizations.powerEfficient = true;
-        }
-        break;
+      case 'safari') {'
+        // Safa: any;
+        if (((((((backend === 'webgpu') {'
+          result.optimizations.conservativeWorkgroupSizes = tru) {any;
+          result.optimizations.simplifiedShaders = tru) { an) { an) { an: any;
+          result.optimizations.powerEfficient = t) { an: any;}
+        b: any;
     }
     
-    return result;
+    ret: any;
   }
 
-  /**
-   * Initialize WebGPU context
-   */
-  async initializeWebGPU(): Promise<{
-    adapter: GPUAdapter;
-    device: GPUDevice;
-    adapterInfo: GPUAdapterInfo;
-  } | null> {
+  /**;
+   * Initiali: any;
+   */;
+  async initializeWebGPU()) { Promise<{adapter: GPUAda: any;
+    dev: any;
+    adapterI: any;} | null> {
     try {
-      // Check if WebGPU is available
-      if (!('gpu' in navigator)) {
-        return null;
-      }
+      // Che: any;
+      if ((((!('gpu' in navigator) {) {'
+        return) {any;}
       
-      // Request adapter
-      const adapter = await navigator.gpu.requestAdapter();
+      // Request) { an) { an: any;
+      const adapter) { any) { any) { any: any: any: any = aw: any;
       
-      if (!adapter) {
-        return null;
-      }
+      if (((((((!adapter) {
+        return) {any;}
       
-      // Get adapter info
-      const adapterInfo = await adapter.requestAdapterInfo();
+      // Get) { an) { an: any;
+      const adapterInfo) { any) { any) { any: any: any: any = aw: any;
       
-      // Request device
-      const device = await adapter.requestDevice();
+      // Reque: any;
+      const device: any: any: any: any: any: any = aw: any;
       
-      return {
-        adapter,
-        device,
-        adapterInfo
-      };
-    } catch (error) {
-      console.error('Failed to initialize WebGPU:', error);
-      return null;
-    }
-  }
+      return {adapter: a: an: any;} catch (error: any) {console.error('Failed t: an: any;'
+      ret: any;}
 
-  /**
-   * Load a shader module for the current browser
-   */
-  async loadOptimizedShader(
-    device: GPUDevice,
-    shaderPath: string,
-    modelType: string
+  /**;
+   * Lo: any;
+   */;
+  asy: any;
+    device) { any) {: any {) { any { GPUDevi: any;
+    shaderP: any;
+    modelT: any;
   ): Promise<GPUShaderModule | null> {
-    if (!this.browserInfo) {
-      throw new Error('Browser information not available');
-    }
+    if (((((((!this.browserInfo) {
+      throw) {any;}
     
     try {
-      // Determine browser-specific shader path
-      const browser = this.browserInfo.name;
-      const browserPath = `${browser}_optimized`;
+      // Determine) { an) { an: any;
+      const browser) { any) { any) { any: any: any: any = t: any;
+      const browserPath: any: any: any: any: any: any: any: any: any: any: any = `${browser}_optimized`;
       
-      // Fetch shader code from the appropriate path
-      const fullPath = `${shaderPath}/${browserPath}_${modelType}.wgsl`;
-      const response = await fetch(fullPath);
+      // Fet: any;
+      const fullPath: any: any: any: any: any: any: any: any: any: any: any = `${shaderPath}/${browserPath}_${modelType}.wgsl`;
+      const response: any: any: any: any: any: any = aw: any;
       
-      if (!response.ok) {
-        // Try fallback to generic shader
-        console.warn(`Browser-specific shader not found at ${fullPath}, using generic shader`);
-        const genericPath = `${shaderPath}/generic_${modelType}.wgsl`;
-        const genericResponse = await fetch(genericPath);
+      if (((((((!response.ok) {
+        // Try) { an) { an: any;
+        console.warn(`Browser-specific shader not found at ${fullPath}, using) { any) { a) { an: any;
+        const genericPath) { any: any: any: any: any: any: any: any: any: any: any = `${shaderPath}/generic_${modelType}.wgsl`;
+        const genericResponse: any: any: any: any: any: any = aw: any;
         
-        if (!genericResponse.ok) {
+        if (((((((!genericResponse.ok) {
           throw new Error(`Failed to load shader from ${genericPath}`);
         }
         
-        const shaderCode = await genericResponse.text();
-        return device.createShaderModule({ code: shaderCode });
-      }
+        const shaderCode) { any) { any) { any) { any) { any) { any = aw: any;
+        return device.createShaderModule({code: shaderC: any;}
       
-      const shaderCode = await response.text();
-      return device.createShaderModule({ code: shaderCode });
-    } catch (error) {
-      console.error('Failed to load optimized shader:', error);
-      return null;
-    }
-  }
+      const shaderCode: any: any: any: any: any: any = aw: any;
+      return device.createShaderModule({code: shaderC: any;} catch (error: any) {console.error('Failed t: an: any;'
+      ret: any;}
 
-  /**
-   * Get shader modification hints for the current browser
-   */
-  getShaderModificationHints(shaderType: string): any {
-    if (!this.browserInfo) {
+  /**;
+   * G: any;
+   */;
+  getShaderModificationHints(shaderType) { any) {: any {) { any { string): any {
+    if (((((((!this.browserInfo) {
       return {};
     }
     
-    const browser = this.browserInfo.name;
-    const hints: any = {};
+    const browser) { any) { any) { any) { any) { any) { any = t: any;
+    const hints: any: any: any: any: any: any: any: any: any: any: any: any = {};
     
-    switch (browser) {
-      case 'firefox':
-        hints.minimalControlFlow = true;
-        hints.reduceBarrierSynchronization = true;
-        hints.preferUnrolledLoops = true;
-        hints.aggressiveWorkgroupSize = true;
-        break;
+    switch (browser: any) {case "firefox":;"
+        hints.minimalControlFlow = t: an: any;
+        hints.reduceBarrierSynchronization = t: an: any;
+        hints.preferUnrolledLoops = t: an: any;
+        hints.aggressiveWorkgroupSize = t: an: any;
+        b: any;
         
-      case 'chrome':
-        hints.useAsyncCompile = true;
-        hints.useBindGroupCache = true;
-        break;
+      ca: any;
+        hints.useAsyncCompile = t: an: any;
+        hints.useBindGroupCache = t: an: any;
+        b: any;
         
-      case 'safari':
-        hints.simplifyShaders = true;
-        hints.conservativeWorkgroups = true;
-        hints.avoidAtomics = true;
-        break;
-    }
+      ca: any;
+        hints.simplifyShaders = t: an: any;
+        hints.conservativeWorkgroups = t: an: any;
+        hints.avoidAtomics = t: an: any;
+        b: any;}
     
-    // Shader-specific hints
-    if (shaderType === 'matmul_4bit') {
-      switch (browser) {
-        case 'firefox':
-          hints.workgroupSize = [8, 8, 1];
-          hints.preferDirectBitwiseOps = true;
-          break;
+    // Shad: any;
+    if (((((((shaderType === 'matmul_4bit') {'
+      switch (browser) { any) {
+        case 'firefox') {'
+          hints.workgroupSize = [8, 8) { any) {any;
+          hints.preferDirectBitwiseOps = t) { an: any;
+          br) { an: any;
           
-        case 'chrome':
-          hints.workgroupSize = [16, 16, 1];
-          break;
+        ca: any;
+          hints.workgroupSize = [16, 1: a: any;
+          b: any;
           
-        case 'safari':
-          hints.workgroupSize = [4, 4, 1];
-          break;
-      }
-    } else if (shaderType === 'audio_processing') {
-      switch (browser) {
-        case 'firefox':
-          hints.specializedAudioPath = true;
-          hints.fixedWorkgroupSize = true;
-          break;
+        ca: any;
+          hints.workgroupSize = [4, 4: a: an: any;
+          b: any;} else if (((((((shaderType === 'audio_processing') {'
+      switch (browser) { any) {
+        case 'firefox') {'
+          hints.specializedAudioPath = tru) {any;
+          hints.fixedWorkgroupSize = tr) { an) { an: any;
+          br) { an: any;
           
-        case 'chrome':
-          hints.optimalAudioBlockSize = 256;
-          break;
-      }
-    }
+        ca: any;
+          hints.optimalAudioBlockSize = 2: a: any;
+          b: any;}
     
-    return hints;
+    ret: any;
   }
 }

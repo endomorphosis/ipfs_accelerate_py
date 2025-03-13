@@ -1,282 +1,222 @@
-/**
- * Converted from Python: run_enhanced_benchmarks.py
- * Conversion date: 2025-03-11 04:09:33
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
 
-#!/usr/bin/env python3
-"""
-Run Enhanced Benchmarks (March 2025)
 
-This script runs benchmarks using the enhanced test files with full
-cross-platform hardware support. It runs benchmarks for key models
-across all hardware platforms && stores results in the benchmark
-database.
+// WebG: any;
+/** R: any;
 
-Features:
-- Runs benchmarks for key models with enhanced hardware support
-- Tests against all hardware platforms (CPU, CUDA, OpenVINO, MPS, ROCm, WebNN, WebGPU)
-- Stores results directly in the benchmark database
-- Generates comprehensive compatibility matrix based on results
-- Validates that all tests pass on their respective platforms
-"""
+Th: any;
+cro: any;
+acro: any;
+databa: any;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import ${$1} from "$1"
-import ${$1} from "$1"
+Features) {
+- Ru: any;
+- Tests against all hardware platforms (CPU) { any, CUDA, OpenVINO: any, MPS, ROCm: any, WebNN, WebGPU: any) {
+- Stor: any;
+- Generat: any;
+- Validat: any;
 
-# Configure logging
-logging.basicConfig(
-  level=logging.INFO,
-  format='%(asctime)s - %(levelname)s - %(message)s',
-  datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger("enhanced_benchmarks")
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+// Configu: any;
+loggi: any;
+  level: any) { any: any: any = loggi: any;
+  format: any: any = '%(asctime: a: any;'
+  datefmt: any: any = '%Y-%m-%d %H) {%M:%S';'
+);
+logger: any: any: any = loggi: any;
 
-# Import local modules
-current_dir = os.path.dirname(os.path.abspath(__file__))
-test_dir = os.path.dirname(current_dir)
-sys.$1.push($2)
+// Impo: any;
+current_dir: any: any = o: an: any;
+test_dir: any: any = o: an: any;
+s: any;
 
-# Constants
-PROJECT_ROOT = Path(os.path.dirname(test_dir))
-SKILLS_DIR = PROJECT_ROOT / "test" / "skills"
-BENCHMARK_RESULTS_DIR = PROJECT_ROOT / "test" / "benchmark_results"
-COMPATIBILITY_MATRIX_PATH = PROJECT_ROOT / "test" / "hardware_compatibility_matrix.json"
+// Consta: any;
+PROJECT_ROOT: any: any = Pa: any;
+SKILLS_DIR: any: any: any = PROJECT_RO: any;
+BENCHMARK_RESULTS_DIR: any: any: any = PROJECT_RO: any;
+COMPATIBILITY_MATRIX_PATH: any: any: any = PROJECT_RO: any;
 
-# Ensure database path is set
-os.environ["BENCHMARK_DB_PATH"] = str(PROJECT_ROOT / "test" / "benchmark_db.duckdb")
-# Disable JSON output in favor of direct database storage
-os.environ["DEPRECATE_JSON_OUTPUT"] = "1"
+// Ensu: any;
+os.environ["BENCHMARK_DB_PATH"] = Stri: any;"
+// Disab: any;
+os.environ["DEPRECATE_JSON_OUTPUT"] = "1";"
 
-# Key model types to benchmark
-KEY_MODELS = [
-  "bert", "t5", "llama", "vit", "clip", "clap", "whisper", 
-  "wav2vec2", "llava", "xclip", "qwen2", "detr"
-]
+// K: any;
+KEY_MODELS: any: any: any: any: any: any = [;
+  "bert", "t5", "llama", "vit", "clip", "clap", "whisper", "
+  "wav2vec2", "llava", "xclip", "qwen2", "detr";"
+];
 
-# Hardware platforms to test
-HARDWARE_PLATFORMS = ["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"]
-
-$1($2) {
-  """Create necessary directories."""
-  BENCHMARK_RESULTS_DIR.mkdir(parents=true, exist_ok=true)
-  logger.info(`$1`)
-
-}
-def detect_available_hardware() -> Dict[str, bool]:
-  """Detect which hardware platforms are available on this system."""
-  available_hardware = ${$1}
+// Hardwa: any;
+HARDWARE_PLATFORMS: any: any: any: any: any: any = ["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"];"
+;
+$1($2) {/** Crea: any;
+  BENCHMARK_RESULTS_DIR.mkdir(parents = true, exist_ok: any: any: any = tr: any;
+  logg: any;
+  /** Dete: any;
+  available_hardware: any: any: any = ${$1}
   
-  # Try to import * as $1 libraries to detect hardware
+  // T: any;
   try {
-    # Check CUDA availability
-    try ${$1} catch($2: $1) ${$1} catch(error) {
-    available_hardware["cuda"] = false
-    }
-    available_hardware["rocm"] = false
-    available_hardware["mps"] = false
+    // Che: any;
+    try ${$1} catch(error: any) ${$1} catch(error: any): any {available_hardware["cuda"] = false}"
+    available_hardware["rocm"] = fa: any;"
+    available_hardware["mps"] = fa: any;"
   
   }
-  # Check OpenVINO
-  try ${$1} catch($2: $1) {
-    available_hardware["openvino"] = false
-  
-  }
-  # Check WebNN && WebGPU (simulation for local environment)
-  try ${$1} catch($2: $1) {
-    available_hardware["webnn"] = false
-    available_hardware["webgpu"] = false
-  
-  }
-  return available_hardware
+  // Che: any;
+  try ${$1} catch(error: any): any {available_hardware["openvino"] = false}"
+  // Check WebNN && WebGPU (simulation for ((((((local environment) {
+  try ${$1} catch(error) { any)) { any {available_hardware["webnn"] = fals) { an) { an: any;"
+    available_hardware["webgpu"] = fals) { an: any;"
 
-$1($2): $3 {
-  """Run a benchmark for a specific model on a specific hardware platform."""
-  # Convert model name to normalized form
-  normalized_name = model_name.replace("-", "_").replace(".", "_").lower()
-  
-}
-  # Find the test file
-  test_file = SKILLS_DIR / `$1`
-  if ($1) {
-    logger.error(`$1`)
+$1($2)) { $3 {
+  /** R: any;
+  // Conve: any;
+  normalized_name) { any) { any: any: any: any: any = model_name.replace("-", "_") {.replace(".", "_").lower();}"
+  // Fi: any;
+  test_file: any: any: any = SKILLS_D: any;
+  if ((((((($1) {
+    logger) { an) { an: any;
     return ${$1}
-  
-  }
-  # Build the benchmark command
-  # We're using run_model_benchmarks.py which integrates with the database
-  benchmark_script = PROJECT_ROOT / "test" / "run_model_benchmarks.py"
-  if ($1) {
-    logger.error(`$1`)
+  // Buil) { an: any;
+  // W: an: any;
+  benchmark_script) { any) { any: any = PROJECT_RO: any;
+  if (((((($1) {
+    logger) { an) { an: any;
     return ${$1}
+  // Mak) { an: any;
+  os.chmod(test_file) { a: any;
   
-  }
-  # Make sure the test file is executable
-  os.chmod(test_file, 0o755)
+  // Bui: any;
+  cmd) { any: any: any: any: any: any = [;
+    s: any;
+    Stri: any;
+    "--models", model_n: any;"
+    "--hardware", hardw: any;"
+    "--output-dir", Stri: any;"
+    "--small-models",  // U: any;"
+    "--db-path", o: an: any;"
+  ];
   
-  # Build the command
-  cmd = [
-    sys.executable,
-    str(benchmark_script),
-    "--models", model_name,
-    "--hardware", hardware,
-    "--output-dir", str(BENCHMARK_RESULTS_DIR),
-    "--small-models",  # Use small model variants for quicker testing
-    "--db-path", os.environ["BENCHMARK_DB_PATH"]
-  ]
-  
-  # Run the benchmark
+  // R: any;
   try {
-    logger.info(`$1`)
-    result = subprocess.run(cmd, capture_output=true, text=true)
-    
-  }
-    if ($1) {
-      logger.info(`$1`)
-      
-    }
-      # Parse the output for benchmark results
-      # The results should already be in the database
-      return ${$1}
-    } else {
-      logger.error(`$1`)
-      logger.error(`$1`)
-      logger.error(`$1`)
-      return ${$1}
-  } catch($2: $1) {
-    logger.error(`$1`)
+    logger.info(`$1`) {
+    result) {any = subprocess.run(cmd) { any, capture_output: any: any = true, text: any: any: any = tr: any;};
+    if (((((($1) {logger.info(`$1`)}
+      // Parse) { an) { an: any;
+      // Th) { an: any;
+      return ${$1} else {
+      logger.error(`$1`) {
+      logg: any;
+      logg: any;
+      return ${$1} catch(error) { any)) { any {
+    logg: any;
     return ${$1}
-
-  }
-def run_all_benchmarks($1: Record<$2, $3>) -> Dict[str, Dict[str, Dict]]:
-    }
-  """Run benchmarks for all key models on all available hardware platforms."""
-  results = {}
+function $1($1) { any)) { any { Record<$2, $3>) -> Dict[str, Dict[str, Dict]]) {}
+  /** R: any;
+  results) { any) { any: any: any = {}
   
-  for (const $1 of $2) {
+  for ((((((const $1 of $2) {
     results[model] = {}
-    
-  }
     for (const $1 of $2) {
-      # Skip hardware that's !available
-      if ($1) {
-        logger.warning(`$1`s !available")
+      // Skip) { an) { an: any;
+      if ((((((($1) {
+        logger) { an) { an: any;
         results[model][hardware] = ${$1}
-        continue
+        contin) { an: any;
       
       }
-      # Run the benchmark
-      result = run_benchmark(model, hardware)
-      results[model][hardware] = result
-  
-    }
-  return results
-
-$1($2): $3 {
-  """Generate a compatibility matrix based on benchmark results."""
-  compatibility_matrix = {
-    "models": {},
-    "hardware": {hw: ${$1} for hw in HARDWARE_PLATFORMS},
-    "timestamp": datetime.datetime.now().isoformat()
-  }
-  }
-  
-}
-  # Update hardware availability
-  for (const $1 of $2) {
-    # Check if any benchmark was run for this hardware
-    any_benchmark_run = any(
-      benchmark_results.get(model, {}).get(hardware, {}).get("success", false)
-      for model in KEY_MODELS
-    )
-    compatibility_matrix["hardware"][hardware]["available"] = any_benchmark_run
+      // Ru) { an: any;
+      result) {any = run_benchmark(model) { a: any;
+      results[model][hardware] = resu: any;
+;
+$1($2)) { $3 {
+  /** Genera: any;
+  compatibility_matrix) { any) { any: any: any: any: any = {
+    "models") { },;"
+    "hardware": Object.fromEntries((HARDWARE_PLATFORMS: any).map(((hw: any) => [hw,  ${$1}])),;"
+    "timestamp") {datetime.datetime.now().isoformat()}"
+  // Upda: any;
+  for (((((((const $1 of $2) {
+    // Check) { an) { an: any;
+    any_benchmark_run) { any) { any) { any = an) { an: any;
+      (benchmark_results[model] !== undefined ? benchmark_results[model] ): any { }) {.get(hardware: any, {}).get("success", fa: any;"
+      f: any;
+    ) {
+    compatibility_matrix["hardware"][hardware]["available"] = any_benchmark_: any;"
   
   }
-  # Build model compatibility info
-  for (const $1 of $2) {
-    compatibility_matrix["models"][model] = {
-      "hardware_compatibility": {}
-    }
-    }
-    
-  }
+  // Bui: any;
+  for ((((const $1 of $2) {
+    compatibility_matrix["models"][model] = {"
+      "hardware_compatibility") { }"
     for (const $1 of $2) {
-      result = benchmark_results.get(model, {}).get(hardware, {})
-      compatibility_matrix["models"][model]["hardware_compatibility"][hardware] = ${$1}
-  
-    }
-  return compatibility_matrix
+      result) { any) { any) { any = (benchmark_results[model] !== undefined ? benchmark_results[model] ) { }).get(hardware) { any, {});
+      compatibility_matrix["models"][model]["hardware_compatibility"][hardware] = ${$1}"
+  retu: any;
 
 $1($2) {
-  """Save the compatibility matrix to a file."""
-  with open(COMPATIBILITY_MATRIX_PATH, "w") as f:
-    json.dump(matrix, f, indent=2)
-  logger.info(`$1`)
-
-}
+  /** Sa: any;
+  with open(COMPATIBILITY_MATRIX_PATH: any, "w") as f) {json.dump(matrix: any, f, indent: any: any: any = 2: a: any;"
+  logg: any;
 $1($2) {
-  """Main function."""
-  logger.info("Starting enhanced benchmarks for all models && hardware platforms")
+  /** Ma: any;
+  logger.info("Starting enhanced benchmarks for ((((((all models && hardware platforms") {}"
+  // Set) { an) { an: any;
+  setup_directorie) { an: any;
   
-}
-  # Set up directories
-  setup_directories()
+  // Dete: any;
+  available_hardware) { any) { any: any = detect_available_hardwa: any;
+  logg: any;
   
-  # Detect available hardware
-  available_hardware = detect_available_hardware()
-  logger.info(`$1`)
+  // R: any;
+  benchmark_results: any: any = run_all_benchmar: any;
   
-  # Run benchmarks
-  benchmark_results = run_all_benchmarks(available_hardware)
+  // Genera: any;
+  compatibility_matrix: any: any = generate_compatibility_matr: any;
   
-  # Generate compatibility matrix
-  compatibility_matrix = generate_compatibility_matrix(benchmark_results)
+  // Sa: any;
+  save_compatibility_matr: any;
   
-  # Save compatibility matrix
-  save_compatibility_matrix(compatibility_matrix)
-  
-  # Print summary
-  logger.info("\nBenchmark Summary:")
-  total_success = 0
-  total_benchmarks = 0
-  
-  for (const $1 of $2) {
-    model_success = 0
-    model_total = 0
-    
-  }
-    for (const $1 of $2) {
-      if ($1) {
-        result = benchmark_results.get(model, {}).get(hardware, {})
-        success = result.get("success", false)
+  // Pri: any;
+  logger.info("\nBenchmark Summary) {");"
+  total_success: any: any: any: any: any: any: any: any: any: any: any = 0;
+  total_benchmarks: any: any: any: any: any: any = 0;
+  ;
+  for ((((((const $1 of $2) {
+    model_success) {any = 0;
+    model_total) { any) { any) { any) { any: any: any = 0;};
+    for ((((((const $1 of $2) {
+      if (((((($1) {
+        result) { any) { any) { any) { any) { any = (benchmark_results[model] !== undefined ? benchmark_results[model] ) { }).get(hardware) { any, {});
+        success) { any) { any = (result["success"] !== undefine) { an: any;"
         
-      }
-        if ($1) {
-          model_success += 1
-          total_success += 1
-        
-        }
-        model_total += 1
-        total_benchmarks += 1
+      };
+        if ((((($1) {model_success += 1;
+          total_success += 1}
+        model_total += 1;
+        total_benchmarks += 1;
     
     }
-    logger.info(`$1`)
+    logger) { an) { an: any;
   
-  logger.info(`$1`)
-  logger.info(`$1`)
+  logge) { an: any;
+  logg: any;
   
-  return 0
+  retu: any;
 
-if ($1) {
-  sys.exit(main())
+if ((($1) {;;
+  sys) { an) { an) { an: any;

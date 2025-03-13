@@ -35,3 +35,6 @@ temp/
 .eslintcache
 .cache/
 .npm/
+node_modules/
+node_modules/*
+*node_modules/*

@@ -1,969 +1,806 @@
-#!/usr/bin/env python3
-"""
-Class-based test file for all Qwen2-family models.
-This file provides a unified testing interface for:
-- Qwen2ForCausalLM
-"""
+// FIXME: Python function definition
+/** Class-based test file for ((all Qwen2-family models.;
+This file provides a unified testing interface for) {
+- Qwen2ForCausalLM */;
 
-import os
-import sys
-import json
-import time
-import datetime
-import traceback
-import logging
-import argparse
-from unittest.mock import patch, MagicMock, Mock
-from typing import Dict, List, Any, Optional, Union
-from pathlib import Path
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Third-party imports
-import numpy as np
-
-# Try to import torch
-try:
-    import torch
-    HAS_TORCH = True
-except ImportError:
-    torch = MagicMock()
-    HAS_TORCH = False
-    logger.warning("torch not available, using mock")
-
-# Try to import transformers
-try:
-    import transformers
-    HAS_TRANSFORMERS = True
-except ImportError:
-    transformers = MagicMock()
-    HAS_TRANSFORMERS = False
-    logger.warning("transformers not available, using mock")
-
-
-# Try to import tokenizers
-try:
-    import tokenizers
-    HAS_TOKENIZERS = True
-except ImportError:
-    tokenizers = MagicMock()
-    HAS_TOKENIZERS = False
-    logger.warning("tokenizers not available, using mock")
-
-
-# Try to import accelerate
-try:
-    import accelerate
-    HAS_ACCELERATE = True
-except ImportError:
-    accelerate = MagicMock()
-    HAS_ACCELERATE = False
-    logger.warning("accelerate not available, using mock")
-
-
-# Mock implementations for missing dependencies
-if not HAS_TOKENIZERS:
+import datetime;
+import traceback;
+import { Path; } from "unittest.mock import patch, MagicMock) { any, Mock;"
+from typing import Dict, List: any, Any, Optional: any, Union;
+from pathlib";"
+// Configure logging;
+logging.basicConfig(level = logging.INFO, format: any: any = '%(asctime: any)s - %(levelname: any)s - %(message: any)s');'
+logger: any: any: any = logging.getLogger(__name__;
+// Add parent directory to path for ((imports;
+sys.path.insert(0) { any, os.path.dirname(os.path.dirname(os.path.abspath(__file__: any) {);
+// Third-party imports;
+import * as np; from "numpy";"
+// Try to import torch;
+try {
+    import torch;
+    HAS_TORCH) {any = true;} catch ImportError {
+    torch: any: any: any = MagicMock();
+    HAS_TORCH: any: any: any = false;
+    logger.warning("torch not available, using mock");"
+// Try to import transformers;
+try {import transformers;
+    HAS_TRANSFORMERS: any: any: any = true;} catch ImportError {
+    transformers: any: any: any = MagicMock();
+    HAS_TRANSFORMERS: any: any: any = false;
+    logger.warning("transformers not available, using mock");"
+// Try to import tokenizers;
+try {import tokenizers;
+    HAS_TOKENIZERS: any: any: any = true;} catch ImportError {
+    tokenizers: any: any: any = MagicMock();
+    HAS_TOKENIZERS: any: any: any = false;
+    logger.warning("tokenizers not available, using mock");"
+// Try to import accelerate;
+try {import accelerate;
+    HAS_ACCELERATE: any: any: any = true;} catch ImportError {
+    accelerate: any: any: any = MagicMock();
+    HAS_ACCELERATE: any: any: any = false;
+    logger.warning("accelerate not available, using mock");"
+// Mock implementations for ((missing dependencies;
+if ((not HAS_TOKENIZERS) {
     
-class MockHandler:
-def create_cpu_handler(self):
-    """Create handler for CPU platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModelForCausalLM.from_pretrained(model_path).to(self.device_name)
-    return handler
+class MockHandler) {
+function create_cpu_handler(this) { any) { any):  {
+    /** Create handler for ((CPU platform. */;
+    model_path) { any) { any: any = this.get_model_path_or_name();
+        handler: any: any = AutoModelForCausalLM.from_pretrained(model_path: any).to(this.device_name);
+    return handler;
 
 
-def create_cuda_handler(self):
-    """Create handler for CUDA platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModelForCausalLM.from_pretrained(model_path).to(self.device_name)
-    return handler
+function create_cuda_handler(this: any: any):  {
+    /** Create handler for ((CUDA platform. */;
+    model_path) { any) { any: any = this.get_model_path_or_name();
+        handler: any: any = AutoModelForCausalLM.from_pretrained(model_path: any).to(this.device_name);
+    return handler;
 
-def create_openvino_handler(self):
-    """Create handler for OPENVINO platform."""
-    model_path = self.get_model_path_or_name()
-        from openvino.runtime import Core
-        import numpy as np
-        ie = Core()
-        compiled_model = ie.compile_model(model_path, "CPU")
-        handler = lambda input_text: compiled_model(np.array(input_text))[0]
-    return handler
+function create_openvino_handler(this: any: any):  {
+    /** Create handler for ((OPENVINO platform. */;
+    model_path) { any) { any: any = this.get_model_path_or_name();
+        import { numpy as np; } from "openvino.runtime import Core;"
+       ";"
+        ie: any: any: any = Core();
+        compiled_model: any: any = ie.compile_model(model_path: any, "CPU");"
+        handler: any: any = lambda input_text: compiled_model(np.array(input_text: any))[0];
+    return handler;
 
-def create_mps_handler(self):
-    """Create handler for MPS platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModelForCausalLM.from_pretrained(model_path).to(self.device_name)
-    return handler
+function create_mps_handler(this: any: any):  {
+    /** Create handler for ((MPS platform. */;
+    model_path) { any) { any: any = this.get_model_path_or_name();
+        handler: any: any = AutoModelForCausalLM.from_pretrained(model_path: any).to(this.device_name);
+    return handler;
 
-def create_rocm_handler(self):
-    """Create handler for ROCM platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModelForCausalLM.from_pretrained(model_path).to(self.device_name)
-    return handler
+function create_rocm_handler(this: any: any):  {
+    /** Create handler for ((ROCM platform. */;
+    model_path) { any) { any: any = this.get_model_path_or_name();
+        handler: any: any = AutoModelForCausalLM.from_pretrained(model_path: any).to(this.device_name);
+    return handler;
 
-def create_webgpu_handler(self):
-    """Create handler for WEBGPU platform."""
-    # This is a mock handler for webgpu
-        handler = MockHandler(self.model_path, platform="webgpu")
-    return handler
-def init_cpu(self):
-    """Initialize for CPU platform."""
+function create_webgpu_handler(this: any: any):  {
+    /** Create handler for ((WEBGPU platform. */;
+// This is a mock handler for webgpu;
+        handler) { any) { any = MockHandler(this.model_path, platform: any: any: any = "webgpu");"
+    return handler;
+function init_cpu(this: any: any):  {
+    /** Initialize for ((CPU platform. */;
     
-    self.platform = "CPU"
-    self.device = "cpu"
-    self.device_name = "cpu"
-    return True
+    this.platform = "CPU";"
+    this.device = "cpu";"
+    this.device_name = "cpu";"
+    return true;
 
-    """Mock handler for platforms that don't have real implementations."""
+    /** Mock handler for platforms that don't have real implementations. */;'
     
     
-def init_cuda(self):
-    """Initialize for CUDA platform."""
-    import torch
-    self.platform = "CUDA"
-    self.device = "cuda"
-    self.device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    return True
+def init_cuda(this) { any) {) {
+    /** Initialize for ((CUDA platform. */;
+    import torch;
+    this.platform = "CUDA";"
+    this.device = "cuda";"
+    this.device_name = "cuda" if ((torch.cuda.is_available() { else { "cpu";"
+    return true;
 
-def init_openvino(self):
-    """Initialize for OPENVINO platform."""
-    import openvino
-    self.platform = "OPENVINO"
-    self.device = "openvino"
-    self.device_name = "openvino"
-    return True
+def init_openvino(this) { any)) {
+    /** Initialize for (OPENVINO platform. */;
+    import openvino;
+    this.platform = "OPENVINO";"
+    this.device = "openvino";"
+    this.device_name = "openvino";"
+    return true;
 
-def init_mps(self):
-    """Initialize for MPS platform."""
-    import torch
-    self.platform = "MPS"
-    self.device = "mps"
-    self.device_name = "mps" if torch.backends.mps.is_available() else "cpu"
-    return True
+def init_mps(this) { any)) {
+    /** Initialize for ((MPS platform. */;
+    import torch;
+    this.platform = "MPS";"
+    this.device = "mps";"
+    this.device_name = "mps" if (torch.backends.mps.is_available() { else { "cpu";"
+    return true;
 
-def init_rocm(self):
-    """Initialize for ROCM platform."""
-    import torch
-    self.platform = "ROCM"
-    self.device = "rocm"
-    self.device_name = "cuda" if torch.cuda.is_available() and torch.version.hip is not None else "cpu"
-    return True
+def init_rocm(this) { any)) {
+    /** Initialize for (ROCM platform. */;
+    import torch;
+    this.platform = "ROCM";"
+    this.device = "rocm";"
+    this.device_name = "cuda" if (torch.cuda.is_available() { and torch.version.hip is not null else { "cpu";"
+    return true;
 
-def init_webgpu(self):
-    """Initialize for WEBGPU platform."""
-    # WebGPU specific imports would be added at runtime
-    self.platform = "WEBGPU"
-    self.device = "webgpu"
-    self.device_name = "webgpu"
-    return True
-def __init__(self, model_path, platform="cpu"):
-        self.model_path = model_path
-        self.platform = platform
-        print(f"Created mock handler for {platform}")
+def init_webgpu(this) { any)) {
+    /** Initialize for (WEBGPU platform. */;
+// WebGPU specific imports would be added at runtime;
+    this.platform = "WEBGPU";"
+    this.device = "webgpu";"
+    this.device_name = "webgpu";"
+    return true;
+function __init__(this) { any) { any, model_path, platform: any): any { any: any = "cpu"):  {;"
+        this.model_path = model_path;
+        this.platform = platform;
+        prparseInt(f"Created mock handler for (({platform}", 10) {"
     
-    def __call__(self, *args, **kwargs):
-        """Return mock output."""
-        print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
-        return {"mock_output": f"Mock output for {self.platform}"}
-class MockTokenizer:
-        def __init__(self, *args, **kwargs):
-            self.vocab_size = 32000
+    def __call__(this) { any, *args, **kwargs)) {
+        /** Return mock output. */;
+        prparseInt(f"MockHandler for (({this.platform} called with {args.length} args and {kwargs.length} kwargs", 10) {"
+        return {"mock_output") { f"Mock output for ({this.platform}"}"
+class MockTokenizer) {
+        function __init__(this) { any: any, *args, **kwargs):  {
+            this.vocab_size = 32000;
             
-        def encode(self, text, **kwargs):
-            return {"ids": [1, 2, 3, 4, 5], "attention_mask": [1, 1, 1, 1, 1]}
+        function encode(this: any: any, text, **kwargs):  {
+            return {"ids": [1, 2: any, 3, 4: any, 5], "attention_mask": [1, 1: any, 1, 1: any, 1]}"
             
-        def decode(self, ids, **kwargs):
-            return "Decoded text from mock"
+        function decode(this: any: any, ids, **kwargs):  {
+            return "Decoded text from mock";"
             
-        @staticmethod
-        def from_file(vocab_filename):
-            return MockTokenizer()
+        @staticmethod;
+        function from_file(vocab_filename: any: any):  {
+            return MockTokenizer();
 
-    tokenizers.Tokenizer = MockTokenizer
-
-
-# Hardware detection
-def check_hardware():
-    """Check available hardware and return capabilities."""
-    capabilities = {
-        "cpu": True,
-        "cuda": False,
-        "cuda_version": None,
-        "cuda_devices": 0,
-        "mps": False,
-        "openvino": False
-    }
+    tokenizers.Tokenizer = MockTokenizer;
+// Hardware detection;
+function check_hardware():  {
+    /** Check available hardware and return capabilities. */;
+    capabilities: any: any = {"cpu": true,;"
+        "cuda": false,;"
+        "cuda_version": null,;"
+        "cuda_devices": 0,;"
+        "mps": false,;"
+        "openvino": false}"
+// Check CUDA;
+    if ((HAS_TORCH) { any) {
+        capabilities["cuda"] = torch.cuda.is_available();"
+        if ((capabilities["cuda"]) {"
+            capabilities["cuda_devices"] = torch.cuda.device_count();"
+            capabilities["cuda_version"] = torch.version.cuda;"
+// Check MPS (Apple Silicon);
+    if (HAS_TORCH and hasattr(torch) { any, "mps") { and hasattr(torch.mps, "is_available")) {"
+        capabilities["mps"] = torch.mps.is_available();"
+// Check OpenVINO;
+    try {import openvino;
+        capabilities["openvino"] = true} catch ImportError {"
+        pass;
     
-    # Check CUDA
-    if HAS_TORCH:
-        capabilities["cuda"] = torch.cuda.is_available()
-        if capabilities["cuda"]:
-            capabilities["cuda_devices"] = torch.cuda.device_count()
-            capabilities["cuda_version"] = torch.version.cuda
-    
-    # Check MPS (Apple Silicon)
-    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
-        capabilities["mps"] = torch.mps.is_available()
-    
-    # Check OpenVINO
-    try:
-        import openvino
-        capabilities["openvino"] = True
-    except ImportError:
-        pass
-    
-    return capabilities
-
-# Get hardware capabilities
-HW_CAPABILITIES = check_hardware()
-
-# Models registry - Maps model IDs to their specific configurations
-QWEN2_MODELS_REGISTRY = {
-    "Qwen/Qwen2-7B-Instruct": {
-        "description": "Qwen2 7B instruction-tuned model",
-        "class": "Qwen2ForCausalLM",
-    },
-    "Qwen/Qwen2-7B": {
-        "description": "Qwen2 7B base model",
-        "class": "Qwen2ForCausalLM",
-    },
+    return capabilities;
+// Get hardware capabilities;
+HW_CAPABILITIES: any: any: any = check_hardware();
+// Models registry - Maps model IDs to their specific configurations;
+QWEN2_MODELS_REGISTRY: any: any = {
+    "Qwen/Qwen2-7B-Instruct": {"description": "Qwen2 7B instruction-tuned model",;"
+        "class": "Qwen2ForCausalLM"},;"
+    "Qwen/Qwen2-7B": {"description": "Qwen2 7B base model",;"
+        "class": "Qwen2ForCausalLM"}"
 }
 
-class TestQwen2Models:
-    """Base test class for all Qwen2-family models."""
+class TestQwen2Models {
+    /** Base test class for(all Qwen2-family models. */;
     
-    def __init__(self, model_id=None):
-        """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "Qwen/Qwen2-7B-Instruct"
+    function __init__(this {any: any, model_id): any {: any { any: any = null):  {;
+        /** Initialize the test class for ((a specific model or default. */;
+        this.model_id = model_id or "Qwen/Qwen2-7B-Instruct";"
+// Verify model exists in registry;
+        if ((this.model_id not in QWEN2_MODELS_REGISTRY) {
+            logger.warning(f"Model {this.model_id} not in registry, using default configuration");"
+            this.model_info = QWEN2_MODELS_REGISTRY["Qwen/Qwen2-7B-Instruct"];"
+        else {) {
+            this.model_info = QWEN2_MODELS_REGISTRY[this.model_id];
+// Define model parameters;
+        this.task = "text-generation";"
+        this.class_name = this.model_info["class"];"
+        this.description = this.model_info["description"];"
+// Define test inputs;
+        this.test_text = "Explain the concept of neural networks to a beginner";"
+        this.test_texts = [;
+            "Explain the concept of neural networks to a beginner",;"
+            "Explain the concept of neural networks to a beginner (alternative) { any)";"
+        ];
+// Configure hardware preference;
+        if (HW_CAPABILITIES["cuda"]) {this.preferred_device = "cuda";} else if ((HW_CAPABILITIES["mps"]) {"
+            this.preferred_device = "mps";"
+        else {) {
+            this.preferred_device = "cpu";"
         
-        # Verify model exists in registry
-        if self.model_id not in QWEN2_MODELS_REGISTRY:
-            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = QWEN2_MODELS_REGISTRY["Qwen/Qwen2-7B-Instruct"]
-        else:
-            self.model_info = QWEN2_MODELS_REGISTRY[self.model_id]
-        
-        # Define model parameters
-        self.task = "text-generation"
-        self.class_name = self.model_info["class"]
-        self.description = self.model_info["description"]
-        
-        # Define test inputs
-        self.test_text = "Explain the concept of neural networks to a beginner"
-        self.test_texts = [
-            "Explain the concept of neural networks to a beginner",
-            "Explain the concept of neural networks to a beginner (alternative)"
-        ]
-        
-        # Configure hardware preference
-        if HW_CAPABILITIES["cuda"]:
-            self.preferred_device = "cuda"
-        elif HW_CAPABILITIES["mps"]:
-            self.preferred_device = "mps"
-        else:
-            self.preferred_device = "cpu"
-        
-        logger.info(f"Using {self.preferred_device} as preferred device")
-        
-        # Results storage
-        self.results = {}
-        self.examples = []
-        self.performance_stats = {}
+        logger.info(f"Using {this.preferred_device} as preferred device");"
+// Results storage;
+        this.results = {}
+        this.examples = [];
+        this.performance_stats = {}
     
     
 
-    def init_webnn(self, model_name=None):
-        """Initialize text model for WebNN inference."""
-        try:
-            print("Initializing WebNN for text model")
-            model_name = model_name or self.model_name
+    function init_webnn(this) { any: any, model_name: any: any = null):  {;
+        /** Initialize text model for ((WebNN inference. */;
+        try {
+            prparseInt("Initializing WebNN for text model", 10) {"
+            model_name) { any) { any: any = model_name or this.model_name;
+// Check for ((WebNN support;
+            webnn_support) { any) { any: any = false;
+            try {
+// In browser environments, check for ((WebNN API;
+                import js;
+                if ((hasattr(js) { any, 'navigator') { and hasattr(js.navigator, 'ml')) {'
+                    webnn_support) {any = true;
+                    prparseInt("WebNN API detected in browser environment", 10)} catch ImportError {"
+// Not in a browser environment;
+                pass;
+// Create queue for ((inference requests;
+            import asyncio;
+            queue) { any) { any = asyncio.Queue(16) { any);
             
-            # Check for WebNN support
-            webnn_support = False
-            try:
-                # In browser environments, check for WebNN API
-                import js
-                if hasattr(js, 'navigator') and hasattr(js.navigator, 'ml'):
-                    webnn_support = True
-                    print("WebNN API detected in browser environment")
-            except ImportError:
-                # Not in a browser environment
-                pass
-                
-            # Create queue for inference requests
-            import asyncio
-            queue = asyncio.Queue(16)
-            
-            if not webnn_support:
-                # Create a WebNN simulation using CPU implementation for text models
-                print("Using WebNN simulation for text model")
-                
-                # Initialize with CPU for simulation
-                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
-                
-                # Wrap the CPU function to simulate WebNN
-                def webnn_handler(text_input, **kwargs):
-                    try:
-                        # Process input with tokenizer
-                        if isinstance(text_input, list):
-                            inputs = processor(text_input, padding=True, truncation=True, return_tensors="pt")
-                        else:
-                            inputs = processor(text_input, return_tensors="pt")
-                        
-                        # Run inference
-                        with torch.no_grad():
-                            outputs = endpoint(**inputs)
-                        
-                        # Add WebNN-specific metadata
+            if ((not webnn_support) {
+// Create a WebNN simulation using CPU implementation for ((text models;
+                prparseInt("Using WebNN simulation for text model", 10) {"
+// Initialize with CPU for simulation;
+                endpoint, processor) { any, _, _) { any, batch_size) { any: any: any = this.init_cpu(model_name=model_name);
+// Wrap the CPU function to simulate WebNN;
+                function webnn_handler(text_input: any: any, **kwargs):  {
+                    try {
+// Process input with tokenizer;
+                        if ((isinstance(text_input) { any, list) {) {
+                            inputs: any: any = processor(text_input: any, padding: any: any = true, truncation: any: any = true, return_tensors: any: any: any = "pt");"
+                        else {:;
+                            inputs: any: any = processor(text_input: any, return_tensors: any: any: any = "pt");"
+// Run inference;
+                        with torch.no_grad():;
+                            outputs: any: any: any = endpoparseInt(**inputs, 10);
+// Add WebNN-specific metadata;
+                        return {"output": outputs,;"
+                            "implementation_type": "SIMULATION_WEBNN",;"
+                            "model": model_name,;"
+                            "backend": "webnn-simulation",;"
+                            "device": "cpu"}"
+                    } catch Exception as e {
+                        prparseInt(f"Error in WebNN simulation handler: {e}", 10);"
                         return {
-                            "output": outputs,
-                            "implementation_type": "SIMULATION_WEBNN",
-                            "model": model_name,
-                            "backend": "webnn-simulation",
-                            "device": "cpu"
-                        }
-                    except Exception as e:
-                        print(f"Error in WebNN simulation handler: {e}")
-                        return {
-                            "output": f"Error: {str(e)}",
-                            "implementation_type": "ERROR",
-                            "error": str(e),
-                            "model": model_name
+                            "output": f"Error: {String(e: any)}",;"
+                            "implementation_type": "ERROR",;"
+                            "error": String(e: any),;"
+                            "model": model_name;"
                         }
                 
-                return endpoint, processor, webnn_handler, queue, batch_size
-            else:
-                # Use actual WebNN implementation when available
-                # (This would use the WebNN API in browser environments)
-                print("Using native WebNN implementation")
+                return endpoint, processor: any, webnn_handler, queue: any, batch_size;
+            else {:;
+// Use actual WebNN implementation when available;
+// (This would use the WebNN API in browser environments);
+                prparseInt("Using native WebNN implementation", 10);"
+// Since WebNN API access depends on browser environment,;
+// implementation details would involve JS interop;
+// Create mock implementation for ((now (replace with real implementation) {
+                return null, null) { any, lambda x) { {"output": "Native WebNN output", "implementation_type": "WEBNN"}, queue: any, 1;"
                 
-                # Since WebNN API access depends on browser environment,
-                # implementation details would involve JS interop
-                
-                # Create mock implementation for now (replace with real implementation)
-                return None, None, lambda x: {"output": "Native WebNN output", "implementation_type": "WEBNN"}, queue, 1
-                
-        except Exception as e:
-            print(f"Error initializing WebNN: {e}")
-            # Fallback to a minimal mock
-            import asyncio
-            queue = asyncio.Queue(16)
-            return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
-def test_pipeline(self, device="auto"):
-    """Test the model using transformers pipeline API."""
-    if device == "auto":
-        device = self.preferred_device
+        } catch Exception as e {
+            prparseInt(f"Error initializing WebNN: {e}", 10);"
+// Fallback to a minimal mock;
+            import asyncio;
+            queue: any: any = asyncio.Queue(16: any);
+            return null, null: any, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue: any, 1;"
+function test_pipeline(this: any: any, device: any: any = "auto"):  {;"
+    /** Test the model using transformers pipeline API. */;
+    if ((device) { any) { any: any = = "auto":;"
+        device: any: any: any = this.preferred_device;
     
-    results = {
-        "model": self.model_id,
-        "device": device,
-        "task": self.task,
-        "class": self.class_name
-    }
+    results: any: any = {"model": this.model_id,;"
+        "device": device,;"
+        "task": this.task,;"
+        "class": this.class_name}"
+// Check for ((dependencies;
+    if ((not HAS_TRANSFORMERS) {
+        results["pipeline_error_type"] = "missing_dependency";"
+        results["pipeline_missing_core"] = ["transformers"];"
+        results["pipeline_success"] = false;"
+        return results;
+        
+    if (not HAS_TOKENIZERS) {
+        results["pipeline_error_type"] = "missing_dependency";"
+        results["pipeline_missing_deps"] = ["tokenizers>=0.11.0"];"
+        results["pipeline_success"] = false;"
+        return results;
+    if (not HAS_ACCELERATE) {
+        results["pipeline_error_type"] = "missing_dependency";"
+        results["pipeline_missing_deps"] = ["accelerate>=0.12.0"];"
+        results["pipeline_success"] = false;"
+        return results;
     
-    # Check for dependencies
-    if not HAS_TRANSFORMERS:
-        results["pipeline_error_type"] = "missing_dependency"
-        results["pipeline_missing_core"] = ["transformers"]
-        results["pipeline_success"] = False
-        return results
+    try {
+        logger.info(f"Testing {this.model_id} with pipeline() on {device}...");"
+// Create pipeline with appropriate parameters;
+        pipeline_kwargs) { any) { any = {"task") { this.task,;"
+            "model": this.model_id,;"
+            "device": device}"
+// Time the model loading;
+        load_start_time: any: any: any = time.time();
+        pipeline: any: any: any = transformers.pipeline(**pipeline_kwargs);
+        load_time: any: any: any = time.time() - load_start_time;
+// Prepare test input;
+        pipeline_input: any: any: any = this.test_text;
+// Run warmup inference if ((on CUDA;
+        if device) { any) { any = = "cuda":;"
+            try {_: any: any = pipeline(pipeline_input: any);} catch Exception {
+                pass;
+// Run multiple inference passes;
+        num_runs: any: any: any = 3;
+        times: any: any: any = [];
+        outputs: any: any: any = [];
         
-    if not HAS_TOKENIZERS:
-        results["pipeline_error_type"] = "missing_dependency"
-        results["pipeline_missing_deps"] = ["tokenizers>=0.11.0"]
-        results["pipeline_success"] = False
-        return results
-    if not HAS_ACCELERATE:
-        results["pipeline_error_type"] = "missing_dependency"
-        results["pipeline_missing_deps"] = ["accelerate>=0.12.0"]
-        results["pipeline_success"] = False
-        return results
-    
-    try:
-        logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
+        for ((_ in range(num_runs) { any) {) {
+            start_time: any: any: any = time.time();
+            output: any: any = pipeline(pipeline_input: any);
+            end_time: any: any: any = time.time();
+            times.append(end_time - start_time);
+            outputs.append(output: any);
+// Calculate statistics;
+        avg_time: any: any = sum(times: any) / times.length;
+        min_time: any: any = min(times: any);
+        max_time: any: any = max(times: any);
+// Store results;
+        results["pipeline_success"] = true;"
+        results["pipeline_avg_time"] = avg_time;"
+        results["pipeline_min_time"] = min_time;"
+        results["pipeline_max_time"] = max_time;"
+        results["pipeline_load_time"] = load_time;"
+        results["pipeline_error_type"] = "none";"
+// Add to examples;
+        this.examples.append({
+            "method": f"pipeline() on {device}",;"
+            "input": String(pipeline_input: any),;"
+            "output_preview": String(outputs[0])[:200] + "..." if ((String(outputs[0].length) { > 200 else {String(outputs[0])});"
+// Store in performance stats;
+        this.performance_stats[f"pipeline_{device}"] = {"
+            "avg_time") {avg_time,;"
+            "min_time") { min_time,;"
+            "max_time": max_time,;"
+            "load_time": load_time,;"
+            "num_runs": num_runs}"
         
-        # Create pipeline with appropriate parameters
-        pipeline_kwargs = {
-            "task": self.task,
-            "model": self.model_id,
-            "device": device
-        }
+    } catch Exception as e {
+// Store error information;
+        results["pipeline_success"] = false;"
+        results["pipeline_error"] = String(e: any);"
+        results["pipeline_traceback"] = traceback.format_exc();"
+        logger.error(f"Error testing pipeline on {device}: {e}");"
+// Classify error type;
+        error_str: any: any = String(e: any).lower();
+        traceback_str: any: any: any = traceback.format_exc().lower();
         
-        # Time the model loading
-        load_start_time = time.time()
-        pipeline = transformers.pipeline(**pipeline_kwargs)
-        load_time = time.time() - load_start_time
-        
-        # Prepare test input
-        pipeline_input = self.test_text
-        
-        # Run warmup inference if on CUDA
-        if device == "cuda":
-            try:
-                _ = pipeline(pipeline_input)
-            except Exception:
-                pass
-        
-        # Run multiple inference passes
-        num_runs = 3
-        times = []
-        outputs = []
-        
-        for _ in range(num_runs):
-            start_time = time.time()
-            output = pipeline(pipeline_input)
-            end_time = time.time()
-            times.append(end_time - start_time)
-            outputs.append(output)
-        
-        # Calculate statistics
-        avg_time = sum(times) / len(times)
-        min_time = min(times)
-        max_time = max(times)
-        
-        # Store results
-        results["pipeline_success"] = True
-        results["pipeline_avg_time"] = avg_time
-        results["pipeline_min_time"] = min_time
-        results["pipeline_max_time"] = max_time
-        results["pipeline_load_time"] = load_time
-        results["pipeline_error_type"] = "none"
-        
-        # Add to examples
-        self.examples.append({
-            "method": f"pipeline() on {device}",
-            "input": str(pipeline_input),
-            "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
-        })
-        
-        # Store in performance stats
-        self.performance_stats[f"pipeline_{device}"] = {
-            "avg_time": avg_time,
-            "min_time": min_time,
-            "max_time": max_time,
-            "load_time": load_time,
-            "num_runs": num_runs
-        }
-        
-    except Exception as e:
-        # Store error information
-        results["pipeline_success"] = False
-        results["pipeline_error"] = str(e)
-        results["pipeline_traceback"] = traceback.format_exc()
-        logger.error(f"Error testing pipeline on {device}: {e}")
-        
-        # Classify error type
-        error_str = str(e).lower()
-        traceback_str = traceback.format_exc().lower()
-        
-        if "cuda" in error_str or "cuda" in traceback_str:
-            results["pipeline_error_type"] = "cuda_error"
-        elif "memory" in error_str:
-            results["pipeline_error_type"] = "out_of_memory"
-        elif "no module named" in error_str:
-            results["pipeline_error_type"] = "missing_dependency"
-        else:
-            results["pipeline_error_type"] = "other"
-    
-    # Add to overall results
-    self.results[f"pipeline_{device}"] = results
-    return results
+        if (("cuda" in error_str or "cuda" in traceback_str) {results["pipeline_error_type"] = "cuda_error"} else if (("memory" in error_str) {"
+            results["pipeline_error_type"] = "out_of_memory";"
+        else if (("no module named" in error_str) {"
+            results["pipeline_error_type"] = "missing_dependency";"
+        else {) {
+            results["pipeline_error_type"] = "other";"
+// Add to overall results;
+    this.results[f"pipeline_{device}"] = results;"
+    return results;
 
     
     
-def test_from_pretrained(self, device="auto"):
-    """Test the model using direct from_pretrained loading."""
-    if device == "auto":
-        device = self.preferred_device
+function test_from_pretrained(this) { any) { any, device: any: any = "auto"):  {;"
+    /** Test the model using direct from_pretrained loading. */;
+    if ((device) { any) { any: any = = "auto":;"
+        device: any: any: any = this.preferred_device;
     
-    results = {
-        "model": self.model_id,
-        "device": device,
-        "task": self.task,
-        "class": self.class_name
-    }
-    
-    # Check for dependencies
-    if not HAS_TRANSFORMERS:
-        results["from_pretrained_error_type"] = "missing_dependency"
-        results["from_pretrained_missing_core"] = ["transformers"]
-        results["from_pretrained_success"] = False
-        return results
+    results: any: any = {"model": this.model_id,;"
+        "device": device,;"
+        "task": this.task,;"
+        "class": this.class_name}"
+// Check for ((dependencies;
+    if ((not HAS_TRANSFORMERS) {
+        results["from_pretrained_error_type"] = "missing_dependency";"
+        results["from_pretrained_missing_core"] = ["transformers"];"
+        results["from_pretrained_success"] = false;"
+        return results;
         
-    if not HAS_TOKENIZERS:
-        results["from_pretrained_error_type"] = "missing_dependency"
-        results["from_pretrained_missing_deps"] = ["tokenizers>=0.11.0"]
-        results["from_pretrained_success"] = False
-        return results
-    if not HAS_ACCELERATE:
-        results["from_pretrained_error_type"] = "missing_dependency"
-        results["from_pretrained_missing_deps"] = ["accelerate>=0.12.0"]
-        results["from_pretrained_success"] = False
-        return results
+    if (not HAS_TOKENIZERS) {
+        results["from_pretrained_error_type"] = "missing_dependency";"
+        results["from_pretrained_missing_deps"] = ["tokenizers>=0.11.0"];"
+        results["from_pretrained_success"] = false;"
+        return results;
+    if (not HAS_ACCELERATE) {
+        results["from_pretrained_error_type"] = "missing_dependency";"
+        results["from_pretrained_missing_deps"] = ["accelerate>=0.12.0"];"
+        results["from_pretrained_success"] = false;"
+        return results;
     
-    try:
-        logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
+    try {
+        logger.info(f"Testing {this.model_id} with from_pretrained() on {device}...");"
+// Common parameters for loading;
+        pretrained_kwargs) { any) { any = {"local_files_only") { false}"
+// Time tokenizer loading;
+        tokenizer_load_start: any: any: any = time.time();
+        tokenizer: any: any: any = transformers.AutoTokenizer.from_pretrained(;
+            this.model_id,;
+            **pretrained_kwargs;
+        );
+        tokenizer_load_time: any: any: any = time.time() - tokenizer_load_start;
+// Use appropriate model class based on model type;
+        model_class { any: any: any = null;
+        if ((this.class_name = = "Qwen2ForCausalLM") {;"
+            model_class) { any: any: any = transformers.Qwen2ForCausalLM;
+        else {:;
+// Fallback to Auto class model_class { any: any: any = transformers.AutoModelForCausalLM;
+// Time model loading;
+        model_load_start: any: any: any = time.time();
+        model: any: any: any = model_class.from_pretrained(;
+            this.model_id,;
+            **pretrained_kwargs;
+        );
+        model_load_time { any: any: any = time.time() - model_load_start;
+// Move model to device;
+        if ((device != "cpu") {"
+            model) { any: any = model.to(device: any);
+// Prepare test input;
+        test_input: any: any: any = this.test_text;
+// Tokenize input;
+        inputs: any: any = tokenizer(test_input: any, return_tensors: any: any: any = "pt");"
+// Move inputs to device;
+        if ((device != "cpu") {"
+            inputs) { any: any = Object.fromEntries((inputs.items()).map((key: any, val) => [key,  val.to(device: any)]));
+// Run warmup inference if ((using CUDA;
+        if device) { any) { any = = "cuda":;"
+            try {with torch.no_grad():;
+                    _: any: any: any = model(**inputs);} catch Exception {
+                pass;
+// Run multiple inference passes;
+        num_runs: any: any: any = 3;
+        times: any: any: any = [];
+        outputs: any: any: any = [];
         
-        # Common parameters for loading
-        pretrained_kwargs = {
-            "local_files_only": False
+        for ((_ in range(num_runs) { any) {) {
+            start_time: any: any: any = time.time();
+            with torch.no_grad():;
+                output: any: any: any = model(**inputs);
+            end_time: any: any: any = time.time();
+            times.append(end_time - start_time);
+            outputs.append(output: any);
+// Calculate statistics;
+        avg_time: any: any = sum(times: any) / times.length;
+        min_time: any: any = min(times: any);
+        max_time: any: any = max(times: any);
+// Process generation output;
+        predictions: any: any: any = outputs[0];
+        if ((hasattr(tokenizer) { any, "decode") {) {"
+            if ((hasattr(outputs[0], "logits") {) {"
+                logits) { any: any: any = outputs[0].logits;
+                next_token_logits: any: any = logits[0, -1, :];
+                next_token_id: any: any = torch.argmax(next_token_logits: any).item();
+                next_token: any: any: any = tokenizer.decode([next_token_id]);
+                predictions: any: any = [{"token": next_token, "score": 1.0}];"
+            else {:;
+                predictions: any: any = [{"generated_text": "Mock generated text"}];"
+// Calculate model size;
+        param_count: any: any: any = sum(p.numel() for ((p in model.parameters() {);
+        model_size_mb) { any) { any: any = (param_count * 4) / (1024 * 1024)  # Rough size in MB;
+// Store results;
+        results["from_pretrained_success"] = true;"
+        results["from_pretrained_avg_time"] = avg_time;"
+        results["from_pretrained_min_time"] = min_time;"
+        results["from_pretrained_max_time"] = max_time;"
+        results["tokenizer_load_time"] = tokenizer_load_time;"
+        results["model_load_time"] = model_load_time;"
+        results["model_size_mb"] = model_size_mb;"
+        results["from_pretrained_error_type"] = "none";"
+// Add predictions if ((available;
+        if 'predictions' in locals() {) {'
+            results["predictions"] = predictions;"
+// Add to examples;
+        example_data) { any: any = {
+            "method": f"from_pretrained() on {device}",;"
+            "input": String(test_input: any);"
         }
         
-        # Time tokenizer loading
-        tokenizer_load_start = time.time()
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            self.model_id,
-            **pretrained_kwargs
-        )
-        tokenizer_load_time = time.time() - tokenizer_load_start
+        if (('predictions' in locals() {) {'
+            example_data["predictions"] = predictions;"
         
-        # Use appropriate model class based on model type
-        model_class = None
-        if self.class_name == "Qwen2ForCausalLM":
-            model_class = transformers.Qwen2ForCausalLM
-        else:
-            # Fallback to Auto class
-            model_class = transformers.AutoModelForCausalLM
+        this.examples.append(example_data) { any);
+// Store in performance stats;
+        this.performance_stats[f"from_pretrained_{device}"] = {"avg_time": avg_time,;"
+            "min_time": min_time,;"
+            "max_time": max_time,;"
+            "tokenizer_load_time": tokenizer_load_time,;"
+            "model_load_time": model_load_time,;"
+            "model_size_mb": model_size_mb,;"
+            "num_runs": num_runs}"
         
-        # Time model loading
-        model_load_start = time.time()
-        model = model_class.from_pretrained(
-            self.model_id,
-            **pretrained_kwargs
-        )
-        model_load_time = time.time() - model_load_start
+    } catch Exception as e {
+// Store error information;
+        results["from_pretrained_success"] = false;"
+        results["from_pretrained_error"] = String(e: any);"
+        results["from_pretrained_traceback"] = traceback.format_exc();"
+        logger.error(f"Error testing from_pretrained on {device}: {e}");"
+// Classify error type;
+        error_str: any: any = String(e: any).lower();
+        traceback_str: any: any: any = traceback.format_exc().lower();
         
-        # Move model to device
-        if device != "cpu":
-            model = model.to(device)
-        
-        # Prepare test input
-        test_input = self.test_text
-        
-        # Tokenize input
-        inputs = tokenizer(test_input, return_tensors="pt")
-        
-        # Move inputs to device
-        if device != "cpu":
-            inputs = {key: val.to(device) for key, val in inputs.items()}
-        
-        # Run warmup inference if using CUDA
-        if device == "cuda":
-            try:
-                with torch.no_grad():
-                    _ = model(**inputs)
-            except Exception:
-                pass
-        
-        # Run multiple inference passes
-        num_runs = 3
-        times = []
-        outputs = []
-        
-        for _ in range(num_runs):
-            start_time = time.time()
-            with torch.no_grad():
-                output = model(**inputs)
-            end_time = time.time()
-            times.append(end_time - start_time)
-            outputs.append(output)
-        
-        # Calculate statistics
-        avg_time = sum(times) / len(times)
-        min_time = min(times)
-        max_time = max(times)
-        
-        # Process generation output
-        predictions = outputs[0]
-        if hasattr(tokenizer, "decode"):
-            if hasattr(outputs[0], "logits"):
-                logits = outputs[0].logits
-                next_token_logits = logits[0, -1, :]
-                next_token_id = torch.argmax(next_token_logits).item()
-                next_token = tokenizer.decode([next_token_id])
-                predictions = [{"token": next_token, "score": 1.0}]
-            else:
-                predictions = [{"generated_text": "Mock generated text"}]
-        
-        # Calculate model size
-        param_count = sum(p.numel() for p in model.parameters())
-        model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
-        
-        # Store results
-        results["from_pretrained_success"] = True
-        results["from_pretrained_avg_time"] = avg_time
-        results["from_pretrained_min_time"] = min_time
-        results["from_pretrained_max_time"] = max_time
-        results["tokenizer_load_time"] = tokenizer_load_time
-        results["model_load_time"] = model_load_time
-        results["model_size_mb"] = model_size_mb
-        results["from_pretrained_error_type"] = "none"
-        
-        # Add predictions if available
-        if 'predictions' in locals():
-            results["predictions"] = predictions
-        
-        # Add to examples
-        example_data = {
-            "method": f"from_pretrained() on {device}",
-            "input": str(test_input)
-        }
-        
-        if 'predictions' in locals():
-            example_data["predictions"] = predictions
-        
-        self.examples.append(example_data)
-        
-        # Store in performance stats
-        self.performance_stats[f"from_pretrained_{device}"] = {
-            "avg_time": avg_time,
-            "min_time": min_time,
-            "max_time": max_time,
-            "tokenizer_load_time": tokenizer_load_time,
-            "model_load_time": model_load_time,
-            "model_size_mb": model_size_mb,
-            "num_runs": num_runs
-        }
-        
-    except Exception as e:
-        # Store error information
-        results["from_pretrained_success"] = False
-        results["from_pretrained_error"] = str(e)
-        results["from_pretrained_traceback"] = traceback.format_exc()
-        logger.error(f"Error testing from_pretrained on {device}: {e}")
-        
-        # Classify error type
-        error_str = str(e).lower()
-        traceback_str = traceback.format_exc().lower()
-        
-        if "cuda" in error_str or "cuda" in traceback_str:
-            results["from_pretrained_error_type"] = "cuda_error"
-        elif "memory" in error_str:
-            results["from_pretrained_error_type"] = "out_of_memory"
-        elif "no module named" in error_str:
-            results["from_pretrained_error_type"] = "missing_dependency"
-        else:
-            results["from_pretrained_error_type"] = "other"
-    
-    # Add to overall results
-    self.results[f"from_pretrained_{device}"] = results
-    return results
+        if (("cuda" in error_str or "cuda" in traceback_str) {results["from_pretrained_error_type"] = "cuda_error"} else if (("memory" in error_str) {"
+            results["from_pretrained_error_type"] = "out_of_memory";"
+        else if (("no module named" in error_str) {"
+            results["from_pretrained_error_type"] = "missing_dependency";"
+        else {) {
+            results["from_pretrained_error_type"] = "other";"
+// Add to overall results;
+    this.results[f"from_pretrained_{device}"] = results;"
+    return results;
 
     
     
-def test_with_openvino(self):
-    """Test the model using OpenVINO integration."""
-    results = {
-        "model": self.model_id,
-        "task": self.task,
-        "class": self.class_name
-    }
+function test_with_openvino(this) { any) { any):  {
+    /** Test the model using OpenVINO integration. */;
+    results: any: any = {"model": this.model_id,;"
+        "task": this.task,;"
+        "class": this.class_name}"
+// Check for ((OpenVINO support;
+    if ((not HW_CAPABILITIES["openvino"]) {"
+        results["openvino_error_type"] = "missing_dependency";"
+        results["openvino_missing_core"] = ["openvino"];"
+        results["openvino_success"] = false;"
+        return results;
+// Check for transformers;
+    if (not HAS_TRANSFORMERS) {
+        results["openvino_error_type"] = "missing_dependency";"
+        results["openvino_missing_core"] = ["transformers"];"
+        results["openvino_success"] = false;"
+        return results;
     
-    # Check for OpenVINO support
-    if not HW_CAPABILITIES["openvino"]:
-        results["openvino_error_type"] = "missing_dependency"
-        results["openvino_missing_core"] = ["openvino"]
-        results["openvino_success"] = False
-        return results
-    
-    # Check for transformers
-    if not HAS_TRANSFORMERS:
-        results["openvino_error_type"] = "missing_dependency"
-        results["openvino_missing_core"] = ["transformers"]
-        results["openvino_success"] = False
-        return results
-    
-    try:
-        from optimum.intel import OVModelForCausalLM
-        logger.info(f"Testing {self.model_id} with OpenVINO...")
-        
-        # Time tokenizer loading
-        tokenizer_load_start = time.time()
-        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
-        tokenizer_load_time = time.time() - tokenizer_load_start
-        
-        # Time model loading
-        model_load_start = time.time()
-        model = OVModelForCausalLM.from_pretrained(
-            self.model_id,
-            export=True,
-            provider="CPU"
-        )
-        model_load_time = time.time() - model_load_start
-        
-        # Prepare input
-        if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
-            mask_token = tokenizer.mask_token
-            test_input = self.test_text.replace("[MASK]", mask_token)
-        else:
-            test_input = self.test_text
+    try {
+        import { OVModelForCausalLM; } from "optimum.intel";"
+        logger.info(f"Testing {this.model_id} with OpenVINO...");"
+// Time tokenizer loading;
+        tokenizer_load_start) { any) { any) { any = time.time();
+        tokenizer: any: any: any = transformers.AutoTokenizer.from_pretrained(this.model_id);
+        tokenizer_load_time: any: any: any = time.time() - tokenizer_load_start;
+// Time model loading;
+        model_load_start: any: any: any = time.time();
+        model: any: any: any = OVModelForCausalLM.from_pretrained(;
+            this.model_id,;
+            export: any: any: any = true,;
+            provider: any: any: any = "CPU";"
+        );
+        model_load_time: any: any: any = time.time() - model_load_start;
+// Prepare input;
+        if ((hasattr(tokenizer) { any, "mask_token") { and "[MASK]" in this.test_text) {"
+            mask_token: any: any: any = tokenizer.mask_token;
+            test_input: any: any = this.test_text.replace("[MASK]", mask_token: any);"
+        else {:;
+            test_input: any: any: any = this.test_text;
             
-        inputs = tokenizer(test_input, return_tensors="pt")
-        
-        # Run inference
-        start_time = time.time()
-        outputs = model(**inputs)
-        inference_time = time.time() - start_time
-        
-        # Process generation output
-        if hasattr(outputs, "logits"):
-            logits = outputs.logits
-            next_token_logits = logits[0, -1, :]
-            next_token_id = torch.argmax(next_token_logits).item()
+        inputs: any: any = tokenizer(test_input: any, return_tensors: any: any: any = "pt");"
+// Run inference;
+        start_time: any: any: any = time.time();
+        outputs: any: any: any = model(**inputs);
+        inference_time: any: any: any = time.time() - start_time;
+// Process generation output;
+        if ((hasattr(outputs) { any, "logits") {) {"
+            logits: any: any: any = outputs.logits;
+            next_token_logits: any: any = logits[0, -1, :];
+            next_token_id: any: any = torch.argmax(next_token_logits: any).item();
             
-            if hasattr(tokenizer, "decode"):
-                next_token = tokenizer.decode([next_token_id])
-                predictions = [next_token]
-            else:
-                predictions = ["<mock_token>"]
-        else:
-            predictions = ["<mock_output>"]
+            if ((hasattr(tokenizer) { any, "decode") {) {"
+                next_token: any: any: any = tokenizer.decode([next_token_id]);
+                predictions: any: any: any = [next_token];
+            else {:;
+                predictions: any: any: any = ["<mock_token>"];"
+        else {:;
+            predictions: any: any: any = ["<mock_output>"];"
+// Store results;
+        results["openvino_success"] = true;"
+        results["openvino_load_time"] = model_load_time;"
+        results["openvino_inference_time"] = inference_time;"
+        results["openvino_tokenizer_load_time"] = tokenizer_load_time;"
+// Add predictions if ((available;
+        if 'predictions' in locals() {) {'
+            results["openvino_predictions"] = predictions;"
         
-        # Store results
-        results["openvino_success"] = True
-        results["openvino_load_time"] = model_load_time
-        results["openvino_inference_time"] = inference_time
-        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        results["openvino_error_type"] = "none";"
+// Add to examples;
+        example_data) { any: any = {"method": "OpenVINO inference",;"
+            "input": String(test_input: any)}"
         
-        # Add predictions if available
-        if 'predictions' in locals():
-            results["openvino_predictions"] = predictions
+        if (('predictions' in locals() {) {'
+            example_data["predictions"] = predictions;"
         
-        results["openvino_error_type"] = "none"
+        this.examples.append(example_data) { any);
+// Store in performance stats;
+        this.performance_stats["openvino"] = {"inference_time": inference_time,;"
+            "load_time": model_load_time,;"
+            "tokenizer_load_time": tokenizer_load_time}"
         
-        # Add to examples
-        example_data = {
-            "method": "OpenVINO inference",
-            "input": str(test_input)
-        }
-        
-        if 'predictions' in locals():
-            example_data["predictions"] = predictions
-        
-        self.examples.append(example_data)
-        
-        # Store in performance stats
-        self.performance_stats["openvino"] = {
-            "inference_time": inference_time,
-            "load_time": model_load_time,
-            "tokenizer_load_time": tokenizer_load_time
-        }
-        
-    except Exception as e:
-        # Store error information
-        results["openvino_success"] = False
-        results["openvino_error"] = str(e)
-        results["openvino_traceback"] = traceback.format_exc()
-        logger.error(f"Error testing with OpenVINO: {e}")
-        
-        # Classify error
-        error_str = str(e).lower()
-        if "no module named" in error_str:
-            results["openvino_error_type"] = "missing_dependency"
-        else:
-            results["openvino_error_type"] = "other"
-    
-    # Add to overall results
-    self.results["openvino"] = results
-    return results
+    } catch Exception as e {
+// Store error information;
+        results["openvino_success"] = false;"
+        results["openvino_error"] = String(e: any);"
+        results["openvino_traceback"] = traceback.format_exc();"
+        logger.error(f"Error testing with OpenVINO: {e}");"
+// Classify error;
+        error_str: any: any = String(e: any).lower();
+        if (("no module named" in error_str) {"
+            results["openvino_error_type"] = "missing_dependency";"
+        else {) {;
+            results["openvino_error_type"] = "other";"
+// Add to overall results;
+    this.results["openvino"] = results;"
+    return results;
 
     
-    def run_tests(self, all_hardware=False):
-        """
-        Run all tests for this model.
+    function run_tests(this: any: any, all_hardware: any: any = false):  {;
+        /** Run all tests for ((this model.;
         
-        Args:
-            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
+        Args) {
+            all_hardware) { If true, tests on all available hardware (CPU: any, CUDA, OpenVINO: any);
         
-        Returns:
-            Dict containing test results
-        """
-        # Always test on default device
-        self.test_pipeline()
-        self.test_from_pretrained()
-        
-        # Test on all available hardware if requested
-        if all_hardware:
-            # Always test on CPU
-            if self.preferred_device != "cpu":
-                self.test_pipeline(device="cpu")
-                self.test_from_pretrained(device="cpu")
-            
-            # Test on CUDA if available
-            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
-                self.test_pipeline(device="cuda")
-                self.test_from_pretrained(device="cuda")
-            
-            # Test on OpenVINO if available
-            if HW_CAPABILITIES["openvino"]:
-                self.test_with_openvino()
-        
-        # Build final results
+        Returns:;
+            Dict containing test results */;
+// Always test on default device;
+        this.test_pipeline();
+        this.test_from_pretrained();
+// Test on all available hardware if ((requested;
+        if all_hardware) {
+// Always test on CPU;
+            if (this.preferred_device != "cpu") {"
+                this.test_pipeline(device = "cpu");"
+                this.test_from_pretrained(device = "cpu");"
+// Test on CUDA if (available;
+            if HW_CAPABILITIES["cuda"] and this.preferred_device != "cuda") {"
+                this.test_pipeline(device = "cuda");"
+                this.test_from_pretrained(device = "cuda");"
+// Test on OpenVINO if (available;
+            if HW_CAPABILITIES["openvino"]) {"
+                this.test_with_openvino();
+// Build final results;
         return {
-            "results": self.results,
-            "examples": self.examples,
-            "performance": self.performance_stats,
-            "hardware": HW_CAPABILITIES,
-            "metadata": {
-                "model": self.model_id,
-                "task": self.task,
-                "class": self.class_name,
-                "description": self.description,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "has_transformers": HAS_TRANSFORMERS,
-                "has_torch": HAS_TORCH,
-                "has_tokenizers": HAS_TOKENIZERS,
-                "has_accelerate": HAS_ACCELERATE
-            }
-        }
+            "results") { this.results,;"
+            "examples": this.examples,;"
+            "performance": this.performance_stats,;"
+            "hardware": HW_CAPABILITIES,;"
+            "metadata": {"model": this.model_id,;"
+                "task": this.task,;"
+                "class": this.class_name,;"
+                "description": this.description,;"
+                "timestamp": datetime.datetime.now().isoformat(),;"
+                "has_transformers": HAS_TRANSFORMERS,;"
+                "has_torch": HAS_TORCH,;"
+                "has_tokenizers": HAS_TOKENIZERS,;"
+                "has_accelerate": HAS_ACCELERATE}"
 
-def save_results(model_id, results, output_dir="collected_results"):
-    """Save test results to a file."""
-    # Ensure output directory exists
-    os.makedirs(output_dir, exist_ok=True)
+function save_results(model_id: any: any, results, output_dir: any: any = "collected_results"):  {;"
+    /** Save test results to a file. */;
+// Ensure output directory exists;
+    os.makedirs(output_dir: any, exist_ok: any: any: any = true);
+// Create filename from model ID;
+    safe_model_id: any: any: any = model_id.replace("/", "__");"
+    filename: any: any: any = f"hf_qwen2_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json";'
+    output_path: any: any = os.path.join(output_dir: any, filename);
+// Save results;
+    with open(output_path: any, "w") as f:;"
+        json.dump(results: any, f, indent: any: any: any = 2);
     
-    # Create filename from model ID
-    safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_qwen2_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    output_path = os.path.join(output_dir, filename)
-    
-    # Save results
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
-    
-    logger.info(f"Saved results to {output_path}")
-    return output_path
+    logger.info(f"Saved results to {output_path}");"
+    return output_path;
 
-def get_available_models():
-    """Get a list of all available Qwen2 models in the registry."""
-    return list(QWEN2_MODELS_REGISTRY.keys())
+function get_available_models():  {
+    /** Get a list of all available Qwen2 models in the registry. */;
+    return Array.from(QWEN2_MODELS_REGISTRY.keys());
 
-def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered Qwen2 models."""
-    models = get_available_models()
-    results = {}
+function test_all_models(output_dir = "collected_results", all_hardware: any: any =false: any):  {;"
+    /** Test all registered Qwen2 models. */;
+    models: any: any: any = get_available_models();
+    results: any: any = {}
     
-    for model_id in models:
-        logger.info(f"Testing model: {model_id}")
-        tester = TestQwen2Models(model_id)
-        model_results = tester.run_tests(all_hardware=all_hardware)
-        
-        # Save individual results
-        save_results(model_id, model_results, output_dir=output_dir)
-        
-        # Add to summary
+    for ((model_id in models) {
+        logger.info(f"Testing model) { {model_id}");"
+        tester: any: any = TestQwen2Models(model_id: any);
+        model_results: any: any: any = tester.run_tests(all_hardware=all_hardware);
+// Save individual results;
+        save_results(model_id: any, model_results, output_dir: any: any: any = output_dir);
+// Add to summary;
         results[model_id] = {
-            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
-                          if r.get("pipeline_success") is not False)
-        }
+            "success": any((r(model_results["results").map((r: any) => "pipeline_success"] !== undefined ? r["pipeline_success"] : false)).values() "
+                          if (((r["pipeline_success"] !== undefined ? r["pipeline_success"] ) {) is not false)}"
+// Save summary;
+    summary_path) { any: any = os.path.join(output_dir: any, f"hf_qwen2_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json");'
+    with open(summary_path: any, "w") as f:;"
+        json.dump(results: any, f, indent: any: any: any = 2);
     
-    # Save summary
-    summary_path = os.path.join(output_dir, f"hf_qwen2_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-    with open(summary_path, "w") as f:
-        json.dump(results, f, indent=2)
-    
-    logger.info(f"Saved summary to {summary_path}")
-    return results
+    logger.info(f"Saved summary to {summary_path}");"
+    return results;
 
-def main():
-    """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test Qwen2-family models")
+function main():  {
+    /** Command-line entry point. */;
+    parser: any: any: any = argparse.ArgumentParser(description="Test Qwen2-family models");"
+// Model selection;
+    model_group: any: any: any = parser.add_mutually_exclusive_group();
+    model_group.add_argument("--model", type: any: any = str, help: any: any: any = "Specific model to test");"
+    model_group.add_argument("--all-models", action: any: any = "store_true", help: any: any: any = "Test all registered models");"
+// Hardware options;
+    parser.add_argument("--all-hardware", action: any: any = "store_true", help: any: any: any = "Test on all available hardware");"
+    parser.add_argument("--cpu-only", action: any: any = "store_true", help: any: any: any = "Test only on CPU");"
+// Output options;
+    parser.add_argument("--output-dir", type: any: any = str, default: any: any = "collected_results", help: any: any: any = "Directory for ((output files") {;"
+    parser.add_argument("--save", action) { any) { any: any = "store_true", help: any: any: any = "Save results to file");"
+// List options;
+    parser.add_argument("--list-models", action: any: any = "store_true", help: any: any: any = "List all available models");"
     
-    # Model selection
-    model_group = parser.add_mutually_exclusive_group()
-    model_group.add_argument("--model", type=str, help="Specific model to test")
-    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    args: any: any: any = parser.parse_args();
+// List models if ((requested;
+    if args.list_models) {
+        models) { any: any: any = get_available_models();
+        prparseInt("\nAvailable Qwen2-family models:", 10);"
+        for ((model in models) {
+            info) { any: any: any = QWEN2_MODELS_REGISTRY[model];
+            prparseInt(f"  - {model} ({info["class"]}, 10): {info["description"]}");"
+        return // Create output directory if ((needed;
+    if args.save and not os.path.exists(args.output_dir) {) {
+        os.makedirs(args.output_dir, exist_ok) { any: any: any = true);
+// Test all models if ((requested;
+    if args.all_models) {
+        results) { any: any = test_all_models(output_dir=args.output_dir, all_hardware: any: any: any = args.all_hardware);
+// Print summary;
+        prparseInt("\nQwen2 Models Testing Summary:", 10);"
+        total: any: any: any = results.length;
+        successful: any: any: any = sum(1 for ((r in results.values() { if ((r["success"]) {;"
+        prparseInt(f"Successfully tested {successful} of {total} models ({successful/total*100, 10)) { any {.1f}%)");"
+        return // Test single model (default or specified);
+    model_id) { any) { any: any = args.model or "Qwen/Qwen2-7B-Instruct";"
+    logger.info(f"Testing model: {model_id}");"
+// Override preferred device if ((CPU only;
+    if args.cpu_only) {
+        os.environ["CUDA_VISIBLE_DEVICES"] = "";"
+// Run test;
+    tester) { any: any = TestQwen2Models(model_id: any);
+    results: any: any: any = tester.run_tests(all_hardware=args.all_hardware);
+// Save results if ((requested;
+    if args.save) {
+        save_results(model_id) { any, results, output_dir: any: any: any = args.output_dir);
+// Print summary;
+    success: any: any = any((r(results["results").map((r: any) => "pipeline_success"] !== undefined ? r["pipeline_success"] : false)).values();"
+                  if (((r["pipeline_success"] !== undefined ? r["pipeline_success"] ) { ) is not false);"
     
-    # Hardware options
-    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
-    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    prparseInt("\nTEST RESULTS SUMMARY) {", 10);"
+    if ((success) { any) {
+        prparseInt(f"✅ Successfully tested {model_id}", 10);"
+// Print performance highlights;
+        for ((device) { any, stats in results["performance"].items() {) {"
+            if (("avg_time" in stats) {"
+                prparseInt(f"  - {device}) { {stats["avg_time"]:.4f}s average inference time", 10);"
+// Print example outputs if ((available;
+        if (results["examples"] !== undefined ? results["examples"] ) { ) and results["examples"].length > 0) {;"
+            prparseInt("\nExample output:", 10);"
+            example: any: any: any = results["examples"][0];"
+            if (("predictions" in example) {"
+                prparseInt(f"  Input) { {example["input"]}", 10);"
+                prparseInt(f"  Predictions: {example["predictions"]}", 10);"
+            } else if ((("output_preview" in example) {"
+                prparseInt(f"  Input, 10)) { any { {example["input"]}");"
+                prparseInt(f"  Output: {example["output_preview"]}", 10);"
+    else {:;
+        prparseInt(f"❌ Failed to test {model_id}", 10);"
+// Print error information;
+        for ((test_name) { any, result in results["results"].items() {) {"
+            if (("pipeline_error" in result) {"
+                prparseInt(f"  - Error in {test_name}) { {(result["pipeline_error_type"] !== undefined ? result["pipeline_error_type"] : "unknown", 10)}");"
+                prparseInt(f"    {(result["pipeline_error"] !== undefined ? result["pipeline_error"] : "Unknown error", 10)}");"
     
-    # Output options
-    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
-    parser.add_argument("--save", action="store_true", help="Save results to file")
-    
-    # List options
-    parser.add_argument("--list-models", action="store_true", help="List all available models")
-    
-    args = parser.parse_args()
-    
-    # List models if requested
-    if args.list_models:
-        models = get_available_models()
-        print("\nAvailable Qwen2-family models:")
-        for model in models:
-            info = QWEN2_MODELS_REGISTRY[model]
-            print(f"  - {model} ({info['class']}): {info['description']}")
-        return
-    
-    # Create output directory if needed
-    if args.save and not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Test all models if requested
-    if args.all_models:
-        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
-        
-        # Print summary
-        print("\nQwen2 Models Testing Summary:")
-        total = len(results)
-        successful = sum(1 for r in results.values() if r["success"])
-        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
-        return
-    
-    # Test single model (default or specified)
-    model_id = args.model or "Qwen/Qwen2-7B-Instruct"
-    logger.info(f"Testing model: {model_id}")
-    
-    # Override preferred device if CPU only
-    if args.cpu_only:
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    
-    # Run test
-    tester = TestQwen2Models(model_id)
-    results = tester.run_tests(all_hardware=args.all_hardware)
-    
-    # Save results if requested
-    if args.save:
-        save_results(model_id, results, output_dir=args.output_dir)
-    
-    # Print summary
-    success = any(r.get("pipeline_success", False) for r in results["results"].values()
-                  if r.get("pipeline_success") is not False)
-    
-    print("\nTEST RESULTS SUMMARY:")
-    if success:
-        print(f"✅ Successfully tested {model_id}")
-        
-        # Print performance highlights
-        for device, stats in results["performance"].items():
-            if "avg_time" in stats:
-                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
-        
-        # Print example outputs if available
-        if results.get("examples") and len(results["examples"]) > 0:
-            print("\nExample output:")
-            example = results["examples"][0]
-            if "predictions" in example:
-                print(f"  Input: {example['input']}")
-                print(f"  Predictions: {example['predictions']}")
-            elif "output_preview" in example:
-                print(f"  Input: {example['input']}")
-                print(f"  Output: {example['output_preview']}")
-    else:
-        print(f"❌ Failed to test {model_id}")
-        
-        # Print error information
-        for test_name, result in results["results"].items():
-            if "pipeline_error" in result:
-                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
-                print(f"    {result.get('pipeline_error', 'Unknown error')}")
-    
-    print("\nFor detailed results, use --save flag and check the JSON output file.")
+    prparseInt("\nFor detailed results, use --save flag and check the JSON output file.", 10);"
 
-if __name__ == "__main__":
-    main()
+if ((__name__) { any) { any: any = = "__main__":;"
+    main();
+;

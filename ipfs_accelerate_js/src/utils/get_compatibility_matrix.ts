@@ -1,210 +1,178 @@
-/**
- * Converted from Python: get_compatibility_matrix.py
- * Conversion date: 2025-03-11 04:08:31
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
 
-#!/usr/bin/env python3
-import * as $1
-import * as $1 as pd
-import * as $1 as np
-import * as $1.pyplot as plt
-import * as $1 as sns
-import * as $1
-import * as $1
-import ${$1} from "$1"
 
-# Set up database connection
-db_path = "./benchmark_db.duckdb"
-con = duckdb.connect(db_path)
+// WebG: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+// S: any;
+db_path: any: any: any: any: any: any = "./benchmark_db.duckdb";"
+con: any: any = duck: any;
 
-# Get latest data from cross_platform_compatibility
-query = """
-SELECT 
-m.model_name,
-m.model_family,
-hp.hardware_type,
-cpc.cpu_support,
-cpc.cuda_support,
-cpc.rocm_support,
-cpc.mps_support,
-cpc.openvino_support,
-cpc.qnn_support,
-cpc.webnn_support,
-cpc.webgpu_support,
-cpc.recommended_platform
-FROM 
-cross_platform_compatibility cpc
+// G: any;
+query: any: any: any = /** SELE: any;
+m: a: any;
+m: a: any;
+h: an: any;
+c: any;
+c: any;
+c: any;
+c: any;
+c: any;
+c: any;
+c: any;
+c: any;
+c: any;
+FR: any;
 JOIN 
-models m ON cpc.model_id = m.model_id
+models m ON cpc.model_id = m: a: any;
 JOIN 
-hardware_platforms hp ON cpc.hardware_id = hp.hardware_id
-ORDER BY 
-m.model_family, m.model_name
-"""
-
-# Try to execute the query
-try {
-  results = con.execute(query).fetchdf()
-  
-}
-  # Check if ($1) {
+hardware_platforms hp ON cpc.hardware_id = h: an: any;
+ORD: any;
+;
+// T: any;
+try {results: any: any = c: any;};
+  // Check if ((((((($1) {
   if ($1) {
-    console.log($1)
-    # Generate sample data based on CLAUDE.md info
-    hardware_types = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],
-    model_families = ["embedding", "text_generation", "vision", "audio", "multimodal"]
-    ,
-    # Sample compatibility matrix based on CLAUDE.md
-    compatibility = {}}
-    "embedding": {}}"cpu": "High", "cuda": "High", "rocm": "High", "mps": "High", "openvino": "High", "qnn": "High", "webnn": "High", "webgpu": "High"},
-    "text_generation": {}}"cpu": "Medium", "cuda": "High", "rocm": "Medium", "mps": "Medium", "openvino": "Medium", "qnn": "Medium", "webnn": "Limited", "webgpu": "Limited"},
-    "vision": {}}"cpu": "Medium", "cuda": "High", "rocm": "High", "mps": "High", "openvino": "High", "qnn": "High", "webnn": "High", "webgpu": "High"},
-    "audio": {}}"cpu": "Medium", "cuda": "High", "rocm": "Medium", "mps": "Medium", "openvino": "Medium", "qnn": "Medium", "webnn": "Limited", "webgpu": "Limited"},
-    "multimodal": {}}"cpu": "Limited", "cuda": "High", "rocm": "Limited", "mps": "Limited", "openvino": "Limited", "qnn": "Limited", "webnn": "Limited", "webgpu": "Limited"}
-    }
-    
-  }
-    # Convert to dataframe format similar to what we'd get from the database
-    rows = [],,,
-    for (const $1 of $2) {
+    console) { an) { an: any;
+    // Generat) { an: any;
+    hardware_types) { any) { any: any: any: any: any = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],;"
+    model_families: any: any: any: any: any: any = ["embedding", "text_generation", "vision", "audio", "multimodal"];"
+    ,;
+    // Samp: any;
+    compatibility: any: any = {}
+    "embedding") { }"cpu": "High", "cuda": "High", "rocm": "High", "mps": "High", "openvino": "High", "qnn": "High", "webnn": "High", "webgpu": "High"},;"
+    "text_generation": {}"cpu": "Medium", "cuda": "High", "rocm": "Medium", "mps": "Medium", "openvino": "Medium", "qnn": "Medium", "webnn": "Limited", "webgpu": "Limited"},;"
+    "vision": {}"cpu": "Medium", "cuda": "High", "rocm": "High", "mps": "High", "openvino": "High", "qnn": "High", "webnn": "High", "webgpu": "High"},;"
+    "audio": {}"cpu": "Medium", "cuda": "High", "rocm": "Medium", "mps": "Medium", "openvino": "Medium", "qnn": "Medium", "webnn": "Limited", "webgpu": "Limited"},;"
+    "multimodal": {}"cpu": "Limited", "cuda": "High", "rocm": "Limited", "mps": "Limited", "openvino": "Limited", "qnn": "Limited", "webnn": "Limited", "webgpu": "Limited"}"
+    // Conve: any;
+    rows: any: any: any: any: any: any = [],;
+    for (((((((const $1 of $2) {
       for (const $1 of $2) {
-        compat = compatibility[family][hw],
-        # Convert text to boolean values for the specific column
-        cpu_support = true if hw == "cpu" && compat != "Limited" else false
-        cuda_support = true if hw == "cuda" && compat != "Limited" else false
-        rocm_support = true if hw == "rocm" && compat != "Limited" else false
-        mps_support = true if hw == "mps" && compat != "Limited" else false
-        openvino_support = true if hw == "openvino" && compat != "Limited" else false
-        qnn_support = true if hw == "qnn" && compat != "Limited" else false
-        webnn_support = true if hw == "webnn" && compat != "Limited" else false
-        webgpu_support = true if hw == "webgpu" && compat != "Limited" else false
-        
-      }
-        recommended = "cuda" if family != "embedding" else "cpu"
-        
-    }
-        rows.append({}}:
-          "model_name": `$1`,
-          "model_family": family,
-          "hardware_type": hw,
-          "cpu_support": cpu_support,
-          "cuda_support": cuda_support,
-          "rocm_support": rocm_support,
-          "mps_support": mps_support,
-          "openvino_support": openvino_support,
-          "qnn_support": qnn_support,
-          "webnn_support": webnn_support,
-          "webgpu_support": webgpu_support,
-          "recommended_platform": recommended
-          })
+        compat) { any) { any) { any) { any = compatibilit) { an: any;
+        // Conve: any;
+        cpu_support) { any) { any: any: any = true if ((((((hw == "cpu" && compat != "Limited" else { fals) { an) { an: any;"
+        cuda_support) { any) { any = true if ((((hw) { any) { any) { any) { any = = "cuda" && compat != "Limited" else { fal) { an: any;"
+        rocm_support: any: any = true if (((((hw) { any) { any) { any) { any = = "rocm" && compat != "Limited" else { fal) { an: any;"
+        mps_support: any: any = true if (((((hw) { any) { any) { any) { any = = "mps" && compat != "Limited" else { fal) { an: any;"
+        openvino_support: any: any = true if (((((hw) { any) { any) { any) { any = = "openvino" && compat != "Limited" else { fal) { an: any;"
+        qnn_support: any: any = true if (((((hw) { any) { any) { any) { any = = "qnn" && compat != "Limited" else { fal) { an: any;"
+        webnn_support: any: any = true if (((((hw) { any) { any) { any) { any = = "webnn" && compat != "Limited" else { fal) { an: any;"
+        webgpu_support: any: any = true if (((((hw) { any) { any) { any) { any) { any: any: any = = "webgpu" && compat != "Limited" else {false;}"
+        recommended: any: any: any: any: any: any = "cuda" if (((((family != "embedding" else {"cpu";};"
+        rows.append({}) {
+          "model_name") { `$1`,;"
+          "model_family") {family,;"
+          "hardware_type") { hw) { an) { an: any;"
+          "cpu_support") { cpu_suppo: any;"
+          "cuda_support": cuda_suppo: any;"
+          "rocm_support": rocm_suppo: any;"
+          "mps_support": mps_suppo: any;"
+          "openvino_support": openvino_suppo: any;"
+          "qnn_support": qnn_suppo: any;"
+          "webnn_support": webnn_suppo: any;"
+          "webgpu_support": webgpu_suppo: any;"
+          "recommended_platform": recommend: any;"
     
   }
-          results = pd.DataFrame(rows)
+          results: any: any = p: an: any;
   
-  # Generate compatibility matrix
-          matrix_data = {}}}
+  // Genera: any;
+          matrix_data: any: any: any = {}
   
-  # Group by model family
-          for family in results['model_family'].unique():,
-          family_data = results[results['model_family'] == family]
-          ,
-    # For each family, check compatibility for each hardware type
-          hardware_compatibility = {}}}
-    for hw in ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],:
-      # Check support column for this hardware
-      support_column = `$1`
-      
-      if ($1) {
-        support = family_data[support_column].any(),
-        if ($1) {
-          # Check if it's recommended
-          recommended = (family_data['recommended_platform'] == hw).any():,
-          if ($1) ${$1} else ${$1} else ${$1} else {
-        # Try to infer from hardware_type matches
-          }
-        hw_matches = family_data[family_data['hardware_type'] == hw],
-        }
-        if ($1) ${$1} else ${$1}\n\n"
-          markdown += "## Model Family-Based Compatibility Chart\n\n"
-          markdown += "| Model Family | CPU | CUDA | ROCm | MPS | OpenVINO | QNN | WebNN | WebGPU | Notes |\n"
-          markdown += "|--------------|-----|------|------|-----|----------|-----|---------|-------|--------|\n"
+  // Gro: any;
+          for ((((((family in results["model_family"].unique() {) {,;"
+          family_data) { any) { any) { any) { any = results[results["model_family"] == famil) { an: any;"
+          ,;
+    // F: any;
+          hardware_compatibility) { any) { any: any: any = {}
+    for (((((hw in ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],) {"
+      // Check) { an) { an: any;
+      support_column) { any) { any) { any: any: any: any = `$1`;
+      ;
+      if ((((((($1) {
+        support) { any) { any) { any) { any = family_dat) { an: any;
+        if (((((($1) {
+          // Check) { an) { an: any;
+          recommended) { any) { any) { any: any: any: any = (family_data["recommended_platform"] == hw).any()) {,;"
+          if ((((((($1) { ${$1} else { ${$1} else { ${$1} else {// Try to infer from hardware_type matches}
+        hw_matches) {any = family_data[family_data["hardware_type"] == hw) { an) { an: any;};"
+        if (((($1) { ${$1} else { ${$1}\n\n";"
+          markdown += "## Model) { an) { an: any;"
+          markdown += "| Mode) { an: any;"
+          markdown += "|--------------|-----|------|------|-----|----------|-----|---------|-------|--------|\n";"
   
       }
-  for family, compatibility in Object.entries($1):
-    notes = ""
-    if ($1) {
-      notes = "Fully supported on all hardware"
-    elif ($1) {
-      notes = "Memory requirements critical"
-    elif ($1) {
-      notes = "Full cross-platform support"
-    elif ($1) {
-      notes = "CUDA preferred, Web simulation added"
-    elif ($1) ${$1} | "
+  for (((((family) { any, compatibility in Object.entries($1) {) {
+    notes) { any) { any) { any) { any) { any: any = "";;"
+    if ((((((($1) {
+      notes) { any) { any) { any) { any = "Fully supporte) { an: any;"
+    else if ((((((($1) {
+      notes) {any = "Memory requirements) { an) { an: any;} else if ((((($1) {"
+      notes) { any) { any) { any) { any = "Full cros) { an: any;"
+    else if ((((((($1) {
+      notes) { any) { any) { any) { any = "CUDA preferred) { an) { an: any;"
+    else if ((((((($1) { ${$1} | ";"
     }
-    for hw in ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],:
-    }
-      row += `$1`? Unknown')} | "
-      row += `$1`
-      markdown += row + "\n"
+    for ((((hw in ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],) {}"
+      row += `$1`? Unknown) { an) { an: any;
+      row += `$1`;
+      markdown += row) { an) { an: any;
   
     }
-      markdown += "\n### Legend\n\n"
-      markdown += "- ✅ High: Fully compatible with excellent performance\n"
-      markdown += "- ✅ Medium: Compatible with good performance\n"
-      markdown += "- ⚠️ Limited: Compatible but with performance limitations\n"
-      markdown += "- ❌ N/A: Not compatible || !available\n"
-      markdown += "- ? Unknown: Not tested\n\n"
+      markdown += "\n### Legen) { an: any;"
+      markdown += "- ✅ High) { Full) { an: any;"
+      markdown += "- ✅ Medium) { Compatib: any;"
+      markdown += "- ⚠️ Limited) { Compatib: any;"
+      markdown += "- ❌ N/A) { N: any;"
+      markdown += "- ? Unknown) {Not test: any;"
+      plt.figure(figsize = (12) { a: any;;
   
-    }
-  # Generate heatmap visualization
-      plt.figure(figsize=(12, 8))
-  
-  # Prepare data for heatmap
-      heatmap_data = [],,,
-  for (const $1 of $2) {
-    row = [],,,
-    for hw in ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],:
-      compat = matrix_data[family].get(hw, "? Unknown"),
-      if ($1) {
-        $1.push($2)
-      elif ($1) {
-        $1.push($2)
-      elif ($1) ${$1} else {
-        $1.push($2)
-        $1.push($2)
+  // Prepa: any;
+      heatmap_data) { any) { any) { any: any: any: any = [],;
+  for ((((((const $1 of $2) {
+    row) { any) { any) { any) { any) { any: any = [],;
+    for (((((hw in ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],) {"
+      compat) { any) { any) { any = matrix_data) { an) { an: any;
+      if ((((((($1) {
+        $1.push($2);
+      else if (($1) {$1.push($2)} else if (($1) { ${$1} else {$1.push($2);
+        $1.push($2)}
+        heatmap_df) { any) { any) { any = pd) { an) { an: any;
+        index) { any: any: any: any: any: any = $3.map(($2) => $1),) {,;
+        columns: any: any: any: any: any: any = ["CPU", "CUDA", "ROCm", "MPS", "OpenVINO", "QNN", "WebNN", "WebGPU"]);"
+        ,;
+  // Crea: any;
+        sns.heatmap(heatmap_df: any, annot: any: any = true, cmap: any: any = "YlGnBu", cbar_kws: any: any: any = {}'label') {'Compatibility Lev: any;"
+        vmin: any: any = 0, vmax: any: any = 3, fmt: any: any: any: any: any: any = ".0f");"
+        p: any;
+        p: any;
   
       }
-        heatmap_df = pd.DataFrame(heatmap_data,
-        index=$3.map(($2) => $1),:,
-        columns=["CPU", "CUDA", "ROCm", "MPS", "OpenVINO", "QNN", "WebNN", "WebGPU"])
-        ,
-  # Create heatmap
-      }
-        sns.heatmap(heatmap_df, annot=true, cmap="YlGnBu", cbar_kws={}}'label': 'Compatibility Level'},
-        vmin=0, vmax=3, fmt=".0f")
-        plt.title("Hardware Compatibility Matrix")
-        plt.tight_layout()
-  
-      }
-  # Save outputs
+  // Sa: any;
   }
-        output_dir = "./comprehensive_reports"
-        os.makedirs(output_dir, exist_ok=true)
+        output_dir: any: any: any: any: any: any = "./comprehensive_reports";"
+        os.makedirs(output_dir: any, exist_ok: any: any: any = tr: any;
   
-  # Save markdown
-  with open(`$1`, "w") as f:
-    f.write(markdown)
-    console.log($1)
+  // Sa: any;
+  wi: any;
+    f: a: any;
+    conso: any;
   
-  # Save heatmap
-    plt.savefig(`$1`, dpi=100, bbox_inches="tight")
-    console.log($1)
-  
-} catch($2: $1) ${$1} finally {
-  con.close()
+  // Sa: any;
+    plt.savefig(`$1`, dpi: any: any: any: any: any: any: any = 100, bbox_inches: any: any: any: any: any: any = "tight");"
+    conso: any;
+  ;
+} catch(error: any) ${$1} finally {;
+  c: an: any;

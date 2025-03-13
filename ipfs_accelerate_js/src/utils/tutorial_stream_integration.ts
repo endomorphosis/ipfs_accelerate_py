@@ -1,478 +1,366 @@
-/**
- * Converted from Python: tutorial_stream_integration.py
- * Conversion date: 2025-03-11 04:08:35
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
-
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
 
-export interface Props {
-  streaming_handler: await;
-  streaming_handler: await;
-  endpoint: await;
-}
 
-#!/usr/bin/env python3
-"""
-WebGPU Streaming Inference Integration Tutorial
+// WebG: any;
+export interface Props {streaming_handler: a: any;
+  streaming_hand: any;
+  endpo: any;}
 
-This tutorial demonstrates how to integrate the WebGPU streaming inference 
-capabilities with a web application using the unified web framework.
+/** WebG: any;
 
-Author: Demo Team
-Date: August 2025
-"""
+Th: any;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import ${$1} from "$1"
+Aut: any;
+D: any;
 
-# Configure logging
-logging.basicConfig())))))))level=logging.INFO, format='%())))))))asctime)s - %())))))))levelname)s - %())))))))message)s')
-logger = logging.getLogger())))))))"stream_integration")
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+// Configu: any;
+logging.basicConfig())level = logging.INFO, format: any: any: any: any: any: any = '%())asctime)s - %())levelname)s - %())message)s');'
+logger: any: any: any = loggi: any;
 
-# Add the fixed_web_platform to the path - adjust if needed
-script_dir = os.path.dirname())))))))os.path.abspath())))))))__file__))
-parent_dir = os.path.dirname())))))))script_dir)
-sys.$1.push($2))))))))os.path.join())))))))parent_dir, "fixed_web_platform"))
+// A: any;
+script_dir) { any) { any: any: any: any: any = os.path.dirname() {)os.path.abspath())__file__));
+parent_dir: any: any: any = o: an: any;
+s: any;
 
-# Enable simulation mode if !running in a browser environment
-os.environ["WEBGPU_SIMULATION"] = "1"
-,
-# Import required modules:
-try ${$1} catch($2: $1) {
-  logger.error())))))))"Failed to import * as $1 modules. Make sure fixed_web_platform is available.")
-  raise
-
-}
-class $1 extends $2 {
-  """Demonstrates integration of WebGPU streaming inference with web applications."""
-  
-}
-  $1($2) {
-    """Initialize the demo."""
-    this.model_path = model_path
-    this.accelerator = null
-    this.streaming_handler = null
-    this.endpoint = null
-  
-  }
+// Enab: any;
+os.environ["WEBGPU_SIMULATION"] = "1";"
+,;
+// Import required modules) {
+try ${$1} catch(error) { any)) { any {logger.error())"Failed t: an: any;"
+  raise}
+class $1 extends $2 {/** Demonstrates integration of WebGPU streaming inference with web applications. */}
+  $1($2) {/** Initiali: any;
+    this.model_path = model_p: any;
+    this.accelerator = n: any;
+    this.streaming_handler = n: any;
+    this.endpoint = n: any;
+  ;};
   async $1($2) {
-    """Initialize the web platform accelerator && streaming handler."""
-    # Get optimal configuration for the model
-    config = get_optimal_config())))))))this.model_path, "text")
+    /** Initiali: any;
+    // G: any;
+    config) { any) { any = get_optimal_config(): any {)this.model_path, "text");}"
+    // Overri: any;
+    config["quantization"] = precis: any;"
+    ,;
+    // Configu: any;
+    config["streaming_inference"] = tr: any;"
+    config["kv_cache_optimization"] = tr: any;"
+    config["latency_optimized"] = tr: any;"
+    config["adaptive_batch_size"] = t: any;"
+    ,;
+    // Crea: any;
+    this.accelerator = WebPlatformAccelerat: any;
+    model_path: any: any: any = th: any;
+    model_type: any: any: any: any: any: any = "text",;"
+    config: any: any: any = conf: any;
+    auto_detect: any: any: any = t: any;
+    );
     
-  }
-    # Override precision based on user selection
-    config["quantization"] = precision
-    ,
-    # Configure streaming && KV cache optimization
-    config["streaming_inference"] = true,
-    config["kv_cache_optimization"] = true,
-    config["latency_optimized"] = true,
-    config["adaptive_batch_size"] = true
-    ,
-    # Create accelerator with config
-    this.accelerator = WebPlatformAccelerator())))))))
-    model_path=this.model_path,
-    model_type="text",
-    config=config,
-    auto_detect=true
-    )
-    
-    # Get the streaming handler from components
-    if ($1) ${$1} else {
-      # Create standalone streaming handler if !available
-      this.streaming_handler = WebGPUStreamingInference())))))))
-      model_path=this.model_path,
-        config={}}}}}}}}}}}}}}:
-          "quantization": precision,
-          "optimize_kv_cache": true,
-          "latency_optimized": true,
-          "adaptive_batch_size": true
-          }
-          )
+    // G: any;
+    if ((((((($1) { ${$1} else {
+      // Create) { an) { an: any;
+      this.streaming_handler = WebGPUStreamingInferenc) { an: any;
+      model_path) { any) { any: any = th: any;
+        config: any: any: any: any: any: any = {}) {
+          "quantization") {precision,;"
+          "optimize_kv_cache": tr: any;"
+          "latency_optimized": tr: any;"
+          "adaptive_batch_size": tr: any;"
     
     }
-    # Create the streaming endpoint
-          this.endpoint = this.accelerator.create_endpoint()))))))))
+    // Crea: any;
+          this.endpoint = th: any;
     
-    # Return configuration information
-      return {}}}}}}}}}}}}}}
-      "precision": precision,
-      "browser": config.get())))))))"browser", "simulation"),
-      "browser_version": config.get())))))))"browser_version", "simulation"),
-      "compute_shaders": config.get())))))))"compute_shaders", false),
-      "features": this.accelerator.get_feature_usage())))))))) if hasattr())))))))this.accelerator, "get_feature_usage") else {}}}}}}}}}}}}}}}
-      }
-  :
+    // Retu: any;
+      return {}
+      "precision": precisi: any;"
+      "browser": conf: any;"
+      "browser_version": conf: any;"
+      "compute_shaders": conf: any;"
+      "features": this.accelerator.get_feature_usage()) if ((((((hasattr() {)this.accelerator, "get_feature_usage") else {}"
+  ) {
   async $1($2) {
-    """Demonstrate callback-based streaming."""
-    logger.info())))))))`$1`)
-    ,,,
-    # Ensure we have a streaming handler
-    if ($1) {
-      await this.initialize()))))))))
-    
-    }
-    # Collect tokens for demo purposes
-      collected_tokens = [],,,
-      token_times = [],,,
-      start_time = time.time()))))))))
-    
-  }
-    # Define a callback to handle tokens
-    $1($2) {
-      # Record token && time
-      token_time = time.time())))))))) - start_time
-      $1.push($2))))))))token)
-      $1.push($2))))))))token_time)
-      
-    }
-      # Print the token
-      console.log($1))))))))`$1`, end="", flush=true)
-      
-      # Print completion message if ($1) {
-      if ($1) {
-        console.log($1))))))))"\n\nGeneration complete!")
-    
-      }
-    # Run streaming generation
+    /** Demonstrate) { an) { an: any;
+    logge) { an: any;
+    ,;
+    // Ensu: any;
+    if ((((($1) {await this) { an) { an: any;
+      collected_tokens) { any) { any) { any) { any: any: any = [],;
+      token_times) { any: any: any: any: any: any = [],;
+      start_time: any: any: any: any: any: any = time.time() {);}
+    // Defi: any;
+    $1($2) {// Reco: any;
+      token_time: any: any: any = ti: any;
+      $1.push($2))token);
+      $1.push($2))token_time)}
+      // Pri: any;
+      console.log($1))`$1`, end: any: any = "", flush: any: any: any = tr: any;"
+      ;
+      // Print completion message if (((((($1) {
+      if ($1) {console.log($1))"\n\nGeneration complete) { an) { an: any;"
       }
     try {
-      result = this.streaming_handler.generate())))))))
-      prompt,
-      max_tokens=max_tokens,
-      temperature=0.7,
-      callback=handle_token
-      )
-      
-    }
-      # Calculate metrics
-      gen_time = time.time())))))))) - start_time
-      tokens_per_second = len())))))))collected_tokens) / gen_time if gen_time > 0 else 0
-      
-      return {}}}}}}}}}}}}}}::
-        "success": true,
-        "tokens_generated": len())))))))collected_tokens),
-        "generation_time_seconds": gen_time,
-        "tokens_per_second": tokens_per_second,
-        "time_to_first_token": token_times[0] if token_times else null,
+      result) {any = thi) { an: any;
+      prom: any;
+      max_tokens) { any: any: any = max_toke: any;
+      temperature: any: any: any = 0: a: any;
+      callback: any: any: any = handle_to: any;
+      )}
+      // Calcula: any;
+      gen_time: any: any: any = ti: any;
+      tokens_per_second: any: any: any: any: any: any = len())collected_tokens) / gen_time if (((((gen_time > 0 else { 0;
+      ;
+      return {}) {
+        "success") { true) { an) { an: any;"
+        "tokens_generated") { le) { an: any;"
+        "generation_time_seconds") { gen_ti: any;"
+        "tokens_per_second": tokens_per_seco: any;"
+        "time_to_first_token": token_times[0] if ((((((token_times else {null}"
+      ) {} catch(error) { any)) { any {
+      logger) { an) { an: any;
+        return {}
+        "success") { fal: any;"
+        "error": s: any;"
         }
-      :
-    } catch($2: $1) {
-      logger.error())))))))`$1`)
-        return {}}}}}}}}}}}}}}
-        "success": false,
-        "error": str())))))))e)
-        }
-  
-    }
-  async $1($2) {
-    """Demonstrate how to set up WebSocket streaming."""
-    logger.info())))))))`$1`)
-    ,,,
-    # In a real implementation, this would create a WebSocket connection
-    # For the demo, we'll simulate the process
-    
-  }
-    # Ensure we have a streaming handler
-    if ($1) {
-      await this.initialize()))))))))
-    
-    }
-    # Create a simulated WebSocket
+  async $1($2) {/** Demonstra: any;
+    logg: any;
+    ,;
+    // I: an: any;
+    // F: any;
+    if ((((((($1) {await this) { an) { an: any;
     class $1 extends $2 {
-      $1($2) {
-        this.messages = [],,,
-      
-      }
+      $1($2) {this.messages = [],;};
       async $1($2) {
-        """Simulate sending data over WebSocket."""
-        message = json.loads())))))))data) if isinstance())))))))data, str) else data
-        this.$1.push($2))))))))message)
-        
-      }
-        # Print token if ($1) {
-        if ($1) ${$1}", end="", flush=true)
-        }
-        
-    }
-        # Print completion message
-        if ($1) ${$1} tokens in {}}}}}}}}}}}}}}message.get())))))))'generation_time', 0):.2f}s")
-          console.log($1))))))))`$1`tokens_per_second', 0):.2f} tokens/sec")
+        /** Simulat) { an: any;
+        message) { any) { any: any: any: any = json.loads())data) if (((((isinstance() {)data, str) { any) else {data;
+        this) { an) { an: any;
+        // Print token if (((($1) {
+        if ($1) { ${$1}", end) { any) {any = "", flush) { any) { any) { any = tr: any;}"
+        // Pri: any;
+        if (((((($1) { ${$1} tokens in {}message.get())'generation_time', 0) { any)) {.2f}s");'
+          console.log($1))`$1`tokens_per_second', 0) { any)) {.2f} token) { an: any;'
           
-          if ($1) ${$1}-bit precision with {}}}}}}}}}}}}}}message.get())))))))'memory_reduction_percent', 0):.1f}% memory reduction")
+          if (((((($1) { ${$1}-bit precision with {}message.get())'memory_reduction_percent', 0) { any)) {.1f}% memory) { an) { an: any;'
     
-    # Create simulated WebSocket
-            websocket = SimulatedWebSocket()))))))))
+    // Creat) { an: any;
+            websocket) { any: any: any = SimulatedWebSock: any;
     
-    # Run WebSocket streaming
-    try {
-      console.log($1))))))))"\nStreaming via WebSocket:")
+    // R: any;
+    try {console.log($1))"\nStreaming v: any;"
+      awa: any;
+      websock: any;
+      pro: any;
+      max_toke: any;
+      temperature: any: any: any = 0: a: any;
+      );
       
-    }
-      # Stream tokens over simulated WebSocket
-      await this.streaming_handler.stream_websocket())))))))
-      websocket,
-      prompt,
-      max_tokens,
-      temperature=0.7
-      )
+      // Retu: any;
+      completion_message: any: any: any: any: any = next())())m for ((((((m in websocket.messages if ((((((isinstance() {)m, dict) { any) && m.get())"type") == "complete"), {});"
       
-      # Return statistics
-      completion_message = next())))))))())))))))m for m in websocket.messages if isinstance())))))))m, dict) && m.get())))))))"type") == "complete"), {}}}}}}}}}}}}}}})
-      
-      return {}}}}}}}}}}}}}}:
-        "success": true,
-        "tokens_generated": completion_message.get())))))))"tokens_generated", 0),
-        "generation_time_seconds": completion_message.get())))))))"generation_time", 0),
-        "tokens_per_second": completion_message.get())))))))"tokens_per_second", 0),
-        "using_ultra_low_precision": "precision_bits" in completion_message,
-        "precision_bits": completion_message.get())))))))"precision_bits"),
-        "memory_reduction_percent": completion_message.get())))))))"memory_reduction_percent")
+      return {}) {
+        "success") { true) { an) { an: any;"
+        "tokens_generated") { completion_message.get())"tokens_generated", 0) { any) { an) { an: any;"
+        "generation_time_seconds") {completion_message.get())"generation_time", 0) { an) { an: any;"
+        "tokens_per_second": completion_messa: any;"
+        "using_ultra_low_precision": "precision_bits" i: an: any;"
+        "precision_bits": completion_messa: any;"
+        "memory_reduction_percent": completion_message.get())"memory_reduction_percent")} catch(error: any): any {"
+      logg: any;
+        return {}
+        "success": fal: any;"
+        "error": s: any;"
         }
-      
-    } catch($2: $1) {
-      logger.error())))))))`$1`)
-        return {}}}}}}}}}}}}}}
-        "success": false,
-        "error": str())))))))e)
-        }
-  
-    }
   async $1($2) {
-    """Demonstrate unified framework integration."""
-    logger.info())))))))`$1`)
-    ,,,
-    # Ensure we have an endpoint
-    if ($1) {
-      await this.initialize()))))))))
-    
-    }
-    # Collect tokens for demo purposes
-      collected_tokens = [],,,
-      start_time = time.time()))))))))
-    
-  }
-    # Define token callback
-    $1($2) {
-      $1.push($2))))))))token)
-      console.log($1))))))))`$1`, end="", flush=true)
-      
-    }
-      if ($1) {
-        console.log($1))))))))"\n\nGeneration complete!")
-    
-      }
-    # Run inference through the unified endpoint
+    /** Demonstra: any;
+    logg: any;
+    ,;
+    // Ensu: any;
+    if ((((((($1) {await this) { an) { an: any;
+      collected_tokens) { any) { any) { any) { any: any: any = [],;
+      start_time) { any: any: any: any: any: any = time.time() {);}
+    // Defi: any;
+    $1($2) {$1.push($2))token);
+      console.log($1))`$1`, end: any: any = "", flush: any: any: any = tr: any;};"
+      if (((((($1) {console.log($1))"\n\nGeneration complete) { an) { an: any;"
     try {
-      result = await this.endpoint())))))))
-      {}}}}}}}}}}}}}}"text": prompt},
-      max_tokens=max_tokens,
-      temperature=0.7,
-      callback=token_callback
-      )
+      result) { any) { any) { any = awa: any;
+      {}"text") {prompt},;"
+      max_tokens: any: any: any = max_toke: any;
+      temperature: any: any: any = 0: a: any;
+      callback: any: any: any = token_callb: any;
+      );
       
     }
-      # Get performance metrics
-      metrics = this.accelerator.get_performance_metrics()))))))))
+      // G: any;
+      metrics: any: any: any = th: any;
       
-      # Calculate tokens per second
-      gen_time = time.time())))))))) - start_time
-      tokens_per_second = len())))))))collected_tokens) / gen_time if gen_time > 0 else 0
-      
-      return {}}}}}}}}}}}}}}::
-        "success": true,
-        "tokens_generated": len())))))))collected_tokens),
-        "generation_time_seconds": gen_time,
-        "tokens_per_second": tokens_per_second,
-        "first_inference_time_ms": metrics.get())))))))"first_inference_time_ms"),
-        "memory_usage_mb": metrics.get())))))))"memory_usage_mb")
+      // Calcula: any;
+      gen_time: any: any: any = ti: any;
+      tokens_per_second: any: any: any: any: any: any = len())collected_tokens) / gen_time if ((((((gen_time > 0 else { 0;
+      ;
+      return {}) {
+        "success") { true) { an) { an: any;"
+        "tokens_generated") {len())collected_tokens),;"
+        "generation_time_seconds") { gen_tim) { an: any;"
+        "tokens_per_second": tokens_per_seco: any;"
+        "first_inference_time_ms": metri: any;"
+        "memory_usage_mb": metrics.get())"memory_usage_mb")} catch(error: any): any {"
+      logg: any;
+        return {}
+        "success": fal: any;"
+        "error": s: any;"
         }
-      
-    } catch($2: $1) {
-      logger.error())))))))`$1`)
-        return {}}}}}}}}}}}}}}
-        "success": false,
-        "error": str())))))))e)
-        }
-  
-    }
-  async $1($2) {
-    """Compare different precision options ())))))))2-bit, 3-bit, 4-bit, 8-bit)."""
-    logger.info())))))))"Comparing precision options...")
+  async $1($2) {/** Compa: any;
+    logg: any;
+    precision_options: any: any: any: any: any: any = ["int2", "int3", "int4", "int8"];"
+    ,;
+    // Resul: any;
+    results: any: any: any = {}
     
-  }
-    # Precision options to test
-    precision_options = ["int2", "int3", "int4", "int8"]
-    ,
-    # Results storage
-    results = {}}}}}}}}}}}}}}}
+    // Te: any;
+    for (((((((const $1 of $2) { ${$1}");"
+      console) { an) { an: any;
+      consol) { an: any;
+      
+      // Initiali: any;
+      awa: any;
+      
+      // R: any;
+      start_time) { any) { any: any = ti: any;
+      
+      // Collect tokens 
+      tokens: any: any: any: any: any: any = [],;
+      
+      // Defi: any;
+      $1($2) {$1.push($2))token);
+        console.log($1))`$1`, end: any: any = "", flush: any: any: any = tr: any;};"
+        if ((((((($1) {console.log($1))"\n")}"
+      // Generate) { an) { an: any;
+          thi) { an: any;
+          prom: any;
+          max_tokens) { any) { any: any: any = max_toke: any;
+          temperature: any: any: any = 0: a: any;
+          callback: any: any: any = collect_to: any;
+          );
+      
+      // Calcula: any;
+          generation_time: any: any: any = ti: any;
+          tokens_per_second: any: any: any: any: any: any = len())tokens) / generation_time if (((((generation_time > 0 else { 0;
+      
+      // Get) { an) { an: any;
+      memory_reduction) { any) { any) { any = 0) {
+      if ((((((($1) {
+        memory_reduction) { any) { any) { any = 8) { an: any;
+      else if (((((($1) {
+        memory_reduction) {any = 81) { an) { an: any;} else if ((((($1) {
+        memory_reduction) { any) { any) { any) { any = 7) { an: any;
+      else if ((((((($1) {
+        memory_reduction) {any = 50) { an) { an: any;}
+      // Stor) { an: any;
+      };
+        results[precision] = {},;
+        "tokens_generated") { l: any;"
+        "generation_time_seconds") { generation_ti: any;"
+        "tokens_per_second") { tokens_per_seco: any;"
+        "memory_reduction_percent") {memory_reduction}"
+    // Displ: any;
+      }
+        console.log($1))"\nPrecision Comparison) {");"
+        console.log($1))`$1`Precision') {<10} {}'Tokens/s':<15} {}'Memory Reducti: any;'
+        conso: any;
     
-    # Test each precision option
-    for (const $1 of $2) ${$1}")
-      console.log($1))))))))`$1`)
-      console.log($1))))))))`$1`-' * 50}")
-      
-      # Initialize with current precision
-      await this.initialize())))))))precision)
-      
-      # Run generation
-      start_time = time.time()))))))))
-      
-      # Collect tokens 
-      tokens = [],,,
-      
-      # Define callback
-      $1($2) {
-        $1.push($2))))))))token)
-        console.log($1))))))))`$1`, end="", flush=true)
-        
-      }
-        if ($1) {
-          console.log($1))))))))"\n")
-      
-        }
-      # Generate text
-          this.streaming_handler.generate())))))))
-          prompt,
-          max_tokens=max_tokens,
-          temperature=0.7,
-          callback=collect_token
-          )
-      
-      # Calculate metrics
-          generation_time = time.time())))))))) - start_time
-          tokens_per_second = len())))))))tokens) / generation_time if generation_time > 0 else 0
-      
-      # Get memory usage
-      memory_reduction = 0:
-      if ($1) {
-        memory_reduction = 87.5
-      elif ($1) {
-        memory_reduction = 81.25
-      elif ($1) {
-        memory_reduction = 75.0
-      elif ($1) {
-        memory_reduction = 50.0
-      
-      }
-      # Store results
-      }
-        results[precision] = {}}}}}}}}}}}}}},
-        "tokens_generated": len())))))))tokens),
-        "generation_time_seconds": generation_time,
-        "tokens_per_second": tokens_per_second,
-        "memory_reduction_percent": memory_reduction
-        }
-      
-      }
-    # Display comparison
-      }
-        console.log($1))))))))"\nPrecision Comparison:")
-        console.log($1))))))))`$1`Precision':<10} {}}}}}}}}}}}}}}'Tokens/s':<15} {}}}}}}}}}}}}}}'Memory Reduction':<20}")
-        console.log($1))))))))"-" * 45)
-    
-    for precision, data in Object.entries($1))))))))):
-      console.log($1))))))))`$1`tokens_per_second']:<15.2f} {}}}}}}}}}}}}}}data['memory_reduction_percent']:<20.1f}%")
-      ,
-        return results
+    for ((((((precision) { any, data in Object.entries($1) {)) {
+      console.log($1))`$1`tokens_per_second']) {<15.2f} {}data["memory_reduction_percent"]) {<20.1f}%");'
+      ,;
+        retur) { an: any;
   
   $1($2) {
-    """Return information about memory efficiency for different precision options."""
-    base_memory_mb = 1500  # Example base memory for a 7B model in MB
-    
-  }
-        return {}}}}}}}}}}}}}}
-        "int2": {}}}}}}}}}}}}}}
-        "bits": 2,
-        "memory_reduction_percent": 87.5,
-        "estimated_model_size_mb": base_memory_mb * 0.125,
-        "max_context_multiplier": 8.0,
-        "quality_impact": "Moderate to significant impact on quality, best for memory-constrained environments"
-        },
-        "int3": {}}}}}}}}}}}}}}
-        "bits": 3,
-        "memory_reduction_percent": 81.25,
-        "estimated_model_size_mb": base_memory_mb * 0.1875,
-        "max_context_multiplier": 5.3,
-        "quality_impact": "Some impact on quality, good balance of efficiency && performance"
-        },
-        "int4": {}}}}}}}}}}}}}}
-        "bits": 4,
-        "memory_reduction_percent": 75.0,
-        "estimated_model_size_mb": base_memory_mb * 0.25,
-        "max_context_multiplier": 4.0,
-        "quality_impact": "Minimal impact on quality, good for most applications"
-        },
-        "int8": {}}}}}}}}}}}}}}
-        "bits": 8,
-        "memory_reduction_percent": 50.0,
-        "estimated_model_size_mb": base_memory_mb * 0.5,
-        "max_context_multiplier": 2.0,
-        "quality_impact": "Negligible impact on quality, use when memory is !constrained"
-        }
-        }
+    /** Retur) { an: any;
+    base_memory_mb) {any = 15: any;};
+        return {}
+        "int2") { }"
+        "bits") {2,;"
+        "memory_reduction_percent") { 8: an: any;"
+        "estimated_model_size_mb": base_memory_: any;"
+        "max_context_multiplier": 8: a: any;"
+        "quality_impact": "Moderate t: an: any;"
+        "int3") { }"
+        "bits") {3,;"
+        "memory_reduction_percent") { 8: an: any;"
+        "estimated_model_size_mb": base_memory_: any;"
+        "max_context_multiplier": 5: a: any;"
+        "quality_impact": "Some impa: any;"
+        "int4": {}"
+        "bits": 4: a: any;"
+        "memory_reduction_percent": 7: an: any;"
+        "estimated_model_size_mb": base_memory_: any;"
+        "max_context_multiplier": 4: a: any;"
+        "quality_impact": "Minimal impa: any;"
+        },;
+        "int8") { }"
+        "bits") {8,;"
+        "memory_reduction_percent") { 5: an: any;"
+        "estimated_model_size_mb": base_memory_: any;"
+        "max_context_multiplier": 2: a: any;"
+        "quality_impact": "Negligible impact on quality, use when memory is !constrained"}"
 
-async $1($2) ${$1} {}}}}}}}}}}}}}}config_info['browser_version']}"),
-  console.log($1))))))))`$1`precision']}"),
-  console.log($1))))))))`$1`Enabled' if ($1) ${$1}")
-  ,
-  # Show memory efficiency information
-  memory_info = demo.get_memory_efficiency_info())))))))):
-    console.log($1))))))))"\nMemory Efficiency Overview:")
-    console.log($1))))))))`$1`Precision':<10} {}}}}}}}}}}}}}}'Reduction':<15} {}}}}}}}}}}}}}}'Model Size ())))))))7B)':<20} {}}}}}}}}}}}}}}'Context Expansion':<20}")
-    console.log($1))))))))"-" * 70)
+async $1($2) ${$1} {}config_info["browser_version"]}"),;"
+  conso: any;
+  console.log($1))`$1`Enabled' if ((((((($1) { ${$1}");'
+  ,;
+  // Show) { an) { an: any;
+  memory_info) { any) { any = demo.get_memory_efficiency_info())) {console.log($1))"\nMemory Efficienc) { an: any;"
+    console.log($1))`$1`Precision':<10} {}'Reduction':<15} {}'Model Size ())7B)':<20} {}'Context Expansi: any;'
+    conso: any;
   
-  for precision, info in Object.entries($1))))))))):
-    console.log($1))))))))`$1`memory_reduction_percent']:<15.1f}% {}}}}}}}}}}}}}}info['estimated_model_size_mb']:<20.1f}MB {}}}}}}}}}}}}}}info['max_context_multiplier']:<20.1f}x")
-    ,
-  # Prompt for tutorial
-    prompt = "Explain how WebGPU streaming inference works with ultra-low precision quantization:"
+  for ((((((precision) { any, info in Object.entries($1) {)) {
+    console.log($1))`$1`memory_reduction_percent']) {<15.1f}% {}info["estimated_model_size_mb"]) {<20.1f}MB {}info["max_context_multiplier"]) {<20.1f}x");'
+    ,;
+  // Promp) { an: any;
+    prompt) { any) { any: any: any: any: any = "Explain how WebGPU streaming inference works with ultra-low precision quantization) {";"
   
-  # Run examples
-    console.log($1))))))))"\n\n" + "-" * 60)
-    console.log($1))))))))"Example 1: Callback-based Streaming")
-    console.log($1))))))))"-" * 60)
+  // R: any;
+    conso: any;
+    conso: any;
+    conso: any;
   
-    await demo.demo_callback_streaming())))))))prompt)
+    awa: any;
   
-    console.log($1))))))))"\n\n" + "-" * 60)
-    console.log($1))))))))"Example 2: WebSocket-based Streaming")
-    console.log($1))))))))"-" * 60)
+    conso: any;
+    conso: any;
+    conso: any;
   
-    await demo.demo_websocket_streaming())))))))prompt)
+    awa: any;
   
-    console.log($1))))))))"\n\n" + "-" * 60)
-    console.log($1))))))))"Example 3: Unified Framework Integration")
-    console.log($1))))))))"-" * 60)
+    conso: any;
+    conso: any;
+    conso: any;
   
-    await demo.demo_unified_framework())))))))prompt)
+    awa: any;
   
-  # Ask if ($1) {
-    run_comparison = input())))))))"\nDo you want to compare different precision options? ())))))))y/n): ").lower())))))))) == 'y'
+  // Ask if ((((((($1) {
+    run_comparison) { any) { any) { any) { any = input())"\nDo you want to compare different precision options? ())y/n)) {").lower()) == 'y'}"
+  if (((((($1) {
+    console) { an) { an: any;
+    console.log($1))"Example 4) {Precision Optio) { an: any;"
+    conso: any;
   
-  }
-  if ($1) {
-    console.log($1))))))))"\n\n" + "-" * 60)
-    console.log($1))))))))"Example 4: Precision Option Comparison")
-    console.log($1))))))))"-" * 60)
-    
-  }
-    await demo.compare_precision_options())))))))prompt)
-  
-    console.log($1))))))))"\n\n" + "=" * 60)
-    console.log($1))))))))"Tutorial Complete")
-    console.log($1))))))))"=" * 60)
+    console.log($1))"\n\n" + "=" * 6: an: any;"
+    conso: any;
+    console.log($1))"=" * 6: an: any;"
 
-if ($1) {
-  # Run the tutorial
-  asyncio.run())))))))run_tutorial())))))))))
+if (((($1) {
+  // Run) { an) { an) { an: any;
+  asyncio) { a) { an: any;

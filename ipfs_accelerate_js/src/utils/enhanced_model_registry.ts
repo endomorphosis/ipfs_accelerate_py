@@ -1,266 +1,233 @@
-/**
- * Converted from Python: enhanced_model_registry.py
- * Conversion date: 2025-03-11 04:08:36
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+// WebG: any;
+import {  HardwareBack: any;
 
-#!/usr/bin/env python3
-"""
-Enhanced Model Registry with AMD support && precision types
+/** Enhanc: any;
 
-This is a demonstration of the enhanced model registry for the ipfs_accelerate_py framework,
-including support for AMD ROCm hardware && comprehensive precision types (fp32, fp16, bf16, int8, etc.).
-"""
+Th: any;
+including support for (((AMD ROCm hardware && comprehensive precision types (fp32) { any, fp16, bf16) { any, int8, etc.) {. */;
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import ${$1} from "$1"
+impor) { an: any;
+impor) { an: any;
+impo: any;
+impo: any;
+import ${$1} fr: any;
 
-# Sample model registry with AMD && precision support
-MODEL_REGISTRY = {}}}}}}}}}}}}}}}}
-  # Default/standard model configuration
-"bert": {}}}}}}}}}}}}}}}}
-"description": "Default BERT model",
+// Samp: any;
+MODEL_REGISTRY) { any: any: any = {}
+  // Defau: any;
+"bert") { }"
+"description": "Default BE: any;"
     
-    # Model dimensions && capabilities
-"embedding_dim": 768,
-"sequence_length": 512,
-"model_precision": "float32",
-"default_batch_size": 1,
+    // Mod: any;
+"embedding_dim": 7: any;"
+"sequence_length": 5: any;"
+"model_precision": "float32",;"
+"default_batch_size": 1: a: any;"
     
-    # Hardware compatibility
-"hardware_compatibility": {}}}}}}}}}}}}}}}}
-"cpu": true,
-"cuda": true,
-"openvino": true,
-"apple": true,
-"qualcomm": false,  # Usually false for complex models
-"amd": true  # AMD ROCm support
-},
+    // Hardwa: any;
+"hardware_compatibility": {}"
+"cpu": tr: any;"
+"cuda": tr: any;"
+"openvino": tr: any;"
+"apple": tr: any;"
+"qualcomm": fal: any;"
+"amd") {true  // A: any;"
     
-    # Precision support by hardware
-"precision_compatibility": {}}}}}}}}}}}}}}}}
-"cpu": {}}}}}}}}}}}}}}}}
-"fp32": true,
-"fp16": false,
-"bf16": true,
-"int8": true,
-"int4": false,
-"uint4": false,
-"fp8": false,
-"fp4": false
-},
-"cuda": {}}}}}}}}}}}}}}}}
-"fp32": true,
-"fp16": true,
-"bf16": true,
-"int8": true,
-"int4": true,
-"uint4": true,
-"fp8": false,
-"fp4": false
-},
-"openvino": {}}}}}}}}}}}}}}}}
-"fp32": true,
-"fp16": true,
-"bf16": false,
-"int8": true,
-"int4": false,
-"uint4": false,
-"fp8": false,
-"fp4": false
-},
-"apple": {}}}}}}}}}}}}}}}}
-"fp32": true,
-"fp16": true,
-"bf16": false,
-"int8": false,
-"int4": false,
-"uint4": false,
-"fp8": false,
-"fp4": false
-},
-"amd": {}}}}}}}}}}}}}}}}
-"fp32": true,
-"fp16": true,
-"bf16": true,
-"int8": true,
-"int4": false,
-"uint4": false,
-"fp8": false,
-"fp4": false
-},
-"qualcomm": {}}}}}}}}}}}}}}}}
-"fp32": true,
-"fp16": true,
-"bf16": false,
-"int8": true,
-"int4": false,
-"uint4": false,
-"fp8": false,
-"fp4": false
-}
-},
+    // Precisi: any;
+"precision_compatibility") { }"
+"cpu") { }"
+"fp32": tr: any;"
+"fp16": fal: any;"
+"bf16": tr: any;"
+"int8": tr: any;"
+"int4": fal: any;"
+"uint4": fal: any;"
+"fp8": fal: any;"
+"fp4": fa: any;"
+},;
+"cuda": {}"
+"fp32": tr: any;"
+"fp16": tr: any;"
+"bf16": tr: any;"
+"int8": tr: any;"
+"int4": tr: any;"
+"uint4": tr: any;"
+"fp8": fal: any;"
+"fp4": fa: any;"
+},;
+"openvino": {}"
+"fp32": tr: any;"
+"fp16": tr: any;"
+"bf16": fal: any;"
+"int8": tr: any;"
+"int4": fal: any;"
+"uint4": fal: any;"
+"fp8": fal: any;"
+"fp4": fa: any;"
+},;
+"apple": {}"
+"fp32": tr: any;"
+"fp16": tr: any;"
+"bf16": fal: any;"
+"int8": fal: any;"
+"int4": fal: any;"
+"uint4": fal: any;"
+"fp8": fal: any;"
+"fp4": fa: any;"
+},;
+"amd": {}"
+"fp32": tr: any;"
+"fp16": tr: any;"
+"bf16": tr: any;"
+"int8": tr: any;"
+"int4": fal: any;"
+"uint4": fal: any;"
+"fp8": fal: any;"
+"fp4": fa: any;"
+},;
+"qualcomm": {}"
+"fp32": tr: any;"
+"fp16": tr: any;"
+"bf16": fal: any;"
+"int8": tr: any;"
+"int4": fal: any;"
+"uint4": fal: any;"
+"fp8": fal: any;"
+"fp4": fa: any;"
+},;
     
-    # Input/Output specifications
-"input": {}}}}}}}}}}}}}}}}
-"format": "text",
-"tensor_type": "int64",
-"uses_attention_mask": true,
-"uses_position_ids": false,
-"typical_shapes": [],"batch_size, 512"],
-},
-"output": {}}}}}}}}}}}}}}}}
-"format": "embedding",
-"tensor_type": "float32",
-"typical_shapes": [],"batch_size, 768"],
-},
+    // Inp: any;
+"input": {}"
+"format": "text",;"
+"tensor_type": "int64",;"
+"uses_attention_mask": tr: any;"
+"uses_position_ids": fal: any;"
+"typical_shapes": [],"batch_size, 5: any;"
+},;
+"output": {}"
+"format": "embedding",;"
+"tensor_type": "float32",;"
+"typical_shapes": [],"batch_size, 7: any;"
+},;
     
-    # Dependencies
-"dependencies": {}}}}}}}}}}}}}}}}
-"python": ">=3.8,<3.11",
-"pip": [],
-"torch>=1.12.0",
-"transformers>=4.26.0",
-"numpy>=1.20.0"
-],
-"system": [],],
-"optional": {}}}}}}}}}}}}}}}}
-"cuda": [],"nvidia-cuda-toolkit>=11.6", "nvidia-cudnn>=8.3"],
-"openvino": [],"openvino>=2022.1.0"],
-"apple": [],"torch>=1.12.0"],
-"qualcomm": [],"qti-aisw>=1.8.0"],
-"amd": [],"rocm-smi>=5.0.0", "rccl>=2.0.0", "torch-rocm>=2.0.0"]
-},
-"precision": {}}}}}}}}}}}}}}}}
-"fp16": [],],
-"bf16": [],"torch>=1.12.0"],
-"int8": [],"bitsandbytes>=0.41.0", "optimum>=1.12.0"],
-"int4": [],"bitsandbytes>=0.41.0", "optimum>=1.12.0", "auto-gptq>=0.4.0"],
-"uint4": [],"bitsandbytes>=0.41.0", "optimum>=1.12.0", "auto-gptq>=0.4.0"],
-"fp8": [],"transformers-neuronx>=0.8.0", "torch-neuronx>=2.0.0"],
-"fp4": [],"transformers-neuronx>=0.8.0", "torch-neuronx>=2.0.0"]
-}
-}
-}
+    // Dependenc: any;
+"dependencies": {}"
+"python": ">=3.8,<3.11",;"
+"pip": [],;"
+"torch>=1.12.0",;"
+"transformers>=4.26.0",;"
+"numpy>=1.20.0";"
+],;
+"system": []],;"
+"optional": {}"
+"cuda": [],"nvidia-cuda-toolkit>=11.6", "nvidia-cudnn>=8.3"],;"
+"openvino": [],"openvino>=2022.1.0"],;"
+"apple": [],"torch>=1.12.0"],;"
+"qualcomm": [],"qti-aisw>=1.8.0"],;"
+"amd": [],"rocm-smi>=5.0.0", "rccl>=2.0.0", "torch-rocm>=2.0.0"];"
+},;
+"precision": {}"
+"fp16": []],;"
+"bf16": [],"torch>=1.12.0"],;"
+"int8": [],"bitsandbytes>=0.41.0", "optimum>=1.12.0"],;"
+"int4": [],"bitsandbytes>=0.41.0", "optimum>=1.12.0", "auto-gptq>=0.4.0"],;"
+"uint4": [],"bitsandbytes>=0.41.0", "optimum>=1.12.0", "auto-gptq>=0.4.0"],;"
+"fp8": [],"transformers-neuronx>=0.8.0", "torch-neuronx>=2.0.0"],;"
+"fp4": [],"transformers-neuronx>=0.8.0", "torch-neuronx>=2.0.0"];"
 }
 
 $1($2) {
-  """Detect available hardware && return capabilities dictionary."""
-  capabilities = {}}}}}}}}}}}}}}}}
-  "cpu": true,
-  "cuda": false,
-  "cuda_version": null,
-  "cuda_devices": 0,
-  "mps": false,
-  "openvino": false,
-  "qualcomm": false,
-  "amd": false,
-  "amd_version": null,
-  "amd_devices": 0
+  /** Dete: any;
+  capabilities: any: any = {}
+  "cpu": tr: any;"
+  "cuda": fal: any;"
+  "cuda_version": nu: any;"
+  "cuda_devices": 0: a: any;"
+  "mps": fal: any;"
+  "openvino": fal: any;"
+  "qualcomm": fal: any;"
+  "amd": fal: any;"
+  "amd_version": nu: any;"
+  "amd_devices": 0;"
   }
-  
-}
-  # Check AMD ROCm support
-  try {
-    # Check for the presence of ROCm by importing rocm-specific modules || checking for devices
-    import * as $1
-    
-  }
-    # Try to run rocm-smi to detect ROCm installation
-    result = subprocess.run([],'rocm-smi', '--showproductname'], 
-    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    universal_newlines=true, check=false)
-    
-    if ($1) {
-      capabilities[],"amd"] = true
-      
-    }
-      # Try to get version information
-      version_result = subprocess.run([],'rocm-smi', '--showversion'], 
-      stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-      universal_newlines=true, check=false)
-      
-      if ($1) {
-        # Extract version import ${$1} from "$1"
-        match = re.search(r'ROCm-SMI version:\s+(\d+\.\d+\.\d+)', version_result.stdout)
-        if ($1) {
-          capabilities[],"amd_version"] = match.group(1)
-      
-        }
-      # Try to count devices
+  // Che: any;
+  try {// Che: any;
+    impo: any;
+    result) { any) { any: any: any = subproce: any;
+    stdout: any: any = subprocess.PIPE, stderr: any: any: any = subproce: any;
+    universal_newlines: any: any = true, check: any: any: any: any: any: any = false) {;
+    ;
+    if ((((((($1) {capabilities[],"amd"] = true) { an) { an: any;"
+      version_result) { any) { any) { any = subproce: any;
+      stdout: any: any = subprocess.PIPE, stderr: any: any: any = subproce: any;
+      universal_newlines: any: any = true, check: any: any: any = fal: any;
+      ;
+      if (((((($1) {
+        // Extract version import ${$1} from) { an) { an: any;
+        match) { any) { any) { any = re.search(r'ROCm-SMI version) {\s+(\d+\.\d+\.\d+)', version_resu: any;'
+        if ((((((($1) {capabilities[],"amd_version"] = match.group(1) { any) { an) { an: any;"
       }
-          devices_result = subprocess.run([],'rocm-smi', '--showalldevices'],
-          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-          universal_newlines=true, check=false)
-      
-      if ($1) {
-        # Count device entries in output
-        device_lines = $3.map(($2) => $1),' in line]
-        capabilities[],"amd_devices"] = len(device_lines):
-  except (ImportError, FileNotFoundError):
-      }
-          pass
+          devices_result) { any) { any: any = subproce: any;
+          stdout: any: any = subprocess.PIPE, stderr: any: any: any = subproce: any;
+          universal_newlines: any: any = true, check: any: any: any = fal: any;
+      ;
+      if (((((($1) {
+        // Count) { an) { an: any;
+        device_lines) { any) { any) { any = $3.map(($2) => $1),' i: an: any;'
+        capabilities[],"amd_devices"] = device_lines.length) {"
+  catch (error: any) {}
+          p: any;
     
-        return capabilities
+        retu: any;
 
-$1($2) ${$1}")
-  console.log($1)
-  console.log($1)
+$1($2) ${$1}");"
+  conso: any;
+  conso: any;
   
-  # Print hardware compatibility
-  console.log($1)
-  for hw, supported in model_info[],"hardware_compatibility"].items():
-    status = "✓ Supported" if ($1) {
-      console.log($1)
-  
-    }
-  # Print precision compatibility
-      console.log($1)
-  for hw, precisions in model_info[],"precision_compatibility"].items():
-    console.log($1)
-    for precision, supported in Object.entries($1):
-      status = "✓" if ($1) {
-        console.log($1)
-  
-      }
-  # Detect available hardware
-        console.log($1)
-        hardware_capabilities = detect_hardware()
-  for hw, value in Object.entries($1):
-    if ($1) {
-      console.log($1)
-      if ($1) ${$1}")
-        console.log($1)
-      elif ($1) ${$1}")
-        console.log($1)
+  // Pri: any;
+  conso: any;
+  for (((((hw) { any, supported in model_info[],"hardware_compatibility"].items() {) {"
+    status) { any) { any) { any) { any = "✓ Supported" if ((((((($1) {console.log($1)}"
+  // Print) { an) { an: any;
+      consol) { an: any;
+  for (((((hw) { any, precisions in model_info[],"precision_compatibility"].items() {) {"
+    console) { an) { an: any;
+    for (precision, supported in Object.entries($1) {
+      status) { any) { any) { any) { any = "✓" if ((((((($1) {console.log($1)}"
+  // Detect) { an) { an: any;
+        consol) { an: any;
+        hardware_capabilities) { any) { any) { any = detect_hardwa: any;
+  for (((((hw) { any, value in Object.entries($1) {) {
+    if (((((($1) {
+      console) { an) { an: any;
+      if (($1) { ${$1}");"
+        console) { an) { an: any;
+      else if (((($1) { ${$1}");"
+        console) { an) { an: any;
   
     }
-  # Print dependencies required for AMD && precision types
-        console.log($1)
+  // Print) { an) { an: any;
+        consol) { an: any;
   
-        console.log($1)
-  for dep in model_info[],"dependencies"][],"pip"]:
-    console.log($1)
+        conso: any;
+  for (((dep in model_info[],"dependencies"][],"pip"]) {"
+    console) { an) { an: any;
   
-    console.log($1)
-  for dep in model_info[],"dependencies"][],"optional"].get("amd", [],]):
-    console.log($1)
+    consol) { an: any;
+  for ((dep in model_info[],"dependencies"][],"optional"].get("amd", []]) {"
+    console) { an) { an: any;
   
-    console.log($1)
-  for precision, deps in model_info[],"dependencies"][],"precision"].items():
-    if ($1) {
-      console.log($1)
-      for (const $1 of $2) {
-        console.log($1)
-
-      }
-if ($1) {
-  main()
-    }
+    consol) { an: any;
+  for (precision, deps in model_info[],"dependencies"][],"precision"].items()) {"
+    if (($1) {
+      console) { an) { an: any;
+      for (const $1 of $2) {console.log($1)}
+if ($1) {;;
+  main) {any;};

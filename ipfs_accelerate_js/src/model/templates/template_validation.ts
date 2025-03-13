@@ -1,626 +1,456 @@
-/**
- * Converted from Python: template_validation.py
- * Conversion date: 2025-03-11 04:08:54
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
 
-export interface Props {
-  tolerance: differences;
-  has_numpy: return;
-}
 
-#!/usr/bin/env python3
-"""
-Template Validation Module for End-to-End Testing Framework
 
-This module provides tools to validate model templates && compare test results
-against expected values.
-"""
+export interface Props {tolerance: differe: any;
+  has_nu: any;}
 
-import * as $1
-import * as $1
-import * as $1
-import * as $1
-import * as $1 as np
-import ${$1} from "$1"
-import ${$1} from "$1"
+/** Templa: any;
 
-# Add parent directory to path so we can import * as $1 modules
-script_dir = os.path.dirname(os.path.abspath(__file__))
-test_dir = os.path.abspath(os.path.join(script_dir, "../../../"))
-sys.$1.push($2)
+Th: any;
+again: any;
 
-# Import project utilities (assuming they exist)
-try {
-  import ${$1} from "$1"
-} catch($2: $1) {
-  # Define a simple setup_logging function if the import * as $1
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+impo: any;
+// A: any;
+script_dir) { any) { any = os.path.dirname(os.path.abspath(__file__: any) {);
+test_dir: any: any = o: an: any;
+s: any;
+;
+// Impo: any;
+try {} catch(error: any): any {
+  // Defi: any;
   $1($2) {
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(level)
-
-  }
-# Set up logging
+    handler) {any = loggi: any;
+    formatter) { any: any = loggi: any;
+    handl: any;
+    logg: any;
+    logg: any;
 }
-logger = logging.getLogger(__name__)
+logger: any: any: any = loggi: any;
 }
-setup_logging(logger)
-
-class $1 extends $2 {
-  """Validates model templates && generated code for correctness."""
-  
-}
-  def __init__(self, $1: string, $1: string, 
-        $1: $2 | null = null,
-        $1: boolean = false):
-    """
-    Initialize the model validator.
+setup_loggi: any;
+;
+class $1 extends $2 {/** Validates model templates && generated code for (((((correctness. */}
+  function this( this) { any): any { any): any { any): any {  any: any): any {: any { any, $1): any { string, $1) { string, 
+        $1: $2 | null: any: any: any = nu: any;
+        $1: boolean: any: any = fal: any;
+    /** Initiali: any;
     
-    Args:
-      model_name: Name of the model being validated
-      hardware: Hardware platform the model is running on
-      template_path: Path to the template directory (optional)
-      verbose: Whether to output verbose logs
-    """
-    this.model_name = model_name
-    this.hardware = hardware
-    this.template_path = template_path
-    this.verbose = verbose
+    A: any;
+      model_n: any;
+      hardw: any;
+      template_p: any;
+      verb: any;
+    this.model_name = model_n: any;
+    this.hardware = hardw: any;
+    this.template_path = template_p: any;
+    this.verbose = verb: any;
+    ;
+    if ((((((($1) { ${$1} else {logger.setLevel(logging.INFO)}
+  function this( this) { any): any { any): any { any): any {  any: any): any { any, $1): any { stri: any;
+    /** Valida: any;
     
-    if ($1) ${$1} else {
-      logger.setLevel(logging.INFO)
-  
-    }
-  def validate_skill(self, $1: string) -> Dict[str, Any]:
-    """
-    Validate a generated skill file.
-    
-    Args:
-      skill_path: Path to the generated skill file
+    A: any;
+      skill_p: any;
       
-    Returns:
-      Dictionary with validation results
-    """
-    logger.debug(`$1`)
+    Retu: any;
+      Dictiona: any;
+    logg: any;
     
-    if ($1) {
+    if ((((((($1) {
       return ${$1}
-    
-    }
-    # Analyze the skill file
-    # This is a placeholder for actual validation logic
+    // Analyze) { an) { an: any;
+    // Thi) { an: any;
     try {
-      # Simple check: read the file && make sure it's valid Python code
-      with open(skill_path, 'r') as f:
-        skill_content = f.read()
-        
-    }
-      # Check for required elements in the skill
-      validation_results = ${$1}
+      // Simple check) { re: any;
+      with open(skill_path) { any, 'r') as f) {'
+        skill_content) {any = f: a: any;}
+      // Che: any;
+      validation_results) { any) { any: any = ${$1}
       
-      # Check for class definition
-      expected_class_name = `$1`-', '_').title()}Skill"
-      if ($1) {
-        validation_results["missing_elements"].append(`$1`)
-        validation_results["valid"] = false
-      
+      // Che: any;
+      expected_class_name) { any) { any: any: any: any: any = `$1`-', '_') {.title()}Skill";'
+      if ((((((($1) {validation_results["missing_elements"].append(`$1`);"
+        validation_results["valid"] = false) { an) { an: any;"
+      required_methods) { any) { any) { any) { any: any: any = ["setup", "run"];"
+      for (((((const $1 of $2) {
+        if (((((($1) {validation_results["missing_elements"].append(`$1`);"
+          validation_results["valid"] = false) { an) { an: any;"
       }
-      # Check for required methods
-      required_methods = ["setup", "run"]
-      for (const $1 of $2) {
-        if ($1) {
-          validation_results["missing_elements"].append(`$1`)
-          validation_results["valid"] = false
-      
-        }
-      # Check for hardware-specific code
-      }
-      if ($1) ${$1} catch($2: $1) {
-      logger.error(`$1`)
-      }
+      if (($1) { ${$1} catch(error) { any)) { any {logger.error(`$1`)}
       return ${$1}
   
-  def validate_test(self, $1: string) -> Dict[str, Any]:
-    """
-    Validate a generated test file.
+  function this( this) { any)) { any { any): any { any)) { any {  any: any): any { any, $1): any { string) -> Dict[str, Any]) {
+    /** Valida: any;
     
-    Args:
-      test_path: Path to the generated test file
+    A: any;
+      test_p: any;
       
-    Returns:
-      Dictionary with validation results
-    """
-    logger.debug(`$1`)
+    Retu: any;
+      Dictiona: any;
+    logg: any;
     
-    if ($1) {
+    if ((((((($1) {
       return ${$1}
-    
-    }
-    # Analyze the test file
-    # This is a placeholder for actual validation logic
+    // Analyze) { an) { an: any;
+    // Thi) { an: any;
     try {
-      # Simple check: read the file && make sure it's valid Python code
-      with open(test_path, 'r') as f:
-        test_content = f.read()
-        
-    }
-      # Check for required elements in the test
-      validation_results = ${$1}
+      // Simple check) { re: any;
+      with open(test_path) { any, 'r') as f) {'
+        test_content) {any = f: a: any;}
+      // Che: any;
+      validation_results) { any) { any: any = ${$1}
       
-      # Check for unittest imports
-      if ($1) ${$1}"
-      if ($1) {
-        validation_results["missing_elements"].append(`$1`)
-        validation_results["valid"] = false
-      
-      }
-      # Check for essential test methods
-      if ($1) ${$1} catch($2: $1) {
-      logger.error(`$1`)
-      }
+      // Che: any;
+      if ((((((($1) { ${$1}";"
+      if ($1) {validation_results["missing_elements"].append(`$1`);"
+        validation_results["valid"] = false) { an) { an: any;"
+      if ((($1) { ${$1} catch(error) { any)) { any {logger.error(`$1`)}
       return ${$1}
   
-  def validate_benchmark(self, $1: string) -> Dict[str, Any]:
-    """
-    Validate a generated benchmark file.
+  function this( this) { any): any { any): any { any): any {  any: any): any { any, $1): any { string) -> Dict[str, Any]) {
+    /** Valida: any;
     
-    Args:
-      benchmark_path: Path to the generated benchmark file
+    A: any;
+      benchmark_p: any;
       
-    Returns:
-      Dictionary with validation results
-    """
-    logger.debug(`$1`)
+    Retu: any;
+      Dictiona: any;
+    logg: any;
     
-    if ($1) {
+    if ((((((($1) {
       return ${$1}
-    
-    }
-    # Analyze the benchmark file
-    # This is a placeholder for actual validation logic
+    // Analyze) { an) { an: any;
+    // Thi) { an: any;
     try {
-      # Simple check: read the file && make sure it's valid Python code
-      with open(benchmark_path, 'r') as f:
-        benchmark_content = f.read()
-        
-    }
-      # Check for required elements in the benchmark
-      validation_results = ${$1}
+      // Simple check) { re: any;
+      with open(benchmark_path) { any, 'r') as f) {'
+        benchmark_content) {any = f: a: any;}
+      // Che: any;
+      validation_results) { any) { any: any = ${$1}
       
-      # Check for required imports
-      required_imports = ["time", "json"]
-      for (const $1 of $2) {
-        if ($1) {
-          validation_results["missing_elements"].append(`$1`)
-          validation_results["valid"] = false
-      
-        }
-      # Check for benchmark function
+      // Che: any;
+      required_imports) { any) { any: any: any: any: any = ["time", "json"];"
+      for ((((((const $1 of $2) {
+        if ((((((($1) {validation_results["missing_elements"].append(`$1`);"
+          validation_results["valid"] = false) { an) { an: any;"
       }
-      if ($1) {
-        validation_results["missing_elements"].append("Missing benchmark function")
-        validation_results["valid"] = false
-      
-      }
-      # Check for performance metrics
-      if ($1) ${$1} catch($2: $1) {
-      logger.error(`$1`)
-      }
+      if (($1) {validation_results["missing_elements"].append("Missing benchmark) { an) { an: any;"
+        validation_results["valid"] = false) { an) { an: any;"
+      if (((($1) { ${$1} catch(error) { any)) { any {logger.error(`$1`)}
       return ${$1}
   
-  def validate_all(self, $1: string, $1: string, $1: string) -> Dict[str, Any]:
-    """
-    Validate all components together.
+  function this( this) { any)) { any { any): any { any): any {  any: any): any { any, $1): any { string, $1) { stri: any;
+    /** Valida: any;
     
-    Args:
-      skill_path: Path to the generated skill file
-      test_path: Path to the generated test file
-      benchmark_path: Path to the generated benchmark file
+    A: any;
+      skill_p: any;
+      test_p: any;
+      benchmark_p: any;
       
-    Returns:
-      Dictionary with combined validation results
-    """
-    skill_validation = this.validate_skill(skill_path)
-    test_validation = this.validate_test(test_path)
-    benchmark_validation = this.validate_benchmark(benchmark_path)
+    Retu: any;
+      Dictiona: any;
+    skill_validation: any: any = th: any;
+    test_validation: any: any = th: any;
+    benchmark_validation: any: any = th: any;
     
-    # Combine results
-    all_valid = (
-      skill_validation.get("valid", false) && 
-      test_validation.get("valid", false) && 
-      benchmark_validation.get("valid", false)
-    )
-    
+    // Combi: any;
+    all_valid: any: any: any: any: any: any = (;
+      (skill_validation["valid"] !== undefined ? skill_validation["valid"] : false) && "
+      (test_validation["valid"] !== undefined ? test_validation["valid"] : false) && "
+      (benchmark_validation["valid"] !== undefin: any;"
+    );
+    ;
     return ${$1}
 
 
-class $1 extends $2 {
-  """
-  Enhanced result comparison tool with support for tensor data, specialized numeric comparison,
-  && configurable tolerance levels for different data types.
-  """
-  
-}
-  def __init__(self, 
-        $1: number = 0.1, 
-        $1: number = 1e-5, 
-        $1: number = 1e-5,
-        $1: string = 'auto'):
-    """
-    Initialize the result comparer with enhanced capabilities.
+class $1 extends $2 {/** Enhanc: any;
+  && configurable tolerance levels for (((different data types. */}
+  function this( this) { any): any { any): any { any): any {  any: any): any {: any { any, 
+        $1) {: any { number: any: any: any = 0: a: any;
+        $1: number: any: any: any = 1: an: any;
+        $1: number: any: any: any = 1: an: any;
+        $1: string: any: any = 'auto'):;'
+    /** Initiali: any;
     
-    Args:
-      tolerance: General tolerance for numeric comparisons (as a percentage)
-      tensor_rtol: Relative tolerance for tensor comparison
-      tensor_atol: Absolute tolerance for tensor comparison
-      tensor_comparison_mode: Mode for tensor comparison ('auto', 'exact', 'statistical')
-    """
-    this.tolerance = tolerance
-    this.tensor_rtol = tensor_rtol
-    this.tensor_atol = tensor_atol
-    this.tensor_comparison_mode = tensor_comparison_mode
+    A: any;
+      tolerance: General tolerance for ((((((numeric comparisons (as a percentage) {;
+      tensor_rtol) { Relative) { an) { an: any;
+      tensor_atol) { Absolut) { an: any;
+      tensor_comparison_mode) { Mode for ((((tensor comparison ('auto', 'exact', 'statistical') { */;'
+    this.tolerance = toleranc) { an) { an: any;
+    this.tensor_rtol = tensor_rt) { an: any;
+    this.tensor_atol = tensor_a: any;
+    this.tensor_comparison_mode = tensor_comparison_m: any;
     
-    # Initialize numpy if available for better tensor comparison
-    this.has_numpy = true
-    try ${$1} catch($2: $1) {
-      this.has_numpy = false
-  
-    }
-  def compare(self, $1: Record<$2, $3>, $1: Record<$2, $3>) -> Dict[str, Any]:
-    """
-    Compare expected && actual results.
+    // Initiali: any;
+    this.has_numpy = t: any;
+    try ${$1} catch(error) { any) {) { any {) { any {this.has_numpy = fa: any;};
+  function this(this:  any:  any: any:  any: any): any { any, $1): any { Record<$2, $3>, $1) { Reco: any;
+    /** Compa: any;
     
-    Args:
-      expected: Expected result dictionary
-      actual: Actual result dictionary
+    A: any;
+      expec: any;
+      act: any;
       
-    Returns:
-      Dictionary with comparison results
-    """
-    if ($1) {
+    Retu: any;
+      Dictiona: any;
+    if ((((((($1) {
       return ${$1}
+    differences) { any) { any) { any) { any = {}
     
-    }
-    differences = {}
-    
-    # Compare all fields in expected results
-    for (const $1 of $2) {
-      if ($1) {
+    // Compar) { an: any;
+    for (((((((const $1 of $2) {
+      if (((((($1) {
         differences[key] = ${$1}
-        continue
+        continu) { an) { an: any;
         
       }
-      if ($1) {
-        # Recursively compare nested dictionaries
-        nested_comparison = this.compare(expected[key], actual[key])
-        if ($1) {
-          differences[key] = nested_comparison["differences"]
-      
-        }
-      elif ($1) {
-        # Compare numeric values with tolerance
-        expected_val = float(expected[key])
-        actual_val = float(actual[key])
-        
-      }
-        # Skip comparison if expected value is zero (to avoid division by zero)
+      if (($1) {
+        // Recursively) { an) { an: any;
+        nested_comparison) { any) { any) { any = this) { an) { an: any;
+        if (((((($1) {differences[key] = nested_comparison["differences"]}"
+      else if (($1) {
+        // Compare) { an) { an: any;
+        expected_val) { any) { any) { any = parseFloa) { an: any;
+        actual_val) {any = parseFlo: any;}
+        // Skip comparison if (((((expected value is zero (to avoid division by zero) {;
         if ($1) {
           if ($1) {
-            differences[key] = ${$1}
-        } else {
-          # Calculate relative difference
-          rel_diff = abs(expected_val - actual_val) / abs(expected_val)
-          
-        }
-          if ($1) {
-            differences[key] = ${$1}
-      
-          }
-      elif ($1) {
-        # Compare lists
-        if ($1) {
-          differences[key] = ${$1}
-        } else {
-          # Try to compare as numpy arrays if possible
+            differences[key] = ${$1} else {
+          // Calculate) { an) { an: any;
+          rel_diff) {any = abs(expected_val - actual_val) / abs(expected_val) { an) { an: any;};
+          if (((((($1) {
+            differences[key] = ${$1} else if (($1) {
+        // Compare) { an) { an: any;
+        if ((($1) {
+          differences[key] = ${$1} else {
+          // Try) { an) { an: any;
           try {
-            expected_arr = np.array(expected[key], dtype=float)
-            actual_arr = np.array(actual[key], dtype=float)
-            
-          }
-            # Compare arrays with tolerance
-            if ($1) {
-              # Find the locations of differences
-              diff_indices = np.where(~np.isclose(expected_arr, actual_arr, rtol=this.tolerance, atol=this.tolerance*np.abs(expected_arr).mean()))[0]
-              diff_examples = {int(i): ${$1} 
-                      for i in diff_indices[:5]}  # Show first 5 differences
+            expected_arr) { any) { any = np.array(expected[key], dtype) { any) {any = flo: any;
+            actual_arr: any: any = np.array(actual[key], dtype: any: any: any = flo: any;}
+            // Compa: any;
+            if (((((($1) {
+              // Find) { an) { an: any;
+              diff_indices) { any) { any = np.where(~np.isclose(expected_arr) { any, actual_arr, rtol: any: any = this.tolerance, atol: any: any = th: any;
+              diff_examples: any: any = {parseInt(i: any, 10)) { ${$1} 
+                      for (((((i in diff_indices[) {5]}  // Show) { an) { an: any;
               
             }
               differences[key] = ${$1}
-          except (ValueError, TypeError):
-            # If !numeric arrays, compare element by element
-            list_diffs = []
-            for i, (exp_item, act_item) in enumerate(zip(expected[key], actual[key])):
-              if ($1) {
-                $1.push($2))
-            
-              }
+          catch (error) { any) {
+            // I) { an: any;
+            list_diffs) { any: any: any: any: any: any = [];
+            for (((((i) { any, (exp_item) { any, act_item) { in Array.from(Array.from(expected[key], actual[key].entries([0].map((_, i) => expected[key], actual[key].entries(.map(arr => arr[i])))))) {
+              if ((((((($1) {$1.push($2))}
             if ($1) {
               differences[key] = {
-                "type": "list_content_mismatch",
-                "different_items": len(list_diffs),
-                "examples": {idx: ${$1} 
-                      for idx, exp, act in list_diffs[:5]}  # Show first 5 differences
+                "type") { "list_content_mismatch",;"
+                "different_items") { list_diffs) { an) { an: any;"
+                "examples") { idx) { ${$1} "
+                      for (((((idx) { any, exp, act in list_diffs[) {5]}  // Show) { an) { an: any;
               }
-              }
-      
-            }
-      elif ($1) {
-        # Simple equality comparison for other types
+      else if (((((($1) {
+        // Simple) { an) { an: any;
         differences[key] = ${$1}
-    
-      }
-    # Check for additional fields in actual results
+    // Chec) { an: any;
         }
-    for (const $1 of $2) {
-      if ($1) {
+    for (((const $1 of $2) {
+      if (((($1) {
         differences[`$1`] = ${$1}
-    
-      }
     return ${$1}
-    }
-  
+  function this( this) { any)) { any { any)) { any { any)) { any {  any) { any): any { any, $1)) { any { string, $1) { Record<$2, $3>) -> Dict[str, Any]) {}
+    /** }
+    Compa: any;
         }
-  def compare_with_file(self, $1: string, $1: Record<$2, $3>) -> Dict[str, Any]:
-      }
-    """
-          }
-    Compare actual results with expected results from a file.
-        }
-    
-      }
-    Args:
+    A: any;
     }
-      expected_path: Path to the expected results file (JSON)
-      actual: Actual result dictionary
+      expected_p: any;
+      act: any;
       
-    Returns:
-      Dictionary with comparison results
-    """
-    if ($1) {
+    Retu: any;
+      Dictiona: any;
+    if ((((((($1) {
       return ${$1}
+    try ${$1} catch(error) { any)) { any {
+      logger) { an) { an: any;
+      return ${$1}
+  function this(this) {  any:  any: any:  any: any, $1): any { $2[], $1: $2[]) -> Di: any;
+    /** Perfo: any;
     
-    }
-    try ${$1} catch($2: $1) {
-      logger.error(`$1`)
-      return ${$1}
-  
-    }
-  def statistical_tensor_compare(self, $1: $2[], $1: $2[]) -> Dict[str, Any]:
-    """
-    Perform statistical comparison of tensor-like data.
-    
-    Args:
-      expected_data: Expected tensor data as flat list
-      actual_data: Actual tensor data as flat list
+    A: any;
+      expected_d: any;
+      actual_d: any;
       
-    Returns:
-      Dictionary with statistical comparison results
-    """
-    if ($1) {
+    Retu: any;
+      Dictiona: any;
+    if ((((((($1) {
       return ${$1}
-      
-    }
     try {
-      # Convert to numpy arrays
-      exp_arr = this.np.array(expected_data, dtype=float)
-      act_arr = this.np.array(actual_data, dtype=float)
+      // Convert) { an) { an: any;
+      exp_arr) {any = this.np.array(expected_data) { any, dtype) { any: any: any = flo: any;
+      act_arr: any: any = this.np.array(actual_data: any, dtype: any: any: any = flo: any;}
+      // Bas: any;
+      exp_mean: any: any = parseFlo: any;
+      act_mean: any: any = parseFlo: any;
+      exp_std: any: any = parseFlo: any;
+      act_std: any: any = parseFlo: any;
       
-    }
-      # Basic statistics
-      exp_mean = float(this.np.mean(exp_arr))
-      act_mean = float(this.np.mean(act_arr))
-      exp_std = float(this.np.std(exp_arr))
-      act_std = float(this.np.std(act_arr))
+      // Calcula: any;
+      mean_rel_diff: any: any = abs(exp_mean - act_mean) / (abs(exp_mean: any) if (((((abs(exp_mean) { any) { > 1e-10 else { 1) { an) { an: any;
+      std_rel_diff) { any) { any = abs(exp_std - act_std) / (abs(exp_std: any) if (((((abs(exp_std) { any) { > 1e-10 else { 1) { an) { an: any;
       
-      # Calculate relative differences in statistics
-      mean_rel_diff = abs(exp_mean - act_mean) / (abs(exp_mean) if abs(exp_mean) > 1e-10 else 1.0)
-      std_rel_diff = abs(exp_std - act_std) / (abs(exp_std) if abs(exp_std) > 1e-10 else 1.0)
+      // Chec) { an: any;
+      stats_match) { any) { any: any = mean_rel_diff <= this.tolerance && std_rel_diff <= th: any;
       
-      # Check if distributions are similar enough
-      stats_match = mean_rel_diff <= this.tolerance && std_rel_diff <= this.tolerance
-      
-      # Additional metrics for large tensors
-      if ($1) {
-        # Percentiles
-        exp_p50 = float(this.np.percentile(exp_arr, 50))
-        act_p50 = float(this.np.percentile(act_arr, 50))
-        exp_p95 = float(this.np.percentile(exp_arr, 95))
-        act_p95 = float(this.np.percentile(act_arr, 95))
+      // Addition: any;
+      if (((((($1) {
+        // Percentile) { an) { an: any;
+        exp_p50) { any) { any = parseFloat(this.np.percentile(exp_arr) { an) { an: any;
+        act_p50) {any = parseFlo: any;
+        exp_p95: any: any = parseFlo: any;
+        act_p95: any: any = parseFlo: any;}
+        // Che: any;
+        p50_rel_diff: any: any = abs(exp_p50 - act_p50) / (abs(exp_p50: any) if (((((abs(exp_p50) { any) { > 1e-10 else { 1) { an) { an: any;
+        p95_rel_diff) { any) { any = abs(exp_p95 - act_p95) / (abs(exp_p95: any) if (((((abs(exp_p95) { any) { > 1e-10 else { 1) { an) { an: any;
         
-      }
-        # Check percentile differences
-        p50_rel_diff = abs(exp_p50 - act_p50) / (abs(exp_p50) if abs(exp_p50) > 1e-10 else 1.0)
-        p95_rel_diff = abs(exp_p95 - act_p95) / (abs(exp_p95) if abs(exp_p95) > 1e-10 else 1.0)
-        
-        # Update match status with percentile comparison
-        stats_match = stats_match && p50_rel_diff <= this.tolerance && p95_rel_diff <= this.tolerance
-        
+        // Updat) { an: any;
+        stats_match) { any: any: any = stats_match && p50_rel_diff <= this.tolerance && p95_rel_diff <= th: any;
+        ;
         return {
-          "matches": stats_match,
-          "statistics": {
-            "mean": ${$1},
-            "std": ${$1},
-            "p50": ${$1},
-            "p95": ${$1}
-          }
-        }
-      } else {
+          "matches") { stats_mat: any;"
+          "statistics") { "
+            "mean": ${$1},;"
+            "std": ${$1},;"
+            "p50": ${$1},;"
+            "p95": ${$1} else {"
         return {
-          "matches": stats_match,
-          "statistics": {
-            "mean": ${$1},
-            "std": ${$1}
-          }
-        }
-    } catch($2: $1) {
+          "matches": stats_mat: any;"
+          "statistics": {"
+            "mean": ${$1},;"
+            "std": ${$1} catch(error: any): any {"
       return ${$1}
+  functi: any;
+}
+              $1: number: any: any = null, $1: number: any: any = nu: any;
+    /** }
+    Speci: any;
+      };
+    Args) {}
+      expected) { Expect: any;
+      actual) { Actu: any;
+      rtol: Relative tolerance for ((((((tensor comparison (overrides default) {
+      atol) { Absolute tolerance for (tensor comparison (overrides default) {
       
-    }
-  def deep_compare_tensors(self, $1: Record<$2, $3>, $1: Record<$2, $3>, 
-          }
-              $1: number = null, $1: number = null) -> Dict[str, Any]:
-    """
-        }
-    Special comparison for tensor outputs with more advanced tolerance settings.
-      }
+    Returns) {
+      Dictionary) { an) { an: any;
+    // Us) { an: any;
+    rtol) { any) { any) { any: any = rtol if (((((rtol is !null else { this) { an) { an: any;
+    atol) { any) { any) { any: any = atol if (((((atol is !null else { this) { an) { an: any;
+    differences) { any) { any) { any = {}
     
-          }
-    Args:
-        }
-      expected: Expected result dictionary with tensor data
-      actual: Actual result dictionary with tensor data
-      rtol: Relative tolerance for tensor comparison (overrides default)
-      atol: Absolute tolerance for tensor comparison (overrides default)
-      
-    Returns:
-      Dictionary with comparison results
-    """
-    # Use instance defaults if !specified
-    rtol = rtol if rtol is !null else this.tensor_rtol
-    atol = atol if atol is !null else this.tensor_atol
-    differences = {}
-    
-    # Find all tensor keys in expected && actual
-    expected_tensor_keys = []
-    actual_tensor_keys = []
-    
+    // Fi: any;
+    expected_tensor_keys) { any: any: any: any: any: any = [];
+    actual_tensor_keys: any: any: any: any: any: any = [];
+    ;
     $1($2) {
-      if ($1) {
-        keys_list = []
-      
+      if (((((($1) {
+        keys_list) {any = [];};
+      if (($1) {
+        for ((((((k) { any, v in Object.entries($1) {) {
+          new_path) { any) { any) { any) { any) { any) { any = `$1` if (((((path else { k;
+          if ($1) { ${$1} else {find_tensor_keys(v) { any) { an) { an: any;
       }
-      if ($1) {
-        for k, v in Object.entries($1):
-          new_path = `$1` if path else k
-          if ($1) ${$1} else {
-            find_tensor_keys(v, new_path, keys_list)
-      
-          }
-      return keys_list
-      }
+    expected_tensor_keys) { any) { any = find_tensor_key) { an: any;
+    actual_tensor_keys) { any: any = find_tensor_ke: any;
     
-    }
-    expected_tensor_keys = find_tensor_keys(expected)
-    actual_tensor_keys = find_tensor_keys(actual)
-    
-    # Compare tensor sets
-    missing_tensors = set(expected_tensor_keys) - set(actual_tensor_keys)
-    unexpected_tensors = set(actual_tensor_keys) - set(expected_tensor_keys)
-    common_tensors = set(expected_tensor_keys).intersection(set(actual_tensor_keys))
-    
-    if ($1) {
-      differences["missing_tensors"] = list(missing_tensors)
-    
-    }
-    if ($1) {
-      differences["unexpected_tensors"] = list(unexpected_tensors)
-    
-    }
-    # Compare common tensors
-    for (const $1 of $2) {
-      # Navigate to the tensor in each dictionary
-      path_parts = tensor_key.split(".")
-      exp_tensor = expected
-      act_tensor = actual
-      
-    }
+    // Compa: any;
+    missing_tensors: any: any = s: any;
+    unexpected_tensors: any: any = s: any;
+    common_tensors: any: any = s: any;
+    ;
+    if (((((($1) {differences["missing_tensors"] = Array.from(missing_tensors) { any)}"
+    if (($1) {differences["unexpected_tensors"] = Array.from(unexpected_tensors) { any) { an) { an: any;"
+    for ((((((const $1 of $2) {
+      // Navigate) { an) { an: any;
+      path_parts) { any) { any) { any = tensor_ke) { an: any;
+      exp_tensor) {any = expec: any;
+      act_tensor: any: any: any = act: any;};
       try {
-        for (const $1 of $2) {
-          exp_tensor = exp_tensor[part]
-          act_tensor = act_tensor[part]
+        for ((((((const $1 of $2) {
+          exp_tensor) {any = exp_tensor) { an) { an: any;
+          act_tensor) { any) { any: any = act_tens: any;}
+        // N: any;
+        // Th: any;
+        exp_shape: any: any = (exp_tensor["shape"] !== undefin: any;"
+        act_shape: any: any = (act_tensor["shape"] !== undefin: any;"
         
-        }
-        # Now compare the tensors
-        # This assumes the tensors are represented as dictionaries with data, shape, && dtype
-        exp_shape = exp_tensor.get("shape")
-        act_shape = act_tensor.get("shape")
-        
-      }
-        if ($1) {
+      };
+        if (((((($1) {
           if ($1) {
             differences[tensor_key] = {}
-          differences[tensor_key]["shape_mismatch"] = ${$1}
-          }
-          continue
+          differences[tensor_key]["shape_mismatch"] = ${$1}"
+          continu) { an) { an: any;
         
         }
-        # Compare data
-        exp_data = exp_tensor.get("data")
-        act_data = act_tensor.get("data")
-        
-        if ($1) {
+        // Compar) { an: any;
+        exp_data) { any) { any = (exp_tensor["data"] !== undefin: any;"
+        act_data: any: any = (act_tensor["data"] !== undefin: any;"
+        ;
+        if (((((($1) {
           try {
-            exp_arr = np.array(exp_data)
-            act_arr = np.array(act_data)
-            
-          }
-            if ($1) {
-              max_diff = np.max(np.abs(exp_arr - act_arr))
-              mean_diff = np.mean(np.abs(exp_arr - act_arr))
-              
-            }
-              if ($1) {
+            exp_arr) {any = np.array(exp_data) { any) { an) { an: any;
+            act_arr) { any: any = n: an: any;};
+            if (((((($1) {
+              max_diff) {any = np) { an) { an: any;
+              mean_diff) { any) { any: any = n: an: any;};
+              if (((((($1) {
                 differences[tensor_key] = {}
-              differences[tensor_key]["data_mismatch"] = ${$1}
-              }
-              
-        }
-              # Add examples of differences
-              diff_indices = np.where(~np.isclose(exp_arr, act_arr, rtol=rtol, atol=atol))
-              if ($1) {
-                examples = {}
-                for i in range(min(5, diff_indices[0].size)):
-                  idx = tuple(d[i] for d in diff_indices)
-                  examples[str(idx)] = ${$1}
-                differences[tensor_key]["difference_examples"] = examples
+              differences[tensor_key]["data_mismatch"] = ${$1}"
+              // Add) { an) { an: any;
+              diff_indices) { any) { any = np.where(~np.isclose(exp_arr) { any, act_arr, rtol: any: any = rtol, atol: any: any: any = at: any;
+              if (((((($1) {
+                examples) { any) { any) { any = {}
+                for (((((i in range(min(5) { any, diff_indices[0].size) {)) {
+                  idx) { any) { any) { any) { any) { any = tuple(d[i] for ((((d in diff_indices) {;
+                  examples[String(idx) { any)] = ${$1}
+                differences[tensor_key]["difference_examples"] = example) { an) { an: any;"
           
               }
-          except (ValueError, TypeError) as e:
-            if ($1) {
+          catch (error) { any) {
+            if ((((((($1) {
               differences[tensor_key] = {}
-            differences[tensor_key]["comparison_error"] = str(e)
+            differences[tensor_key]["comparison_error"] = String(e) { any) { an) { an: any;"
             }
       
-      except (KeyError, TypeError) as e:
-        if ($1) {
+      catch (error) { any) {
+        if ((((($1) {
           differences[tensor_key] = {}
-        differences[tensor_key]["navigation_error"] = str(e)
+        differences[tensor_key]["navigation_error"] = String(e) { any) { an) { an: any;"
         }
     
     return ${$1}
 
 
-if ($1) {
-  # Simple test for the ResultComparer
-  expected = {
-    "output": ${$1},
-    "metrics": ${$1}
-  }
-  }
+if (((($1) {
+  // Simple) { an) { an: any;
+  expected) { any) { any) { any) { any: any: any = {
+    "output") { ${$1},;"
+    "metrics") { ${$1}"
+  actual) { any: any = {
+    "output": ${$1},  // With: any;"
+    "metrics": ${$1}"
   
-}
-  actual = {
-    "output": ${$1},  # Within 10% tolerance
-    "metrics": ${$1}
-  }
-  }
-  
-  comparer = ResultComparer(tolerance=0.1)
-  result = comparer.compare(expected, actual)
-  
-  console.log($1))
+  comparer: any: any: any: any: any: any: any: any: any: any = ResultComparer(tolerance=0.1);
+  result: any: any = compa: any;
+  cons: any;

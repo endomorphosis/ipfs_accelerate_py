@@ -8,11 +8,12 @@ This guide covers the integration and extensibility capabilities of the Distribu
 2. [WebGPU/WebNN Resource Pool Integration](#webgpuwebnn-resource-pool-integration)
 3. [CI/CD System Integration](#cicd-system-integration)
 4. [Custom Scheduler Implementation](#custom-scheduler-implementation)
-5. [Creating Your Own Plugins](#creating-your-own-plugins)
-6. [Plugin Deployment](#plugin-deployment)
-7. [Running the Example](#running-the-example)
-8. [API Reference](#api-reference)
-9. [Troubleshooting](#troubleshooting)
+5. [Notification System](#notification-system)
+6. [Creating Your Own Plugins](#creating-your-own-plugins)
+7. [Plugin Deployment](#plugin-deployment)
+8. [Running the Example](#running-the-example)
+9. [API Reference](#api-reference)
+10. [Troubleshooting](#troubleshooting)
 
 ## Plugin Architecture Overview
 
@@ -365,6 +366,121 @@ The FairnessScheduler adds specialized options:
 - `enable_priority_boost`: Enable priority-based boosts (default: true)
 
 For complete documentation on custom scheduler implementation, configuration options, and usage examples, see [plugins/scheduler/README.md](plugins/scheduler/README.md).
+
+## Notification System
+
+The Notification System plugin provides comprehensive event notification capabilities for the Distributed Testing Framework, allowing you to receive real-time notifications about important events through various channels including Slack, Discord, Telegram, Email, MS Teams, and JIRA.
+
+### Key Features
+
+- **Multiple Notification Channels**: Support for Slack, Discord, Telegram, Email, MS Teams, and JIRA
+- **Event Filtering**: Configure which events trigger notifications
+- **Notification Grouping**: Group similar notifications to reduce noise
+- **Throttling**: Control notification frequency
+- **Customizable Formatting**: Customize notification format for each channel
+- **Fault Tolerance**: Graceful handling of connection failures
+- **Metadata Support**: Include additional metadata in notifications
+- **Standardized API**: Consistent interface across notification channels
+
+### Supported Notification Channels
+
+| Channel | Description | Configuration |
+|---------|-------------|---------------|
+| Slack | Messages sent to Slack channels | Token and channel name |
+| Discord | Messages sent via webhook or Bot API | Webhook URL or Bot token |
+| Telegram | Messages sent via Telegram Bot API | Bot token and chat ID |
+| Email | Emails sent via SMTP | SMTP server details |
+| MS Teams | Messages sent to Teams channels | Webhook URL or Graph API |
+| JIRA | Issues created for error events | JIRA API credentials |
+
+### Usage Example
+
+```python
+# Import required modules
+from distributed_testing.plugins.notification_plugin import NotificationPlugin
+
+# Create and configure notification plugin
+notification_plugin = NotificationPlugin()
+
+# Configure Discord notifications
+notification_plugin.config.update({
+    "discord_enabled": True,
+    "discord_webhook_url": "https://discord.com/api/webhooks/your-webhook-url",
+    "discord_username": "Distributed Testing Bot"
+})
+
+# Configure Telegram notifications
+notification_plugin.config.update({
+    "telegram_enabled": True,
+    "telegram_bot_token": "your-telegram-bot-token",
+    "telegram_default_chat_id": "your-chat-id"
+})
+
+# Initialize plugin with coordinator
+await notification_plugin.initialize(coordinator)
+
+# Send a custom notification
+await notification_plugin.send_notification(
+    event_type="custom_event",
+    message="Custom notification message",
+    level="info",
+    metadata={
+        "custom_field": "custom_value",
+        "another_field": 42
+    }
+)
+```
+
+### Command-Line Example
+
+The notification system can also be used from the command line with the included example script:
+
+```bash
+# Set environment variables for Discord
+export DISCORD_ENABLED=true
+export DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/your-webhook-url"
+
+# Run example with Discord notifications
+python examples/notification_system_example.py --discord
+
+# Enable multiple notification channels
+python examples/notification_system_example.py --discord --telegram --slack
+```
+
+### Configuration Options
+
+The notification system can be configured with a wide range of options:
+
+#### General Settings
+
+- `enabled`: Enable/disable notifications (default: true)
+- `notification_throttle_seconds`: Minimum time between similar notifications (default: 5)
+- `group_similar_notifications`: Group similar notifications (default: true)
+- `group_time_window_seconds`: Time window for grouping (default: 60)
+- `max_history`: Maximum number of notifications to keep in history (default: 1000)
+- `include_timestamps`: Include timestamps in messages (default: true)
+- `detailed_errors`: Include detailed error information (default: true)
+
+#### Event Filters
+
+Configure which events trigger notifications:
+
+- `notify_coordinator_startup`: Notify on coordinator startup (default: true)
+- `notify_coordinator_shutdown`: Notify on coordinator shutdown (default: true)
+- `notify_task_created`: Notify when tasks are created (default: false)
+- `notify_task_assigned`: Notify when tasks are assigned (default: false)
+- `notify_task_started`: Notify when tasks start (default: false)
+- `notify_task_completed`: Notify when tasks complete (default: false)
+- `notify_task_failed`: Notify when tasks fail (default: true)
+- `notify_task_cancelled`: Notify when tasks are cancelled (default: true)
+- `notify_worker_registered`: Notify when workers register (default: true)
+- `notify_worker_disconnected`: Notify when workers disconnect (default: true)
+- `notify_worker_failed`: Notify when workers fail (default: true)
+- `notify_recovery_started`: Notify when recovery starts (default: true)
+- `notify_recovery_completed`: Notify when recovery completes (default: true)
+- `notify_recovery_failed`: Notify when recovery fails (default: true)
+
+For detailed documentation on the notification system, including example configurations for different notification channels, message format customization, and advanced usage scenarios, see the [Notification System Guide](docs/NOTIFICATION_SYSTEM_GUIDE.md).
 
 ## Creating Your Own Plugins
 

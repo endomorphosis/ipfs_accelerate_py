@@ -1,805 +1,601 @@
-/**
- * Converted from Python: test_hf_rt_detr.py
- * Conversion date: 2025-03-11 04:08:47
- * This file was automatically converted from Python to TypeScript.
- * Conversion fidelity might not be 100%, please manual review recommended.
- */
+// FI: any;
+ * Convert: any;
+ * Conversi: any;
+ * Th: any;
+ * Conversi: any;
+ */;
 
-// WebGPU related imports
-import { HardwareBackend } from "../hardware_abstraction";
+import {VisionModel} import { ImageProces: any;} f: any;";"
 
-#!/usr/bin/env python3
+// WebG: any;
+// Import hardware detection capabilities if ((((((($1) {) {
+try ${$1} catch(error) { any)) { any {
+  HAS_HARDWARE_DETECTION) { any) { any) { any = fa: any;
+  // W: an: any;
+  /** Cla: any;
+This file provides a unified testing interface for) {}
+  - RtDetrMod: any;
 
-# Import hardware detection capabilities if ($1) {:::::
-try ${$1} catch($2: $1) {
-  HAS_HARDWARE_DETECTION = false
-  # We'll detect hardware manually as fallback
-  """
-  Class-based test file for all RT_DETR-family models.
-This file provides a unified testing interface for:
-}
-  - RtDetrModel
-  """
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  impo: any;
+  import * as module, from "{*"; MagicMock) { a: any;"
+  // Configu: any;
+  logging.basicConfig())level = logging.INFO, format: any) { any: any: any: any: any: any = '%())asctime)s - %())levelname)s - %())message)s');'
+  logger: any: any: any = loggi: any;
 
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  import * as $1
-  from unittest.mock import * as $1, MagicMock, Mock
-  import ${$1} from "$1"
-  import ${$1} from "$1"
+// A: any;
+  sys.path.insert() {)0, o: an: any;
 
-# Configure logging
-  logging.basicConfig())))level=logging.INFO, format='%())))asctime)s - %())))levelname)s - %())))message)s')
-  logger = logging.getLogger())))__name__)
-
-# Add parent directory to path for imports
-  sys.path.insert())))0, os.path.dirname())))os.path.dirname())))os.path.abspath())))__file__))))
-
-# Third-party imports
-  import * as $1 as np
-
-# Try to import * as $1
-try ${$1} catch($2: $1) {
-  torch = MagicMock()))))
-  HAS_TORCH = false
-  logger.warning())))"torch !available, using mock")
-
-}
-# Try to import * as $1
-try ${$1} catch($2: $1) {
-  transformers = MagicMock()))))
-  HAS_TRANSFORMERS = false
-  logger.warning())))"transformers !available, using mock")
-
-}
-# Try to import * as $1 processing libraries
-try ${$1} catch($2: $1) {
-  librosa = MagicMock()))))
-  sf = MagicMock()))))
-  HAS_AUDIO = false
-  logger.warning())))"librosa || soundfile !available, using mock")
-
-}
-if ($1) {
-  $1($2) {
-  return ())))np.zeros())))16000), 16000)
-  }
-    
-}
+// Thi: any;
+  impo: any;
+;
+// T: any;
+try ${$1} catch(error) { any)) { any {torch: any: any: any = MagicMo: any;
+  HAS_TORCH: any: any: any = fa: any;
+  logg: any;
+try ${$1} catch(error: any): any {transformers: any: any: any = MagicMo: any;
+  HAS_TRANSFORMERS: any: any: any = fa: any;
+  logg: any;
+try ${$1} catch(error: any): any {librosa: any: any: any = MagicMo: any;
+  sf: any: any: any = MagicMo: any;
+  HAS_AUDIO: any: any: any = fa: any;
+  logg: any;
+if ((((((($1) {
+  $1($2) {return ())np.zeros())16000), 16000) { any)}
   class $1 extends $2 {
-    @staticmethod
-    $1($2) {
-    pass
-    }
-  
-  }
-  if ($1) {
-    librosa.load = mock_load
-  
-  }
-  if ($1) {
-    sf.write = MockSoundFile.write
-
-  }
-# Hardware detection
+    @staticmethod;
+    $1($2) {pass}
+  if (($1) {librosa.load = mock_loa) { an) { an: any;};
+  if ((($1) {sf.write = MockSoundFile) { an) { an: any;}
+// Hardwar) { an: any;
 $1($2) {
-  """Check available hardware && return capabilities."""
-  capabilities = {}}}}}}}}}}}}}}}}}}
-  "cpu": true,
-  "cuda": false,
-  "cuda_version": null,
-  "cuda_devices": 0,
-  "mps": false,
-  "openvino": false
-  }
-  
-}
-  # Check CUDA
-  if ($1) {
-    capabilities["cuda"] = torch.cuda.is_available())))),
-    if ($1) {,,
-    capabilities["cuda_devices"] = torch.cuda.device_count())))),
-    capabilities["cuda_version"] = torch.version.cuda
-    ,
-  # Check MPS ())))Apple Silicon)
-  }
-  if ($1) {
-    capabilities["mps"] = torch.mps.is_available()))))
-    ,
-  # Check OpenVINO
-  }
-  try ${$1} catch($2: $1) {
-    pass
-  
-  }
-    return capabilities
+  /** Che: any;
+  capabilities) { any) { any: any = {}
+  "cpu") { tr: any;"
+  "cuda") {false,;"
+  "cuda_version": nu: any;"
+  "cuda_devices": 0: a: any;"
+  "mps": fal: any;"
+  "openvino": fal: any;"
+  if ((((((($1) {
+    capabilities["cuda"] = torch) { an) { an: any;"
+    if ((($1) {,;
+    capabilities["cuda_devices"] = torch) { an) { an: any;"
+    capabilities["cuda_version"] = torc) { an: any;"
+    ,;
+  // Check MPS ())Apple Silicon)}
+  if (((($1) {capabilities["mps"] = torch) { an) { an: any;"
+    ,;
+  // Check OpenVINO}
+  try ${$1} catch(error) { any)) { any {pass}
+    retur) { an: any;
 
-# Get hardware capabilities
-    HW_CAPABILITIES = check_hardware()))))
+// G: any;
+    HW_CAPABILITIES: any: any: any = check_hardwa: any;
 
-
-# Models registry { - Maps model IDs to their specific configurations
-    rt_detr_MODELS_REGISTRY = {}}}}}}}}}}}}}}}}}}
-    "rt-detr-base": {}}}}}}}}}}}}}}}}}}
-    "description": "RT_DETR models",
-    "class": "RtDetrModel"
+;
+// Models registry { - Ma: any;
+    rt_detr_MODELS_REGISTRY: any: any = {}
+    "rt-detr-base") { }"
+    "description": "RT_DETR mode: any;"
+    "class": "RtDetrModel";"
     }
 
-    }
+class $1 extends $2 {/** Base test class for ((((((all RT_DETR-family models. */}
+  $1($2) {/** Initialize) { a) { an: any;
 
-class $1 extends $2 {
-  """Base test class for all RT_DETR-family models."""
-  
-}
-  $1($2) {
-    """Initialize the test class for a specific model || default."""
-    this.model_id = model_id || "rt-detr-base"
+
+    this.model_id = model_i) { an: any;
+
+};
+    // Verify model exists in registry {
+    if ((((((($1) { ${$1} else {this.model_info = rt_detr_MODELS_REGISTRY) { an) { an: any;
+      ,;
+    // Define model parameters}
+      this.task = "audio-classification";"
+      this.class_name = thi) { an: any;
+      this.description = th: any;
+      ,;
+    // Defi: any;
+    }
+      this.test_text = "This i: an: any;"
     
-  }
-    # Verify model exists in registry {
-    if ($1) ${$1} else {
-      this.model_info = rt_detr_MODELS_REGISTRY[this.model_id]
-      ,
-    # Define model parameters
-    }
-      this.task = "audio-classification"
-      this.class_name = this.model_info["class"],
-      this.description = this.model_info["description"]
-      ,
-    # Define test inputs
-    }
-      this.test_text = "This is a test input for the model."
+    // Configu: any;
+      if (((($1) {,;
+      this.preferred_device = "cuda";"
+    else if (($1) { ${$1} else {this.preferred_device = "cpu";}"
+      logger) { an) { an: any;
     
-    # Configure hardware preference
-      if ($1) {,,
-      this.preferred_device = "cuda"
-    elif ($1) ${$1} else {
-      this.preferred_device = "cpu"
-    
-    }
-      logger.info())))`$1`)
-    
-    # Results storage
-      this.results = {}}}}}}}}}}}}}}}}}}}
-      this.examples = [],,,
-      this.performance_stats = {}}}}}}}}}}}}}}}}}}}
+    // Result) { an: any;
+      this.results = {}
+      this.examples = [],;
+      this.performance_stats = {}
   
   $1($2) {
-    """Test the model using transformers pipeline API."""
-    if ($1) {
-      device = this.preferred_device
-    
-    }
-      results = {}}}}}}}}}}}}}}}}}}
-      "model": this.model_id,
-      "device": device,
-      "task": this.task,
-      "class": this.class_name
-      }
-    
-  }
-    # Check for dependencies
-    if ($1) {
-      results["pipeline_error_type"] = "missing_dependency",,,
-      results["pipeline_missing_core"] = ["transformers"],
-      results["pipeline_success"] = false,,,
-      return results
+    /** Te: any;
+    if (((($1) {
+      device) {any = this) { an) { an: any;};
+      results) { any) { any) { any = {}
+      "model") { thi) { an: any;"
+      "device") { devi: any;"
+      "task") {this.task,;"
+      "class": th: any;"
+    if ((((((($1) {results["pipeline_error_type"] = "missing_dependency",;"
+      results["pipeline_missing_core"] = ["transformers"],;"
+      results["pipeline_success"] = false) { an) { an: any;"
+      return results}
+    if ((($1) {results["pipeline_error_type"] = "missing_dependency",;"
+      results["pipeline_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"],;"
+      results["pipeline_success"] = false) { an) { an: any;"
+      return results}
+    try {) {
+      logge) { an: any;
       
-    }
-    if ($1) {
-      results["pipeline_error_type"] = "missing_dependency",,,
-      results["pipeline_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"],
-      results["pipeline_success"] = false,,,
-      return results
-    
-    }
-    try {:
-      logger.info())))`$1`)
+      // Crea: any;
+      pipeline_kwargs) { any) { any) { any = {}
+      "task") { th: any;"
+      "model") {this.model_id,;"
+      "device": devi: any;"
+      load_start_time: any: any: any = ti: any;
+      pipeline: any: any: any = transforme: any;
+      load_time: any: any: any = ti: any;
       
-      # Create pipeline with appropriate parameters
-      pipeline_kwargs = {}}}}}}}}}}}}}}}}}}
-      "task": this.task,
-      "model": this.model_id,
-      "device": device
-      }
-      
-      # Time the model loading
-      load_start_time = time.time()))))
-      pipeline = transformers.pipeline())))**pipeline_kwargs)
-      load_time = time.time())))) - load_start_time
-      
-      # Prepare test input
-      if ($1) ${$1} else {
-        # Use a sample array if file !found
-        pipeline_input = np.zeros())))16000)
-      
-      }
-      # Run warmup inference if ($1) {
+      // Prepa: any;
+      if ((((((($1) { ${$1} else {
+        // Use) { an) { an: any;
+        pipeline_input) {any = n) { an: any;};
+      // Run warmup inference if ((((($1) {
       if ($1) {
-        try ${$1} catch($2: $1) {
-          pass
-      
-        }
-      # Run multiple inference passes
+        try ${$1} catch(error) { any)) { any {pass}
+      // Run) { an) { an: any;
       }
-          num_runs = 3
-          times = [],,,
-          outputs = [],,,
+          num_runs) { any: any: any: any: any: any = 3;
+          times: any: any: any: any: any: any = [],;
+          outputs: any: any: any: any: any: any = [],;
       
-      }
-      for _ in range())))num_runs):
-        start_time = time.time()))))
-        output = pipeline())))pipeline_input)
-        end_time = time.time()))))
-        $1.push($2))))end_time - start_time)
-        $1.push($2))))output)
+      };
+      for ((((((_ in range() {) { any {)num_runs)) {
+        start_time) { any) { any) { any = tim) { an: any;
+        output: any: any: any = pipeli: any;
+        end_time: any: any: any = ti: any;
+        $1.push($2))end_time - start_ti: any;
+        $1.push($2))output);
       
-      # Calculate statistics
-        avg_time = sum())))times) / len())))times)
-        min_time = min())))times)
-        max_time = max())))times)
+      // Calcula: any;
+        avg_time: any: any: any = s: any;
+        min_time: any: any: any = m: any;
+        max_time: any: any: any = m: any;
       
-      # Store results
-        results["pipeline_success"] = true,
-        results["pipeline_avg_time"] = avg_time,
-        results["pipeline_min_time"] = min_time,
-        results["pipeline_max_time"] = max_time,
-        results["pipeline_load_time"] = load_time,
-        results["pipeline_error_type"] = "none"
-        ,
-      # Add to examples
-        this.$1.push($2)))){}}}}}}}}}}}}}}}}}}
-        "method": `$1`,
-        "input": str())))pipeline_input),
-        "output_preview": str())))outputs[0])[:200] + "..." if len())))str())))outputs[0])) > 200 else str())))outputs[0]),
-        })
+      // Sto: any;
+        results["pipeline_success"] = tr: any;"
+        results["pipeline_avg_time"] = avg_ti: any;"
+        results["pipeline_min_time"] = min_ti: any;"
+        results["pipeline_max_time"] = max_ti: any;"
+        results["pipeline_load_time"] = load_ti: any;"
+        results["pipeline_error_type"] = "none";"
+        ,;
+      // A: any;
+        this.$1.push($2)){}
+        "method") { `$1`,;"
+        "input": s: any;"
+        "output_preview": str())outputs[0])[:200] + "..." if ((((((len() {)str())outputs[0])) > 200 else {str())outputs[0])});"
       
-      # Store in performance stats
-        this.performance_stats[`$1`] = {}}}}}}}}}}}}}}}}}}:,
-        "avg_time": avg_time,
-        "min_time": min_time,
-        "max_time": max_time,
-        "load_time": load_time,
-        "num_runs": num_runs
-        }
-      
-    } catch($2: $1) {
-      # Store error information
-      results["pipeline_success"] = false,,,
-      results["pipeline_error"] = str())))e),
-      results["pipeline_traceback"] = traceback.format_exc())))),
-      logger.error())))`$1`)
-      
-    }
-      # Classify error type
-      error_str = str())))e).lower()))))
-      traceback_str = traceback.format_exc())))).lower()))))
-      
-      if ($1) {
-        results["pipeline_error_type"] = "cuda_error",
-      elif ($1) {
-        results["pipeline_error_type"] = "out_of_memory",
-      elif ($1) ${$1} else {
-        results["pipeline_error_type"] = "other"
-        ,
-    # Add to overall results
-      }
-        this.results[`$1`] = results,
-        return results
+      // Store) { an) { an: any;
+        this.performance_stats[`$1`] = {}) {,;
+        "avg_time") {avg_time,;"
+        "min_time") { min_tim) { an: any;"
+        "max_time": max_ti: any;"
+        "load_time": load_ti: any;"
+        "num_runs": num_runs} catch(error: any): any {// Sto: any;"
+      results["pipeline_success"] = fal: any;"
+      results["pipeline_error"] = s: any;"
+      results["pipeline_traceback"] = traceba: any;"
+      logg: any;
+      error_str: any: any: any = s: any;
+      traceback_str: any: any: any = traceba: any;
+      ;
+      if ((((((($1) {
+        results["pipeline_error_type"] = "cuda_error",;"
+      else if (($1) {results["pipeline_error_type"] = "out_of_memory",} else if (($1) { ${$1} else {results["pipeline_error_type"] = "other";"
+        ,;
+    // Add to overall results}
+        this.results[`$1`] = results) { an) { an: any;
+        retur) { an: any;
   
       }
   $1($2) {
-    """Test the model using direct from_pretrained loading."""
-    if ($1) {
-      device = this.preferred_device
-    
-    }
-      results = {}}}}}}}}}}}}}}}}}}
-      "model": this.model_id,
-      "device": device,
-      "task": this.task,
-      "class": this.class_name
+    /** Te: any;
+    if (((($1) {
+      device) {any = this) { an) { an: any;};
+      results) { any) { any) { any = {}
+      "model") { th: any;"
+      "device") {device,;"
+      "task": th: any;"
+      "class": th: any;"
       }
-    
-  }
-    # Check for dependencies
-      }
-    if ($1) {
-      results["from_pretrained_error_type"] = "missing_dependency",,,
-      results["from_pretrained_missing_core"] = ["transformers"],
-      results["from_pretrained_success"] = false,,,
-      return results
+    if ((((((($1) {results["from_pretrained_error_type"] = "missing_dependency",;"
+      results["from_pretrained_missing_core"] = ["transformers"],;"
+      results["from_pretrained_success"] = false) { an) { an: any;"
+      return results}
+    if ((($1) {results["from_pretrained_error_type"] = "missing_dependency",;"
+      results["from_pretrained_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"],;"
+      results["from_pretrained_success"] = false) { an) { an: any;"
+      return results}
+    try {) {
+      logge) { an: any;
       
-    }
-    if ($1) {
-      results["from_pretrained_error_type"] = "missing_dependency",,,
-      results["from_pretrained_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"],
-      results["from_pretrained_success"] = false,,,
-      return results
-    
-    }
-    try {:
-      logger.info())))`$1`)
+      // Comm: any;
+      pretrained_kwargs) { any) { any) { any = {}
+      "local_files_only") {false}"
       
-      # Common parameters for loading
-      pretrained_kwargs = {}}}}}}}}}}}}}}}}}}
-      "local_files_only": false
-      }
+      // Ti: any;
+      tokenizer_load_start) { any) { any: any: any: any: any = time.time() {);
+      processor: any: any: any = transforme: any;
+      th: any;
+      **pretrained_kwargs;
+      );
+      tokenizer_load_time: any: any: any = ti: any;
       
-      # Time tokenizer loading - for AST models, we use the processor
-      tokenizer_load_start = time.time()))))
-      processor = transformers.AutoProcessor.from_pretrained())))
-      this.model_id,
-      **pretrained_kwargs
-      )
-      tokenizer_load_time = time.time())))) - tokenizer_load_start
+      // U: any;
+      model_class { any: any: any = n: any;
+      if ((((((($1) { ${$1} else {
+        // Fallback) { an) { an: any;
+        model_class) {any = transformer) { an: any;}
+      // Ti: any;
+        model_load_start) { any: any: any = ti: any;
+        model: any: any: any = model_cla: any;
+        th: any;
+        **pretrained_kwargs;
+        );
+        model_load_time: any: any: any = ti: any;
       
-      # Use appropriate model class based on model type
-      model_class = null
-      if ($1) ${$1} else {
-        # Fallback to Auto class
-        model_class = transformers.AutoModelForAudioClassification
+      // Mo: any;
+      if (((((($1) {
+        model) {any = model) { an) { an: any;}
+      // Prepar) { an: any;
+        test_input) { any: any: any = th: any;
       
-      }
-      # Time model loading
-        model_load_start = time.time()))))
-        model = model_class.from_pretrained())))
-        this.model_id,
-        **pretrained_kwargs
-        )
-        model_load_time = time.time())))) - model_load_start
-      
-      # Move model to device
+      // Lo: any;
+      if (((((($1) { ${$1} else {
+        // Mock) { an) { an: any;
+        dummy_waveform) {any = n) { an: any;
+        inputs) { any: any = processor())dummy_waveform, sampling_rate: any: any = 16000, return_tensors: any: any: any: any: any: any = "pt");}"
+      // Mo: any;
+      if (((((($1) {
+        inputs) { any) { any) { any = {}key) {val.to())device) for (((((key) { any, val in Object.entries($1) {)}
+      // Run warmup inference if ((((($1) {
       if ($1) {
-        model = model.to())))device)
-      
+        try ${$1} catch(error) { any)) { any {pass}
+      // Run) { an) { an: any;
       }
-      # Prepare test input
-        test_input = this.test_audio
+            num_runs) {any = 3;
+            times) { any) { any) { any) { any: any: any = [],;
+            outputs: any: any: any: any: any: any = [],;};
+      for (((((_ in range() {)num_runs)) {
+        start_time) { any) { any) { any) { any = tim) { an: any;
+        with torch.no_grad())) {
+          output: any: any: any = mod: any;
+          end_time: any: any: any = ti: any;
+          $1.push($2))end_time - start_ti: any;
+          $1.push($2))output);
       
-      # Load audio
-      if ($1) ${$1} else {
-        # Mock audio input
-        dummy_waveform = np.zeros())))16000)
-        inputs = processor())))dummy_waveform, sampling_rate=16000, return_tensors="pt")
-        
-      }
-      # Move inputs to device
-      if ($1) {
-        inputs = {}}}}}}}}}}}}}}}}}}key: val.to())))device) for key, val in Object.entries($1)))))}
+      // Calcula: any;
+          avg_time: any: any: any = s: any;
+          min_time: any: any: any = m: any;
+          max_time: any: any: any = m: any;
       
-      }
-      # Run warmup inference if ($1) {
-      if ($1) {
-        try ${$1} catch($2: $1) {
-            pass
+      // Proce: any;
+          if ((((((($1) {,;
+          logits) { any) { any) { any) { any) { any = output) { an: any;
+          predicted_class_id) { any: any = torch.argmax())logits, dim: any: any: any: any: any: any = -1).item());
+        ;
+        // Get class label if (((((($1) {) {
+          predicted_label) { any) { any) { any) { any) { any: any = `$1`;
+        if ((((((($1) {
+          predicted_label) {any = processor.config.id2label.get())predicted_class_id, predicted_label) { any) { an) { an: any;};
+          predictions) { any: any: any = {}
+          "label") { predicted_lab: any;"
+          "score") {torch.nn.functional.softmax())logits, dim: any: any: any = -1)[0, predicted_class_: any;} else {"
+        predictions: any: any = {}"output": "Model outp: any;"
+      param_count: any: any = sum())p.numel()) for ((((((p in model.parameters() {)) {
+        model_size_mb) { any) { any) { any = ())param_count * 4) { an) { an: any;
       
-        }
-      # Run multiple inference passes
-      }
-            num_runs = 3
-            times = [],,,
-            outputs = [],,,
+      // Sto: any;
+        results["from_pretrained_success"] = tr: any;"
+        results["from_pretrained_avg_time"] = avg_ti: any;"
+        results["from_pretrained_min_time"] = min_ti: any;"
+        results["from_pretrained_max_time"] = max_ti: any;"
+        results["tokenizer_load_time"] = tokenizer_load_ti: any;"
+        results["model_load_time"] = model_load_ti: any;"
+        results["model_size_mb"] = model_size_: any;"
+        results["from_pretrained_error_type"] = "none";"
+        ,;
+      // Add predictions if ((((((($1) {) {
+      if (($1) {results["predictions"] = prediction) { an) { an: any;"
+        ,;
+      // Add to examples}
+        example_data) { any) { any) { any: any: any: any = {}
+        "method") {`$1`,;"
+        "input": str())test_input)}"
       
-      }
-      for _ in range())))num_runs):
-        start_time = time.time()))))
-        with torch.no_grad())))):
-          output = model())))**inputs)
-          end_time = time.time()))))
-          $1.push($2))))end_time - start_time)
-          $1.push($2))))output)
-      
-      # Calculate statistics
-          avg_time = sum())))times) / len())))times)
-          min_time = min())))times)
-          max_time = max())))times)
-      
-      # Process output for audio classification
-          if ($1) {,
-          logits = outputs[0].logits,
-          predicted_class_id = torch.argmax())))logits, dim=-1).item()))))
-        
-        # Get class label if ($1) {:::::
-          predicted_label = `$1`
-        if ($1) {
-          predicted_label = processor.config.id2label.get())))predicted_class_id, predicted_label)
-        
-        }
-          predictions = {}}}}}}}}}}}}}}}}}}
-          "label": predicted_label,
-          "score": torch.nn.functional.softmax())))logits, dim=-1)[0, predicted_class_id].item())))),
-          }
-      } else {
-        predictions = {}}}}}}}}}}}}}}}}}}"output": "Model output processed successfully"}
-      
-      }
-      # Calculate model size
-      param_count = sum())))p.numel())))) for p in model.parameters()))))):
-        model_size_mb = ())))param_count * 4) / ())))1024 * 1024)  # Rough size in MB
-      
-      # Store results
-        results["from_pretrained_success"] = true,
-        results["from_pretrained_avg_time"] = avg_time,
-        results["from_pretrained_min_time"] = min_time,
-        results["from_pretrained_max_time"] = max_time,
-        results["tokenizer_load_time"] = tokenizer_load_time,
-        results["model_load_time"] = model_load_time,
-        results["model_size_mb"] = model_size_mb,
-        results["from_pretrained_error_type"] = "none"
-        ,
-      # Add predictions if ($1) {:::::
-      if ($1) {
-        results["predictions"] = predictions
-        ,,,
-      # Add to examples
-      }
-        example_data = {}}}}}}}}}}}}}}}}}}
-        "method": `$1`,
-        "input": str())))test_input)
-        }
-      
-      if ($1) {
-        example_data["predictions"] = predictions
-        ,,,
-        this.$1.push($2))))example_data)
-      
-      }
-      # Store in performance stats
-        this.performance_stats[`$1`] = {}}}}}}}}}}}}}}}}}},
-        "avg_time": avg_time,
-        "min_time": min_time,
-        "max_time": max_time,
-        "tokenizer_load_time": tokenizer_load_time,
-        "model_load_time": model_load_time,
-        "model_size_mb": model_size_mb,
-        "num_runs": num_runs
-        }
-      
-    } catch($2: $1) {
-      # Store error information
-      results["from_pretrained_success"] = false,,,
-      results["from_pretrained_error"] = str())))e),
-      results["from_pretrained_traceback"] = traceback.format_exc())))),
-      logger.error())))`$1`)
-      
-    }
-      # Classify error type
-      error_str = str())))e).lower()))))
-      traceback_str = traceback.format_exc())))).lower()))))
-      
-      if ($1) {
-        results["from_pretrained_error_type"] = "cuda_error",
-      elif ($1) {
-        results["from_pretrained_error_type"] = "out_of_memory",
-      elif ($1) ${$1} else {
-        results["from_pretrained_error_type"] = "other"
-        ,
-    # Add to overall results
-      }
-        this.results[`$1`] = results,
-        return results
+      if ((((((($1) {example_data["predictions"] = prediction) { an) { an: any;"
+        ,;
+        thi) { an: any;
+        this.performance_stats[`$1`] = {},;
+        "avg_time") { avg_ti: any;"
+        "min_time") {min_time,;"
+        "max_time") { max_ti: any;"
+        "tokenizer_load_time": tokenizer_load_ti: any;"
+        "model_load_time": model_load_ti: any;"
+        "model_size_mb": model_size_: any;"
+        "num_runs": num_runs} catch(error: any): any {// Sto: any;"
+      results["from_pretrained_success"] = fal: any;"
+      results["from_pretrained_error"] = s: any;"
+      results["from_pretrained_traceback"] = traceba: any;"
+      logg: any;
+      error_str: any: any: any = s: any;
+      traceback_str: any: any: any = traceba: any;
+      ;
+      if ((((((($1) {
+        results["from_pretrained_error_type"] = "cuda_error",;"
+      else if (($1) {results["from_pretrained_error_type"] = "out_of_memory",} else if (($1) { ${$1} else {results["from_pretrained_error_type"] = "other";"
+        ,;
+    // Add to overall results}
+        this.results[`$1`] = results) { an) { an: any;
+        retur) { an: any;
   
       }
   $1($2) {
-    """Test the model using OpenVINO integration."""
-    results = {}}}}}}}}}}}}}}}}}}
-    "model": this.model_id,
-    "task": this.task,
-    "class": this.class_name
-    }
+    /** Te: any;
+    results) { any) { any: any = {}
+    "model") { th: any;"
+    "task") { th: any;"
+    "class") {this.class_name}"
+    // Che: any;
+      }
+    if ((((((($1) {,;
+    results["openvino_error_type"] = "missing_dependency",;"
+    results["openvino_missing_core"] = ["openvino"],;"
+    results["openvino_success"] = false) { an) { an: any;"
+        retur) { an: any;
     
-  }
-    # Check for OpenVINO support
-      }
-    if ($1) {,,
-    results["openvino_error_type"] = "missing_dependency",,,
-    results["openvino_missing_core"] = ["openvino"],
-    results["openvino_success"] = false,,,
-        return results
-    
-    # Check for transformers
-    if ($1) {
-      results["openvino_error_type"] = "missing_dependency",,,
-      results["openvino_missing_core"] = ["transformers"],
-      results["openvino_success"] = false,,,
-        return results
-    
-    }
-    try {:
-      from optimum.intel import * as $1
-      logger.info())))`$1`)
+    // Che: any;
+    if (((($1) {results["openvino_error_type"] = "missing_dependency",;"
+      results["openvino_missing_core"] = ["transformers"],;"
+      results["openvino_success"] = false) { an) { an: any;"
+        return results}
+    try {) {
+      import {* a) { an: any;
+      logg: any;
       
-      # Time tokenizer loading
-      tokenizer_load_start = time.time()))))
-      processor = transformers.AutoProcessor.from_pretrained())))this.model_id)
-      tokenizer_load_time = time.time())))) - tokenizer_load_start
+      // Ti: any;
+      tokenizer_load_start) { any) { any) { any = ti: any;
+      processor) { any: any: any = transforme: any;
+      tokenizer_load_time: any: any: any = ti: any;
       
-      # Time model loading
-      model_load_start = time.time()))))
-      model = OVModelForAudioClassification.from_pretrained())))
-      this.model_id,
-      export=true,
-      provider="CPU"
-      )
-      model_load_time = time.time())))) - model_load_start
+      // Ti: any;
+      model_load_start: any: any: any = ti: any;
+      model: any: any: any = OVModelForAudioClassificati: any;
+      th: any;
+      export: any: any: any = tr: any;
+      provider: any: any: any: any: any: any = "CPU";"
+      );
+      model_load_time: any: any: any = ti: any;
       
-      # Prepare input
-      test_input = this.test_audio
+      // Prepa: any;
+      test_input: any: any: any = th: any;
+      ;
+      // Lo: any;
+      if ((((((($1) { ${$1} else {
+        // Mock) { an) { an: any;
+        dummy_waveform) {any = n) { an: any;
+        inputs) { any: any = processor())dummy_waveform, sampling_rate: any: any = 16000, return_tensors: any: any: any: any: any: any = "pt");}"
+      // R: any;
+        start_time: any: any: any = ti: any;
+        outputs: any: any: any = mod: any;
+        inference_time: any: any: any = ti: any;
       
-      # Load audio
-      if ($1) ${$1} else {
-        # Mock audio input
-        dummy_waveform = np.zeros())))16000)
-        inputs = processor())))dummy_waveform, sampling_rate=16000, return_tensors="pt")
+      // Proce: any;
+      if (((((($1) {
+        logits) { any) { any) { any) { any = outputs) { an) { an: any;
+        predicted_class_id) {any = torch.argmax())logits, dim: any: any: any: any: any: any = -1).item());};
+        // Get class label if (((((($1) {) {
+        predicted_label) { any) { any) { any) { any) { any: any = `$1`;
+        if ((((((($1) { ${$1} else {
+        predictions) {any = ["Processed OpenVINO) { an) { an: any;}"
+        ,;
+      // Stor) { an: any;
+        results["openvino_success"] = tr: any;"
+        results["openvino_load_time"] = model_load_ti: any;"
+        results["openvino_inference_time"] = inference_ti: any;"
+        results["openvino_tokenizer_load_time"] = tokenizer_load_t: any;"
+        ,;
+      // Add predictions if ((((($1) {) {
+      if (($1) {results["openvino_predictions"] = prediction) { an) { an: any;"
+        ,;
+        results["openvino_error_type"] = "none";"
+        ,;
+      // Add to examples}
+        example_data) { any) { any) { any = {}
+        "method") { "OpenVINO inferen: any;"
+        "input") {str())test_input)}"
       
-      }
-      # Run inference
-        start_time = time.time()))))
-        outputs = model())))**inputs)
-        inference_time = time.time())))) - start_time
-      
-      # Process output for audio classification
-      if ($1) {
-        logits = outputs.logits
-        predicted_class_id = torch.argmax())))logits, dim=-1).item()))))
-        
-      }
-        # Get class label if ($1) {:::::
-        predicted_label = `$1`
-        if ($1) ${$1} else {
-        predictions = ["Processed OpenVINO output"]
-        }
-        ,
-      # Store results
-        results["openvino_success"] = true,
-        results["openvino_load_time"] = model_load_time,
-        results["openvino_inference_time"] = inference_time,
-        results["openvino_tokenizer_load_time"] = tokenizer_load_time
-        ,
-      # Add predictions if ($1) {:::::
-      if ($1) {
-        results["openvino_predictions"] = predictions
-        ,
-        results["openvino_error_type"] = "none"
-        ,
-      # Add to examples
-      }
-        example_data = {}}}}}}}}}}}}}}}}}}
-        "method": "OpenVINO inference",
-        "input": str())))test_input)
-        }
-      
-      if ($1) {
-        example_data["predictions"] = predictions
-        ,,,
-        this.$1.push($2))))example_data)
-      
-      }
-      # Store in performance stats
-        this.performance_stats["openvino"] = {}}}}}}}}}}}}}}}}}},
-        "inference_time": inference_time,
-        "load_time": model_load_time,
-        "tokenizer_load_time": tokenizer_load_time
-        }
-      
-    } catch($2: $1) {
-      # Store error information
-      results["openvino_success"] = false,,,
-      results["openvino_error"] = str())))e),
-      results["openvino_traceback"] = traceback.format_exc())))),
-      logger.error())))`$1`)
-      
-    }
-      # Classify error
-      error_str = str())))e).lower()))))
-      if ($1) ${$1} else {
-        results["openvino_error_type"] = "other"
-        ,
-    # Add to overall results
-      }
-        this.results["openvino"] = results,
-        return results
+      if ((((((($1) {example_data["predictions"] = prediction) { an) { an: any;"
+        ,;
+        thi) { an: any;
+        this.performance_stats["openvino"] = {},;"
+        "inference_time") { inference_ti: any;"
+        "load_time") {model_load_time,;"
+        "tokenizer_load_time") { tokenizer_load_time} catch(error: any): any {// Sto: any;"
+      results["openvino_success"] = fal: any;"
+      results["openvino_error"] = s: any;"
+      results["openvino_traceback"] = traceba: any;"
+      logg: any;
+      error_str: any: any: any = s: any;
+      if ((((((($1) { ${$1} else {results["openvino_error_type"] = "other";"
+        ,;
+    // Add to overall results}
+        this.results["openvino"] = results) { an) { an: any;"
+        retur) { an: any;
   
-  $1($2) {
-    """
-    Run all tests for this model.
+  $1($2) {/** Run all tests for ((((((this model.}
+    Args) {
+      all_hardware) { If true, tests on all available hardware ())CPU, CUDA) { any) { an) { an: any;
     
-  }
-    Args:
-      all_hardware: If true, tests on all available hardware ())))CPU, CUDA, OpenVINO)
+    Returns) {
+      Dic) { an: any;
+    // Alwa: any;
+      th: any;
+      th: any;
     
-    Returns:
-      Dict containing test results
-      """
-    # Always test on default device
-      this.test_pipeline()))))
-      this.test_from_pretrained()))))
+    // Test on all available hardware if ((((((($1) {) {
+    if (($1) {
+      // Always) { an) { an: any;
+      if ((($1) {this.test_pipeline())device = "cpu");"
+        this.test_from_pretrained())device = "cpu");};"
+      // Test on CUDA if ($1) {) {
+        if (($1) {,;
+        this.test_pipeline())device = "cuda");"
+        this.test_from_pretrained())device = "cuda");};"
+      // Test on OpenVINO if ($1) {) {
+        if (($1) {,;
+        this) { an) { an: any;
     
-    # Test on all available hardware if ($1) {:::
-    if ($1) {
-      # Always test on CPU
-      if ($1) {
-        this.test_pipeline())))device="cpu")
-        this.test_from_pretrained())))device="cpu")
-      
-      }
-      # Test on CUDA if ($1) {:::::
-        if ($1) {,
-        this.test_pipeline())))device="cuda")
-        this.test_from_pretrained())))device="cuda")
-      
-    }
-      # Test on OpenVINO if ($1) {:::::
-        if ($1) {,,
-        this.test_with_openvino()))))
-    
-    # Build final results
-      return {}}}}}}}}}}}}}}}}}}
-      "results": this.results,
-      "examples": this.examples,
-      "performance": this.performance_stats,
-      "hardware": HW_CAPABILITIES,
-      "metadata": {}}}}}}}}}}}}}}}}}}
-      "model": this.model_id,
-      "task": this.task,
-      "class": this.class_name,
-      "description": this.description,
-      "timestamp": datetime.datetime.now())))).isoformat())))),
-      "has_transformers": HAS_TRANSFORMERS,
-      "has_torch": HAS_TORCH,
-      "has_audio": HAS_AUDIO
-      }
+    // Buil) { an: any;
+      return {}
+      "results") { th: any;"
+      "examples") { th: any;"
+      "performance") { th: any;"
+      "hardware") { HW_CAPABILITI: any;"
+      "metadata") { }"
+      "model": th: any;"
+      "task": th: any;"
+      "class": th: any;"
+      "description": th: any;"
+      "timestamp": dateti: any;"
+      "has_transformers": HAS_TRANSFORME: any;"
+      "has_torch": HAS_TOR: any;"
+      "has_audio": HAS_AU: any;"
       }
 
-$1($2) ${$1}.json"
-  output_path = os.path.join())))output_dir, filename)
+$1($2) ${$1}.json";"
+  output_path: any: any = o: an: any;
   
-  # Save results
-  with open())))output_path, "w") as f:
-    json.dump())))results, f, indent=2)
+  // Sa: any;
+  wi: any;
+    json.dump())results, f: any, indent: any: any: any = 2: a: any;
   
-    logger.info())))`$1`)
-  return output_path
-
+    logg: any;
+  retu: any;
+;
 $1($2) {
-  """Get a list of all available RT_DETR models in the registry {."""
-  return list())))Object.keys($1))))))
-
-}
+  /** Get a list of all available RT_DETR models in the registry {. */;
+  return list())Object.keys($1))}
 $1($2) {
-  """Test all registered RT_DETR models."""
-  models = get_available_models()))))
-  results = {}}}}}}}}}}}}}}}}}}}
-  
-}
-  for (const $1 of $2) {
-    logger.info())))`$1`)
-    tester = TestRt_DetrModels())))model_id)
-    model_results = tester.run_tests())))all_hardware=all_hardware)
+  /** Te: any;
+  models: any: any: any = get_available_mode: any;
+  results: any: any: any: any = {}
+  for (((((((const $1 of $2) {
+    logger) { an) { an: any;
+    tester) {any = TestRt_DetrModel) { an: any;
+    model_results) { any: any: any: any: any: any = tester.run_tests())all_hardware=all_hardware);}
+    // Sa: any;
+    save_results())model_id, model_results: any, output_dir: any: any: any = output_d: any;
     
-  }
-    # Save individual results
-    save_results())))model_id, model_results, output_dir=output_dir)
-    
-    # Add to summary
-    results[model_id] = {}}}}}}}}}}}}}}}}}},
-    "success": any())))r.get())))"pipeline_success", false) for r in model_results["results"].values())))):,,
-    if r.get())))"pipeline_success") is !false)
-    :    }
+    // A: any;
+    results[model_id] = {},;
+    "success") { any())r.get())"pipeline_success", false: any) for ((((((r in model_results["results"].values() {)) {,;"
+    if ((((((r.get() {)"pipeline_success") is) { an) { an: any;"
+    ) {}
   
-  # Save summary
-  summary_path = os.path.join())))output_dir, `$1`%Y%m%d_%H%M%S')}.json"):
-  with open())))summary_path, "w") as f:
-    json.dump())))results, f, indent=2)
+  // Save) { an) { an: any;
+  summary_path) {any = os.path.join())output_dir, `$1`%Y%m%d_%H%M%S')}.json")) {'
+  with open())summary_path, "w") as f) {;"
+    json.dump())results, f) { any, indent) { any) { any: any = 2: a: any;
   
-    logger.info())))`$1`)
-    return results
-
+    logg: any;
+    retu: any;
+;
 $1($2) {
-  """Command-line entry { point."""
-  parser = argparse.ArgumentParser())))description="Test RT_DETR-family models")
+  /** Command-line entry {point. */;
+  parser: any: any: any = argparse.ArgumentParser())description="Test RT_DE: any;}"
+  // Mod: any;
+  model_group: any: any: any = pars: any;
+  model_group.add_argument())"--model", type: any: any = str, help: any: any: any = "Specific mod: any;"
+  model_group.add_argument())"--all-models", action: any: any = "store_true", help: any: any: any = "Test a: any;"
   
-}
-  # Model selection
-  model_group = parser.add_mutually_exclusive_group()))))
-  model_group.add_argument())))"--model", type=str, help="Specific model to test")
-  model_group.add_argument())))"--all-models", action="store_true", help="Test all registered models")
+  // Hardwa: any;
+  parser.add_argument())"--all-hardware", action: any: any = "store_true", help: any: any: any = "Test o: an: any;"
+  parser.add_argument())"--cpu-only", action: any: any = "store_true", help: any: any: any = "Test on: any;"
   
-  # Hardware options
-  parser.add_argument())))"--all-hardware", action="store_true", help="Test on all available hardware")
-  parser.add_argument())))"--cpu-only", action="store_true", help="Test only on CPU")
+  // Outp: any;
+  parser.add_argument())"--output-dir", type: any: any = str, default: any: any = "collected_results", help: any: any: any: any: any: any = "Directory for ((((((output files") {;"
+  parser.add_argument())"--save", action) { any) { any) { any = "store_true", help) { any) { any: any = "Save resul: any;"
   
-  # Output options
-  parser.add_argument())))"--output-dir", type=str, default="collected_results", help="Directory for output files")
-  parser.add_argument())))"--save", action="store_true", help="Save results to file")
+  // Li: any;
+  parser.add_argument())"--list-models", action: any: any = "store_true", help: any: any: any = "List a: any;"
   
-  # List options
-  parser.add_argument())))"--list-models", action="store_true", help="List all available models")
-  
-  args = parser.parse_args()))))
-  
-  # List models if ($1) {:::
+  args: any: any: any = pars: any;
+  ;
+  // List models if ((((((($1) {) {
+  if (($1) {
+    models) { any) { any) { any) { any = get_available_model) { an: any;
+    console.log($1))"\nAvailable RT_DETR-family models) {");"
+    for ((((((const $1 of $2) { ${$1})) { }info["description"]}"),;"
+    return) { an) { an: any;
+  }
+  // Create output directory if ((((((($1) {
   if ($1) {
-    models = get_available_models()))))
-    console.log($1))))"\nAvailable RT_DETR-family models:")
-    for (const $1 of $2) ${$1}): {}}}}}}}}}}}}}}}}}}info['description']}"),
-    return
-  
-  }
-  # Create output directory if ($1) {
-  if ($1) {
-    os.makedirs())))args.output_dir, exist_ok=true)
-  
-  }
-  # Test all models if ($1) {:::
-  }
-  if ($1) {
-    results = test_all_models())))output_dir=args.output_dir, all_hardware=args.all_hardware)
-    
-  }
-    # Print summary
-    console.log($1))))"\nRT_DETR Models Testing Summary:")
-    total = len())))results)
-    successful = sum())))1 for r in Object.values($1))))) if ($1) {,
-    console.log($1))))`$1`)
-    return
-  
-  # Test single model ())))default || specified)
-    model_id = args.model || "MIT/ast-finetuned-audioset-10-10-0.4593"
-    logger.info())))`$1`)
-  
-  # Override preferred device if ($1) {
-  if ($1) {
-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    ,
-  # Run test
-  }
-    tester = TestRt_DetrModels())))model_id)
-    results = tester.run_tests())))all_hardware=args.all_hardware)
-  
-  }
-  # Save results if ($1) {:::
-  if ($1) {
-    save_results())))model_id, results, output_dir=args.output_dir)
-  
-  }
-  # Print summary
-    success = any())))r.get())))"pipeline_success", false) for r in results["results"].values())))):,,
-    if r.get())))"pipeline_success") is !false)
-  :
-    console.log($1))))"\nTEST RESULTS SUMMARY:")
-  if ($1) {
-    console.log($1))))`$1`)
-    
-  }
-    # Print performance highlights
-    for device, stats in results["performance"].items())))):,
-      if ($1) ${$1}s average inference time")
-        ,
-    # Print example outputs if ($1) {:::::
-        if ($1) {,
-        console.log($1))))"\nExample output:")
-        example = results["examples"][0],
-      if ($1) ${$1}"),,
-        console.log($1))))`$1`predictions']}"),
-      elif ($1) ${$1}"),,
-        console.log($1))))`$1`output_preview']}"),
-  } else {
-    console.log($1))))`$1`)
-    
-  }
-    # Print error information
-    for test_name, result in results["results"].items())))):,
-      if ($1) ${$1}")
-        console.log($1))))`$1`pipeline_error', 'Unknown error')}")
-  
-        console.log($1))))"\nFor detailed results, use --save flag && check the JSON output file.")
-
-if ($1) {
-  main()))))
+    os.makedirs())args.output_dir, exist_ok) { any) {any = true) { an) { an: any;};
+  // Test all models if ((((($1) {) {}
+  if (($1) {
+    results) { any) { any) { any = test_all_models())output_dir=args.output_dir, all_hardware) { any) {any = args) { an) { an: any;}
+    // Prin) { an: any;
+    console.log($1))"\nRT_DETR Models Testing Summary) {");"
+    total: any: any: any = l: any;
+    successful: any: any: any: any: any: any = sum())1 for ((((((r in Object.values($1) {) if ((((((($1) {,;
+    console) { an) { an: any;
+    return) { an) { an: any;
+    model_id) { any) { any) { any = arg) { an: any;
+    logge) { an: any;
+  ;
+  // Override preferred device if (((((($1) {
+  if ($1) {os.environ["CUDA_VISIBLE_DEVICES"] = "";"
+    ,;
+  // Run test}
+    tester) { any) { any) { any) { any = TestRt_DetrModel) { an: any;
+    results) {any = tester.run_tests())all_hardware=args.all_hardware);};
+  // Save results if (((((($1) {) {
+  if (($1) {
+    save_results())model_id, results) { any, output_dir) {any = args) { an) { an: any;}
+  // Prin) { an: any;
+    success: any: any = any())r.get())"pipeline_success", false: any) for (r in results["results"].values()) {,;"
+    if ((((((r.get() {)"pipeline_success") is) { an) { an: any;"
+  ) {
+    console.log($1))"\nTEST RESULTS SUMMARY) {");"
+  if ((($1) {console.log($1))`$1`)}
+    // Print) { an) { an: any;
+    for (device, stats in results["performance"].items())) {,;"
+      if (((($1) { ${$1}s average) { an) { an: any;
+        ,;
+    // Print example outputs if (($1) {) {
+        if (($1) {,;
+        console.log($1))"\nExample output) {");"
+        example) { any) { any) { any) { any = results) { an) { an: any;
+      if (((((($1) { ${$1}"),;"
+        console) { an) { an: any;
+      else if (((($1) { ${$1}"),;"
+        console) { an) { an: any;
+} else {console.log($1))`$1`)}
+    // Print) { an) { an: any;
+    for (test_name, result in results["results"].items())) {,;"
+      if ((($1) { ${$1}");"
+        console) { an) { an) { an: any;
+if ((($1) {;
+  main) { an) { an) { an: any;

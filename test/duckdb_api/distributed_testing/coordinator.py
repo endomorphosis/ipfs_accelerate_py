@@ -47,6 +47,14 @@ except ImportError:
     logger.warning("Performance Trend Analyzer not available. Performance analysis features disabled.")
     PERFORMANCE_ANALYZER_AVAILABLE = False
 
+try:
+    from duckdb_api.distributed_testing.result_aggregator.service import ResultAggregatorService
+    from duckdb_api.distributed_testing.result_aggregator.aggregator import ResultAggregator as DetailedResultAggregator
+    RESULT_AGGREGATOR_AVAILABLE = True
+except ImportError:
+    logger.warning("Result Aggregator not available. Intelligent result aggregation features disabled.")
+    RESULT_AGGREGATOR_AVAILABLE = False
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -1063,6 +1071,63 @@ class TaskManager:
                 execution_time, "", hardware_metrics
             )
         
+        # Create test result record for aggregation
+        test_result = None
+        
+        try:
+            # Get task and worker information
+            task = self.db_manager.get_task(task_id) if self.db_manager else {}
+            worker = self.db_manager.get_worker(worker_id) if self.db_manager else {}
+            
+            # Prepare test result for aggregation
+            test_result = {
+                "test_id": task_id,
+                "worker_id": worker_id,
+                "task_type": task.get("type") if task else metadata.get("task_type", "unknown"),
+                "hardware_id": worker.get("hardware_id") if worker else metadata.get("hardware_id", "unknown"),
+                "model": metadata.get("model", "unknown"),
+                "batch_size": metadata.get("batch_size", 1),
+                "precision": metadata.get("precision", "fp32"),
+                "status": "success",
+                "timestamp": end_time if isinstance(end_time, datetime) else datetime.now(),
+                "duration": execution_time,
+                "hardware_metrics": hardware_metrics
+            }
+            
+            # Add result metrics
+            for key, value in results.items():
+                if isinstance(value, (int, float, bool, str)):
+                    test_result[key] = value
+                    
+        except Exception as e:
+            logger.error(f"Error preparing result data for task {task_id}: {e}")
+        
+        # Process with the dual-layer result aggregation system
+        if test_result:
+            # First prepare the result to ensure it has all required fields
+            # This avoids duplicating preparation logic between aggregators
+            prepared_result = self._prepare_result_for_aggregation(test_result)
+            
+            # Add to high-level result aggregator service if available
+            if hasattr(self, 'result_aggregator') and self.result_aggregator:
+                try:
+                    # Process in high-level result aggregator
+                    self.result_aggregator.process_test_result(prepared_result)
+                    logger.debug(f"Added task {task_id} to high-level result aggregator")
+                except Exception as e:
+                    logger.error(f"Error adding task {task_id} to high-level result aggregator: {e}")
+                    logger.debug(f"Result data: {prepared_result}")
+            
+            # Add to detailed result aggregator if available
+            if hasattr(self, 'detailed_result_aggregator') and self.detailed_result_aggregator:
+                try:
+                    # Process in detailed result aggregator
+                    self.detailed_result_aggregator.process_test_result(prepared_result)
+                    logger.debug(f"Added task {task_id} to detailed result aggregator")
+                except Exception as e:
+                    logger.error(f"Error adding task {task_id} to detailed result aggregator: {e}")
+                    logger.debug(f"Result data: {prepared_result}")
+        
         logger.info(f"Task {task_id} completed by worker {worker_id}")
         return True
     
@@ -1148,7 +1213,124 @@ class TaskManager:
                 execution_time, error, hardware_metrics
             )
         
+        # Create test result record for aggregation
+        test_result = None
+        
+        try:
+            # Get task and worker information
+            task = self.db_manager.get_task(task_id) if self.db_manager else {}
+            worker = self.db_manager.get_worker(worker_id) if self.db_manager else {}
+            
+            # Prepare test result for aggregation
+            test_result = {
+                "test_id": task_id,
+                "worker_id": worker_id,
+                "task_type": task.get("type") if task else metadata.get("task_type", "unknown"),
+                "hardware_id": worker.get("hardware_id") if worker else metadata.get("hardware_id", "unknown"),
+                "model": metadata.get("model", "unknown"),
+                "batch_size": metadata.get("batch_size", 1),
+                "precision": metadata.get("precision", "fp32"),
+                "status": "failed",
+                "failure_reason": error,
+                "timestamp": end_time if isinstance(end_time, datetime) else datetime.now(),
+                "duration": execution_time,
+                "hardware_metrics": hardware_metrics
+            }
+                    
+        except Exception as e:
+            logger.error(f"Error preparing result data for failed task {task_id}: {e}")
+        
+        # Process with the dual-layer result aggregation system
+        if test_result:
+            # First prepare the result to ensure it has all required fields
+            # This avoids duplicating preparation logic between aggregators
+            prepared_result = self._prepare_result_for_aggregation(test_result)
+            
+            # Add to high-level result aggregator service if available
+            if hasattr(self, 'result_aggregator') and self.result_aggregator:
+                try:
+                    # Process in high-level result aggregator
+                    self.result_aggregator.process_test_result(prepared_result)
+                    logger.debug(f"Added failed task {task_id} to high-level result aggregator")
+                except Exception as e:
+                    logger.error(f"Error adding failed task {task_id} to high-level result aggregator: {e}")
+                    logger.debug(f"Result data: {prepared_result}")
+            
+            # Add to detailed result aggregator if available
+            if hasattr(self, 'detailed_result_aggregator') and self.detailed_result_aggregator:
+                try:
+                    # Process in detailed result aggregator
+                    self.detailed_result_aggregator.process_test_result(prepared_result)
+                    logger.debug(f"Added failed task {task_id} to detailed result aggregator")
+                except Exception as e:
+                    logger.error(f"Error adding failed task {task_id} to detailed result aggregator: {e}")
+                    logger.debug(f"Result data: {prepared_result}")
+        
         return True
+        
+    def _prepare_result_for_aggregation(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare test result data for aggregation.
+        
+        This helper method ensures the result has all required fields and
+        normalizes data for consistent processing across both aggregators.
+        
+        Args:
+            result: Raw test result data
+            
+        Returns:
+            Prepared result data for aggregation
+        """
+        # Make a copy to avoid modifying the original
+        prepared = result.copy()
+        
+        # Ensure all required fields are present
+        required_fields = [
+            "test_id", "worker_id", "task_type", "hardware_id", 
+            "model", "status", "timestamp"
+        ]
+        
+        for field in required_fields:
+            if field not in prepared:
+                if field == "timestamp":
+                    prepared[field] = datetime.now()
+                else:
+                    prepared[field] = "unknown"
+        
+        # Normalize metric fields if available
+        if "duration" in prepared and isinstance(prepared["duration"], (int, float)):
+            # Ensure we have latency and throughput metrics
+            if "latency_ms" not in prepared:
+                prepared["latency_ms"] = prepared["duration"] * 1000.0
+                
+            if "throughput_items_per_second" not in prepared and "batch_size" in prepared:
+                batch_size = prepared["batch_size"]
+                prepared["throughput_items_per_second"] = batch_size / prepared["duration"] if prepared["duration"] > 0 else 0
+        
+        # Add hardware dimensions if available
+        if "hardware_metrics" in prepared and isinstance(prepared["hardware_metrics"], dict):
+            metrics = prepared["hardware_metrics"]
+            
+            # CPU metrics
+            if "cpu_percent" in metrics:
+                prepared["cpu_utilization"] = metrics["cpu_percent"]
+                
+            # Memory metrics
+            if "memory_used_gb" in metrics:
+                prepared["memory_usage_gb"] = metrics["memory_used_gb"]
+                
+            # GPU metrics if available
+            if "gpu_metrics" in metrics and isinstance(metrics["gpu_metrics"], list) and metrics["gpu_metrics"]:
+                gpu_metric = metrics["gpu_metrics"][0]  # Use first GPU
+                if "load_percent" in gpu_metric:
+                    prepared["gpu_utilization"] = gpu_metric["load_percent"]
+                if "memory_used_gb" in gpu_metric:
+                    prepared["gpu_memory_usage_gb"] = gpu_metric["memory_used_gb"]
+        
+        # Add context information for multi-dimensional analysis
+        prepared["context"] = prepared.get("context", {})
+        prepared["context"]["aggregated_at"] = datetime.now()
+        
+        return prepared
     
     def cancel_task(self, task_id: str) -> bool:
         """Cancel a task.
@@ -1654,6 +1836,75 @@ class CoordinatorServer:
             except Exception as e:
                 logger.error(f"Error initializing performance trend analyzer: {e}")
                 self.performance_analyzer = None
+                
+        # Initialize result aggregators - dual layer system
+        self.result_aggregator = None
+        self.detailed_result_aggregator = None
+        if RESULT_AGGREGATOR_AVAILABLE:
+            try:
+                # Initialize the ResultAggregatorService from result_aggregator/service.py (high-level service)
+                self.result_aggregator = ResultAggregatorService(
+                    db_manager=self.db_manager,
+                    trend_analyzer=self.performance_analyzer
+                )
+                
+                # Configure result aggregator service
+                aggregator_config = {
+                    "visualization_enabled": visualization_path is not None,
+                    "database_enabled": self.db_manager is not None,
+                    "cache_ttl_seconds": 300,  # 5 minutes
+                    "update_interval": 300,  # 5 minutes
+                    "anomaly_threshold": 2.5,  # Z-score threshold for anomalies
+                    "min_data_points": 5,  # Minimum data points for analysis
+                    "aggregate_dimensions": ["hardware", "model", "batch_size", "precision", "task_type"],
+                    "correlation_metrics": ["throughput", "latency", "memory_usage", "success_rate"],
+                    "comparative_lookback_days": 7,  # Days to look back for comparison
+                    "normalize_metrics": True,  # Whether to normalize metrics for comparison
+                    "workers_historical_limit": 10,  # Maximum workers to include in historical analysis
+                    "deduplication_enabled": True,  # Whether to deduplicate similar results
+                    "model_family_grouping": True  # Whether to group results by model family
+                }
+                
+                if visualization_path:
+                    aggregator_config["visualization_path"] = os.path.join(visualization_path, "result_aggregation")
+                    
+                self.result_aggregator.configure(aggregator_config)
+                
+                # Initialize the DetailedResultAggregator from result_aggregator/aggregator.py (detailed analysis)
+                self.detailed_result_aggregator = DetailedResultAggregator(
+                    db_manager=self.db_manager,
+                    task_scheduler=self.task_manager
+                )
+                
+                # Configure detailed result aggregator
+                detailed_aggregator_config = {
+                    "visualization_enabled": visualization_path is not None,
+                    "database_enabled": self.db_manager is not None,
+                    "update_interval": 300,  # 5 minutes
+                    "history_days": 30,  # Days of history to keep
+                    "aggregate_dimensions": ["hardware", "model", "batch_size", "precision", "task_type"],
+                    "comparison_metrics": ["throughput", "latency", "memory_usage", "success_rate"],
+                    "significance_level": 0.05,  # p-value threshold for statistical significance
+                    "outlier_detection_enabled": True,  # Enable outlier detection
+                    "generate_regression_alerts": True,  # Generate alerts for regressions
+                    "dimension_mapping": {  # Map dimension names between systems
+                        "model_hardware": "model:hardware",
+                        "task_type": "task_type",
+                        "worker": "worker_id"
+                    }
+                }
+                
+                if visualization_path:
+                    detailed_aggregator_config["visualization_path"] = os.path.join(visualization_path, "detailed_result_aggregation")
+                    
+                self.detailed_result_aggregator.configure(detailed_aggregator_config)
+                
+                logger.info("Dual-layer result aggregation system initialized")
+            except Exception as e:
+                logger.error(f"Error initializing result aggregators: {e}")
+                traceback.print_exc()
+                self.result_aggregator = None
+                self.detailed_result_aggregator = None
         
         # WebSocket server
         self.websocket_server = None
@@ -1684,6 +1935,19 @@ class CoordinatorServer:
             if self.performance_analyzer:
                 self.performance_analyzer.start()
                 logger.info("Performance trend analyzer started")
+            
+            # Start result aggregators if enabled - dual-layer system
+            if self.result_aggregator:
+                self.result_aggregator.start()
+                logger.info("High-level result aggregator service started")
+                
+            if self.detailed_result_aggregator:
+                self.detailed_result_aggregator.start()
+                logger.info("Detailed result aggregator service started")
+                
+            # If both aggregators are running, log dual-layer system status
+            if self.result_aggregator and self.detailed_result_aggregator:
+                logger.info("Dual-layer intelligent result aggregation system is active")
             
             # Start WebSocket server
             logger.info(f"Starting WebSocket server on {self.host}:{self.port}")
@@ -1737,6 +2001,19 @@ class CoordinatorServer:
         if self.performance_analyzer:
             self.performance_analyzer.stop()
             logger.info("Performance trend analyzer stopped")
+            
+        # Stop result aggregators if enabled - dual-layer system
+        if self.result_aggregator:
+            self.result_aggregator.stop()
+            logger.info("High-level result aggregator service stopped")
+            
+        if self.detailed_result_aggregator:
+            self.detailed_result_aggregator.stop()
+            logger.info("Detailed result aggregator service stopped")
+            
+        # If both aggregators were running, log shutdown
+        if self.result_aggregator and self.detailed_result_aggregator:
+            logger.info("Dual-layer intelligent result aggregation system shutdown complete")
         
         # Close WebSocket server
         if self.websocket_server:
@@ -1870,6 +2147,107 @@ class CoordinatorServer:
             logger.error(f"Authentication error: {e}")
             return False
     
+    def get_aggregated_results(self, result_type: str, aggregation_level: str, 
+                            filter_params: Dict[str, Any] = None, 
+                            time_range: Tuple[datetime, datetime] = None, 
+                            use_detailed: bool = False) -> Dict[str, Any]:
+        """Get aggregated results from the result aggregator.
+        
+        Args:
+            result_type: Type of results to aggregate
+            aggregation_level: Level of aggregation
+            filter_params: Parameters to filter results by
+            time_range: Time range to filter results by
+            use_detailed: Whether to use the detailed aggregator
+            
+        Returns:
+            Dictionary of aggregated results or empty dict if not available
+        """
+        # Select which aggregator to use based on requested detail level
+        if use_detailed and hasattr(self, 'detailed_result_aggregator') and self.detailed_result_aggregator:
+            try:
+                # For the detailed aggregator from result_aggregator/aggregator.py
+                # Map the dimension names if needed
+                dimension_mapping = {
+                    "model_hardware": "model:hardware",
+                    "task_type": "task_type",
+                    "worker": "worker_id"
+                }
+                
+                # Map the dimension name if needed
+                dimension = dimension_mapping.get(aggregation_level, aggregation_level)
+                
+                # Validate the result type
+                valid_result_types = ["performance", "compatibility", "integration", "web_platform"]
+                if result_type not in valid_result_types:
+                    logger.warning(f"Unsupported result type for detailed aggregator: {result_type}")
+                    result_type = "performance"  # Default to performance
+                
+                # Get dimension analysis from the detailed aggregator
+                dimension_analysis = self.detailed_result_aggregator.get_dimension_analysis(dimension)
+                
+                # Get other metrics from the detailed aggregator
+                regression_data = self.detailed_result_aggregator.get_regressions()
+                anomalies = self.detailed_result_aggregator.get_anomalies()
+                
+                # Add visualization data if available
+                visualization_data = {}
+                try:
+                    visualization_data = self.detailed_result_aggregator.get_visualizations(dimension)
+                except Exception as viz_error:
+                    logger.debug(f"Could not get visualizations: {viz_error}")
+                
+                # Return a comprehensive result with all available data
+                return {
+                    "aggregation_level": aggregation_level,
+                    "result_type": result_type,
+                    "results": {
+                        "dimension_analysis": dimension_analysis,
+                        "overall_status": self.detailed_result_aggregator.get_overall_status(),
+                        "regressions": regression_data,
+                        "anomalies": anomalies,
+                        "visualizations": visualization_data,
+                        "metadata": {
+                            "aggregator": "detailed",
+                            "timestamp": datetime.now().isoformat(),
+                            "filter_params": filter_params
+                        }
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Error getting detailed aggregated results: {e}")
+                traceback.print_exc()
+                return {"error": str(e), "aggregator": "detailed"}
+        
+        # Use high-level aggregator service if available
+        elif hasattr(self, 'result_aggregator') and self.result_aggregator:
+            try:
+                # For the high-level aggregator from result_aggregator/service.py
+                result = self.result_aggregator.aggregate_results(
+                    result_type=result_type,
+                    aggregation_level=aggregation_level,
+                    filter_params=filter_params,
+                    time_range=time_range
+                )
+                
+                # Add metadata about which aggregator was used
+                if "metadata" not in result:
+                    result["metadata"] = {}
+                
+                result["metadata"]["aggregator"] = "high_level"
+                result["metadata"]["timestamp"] = datetime.now().isoformat()
+                
+                return result
+            except Exception as e:
+                logger.error(f"Error getting high-level aggregated results: {e}")
+                traceback.print_exc()
+                return {"error": str(e), "aggregator": "high_level"}
+        
+        # No aggregator available
+        else:
+            logger.warning("No result aggregation system available")
+            return {"error": "No result aggregation system available"}
+    
     async def _process_message(self, websocket, message: Dict[str, Any]):
         """Process a message from a worker.
         
@@ -1953,6 +2331,9 @@ class CoordinatorServer:
             task = self.task_manager.get_next_task(worker_id, worker["capabilities"])
             
             if task:
+                # Update worker status to busy
+                self.worker_manager.update_worker_status(worker_id, WORKER_STATUS_BUSY)
+                
                 # Send task to worker
                 await websocket.send(json.dumps({
                     "type": "get_task_result",
@@ -1960,9 +2341,6 @@ class CoordinatorServer:
                     "worker_id": worker_id,
                     "task": task
                 }))
-                
-                # Update worker status to busy
-                self.worker_manager.update_worker_status(worker_id, WORKER_STATUS_BUSY)
             else:
                 # No task available
                 await websocket.send(json.dumps({
@@ -1971,6 +2349,63 @@ class CoordinatorServer:
                     "worker_id": worker_id,
                     "task": None
                 }))
+        
+        elif message_type == "get_aggregated_results":
+            # Get aggregated results
+            result_type = message.get("result_type")
+            aggregation_level = message.get("aggregation_level")
+            filter_params = message.get("filter_params", {})
+            time_range = message.get("time_range")
+            use_detailed = message.get("use_detailed", False)
+            
+            if not result_type or not aggregation_level:
+                logger.warning("Invalid get_aggregated_results message")
+                await websocket.send(json.dumps({
+                    "type": "get_aggregated_results_result",
+                    "success": False,
+                    "error": "result_type and aggregation_level are required"
+                }))
+                return
+            
+            # Convert time range if provided
+            start_time = None
+            end_time = None
+            
+            if time_range:
+                start_time_str = time_range.get("start")
+                end_time_str = time_range.get("end")
+                
+                if start_time_str:
+                    try:
+                        start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                    except Exception as e:
+                        logger.warning(f"Invalid start_time format: {e}")
+                        
+                if end_time_str:
+                    try:
+                        end_time = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+                    except Exception as e:
+                        logger.warning(f"Invalid end_time format: {e}")
+            
+            time_range_tuple = None
+            if start_time or end_time:
+                time_range_tuple = (start_time, end_time)
+            
+            # Get aggregated results
+            results = self.get_aggregated_results(
+                result_type=result_type,
+                aggregation_level=aggregation_level,
+                filter_params=filter_params,
+                time_range=time_range_tuple,
+                use_detailed=use_detailed
+            )
+            
+            # Send response
+            await websocket.send(json.dumps({
+                "type": "get_aggregated_results_result",
+                "success": True,
+                "results": results
+            }))
         
         elif message_type == "task_result":
             # Process task result
