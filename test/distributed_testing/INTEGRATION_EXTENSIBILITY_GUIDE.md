@@ -150,14 +150,18 @@ The CI/CD Integration plugin provides seamless integration with popular CI/CD sy
 - GitLab CI
 - Azure DevOps
 
+The integration is now more powerful with a standardized API interface that ensures consistent behavior across different CI/CD providers and makes it easier to add support for new systems.
+
 ### Key Features
 
+- **Standardized API Interface**: Common interface for all CI/CD providers
 - **Automatic Environment Detection**: Detects CI environment and configures automatically
 - **Test Run Management**: Creates and manages test runs in CI systems
 - **Status Updates**: Provides real-time status updates to CI systems
 - **Result Reporting**: Generates comprehensive reports in multiple formats (JUnit XML, HTML, JSON)
 - **PR Comments**: Automatically adds test result comments to pull requests
 - **Artifact Management**: Uploads test artifacts to CI systems
+- **Factory Pattern**: Easy creation of appropriate CI provider based on environment
 
 ### Usage Example
 
@@ -170,6 +174,43 @@ ci_status = ci_plugin.get_ci_status()
 print(f"CI System: {ci_status['ci_system']}")
 print(f"Test Run: {ci_status['test_run_id']}")
 print(f"Status: {ci_status['test_run_status']}")
+```
+
+### Direct API Usage
+
+```python
+from distributed_testing.ci import CIProviderFactory
+
+# Create appropriate CI provider based on configuration
+provider = await CIProviderFactory.create_provider(
+    "github",
+    {
+        "token": "YOUR_TOKEN",
+        "repository": "owner/repo",
+        "commit_sha": "1234567890abcdef"
+    }
+)
+
+# Create a test run
+test_run = await provider.create_test_run({
+    "name": "Test Run Example",
+    "build_id": "12345"
+})
+
+# Use provider through standardized interface
+await provider.update_test_run(
+    test_run["id"],
+    {
+        "status": "completed",
+        "summary": {
+            "total_tests": 10,
+            "passed_tests": 8,
+            "failed_tests": 2,
+            "skipped_tests": 0,
+            "duration_seconds": 25.5
+        }
+    }
+)
 ```
 
 ### Configuration Options
@@ -187,47 +228,143 @@ The CI/CD Integration plugin supports various configuration options:
 - `enable_artifacts`: Enable artifact upload (default: true)
 - `detailed_logging`: Enable detailed logging (default: false)
 
-## Custom Scheduler Implementation
+For comprehensive documentation on CI/CD integration, including command-line usage, configuration examples for different CI/CD systems, and advanced usage scenarios, see the [CI/CD Integration Guide](docs/CI_CD_INTEGRATION_GUIDE.md).
 
-The Custom Scheduler plugin extends the task scheduling capabilities of the Distributed Testing Framework with advanced scheduling algorithms and features.
+## Custom Scheduler Extensibility
 
-### Key Features
+The Distributed Testing Framework now provides a comprehensive scheduler extensibility system that allows users to create, configure, and use custom scheduling algorithms. The system includes a standardized interface, a plugin registry, a base implementation, and example schedulers.
 
-- **Hardware-Aware Scheduling**: Matches tasks to workers based on hardware requirements
-- **Priority-Based Scheduling**: Schedules tasks based on priority levels
-- **Deadline-Driven Scheduling**: Increases priority as deadlines approach
-- **Performance History**: Uses historical performance data for optimal task placement
-- **Task Dependencies**: Supports complex task dependencies and DAG execution
-- **Adaptive Scheduling**: Combines multiple scheduling strategies based on context
-- **Performance Prediction**: Predicts task execution time for optimal scheduling
+### Key Components
+
+- **SchedulerPluginInterface**: Standardized interface that all scheduler plugins must implement
+- **BaseSchedulerPlugin**: Base implementation with common functionality for scheduler plugins
+- **SchedulerPluginRegistry**: Registry for discovering, loading, and managing scheduler plugins
+- **SchedulerCoordinator**: Utility for integrating scheduler plugins with the coordinator
+- **Scheduling Strategies**: Multiple strategies like round-robin, fair-share, load-balanced, etc.
+
+### Included Scheduler Plugins
+
+The framework includes several scheduler plugins out of the box:
+
+1. **FairnessScheduler**: Fair resource allocation across users and projects
+   - Ensures no single user or project monopolizes resources
+   - Implements quotas and weights for users and projects
+   - Tracks historical resource usage for fairness
+   - Supports consecutive task limits for better interactivity
+
+2. **CustomScheduler**: Advanced task scheduling with multiple features
+   - Hardware-aware scheduling
+   - Priority-based scheduling with dynamic priority adjustment
+   - Deadline-driven scheduling
+   - Performance history tracking
+   - Worker specialization for specific task types
 
 ### Usage Example
 
 ```python
-# Access custom scheduler plugin from coordinator
-scheduler_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.SCHEDULER)["CustomScheduler-1.0.0"]
+# Import scheduler components
+from distributed_testing.plugins.scheduler.scheduler_coordinator import SchedulerCoordinator
+from distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulingStrategy
 
-# Check scheduler status
-scheduler_status = scheduler_plugin.get_scheduler_status()
-print(f"High Priority Tasks: {scheduler_status['high_priority_queue_size']}")
-print(f"Normal Priority Tasks: {scheduler_status['normal_priority_queue_size']}")
-print(f"Low Priority Tasks: {scheduler_status['low_priority_queue_size']}")
+# Create scheduler coordinator
+scheduler_coordinator = SchedulerCoordinator(coordinator)
+
+# Initialize scheduler coordinator
+await scheduler_coordinator.initialize()
+
+# List available scheduler plugins
+available_plugins = scheduler_coordinator.get_available_plugins()
+print(f"Available scheduler plugins: {', '.join(available_plugins)}")
+
+# Activate a scheduler plugin
+await scheduler_coordinator.activate_scheduler("FairnessScheduler", {
+    "fairness_window_hours": 24,
+    "enable_quotas": True,
+    "max_consecutive_same_user": 5
+})
+
+# Set the active scheduling strategy
+await scheduler_coordinator.set_strategy("fair_share")
+
+# Get metrics from the active scheduler
+metrics = scheduler_coordinator.get_metrics()
+print(f"Active users: {metrics['fairness']['active_users']}")
+print(f"Active projects: {metrics['fairness']['active_projects']}")
+print(f"Fairness score: {metrics['fairness'].get('fairness_score', 0.0):.2f}")
 ```
+
+### Creating a Custom Scheduler
+
+Creating a custom scheduler is easy using the `BaseSchedulerPlugin` class:
+
+```python
+from distributed_testing.plugins.scheduler.base_scheduler_plugin import BaseSchedulerPlugin
+from distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulingStrategy
+
+class MyCustomScheduler(BaseSchedulerPlugin):
+    """My custom scheduler implementation."""
+    
+    def __init__(self):
+        super().__init__(
+            name="MyCustomScheduler",
+            version="1.0.0",
+            description="My custom scheduler implementation",
+            strategies=[
+                SchedulingStrategy.ROUND_ROBIN,
+                SchedulingStrategy.LOAD_BALANCED
+            ]
+        )
+        
+        # Add custom configuration options
+        self.config.update({
+            "my_custom_option": True,
+            "another_option": 42
+        })
+    
+    async def schedule_task(self, task_id, task_data, available_workers, worker_load):
+        """Implement custom task scheduling logic."""
+        # Your custom scheduling logic here
+        
+        # For example, select the worker with the lowest ID
+        if available_workers:
+            return min(available_workers.keys())
+        
+        return None
+```
+
+### Available Scheduling Strategies
+
+The scheduler interface provides multiple scheduling strategies:
+
+| Strategy | Description |
+|----------|-------------|
+| `ROUND_ROBIN` | Simple round-robin assignment |
+| `PRIORITY_BASED` | Assignment based on task priority |
+| `HARDWARE_MATCH` | Matching tasks to hardware capabilities |
+| `PERFORMANCE_BASED` | Assignment based on historical performance |
+| `DEADLINE_DRIVEN` | Meeting task deadlines |
+| `ENERGY_EFFICIENT` | Optimizing for energy efficiency |
+| `LOAD_BALANCED` | Balancing load across workers |
+| `FAIR_SHARE` | Fair resource allocation |
+| `CUSTOM` | Custom scheduling algorithm |
 
 ### Configuration Options
 
-The Custom Scheduler plugin supports various configuration options:
+Each scheduler plugin defines its own configuration schema. Common options include:
 
 - `max_tasks_per_worker`: Maximum tasks per worker (default: 5)
-- `priority_levels`: Number of priority levels (default: 10)
-- `enable_adaptive_scheduling`: Enable adaptive scheduling (default: true)
-- `enable_deadline_scheduling`: Enable deadline-driven scheduling (default: true)
-- `enable_hardware_matching`: Enable hardware-aware task assignment (default: true)
-- `enable_performance_prediction`: Enable performance prediction (default: true)
-- `prediction_confidence_threshold`: Confidence threshold for predictions (default: 0.7)
-- `max_retry_attempts`: Maximum retry attempts for failed tasks (default: 3)
-- `scheduler_interval`: Scheduler interval in seconds (default: 1.0)
+- `history_window_size`: Number of tasks to keep in performance history (default: 100)
 - `detailed_logging`: Enable detailed scheduler logging (default: false)
+
+The FairnessScheduler adds specialized options:
+
+- `fairness_window_hours`: Time window for historical usage calculation (default: 24)
+- `enable_quotas`: Enable quota enforcement (default: true)
+- `recalculate_interval`: Interval to recalculate fair shares in seconds (default: 60)
+- `max_consecutive_same_user`: Maximum consecutive tasks from the same user (default: 3)
+- `enable_priority_boost`: Enable priority-based boosts (default: true)
+
+For complete documentation on custom scheduler implementation, configuration options, and usage examples, see [plugins/scheduler/README.md](plugins/scheduler/README.md).
 
 ## Creating Your Own Plugins
 
