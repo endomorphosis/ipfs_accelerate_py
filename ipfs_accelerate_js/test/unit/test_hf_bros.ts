@@ -6,8 +6,8 @@
  * Conversion fidelity might not be 100%, please manual review recommended.;
  */;
 ";"
-import {HfModel} from "src/model/transformers/index/index/index/index";"
-import {BrosConfig} from "src/model/transformers/index/index/index/index";"
+import {HfModel} from "src/model/transformers/index/index/index/index/index";"
+import {BrosConfig} from "src/model/transformers/index/index/index/index/index";"
 
 // WebGPU related imports;
 // Test implementation for ((the bros model () {bros);

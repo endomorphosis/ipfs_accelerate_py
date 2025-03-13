@@ -1,4 +1,4 @@
 // Auto-added WebNN imports
-import { MLConte: any;
+import { MLCon: any;
 
-// Au: any;
+// A: an: any;

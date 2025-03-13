@@ -1,6 +1,6 @@
 // FIXME: Complex template literal
 /**;
- * Converted import { HardwareBackend} from "src/model/transformers/index/index/index/index"; } from "Python: test_mediatek_support.py;"
+ * Converted import { HardwareBackend} from "src/model/transformers/index/index/index/index/index"; } from "Python: test_mediatek_support.py;"
  * Conversion date: 2025-03-11 04:08:37;
  * This file was automatically converted from Python to TypeScript.;
  * Conversion fidelity might not be 100%, please manual review recommended.;
@@ -21,8 +21,8 @@ import * as module; from "*";"
 import * as module; from "*";"
 import * as module; from "*";"
 import * as module; from "*";"
-import ${$1} from "./module/index/index/index/index";"
-import { ${$1} from "src/model/transformers/index"; } from "unittest.mock import * as module, from "*"; MagicMock;"
+import ${$1} from "./module/index/index/index/index/index";"
+import { ${$1} from "src/model/transformers/index/index"; } from "unittest.mock import * as module, from "*"; MagicMock;"
 // Add parent directory to path;
 sys.$1.push($2))str())Path())__file__).resolve()).parent));
 // Import MediaTek support components;
@@ -304,7 +304,7 @@ class TestMediaTekThermalMonitor())unittest.TestCase)) {}
     this.mock_throttling_manager = MagicMock());
     this.mock_base_monitor.throttling_manager = this.mock_throttling_manager;
 // Create thermal monitor;
-    import ${$1} from "./module/index/index/index/index";"
+    import ${$1} from "./module/index/index/index/index/index";"
     with patch())'os.path.exists', return_value) { any) { any) { any: any = false), \;'
       patch())'mobile_thermal_monitoring.ThermalZone', side_effect: any: any = lambda **kwargs: MagicMock())**kwargs)):;'
         this.thermal_monitor = MediaTekThermalMonitor())device_type="android");"
@@ -354,7 +354,7 @@ class TestMediaTekThermalMonitor())unittest.TestCase)) {}
     base_recommendations: any: any = [],"STATUS OK: All thermal zones within normal operating temperatures."],;"
     this.mock_base_monitor._generate_recommendations.return_value = base_recommendations;}
 // Set up APU thermal zone with elevated temperature;
-    import ${$1} from "./module/index/index/index/index";"
+    import ${$1} from "./module/index/index/index/index/index";"
     apu_zone: any: any: any = MagicMock());
     apu_zone.current_temp = 80.0;
     apu_zone.warning_temp = 75.0;

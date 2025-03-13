@@ -2,12 +2,11 @@
 
 ## Error Categories
 
-Total Errors: 46771
+Total Errors: 2213
 
-- **Type Errors:** 159 (0.3%)
-- **Import Errors:** 407 (0.9%)
-- **Syntax Errors:** 95 (0.2%)
-- **Other Errors:** 46110 (98.6%)
+- **Type Errors:** 3 (0.1%)
+- **Syntax Errors:** 6 (0.3%)
+- **Other Errors:** 2204 (99.6%)
 
 ## Common Fixes
 

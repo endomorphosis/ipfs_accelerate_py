@@ -1,0 +1,124 @@
+name: Distributed Testing Framework Integration Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'duckdb_api/distributed_testing/**'
+      - '.github/workflows/integration-tests.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'duckdb_api/distributed_testing/**'
+      - '.github/workflows/integration-tests.yml'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test-suite:
+    name: Run integration test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    strategy:
+      matrix:
+        test-type: [integration, fault, monitoring, stress]
+      fail-fast: false  # Continue with other test types even if one fails
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov websocket-client flask flask-cors flask-socketio
+      
+      - name: Create test directories
+        run: |
+          mkdir -p test_logs
+          mkdir -p test_db
+      
+      - name: Run ${{ matrix.test-type }} tests
+        run: |
+          cd ${{ github.workspace }}
+          ./test/duckdb_api/distributed_testing/run_all_tests.sh --type ${{ matrix.test-type }} --log-dir test_logs/${{ matrix.test-type }}
+      
+      - name: Upload test logs
+        uses: actions/upload-artifact@v3
+        if: always()  # Upload logs even if tests fail
+        with:
+          name: test-logs-${{ matrix.test-type }}
+          path: test_logs/${{ matrix.test-type }}
+          retention-days: 7
+  
+  combined-report:
+    name: Generate combined test report
+    needs: test-suite
+    runs-on: ubuntu-latest
+    if: always()  # Run even if some tests fail
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Download all test logs
+        uses: actions/download-artifact@v3
+        with:
+          path: all_test_logs
+      
+      - name: Generate combined report
+        run: |
+          echo "# Distributed Testing Framework - Test Report" > test_report.md
+          echo "" >> test_report.md
+          echo "## Test Results" >> test_report.md
+          echo "" >> test_report.md
+          
+          # Process each test type
+          for type in integration fault monitoring stress; do
+            echo "### $type Tests" >> test_report.md
+            echo "" >> test_report.md
+            
+            if [ -f "all_test_logs/test-logs-$type/test_summary.log" ]; then
+              cat "all_test_logs/test-logs-$type/test_summary.log" >> test_report.md
+              echo "" >> test_report.md
+            else
+              echo "❌ No test summary found" >> test_report.md
+              echo "" >> test_report.md
+            fi
+          done
+          
+          echo "## Test Details" >> test_report.md
+          echo "" >> test_report.md
+          
+          # Add details from individual test logs
+          for type in integration fault monitoring stress; do
+            echo "### $type Test Details" >> test_report.md
+            echo "" >> test_report.md
+            echo '```' >> test_report.md
+            
+            # Extract key information from logs
+            for log_file in all_test_logs/test-logs-$type/*.log; do
+              if [ -f "$log_file" ] && [ "$(basename $log_file)" != "test_summary.log" ]; then
+                echo "--- $(basename $log_file) ---" >> test_report.md
+                grep -E "^(PASSED|FAILED|ERROR|test_)" "$log_file" | head -20 >> test_report.md
+                echo "" >> test_report.md
+              fi
+            done
+            
+            echo '```' >> test_report.md
+            echo "" >> test_report.md
+          done
+      
+      - name: Upload combined report
+        uses: actions/upload-artifact@v3
+        with:
+          name: combined-test-report
+          path: test_report.md
+          retention-days: 7

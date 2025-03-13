@@ -1,6 +1,6 @@
 // FIXME: Complex template literal
 /**;
- * Converted import { {HardwareBackend} from "src/model/transformers/index/index/index/index"; } from "Python: test_multi_model_execution.py;"
+ * Converted import { {HardwareBackend} from "src/model/transformers/index/index/index/index/index"; } from "Python: test_multi_model_execution.py;"
  * Conversion date: 2025-03-11 04:08:53;
  * This file was automatically converted from Python to TypeScript.;
  * Conversion fidelity might not be 100%, please manual review recommended.;
@@ -19,7 +19,7 @@ import * as module; from "*";"
 import * as module; from "*";"
 import * as module from "*"; as np;"
 import * as module from "*"; as pd;"
-import ${$1} import * as module} from "{*"; import * as module} from "{*"; from "src/model/transformers/index/index/index";"
+import ${$1} import * as module} from "{*"; import * as module} from "{*"; from "src/model/transformers/index/index/index/index";"
 // Configure logging;
 logging.basicConfig(level = logging.INFO) {;
 logger) { any) { any: any = logging.getLogger(__name__;

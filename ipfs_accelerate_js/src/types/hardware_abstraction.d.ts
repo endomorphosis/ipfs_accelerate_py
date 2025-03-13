@@ -2,60 +2,37 @@
  * Type definitions for hardware abstraction layer
  */
 
-export type HardwareBackendType = 'webgpu' | 'webnn' | 'wasm' | 'cpu';
+import { WebGPUBackendType } from './webgpu';
+import { WebNNBackendType } from './webnn';
 
-export interface HardwareInfo {
-  name: string;
-  type: HardwareBackendType;
-  isSimulated: boolean;
-  vendor?: string;
-  version?: string;
-  memorySize?: number;
-  capabilities: {
-    shaderModel?: string;
-    computeSupport?: boolean;
-    int8Support?: boolean;
-    int4Support?: boolean;
-    float16Support?: boolean;
-  };
+export type HardwareBackendType = WebGPUBackendType | WebNNBackendType | 'wasm' | 'cpu';
+
+export interface HardwareCapabilities {
+  browserName: string;
+  browserVersion: string;
+  platform: string;
+  osVersion: string;
+  isMobile: boolean;
+  webgpuSupported: boolean;
+  webgpuFeatures: string[];
+  webnnSupported: boolean;
+  webnnFeatures: string[];
+  wasmSupported: boolean;
+  wasmFeatures: string[];
+  recommendedBackend: HardwareBackendType;
+  memoryLimitMB: number;
 }
 
 export interface HardwareBackend {
   initialize(): Promise<boolean>;
   dispose(): void;
-  getInfo(): HardwareInfo;
-  runInference(model: any, inputs: any): Promise<any>;
-  getCapabilities(): any;
+  execute?<T = any, U = any>(inputs: T): Promise<U>;
 }
 
-export interface HardwareAbstractionOptions {
-  logging?: boolean;
-  preferredBackends?: HardwareBackendType[];
-  fallbackOrder?: HardwareBackendType[];
-}
-
-export interface HardwareCapabilities {
-  browserName: string;
-  backends: {
-    webgpu?: any;
-    webnn?: any;
-    wasm?: any;
-    cpu?: any;
-  };
-}
-
-export interface HardwarePreferences {
-  priorityList?: HardwareBackendType[];
-  disallowList?: HardwareBackendType[];
-  requireSharedMemory?: boolean;
-  requireInt8?: boolean;
-  requireFloat16?: boolean;
-  preferSimulation?: boolean;
-}
-
-export interface ModelType {
-  text: string;
-  vision: string;
-  audio: string;
-  multimodal: string;
+export interface ModelLoaderOptions {
+  modelId: string;
+  modelType: string;
+  path?: string;
+  backend?: HardwareBackendType;
+  options?: Record<string, any>;
 }

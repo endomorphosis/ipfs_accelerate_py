@@ -2,11 +2,11 @@
 
 ## Summary
 
-- **Files Checked:** 764
-- **Files With Valid Imports:** 758
-- **Files With Import Issues:** 6
-- **Total Import Issues:** 6
-- **Fixed Import Issues:** 5
+- **Files Checked:** 771
+- **Files With Valid Imports:** 754
+- **Files With Import Issues:** 17
+- **Total Import Issues:** 32
+- **Fixed Import Issues:** 30
 - **Circular Dependencies:** 0
 
 ## Next Steps

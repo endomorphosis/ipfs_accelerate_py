@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGPU Tensor Operations Example</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    
+    h1, h2, h3 {
+      color: #333;
+    }
+    
+    #status {
+      margin: 20px 0;
+      padding: 15px;
+      border-radius: 5px;
+      border-left: 5px solid #ccc;
+    }
+    
+    .supported {
+      background-color: #e6f7e6;
+      border-color: #28a745;
+    }
+    
+    .not-supported {
+      background-color: #f8d7da;
+      border-color: #dc3545;
+    }
+    
+    #loading {
+      font-style: italic;
+      color: #666;
+    }
+    
+    .benchmark-container {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #eee;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    
+    .progress-bar-container {
+      width: 100%;
+      background-color: #eee;
+      border-radius: 4px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      height: 20px;
+      background-color: #4caf50;
+      width: 0%;
+      transition: width 0.5s;
+      text-align: center;
+      color: white;
+      line-height: 20px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    
+    table th, table td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: left;
+    }
+    
+    table th {
+      background-color: #f2f2f2;
+    }
+    
+    pre {
+      background-color: #f6f8fa;
+      border-radius: 5px;
+      padding: 15px;
+      overflow-x: auto;
+    }
+    
+    .comparison {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      margin: 20px 0;
+    }
+    
+    .comparison-card {
+      flex: 1;
+      min-width: 300px;
+      border: 1px solid #eee;
+      border-radius: 5px;
+      padding: 15px;
+    }
+    
+    .comparison-card h3 {
+      margin-top: 0;
+    }
+    
+    .cpu-bar { background-color: #f44336; }
+    .webgpu-bar { background-color: #2196F3; }
+  </style>
+</head>
+<body>
+  <h1>WebGPU Tensor Operations Example</h1>
+  
+  <div id="status">
+    <p id="loading">Detecting WebGPU support and running benchmarks...</p>
+  </div>
+  
+  <div class="benchmark-container">
+    <h2>Benchmark Results</h2>
+    <p>This example demonstrates tensor operations using the WebGPU backend compared to CPU.</p>
+    <div id="benchmark-results">
+      <!-- Results will be inserted here -->
+    </div>
+    
+    <div id="operation-progress" style="display: none;">
+      <h3>Current Operation: <span id="current-operation">Initializing...</span></h3>
+      <div class="progress-bar-container">
+        <div id="progress-bar" class="progress-bar">0%</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="comparison" id="comparison">
+    <!-- Comparison cards will be inserted here -->
+  </div>
+  
+  <div id="stats-container" style="display: none;">
+    <h2>WebGPU Buffer Statistics</h2>
+    <pre id="stats-output"></pre>
+  </div>
+  
+  <div id="webgpu-output">
+    <!-- WebGPU output will be inserted here -->
+  </div>
+  
+  <script type="module">
+    import { runWebGPUTensorExample } from './webgpu_tensor_example.js';
+    
+    // Function to run the CPU version of an operation for comparison
+    function runCpuOperation(operation, size) {
+      // Simple CPU implementations for comparison
+      const a = new Array(size).fill(0).map(() => Math.random());
+      const b = new Array(size).fill(0).map(() => Math.random());
+      
+      const start = performance.now();
+      
+      switch(operation) {
+        case 'add':
+          // Element-wise addition
+          for (let i = 0; i < size; i++) {
+            const result = a[i] + b[i];
+          }
+          break;
+          
+        case 'multiply':
+          // Element-wise multiplication
+          for (let i = 0; i < size; i++) {
+            const result = a[i] * b[i];
+          }
+          break;
+          
+        case 'matmul':
+          // Simple matrix multiplication (for 1024x1024 this will be slow)
+          // We'll use a small subset for demonstration
+          const subSize = 256; // Using smaller size for CPU to avoid freezing the page
+          const matA = Array(subSize).fill().map(() => Array(subSize).fill().map(() => Math.random()));
+          const matB = Array(subSize).fill().map(() => Array(subSize).fill().map(() => Math.random()));
+          const result = Array(subSize).fill().map(() => Array(subSize).fill(0));
+          
+          for (let i = 0; i < subSize; i++) {
+            for (let j = 0; j < subSize; j++) {
+              let sum = 0;
+              for (let k = 0; k < subSize; k++) {
+                sum += matA[i][k] * matB[k][j];
+              }
+              result[i][j] = sum;
+            }
+          }
+          break;
+          
+        case 'relu':
+          // ReLU activation
+          for (let i = 0; i < size; i++) {
+            const result = Math.max(0, a[i]);
+          }
+          break;
+          
+        case 'sigmoid':
+          // Sigmoid activation
+          for (let i = 0; i < size; i++) {
+            const result = 1 / (1 + Math.exp(-a[i]));
+          }
+          break;
+      }
+      
+      return performance.now() - start;
+    }
+    
+    // Update the UI with benchmark results
+    function updateBenchmarkResults(webgpuResults) {
+      const benchmarkResults = document.getElementById('benchmark-results');
+      const comparisonContainer = document.getElementById('comparison');
+      
+      // Run CPU operations for comparison
+      const cpuResults = {
+        add: runCpuOperation('add', 1000),
+        multiply: runCpuOperation('multiply', 1000),
+        matmul: runCpuOperation('matmul', 1024), // This uses a smaller size on CPU
+        relu: runCpuOperation('relu', 1000),
+        sigmoid: runCpuOperation('sigmoid', 1000)
+      };
+      
+      // Create results table
+      benchmarkResults.innerHTML = `
+        <table>
+          <tr>
+            <th>Operation</th>
+            <th>WebGPU Time (ms)</th>
+            <th>CPU Time (ms)</th>
+            <th>Speedup</th>
+          </tr>
+          <tr>
+            <td>Element-wise Addition</td>
+            <td>${webgpuResults.add.toFixed(2)}</td>
+            <td>${cpuResults.add.toFixed(2)}</td>
+            <td>${(cpuResults.add / webgpuResults.add).toFixed(2)}x</td>
+          </tr>
+          <tr>
+            <td>Element-wise Multiplication</td>
+            <td>${webgpuResults.multiply.toFixed(2)}</td>
+            <td>${cpuResults.multiply.toFixed(2)}</td>
+            <td>${(cpuResults.multiply / webgpuResults.multiply).toFixed(2)}x</td>
+          </tr>
+          <tr>
+            <td>Matrix Multiplication</td>
+            <td>${webgpuResults.matmul.toFixed(2)}</td>
+            <td>${cpuResults.matmul.toFixed(2)} (256x256)</td>
+            <td>N/A (different sizes)</td>
+          </tr>
+          <tr>
+            <td>ReLU Activation</td>
+            <td>${webgpuResults.relu.toFixed(2)}</td>
+            <td>${cpuResults.relu.toFixed(2)}</td>
+            <td>${(cpuResults.relu / webgpuResults.relu).toFixed(2)}x</td>
+          </tr>
+          <tr>
+            <td>Sigmoid Activation</td>
+            <td>${webgpuResults.sigmoid.toFixed(2)}</td>
+            <td>${cpuResults.sigmoid.toFixed(2)}</td>
+            <td>${(cpuResults.sigmoid / webgpuResults.sigmoid).toFixed(2)}x</td>
+          </tr>
+        </table>
+      `;
+      
+      // Create visual comparison cards
+      const operations = [
+        { name: 'Element-wise Addition', key: 'add' },
+        { name: 'Element-wise Multiplication', key: 'multiply' },
+        { name: 'ReLU Activation', key: 'relu' },
+        { name: 'Sigmoid Activation', key: 'sigmoid' }
+      ];
+      
+      comparisonContainer.innerHTML = '';
+      
+      operations.forEach(op => {
+        const cpuTime = cpuResults[op.key];
+        const webgpuTime = webgpuResults[op.key];
+        const maxTime = Math.max(cpuTime, webgpuTime);
+        
+        const cpuPercentage = (cpuTime / maxTime) * 100;
+        const webgpuPercentage = (webgpuTime / maxTime) * 100;
+        
+        const card = document.createElement('div');
+        card.className = 'comparison-card';
+        card.innerHTML = `
+          <h3>${op.name}</h3>
+          <p>CPU: ${cpuTime.toFixed(2)}ms</p>
+          <div class="progress-bar-container">
+            <div class="progress-bar cpu-bar" style="width: ${cpuPercentage}%">${cpuTime.toFixed(2)}ms</div>
+          </div>
+          <p>WebGPU: ${webgpuTime.toFixed(2)}ms</p>
+          <div class="progress-bar-container">
+            <div class="progress-bar webgpu-bar" style="width: ${webgpuPercentage}%">${webgpuTime.toFixed(2)}ms</div>
+          </div>
+          <p>Speedup: ${(cpuTime / webgpuTime).toFixed(2)}x</p>
+        `;
+        
+        comparisonContainer.appendChild(card);
+      });
+    }
+    
+    // Main function to initialize the demo
+    async function initDemo() {
+      const statusElement = document.getElementById('status');
+      const loadingElement = document.getElementById('loading');
+      
+      try {
+        // Check if WebGPU is supported
+        if (!navigator.gpu) {
+          statusElement.className = 'not-supported';
+          statusElement.innerHTML = `
+            <h2>WebGPU Not Supported</h2>
+            <p>Your browser does not support WebGPU, which is required for hardware-accelerated tensor operations.</p>
+            <p>Try using Chrome 113+, Edge 113+, or Safari 17.4+.</p>
+          `;
+          return;
+        }
+        
+        // Update status to show WebGPU is supported
+        statusElement.className = 'supported';
+        statusElement.innerHTML = `
+          <h2>WebGPU Supported</h2>
+          <p>Your browser supports WebGPU! Running benchmarks...</p>
+        `;
+        
+        // Show progress element
+        document.getElementById('operation-progress').style.display = 'block';
+        
+        // Run the WebGPU example
+        const currentOpElement = document.getElementById('current-operation');
+        const progressBar = document.getElementById('progress-bar');
+        
+        // Helper function to update progress
+        function updateProgress(operation, percent) {
+          currentOpElement.textContent = operation;
+          progressBar.style.width = `${percent}%`;
+          progressBar.textContent = `${percent}%`;
+        }
+        
+        // Run WebGPU example
+        updateProgress('Initializing WebGPU', 10);
+        
+        // Simulate progress updates
+        const operations = [
+          'Initializing WebGPU',
+          'Creating Tensors',
+          'Element-wise Addition',
+          'Element-wise Multiplication',
+          'Matrix Multiplication',
+          'ReLU Activation',
+          'Sigmoid Activation',
+          'Finalizing Results'
+        ];
+        
+        for (let i = 0; i < operations.length; i++) {
+          updateProgress(operations[i], Math.round((i / operations.length) * 100));
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        const result = await runWebGPUTensorExample();
+        
+        if (result.supported) {
+          // Show results
+          updateProgress('Completed', 100);
+          
+          // Update benchmark results
+          updateBenchmarkResults(result.results);
+          
+          // Show stats
+          const statsContainer = document.getElementById('stats-container');
+          statsContainer.style.display = 'block';
+          document.getElementById('stats-output').textContent = JSON.stringify(result.stats, null, 2);
+          
+          // Update status
+          statusElement.innerHTML = `
+            <h2>WebGPU Is Working!</h2>
+            <p>Your browser successfully executed tensor operations on the GPU.</p>
+          `;
+        } else {
+          // Show error
+          statusElement.className = 'not-supported';
+          statusElement.innerHTML = `
+            <h2>WebGPU Initialization Failed</h2>
+            <p>WebGPU is supported by your browser, but initialization failed:</p>
+            <p>${result.error}</p>
+          `;
+          
+          // Hide progress
+          document.getElementById('operation-progress').style.display = 'none';
+        }
+      } catch (error) {
+        // Show error
+        statusElement.className = 'not-supported';
+        statusElement.innerHTML = `
+          <h2>Error Running Demo</h2>
+          <p>An error occurred while running the WebGPU demo:</p>
+          <p>${error.message}</p>
+        `;
+        
+        // Hide progress
+        document.getElementById('operation-progress').style.display = 'none';
+      }
+    }
+    
+    // Initialize the demo when the page loads
+    window.addEventListener('DOMContentLoaded', initDemo);
+  </script>
+</body>
+</html>

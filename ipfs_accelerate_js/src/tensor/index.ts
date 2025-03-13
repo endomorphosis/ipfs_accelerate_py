@@ -1,10 +1,6 @@
-/**
- * Tensor module exports
- */
-export * from './tensor';
-export * from './tensor_operations';
-export * from './tensor_sharing';
+// Auto-generated index file
 
-// Re-export tensor creation functions as the main API
-import { createTensor, zeros, ones } from './tensor';
-export { createTensor, zeros, ones };
+export * from "./tensor_sharing";
+export * from "./tensor";
+export * from "./tensor_operations";
+export * from "./shared_tensor";

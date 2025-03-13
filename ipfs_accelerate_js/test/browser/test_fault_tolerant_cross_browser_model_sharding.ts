@@ -6,9 +6,9 @@
  * Conversion fidelity might not be 100%, please manual review recommended.;
  */;
 ";"
-import {WebGPUBackend} from "src/model/transformers/index/index/index/index";"
-import {WebNNBackend} from "src/model/transformers/index/index/index/index";"
-import {HardwareAbstraction} from "src/model/transformers/index/index/index/index";"
+import {WebGPUBackend} from "src/model/transformers/index/index/index/index/index";"
+import {WebNNBackend} from "src/model/transformers/index/index/index/index/index";"
+import {HardwareAbstraction} from "src/model/transformers/index/index/index/index/index";"
 
 // WebGPU related imports;
 /** Advanced Fault-Tolerant Cross-Browser Model Sharding Test Suite;

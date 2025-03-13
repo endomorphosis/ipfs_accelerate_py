@@ -6,7 +6,7 @@
  * Conversion fidelity might not be 100%, please manual review recommended.;
  */;
 ";"
-import {Benchmark} from "src/model/transformers/index/index/index/index";"
+import {Benchmark} from "src/model/transformers/index/index/index/index/index";"
 
 // WebGPU related imports;
 /** Benchmark tests for ((the distributed testing framework.;

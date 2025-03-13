@@ -1,394 +1,316 @@
 /**
- * Hardware Abstraction Layer
- * 
- * This file provides a unified interface for accessing various hardware backends
- * (WebGPU, WebNN, WebAssembly) with automatic fallback capability.
+ * Hardware Abstraction Layer for IPFS Accelerate TypeScript SDK
+ * Provides a unified interface for using different hardware backends
+ * (WebGPU, WebNN, WebAssembly, CPU) for AI model acceleration.
  */
 
-import { WebGPUBackend, isWebGPUSupported, getWebGPUInfo } from './ipfs_accelerate_js_webgpu_backend';
-import { WebNNBackend, isWebNNSupported, getWebNNInfo } from './ipfs_accelerate_js_webnn_backend';
+import { HardwareCapabilities, detectHardwareCapabilities } from './hardware_detection';
 
+/**
+ * The hardware backend type: WebGPU, WebNN, WebAssembly, or CPU
+ */
 export type HardwareBackendType = 'webgpu' | 'webnn' | 'wasm' | 'cpu';
 
-export interface HardwareCapabilities {
-  webgpu: {
-    supported: boolean;
-    adapterInfo?: any;
-    features?: string[];
-    isSimulated?: boolean;
-  };
-  webnn: {
-    supported: boolean;
-    deviceType?: string;
-    deviceName?: string;
-    isSimulated?: boolean;
-    features?: string[];
-  };
-  wasm: {
-    supported: boolean;
-    simd?: boolean;
-    threads?: boolean;
-  };
-  optimalBackend: HardwareBackendType;
-  browserName: string;
-  browserVersion: string;
-}
-
-export interface HardwareAbstractionOptions {
-  /** Enable logging */
-  logging?: boolean;
-  /** Preferred backend order */
-  preferredBackends?: HardwareBackendType[];
-  /** WebGPU specific options */
-  webgpuOptions?: any;
-  /** WebNN specific options */
-  webnnOptions?: any;
-  /** WebAssembly specific options */
-  wasmOptions?: any;
+/**
+ * Hardware backend interface
+ * Represents a hardware acceleration backend (WebGPU, WebNN, etc.)
+ */
+export interface HardwareBackend<T = any> {
+  /**
+   * Backend type identifier
+   */
+  readonly type: HardwareBackendType;
+  
+  /**
+   * Initialize the backend
+   */
+  initialize(): Promise<boolean>;
+  
+  /**
+   * Check if the backend is supported on this device
+   */
+  isSupported(): Promise<boolean>;
+  
+  /**
+   * Get backend-specific capabilities
+   */
+  getCapabilities(): Promise<Record<string, any>>;
+  
+  /**
+   * Create tensor from data (for backend-specific optimizations)
+   */
+  createTensor(data: T, shape: number[], dataType?: string): Promise<any>;
+  
+  /**
+   * Execute operation on the hardware backend
+   */
+  execute(operation: string, inputs: Record<string, any>, options?: Record<string, any>): Promise<any>;
+  
+  /**
+   * Release resources
+   */
+  dispose(): void;
 }
 
 /**
- * Hardware Abstraction Layer for unified access to acceleration backends
+ * Hardware abstraction options
+ */
+export interface HardwareAbstractionOptions {
+  /**
+   * Preferred order of backends to try
+   */
+  backendOrder?: HardwareBackendType[];
+  
+  /**
+   * Model-specific backend preferences
+   */
+  modelPreferences?: Record<string, HardwareBackendType | 'auto'>;
+  
+  /**
+   * Additional backend-specific options
+   */
+  backendOptions?: Record<HardwareBackendType, Record<string, any>>;
+  
+  /**
+   * Enable automatic fallback to next backend if preferred one fails
+   */
+  autoFallback?: boolean;
+  
+  /**
+   * Enable automatic backend selection based on model and hardware capabilities
+   */
+  autoSelection?: boolean;
+}
+
+/**
+ * Hardware Abstraction Layer
+ * Provides a unified interface for all hardware backends
  */
 export class HardwareAbstraction {
-  private webgpuBackend: WebGPUBackend | null = null;
-  private webnnBackend: WebNNBackend | null = null;
-  private wasmBackend: any | null = null;  // To be implemented
-  private capabilities: HardwareCapabilities | null = null;
-  private activeBackend: HardwareBackendType | null = null;
   private options: HardwareAbstractionOptions;
-  private initialized: boolean = false;
-
+  private backends: Map<HardwareBackendType, HardwareBackend> = new Map();
+  private capabilities: HardwareCapabilities | null = null;
+  private initialized = false;
+  
+  /**
+   * Create a hardware abstraction layer
+   */
   constructor(options: HardwareAbstractionOptions = {}) {
     this.options = {
-      logging: false,
-      preferredBackends: ['webgpu', 'webnn', 'wasm', 'cpu'],
+      backendOrder: ['webgpu', 'webnn', 'wasm', 'cpu'],
+      autoFallback: true,
+      autoSelection: true,
       ...options
     };
   }
-
+  
   /**
-   * Initialize the hardware abstraction layer and detect capabilities
+   * Initialize the hardware abstraction layer
    */
   async initialize(): Promise<boolean> {
-    try {
-      // Detect browser
-      const browserInfo = this.detectBrowser();
-      
-      // Detect capabilities
-      this.capabilities = {
-        webgpu: {
-          supported: false
-        },
-        webnn: {
-          supported: false
-        },
-        wasm: {
-          supported: this.detectWasmSupport()
-        },
-        optimalBackend: 'cpu',
-        browserName: browserInfo.name,
-        browserVersion: browserInfo.version
-      };
-      
-      // Check WebGPU support
-      if (await isWebGPUSupported()) {
-        const webgpuInfo = await getWebGPUInfo();
-        this.capabilities.webgpu = webgpuInfo;
-        
-        // Initialize WebGPU backend
-        this.webgpuBackend = new WebGPUBackend(this.options.webgpuOptions);
-        const webgpuInitialized = await this.webgpuBackend.initialize();
-        
-        if (!webgpuInitialized) {
-          this.webgpuBackend = null;
+    if (this.initialized) return true;
+    
+    // Detect hardware capabilities
+    this.capabilities = await detectHardwareCapabilities();
+    
+    // Initialize available backends in priority order
+    for (const backendType of this.options.backendOrder!) {
+      try {
+        const backend = await this.createBackend(backendType);
+        if (backend && await backend.isSupported()) {
+          await backend.initialize();
+          this.backends.set(backendType, backend);
         }
-      }
-      
-      // Check WebNN support
-      if (await isWebNNSupported()) {
-        const webnnInfo = await getWebNNInfo();
-        this.capabilities.webnn = webnnInfo;
-        
-        // Initialize WebNN backend
-        this.webnnBackend = new WebNNBackend(this.options.webnnOptions);
-        const webnnInitialized = await this.webnnBackend.initialize();
-        
-        if (!webnnInitialized) {
-          this.webnnBackend = null;
-        }
-      }
-      
-      // Initialize WebAssembly backend (to be implemented)
-      // This will be expanded in the actual implementation
-      
-      // Determine optimal backend based on capabilities and preferences
-      this.activeBackend = this.determineOptimalBackend();
-      this.capabilities.optimalBackend = this.activeBackend;
-      
-      // Log info if logging is enabled
-      if (this.options.logging) {
-        console.log('Hardware Capabilities:', this.capabilities);
-        console.log('Active Backend:', this.activeBackend);
-      }
-      
-      this.initialized = true;
-      return true;
-    } catch (error) {
-      console.error('Failed to initialize hardware abstraction layer:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Determine the optimal backend based on capabilities and preferences
-   */
-  private determineOptimalBackend(): HardwareBackendType {
-    // Start with the preferred order
-    for (const backend of this.options.preferredBackends!) {
-      // Check if backend is available
-      switch (backend) {
-        case 'webgpu':
-          if (this.webgpuBackend) return 'webgpu';
-          break;
-        case 'webnn':
-          if (this.webnnBackend) return 'webnn';
-          break;
-        case 'wasm':
-          if (this.wasmBackend) return 'wasm';
-          break;
-        case 'cpu':
-          return 'cpu'; // CPU is always available as a fallback
+      } catch (error) {
+        console.error(`Failed to initialize ${backendType} backend:`, error);
       }
     }
     
-    // If none of the preferred backends are available, use the first available
-    if (this.webgpuBackend) return 'webgpu';
-    if (this.webnnBackend) return 'webnn';
-    if (this.wasmBackend) return 'wasm';
+    this.initialized = this.backends.size > 0;
+    return this.initialized;
+  }
+  
+  /**
+   * Create a backend instance
+   */
+  private async createBackend(type: HardwareBackendType): Promise<HardwareBackend | null> {
+    const options = this.options.backendOptions?.[type] || {};
     
-    // Default to CPU
-    return 'cpu';
+    switch (type) {
+      case 'webgpu':
+        try {
+          const { WebGPUBackend } = await import('./backends/webgpu_backend');
+          return new WebGPUBackend(options);
+        } catch (error) {
+          console.error('Failed to load WebGPU backend:', error);
+          return null;
+        }
+        
+      case 'webnn':
+        try {
+          const { WebNNBackend } = await import('./backends/webnn_backend');
+          return new WebNNBackend(options);
+        } catch (error) {
+          console.error('Failed to load WebNN backend:', error);
+          return null;
+        }
+        
+      case 'wasm':
+        try {
+          const { WasmBackend } = await import('./backends/wasm_backend');
+          return new WasmBackend(options);
+        } catch (error) {
+          console.error('Failed to load WASM backend:', error);
+          return null;
+        }
+        
+      case 'cpu':
+        try {
+          const { CPUBackend } = await import('./backends/cpu_backend');
+          return new CPUBackend(options);
+        } catch (error) {
+          console.error('Failed to load CPU backend:', error);
+          return null;
+        }
+        
+      default:
+        console.error(`Unknown backend type: ${type}`);
+        return null;
+    }
   }
-
+  
   /**
-   * Get the currently active backend
+   * Get the best backend for a specific model type
    */
-  getActiveBackend(): HardwareBackendType | null {
-    return this.activeBackend;
-  }
-
-  /**
-   * Switch to a different backend if available
-   */
-  async switchBackend(backend: HardwareBackendType): Promise<boolean> {
+  getBestBackend(modelType: string): HardwareBackend | null {
     if (!this.initialized) {
       throw new Error('Hardware abstraction layer not initialized');
     }
     
-    // Check if the requested backend is available
-    switch (backend) {
-      case 'webgpu':
-        if (!this.webgpuBackend) {
-          throw new Error('WebGPU backend not available');
-        }
-        break;
-      case 'webnn':
-        if (!this.webnnBackend) {
-          throw new Error('WebNN backend not available');
-        }
-        break;
-      case 'wasm':
-        if (!this.wasmBackend) {
-          throw new Error('WebAssembly backend not available');
-        }
-        break;
-      case 'cpu':
-        // CPU is always available
-        break;
-      default:
-        throw new Error(`Unknown backend: ${backend}`);
+    // Check if there's a specific preference for this model type
+    const preference = this.options.modelPreferences?.[modelType];
+    
+    if (preference && preference !== 'auto') {
+      // Use the specified backend if available
+      const backend = this.backends.get(preference);
+      if (backend) return backend;
     }
     
-    // Switch to the new backend
-    this.activeBackend = backend;
-    
-    if (this.options.logging) {
-      console.log(`Switched to ${backend} backend`);
+    // Auto-select based on model type and hardware capabilities
+    if (this.options.autoSelection) {
+      if (modelType === 'audio' && this.backends.has('webgpu')) {
+        // Audio models often perform best on WebGPU (especially on Firefox)
+        return this.backends.get('webgpu')!;
+      } else if (modelType === 'vision' && this.backends.has('webgpu')) {
+        // Vision models generally do well on WebGPU
+        return this.backends.get('webgpu')!;
+      } else if (modelType === 'text' && this.backends.has('webnn')) {
+        // Text models can benefit from WebNN's optimized matrix operations
+        return this.backends.get('webnn')!;
+      }
     }
     
-    return true;
+    // Fallback to the first available backend in order of preference
+    for (const backendType of this.options.backendOrder!) {
+      const backend = this.backends.get(backendType);
+      if (backend) return backend;
+    }
+    
+    // Fallback to CPU as last resort
+    return this.backends.get('cpu') || null;
   }
-
+  
   /**
-   * Get the WebGPU backend if available
+   * Execute operation using the best available backend
    */
-  getWebGPUBackend(): WebGPUBackend | null {
-    return this.webgpuBackend;
+  async execute<T = any, R = any>(
+    operation: string,
+    inputs: T,
+    options: {
+      modelType?: string;
+      preferredBackend?: HardwareBackendType;
+      backendOptions?: Record<string, any>;
+    } = {}
+  ): Promise<R> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+    
+    const modelType = options.modelType || 'generic';
+    const preferredBackend = options.preferredBackend;
+    
+    // Try preferred backend first if specified
+    if (preferredBackend) {
+      const backend = this.backends.get(preferredBackend);
+      if (backend) {
+        try {
+          return await backend.execute(operation, inputs as any, options.backendOptions) as R;
+        } catch (error) {
+          if (!this.options.autoFallback) {
+            throw error;
+          }
+          console.warn(`Execution failed on ${preferredBackend}, trying fallback backends`);
+        }
+      }
+    }
+    
+    // Get the best backend for this model type
+    const backend = this.getBestBackend(modelType);
+    if (!backend) {
+      throw new Error('No suitable backend available');
+    }
+    
+    // Execute using the selected backend
+    return await backend.execute(operation, inputs as any, options.backendOptions) as R;
   }
-
-  /**
-   * Get the WebNN backend if available
-   */
-  getWebNNBackend(): WebNNBackend | null {
-    return this.webnnBackend;
-  }
-
-  /**
-   * Get the WebAssembly backend if available
-   */
-  getWasmBackend(): any | null {
-    return this.wasmBackend;
-  }
-
+  
   /**
    * Get hardware capabilities
    */
   getCapabilities(): HardwareCapabilities | null {
     return this.capabilities;
   }
-
+  
   /**
-   * Check if a specific backend type is supported
+   * Check if a specific backend is available
    */
-  isBackendSupported(backend: HardwareBackendType): boolean {
-    if (!this.capabilities) {
-      return false;
-    }
-    
-    switch (backend) {
-      case 'webgpu':
-        return this.capabilities.webgpu.supported;
-      case 'webnn':
-        return this.capabilities.webnn.supported;
-      case 'wasm':
-        return this.capabilities.wasm.supported;
-      case 'cpu':
-        return true; // CPU is always supported
-      default:
-        return false;
-    }
+  hasBackend(type: HardwareBackendType): boolean {
+    return this.backends.has(type);
   }
-
+  
   /**
-   * Get the optimal backend for a specific model type
+   * Get a specific backend instance
    */
-  getOptimalBackendForModel(
-    modelType: 'text' | 'vision' | 'audio' | 'multimodal'
-  ): HardwareBackendType {
-    if (!this.capabilities) {
-      return 'cpu';
-    }
-    
-    // Browser-specific optimizations
-    const browser = this.capabilities.browserName.toLowerCase();
-    
-    // Consider both hardware capabilities and browser-specific optimizations
-    if (modelType === 'audio' && browser === 'firefox' && this.isBackendSupported('webgpu')) {
-      // Firefox has optimized audio compute shaders
-      return 'webgpu';
-    } else if (modelType === 'text' && browser === 'edge' && this.isBackendSupported('webnn')) {
-      // Edge has good WebNN text model support
-      return 'webnn';
-    } else if (modelType === 'vision' && this.isBackendSupported('webgpu')) {
-      // Vision models generally work best on WebGPU
-      return 'webgpu';
-    }
-    
-    // Default to the active backend
-    return this.activeBackend || 'cpu';
+  getBackend(type: HardwareBackendType): HardwareBackend | null {
+    return this.backends.get(type) || null;
   }
-
+  
   /**
-   * Detect the current browser
+   * Get all available backends
    */
-  private detectBrowser(): { name: string; version: string } {
-    const userAgent = navigator.userAgent;
-    let name = 'unknown';
-    let version = 'unknown';
-    
-    // Extract browser name and version from user agent
-    if (userAgent.indexOf('Edge') > -1) {
-      name = 'edge';
-      const edgeMatch = userAgent.match(/Edge\/(\d+)/);
-      version = edgeMatch ? edgeMatch[1] : 'unknown';
-    } else if (userAgent.indexOf('Edg') > -1) {
-      name = 'edge';
-      const edgMatch = userAgent.match(/Edg\/(\d+)/);
-      version = edgMatch ? edgMatch[1] : 'unknown';
-    } else if (userAgent.indexOf('Firefox') > -1) {
-      name = 'firefox';
-      const firefoxMatch = userAgent.match(/Firefox\/(\d+)/);
-      version = firefoxMatch ? firefoxMatch[1] : 'unknown';
-    } else if (userAgent.indexOf('Chrome') > -1) {
-      name = 'chrome';
-      const chromeMatch = userAgent.match(/Chrome\/(\d+)/);
-      version = chromeMatch ? chromeMatch[1] : 'unknown';
-    } else if (userAgent.indexOf('Safari') > -1) {
-      name = 'safari';
-      const safariMatch = userAgent.match(/Version\/(\d+)/);
-      version = safariMatch ? safariMatch[1] : 'unknown';
-    }
-    
-    return { name, version };
+  getAvailableBackends(): HardwareBackendType[] {
+    return Array.from(this.backends.keys());
   }
-
+  
   /**
-   * Detect WebAssembly support
-   */
-  private detectWasmSupport(): boolean {
-    try {
-      // Check basic WebAssembly support
-      if (typeof WebAssembly !== 'object') {
-        return false;
-      }
-      
-      // Check SIMD support
-      const simdSupported = WebAssembly.validate(new Uint8Array([
-        0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3,
-        2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
-      ]));
-      
-      // Check threads support
-      const threadsSupported = typeof SharedArrayBuffer === 'function';
-      
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  /**
-   * Clean up resources
+   * Release all resources
    */
   dispose(): void {
-    if (this.webgpuBackend) {
-      this.webgpuBackend.dispose();
-      this.webgpuBackend = null;
+    for (const backend of this.backends.values()) {
+      backend.dispose();
     }
-    
-    if (this.webnnBackend) {
-      this.webnnBackend.dispose();
-      this.webnnBackend = null;
-    }
-    
-    if (this.wasmBackend) {
-      // Clean up WebAssembly backend
-      this.wasmBackend = null;
-    }
-    
-    this.activeBackend = null;
+    this.backends.clear();
     this.initialized = false;
   }
 }
 
 /**
- * Create a hardware abstraction layer instance and initialize it
+ * Create a hardware abstraction layer and initialize it
  */
 export async function createHardwareAbstraction(
   options: HardwareAbstractionOptions = {}
 ): Promise<HardwareAbstraction> {
-  const hardware = new HardwareAbstraction(options);
-  await hardware.initialize();
-  return hardware;
+  const hal = new HardwareAbstraction(options);
+  await hal.initialize();
+  return hal;
 }

@@ -206,6 +206,40 @@ export default [
     ]
   },
 
+  // WebNN-only bundle for specialized use cases
+  {
+    input: 'src/hardware/backends/webnn_standalone.ts',
+    output: {
+      file: 'dist/webnn/index.js',
+      format: 'es',
+      sourcemap: !production
+    },
+    plugins: [
+      ...sharedPlugins,
+      production && terser({
+        ecma: 2020,
+        mangle: { toplevel: true },
+        compress: {
+          module: true,
+          toplevel: true,
+          unsafe_arrows: true,
+          drop_console: false,
+          drop_debugger: true
+        },
+        output: { comments: false }
+      }),
+      generatePackageJson({
+        baseContents: {
+          name: 'webnn',
+          private: true,
+          main: './index.js',
+          module: './index.js',
+          types: '../types/hardware/backends/webnn_standalone.d.ts'
+        }
+      })
+    ]
+  },
+
   // Node.js specific bundle
   {
     input: 'src/node/index.ts',

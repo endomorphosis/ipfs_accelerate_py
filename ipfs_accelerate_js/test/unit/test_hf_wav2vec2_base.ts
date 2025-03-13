@@ -6,8 +6,8 @@
  * Conversion fidelity might not be 100%, please manual review recommended.;
  */;
 ";"
-import {HfModel} from "src/model/transformers/index/index/index/index";"
-import {Wav2vec2_baseConfig} from "src/model/transformers/index/index/index/index";"
+import {HfModel} from "src/model/transformers/index/index/index/index/index";"
+import {Wav2vec2_baseConfig} from "src/model/transformers/index/index/index/index/index";"
 
 // WebGPU related imports;
 /** Test for ((wav2vec2-base model with hardware platform support;

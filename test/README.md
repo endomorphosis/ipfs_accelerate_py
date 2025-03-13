@@ -1,12 +1,24 @@
-# IPFS Accelerate Python - Test Framework
+# IPFS Accelerate - Development Framework
 
-This directory contains the comprehensive testing framework for the IPFS Accelerate Python library, with a focus on validating model functionality, API integrations, and hardware acceleration capabilities.
+This repository contains the comprehensive development framework for the IPFS Accelerate platform, with implementations in both Python and TypeScript, focusing on model functionality, API integrations, and hardware acceleration capabilities across both server and browser environments.
+
+> **NEW: TYPESCRIPT SDK IMPLEMENTATION COMPLETE - MARCH 13, 2025**
+>
+> The WebGPU/WebNN migration to TypeScript has been completed! This implementation provides:
+> - Hardware-accelerated machine learning directly in web browsers using WebGPU and WebNN
+> - Proper TypeScript interfaces for all components with comprehensive type definitions
+> - React integration with custom hooks for easy integration in web applications
+> - Cross-model tensor sharing for efficient memory usage
+> - Browser-specific optimizations for different model types
+>
+> See [TYPESCRIPT_IMPLEMENTATION_SUMMARY.md](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md) for implementation details and [API_DOCUMENTATION.md](API_DOCUMENTATION.md) for comprehensive API documentation.
 
 > **IMPORTANT CODE REORGANIZATION - MARCH 2025**
 >
 > The codebase has been reorganized for better maintainability:
 > - All generator files moved to the `generators/` directory (216 files)
 > - All database-related tools moved to the `duckdb_api/` directory (83 files)
+> - JavaScript SDK components in the `ipfs_accelerate_js` directory with TypeScript
 >
 > Please refer to [FINAL_MIGRATION_REPORT.md](FINAL_MIGRATION_REPORT.md) for complete details about the directory structure.
 >
@@ -16,20 +28,24 @@ This directory contains the comprehensive testing framework for the IPFS Acceler
 
 Phase 16 has been successfully completed (March 2025), with all planned features implemented and validated. The current development focus has shifted to the following key initiatives:
 
-1. **Distributed Testing Framework** 🔄 - Creating a scalable system for parallel test execution across multiple nodes (IN PROGRESS - 25% complete)
-2. **Model File Verification and Conversion Pipeline** ✅ - Pre-benchmark ONNX file verification and PyTorch conversion (COMPLETED - March 9, 2025)
-3. **WebGPU/WebNN Resource Pool Integration** 🔄 - Implementing parallel model execution across browser backends (IN PROGRESS - Started March 7, 2025)
-4. **Cross-Browser Model Sharding** ✅ - Run large models distributed across multiple browser types (COMPLETED - March 8, 2025)
-5. **Predictive Performance System** 🔄 - Implementing ML-based performance prediction with active learning, test batch generation, and hardware recommendation integration (IN PROGRESS - 70% complete)
+1. **WebGPU/WebNN TypeScript SDK** ✅ - Full TypeScript implementation with WebGPU and WebNN hardware acceleration (COMPLETED - March 13, 2025)
+2. **Distributed Testing Framework** 🔄 - Creating a scalable system for parallel test execution across multiple nodes (IN PROGRESS - 25% complete)
+3. **Model File Verification and Conversion Pipeline** ✅ - Pre-benchmark ONNX file verification and PyTorch conversion (COMPLETED - March 9, 2025)
+4. **WebGPU/WebNN Resource Pool Integration** 🔄 - Implementing parallel model execution across browser backends (IN PROGRESS - Started March 7, 2025)
+5. **Cross-Browser Model Sharding** ✅ - Run large models distributed across multiple browser types (COMPLETED - March 8, 2025)
+6. **Predictive Performance System** 🔄 - Implementing ML-based performance prediction with active learning, test batch generation, and hardware recommendation integration (IN PROGRESS - 70% complete)
 
 See the [Next Steps](NEXT_STEPS.md) document for the detailed roadmap of current and future initiatives. For information about the completed Phase 16, see the [Phase 16 Completion Report](PHASE16_COMPLETION_REPORT.md).
 
 ## Recent Documentation
 
+- **[TYPESCRIPT_IMPLEMENTATION_SUMMARY.md](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md)** - NEW! Comprehensive implementation summary of the TypeScript SDK
+- **[TYPESCRIPT_MIGRATION_FINAL_REPORT.md](TYPESCRIPT_MIGRATION_FINAL_REPORT.md)** - NEW! Detailed report on the TypeScript migration process and outcomes
+- **[API_DOCUMENTATION.md](API_DOCUMENTATION.md)** - UPDATED! Now includes comprehensive TypeScript interfaces and examples
+- **[SDK_DOCUMENTATION.md](SDK_DOCUMENTATION.md)** - UPDATED! Includes both Python and TypeScript SDK information
+- **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - UPDATED! Comprehensive index of all documentation, including TypeScript
 - **[TEST_BATCH_GENERATOR_GUIDE.md](predictive_performance/TEST_BATCH_GENERATOR_GUIDE.md)** - NEW! Comprehensive guide to the Test Batch Generator for creating optimized test batches
 - **[INTEGRATED_ACTIVE_LEARNING_GUIDE.md](predictive_performance/INTEGRATED_ACTIVE_LEARNING_GUIDE.md)** - NEW! Comprehensive guide to the integration between Active Learning and Hardware Recommendation
-- **[INTEGRATION_QUICK_REFERENCE.md](predictive_performance/INTEGRATION_QUICK_REFERENCE.md)** - NEW! Quick reference for using the integrated recommendation system
-- **[TESTING_GUIDE.md](predictive_performance/TESTING_GUIDE.md)** - NEW! Comprehensive testing guide for the Predictive Performance System
 - **[MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md)** - NEW! Comprehensive guide to the Model File Verification and Conversion Pipeline
 - **[PREDICTIVE_PERFORMANCE_GUIDE.md](predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md)** - UPDATED! Comprehensive guide to the ML-based performance prediction system
 - **[WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md)** - NEW! Comprehensive guide to cross-browser model sharding for large models
@@ -85,18 +101,36 @@ See the [Next Steps](NEXT_STEPS.md) document for the detailed roadmap of current
 
 ## Overview
 
-The test framework includes:
+The IPFS Accelerate framework includes:
 
-1. **Model Tests** - Validation for 300+ HuggingFace model types across different hardware platforms
+1. **SDK Implementations**
+   - **Python SDK** - For server-side, desktop, and scientific applications
+   - **TypeScript SDK** - For web browsers and Node.js applications with WebGPU/WebNN acceleration
+   - **Cross-SDK Compatibility** - Shared architecture and patterns across implementations
+
+2. **Model Tests** - Validation for 300+ HuggingFace model types across different hardware platforms
    - Uses template-based generation from DuckDB database (not thousands of individual files)
    - Generated on-demand from modality-specific and hardware-aware templates
    - See the [Template Database Guide](TEMPLATE_DATABASE_GUIDE.md) for details
-2. **API Tests** - Integration tests for various AI API providers
-3. **Hardware Tests** - Validation of CPU, CUDA, OpenVINO, MPS, AMD, Qualcomm AI Engine (QNN), MediaTek APU, Samsung NPU, WebNN, and WebGPU acceleration
-4. **Endpoint Tests** - Tests for local inference endpoints
-5. **Performance Tests** - Benchmarking across hardware configurations
-6. **Web Platform Tests** - Testing and deployment to WebNN and WebGPU browser platforms
-7. **Benchmark Database** - Comprehensive storage and analysis of performance metrics
+
+3. **Hardware Acceleration**
+   - **Server-Side Acceleration** - CPU, CUDA, OpenVINO, MPS (Apple Silicon), AMD (ROCm), Qualcomm, MediaTek, Samsung
+   - **Browser Acceleration** - WebGPU, WebNN with browser-specific optimizations
+   - **Hardware-Aware Resource Management** - Optimal hardware selection based on model type
+
+4. **Web Platform Support**
+   - **WebGPU/WebNN Resource Pool** - Efficient management of browser-based hardware acceleration
+   - **Cross-Browser Model Sharding** - Run large models distributed across multiple browser instances
+   - **Browser-Specific Optimizations** - Firefox for audio models, Edge for WebNN, Chrome for general WebGPU
+   - **React Integration** - Custom hooks for easy integration in React applications
+   - **Ultra-Low Precision** - 4-bit quantization for efficient inference in browsers
+
+5. **Testing and Performance**
+   - **API Tests** - Integration tests for various AI API providers
+   - **Hardware Tests** - Validation across all supported hardware platforms
+   - **Endpoint Tests** - Tests for local inference endpoints
+   - **Performance Tests** - Benchmarking across hardware configurations
+   - **Benchmark Database** - Comprehensive storage and analysis of performance metrics
 
 ## Directory Structure
 
@@ -955,6 +989,57 @@ python generators/simple_model_test_generator.py --model llama-3-70b-instruct --
    - New hardware integration documentation
    - Updated progress tracking in CLAUDE.md
    - Comprehensive SUMMARY_OF_IMPROVEMENTS.md
+
+### TypeScript SDK Usage Examples
+
+The TypeScript SDK provides hardware-accelerated machine learning capabilities for web browsers using WebGPU and WebNN:
+
+```typescript
+// Basic usage
+import { createAccelerator } from 'ipfs-accelerate';
+
+async function runInference() {
+  // Create accelerator with automatic hardware detection
+  const accelerator = await createAccelerator({
+    autoDetectHardware: true
+  });
+  
+  // Run inference
+  const result = await accelerator.accelerate({
+    modelId: 'bert-base-uncased',
+    modelType: 'text',
+    input: 'This is a sample text for embedding.'
+  });
+  
+  console.log(result);
+}
+
+// Hardware abstraction layer
+import { createHardwareAbstraction } from 'ipfs-accelerate/hardware';
+
+const hardware = await createHardwareAbstraction({
+  preferredBackends: ['webgpu', 'webnn', 'wasm', 'cpu']
+});
+
+// Get optimal backend for a model type
+const bestBackendForText = hardware.getOptimalBackendForModel('text');
+console.log(`Best backend for text models: ${bestBackendForText}`);
+
+// React integration
+import { useModel } from 'ipfs-accelerate/react';
+
+function TextEmbeddingComponent() {
+  const { model, status, error } = useModel({
+    modelId: 'bert-base-uncased',
+    modelType: 'text',
+    autoLoad: true
+  });
+  
+  // Use model in React component
+}
+```
+
+For comprehensive documentation, see the [TypeScript API Documentation](API_DOCUMENTATION.md) and [TypeScript Implementation Summary](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md).
 
 ### Previous Improvements
 

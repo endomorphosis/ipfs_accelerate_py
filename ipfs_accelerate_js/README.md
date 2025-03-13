@@ -1,148 +1,121 @@
-# IPFS Accelerate JS SDK
+# IPFS Accelerate JavaScript SDK
 
-JavaScript SDK for accelerating AI models in web browsers using WebGPU, WebNN, and IPFS optimization.
+A hardware-accelerated AI model framework for web browsers using WebGPU, WebNN, and IPFS optimization.
 
 ## Features
 
-- 🚀 **Hardware Acceleration**: Utilize WebGPU and WebNN for fast model inference
-- 🔄 **Automatic Fallbacks**: Seamlessly fall back to available hardware
-- 🌐 **Browser Optimizations**: Browser-specific optimizations for best performance
-- 📦 **Cross-Model Tensor Sharing**: Share tensors between models for memory efficiency
-- 🔧 **Resource Pooling**: Manage resources efficiently across models
-- 💾 **Model Storage**: Efficient storage and caching of model weights
-- 📊 **Performance Monitoring**: Track and analyze performance
+- 🚀 **Hardware Acceleration**: Run AI models with WebGPU and WebNN for maximum performance
+- 🌐 **Cross-Browser Support**: Works in all modern browsers with automatic fallbacks
+- 📦 **Model Optimization**: Automatic model quantization and optimization
+- 🧠 **Multiple Model Support**: Run BERT, ViT, Whisper, and more
+- ⚛️ **React Integration**: Easy integration with React applications using custom hooks
+- 📱 **Mobile Support**: Optimized for mobile devices with power-efficient execution
+- 🔄 **Resource Pooling**: Efficient resource management for running multiple models
 
 ## Installation
 
 ```bash
-npm install ipfs-accelerate-js
+npm install ipfs-accelerate
 ```
 
-## Usage
+## Quick Start
 
-### Basic Usage
+```typescript
+import { createModel, HardwareAbstraction } from 'ipfs-accelerate';
 
-```javascript
-import { initialize } from 'ipfs-accelerate-js';
+// Initialize hardware acceleration
+const hardware = new HardwareAbstraction();
+await hardware.initialize();
 
-// Initialize the SDK
-const sdk = await initialize();
-
-// Load a model
-const bertModel = await sdk.createModel('bert-base-uncased', {
-  preferredBackend: 'webgpu'
+// Load a BERT model
+const model = await createModel({
+  modelId: 'bert-base-uncased',
+  modelType: 'text',
+  hardware
 });
 
 // Run inference
-const result = await bertModel.predict({
-  text: "Hello, world!"
+const result = await model.execute({
+  input: "Hello, world\!"
 });
 
 console.log(result);
 ```
 
-### Hardware Selection
+## React Integration
 
-```javascript
-import { createHardwareAbstraction } from 'ipfs-accelerate-js';
+```tsx
+import React from 'react';
+import { useModel } from 'ipfs-accelerate/react';
 
-// Create hardware abstraction with preferences
-const hardware = await createHardwareAbstraction({
-  preferredBackends: ['webgpu', 'webnn', 'cpu'],
-  logging: true
-});
+function BertComponent() {
+  const { model, status, error, loadModel } = useModel({
+    modelId: 'bert-base-uncased',
+    modelType: 'text',
+    autoLoad: true
+  });
 
-// Check capabilities
-const capabilities = hardware.getCapabilities();
-console.log('WebGPU supported:', capabilities.webgpu.supported);
-console.log('WebNN supported:', capabilities.webnn.supported);
+  const [input, setInput] = React.useState('');
+  const [result, setResult] = React.useState(null);
 
-// Get best backend for model type
-const bestBackend = hardware.getOptimalBackendForModel('vision');
-console.log('Best backend for vision models:', bestBackend);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (model) {
+      const output = await model.execute({ input });
+      setResult(output);
+    }
+  };
+
+  if (status === 'loading') return <div>Loading model...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="Enter text"
+        />
+        <button type="submit">Process</button>
+      </form>
+      {result && (
+        <pre>{JSON.stringify(result, null, 2)}</pre>
+      )}
+    </div>
+  );
+}
 ```
 
-### Cross-Model Tensor Sharing
+## Hardware Acceleration
 
-```javascript
-import { initialize } from 'ipfs-accelerate-js';
+The SDK automatically selects the best hardware acceleration method available:
 
-const sdk = await initialize();
+1. **WebGPU**: Fastest option for browsers with WebGPU support
+2. **WebNN**: Great performance for neural network operations
+3. **WASM**: Fallback for browsers without WebGPU/WebNN support
+4. **CPU**: Last resort fallback for all browsers
 
-// Load two models that can share tensors
-const bertEncoder = await sdk.createModel('bert-base-uncased-encoder');
-const bertClassifier = await sdk.createModel('bert-base-uncased-classifier');
-
-// Create shared context for tensor sharing
-const sharedContext = sdk.createSharedContext();
-
-// Run inference with shared tensors
-const encodedText = await bertEncoder.predict(
-  { text: "This movie was great!" },
-  { context: sharedContext }
-);
-
-const classification = await bertClassifier.predict(
-  { encoded: encodedText },
-  { context: sharedContext }
-);
-
-console.log('Classification:', classification);
-```
-
-## Browser Compatibility
-
-The SDK supports all major browsers with WebGPU or WebNN support:
-
-| Browser | WebGPU | WebNN | Best For |
-|---------|--------|-------|----------|
-| Chrome  | ✅     | ⚠️    | Vision models |
-| Edge    | ✅     | ✅    | Text models |
-| Firefox | ✅     | ❌    | Audio models |
-| Safari  | ✅     | ⚠️    | General use |
-
-The SDK automatically detects the available capabilities and uses the best backend for each model type.
+The selection process is transparent to developers and ensures optimal performance on each device and browser.
 
 ## Documentation
 
 For detailed documentation, see:
 
-- [API Reference](docs/api/README.md)
-- [Examples](examples/README.md)
+- [API Documentation](docs/API_DOCUMENTATION.md)
 - [TypeScript Implementation](docs/TYPESCRIPT_IMPLEMENTATION_SUMMARY.md)
+- [Developer Guide](docs/DEVELOPER_GUIDE.md)
+- [Model Support](docs/MODEL_SUPPORT.md)
 
-## Development
+## Browser Support
 
-### Setup
-
-```bash
-git clone https://github.com/organization/ipfs-accelerate-js.git
-cd ipfs-accelerate-js
-npm install
-```
-
-### Build
-
-```bash
-npm run build
-```
-
-### Testing
-
-```bash
-npm test
-```
-
-### Examples
-
-```bash
-npm run examples
-```
-
-## Contributing
-
-Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for more details.
+- Chrome 113+ (WebGPU support)
+- Edge 113+ (WebGPU support)
+- Firefox 114+ (WebGPU support through flags)
+- Safari 17+ (WebGPU support)
+- All modern browsers (Fallback to WASM/CPU)
 
 ## License
 
-MIT License
+MIT

@@ -1,6 +1,6 @@
 // FIXME: Complex template literal
 /**;
- * Converted import { {HardwareBackend} from "src/model/transformers/index/index/index/index"; } from "Python: test_safari_webgpu_fallback.py;"
+ * Converted import { {HardwareBackend} from "src/model/transformers/index/index/index/index/index"; } from "Python: test_safari_webgpu_fallback.py;"
  * Conversion date: 2025-03-11 04:08:36;
  * This file was automatically converted from Python to TypeScript.;
  * Conversion fidelity might not be 100%, please manual review recommended.;

@@ -1,4 +1,4 @@
 // Auto-added WebGPU imports
-import { GPUDevi: any;
+import { GPUDe: any;
 
-// Au: any;
+// A: an: any;

@@ -691,6 +691,172 @@ def simulate_load_spike(args: argparse.Namespace) -> None:
         print(f"Results saved to {args.output}")
 
 
+def load_config(config_file_path: str = None) -> Dict[str, Any]:
+    """Load configuration from a JSON file."""
+    if not config_file_path:
+        # Use default path
+        config_file_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "load_balancer_stress_config.json"
+        )
+    
+    if not os.path.exists(config_file_path):
+        logger.warning(f"Config file {config_file_path} not found, using default configuration")
+        return {}
+    
+    try:
+        with open(config_file_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading config file: {e}")
+        return {}
+
+
+def get_scenario_configuration(config: Dict[str, Any], scenario_name: str) -> Dict[str, Any]:
+    """Get configuration for a specific test scenario."""
+    if not config or 'scenario_configurations' not in config:
+        return {}
+    
+    scenarios = config.get('scenario_configurations', {})
+    if scenario_name not in scenarios:
+        logger.warning(f"Scenario {scenario_name} not found in configuration")
+        return {}
+    
+    scenario = scenarios[scenario_name]
+    
+    # Get test configuration
+    test_config_name = scenario.get('test_config')
+    test_configs = config.get('test_configurations', {})
+    test_config = test_configs.get(test_config_name, {})
+    
+    # Get worker profile
+    worker_profile_name = scenario.get('worker_profile')
+    worker_profiles = config.get('worker_profiles', {})
+    worker_profile = worker_profiles.get(worker_profile_name, {})
+    
+    # Get test profile
+    test_profile_name = scenario.get('test_profile')
+    test_profiles = config.get('test_profiles', {})
+    test_profile = test_profiles.get(test_profile_name, {})
+    
+    # Combine all configurations
+    result = {
+        "workers": test_config.get('workers', DEFAULT_NUM_WORKERS),
+        "tests": test_config.get('tests', DEFAULT_NUM_TESTS),
+        "duration": test_config.get('duration', DEFAULT_TEST_DURATION),
+        "worker_memory": worker_profile.get('memory_distribution'),
+        "worker_cuda": worker_profile.get('cuda_distribution'),
+        "test_memory": test_profile.get('memory_requirements'),
+        "test_cuda": test_profile.get('cuda_requirements'),
+        "priority_distribution": test_profile.get('priority_distribution'),
+        "burst_mode": scenario.get('burst_mode', False),
+        "dynamic_workers": scenario.get('dynamic_workers', False),
+        "description": scenario.get('description', "")
+    }
+    
+    return result
+
+
+def list_available_scenarios(config: Dict[str, Any]) -> None:
+    """List all available test scenarios in the configuration."""
+    if not config or 'scenario_configurations' not in config:
+        print("No scenario configurations found")
+        return
+    
+    scenarios = config.get('scenario_configurations', {})
+    if not scenarios:
+        print("No scenario configurations found")
+        return
+    
+    print("\n=== Available Test Scenarios ===\n")
+    print(f"{'Scenario Name':<20} | {'Description':<60}")
+    print("-" * 20 + "-+-" + "-" * 60)
+    
+    for name, scenario in scenarios.items():
+        description = scenario.get('description', "No description")
+        print(f"{name:<20} | {description:<60}")
+    
+    print("\nUse '--scenario <name>' to run a specific scenario")
+
+
+def run_scenario(scenario_name: str, output_file: str, config: Dict[str, Any]) -> None:
+    """Run a specific test scenario from configuration."""
+    scenario_config = get_scenario_configuration(config, scenario_name)
+    if not scenario_config:
+        logger.error(f"Failed to load configuration for scenario {scenario_name}")
+        return
+    
+    logger.info(f"Running scenario: {scenario_name}")
+    logger.info(f"Description: {scenario_config.get('description', 'No description')}")
+    
+    # Create stress test with scenario configuration
+    test = LoadBalancerStressTest(
+        num_workers=scenario_config.get('workers', DEFAULT_NUM_WORKERS),
+        num_tests=scenario_config.get('tests', DEFAULT_NUM_TESTS),
+        duration=scenario_config.get('duration', DEFAULT_TEST_DURATION),
+        worker_memory=scenario_config.get('worker_memory'),
+        worker_cuda=scenario_config.get('worker_cuda'),
+        test_memory=scenario_config.get('test_memory'),
+        test_cuda=scenario_config.get('test_cuda'),
+        burst_mode=scenario_config.get('burst_mode', False),
+        dynamic_workers=scenario_config.get('dynamic_workers', False)
+    )
+    
+    # Override DEFAULT_TEST_PRIORITIES if priority_distribution is provided
+    if 'priority_distribution' in scenario_config and scenario_config['priority_distribution']:
+        global DEFAULT_TEST_PRIORITIES
+        DEFAULT_TEST_PRIORITIES = scenario_config['priority_distribution']
+    
+    # Run the test
+    logger.info(f"Starting scenario test with {scenario_config.get('workers')} workers, "
+                f"{scenario_config.get('tests')} tests, {scenario_config.get('duration')}s duration")
+    metrics = test.run()
+    
+    # Print results
+    print(f"\n========== Scenario Test Results: {scenario_name} ==========")
+    print(f"Test Configuration:")
+    print(f"  Description: {scenario_config.get('description', 'No description')}")
+    print(f"  Workers: {scenario_config.get('workers')}")
+    print(f"  Tests: {scenario_config.get('tests')}")
+    print(f"  Duration: {scenario_config.get('duration')}s")
+    print(f"  Burst Mode: {scenario_config.get('burst_mode')}")
+    print(f"  Dynamic Workers: {scenario_config.get('dynamic_workers')}")
+    
+    print("\nPerformance Metrics:")
+    print(f"  Success Rate: {metrics['success_rate']:.2f}%")
+    print(f"  Average Latency: {metrics['avg_latency']:.2f}s")
+    print(f"  Min/Max Latency: {metrics['min_latency']:.2f}s / {metrics['max_latency']:.2f}s")
+    print(f"  Peak Throughput: {metrics['peak_throughput']} tests/second")
+    print(f"  Average Throughput: {metrics['avg_throughput']:.2f} tests/second")
+    
+    print("\nWorker Distribution:")
+    print(f"  Worker Assignment Std Dev: {metrics['worker_assignment_stddev']:.2f}")
+    print(f"  Worker Assignment Range: {metrics['worker_assignment_range']}")
+    print(f"  Worker Utilization: {metrics['worker_utilization'] * 100:.2f}%")
+    print(f"  Average Scheduling Attempts: {metrics['avg_scheduling_attempts']:.2f}")
+    
+    print("\nFinal State:")
+    print(f"  Final Worker Count: {metrics['final_worker_count']}")
+    print(f"  Pending Tests: {metrics['pending_tests']}")
+    print(f"  Assigned Tests: {metrics['assigned_tests']}")
+    
+    print("========================================\n")
+    
+    # Save results to file if specified
+    if output_file:
+        result_data = {
+            "scenario": scenario_name,
+            "configuration": scenario_config,
+            "metrics": metrics,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        with open(output_file, 'w') as f:
+            json.dump(result_data, f, indent=2)
+            
+        print(f"Results saved to {output_file}")
+
+
 def main():
     """Main function to parse arguments and run tests."""
     parser = argparse.ArgumentParser(description="Load Balancer Stress Test Tool")
@@ -704,6 +870,12 @@ def main():
                         help=f"Test duration in seconds (default: {DEFAULT_TEST_DURATION})")
     parser.add_argument("--output", type=str, default="",
                         help="Output file for results (JSON format)")
+    parser.add_argument("--config", type=str, default="",
+                        help="Path to configuration file (JSON format)")
+    parser.add_argument("--list-scenarios", action="store_true",
+                        help="List available test scenarios from configuration")
+    parser.add_argument("--scenario", type=str, default="",
+                        help="Run a specific test scenario from configuration")
     
     # Create subparsers for different test modes
     subparsers = parser.add_subparsers(dest="mode", help="Test mode")
@@ -725,6 +897,19 @@ def main():
     
     # Parse arguments
     args = parser.parse_args()
+    
+    # Load configuration
+    config = load_config(args.config)
+    
+    # List scenarios if requested
+    if args.list_scenarios:
+        list_available_scenarios(config)
+        return
+        
+    # Run scenario if specified
+    if args.scenario:
+        run_scenario(args.scenario, args.output, config)
+        return
     
     # Default to stress test if no mode specified
     if not args.mode:

@@ -1,28 +1,26 @@
 /**
  * CPU backend implementation (fallback)
  */
-import { HardwareBackend } from '../../interfaces';
+import { HardwareBacken: any;
 
 export class CPUBackend implements HardwareBackend {
-  private initialized: boolean = false;
+  private initialized: boolean: any = fal: an;
+
+
   
   constructor() {
-    this.initialized = false;
-  }
-  
-  async initialize(): Promise<boolean> {
-    // CPU backend is always available
-    this.initialized = true;
-    return true;
+    this.initialized = fal: any;
+
+
+    retur: any
   }
   
   async execute<T = any, U = any>(inputs: T): Promise<U> {
-    // Placeholder implementation for CPU execution
-    console.warn("Using CPU backend (slow)");
-    return {} as U;
+    // Placeholde: any;
+    return {} a: any
   }
   
-  destroy(): void {
-    this.initialized = false;
+  destroy()) { void {
+    this.initialized = fal: any
   }
-}
+;

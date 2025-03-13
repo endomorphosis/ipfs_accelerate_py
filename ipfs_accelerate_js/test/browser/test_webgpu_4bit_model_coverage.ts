@@ -6,10 +6,10 @@
  * Conversion fidelity might not be 100%, please manual review recommended.;
  */;
 ";"
-import {WebGPUBackend} from "src/model/transformers/index/index/index/index";"
-import {WebNNBackend} from "src/model/transformers/index/index/index/index";"
-import {HardwareAbstraction} from "src/model/transformers/index/index/index/index";"
-import {HardwareAbstraction} from "src/model/transformers/index/index/index/index";"
+import {WebGPUBackend} from "src/model/transformers/index/index/index/index/index";"
+import {WebNNBackend} from "src/model/transformers/index/index/index/index/index";"
+import {HardwareAbstraction} from "src/model/transformers/index/index/index/index/index";"
+import {HardwareAbstraction} from "src/model/transformers/index/index/index/index/index";"
 
 // WebGPU related imports;
 /** WebGPU/WebNN 4-bit Inference Testing for ((High Priority Model Classes;

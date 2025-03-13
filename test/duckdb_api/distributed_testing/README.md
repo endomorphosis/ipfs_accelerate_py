@@ -2,28 +2,57 @@
 
 A high-performance distributed testing system that enables parallel execution of benchmarks and tests across multiple machines with heterogeneous hardware. This framework provides intelligent workload distribution and centralized result aggregation.
 
-## New Features (March 13, 2025)
+![Combined Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/combined-status.json)
+![Integration Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/integration-status.json)
+![Fault Tolerance Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/fault-status.json)
+![Monitoring Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/monitoring-status.json)
+![Stress Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/stress-status.json)
+![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/coverage.json)
+
+## New Features (March 17, 2025)
 
 The framework has been enhanced with the following new features:
 
-1. **Intelligent Result Aggregation System**: Advanced result aggregation and analysis pipeline with:
+1. **Comprehensive Monitoring Dashboard** ✅ (NEW): A full-featured web-based monitoring system with:
+   - Real-time monitoring of distributed worker nodes and task execution
+   - Interactive system topology visualization with drill-down capabilities
+   - Live metrics visualization with WebSocket-based updates
+   - Hardware utilization tracking across the distributed system
+   - Fault tolerance monitoring and visualization
+   - Integrated alert system with multiple severity levels
+   - Historical trend analysis with interactive charts
+   - Customizable dashboards with theme support (light/dark)
+   - Comprehensive API for programmatic access to monitoring data
+
+2. **Hardware-Aware Fault Tolerance System** ✅: Advanced fault tolerance with hardware-specific strategies:
+   - Specialized recovery strategies for different hardware types (CPU, GPU, TPU, WebGPU/WebNN)
+   - Machine learning-based failure pattern detection and prevention
+   - Intelligent retry policies with exponential backoff and jitter
+   - Task state persistence and recovery mechanisms
+   - Checkpoint and resume support for long-running tasks
+   - Comprehensive visualization and reporting system
+   - Integration with heterogeneous hardware scheduler
+
+3. **Intelligent Result Aggregation System**: Advanced result aggregation and analysis pipeline with:
    - Comprehensive statistical analysis of test results
    - Automated performance regression detection
    - Multi-dimensional result analysis across hardware, models, and configurations
    - Customizable visualization and reporting
    - Integration with the coordinator for real-time result processing
 
-2. **Coordinator Redundancy and Failover**: Multiple coordinator instances can now operate in a high-availability configuration with automatic leader election and state synchronization.
+4. **Comprehensive CI/CD Integration** ✅: Complete GitHub Actions, GitLab CI, and Jenkins support with:
+   - Automatic test discovery and hardware requirement analysis
+   - Parallel test execution across test types (integration, fault tolerance, monitoring, stress)
+   - Advanced report generation in multiple formats (JSON, Markdown, HTML)
+   - Status badge system for real-time test status visualization
+   - Coverage tracking and reporting
+   - Secure credential management for coordinator access
 
-3. **Performance Trend Analysis**: Long-term performance trend tracking with statistical analysis, anomaly detection, and predictive forecasting for worker and task performance.
+5. **Coordinator Redundancy and Failover**: Multiple coordinator instances can now operate in a high-availability configuration with automatic leader election and state synchronization.
 
-4. **Advanced Fault Tolerance**: Enhanced recovery mechanisms for worker and coordinator failures with automatic state recovery.
+6. **Performance Trend Analysis**: Long-term performance trend tracking with statistical analysis, anomaly detection, and predictive forecasting for worker and task performance.
 
-5. **Visualization System**: Visual representations of performance metrics and trends with interactive charts and reports.
-
-6. **Time-Series Data Storage**: Historical performance data storage with efficient querying and aggregation capabilities.
-
-7. **CI/CD Integration**: Seamless integration with GitHub Actions, GitLab CI, and Jenkins pipelines for automated distributed testing and reporting.
+7. **Time-Series Data Storage**: Historical performance data storage with efficient querying and aggregation capabilities.
 
 ## Features
 
@@ -133,17 +162,34 @@ The CI/CD integration component enables automated testing in CI/CD pipelines:
 - Support for parallel test execution
 - Report generation in multiple formats (JSON, MD, HTML)
 
+### Monitoring Dashboard
+
+The comprehensive monitoring dashboard provides real-time system visualization and monitoring:
+
+- Real-time worker node monitoring with status indicators and metric tracking
+- Interactive system topology visualization with drill-down capabilities
+- Live task execution tracking with progress visualization
+- Hardware utilization charts across the distributed system
+- Fault tolerance monitoring with recovery action tracking
+- Integrated alert system with multiple severity levels (critical, warning, info)
+- Historical trend analysis with interactive charts
+- WebSocket-based live updates for real-time metrics
+- Customizable dashboard with light/dark themes
+- Comprehensive API for programmatic access to monitoring data
+- Mobile-responsive design for monitoring on any device
+
 ### Dashboard Server
 
-The web-based dashboard provides real-time monitoring:
+The web-based dashboard server manages the monitoring dashboard:
 
-- Worker status visualization
-- Task execution status and history
-- System health metrics and alerts
-- Performance metrics and statistics
-- Coordinator cluster status
-- Performance trend visualizations
-- Result aggregation and analysis views
+- Serves interactive HTML dashboards with responsive design
+- Provides REST API for accessing system data
+- Implements WebSocket server for real-time updates
+- Generates visualizations of system metrics
+- Integrates with result aggregator for test performance data
+- Monitors system health and generates alerts
+- Tracks performance trends and anomalies
+- Provides detailed views of workers, tasks, and system components
 
 ## Implementation Status
 
@@ -155,7 +201,99 @@ The web-based dashboard provides real-time monitoring:
 - [x] Phase 6: Monitoring Dashboard (March 12, 2025)
 - [x] Phase 7: Coordinator Redundancy (March 10, 2025)
 - [x] Phase 8: Performance Trend Analysis (March 10, 2025)
-- [x] Phase 9: CI/CD Integration (March 15, 2025)
+- [x] Phase 9: CI/CD Integration (March 13, 2025) ✅
 - [🔄] Phase 10: Intelligent Result Aggregation (March 13, 2025 - In progress, 60% complete)
 
 Target completion for all phases: June 26, 2025
+
+## CI/CD Integration Guide
+
+The CI/CD integration enables automated testing of the Distributed Testing Framework in continuous integration pipelines. It supports GitHub Actions, GitLab CI, and Jenkins with comprehensive test discovery, requirement analysis, result reporting, and badge generation.
+
+### GitHub Actions Integration
+
+The framework includes a GitHub Actions workflow file (`.github/workflows/distributed-testing.yml`) that runs all test types in parallel:
+
+1. **Integration Tests**: Validate component interactions using the `run_integration_tests.py` script
+2. **Fault Tolerance Tests**: Verify system behavior under failure conditions using `test_load_balancer_fault_tolerance.py`
+3. **Monitoring Tests**: Test monitoring components using `test_load_balancer_monitoring.py`
+4. **Stress Tests**: Validate system performance under load using `test_load_balancer_stress.py`
+
+The workflow generates test reports, coverage data, and status badges automatically.
+
+### Status Badges
+
+Status badges are automatically generated and updated for each test type:
+
+- **Combined Status**: Overall test status across all test types
+- **Integration Tests**: Status of integration test suite
+- **Fault Tolerance Tests**: Status of fault tolerance test suite
+- **Monitoring Tests**: Status of monitoring test suite
+- **Stress Tests**: Status of stress test suite
+- **Coverage**: Code coverage percentage across all tests
+
+These badges are displayed at the top of this README and are updated automatically after each test run.
+
+### Running Tests Locally
+
+To run tests locally before committing:
+
+```bash
+# Run all test types
+./run_all_tests.sh
+
+# Run a specific test type
+./run_all_tests.sh --type integration
+
+# Run tests with a filter
+./run_all_tests.sh --type fault --filter test_worker_failure
+
+# Run with verbose output
+./run_all_tests.sh --verbose
+```
+
+### Docker Testing Environment
+
+A Docker Compose configuration is provided for running tests in an isolated environment:
+
+```bash
+# Start testing environment
+docker-compose -f docker-compose.test.yml up
+
+# Run tests in Docker environment
+./run_docker_tests.sh
+```
+
+The Docker environment includes:
+- Coordinator container (with dashboard)
+- CPU worker container
+- GPU worker container (simulated)
+- WebGPU worker container (simulated)
+- Tester container for executing test suites
+
+### Using the CI/CD Integration API
+
+For custom CI/CD integrations, use the `cicd_integration.py` module:
+
+```python
+# Submit tests to a coordinator
+python -m duckdb_api.distributed_testing.cicd_integration \
+    --provider github \
+    --coordinator http://coordinator-url:8080 \
+    --api-key KEY \
+    --test-dir ./tests \
+    --output-dir ./reports \
+    --report-formats json md html
+```
+
+The module automatically detects test requirements based on file content, submits tests to the coordinator, waits for results, and generates comprehensive reports.
+
+### Troubleshooting CI/CD Issues
+
+If tests fail in CI/CD pipelines:
+
+1. Check the detailed reports in the "test-results-*" artifacts
+2. Examine coordinator and worker logs for error messages
+3. Verify that the coordinator URL and API key are correctly configured
+4. Check if the tests require specific hardware that's not available in the CI environment
+5. For timeout errors, increase the timeout value in the workflow configuration

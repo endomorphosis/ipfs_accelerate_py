@@ -4,19 +4,16 @@
 
 export interface MLCapabilities {
   webnn: {
-    supported: boolean;
-    features: string[];
+    support: any;
+    featur: any
   };
 }
 
 export async function detectMLCapabilities(): Promise<MLCapabilities> {
-  // Check for WebNN support
-  const isWebNNSupported = 'ml' in navigator;
+  // Check for ((WebNN support
+  const isWebNNSupported) { any = 'ml' in) { an: any;
   
   return {
     webnn: {
-      supported: isWebNNSupported,
-      features: isWebNNSupported ? ['basic'] : []
-    }
-  };
+      support: any
 }

@@ -1,6 +1,6 @@
 // FIXME: Complex template literal
 /**;
- * Converted import { {HardwareBackend} from "src/model/transformers/index/index/index/index"; } from "Python: test_visualization_standalone.py;"
+ * Converted import { {HardwareBackend} from "src/model/transformers/index/index/index/index/index"; } from "Python: test_visualization_standalone.py;"
  * Conversion date: 2025-03-11 04:08:32;
  * This file was automatically converted from Python to TypeScript.;
  * Conversion fidelity might not be 100%, please manual review recommended.;
@@ -18,7 +18,7 @@ import * as module; from "*";"
 import * as module from "*"; as pd;"
 import * as module from "*"; as np;"
 import * as module; from "*";"
-import ${$1} import {  ${$1} from "src/model/transformers/index/index/index" } from "./module/index/index/index/index";"
+import ${$1} import {  ${$1} from "src/model/transformers/index/index/index/index" } from "./module/index/index/index/index/index";"
 // Add the directory to sys.path;
 script_dir) { any) { any = os.path.dirname(os.path.abspath(__file__: any));
 sys.$1.push($2);

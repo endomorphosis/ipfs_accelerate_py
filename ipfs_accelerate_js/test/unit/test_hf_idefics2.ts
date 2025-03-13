@@ -6,8 +6,8 @@
  * Conversion fidelity might not be 100%, please manual review recommended.;
  */;
 ";"
-import {HfModel} from "src/model/transformers/index/index/index/index";"
-import {Idefics2Config} from "src/model/transformers/index/index/index/index";"
+import {HfModel} from "src/model/transformers/index/index/index/index/index";"
+import {Idefics2Config} from "src/model/transformers/index/index/index/index/index";"
 
 // WebGPU related imports;
 export interface Props {vqa_prompts: try;}

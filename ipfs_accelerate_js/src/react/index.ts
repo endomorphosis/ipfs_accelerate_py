@@ -1,1 +1,3 @@
-// Auto: any;
+// Auto-generated index file
+
+export * from "./hooks";

@@ -1,11 +1,20 @@
-# IPFS Accelerate Python SDK Documentation
+# IPFS Accelerate SDK Documentation
 
-**Date:** March 7, 2025  
-**Version:** 0.4.0
+**Date:** March 13, 2025  
+**Version:** 0.5.0
 
 ## Overview
 
-The IPFS Accelerate Python SDK is a comprehensive toolkit for accelerating IPFS operations using hardware acceleration. It provides a unified interface for working with various hardware platforms, optimizing content delivery through P2P networking, and storing benchmark results in a database.
+The IPFS Accelerate SDK is a comprehensive toolkit for accelerating IPFS operations using hardware acceleration. It provides a unified interface for working with various hardware platforms, optimizing content delivery through P2P networking, and storing benchmark results in a database.
+
+### SDK Versions
+
+The SDK is available in two compatible implementations:
+
+1. **Python SDK**: For server-side, desktop, and scientific applications
+2. **TypeScript/JavaScript SDK**: For web browsers and Node.js applications
+
+Both implementations share the same core architecture and features, with optimizations specific to their respective environments.
 
 ### Key Features
 
@@ -601,10 +610,223 @@ class CustomDatabaseHandler(DatabaseHandler):
 - Basic P2P network optimization
 - Initial hardware support
 
+# TypeScript/JavaScript SDK
+
+The TypeScript implementation provides the same core functionality as the Python SDK but is optimized for web browsers and Node.js environments. It leverages WebGPU and WebNN for hardware acceleration directly in the browser.
+
+## TypeScript Installation
+
+```bash
+# Using npm
+npm install ipfs-accelerate
+
+# Using yarn
+yarn add ipfs-accelerate
+```
+
+## TypeScript Core Components
+
+### Hardware Abstraction Layer
+
+The Hardware Abstraction Layer (HAL) provides a unified interface for accessing different hardware backends.
+
+```typescript
+import { createHardwareAbstraction } from 'ipfs-accelerate/hardware';
+
+// Create hardware context with automatic detection
+const hardware = await createHardwareAbstraction({
+  preferredBackends: ['webgpu', 'webnn', 'wasm', 'cpu']
+});
+
+// Get capabilities
+const capabilities = hardware.getCapabilities();
+console.log('Hardware capabilities:', capabilities);
+
+// Get optimal backend for a model type
+const bestBackendForText = hardware.getOptimalBackendForModel('text');
+console.log(`Best backend for text models: ${bestBackendForText}`);
+```
+
+### Model Acceleration
+
+```typescript
+import { createAccelerator } from 'ipfs-accelerate';
+
+async function runInference() {
+  // Create accelerator with automatic hardware detection
+  const accelerator = await createAccelerator({
+    autoDetectHardware: true
+  });
+  
+  // Run inference
+  const result = await accelerator.accelerate({
+    modelId: 'bert-base-uncased',
+    modelType: 'text',
+    input: 'This is a sample text for embedding.'
+  });
+  
+  console.log('Result:', result);
+}
+
+runInference();
+```
+
+### React Integration
+
+The SDK includes React hooks for easy integration:
+
+```tsx
+import React, { useState } from 'react';
+import { useModel, useHardwareInfo } from 'ipfs-accelerate/react';
+
+function TextEmbeddingComponent() {
+  const { model, status, error } = useModel({
+    modelId: 'bert-base-uncased',
+    modelType: 'text',
+    autoLoad: true
+  });
+  
+  const { capabilities, optimalBackend } = useHardwareInfo();
+  
+  const [input, setInput] = useState('');
+  const [embedding, setEmbedding] = useState(null);
+  
+  const generateEmbedding = async () => {
+    if (model && input) {
+      try {
+        const result = await model.embed(input);
+        setEmbedding(result);
+      } catch (err) {
+        console.error('Embedding failed:', err);
+      }
+    }
+  };
+  
+  return (
+    <div>
+      <h2>Text Embedding Demo</h2>
+      
+      {status === 'loading' && <p>Loading model...</p>}
+      {error && <p>Error: {error.message}</p>}
+      
+      {model && (
+        <div>
+          <textarea 
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Enter text to embed"
+          />
+          <button onClick={generateEmbedding}>Generate Embedding</button>
+        </div>
+      )}
+      
+      {embedding && (
+        <div>
+          <h3>Embedding Result</h3>
+          <p>Dimensions: {embedding.shape.join(' × ')}</p>
+          <p>First 5 values: {embedding.data.slice(0, 5).join(', ')}...</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Cross-Model Tensor Sharing
+
+```typescript
+import { createTensorSharingContext, ModelManager } from 'ipfs-accelerate';
+
+async function useTensorSharing() {
+  // Create tensor sharing context
+  const sharingContext = createTensorSharingContext();
+  
+  // Create model manager
+  const modelManager = new ModelManager();
+  
+  // Load models with sharing enabled
+  const bertModel = await modelManager.loadModel({
+    modelId: 'bert-base-uncased',
+    sharingContext,
+    sharingConfig: { shareEmbeddings: true }
+  });
+  
+  const t5Model = await modelManager.loadModel({
+    modelId: 't5-small',
+    sharingContext,
+    sharingConfig: { shareEmbeddings: true }
+  });
+  
+  // Use models with shared tensors
+  const input = "This is a sample text for processing.";
+  
+  // BERT will compute and cache the embeddings
+  const bertEmbedding = await bertModel.embed(input);
+  
+  // T5 will reuse the cached embeddings without recomputation
+  const t5Result = await t5Model.process(input);
+  
+  console.log('Memory savings from tensor sharing:', sharingContext.getMemorySavings());
+}
+```
+
+### WebGPU Shader Customization
+
+```typescript
+import { ShaderRegistry, createHardwareAbstraction } from 'ipfs-accelerate';
+
+async function customizeShaders() {
+  // Register custom shader for matrix multiplication
+  ShaderRegistry.registerShader(
+    'matmul',
+    `
+    @group(0) @binding(0) var<storage, read> a: array<f32>;
+    @group(0) @binding(1) var<storage, read> b: array<f32>;
+    @group(0) @binding(2) var<storage, read_write> c: array<f32>;
+    
+    struct Dimensions {
+      M: u32,
+      N: u32,
+      K: u32,
+    }
+    
+    @group(0) @binding(3) var<uniform> dimensions: Dimensions;
+    
+    @compute @workgroup_size(8, 8, 1)
+    fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+      let row = global_id.x;
+      let col = global_id.y;
+      
+      if (row >= dimensions.M || col >= dimensions.N) {
+        return;
+      }
+      
+      var sum = 0.0;
+      for (var k = 0u; k < dimensions.K; k = k + 1u) {
+        sum = sum + a[row * dimensions.K + k] * b[k * dimensions.N + col];
+      }
+      
+      c[row * dimensions.N + col] = sum;
+    }
+    `,
+    {
+      workgroupSize: [8, 8, 1],
+      browserTarget: 'firefox'
+    }
+  );
+}
+```
+
+## TypeScript API Reference
+
+For a complete reference of the TypeScript SDK API, see the [TypeScript API Documentation](API_DOCUMENTATION.md).
+
 ## Further Reading
 
-- [API Documentation](API_DOCUMENTATION.md)
+- [TypeScript API Documentation](API_DOCUMENTATION.md)
+- [Python API Documentation](API_DOCUMENTATION.md)
 - [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md)
 - [WebNN/WebGPU Integration Guide](WEBNN_WEBGPU_INTEGRATION_GUIDE.md)
 - [Database Integration Guide](DATABASE_INTEGRATION_GUIDE.md)
 - [P2P Network Optimization Guide](P2P_NETWORK_OPTIMIZATION_GUIDE.md)
+- [TypeScript Implementation Summary](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md)

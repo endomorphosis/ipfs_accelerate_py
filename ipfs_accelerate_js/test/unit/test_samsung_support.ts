@@ -1,6 +1,6 @@
 // FIXME: Complex template literal
 /**;
- * Converted import { {  ${$1} from "src/model/transformers/index/index/index" } from "./module/index/index/index/index"; } from "Python: test_samsung_support.py;"
+ * Converted import { {  ${$1} from "src/model/transformers/index/index/index/index" } from "./module/index/index/index/index/index"; } from "Python: test_samsung_support.py;"
  * Conversion date: 2025-03-11 04:08:36;
  * This file was automatically converted from Python to TypeScript.;
  * Conversion fidelity might not be 100%, please manual review recommended.;
@@ -24,7 +24,7 @@ import ${$1}";"
 // Add parent directory to path;
 sys.$1.push($2))str())Path())__file__).resolve()).parent));
 // Import module to test;
-import ${$1} from "./module/index/index/index/index";"
+import ${$1} from "./module/index/index/index/index/index";"
 SamsungChipset,;
 SamsungChipsetRegistry) { any,;
 SamsungDetector,;

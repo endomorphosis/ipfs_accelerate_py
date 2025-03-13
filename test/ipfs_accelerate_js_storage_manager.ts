@@ -1,1427 +1,935 @@
 /**
- * Storage Manager Implementation
- * 
- * This file provides persistent storage functionality using IndexedDB for
- * browser environments and file-based storage for Node.js environments.
+ * WebNN Storage Manager Implementation
+ * Provides storage and caching for model weights and tensors using IndexedDB
  */
 
-import { openDB, DBSchema, IDBPDatabase } from 'idb'; // We'll use the 'idb' library for IndexedDB
+/**
+ * Data types supported by the storage manager
+ */
+export type StorageDataType = 'float32' | 'int32' | 'uint8' | 'float16';
 
-// Define the database schema
-interface AccelerateDBSchema extends DBSchema {
-  // Store for acceleration results
-  'acceleration-results': {
-    key: string; // UUID for the result
-    value: AccelerationResult;
-    indexes: {
-      'by-model': string; // Model ID
-      'by-hardware': string; // Hardware backend
-      'by-date': number; // Timestamp
-    };
-  };
-  // Store for quantized models
-  'quantized-models': {
-    key: string; // Model ID + quantization config hash
-    value: QuantizedModelEntry;
-    indexes: {
-      'by-model': string; // Original model ID
-      'by-bits': number; // Number of bits
-      'by-date': number; // Timestamp
-    };
-  };
-  // Store for performance metrics
-  'performance-metrics': {
-    key: string; // Metric ID
-    value: PerformanceMetric;
-    indexes: {
-      'by-model': string; // Model ID
-      'by-hardware': string; // Hardware backend
-      'by-browser': string; // Browser name
-      'by-date': number; // Timestamp
-    };
-  };
-  // Store for device capabilities
-  'device-capabilities': {
-    key: string; // Device ID (user agent hash)
-    value: DeviceCapabilities;
-    indexes: {
-      'by-browser': string; // Browser name
-      'by-date': number; // Timestamp
-    };
-  };
-}
-
-// Types for database entries
-interface AccelerationResult {
+/**
+ * Tensor storage format
+ */
+export interface TensorStorage {
+  /**
+   * Unique identifier for the tensor
+   */
   id: string;
-  modelId: string;
-  modelType: string;
-  hardware: string;
-  processingTime: number;
-  throughput: number;
-  memoryUsage: number;
-  browserInfo: string;
-  timestamp: number;
-  inputShape?: number[];
-  outputShape?: number[];
-  additionalInfo?: any;
-}
-
-interface QuantizedModelEntry {
-  id: string;
-  originalModelId: string;
-  bits: number;
-  scheme: string;
-  mixedPrecision: boolean;
-  backend: string;
-  timestamp: number;
-  size: number;
-  data?: ArrayBuffer;
-  metadata?: any;
-}
-
-interface PerformanceMetric {
-  id: string;
-  modelId: string;
-  hardware: string;
-  browser: string;
-  metric: string;
-  value: number;
-  timestamp: number;
-  additionalInfo?: any;
-}
-
-interface DeviceCapabilities {
-  id: string;
-  userAgent: string;
-  browser: string;
-  browserVersion: string;
-  webgpu: {
-    supported: boolean;
-    details?: any;
-  };
-  webnn: {
-    supported: boolean;
-    details?: any;
-  };
-  wasm: {
-    supported: boolean;
-    details?: any;
-  };
-  timestamp: number;
-}
-
-export interface StorageManagerOptions {
-  /** Database name for IndexedDB */
-  databaseName?: string;
-  /** Database version */
-  storageVersion?: number;
-  /** Directory path for Node.js file storage */
-  storagePath?: string;
-  /** Maximum storage size in MB */
-  maxStorageSize?: number;
-  /** Expiration time for old entries in days */
-  expirationDays?: number;
-  /** Enable logging */
-  logging?: boolean;
+  
+  /**
+   * Shape of the tensor
+   */
+  shape: number[];
+  
+  /**
+   * Data type of the tensor values
+   */
+  dataType: StorageDataType;
+  
+  /**
+   * Binary data for the tensor
+   */
+  data: ArrayBuffer;
+  
+  /**
+   * Metadata for the tensor (e.g. name, layer, etc.)
+   */
+  metadata?: Record<string, any>;
+  
+  /**
+   * Creation timestamp
+   */
+  createdAt: number;
+  
+  /**
+   * Last access timestamp
+   */
+  lastAccessed: number;
+  
+  /**
+   * Size in bytes
+   */
+  byteSize: number;
 }
 
 /**
- * Storage manager for persistent storage of acceleration results and models
+ * Model metadata structure
+ */
+export interface ModelMetadata {
+  /**
+   * Unique identifier for the model
+   */
+  id: string;
+  
+  /**
+   * Model name
+   */
+  name: string;
+  
+  /**
+   * Model version
+   */
+  version: string;
+  
+  /**
+   * Framework the model is from (e.g., "tensorflow", "pytorch", "onnx")
+   */
+  framework?: string;
+  
+  /**
+   * Total size in bytes
+   */
+  totalSize: number;
+  
+  /**
+   * List of tensor IDs that belong to this model
+   */
+  tensorIds: string[];
+  
+  /**
+   * Creation timestamp
+   */
+  createdAt: number;
+  
+  /**
+   * Last access timestamp
+   */
+  lastAccessed: number;
+  
+  /**
+   * Additional model information
+   */
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Storage manager options
+ */
+export interface StorageManagerOptions {
+  /**
+   * Name of the IndexedDB database
+   */
+  dbName?: string;
+  
+  /**
+   * Database version
+   */
+  dbVersion?: number;
+  
+  /**
+   * Enable compression for stored tensors
+   */
+  enableCompression?: boolean;
+  
+  /**
+   * Maximum storage size in bytes (0 for unlimited)
+   */
+  maxStorageSize?: number;
+  
+  /**
+   * Enable automatic cleanup of unused items
+   */
+  enableAutoCleanup?: boolean;
+  
+  /**
+   * Time in milliseconds after which unused items can be removed
+   */
+  cleanupThreshold?: number;
+  
+  /**
+   * Enable logging of storage operations
+   */
+  enableLogging?: boolean;
+}
+
+/**
+ * Storage information
+ */
+export interface StorageInfo {
+  /**
+   * Total number of models stored
+   */
+  modelCount: number;
+  
+  /**
+   * Total number of tensors stored
+   */
+  tensorCount: number;
+  
+  /**
+   * Total size in bytes used
+   */
+  totalSize: number;
+  
+  /**
+   * Remaining storage quota in bytes (if available)
+   */
+  remainingQuota?: number;
+  
+  /**
+   * Database name
+   */
+  dbName: string;
+  
+  /**
+   * Database version
+   */
+  dbVersion: number;
+}
+
+/**
+ * Storage Manager for model weights and tensors
+ * Uses IndexedDB for persistent storage
  */
 export class StorageManager {
-  private db: IDBPDatabase<AccelerateDBSchema> | null = null;
-  private isNode: boolean = false;
-  private initialized: boolean = false;
-  private options: StorageManagerOptions;
-  private fs: any = null; // Node.js fs module, if available
-  private path: any = null; // Node.js path module, if available
-
-  constructor(options: StorageManagerOptions = {}) {
-    this.options = {
-      databaseName: 'acceleration-results',
-      storageVersion: 1,
-      storagePath: './storage',
-      maxStorageSize: 500, // 500 MB
-      expirationDays: 30,
-      logging: false,
-      ...options
-    };
-    
-    // Detect Node.js environment
-    this.isNode = typeof window === 'undefined';
-    
-    // Load Node.js modules if in Node environment
-    if (this.isNode) {
-      try {
-        this.fs = require('fs');
-        this.path = require('path');
-      } catch (error) {
-        console.warn('Failed to load Node.js modules:', error);
-      }
-    }
-  }
-
+  private options: Required<StorageManagerOptions>;
+  private db: IDBDatabase | null = null;
+  private isInitialized = false;
+  private initPromise: Promise<boolean> | null = null;
+  
+  // Store objects count and size for quick access
+  private modelCount = 0;
+  private tensorCount = 0;
+  private totalSize = 0;
+  
   /**
-   * Initialize the storage manager
+   * Creates a new storage manager instance
+   */
+  constructor(options: StorageManagerOptions = {}) {
+    // Set default options
+    this.options = {
+      dbName: options.dbName || 'webnn-storage',
+      dbVersion: options.dbVersion || 1,
+      enableCompression: options.enableCompression || false,
+      maxStorageSize: options.maxStorageSize || 0, // 0 means no limit
+      enableAutoCleanup: options.enableAutoCleanup || true,
+      cleanupThreshold: options.cleanupThreshold || 1000 * 60 * 60 * 24 * 7, // 7 days
+      enableLogging: options.enableLogging || false
+    };
+  }
+  
+  /**
+   * Initialize the storage manager and open the database
    */
   async initialize(): Promise<boolean> {
-    if (this.initialized) {
+    // If already initializing, return the existing promise
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+    
+    // If already initialized, return true
+    if (this.isInitialized) {
       return true;
+    }
+    
+    // Create a new initialization promise
+    this.initPromise = new Promise<boolean>((resolve, reject) => {
+      try {
+        // Check if IndexedDB is supported
+        if (!('indexedDB' in window)) {
+          this.log('IndexedDB is not supported in this browser');
+          resolve(false);
+          return;
+        }
+        
+        // Open the database
+        const request = indexedDB.open(this.options.dbName, this.options.dbVersion);
+        
+        // Handle database upgrade (creating object stores)
+        request.onupgradeneeded = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          
+          // Create models store
+          if (!db.objectStoreNames.contains('models')) {
+            const modelsStore = db.createObjectStore('models', { keyPath: 'id' });
+            modelsStore.createIndex('name', 'name', { unique: false });
+            modelsStore.createIndex('createdAt', 'createdAt', { unique: false });
+            modelsStore.createIndex('lastAccessed', 'lastAccessed', { unique: false });
+          }
+          
+          // Create tensors store
+          if (!db.objectStoreNames.contains('tensors')) {
+            const tensorsStore = db.createObjectStore('tensors', { keyPath: 'id' });
+            tensorsStore.createIndex('createdAt', 'createdAt', { unique: false });
+            tensorsStore.createIndex('lastAccessed', 'lastAccessed', { unique: false });
+            tensorsStore.createIndex('byteSize', 'byteSize', { unique: false });
+          }
+        };
+        
+        // Handle successful database open
+        request.onsuccess = async (event) => {
+          this.db = (event.target as IDBOpenDBRequest).result;
+          this.isInitialized = true;
+          this.log('Storage manager initialized successfully');
+          
+          // Update storage statistics
+          await this.updateStorageStats();
+          
+          // Run cleanup if auto-cleanup is enabled
+          if (this.options.enableAutoCleanup) {
+            this.cleanup().catch(error => {
+              this.log(`Auto cleanup failed: ${error.message}`);
+            });
+          }
+          
+          resolve(true);
+        };
+        
+        // Handle errors
+        request.onerror = (event) => {
+          const error = (event.target as IDBOpenDBRequest).error;
+          this.log(`Failed to initialize storage manager: ${error?.message}`);
+          resolve(false);
+        };
+      } catch (error) {
+        this.log(`Initialization error: ${error.message}`);
+        resolve(false);
+      }
+    });
+    
+    return this.initPromise;
+  }
+  
+  /**
+   * Store a model's metadata
+   */
+  async storeModelMetadata(metadata: Omit<ModelMetadata, 'createdAt' | 'lastAccessed'>): Promise<boolean> {
+    if (!await this.ensureInitialized()) {
+      return false;
     }
     
     try {
-      if (this.isNode) {
-        // Initialize file-based storage for Node.js
-        await this.initializeNodeStorage();
-      } else {
-        // Initialize IndexedDB for browsers
-        await this.initializeIndexedDB();
-      }
+      // Add timestamps
+      const model: ModelMetadata = {
+        ...metadata,
+        createdAt: Date.now(),
+        lastAccessed: Date.now()
+      };
       
-      this.initialized = true;
+      // Store in database
+      await this.putInObjectStore('models', model);
+      
+      // Update stats
+      this.modelCount++;
+      this.totalSize += model.totalSize;
+      
+      this.log(`Stored model metadata: ${model.id} (${model.name})`);
       return true;
     } catch (error) {
-      console.error('Failed to initialize storage manager:', error);
+      this.log(`Failed to store model metadata: ${error.message}`);
       return false;
     }
   }
-
+  
   /**
-   * Initialize IndexedDB for browser environments
+   * Store a tensor
    */
-  private async initializeIndexedDB(): Promise<void> {
-    const { databaseName, storageVersion } = this.options;
-    
-    this.db = await openDB<AccelerateDBSchema>(databaseName!, storageVersion!, {
-      upgrade(db, oldVersion, newVersion, transaction) {
-        // Create object stores and indexes
-        if (!db.objectStoreNames.contains('acceleration-results')) {
-          const resultStore = db.createObjectStore('acceleration-results', { keyPath: 'id' });
-          resultStore.createIndex('by-model', 'modelId');
-          resultStore.createIndex('by-hardware', 'hardware');
-          resultStore.createIndex('by-date', 'timestamp');
-        }
-        
-        if (!db.objectStoreNames.contains('quantized-models')) {
-          const modelStore = db.createObjectStore('quantized-models', { keyPath: 'id' });
-          modelStore.createIndex('by-model', 'originalModelId');
-          modelStore.createIndex('by-bits', 'bits');
-          modelStore.createIndex('by-date', 'timestamp');
-        }
-        
-        if (!db.objectStoreNames.contains('performance-metrics')) {
-          const metricStore = db.createObjectStore('performance-metrics', { keyPath: 'id' });
-          metricStore.createIndex('by-model', 'modelId');
-          metricStore.createIndex('by-hardware', 'hardware');
-          metricStore.createIndex('by-browser', 'browser');
-          metricStore.createIndex('by-date', 'timestamp');
-        }
-        
-        if (!db.objectStoreNames.contains('device-capabilities')) {
-          const capabilityStore = db.createObjectStore('device-capabilities', { keyPath: 'id' });
-          capabilityStore.createIndex('by-browser', 'browser');
-          capabilityStore.createIndex('by-date', 'timestamp');
-        }
-      }
-    });
-    
-    if (this.options.logging) {
-      console.log('IndexedDB initialized:', this.db.name, this.db.version);
-    }
-  }
-
-  /**
-   * Initialize file-based storage for Node.js environments
-   */
-  private async initializeNodeStorage(): Promise<void> {
-    if (!this.fs || !this.path) {
-      throw new Error('Node.js modules not available for file-based storage');
+  async storeTensor(
+    id: string, 
+    data: Float32Array | Int32Array | Uint8Array, 
+    shape: number[], 
+    dataType: StorageDataType,
+    metadata?: Record<string, any>
+  ): Promise<boolean> {
+    if (!await this.ensureInitialized()) {
+      return false;
     }
     
-    const { storagePath } = this.options;
-    
-    // Create storage directory if it doesn't exist
-    if (!this.fs.existsSync(storagePath!)) {
-      this.fs.mkdirSync(storagePath!, { recursive: true });
-    }
-    
-    // Create subdirectories for different data types
-    const directories = [
-      'acceleration-results',
-      'quantized-models',
-      'performance-metrics',
-      'device-capabilities'
-    ];
-    
-    for (const dir of directories) {
-      const dirPath = this.path.join(storagePath!, dir);
-      if (!this.fs.existsSync(dirPath)) {
-        this.fs.mkdirSync(dirPath);
-      }
-    }
-    
-    if (this.options.logging) {
-      console.log('File-based storage initialized:', storagePath);
-    }
-  }
-
-  /**
-   * Store an acceleration result
-   */
-  async storeAccelerationResult(result: any): Promise<string> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    const id = this.generateUUID();
-    const timestamp = Date.now();
-    
-    // Create the result object
-    const resultEntry: AccelerationResult = {
-      id,
-      modelId: result.modelId || 'unknown',
-      modelType: result.modelType || 'unknown',
-      hardware: result.hardware || 'unknown',
-      processingTime: result.processingTime || 0,
-      throughput: result.throughput || 0,
-      memoryUsage: result.memoryUsage || 0,
-      browserInfo: result.browserInfo || navigator?.userAgent || 'unknown',
-      timestamp,
-      inputShape: result.inputShape,
-      outputShape: result.outputShape,
-      additionalInfo: result.additionalInfo
-    };
-    
-    if (this.isNode) {
-      // Store in file system for Node.js
-      await this.storeNodeFile(
-        'acceleration-results',
-        `${id}.json`,
-        JSON.stringify(resultEntry)
-      );
-    } else {
-      // Store in IndexedDB for browsers
-      await this.db!.add('acceleration-results', resultEntry);
-    }
-    
-    // Clean up old entries
-    await this.cleanupOldEntries();
-    
-    return id;
-  }
-
-  /**
-   * Store a quantized model
-   */
-  async storeQuantizedModel(
-    originalModelId: string,
-    quantizationConfig: any,
-    backend: string,
-    model: any
-  ): Promise<string> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    const id = `${originalModelId}-${quantizationConfig.bits}bit-${this.hashConfig(quantizationConfig)}`;
-    const timestamp = Date.now();
-    
-    // Create the model entry
-    const modelEntry: QuantizedModelEntry = {
-      id,
-      originalModelId,
-      bits: quantizationConfig.bits,
-      scheme: quantizationConfig.scheme || 'symmetric',
-      mixedPrecision: quantizationConfig.mixedPrecision || false,
-      backend,
-      timestamp,
-      size: model.size || 0,
-      metadata: {
-        ...quantizationConfig,
-        backend
-      }
-    };
-    
-    // Add model data if available
-    if (model.data) {
-      modelEntry.data = model.data;
-    }
-    
-    if (this.isNode) {
-      // Store in file system for Node.js
-      // Store metadata and data separately
-      await this.storeNodeFile(
-        'quantized-models',
-        `${id}.meta.json`,
-        JSON.stringify({ 
-          ...modelEntry,
-          data: undefined // Don't include data in metadata file
-        })
-      );
+    try {
+      // Calculate byte size
+      const byteSize = data.byteLength;
       
-      // Store model data if available
-      if (model.data) {
-        await this.storeNodeFile(
-          'quantized-models',
-          `${id}.data.bin`,
-          Buffer.from(model.data)
-        );
+      // Create tensor storage object
+      const tensor: TensorStorage = {
+        id,
+        shape,
+        dataType,
+        data: data.buffer.slice(0), // Create a copy of the buffer
+        metadata,
+        createdAt: Date.now(),
+        lastAccessed: Date.now(),
+        byteSize
+      };
+      
+      // Check if we need to compress the data
+      if (this.options.enableCompression && byteSize > 1024) {
+        // In a real implementation, we would compress the data here
+        // For now, we'll just store it as is
       }
-    } else {
-      // Store in IndexedDB for browsers
-      await this.db!.put('quantized-models', modelEntry);
+      
+      // Check if we have enough storage space
+      if (this.options.maxStorageSize > 0) {
+        const newTotalSize = this.totalSize + byteSize;
+        if (newTotalSize > this.options.maxStorageSize) {
+          // Try to free up space
+          const freedSpace = await this.freeUpSpace(byteSize);
+          if (freedSpace < byteSize) {
+            this.log(`Not enough storage space for tensor: ${id}`);
+            return false;
+          }
+        }
+      }
+      
+      // Store in database
+      await this.putInObjectStore('tensors', tensor);
+      
+      // Update stats
+      this.tensorCount++;
+      this.totalSize += byteSize;
+      
+      this.log(`Stored tensor: ${id} (${shape.join('x')}, ${dataType})`);
+      return true;
+    } catch (error) {
+      this.log(`Failed to store tensor: ${error.message}`);
+      return false;
     }
-    
-    return id;
   }
-
+  
   /**
-   * Get a quantized model
+   * Get a model's metadata
    */
-  async getQuantizedModel(
-    originalModelId: string,
-    quantizationConfig: any,
-    backend?: string
-  ): Promise<any> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
+  async getModelMetadata(modelId: string): Promise<ModelMetadata | null> {
+    if (!await this.ensureInitialized()) {
+      return null;
     }
     
-    // Generate ID based on model and config
-    const configHash = this.hashConfig(quantizationConfig);
-    const idPrefix = `${originalModelId}-${quantizationConfig.bits}bit-${configHash}`;
-    
-    if (this.isNode) {
-      // Get from file system for Node.js
-      const dirPath = this.path.join(this.options.storagePath!, 'quantized-models');
+    try {
+      // Get model metadata from database
+      const model = await this.getFromObjectStore('models', modelId) as ModelMetadata;
       
-      // Find matching files
-      const files = this.fs.readdirSync(dirPath);
-      const metaFile = files.find((file: string) => 
-        file.startsWith(idPrefix) && file.endsWith('.meta.json')
-      );
-      
-      if (!metaFile) {
+      if (!model) {
         return null;
       }
       
-      // Read metadata
-      const metaPath = this.path.join(dirPath, metaFile);
-      const metadata = JSON.parse(this.fs.readFileSync(metaPath, 'utf8'));
+      // Update last accessed timestamp
+      model.lastAccessed = Date.now();
+      await this.putInObjectStore('models', model);
       
-      // Check if data file exists
-      const dataFile = metaFile.replace('.meta.json', '.data.bin');
-      const dataPath = this.path.join(dirPath, dataFile);
+      return model;
+    } catch (error) {
+      this.log(`Failed to get model metadata: ${error.message}`);
+      return null;
+    }
+  }
+  
+  /**
+   * Get a list of all stored models
+   */
+  async listModels(): Promise<ModelMetadata[]> {
+    if (!await this.ensureInitialized()) {
+      return [];
+    }
+    
+    try {
+      // Get all models from database
+      return await this.getAllFromObjectStore('models') as ModelMetadata[];
+    } catch (error) {
+      this.log(`Failed to list models: ${error.message}`);
+      return [];
+    }
+  }
+  
+  /**
+   * Get a tensor by ID
+   */
+  async getTensor(tensorId: string): Promise<TensorStorage | null> {
+    if (!await this.ensureInitialized()) {
+      return null;
+    }
+    
+    try {
+      // Get tensor from database
+      const tensor = await this.getFromObjectStore('tensors', tensorId) as TensorStorage;
       
-      if (this.fs.existsSync(dataPath)) {
-        // Read data
-        const data = this.fs.readFileSync(dataPath);
-        metadata.data = data.buffer;
-      }
-      
-      return metadata;
-    } else {
-      // Get from IndexedDB for browsers
-      // Get all models with this original model ID
-      const models = await this.db!.getAllFromIndex(
-        'quantized-models',
-        'by-model',
-        originalModelId
-      );
-      
-      // Filter by bits and scheme
-      const filteredModels = models.filter(model => 
-        model.bits === quantizationConfig.bits &&
-        model.scheme === (quantizationConfig.scheme || 'symmetric') &&
-        (backend ? model.backend === backend : true)
-      );
-      
-      if (filteredModels.length === 0) {
+      if (!tensor) {
         return null;
       }
       
-      // Return the most recent model
-      return filteredModels.sort((a, b) => b.timestamp - a.timestamp)[0];
+      // Update last accessed timestamp
+      tensor.lastAccessed = Date.now();
+      await this.putInObjectStore('tensors', tensor);
+      
+      // Decompress if necessary
+      if (this.options.enableCompression) {
+        // In a real implementation, we would decompress the data here
+        // For now, we'll just return it as is
+      }
+      
+      return tensor;
+    } catch (error) {
+      this.log(`Failed to get tensor: ${error.message}`);
+      return null;
     }
   }
-
+  
   /**
-   * Store performance metrics
+   * Get tensor data and convert to appropriate TypedArray
    */
-  async storePerformanceMetric(metric: {
-    modelId: string;
-    hardware: string;
-    browser: string;
-    metric: string;
-    value: number;
-    additionalInfo?: any;
-  }): Promise<string> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
+  async getTensorData(tensorId: string): Promise<Float32Array | Int32Array | Uint8Array | null> {
+    const tensor = await this.getTensor(tensorId);
+    
+    if (!tensor) {
+      return null;
     }
     
-    const id = this.generateUUID();
-    const timestamp = Date.now();
-    
-    // Create the metric entry
-    const metricEntry: PerformanceMetric = {
-      id,
-      modelId: metric.modelId,
-      hardware: metric.hardware,
-      browser: metric.browser,
-      metric: metric.metric,
-      value: metric.value,
-      timestamp,
-      additionalInfo: metric.additionalInfo
-    };
-    
-    if (this.isNode) {
-      // Store in file system for Node.js
-      await this.storeNodeFile(
-        'performance-metrics',
-        `${id}.json`,
-        JSON.stringify(metricEntry)
-      );
-    } else {
-      // Store in IndexedDB for browsers
-      await this.db!.add('performance-metrics', metricEntry);
-    }
-    
-    return id;
-  }
-
-  /**
-   * Store device capabilities
-   */
-  async storeDeviceCapabilities(capabilities: any): Promise<string> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    const userAgent = capabilities.userAgent || navigator?.userAgent || 'unknown';
-    const id = this.hashString(userAgent);
-    const timestamp = Date.now();
-    
-    // Create the capability entry
-    const capabilityEntry: DeviceCapabilities = {
-      id,
-      userAgent,
-      browser: capabilities.browser || 'unknown',
-      browserVersion: capabilities.browserVersion || 'unknown',
-      webgpu: capabilities.webgpu || { supported: false },
-      webnn: capabilities.webnn || { supported: false },
-      wasm: capabilities.wasm || { supported: false },
-      timestamp
-    };
-    
-    if (this.isNode) {
-      // Store in file system for Node.js
-      await this.storeNodeFile(
-        'device-capabilities',
-        `${id}.json`,
-        JSON.stringify(capabilityEntry)
-      );
-    } else {
-      // Store in IndexedDB for browsers
-      await this.db!.put('device-capabilities', capabilityEntry);
-    }
-    
-    return id;
-  }
-
-  /**
-   * Get acceleration results with filtering
-   */
-  async getAccelerationResults(options: {
-    modelName?: string;
-    hardware?: string;
-    limit?: number;
-    offset?: number;
-    startDate?: string;
-    endDate?: string;
-  } = {}): Promise<AccelerationResult[]> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    const { modelName, hardware, limit = 100, offset = 0, startDate, endDate } = options;
-    
-    if (this.isNode) {
-      // Get from file system for Node.js
-      const dirPath = this.path.join(this.options.storagePath!, 'acceleration-results');
-      
-      // Read all files
-      const files = this.fs.readdirSync(dirPath);
-      const results: AccelerationResult[] = [];
-      
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          const filePath = this.path.join(dirPath, file);
-          const data = JSON.parse(this.fs.readFileSync(filePath, 'utf8'));
-          
-          // Apply filters
-          if (
-            (!modelName || data.modelId === modelName) &&
-            (!hardware || data.hardware === hardware) &&
-            (!startDate || data.timestamp >= new Date(startDate).getTime()) &&
-            (!endDate || data.timestamp <= new Date(endDate).getTime())
-          ) {
-            results.push(data);
-          }
-        }
-      }
-      
-      // Sort by timestamp (descending)
-      results.sort((a, b) => b.timestamp - a.timestamp);
-      
-      // Apply limit and offset
-      return results.slice(offset, offset + limit);
-    } else {
-      // Get from IndexedDB for browsers
-      let results: AccelerationResult[] = [];
-      
-      if (modelName) {
-        // Use index for model name
-        results = await this.db!.getAllFromIndex('acceleration-results', 'by-model', modelName);
-      } else if (hardware) {
-        // Use index for hardware
-        results = await this.db!.getAllFromIndex('acceleration-results', 'by-hardware', hardware);
-      } else {
-        // Get all results
-        results = await this.db!.getAll('acceleration-results');
-      }
-      
-      // Apply additional filters
-      if (startDate || endDate) {
-        results = results.filter(result => 
-          (!startDate || result.timestamp >= new Date(startDate).getTime()) &&
-          (!endDate || result.timestamp <= new Date(endDate).getTime())
-        );
-      }
-      
-      // Sort by timestamp (descending)
-      results.sort((a, b) => b.timestamp - a.timestamp);
-      
-      // Apply limit and offset
-      return results.slice(offset, offset + limit);
+    // Convert ArrayBuffer to appropriate TypedArray based on dataType
+    switch (tensor.dataType) {
+      case 'float32':
+        return new Float32Array(tensor.data);
+      case 'int32':
+        return new Int32Array(tensor.data);
+      case 'uint8':
+        return new Uint8Array(tensor.data);
+      case 'float16':
+        // In a real implementation, we would handle float16 conversion
+        // For now, we'll just return it as a Uint8Array
+        return new Uint8Array(tensor.data);
+      default:
+        this.log(`Unknown tensor data type: ${tensor.dataType}`);
+        return null;
     }
   }
-
+  
   /**
-   * Get aggregated statistics
+   * Get storage information
    */
-  async getAggregatedStats(options: {
-    groupBy?: 'hardware' | 'model' | 'browser';
-    metrics?: string[];
-    saveToFile?: boolean;
-    outputPath?: string;
-  } = {}): Promise<any> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    const { groupBy = 'hardware', metrics = ['avg_latency', 'throughput'], saveToFile = false, outputPath } = options;
-    
-    // Get all acceleration results
-    const allResults = await this.getAccelerationResults({ limit: 1000 });
-    
-    // Group results
-    const grouped: Record<string, any[]> = {};
-    
-    allResults.forEach(result => {
-      let key: string;
-      
-      switch (groupBy) {
-        case 'hardware':
-          key = result.hardware;
-          break;
-        case 'model':
-          key = result.modelId;
-          break;
-        case 'browser':
-          key = result.browserInfo.split(' ')[0]; // Simple browser extraction
-          break;
-        default:
-          key = 'all';
-      }
-      
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-      
-      grouped[key].push(result);
-    });
-    
-    // Calculate statistics
-    const stats: Record<string, any> = {};
-    
-    for (const [key, results] of Object.entries(grouped)) {
-      stats[key] = {};
-      
-      // Calculate metrics
-      if (metrics.includes('avg_latency')) {
-        const latencies = results.map(r => r.processingTime);
-        stats[key].avg_latency = this.calculateAverage(latencies);
-      }
-      
-      if (metrics.includes('throughput')) {
-        const throughputs = results.map(r => r.throughput);
-        stats[key].throughput = this.calculateAverage(throughputs);
-      }
-      
-      if (metrics.includes('memory')) {
-        const memories = results.map(r => r.memoryUsage);
-        stats[key].memory = this.calculateAverage(memories);
-      }
-      
-      if (metrics.includes('count')) {
-        stats[key].count = results.length;
-      }
-    }
-    
-    // Save to file if requested (Node.js only)
-    if (saveToFile && this.isNode && outputPath) {
-      const statsJson = JSON.stringify(stats, null, 2);
-      this.fs.writeFileSync(outputPath, statsJson);
-    }
-    
-    return stats;
-  }
-
-  /**
-   * Generate a report
-   */
-  async generateReport(options: {
-    format?: 'html' | 'markdown' | 'json';
-    title?: string;
-    includeCharts?: boolean;
-    groupBy?: string;
-    reportType?: 'benchmark' | 'performance' | 'compatibility';
-    browserFilter?: string[];
-    outputPath?: string;
-  } = {}): Promise<string> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    const { 
-      format = 'html',
-      title = 'Acceleration Benchmark Report',
-      includeCharts = true,
-      groupBy = 'hardware',
-      reportType = 'benchmark',
-      browserFilter,
-      outputPath
-    } = options;
-    
-    // Get data
-    const results = await this.getAccelerationResults({ limit: 100 });
-    const stats = await this.getAggregatedStats({ groupBy });
-    const capabilities = await this.getAllDeviceCapabilities();
-    
-    // Filter results by browser if requested
-    const filteredResults = browserFilter 
-      ? results.filter(r => browserFilter.some(b => r.browserInfo.includes(b))) 
-      : results;
-    
-    // Generate report based on format
-    let report = '';
-    
-    if (format === 'html') {
-      report = this.generateHTMLReport({
-        title,
-        results: filteredResults,
-        stats,
-        capabilities,
-        includeCharts,
-        reportType
-      });
-    } else if (format === 'markdown') {
-      report = this.generateMarkdownReport({
-        title,
-        results: filteredResults,
-        stats,
-        capabilities,
-        reportType
-      });
-    } else {
-      // JSON format
-      report = JSON.stringify({
-        title,
-        timestamp: new Date().toISOString(),
-        results: filteredResults,
-        stats,
-        capabilities
-      }, null, 2);
-    }
-    
-    // Save to file if requested (Node.js only)
-    if (this.isNode && outputPath) {
-      this.fs.writeFileSync(outputPath, report);
-    }
-    
-    return report;
-  }
-
-  /**
-   * Export results to a file
-   */
-  async exportResults(options: {
-    format?: 'json' | 'csv';
-    modelNames?: string[];
-    hardwareTypes?: string[];
-    startDate?: string;
-    endDate?: string;
-    filename?: string;
-    outputDir?: string;
-  } = {}): Promise<any> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    const { 
-      format = 'json',
-      modelNames,
-      hardwareTypes,
-      startDate,
-      endDate,
-      filename,
-      outputDir
-    } = options;
-    
-    // Get all results matching the filters
-    const filters: any = {};
-    
-    if (modelNames && modelNames.length > 0) {
-      // We'll need to filter after getting results since we can't query multiple model names at once
-      filters.startDate = startDate;
-      filters.endDate = endDate;
-    } else {
-      filters.startDate = startDate;
-      filters.endDate = endDate;
-    }
-    
-    // Get results
-    let results = await this.getAccelerationResults(filters);
-    
-    // Apply additional filters
-    if (modelNames && modelNames.length > 0) {
-      results = results.filter(r => modelNames.includes(r.modelId));
-    }
-    
-    if (hardwareTypes && hardwareTypes.length > 0) {
-      results = results.filter(r => hardwareTypes.includes(r.hardware));
-    }
-    
-    // Generate export data
-    let exportData;
-    
-    if (format === 'json') {
-      exportData = JSON.stringify(results, null, 2);
-    } else {
-      // CSV format
-      // Generate CSV header
-      const header = [
-        'id', 'modelId', 'modelType', 'hardware', 'processingTime', 
-        'throughput', 'memoryUsage', 'timestamp'
-      ].join(',');
-      
-      // Generate CSV rows
-      const rows = results.map(r => [
-        r.id,
-        r.modelId,
-        r.modelType,
-        r.hardware,
-        r.processingTime,
-        r.throughput,
-        r.memoryUsage,
-        new Date(r.timestamp).toISOString()
-      ].join(','));
-      
-      exportData = [header, ...rows].join('\n');
-    }
-    
-    // In browser environment, trigger download
-    if (!this.isNode) {
-      const extension = format === 'json' ? 'json' : 'csv';
-      const downloadFilename = filename || `acceleration-results-${new Date().toISOString().slice(0, 10)}.${extension}`;
-      
-      const blob = new Blob([exportData], { type: format === 'json' ? 'application/json' : 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = downloadFilename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      return { success: true, count: results.length };
-    } else {
-      // In Node.js environment, save to file
-      if (!outputDir) {
-        throw new Error('Output directory is required for Node.js export');
-      }
-      
-      const extension = format === 'json' ? 'json' : 'csv';
-      const outputFilename = filename || `acceleration-results-${new Date().toISOString().slice(0, 10)}.${extension}`;
-      const outputPath = this.path.join(outputDir, outputFilename);
-      
-      this.fs.writeFileSync(outputPath, exportData);
-      
-      return { success: true, count: results.length, path: outputPath };
-    }
-  }
-
-  /**
-   * Clear old data to manage storage size
-   */
-  async clearOldData(options: {
-    olderThan?: number; // Days
-    types?: ('results' | 'models' | 'metrics' | 'capabilities')[];
-  } = {}): Promise<number> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    const { olderThan = 30, types = ['results', 'models', 'metrics'] } = options;
-    
-    const cutoffTime = Date.now() - (olderThan * 24 * 60 * 60 * 1000);
-    let removedCount = 0;
-    
-    if (this.isNode) {
-      // Clear old data from file system for Node.js
-      for (const type of types) {
-        let dirName: string;
-        
-        switch (type) {
-          case 'results':
-            dirName = 'acceleration-results';
-            break;
-          case 'models':
-            dirName = 'quantized-models';
-            break;
-          case 'metrics':
-            dirName = 'performance-metrics';
-            break;
-          case 'capabilities':
-            dirName = 'device-capabilities';
-            break;
-          default:
-            continue;
-        }
-        
-        const dirPath = this.path.join(this.options.storagePath!, dirName);
-        
-        if (!this.fs.existsSync(dirPath)) {
-          continue;
-        }
-        
-        const files = this.fs.readdirSync(dirPath);
-        
-        for (const file of files) {
-          const filePath = this.path.join(dirPath, file);
-          
-          // Skip files that don't end with .json (like .bin files)
-          if (!file.endsWith('.json') && type !== 'models') {
-            continue;
-          }
-          
-          // Read file to check timestamp
-          const data = JSON.parse(this.fs.readFileSync(filePath, 'utf8'));
-          
-          if (data.timestamp && data.timestamp < cutoffTime) {
-            // Delete file
-            this.fs.unlinkSync(filePath);
-            
-            // If this is a model, also delete the data file
-            if (type === 'models' && file.endsWith('.meta.json')) {
-              const dataFilePath = filePath.replace('.meta.json', '.data.bin');
-              if (this.fs.existsSync(dataFilePath)) {
-                this.fs.unlinkSync(dataFilePath);
-              }
-            }
-            
-            removedCount++;
-          }
-        }
-      }
-    } else {
-      // Clear old data from IndexedDB for browsers
-      const tx = this.db!.transaction(
-        ['acceleration-results', 'quantized-models', 'performance-metrics', 'device-capabilities'],
-        'readwrite'
-      );
-      
-      // Process each store based on types
-      for (const type of types) {
-        let storeName: keyof AccelerateDBSchema;
-        
-        switch (type) {
-          case 'results':
-            storeName = 'acceleration-results';
-            break;
-          case 'models':
-            storeName = 'quantized-models';
-            break;
-          case 'metrics':
-            storeName = 'performance-metrics';
-            break;
-          case 'capabilities':
-            storeName = 'device-capabilities';
-            break;
-          default:
-            continue;
-        }
-        
-        // Get all entries
-        const cursor = await tx.objectStore(storeName).index('by-date').openCursor();
-        
-        // Iterate through cursor
-        while (cursor) {
-          const entry = cursor.value;
-          
-          if (entry.timestamp < cutoffTime) {
-            // Delete entry
-            await cursor.delete();
-            removedCount++;
-          }
-          
-          await cursor.continue();
-        }
-      }
-      
-      // Commit transaction
-      await tx.done;
-    }
-    
-    return removedCount;
-  }
-
-  /**
-   * Get storage statistics
-   */
-  async getStorageStats(): Promise<{
-    totalSize: number;
-    itemCounts: Record<string, number>;
-    oldestEntry: number;
-    newestEntry: number;
-  }> {
-    if (!this.initialized) {
-      throw new Error('Storage manager not initialized');
-    }
-    
-    if (this.isNode) {
-      // Get storage stats from file system for Node.js
-      const stats: any = {
+  async getStorageInfo(): Promise<StorageInfo> {
+    if (!await this.ensureInitialized()) {
+      return {
+        modelCount: 0,
+        tensorCount: 0,
         totalSize: 0,
-        itemCounts: {
-          'acceleration-results': 0,
-          'quantized-models': 0,
-          'performance-metrics': 0,
-          'device-capabilities': 0
-        },
-        oldestEntry: Date.now(),
-        newestEntry: 0
+        dbName: this.options.dbName,
+        dbVersion: this.options.dbVersion
       };
-      
-      const storeNames = [
-        'acceleration-results', 
-        'quantized-models', 
-        'performance-metrics', 
-        'device-capabilities'
-      ];
-      
-      for (const storeName of storeNames) {
-        const dirPath = this.path.join(this.options.storagePath!, storeName);
-        
-        if (!this.fs.existsSync(dirPath)) {
-          continue;
-        }
-        
-        const files = this.fs.readdirSync(dirPath);
-        let storeSize = 0;
-        
-        for (const file of files) {
-          const filePath = this.path.join(dirPath, file);
-          const fileStat = this.fs.statSync(filePath);
-          
-          storeSize += fileStat.size;
-          
-          // Count items (only count JSON files for stats)
-          if (file.endsWith('.json')) {
-            stats.itemCounts[storeName]++;
-            
-            // Check timestamps for oldest/newest
-            const data = JSON.parse(this.fs.readFileSync(filePath, 'utf8'));
-            
-            if (data.timestamp) {
-              stats.oldestEntry = Math.min(stats.oldestEntry, data.timestamp);
-              stats.newestEntry = Math.max(stats.newestEntry, data.timestamp);
-            }
-          }
-        }
-        
-        stats.totalSize += storeSize;
-      }
-      
-      return stats;
-    } else {
-      // Get storage stats from IndexedDB for browsers
-      const stats: any = {
-        totalSize: 0, // This is approximate
-        itemCounts: {},
-        oldestEntry: Date.now(),
-        newestEntry: 0
-      };
-      
-      const storeNames = [
-        'acceleration-results', 
-        'quantized-models', 
-        'performance-metrics', 
-        'device-capabilities'
-      ] as const;
-      
-      for (const storeName of storeNames) {
-        // Count items
-        const count = await this.db!.count(storeName);
-        stats.itemCounts[storeName] = count;
-        
-        // Estimate size
-        const items = await this.db!.getAll(storeName);
-        let storeSize = 0;
-        
-        for (const item of items) {
-          // Approximate size calculation
-          const itemStr = JSON.stringify(item);
-          storeSize += itemStr.length * 2; // Rough byte estimate for UTF-16
-          
-          // Check timestamps for oldest/newest
-          if (item.timestamp) {
-            stats.oldestEntry = Math.min(stats.oldestEntry, item.timestamp);
-            stats.newestEntry = Math.max(stats.newestEntry, item.timestamp);
-          }
-        }
-        
-        stats.totalSize += storeSize;
-      }
-      
-      return stats;
-    }
-  }
-
-  /**
-   * Get all device capabilities
-   */
-  private async getAllDeviceCapabilities(): Promise<DeviceCapabilities[]> {
-    if (this.isNode) {
-      // Get from file system for Node.js
-      const dirPath = this.path.join(this.options.storagePath!, 'device-capabilities');
-      
-      if (!this.fs.existsSync(dirPath)) {
-        return [];
-      }
-      
-      const files = this.fs.readdirSync(dirPath);
-      const capabilities: DeviceCapabilities[] = [];
-      
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          const filePath = this.path.join(dirPath, file);
-          const data = JSON.parse(this.fs.readFileSync(filePath, 'utf8'));
-          capabilities.push(data);
-        }
-      }
-      
-      return capabilities;
-    } else {
-      // Get from IndexedDB for browsers
-      return await this.db!.getAll('device-capabilities');
-    }
-  }
-
-  /**
-   * Clean up old entries
-   */
-  private async cleanupOldEntries(): Promise<void> {
-    const { expirationDays } = this.options;
-    
-    if (!expirationDays) {
-      return;
     }
     
-    // Clear old data
-    await this.clearOldData({
-      olderThan: expirationDays,
-      types: ['results', 'metrics']
+    // Refresh storage statistics
+    await this.updateStorageStats();
+    
+    // Try to get remaining quota if available
+    let remainingQuota: number | undefined = undefined;
+    
+    if ('storage' in navigator && 'estimate' in navigator.storage) {
+      try {
+        const estimate = await navigator.storage.estimate();
+        if (estimate.quota && estimate.usage) {
+          remainingQuota = estimate.quota - estimate.usage;
+        }
+      } catch (error) {
+        this.log(`Failed to get storage estimate: ${error.message}`);
+      }
+    }
+    
+    return {
+      modelCount: this.modelCount,
+      tensorCount: this.tensorCount,
+      totalSize: this.totalSize,
+      remainingQuota,
+      dbName: this.options.dbName,
+      dbVersion: this.options.dbVersion
+    };
+  }
+  
+  /**
+   * Delete a model and all its tensors
+   */
+  async deleteModel(modelId: string): Promise<boolean> {
+    if (!await this.ensureInitialized()) {
+      return false;
+    }
+    
+    try {
+      // Get model metadata
+      const model = await this.getModelMetadata(modelId);
+      
+      if (!model) {
+        this.log(`Model not found: ${modelId}`);
+        return false;
+      }
+      
+      // Delete all tensors
+      for (const tensorId of model.tensorIds) {
+        await this.deleteTensor(tensorId);
+      }
+      
+      // Delete model metadata
+      await this.deleteFromObjectStore('models', modelId);
+      
+      // Update stats
+      this.modelCount--;
+      
+      this.log(`Deleted model: ${modelId}`);
+      return true;
+    } catch (error) {
+      this.log(`Failed to delete model: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Delete a tensor
+   */
+  async deleteTensor(tensorId: string): Promise<boolean> {
+    if (!await this.ensureInitialized()) {
+      return false;
+    }
+    
+    try {
+      // Get tensor to get its size
+      const tensor = await this.getTensor(tensorId);
+      
+      if (!tensor) {
+        this.log(`Tensor not found: ${tensorId}`);
+        return false;
+      }
+      
+      // Delete tensor
+      await this.deleteFromObjectStore('tensors', tensorId);
+      
+      // Update stats
+      this.tensorCount--;
+      this.totalSize -= tensor.byteSize;
+      
+      this.log(`Deleted tensor: ${tensorId}`);
+      return true;
+    } catch (error) {
+      this.log(`Failed to delete tensor: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Clear all stored data
+   */
+  async clear(): Promise<boolean> {
+    if (!await this.ensureInitialized()) {
+      return false;
+    }
+    
+    try {
+      // Clear object stores
+      await this.clearObjectStore('models');
+      await this.clearObjectStore('tensors');
+      
+      // Reset stats
+      this.modelCount = 0;
+      this.tensorCount = 0;
+      this.totalSize = 0;
+      
+      this.log('Cleared all stored data');
+      return true;
+    } catch (error) {
+      this.log(`Failed to clear stored data: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Clean up old unused data
+   */
+  async cleanup(): Promise<number> {
+    if (!await this.ensureInitialized()) {
+      return 0;
+    }
+    
+    try {
+      const threshold = Date.now() - this.options.cleanupThreshold;
+      let freedSpace = 0;
+      
+      // First, find unused tensors
+      const unusedTensors = await this.runObjectStoreQuery<TensorStorage>(
+        'tensors',
+        'lastAccessed',
+        IDBKeyRange.upperBound(threshold)
+      );
+      
+      // Delete unused tensors
+      for (const tensor of unusedTensors) {
+        await this.deleteFromObjectStore('tensors', tensor.id);
+        freedSpace += tensor.byteSize;
+        this.tensorCount--;
+        this.totalSize -= tensor.byteSize;
+      }
+      
+      this.log(`Cleanup freed ${freedSpace} bytes from ${unusedTensors.length} tensors`);
+      return freedSpace;
+    } catch (error) {
+      this.log(`Cleanup failed: ${error.message}`);
+      return 0;
+    }
+  }
+  
+  /**
+   * Free up space for new data
+   */
+  private async freeUpSpace(requiredBytes: number): Promise<number> {
+    if (!await this.ensureInitialized()) {
+      return 0;
+    }
+    
+    // First try to run cleanup
+    const freedFromCleanup = await this.cleanup();
+    if (freedFromCleanup >= requiredBytes) {
+      return freedFromCleanup;
+    }
+    
+    try {
+      let totalFreed = freedFromCleanup;
+      
+      // If still not enough, start deleting oldest tensors until we have enough space
+      while (totalFreed < requiredBytes) {
+        // Get oldest tensor
+        const oldestTensors = await this.runObjectStoreQuery<TensorStorage>(
+          'tensors',
+          'lastAccessed',
+          null,
+          1
+        );
+        
+        if (oldestTensors.length === 0) {
+          break; // No more tensors to delete
+        }
+        
+        const tensor = oldestTensors[0];
+        await this.deleteFromObjectStore('tensors', tensor.id);
+        
+        totalFreed += tensor.byteSize;
+        this.tensorCount--;
+        this.totalSize -= tensor.byteSize;
+      }
+      
+      this.log(`Freed ${totalFreed} bytes of space`);
+      return totalFreed;
+    } catch (error) {
+      this.log(`Failed to free up space: ${error.message}`);
+      return freedFromCleanup;
+    }
+  }
+  
+  /**
+   * Update storage statistics
+   */
+  private async updateStorageStats(): Promise<void> {
+    if (!this.db) return;
+    
+    try {
+      // Count models
+      this.modelCount = await this.countObjectStore('models');
+      
+      // Count tensors
+      this.tensorCount = await this.countObjectStore('tensors');
+      
+      // Calculate total size from tensor sizes
+      const tensors = await this.getAllFromObjectStore('tensors') as TensorStorage[];
+      this.totalSize = tensors.reduce((total, tensor) => total + tensor.byteSize, 0);
+    } catch (error) {
+      this.log(`Failed to update storage stats: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Ensure the storage manager is initialized
+   */
+  private async ensureInitialized(): Promise<boolean> {
+    if (this.isInitialized) {
+      return true;
+    }
+    
+    return await this.initialize();
+  }
+  
+  /**
+   * Log message if logging is enabled
+   */
+  private log(message: string): void {
+    if (this.options.enableLogging) {
+      console.log(`[StorageManager] ${message}`);
+    }
+  }
+  
+  // IndexedDB helper methods
+  
+  /**
+   * Put an item in an object store
+   */
+  private putInObjectStore(storeName: string, item: any): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      try {
+        const transaction = this.db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.put(item);
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
-
+  
   /**
-   * Store a file in the Node.js file system
+   * Get an item from an object store
    */
-  private async storeNodeFile(directory: string, filename: string, data: string | Buffer): Promise<void> {
-    if (!this.fs || !this.path) {
-      throw new Error('Node.js modules not available for file-based storage');
-    }
-    
-    const dirPath = this.path.join(this.options.storagePath!, directory);
-    const filePath = this.path.join(dirPath, filename);
-    
-    this.fs.writeFileSync(filePath, data);
-  }
-
-  /**
-   * Generate an HTML report
-   */
-  private generateHTMLReport(options: {
-    title: string;
-    results: AccelerationResult[];
-    stats: any;
-    capabilities: DeviceCapabilities[];
-    includeCharts: boolean;
-    reportType: string;
-  }): string {
-    const { title, results, stats, capabilities, includeCharts, reportType } = options;
-    
-    // Simple HTML report template
-    return `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${title}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          h1, h2, h3 { color: #333; }
-          .container { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-          table { border-collapse: collapse; width: 100%; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background-color: #f2f2f2; }
-          tr:nth-child(even) { background-color: #f9f9f9; }
-          .chart { width: 100%; height: 400px; background-color: #f5f5f5; border: 1px solid #ddd; margin-top: 20px; }
-          .timestamp { color: #666; font-size: 0.8em; }
-        </style>
-        ${includeCharts ? '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>' : ''}
-      </head>
-      <body>
-        <h1>${title}</h1>
-        <p class="timestamp">Generated on ${new Date().toLocaleString()}</p>
+  private getFromObjectStore(storeName: string, key: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      try {
+        const transaction = this.db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.get(key);
         
-        <div class="container">
-          <h2>Hardware Information</h2>
-          <table>
-            <tr>
-              <th>Browser</th>
-              <th>Version</th>
-              <th>WebGPU</th>
-              <th>WebNN</th>
-              <th>WebAssembly</th>
-            </tr>
-            ${capabilities.map(cap => `
-              <tr>
-                <td>${cap.browser}</td>
-                <td>${cap.browserVersion}</td>
-                <td>${cap.webgpu.supported ? '✅' : '❌'}</td>
-                <td>${cap.webnn.supported ? '✅' : '❌'}</td>
-                <td>${cap.wasm.supported ? '✅' : '❌'}</td>
-              </tr>
-            `).join('')}
-          </table>
-        </div>
-        
-        <div class="container">
-          <h2>Performance Statistics</h2>
-          <table>
-            <tr>
-              <th>Group</th>
-              <th>Avg. Latency (ms)</th>
-              <th>Throughput (items/s)</th>
-              <th>Memory Usage (MB)</th>
-              <th>Count</th>
-            </tr>
-            ${Object.entries(stats).map(([key, value]: [string, any]) => `
-              <tr>
-                <td>${key}</td>
-                <td>${value.avg_latency?.toFixed(2) || 'N/A'}</td>
-                <td>${value.throughput?.toFixed(2) || 'N/A'}</td>
-                <td>${value.memory?.toFixed(2) || 'N/A'}</td>
-                <td>${value.count || results.filter(r => 
-                  options.reportType === 'hardware' ? r.hardware === key : 
-                  options.reportType === 'model' ? r.modelId === key : true
-                ).length}</td>
-              </tr>
-            `).join('')}
-          </table>
-          
-          ${includeCharts ? `
-            <div class="chart">
-              <canvas id="performanceChart"></canvas>
-            </div>
-            <script>
-              // Create chart
-              const ctx = document.getElementById('performanceChart').getContext('2d');
-              const chart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                  labels: ${JSON.stringify(Object.keys(stats))},
-                  datasets: [
-                    {
-                      label: 'Avg. Latency (ms)',
-                      data: ${JSON.stringify(Object.values(stats).map((v: any) => v.avg_latency || 0))},
-                      backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                      borderColor: 'rgba(54, 162, 235, 1)',
-                      borderWidth: 1
-                    },
-                    {
-                      label: 'Throughput (items/s)',
-                      data: ${JSON.stringify(Object.values(stats).map((v: any) => v.throughput || 0))},
-                      backgroundColor: 'rgba(75, 192, 192, 0.5)',
-                      borderColor: 'rgba(75, 192, 192, 1)',
-                      borderWidth: 1
-                    }
-                  ]
-                },
-                options: {
-                  responsive: true,
-                  scales: {
-                    y: {
-                      beginAtZero: true
-                    }
-                  }
-                }
-              });
-            </script>
-          ` : ''}
-        </div>
-        
-        <div class="container">
-          <h2>Recent Results</h2>
-          <table>
-            <tr>
-              <th>Model ID</th>
-              <th>Hardware</th>
-              <th>Processing Time (ms)</th>
-              <th>Throughput (items/s)</th>
-              <th>Memory Usage (MB)</th>
-              <th>Date</th>
-            </tr>
-            ${results.slice(0, 10).map(result => `
-              <tr>
-                <td>${result.modelId}</td>
-                <td>${result.hardware}</td>
-                <td>${result.processingTime.toFixed(2)}</td>
-                <td>${result.throughput.toFixed(2)}</td>
-                <td>${result.memoryUsage.toFixed(2)}</td>
-                <td>${new Date(result.timestamp).toLocaleString()}</td>
-              </tr>
-            `).join('')}
-          </table>
-        </div>
-      </body>
-      </html>
-    `;
-  }
-
-  /**
-   * Generate a Markdown report
-   */
-  private generateMarkdownReport(options: {
-    title: string;
-    results: AccelerationResult[];
-    stats: any;
-    capabilities: DeviceCapabilities[];
-    reportType: string;
-  }): string {
-    const { title, results, stats, capabilities, reportType } = options;
-    
-    // Simple Markdown report template
-    return `
-# ${title}
-
-*Generated on ${new Date().toLocaleString()}*
-
-## Hardware Information
-
-| Browser | Version | WebGPU | WebNN | WebAssembly |
-|---------|---------|--------|-------|------------|
-${capabilities.map(cap => `| ${cap.browser} | ${cap.browserVersion} | ${cap.webgpu.supported ? '✅' : '❌'} | ${cap.webnn.supported ? '✅' : '❌'} | ${cap.wasm.supported ? '✅' : '❌'} |`).join('\n')}
-
-## Performance Statistics
-
-| Group | Avg. Latency (ms) | Throughput (items/s) | Memory Usage (MB) | Count |
-|-------|------------------|---------------------|------------------|-------|
-${Object.entries(stats).map(([key, value]: [string, any]) => `| ${key} | ${value.avg_latency?.toFixed(2) || 'N/A'} | ${value.throughput?.toFixed(2) || 'N/A'} | ${value.memory?.toFixed(2) || 'N/A'} | ${value.count || results.filter(r => 
-  reportType === 'hardware' ? r.hardware === key : 
-  reportType === 'model' ? r.modelId === key : true
-).length} |`).join('\n')}
-
-## Recent Results
-
-| Model ID | Hardware | Processing Time (ms) | Throughput (items/s) | Memory Usage (MB) | Date |
-|----------|---------|---------------------|---------------------|------------------|------|
-${results.slice(0, 10).map(result => `| ${result.modelId} | ${result.hardware} | ${result.processingTime.toFixed(2)} | ${result.throughput.toFixed(2)} | ${result.memoryUsage.toFixed(2)} | ${new Date(result.timestamp).toLocaleString()} |`).join('\n')}
-    `;
-  }
-
-  /**
-   * Generate a UUID
-   */
-  private generateUUID(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
-
+  
   /**
-   * Hash a string (simple implementation)
+   * Get all items from an object store
    */
-  private hashString(str: string): string {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(16);
+  private getAllFromObjectStore(storeName: string): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      try {
+        const transaction = this.db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.getAll();
+        
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
-
+  
   /**
-   * Hash a configuration object
+   * Delete an item from an object store
    */
-  private hashConfig(config: any): string {
-    return this.hashString(JSON.stringify(config));
+  private deleteFromObjectStore(storeName: string, key: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      try {
+        const transaction = this.db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.delete(key);
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
-
+  
   /**
-   * Calculate average of an array of numbers
+   * Clear an object store
    */
-  private calculateAverage(values: number[]): number {
-    if (values.length === 0) return 0;
-    return values.reduce((sum, val) => sum + val, 0) / values.length;
+  private clearObjectStore(storeName: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      try {
+        const transaction = this.db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.clear();
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
-
+  
   /**
-   * Close the database connection
+   * Count items in an object store
    */
-  async close(): Promise<void> {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-    }
-    
-    this.initialized = false;
+  private countObjectStore(storeName: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      try {
+        const transaction = this.db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.count();
+        
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
-
+  
   /**
-   * Clean up resources
+   * Run a query on an object store using an index
    */
-  async dispose(): Promise<void> {
-    await this.close();
+  private runObjectStoreQuery<T>(
+    storeName: string,
+    indexName: string,
+    range: IDBKeyRange | null,
+    limit: number = Infinity
+  ): Promise<T[]> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      
+      try {
+        const transaction = this.db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const index = store.index(indexName);
+        const request = range ? index.openCursor(range) : index.openCursor();
+        
+        const results: T[] = [];
+        
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+          
+          if (cursor && results.length < limit) {
+            results.push(cursor.value);
+            cursor.continue();
+          } else {
+            resolve(results);
+          }
+        };
+        
+        request.onerror = () => reject(request.error);
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 }
+
+// Default export for easier imports
+export default StorageManager;

@@ -6,7 +6,7 @@
  * Conversion fidelity might not be 100%, please manual review recommended.;
  */;
 ";"
-import {HardwareAbstraction} from "src/model/transformers/index/index/index/index";"
+import {HardwareAbstraction} from "src/model/transformers/index/index/index/index/index";"
 
 // WebGPU related imports;
 /** Test comprehensive hardware coverage for ((all key HuggingFace model classes.;

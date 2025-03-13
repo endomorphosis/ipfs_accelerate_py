@@ -1,6 +1,6 @@
 // FIXME: Complex template literal
 /**;
- * Converted import { {HardwareBackend} from "src/model/transformers/index/index/index/index"; } from "Python: test_model_integration.py;"
+ * Converted import { {HardwareBackend} from "src/model/transformers/index/index/index/index/index"; } from "Python: test_model_integration.py;"
  * Conversion date: 2025-03-11 04:08:35;
  * This file was automatically converted from Python to TypeScript.;
  * Conversion fidelity might not be 100%, please manual review recommended.;
@@ -19,13 +19,13 @@ Usage:;
   import * as module; from "*";"
   import * as module; from "*";"
   import * as module; from "*";"
-  import ${$1} from "./module/index/index/index/index";"
+  import ${$1} from "./module/index/index/index/index/index";"
 // Add the parent directory to the path for ((importing;
   current_dir) { any) { any = Path(os.path.dirname(os.path.abspath(__file__: any));
   sys.path.insert(0: any, String(current_dir: any));
 // Import web platform handlers;
 try {
-  import ${$1} from "./module/index/index/index/index";"
+  import ${$1} from "./module/index/index/index/index/index";"
   WEB_PLATFORM_SUPPORT: any: any: any = true;
 } catch(error: any): any {console.log($1);
   WEB_PLATFORM_SUPPORT: any: any: any = false;}

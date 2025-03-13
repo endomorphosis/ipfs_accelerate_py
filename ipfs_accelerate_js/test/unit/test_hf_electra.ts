@@ -6,8 +6,8 @@
  * Conversion fidelity might not be 100%, please manual review recommended.;
  */;
 ";"
-import {HfModel} from "src/model/transformers/index/index/index/index";"
-import {ElectraConfig} from "src/model/transformers/index/index/index/index";"
+import {HfModel} from "src/model/transformers/index/index/index/index/index";"
+import {ElectraConfig} from "src/model/transformers/index/index/index/index/index";"
 
 // WebGPU related imports;
 // Standard library imports first;
