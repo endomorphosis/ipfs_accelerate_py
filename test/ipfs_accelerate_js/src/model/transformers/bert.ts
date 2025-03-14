@@ -10,6 +10,8 @@ import { HardwareBackend } from '../../hardware/interfaces/hardware_backend';
 import { matmul, softmax } from '../../tensor/operations/matrix';
 import { layerNorm, gelu } from '../../tensor/operations/nn';
 import { add, mul } from '../../tensor/operations/basic';
+import { ShaderType } from '../../hardware/webgpu/optimizations/browser_shader_loader';
+import { BrowserType, detectBrowserType } from '../../hardware/webgpu/browser_optimized_operations';
 
 /**
  * Configuration for the BERT model
@@ -35,6 +37,14 @@ export interface BertConfig {
   backendPreference?: TensorBackendType[];
   /** Whether to use optimized operations */
   useOptimizedOps?: boolean;
+  /** Whether to use browser-specific optimizations */
+  useBrowserOptimizations?: boolean;
+  /** Specific browser type to optimize for (auto-detected if not specified) */
+  browserType?: BrowserType;
+  /** Whether to use operation fusion when possible */
+  useOperationFusion?: boolean;
+  /** Attention dropout probability */
+  attentionDropout?: number;
 }
 
 /**
@@ -50,7 +60,10 @@ export const DEFAULT_BERT_CONFIG: BertConfig = {
   maxPositions: 512,
   layerNormEps: 1e-12,
   backendPreference: ['webgpu', 'webnn', 'cpu'],
-  useOptimizedOps: true
+  useOptimizedOps: true,
+  useBrowserOptimizations: true,
+  useOperationFusion: true,
+  attentionDropout: 0.1
 };
 
 /**
@@ -444,6 +457,46 @@ export class Bert {
   }
   
   /**
+   * Run layer normalization with browser-specific optimizations if available
+   * @param input Input tensor
+   * @param weight LayerNorm weight
+   * @param bias LayerNorm bias
+   * @returns Normalized tensor
+   */
+  private async runLayerNorm(
+    input: Tensor,
+    weight: Tensor,
+    bias: Tensor
+  ): Promise<Tensor> {
+    // Check if we can use the optimized layer normalization implementation
+    if (this.config.useBrowserOptimizations && 
+        this.hardware.getBackendType() === 'webgpu' &&
+        'layerNorm' in this.hardware) {
+        
+      const webgpuBackend = this.hardware as any; // Cast to access WebGPU-specific methods
+      return await webgpuBackend.layerNorm(
+        input,
+        weight,
+        bias,
+        {
+          useBrowserOptimizations: true,
+          browserType: this.config.browserType || undefined, // Use auto-detected if not specified
+          epsilon: this.config.layerNormEps
+        }
+      );
+    } else {
+      // Fall back to standard implementation
+      return await layerNorm(
+        input,
+        weight,
+        bias,
+        this.config.layerNormEps,
+        this.hardware
+      );
+    }
+  }
+
+  /**
    * Get embeddings from input IDs, token type IDs, and position IDs
    * @param inputIds Input token IDs
    * @param tokenTypeIds Token type IDs
@@ -487,13 +540,11 @@ export class Bert {
     const embeddings1 = await add(wordEmbeddings, posEmbeddings, this.hardware);
     const combinedEmbeddings = await add(embeddings1, typeEmbeddings, this.hardware);
     
-    // Apply layer normalization
-    const normalizedEmbeddings = await layerNorm(
+    // Apply layer normalization with browser optimizations if available
+    const normalizedEmbeddings = await this.runLayerNorm(
       combinedEmbeddings,
       this.weights.layerNorm!.weight!,
-      this.weights.layerNorm!.bias!,
-      this.config.layerNormEps,
-      this.hardware
+      this.weights.layerNorm!.bias!
     );
     
     // Release temporary tensors
@@ -528,13 +579,11 @@ export class Bert {
       layer.attention
     );
     
-    // Apply attention output layer normalization
-    const attentionNormalized = await layerNorm(
+    // Apply attention output layer normalization with browser optimizations if available
+    const attentionNormalized = await this.runLayerNorm(
       attentionOutput,
       layer.attention.layerNorm.weight!,
-      layer.attention.layerNorm.bias!,
-      this.config.layerNormEps,
-      this.hardware
+      layer.attention.layerNorm.bias!
     );
     
     // Run feed-forward network
@@ -551,13 +600,11 @@ export class Bert {
       layer.output.bias!
     );
     
-    // Apply final layer normalization
-    const outputNormalized = await layerNorm(
+    // Apply final layer normalization with browser optimizations if available
+    const outputNormalized = await this.runLayerNorm(
       ffnOutput,
       layer.layerNorm.weight!,
-      layer.layerNorm.bias!,
-      this.config.layerNormEps,
-      this.hardware
+      layer.layerNorm.bias!
     );
     
     // Release temporary tensors
@@ -577,6 +624,158 @@ export class Bert {
    * @returns Attention output
    */
   private async runSelfAttention(
+    hiddenStates: Tensor,
+    attentionMask: Tensor,
+    weights: {
+      query: { weight?: Tensor, bias?: Tensor },
+      key: { weight?: Tensor, bias?: Tensor },
+      value: { weight?: Tensor, bias?: Tensor },
+      output: { weight?: Tensor, bias?: Tensor },
+      layerNorm: { weight?: Tensor, bias?: Tensor }
+    }
+  ): Promise<BertAttentionOutput> {
+    // Check if we can use the optimized multi-head attention implementation
+    if (this.config.useBrowserOptimizations && 
+        this.hardware.getBackendType() === 'webgpu' &&
+        'multiHeadAttention' in this.hardware) {
+      return this.runOptimizedSelfAttention(hiddenStates, attentionMask, weights);
+    } else {
+      return this.runStandardSelfAttention(hiddenStates, attentionMask, weights);
+    }
+  }
+
+  /**
+   * Run browser-optimized multi-head attention
+   * @param hiddenStates Input hidden states 
+   * @param attentionMask Attention mask
+   * @param weights Attention weights
+   * @returns Attention output
+   */
+  private async runOptimizedSelfAttention(
+    hiddenStates: Tensor,
+    attentionMask: Tensor,
+    weights: {
+      query: { weight?: Tensor, bias?: Tensor },
+      key: { weight?: Tensor, bias?: Tensor },
+      value: { weight?: Tensor, bias?: Tensor },
+      output: { weight?: Tensor, bias?: Tensor },
+      layerNorm: { weight?: Tensor, bias?: Tensor }
+    }
+  ): Promise<BertAttentionOutput> {
+    const [batchSize, seqLength, hiddenSize] = hiddenStates.dimensions;
+    const numAttentionHeads = this.config.numHeads;
+    const attentionHeadSize = hiddenSize / numAttentionHeads;
+    const webgpuBackend = this.hardware as any; // Cast to access WebGPU-specific methods
+    
+    // Create query projection
+    const query = await matmul(
+      hiddenStates,
+      weights.query.weight!,
+      this.hardware,
+      { useOptimization: this.config.useOptimizedOps }
+    );
+    const queryBiased = await add(query, weights.query.bias!, this.hardware);
+    
+    // Create key projection
+    const key = await matmul(
+      hiddenStates,
+      weights.key.weight!,
+      this.hardware,
+      { useOptimization: this.config.useOptimizedOps }
+    );
+    const keyBiased = await add(key, weights.key.bias!, this.hardware);
+    
+    // Create value projection
+    const value = await matmul(
+      hiddenStates,
+      weights.value.weight!,
+      this.hardware,
+      { useOptimization: this.config.useOptimizedOps }
+    );
+    const valueBiased = await add(value, weights.value.bias!, this.hardware);
+    
+    // Use browser-optimized multi-head attention
+    const scaleFactor = 1.0 / Math.sqrt(attentionHeadSize);
+    
+    // Create random tensor for attention dropout if needed
+    let rngStateTensor;
+    if (this.config.attentionDropout > 0) {
+      const rngSize = batchSize * seqLength * seqLength;
+      const rngData = new Uint32Array(rngSize);
+      for (let i = 0; i < rngSize; i++) {
+        rngData[i] = Math.floor(Math.random() * 4294967295); // max uint32
+      }
+      rngStateTensor = await this.hardware.createTensor({
+        dimensions: [rngSize],
+        data: rngData,
+        dtype: 'uint32'
+      });
+    }
+    
+    const attentionOutput = await webgpuBackend.multiHeadAttention(
+      queryBiased, 
+      keyBiased, 
+      valueBiased, 
+      {
+        useBrowserOptimizations: true,
+        browserType: this.config.browserType || undefined, // Use auto-detected if not specified
+        numHeads: numAttentionHeads,
+        scale: scaleFactor,
+        attentionMask: attentionMask,
+        dropout: this.config.attentionDropout || 0,
+        rngStateTensor: rngStateTensor
+      }
+    );
+    
+    // Apply output projection
+    const projectedOutput = await matmul(
+      attentionOutput,
+      weights.output.weight!,
+      this.hardware,
+      { useOptimization: this.config.useOptimizedOps }
+    );
+    
+    const outputBiased = await add(
+      projectedOutput,
+      weights.output.bias!,
+      this.hardware
+    );
+    
+    // Add residual connection
+    const outputWithResidual = await add(
+      outputBiased,
+      hiddenStates,
+      this.hardware
+    );
+    
+    // Release temporary tensors
+    await this.hardware.releaseTensor(query);
+    await this.hardware.releaseTensor(queryBiased);
+    await this.hardware.releaseTensor(key);
+    await this.hardware.releaseTensor(keyBiased);
+    await this.hardware.releaseTensor(value);
+    await this.hardware.releaseTensor(valueBiased);
+    await this.hardware.releaseTensor(attentionOutput);
+    await this.hardware.releaseTensor(projectedOutput);
+    await this.hardware.releaseTensor(outputBiased);
+    
+    if (rngStateTensor) {
+      await this.hardware.releaseTensor(rngStateTensor);
+    }
+    
+    return {
+      output: outputWithResidual
+    };
+  }
+  
+  /**
+   * Run standard (non-optimized) self-attention mechanism
+   * @param hiddenStates Input hidden states
+   * @param attentionMask Attention mask
+   * @param weights Attention weights
+   * @returns Attention output
+   */
+  private async runStandardSelfAttention(
     hiddenStates: Tensor,
     attentionMask: Tensor,
     weights: {
@@ -792,25 +991,46 @@ export class Bert {
     weight: Tensor,
     bias: Tensor
   ): Promise<Tensor> {
-    // Linear projection
-    const intermediate = await matmul(
-      hiddenStates,
-      weight,
-      this.hardware,
-      { useOptimization: this.config.useOptimizedOps }
-    );
-    
-    // Add bias
-    const biased = await add(intermediate, bias, this.hardware);
-    
-    // Apply GELU activation
-    const activated = await gelu(biased, this.hardware);
-    
-    // Release temporary tensors
-    await this.hardware.releaseTensor(intermediate);
-    await this.hardware.releaseTensor(biased);
-    
-    return activated;
+    // Check if we can use operation fusion
+    if (this.config.useBrowserOptimizations && 
+        this.config.useOperationFusion &&
+        this.hardware.getBackendType() === 'webgpu' &&
+        'executeOperations' in this.hardware) {
+      
+      const webgpuBackend = this.hardware as any; // Cast to access WebGPU-specific methods
+      
+      // Use fused MatMul+Add+GELU operation
+      return await webgpuBackend.executeOperations(
+        [hiddenStates, weight, bias],
+        ['matmul', 'add', 'gelu'],
+        {
+          useBrowserOptimizations: true,
+          browserType: this.config.browserType || undefined,
+          useFusion: true
+        }
+      );
+    } else {
+      // Fallback to standard implementation
+      // Linear projection
+      const intermediate = await matmul(
+        hiddenStates,
+        weight,
+        this.hardware,
+        { useOptimization: this.config.useOptimizedOps }
+      );
+      
+      // Add bias
+      const biased = await add(intermediate, bias, this.hardware);
+      
+      // Apply GELU activation
+      const activated = await gelu(biased, this.hardware);
+      
+      // Release temporary tensors
+      await this.hardware.releaseTensor(intermediate);
+      await this.hardware.releaseTensor(biased);
+      
+      return activated;
+    }
   }
   
   /**
@@ -827,25 +1047,46 @@ export class Bert {
     weight: Tensor,
     bias: Tensor
   ): Promise<Tensor> {
-    // Linear projection
-    const output = await matmul(
-      intermediate,
-      weight,
-      this.hardware,
-      { useOptimization: this.config.useOptimizedOps }
-    );
-    
-    // Add bias
-    const biased = await add(output, bias, this.hardware);
-    
-    // Add residual connection
-    const withResidual = await add(biased, inputTensor, this.hardware);
-    
-    // Release temporary tensors
-    await this.hardware.releaseTensor(output);
-    await this.hardware.releaseTensor(biased);
-    
-    return withResidual;
+    // Check if we can use operation fusion
+    if (this.config.useBrowserOptimizations && 
+        this.config.useOperationFusion &&
+        this.hardware.getBackendType() === 'webgpu' &&
+        'executeOperations' in this.hardware) {
+      
+      const webgpuBackend = this.hardware as any; // Cast to access WebGPU-specific methods
+      
+      // Use fused MatMul+Add+Add (residual) operation
+      return await webgpuBackend.executeOperations(
+        [intermediate, weight, bias, inputTensor],
+        ['matmul', 'add', 'add_residual'],
+        {
+          useBrowserOptimizations: true,
+          browserType: this.config.browserType || undefined,
+          useFusion: true
+        }
+      );
+    } else {
+      // Fallback to standard implementation
+      // Linear projection
+      const output = await matmul(
+        intermediate,
+        weight,
+        this.hardware,
+        { useOptimization: this.config.useOptimizedOps }
+      );
+      
+      // Add bias
+      const biased = await add(output, bias, this.hardware);
+      
+      // Add residual connection
+      const withResidual = await add(biased, inputTensor, this.hardware);
+      
+      // Release temporary tensors
+      await this.hardware.releaseTensor(output);
+      await this.hardware.releaseTensor(biased);
+      
+      return withResidual;
+    }
   }
   
   /**

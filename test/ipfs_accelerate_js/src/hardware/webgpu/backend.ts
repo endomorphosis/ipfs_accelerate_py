@@ -17,6 +17,7 @@ import {
   BrowserType,
   BrowserCapabilities
 } from './browser_optimized_operations';
+import { loadBrowserShader, getBrowserShaderSync, ShaderType } from './optimizations/browser_shader_loader';
 
 /**
  * WebGPU operation type enumeration

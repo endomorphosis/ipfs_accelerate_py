@@ -57,6 +57,10 @@ class WorkloadProfile:
     # Required backends
     required_backends: List[str] = field(default_factory=list)  # e.g., ["cuda", "webgpu"]
     
+    # Enhanced capability requirements
+    required_capabilities: Set[str] = field(default_factory=set)  # Required capabilities from Enhanced Hardware Taxonomy
+    preferred_capabilities: Set[str] = field(default_factory=set)  # Preferred capabilities from Enhanced Hardware Taxonomy
+    
     # Performance characteristics
     batch_size_options: List[int] = field(default_factory=lambda: [1, 4, 8, 16, 32])
     optimal_batch_size: Optional[int] = None
@@ -113,6 +117,43 @@ class WorkloadProfile:
                     "npu": 0.7,
                     "hybrid": 0.5
                 }
+    
+    def add_required_capability(self, capability_id: str) -> None:
+        """
+        Add a required capability for this workload.
+        
+        Args:
+            capability_id: ID of the capability to add
+        """
+        self.required_capabilities.add(capability_id)
+    
+    def add_preferred_capability(self, capability_id: str) -> None:
+        """
+        Add a preferred capability for this workload.
+        
+        Args:
+            capability_id: ID of the capability to add
+        """
+        self.preferred_capabilities.add(capability_id)
+    
+    def remove_capability(self, capability_id: str) -> bool:
+        """
+        Remove a capability from both required and preferred sets.
+        
+        Args:
+            capability_id: ID of the capability to remove
+            
+        Returns:
+            True if the capability was removed, False if it wasn't found
+        """
+        removed = False
+        if capability_id in self.required_capabilities:
+            self.required_capabilities.remove(capability_id)
+            removed = True
+        if capability_id in self.preferred_capabilities:
+            self.preferred_capabilities.remove(capability_id)
+            removed = True
+        return removed
     
     def update_performance(self, hardware_class: str, execution_time_ms: float):
         """
@@ -546,7 +587,8 @@ class HeterogeneousScheduler:
     def __init__(self, 
                 strategy: str = "adaptive",
                 thermal_management: bool = True,
-                enable_workload_learning: bool = True):
+                enable_workload_learning: bool = True,
+                use_enhanced_taxonomy: bool = False):
         """
         Initialize the heterogeneous scheduler.
         
@@ -554,11 +596,13 @@ class HeterogeneousScheduler:
             strategy: Scheduling strategy (adaptive, resource_aware, performance_aware, round_robin)
             thermal_management: Enable thermal management
             enable_workload_learning: Enable learning from past workload executions
+            use_enhanced_taxonomy: Enable integration with enhanced hardware taxonomy
         """
         self._lock = threading.Lock()
         self.strategy = strategy
         self.thermal_management = thermal_management
         self.enable_workload_learning = enable_workload_learning
+        self.use_enhanced_taxonomy = use_enhanced_taxonomy
         
         # Worker management
         self.workers: Dict[str, WorkerState] = {}
@@ -585,6 +629,17 @@ class HeterogeneousScheduler:
             "avg_execution_time_ms": 0.0,
             "worker_utilization": {}
         }
+        
+        # Enhanced taxonomy integration
+        if use_enhanced_taxonomy:
+            try:
+                from .hardware_taxonomy_integrator import HardwareTaxonomyIntegrator
+                self.taxonomy_integrator = HardwareTaxonomyIntegrator()
+                logger.info("Enhanced hardware taxonomy integration enabled")
+            except ImportError as e:
+                logger.warning(f"Failed to import HardwareTaxonomyIntegrator: {e}")
+                logger.warning("Enhanced hardware taxonomy integration disabled")
+                self.use_enhanced_taxonomy = False
     
     def register_worker(self, worker_id: str, capabilities: Dict[str, Any]) -> WorkerState:
         """
@@ -604,6 +659,14 @@ class HeterogeneousScheduler:
                 capabilities=capabilities,
                 hardware_profiles=capabilities.get("hardware_profiles", [])
             )
+            
+            # Apply enhanced taxonomy if enabled
+            if self.use_enhanced_taxonomy:
+                try:
+                    worker = self.taxonomy_integrator.enhance_worker_state(worker)
+                    logger.info(f"Enhanced worker {worker_id} with taxonomy-based capabilities")
+                except Exception as e:
+                    logger.warning(f"Failed to enhance worker with taxonomy: {e}")
             
             # Store worker
             self.workers[worker_id] = worker
@@ -687,6 +750,20 @@ class HeterogeneousScheduler:
             str: The task ID
         """
         with self._lock:
+            # Enhance workload profile with taxonomy-based capabilities if enabled
+            if self.use_enhanced_taxonomy:
+                try:
+                    task.workload_profile = self.taxonomy_integrator.enhance_workload_profile(
+                        task.workload_profile
+                    )
+                    logger.debug(
+                        f"Enhanced workload profile for task {task.task_id} with "
+                        f"{len(task.workload_profile.required_capabilities)} required capabilities and "
+                        f"{len(task.workload_profile.preferred_capabilities)} preferred capabilities"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to enhance workload profile with taxonomy: {e}")
+            
             # Register workload profile if needed
             if task.workload_profile.workload_type not in self.workload_profiles:
                 self.workload_profiles[task.workload_profile.workload_type] = task.workload_profile
@@ -746,6 +823,40 @@ class HeterogeneousScheduler:
             
             logger.debug(f"Scheduled {len(scheduled_tasks)} tasks, {len(self.pending_tasks)} pending")
     
+    def _calculate_standard_affinity(self, worker: WorkerState, task: TestTask) -> float:
+        """
+        Calculate the standard affinity score for a worker and task.
+        
+        Args:
+            worker: The worker to calculate affinity for
+            task: The task to calculate affinity for
+            
+        Returns:
+            float: Affinity score (0.0 to 1.0, higher is better)
+        """
+        workload_type = task.workload_profile.workload_type
+        
+        # Calculate baseline score from specialization
+        base_score = worker.workload_specializations.get(workload_type, 0.5)
+        
+        # Adjust for current load
+        load_factor = 1.0
+        for hardware_class, load in worker.current_load.items():
+            affinity = task.workload_profile.hardware_class_affinity.get(hardware_class, 0.0)
+            if affinity > 0.0:
+                # Higher affinity hardware types are more impacted by load
+                load_impact = load * affinity
+                load_factor = min(load_factor, 1.0 / (1.0 + load_impact / 5.0))
+        
+        # Adjust for thermal state
+        thermal_factor = 1.0
+        if worker.status == "warming":
+            thermal_factor = 0.7
+        
+        # Combine factors
+        final_score = base_score * load_factor * thermal_factor
+        return final_score
+    
     def _schedule_adaptive(self, tasks: List[TestTask]) -> List[TestTask]:
         """
         Adaptive scheduling that combines multiple strategies.
@@ -774,27 +885,34 @@ class HeterogeneousScheduler:
         for workload_type, workload_tasks in tasks_by_workload.items():
             # Sort workers by affinity for this workload type
             workers_with_scores = []
+            
             for worker in available_workers:
-                # Calculate baseline score from specialization
-                base_score = worker.workload_specializations.get(workload_type, 0.5)
-                
-                # Adjust for current load
-                load_factor = 1.0
-                for hardware_class, load in worker.current_load.items():
-                    affinity = workload_tasks[0].workload_profile.hardware_class_affinity.get(hardware_class, 0.0)
-                    if affinity > 0.0:
-                        # Higher affinity hardware types are more impacted by load
-                        load_impact = load * affinity
-                        load_factor = min(load_factor, 1.0 / (1.0 + load_impact / 5.0))
-                
-                # Adjust for thermal state
-                thermal_factor = 1.0
-                if worker.status == "warming":
-                    thermal_factor = 0.7
-                
-                # Combine factors
-                final_score = base_score * load_factor * thermal_factor
-                workers_with_scores.append((worker, final_score))
+                # Use enhanced affinity calculation if enabled
+                if self.use_enhanced_taxonomy:
+                    try:
+                        # Use taxonomy-based affinity calculation
+                        final_score = self.taxonomy_integrator.calculate_enhanced_affinity(
+                            worker, workload_tasks[0]
+                        )
+                        
+                        workers_with_scores.append((worker, final_score))
+                        
+                        logger.debug(
+                            f"Enhanced affinity for worker {worker.worker_id} and task type "
+                            f"{workload_type}: {final_score:.2f}"
+                        )
+                    except Exception as e:
+                        # Fall back to standard affinity calculation
+                        logger.warning(
+                            f"Error calculating enhanced affinity for worker {worker.worker_id}: {e}. "
+                            f"Falling back to standard method."
+                        )
+                        final_score = self._calculate_standard_affinity(worker, workload_tasks[0])
+                        workers_with_scores.append((worker, final_score))
+                else:
+                    # Use standard affinity calculation
+                    final_score = self._calculate_standard_affinity(worker, workload_tasks[0])
+                    workers_with_scores.append((worker, final_score))
             
             # Sort workers by score (descending)
             workers_with_scores.sort(key=lambda x: x[1], reverse=True)

@@ -723,7 +723,10 @@ class LoadBalancerService:
                 logger.info(f"Scheduled {scheduled_count} tests")
                 
     def _perform_work_stealing(self) -> None:
-        """Perform work stealing from busy workers to idle workers."""
+        """
+        Perform work stealing from busy workers to idle workers,
+        with browser-aware capabilities enhancement.
+        """
         with self.lock:
             self.last_work_steal_time = datetime.now()
             
@@ -741,16 +744,37 @@ class LoadBalancerService:
             idle_workers = []
             busy_workers = []
             
+            # Track browser-specific metrics per worker for browser-aware work stealing
+            worker_browser_metrics = {}
+            
             for worker_id, capabilities in active_workers.items():
                 if worker_id not in self.worker_loads:
                     continue
                     
                 load_score = self.worker_loads[worker_id].calculate_load_score()
+                worker_load = self.worker_loads[worker_id]
                 
                 if load_score < self.idle_threshold:
                     idle_workers.append(worker_id)
                 elif load_score > self.busy_threshold:
                     busy_workers.append(worker_id)
+                
+                # Check for browser-related properties in worker load
+                if hasattr(worker_load, 'browser_metrics'):
+                    worker_browser_metrics[worker_id] = getattr(worker_load, 'browser_metrics', {})
+                elif hasattr(worker_load, 'browser_capacities'):
+                    worker_browser_metrics[worker_id] = getattr(worker_load, 'browser_capacities', {})
+                elif hasattr(worker_load, 'custom_properties'):
+                    browser_metrics = worker_load.custom_properties.get('browser_metrics', {})
+                    browser_capacities = worker_load.custom_properties.get('browser_capacities', {})
+                    if browser_metrics:
+                        worker_browser_metrics[worker_id] = browser_metrics
+                    elif browser_capacities:
+                        # Convert capacities to metrics format
+                        metrics = {}
+                        for browser, capacity in browser_capacities.items():
+                            metrics[browser] = {'utilization': 1.0 - capacity}
+                        worker_browser_metrics[worker_id] = metrics
                     
             if not idle_workers or not busy_workers:
                 logger.debug("No work stealing needed - no idle workers or no busy workers")
@@ -758,16 +782,122 @@ class LoadBalancerService:
                 
             logger.info(f"Work stealing: {len(idle_workers)} idle workers, {len(busy_workers)} busy workers")
             
-            # Sort busy workers by load (highest first)
-            busy_workers.sort(
-                key=lambda wid: self.worker_loads[wid].calculate_load_score(), 
-                reverse=True
-            )
+            # Enable browser-aware work stealing if browser metrics are available
+            browser_aware_stealing = len(worker_browser_metrics) > 0
             
-            # Sort idle workers by load (lowest first)
-            idle_workers.sort(
-                key=lambda wid: self.worker_loads[wid].calculate_load_score()
-            )
+            if browser_aware_stealing:
+                # Calculate browser utilization across all workers
+                total_browser_utilization = {'chrome': 0.0, 'firefox': 0.0, 'edge': 0.0}
+                browser_worker_count = {'chrome': 0, 'firefox': 0, 'edge': 0}
+                
+                # Calculate average utilization by browser type
+                for worker_id, browser_metrics in worker_browser_metrics.items():
+                    for browser_type, metrics in browser_metrics.items():
+                        if isinstance(metrics, dict) and 'utilization' in metrics:
+                            total_browser_utilization[browser_type] += metrics['utilization']
+                            browser_worker_count[browser_type] += 1
+                        elif isinstance(metrics, (int, float)):
+                            # Direct utilization value
+                            total_browser_utilization[browser_type] += metrics
+                            browser_worker_count[browser_type] += 1
+                
+                # Calculate average utilization for each browser type
+                avg_browser_utilization = {}
+                for browser_type, total in total_browser_utilization.items():
+                    count = browser_worker_count.get(browser_type, 0)
+                    if count > 0:
+                        avg_browser_utilization[browser_type] = total / count
+                    else:
+                        avg_browser_utilization[browser_type] = 0.0
+                
+                # Log browser utilization for debugging
+                logger.debug(f"Browser utilization: {avg_browser_utilization}")
+                
+                # Identify overloaded browser types (for targeted stealing)
+                overloaded_browsers = [browser for browser, util in avg_browser_utilization.items()
+                                      if util > 0.7 and browser_worker_count.get(browser, 0) > 0]
+                
+                # Identify underutilized browser types (potential targets)
+                underutilized_browsers = [browser for browser, util in avg_browser_utilization.items()
+                                         if util < 0.3 and browser_worker_count.get(browser, 0) > 0]
+                
+                # Browser-aware work stealing
+                if overloaded_browsers and underutilized_browsers:
+                    logger.info(f"Browser-aware work stealing: overloaded={overloaded_browsers}, "
+                              f"underutilized={underutilized_browsers}")
+                    
+                    # Match model types with appropriate browsers
+                    model_browser_affinity = {
+                        'audio': 'firefox',
+                        'vision': 'chrome',
+                        'text_embedding': 'edge',
+                        'large_language_model': 'chrome'
+                    }
+                    
+                    # Enhance worker priority for stealing based on browser capabilities
+                    enhanced_busy_workers = []
+                    for busy_worker in busy_workers:
+                        priority_score = 10  # Base priority
+                        
+                        # Check if worker has overloaded browsers
+                        if busy_worker in worker_browser_metrics:
+                            metrics = worker_browser_metrics[busy_worker]
+                            for browser in overloaded_browsers:
+                                if browser in metrics:
+                                    if isinstance(metrics[browser], dict) and 'utilization' in metrics[browser]:
+                                        util = metrics[browser]['utilization']
+                                    else:
+                                        util = metrics[browser]
+                                    
+                                    # Higher utilization = higher priority for stealing
+                                    if util > 0.8:
+                                        priority_score += 20
+                                    elif util > 0.7:
+                                        priority_score += 10
+                        
+                        enhanced_busy_workers.append((busy_worker, priority_score))
+                    
+                    # Sort by priority score
+                    enhanced_busy_workers.sort(key=lambda x: x[1], reverse=True)
+                    busy_workers = [worker for worker, _ in enhanced_busy_workers]
+                    
+                    # Enhance idle worker priority based on browser capabilities
+                    enhanced_idle_workers = []
+                    for idle_worker in idle_workers:
+                        priority_score = 10  # Base priority
+                        
+                        # Check if worker has underutilized browsers
+                        if idle_worker in worker_browser_metrics:
+                            metrics = worker_browser_metrics[idle_worker]
+                            for browser in underutilized_browsers:
+                                if browser in metrics:
+                                    if isinstance(metrics[browser], dict) and 'utilization' in metrics[browser]:
+                                        util = metrics[browser]['utilization']
+                                    else:
+                                        util = metrics[browser]
+                                    
+                                    # Lower utilization = higher priority as target
+                                    if util < 0.2:
+                                        priority_score += 20
+                                    elif util < 0.3:
+                                        priority_score += 10
+                        
+                        enhanced_idle_workers.append((idle_worker, priority_score))
+                    
+                    # Sort by priority score
+                    enhanced_idle_workers.sort(key=lambda x: x[1], reverse=True)
+                    idle_workers = [worker for worker, _ in enhanced_idle_workers]
+            else:
+                # Sort busy workers by load (highest first) when browser metrics not available
+                busy_workers.sort(
+                    key=lambda wid: self.worker_loads[wid].calculate_load_score(), 
+                    reverse=True
+                )
+                
+                # Sort idle workers by load (lowest first) when browser metrics not available
+                idle_workers.sort(
+                    key=lambda wid: self.worker_loads[wid].calculate_load_score()
+                )
             
             # Steal work
             stolen_count = 0
@@ -789,15 +919,65 @@ class LoadBalancerService:
                 
                 if not stealable_tests:
                     continue
+                
+                # Sort tests by priority and browser affinity for stealing
+                if browser_aware_stealing:
+                    # Enhanced prioritization based on browser affinity
+                    model_browser_affinity = {
+                        'audio': 'firefox',
+                        'vision': 'chrome',
+                        'text_embedding': 'edge',
+                        'large_language_model': 'chrome'
+                    }
                     
-                # Sort tests by priority (lowest priority first for stealing)
-                stealable_tests.sort(
-                    key=lambda x: x[1].test_requirements.priority,
-                    reverse=True
-                )
+                    # Calculate stealing priority for each test
+                    enhanced_stealable_tests = []
+                    for test_id, assignment in stealable_tests:
+                        steal_priority = 10  # Base priority (higher value = higher priority)
+                        
+                        # Lower priority for high priority tasks (less likely to steal)
+                        test_req = assignment.test_requirements
+                        if test_req.priority <= 2:  # High priority (1-2)
+                            steal_priority -= 5
+                        elif test_req.priority >= 4:  # Low priority (4-5)
+                            steal_priority += 5
+                        
+                        # Check model type affinity with browsers
+                        model_type = test_req.model_type if hasattr(test_req, 'model_type') else None
+                        
+                        if model_type and model_type in model_browser_affinity:
+                            # Check if preferred browser for this model type is overloaded
+                            preferred_browser = model_browser_affinity[model_type]
+                            
+                            # Higher priority to steal tasks whose preferred browser is overloaded
+                            if preferred_browser in overloaded_browsers:
+                                steal_priority += 10
+                                
+                            # Higher priority if there's an underutilized worker with right browser
+                            for idle_worker in idle_workers:
+                                if (idle_worker in worker_browser_metrics and 
+                                    preferred_browser in worker_browser_metrics[idle_worker]):
+                                    # Add bonus for matching browser
+                                    steal_priority += 5
+                                    break
+                        
+                        enhanced_stealable_tests.append((test_id, assignment, steal_priority))
+                    
+                    # Sort by stealing priority (highest first)
+                    enhanced_stealable_tests.sort(key=lambda x: x[2], reverse=True)
+                    stealable_tests = [(test_id, assignment) for test_id, assignment, _ in enhanced_stealable_tests]
+                else:
+                    # Default sorting by priority (lowest priority first for stealing)
+                    stealable_tests.sort(
+                        key=lambda x: x[1].test_requirements.priority,
+                        reverse=True
+                    )
                 
                 # Try to steal tests
                 for test_id, assignment in stealable_tests:
+                    test_req = assignment.test_requirements
+                    model_type = test_req.model_type if hasattr(test_req, 'model_type') else None
+                    
                     # Find an idle worker that can handle this test
                     for idle_worker in idle_workers:
                         # Skip if worker doesn't have required capabilities
@@ -806,7 +986,7 @@ class LoadBalancerService:
                             
                         # Check compatibility
                         worker_capabilities = self.workers[idle_worker]
-                        if not worker_capabilities.is_compatible_with(assignment.test_requirements):
+                        if not worker_capabilities.is_compatible_with(test_req):
                             continue
                             
                         # Check capacity
@@ -815,14 +995,37 @@ class LoadBalancerService:
                             
                         # Check if worker can handle this test
                         worker_load = self.worker_loads[idle_worker]
-                        if not worker_load.has_capacity_for(assignment.test_requirements, worker_capabilities):
+                        if not worker_load.has_capacity_for(test_req, worker_capabilities):
                             continue
+                        
+                        # Browser-aware selection - check if the idle worker has a better browser
+                        if browser_aware_stealing and model_type and model_type in model_browser_affinity:
+                            preferred_browser = model_browser_affinity[model_type]
                             
+                            # Check if idle worker has the preferred browser underutilized
+                            if (idle_worker in worker_browser_metrics and 
+                                preferred_browser in worker_browser_metrics[idle_worker]):
+                                
+                                # Check browser utilization
+                                metrics = worker_browser_metrics[idle_worker]
+                                browser_util = (metrics[preferred_browser]['utilization'] 
+                                               if isinstance(metrics[preferred_browser], dict) 
+                                               else metrics[preferred_browser])
+                                
+                                # If browser is overutilized on idle worker too, may not be worth stealing
+                                if browser_util > 0.7 and preferred_browser not in underutilized_browsers:
+                                    # Skip to next worker if browser already heavily loaded
+                                    continue
+                        
                         # Transfer test
                         self._transfer_assignment(test_id, busy_worker, idle_worker)
                         stolen_count += 1
                         
-                        logger.info(f"Work stealing: transferred test {test_id} from {busy_worker} to {idle_worker}")
+                        if browser_aware_stealing and model_type:
+                            logger.info(f"Browser-aware work stealing: transferred {model_type} test {test_id} "
+                                      f"from {busy_worker} to {idle_worker}")
+                        else:
+                            logger.info(f"Work stealing: transferred test {test_id} from {busy_worker} to {idle_worker}")
                         
                         # Move to next idle worker
                         idle_workers.remove(idle_worker)

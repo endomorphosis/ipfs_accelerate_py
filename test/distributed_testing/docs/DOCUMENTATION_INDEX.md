@@ -24,13 +24,22 @@ This document provides a comprehensive index of all documentation for the Distri
   - [MS Teams Integration](EXTERNAL_SYSTEMS_GUIDE.md#ms-teams-connector) - Documentation for Microsoft Teams integration
 - [README_PLUGIN_ARCHITECTURE.md](../README_PLUGIN_ARCHITECTURE.md) - Documentation for the plugin architecture
 - [README_ADAPTIVE_LOAD_BALANCER.md](../README_ADAPTIVE_LOAD_BALANCER.md) - Guide to the adaptive load balancer
+- [README_BROWSER_AWARE_LOAD_BALANCING.md](../README_BROWSER_AWARE_LOAD_BALANCING.md) - Summary of browser-aware load balancing implementation (COMPLETED - March 13, 2025)
 - [README_INTELLIGENT_SCHEDULER.md](../README_INTELLIGENT_SCHEDULER.md) - Documentation for the intelligent scheduler
 - [README_FAULT_TOLERANCE.md](../README_FAULT_TOLERANCE.md) - Guide to fault tolerance features
 - [README_AUTO_RECOVERY.md](../README_AUTO_RECOVERY.md) - Documentation for auto-recovery features
 
 ## Integration Documentation
 
-- [RESOURCE_POOL_INTEGRATION.md](../docs/RESOURCE_POOL_INTEGRATION.md) - Guide to resource pool integration
+- [RESOURCE_POOL_INTEGRATION_GUIDE.md](RESOURCE_POOL_INTEGRATION_GUIDE.md) - Guide to WebGPU/WebNN Resource Pool integration with implementation status
+- [LOAD_BALANCER_RESOURCE_POOL_BRIDGE.md](LOAD_BALANCER_RESOURCE_POOL_BRIDGE.md) - Documentation for the Load Balancer Resource Pool Bridge
+- [ADAPTIVE_LOAD_BALANCER_ENHANCEMENTS.md](ADAPTIVE_LOAD_BALANCER_ENHANCEMENTS.md) - Complete documentation of Adaptive Load Balancer enhancements with browser-aware capabilities (COMPLETED - March 13, 2025)
+  - [Browser-Specific Metrics Collection](ADAPTIVE_LOAD_BALANCER_ENHANCEMENTS.md#1-browser-specific-utilization-metrics) - Documentation for browser-specific metrics collection
+  - [Load Prediction Algorithm](ADAPTIVE_LOAD_BALANCER_ENHANCEMENTS.md#2-load-prediction-algorithm) - Documentation for load prediction algorithm
+  - [Browser Capability Scoring](ADAPTIVE_LOAD_BALANCER_ENHANCEMENTS.md#3-browser-capability-scoring) - Documentation for browser capability scoring
+  - [Browser-Aware Work Stealing](ADAPTIVE_LOAD_BALANCER_ENHANCEMENTS.md#4-browser-aware-work-stealing) - Documentation for browser-aware work stealing
+  - [Usage Examples](ADAPTIVE_LOAD_BALANCER_ENHANCEMENTS.md#usage-examples) - Comprehensive usage examples
+- [DYNAMIC_THRESHOLD_PREDICTIVE_BALANCING.md](DYNAMIC_THRESHOLD_PREDICTIVE_BALANCING.md) - Documentation for dynamic threshold adjustment
 - [README_WEBGPU_RESOURCE_POOL.md](../README_WEBGPU_RESOURCE_POOL.md) - Documentation for WebGPU resource pool
 - [WEB_RESOURCE_POOL_INTEGRATION.md](../WEB_RESOURCE_POOL_INTEGRATION.md) - Web resource pool integration guide
 
@@ -40,6 +49,9 @@ This document provides a comprehensive index of all documentation for the Distri
 - [ADVANCED_RECOVERY_STRATEGIES.md](ADVANCED_RECOVERY_STRATEGIES.md) - Guide to advanced recovery strategies
 - [REDUNDANCY_BENCHMARKS.md](REDUNDANCY_BENCHMARKS.md) - Benchmark results for redundancy features
 - [PERFORMANCE_TREND_ANALYSIS.md](PERFORMANCE_TREND_ANALYSIS.md) - Guide to performance trend analysis
+- [HETEROGENEOUS_HARDWARE_ENHANCEMENTS.md](HETEROGENEOUS_HARDWARE_ENHANCEMENTS.md) - Design document for heterogeneous hardware support enhancements (PLANNED - June 5-12, 2025)
+- [ENHANCED_HARDWARE_TAXONOMY_IMPLEMENTATION.md](ENHANCED_HARDWARE_TAXONOMY_IMPLEMENTATION.md) - Implementation of the Enhanced Hardware Taxonomy and Hardware Abstraction Layer (COMPLETED - March 13, 2025)
+- [ENHANCED_HARDWARE_TAXONOMY_INTEGRATION.md](../../duckdb_api/distributed_testing/docs/ENHANCED_HARDWARE_TAXONOMY_INTEGRATION.md) - Integration between Enhanced Hardware Taxonomy and Heterogeneous Scheduler (COMPLETED - March 13, 2025)
 
 ## Deployment Documentation
 

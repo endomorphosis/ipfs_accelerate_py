@@ -42,7 +42,10 @@ class MonitoringDashboard:
         result_aggregator_integration: Optional[Any] = None,
         enable_e2e_test_integration: bool = False,
         e2e_test_integration: Optional[Any] = None,
-        enable_performance_analytics: bool = True
+        enable_performance_analytics: bool = True,
+        enable_visualization_integration: bool = False,
+        visualization_integration: Optional[Any] = None,
+        dashboard_dir: str = "./dashboards"
     ):
         """Initialize the monitoring dashboard.
         
@@ -60,6 +63,9 @@ class MonitoringDashboard:
             enable_e2e_test_integration: Whether to enable integration with E2E testing framework
             e2e_test_integration: E2ETestResultsIntegration instance
             enable_performance_analytics: Whether to enable performance analytics
+            enable_visualization_integration: Whether to enable integration with Advanced Visualization System
+            visualization_integration: VisualizationDashboardIntegration instance
+            dashboard_dir: Directory to store dashboards
         """
         
         # Performance analytics data
@@ -94,6 +100,41 @@ class MonitoringDashboard:
         self.enable_e2e_test_integration = enable_e2e_test_integration
         self.e2e_test_integration = e2e_test_integration
         
+        # Set up Advanced Visualization System integration
+        self.enable_visualization_integration = enable_visualization_integration
+        self.visualization_integration = visualization_integration
+        self.dashboard_dir = dashboard_dir
+        
+        # Initialize visualization integration if enabled but not provided
+        if self.enable_visualization_integration and self.visualization_integration is None:
+            try:
+                # Import the visualization integration
+                from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+                    VisualizationDashboardIntegration
+                )
+                
+                # Create a symbolic link to dashboards in static directory for serving
+                dashboards_static_dir = os.path.join(self.static_dir, 'dashboards')
+                if not os.path.exists(dashboards_static_dir):
+                    try:
+                        # Use relative path for the link target if possible
+                        target_path = os.path.relpath(self.dashboard_dir, os.path.dirname(dashboards_static_dir))
+                        os.symlink(target_path, dashboards_static_dir, target_is_directory=True)
+                    except Exception as e:
+                        logger.error(f"Error creating symbolic link to dashboards: {e}")
+                        # Fall back to normal directory
+                        os.makedirs(dashboards_static_dir, exist_ok=True)
+                
+                # Initialize the integration
+                self.visualization_integration = VisualizationDashboardIntegration(
+                    dashboard_dir=self.dashboard_dir,
+                    integration_dir=os.path.join(self.dashboard_dir, 'monitor_integration')
+                )
+                logger.info("Visualization Dashboard Integration initialized successfully")
+            except Exception as e:
+                logger.error(f"Error initializing Visualization Dashboard Integration: {e}")
+                self.enable_visualization_integration = False
+        
         # HTTP client session
         self.session = None
         
@@ -104,6 +145,7 @@ class MonitoringDashboard:
         logger.info(f"Template directory: {self.template_dir}")
         logger.info(f"Result Aggregator Integration: {'Enabled' if enable_result_aggregator_integration else 'Disabled'}")
         logger.info(f"E2E Test Integration: {'Enabled' if enable_e2e_test_integration else 'Disabled'}")
+        logger.info(f"Visualization Dashboard Integration: {'Enabled' if enable_visualization_integration else 'Disabled'}")
     
     async def get_coordinator_status(self) -> Dict[str, Any]:
         """Get status of the coordinator service.

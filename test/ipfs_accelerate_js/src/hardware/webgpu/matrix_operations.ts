@@ -6,6 +6,8 @@
 import { Tensor } from '../../tensor/tensor';
 import { WebGPUBackend } from './backend';
 import { WebGPUBufferManager } from './buffer_manager';
+import { detectBrowserType, BrowserType } from './browser_optimized_operations';
+import { loadBrowserShader, getBrowserShaderSync, ShaderType } from './optimizations/browser_shader_loader';
 
 /**
  * Matrix operation configuration options
@@ -718,6 +720,20 @@ export class WebGPUMatrixMultiplication {
     N: number, 
     options: MatrixOperationOptions
   ): string {
+    // Try to use browser-specific shaders if enabled
+    if (options.browserOptimization !== 'none') {
+      try {
+        // Detect browser or use provided browser override
+        const browserType = options.browserOptimization ?
+          this.getBrowserTypeFromString(options.browserOptimization) :
+          detectBrowserType();
+        
+        // Get browser-specific shader from our optimized shader collection
+        return getBrowserShaderSync(ShaderType.MATMUL, browserType);
+      } catch (error) {
+        console.warn('Failed to load browser-specific shader, falling back to simple generic implementation', error);
+      }
+    }
     const workgroupSize = options.workgroupSize || 16;
     
     return /* wgsl */`
@@ -778,6 +794,22 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     N: number, 
     options: MatrixOperationOptions
   ): string {
+    // Try to use browser-specific shaders if enabled
+    if (options.browserOptimization !== 'none') {
+      try {
+        // Detect browser or use provided browser override
+        const browserType = options.browserOptimization ?
+          this.getBrowserTypeFromString(options.browserOptimization) :
+          detectBrowserType();
+        
+        // Get browser-specific shader from our optimized shader collection
+        return getBrowserShaderSync(ShaderType.MATMUL, browserType);
+      } catch (error) {
+        console.warn('Failed to load browser-specific shader, falling back to generic implementation', error);
+      }
+    }
+    
+    // Fall back to generic implementation if browser-specific shader fails or is disabled
     const tileSize = options.tileSize || 16;
     
     return /* wgsl */`
@@ -872,6 +904,20 @@ fn main(
     N: number, 
     options: MatrixOperationOptions
   ): string {
+    // Try to use browser-specific shaders if enabled
+    if (options.browserOptimization !== 'none') {
+      try {
+        // Detect browser or use provided browser override
+        const browserType = options.browserOptimization ?
+          this.getBrowserTypeFromString(options.browserOptimization) :
+          detectBrowserType();
+        
+        // Get browser-specific shader from our optimized shader collection
+        return getBrowserShaderSync(ShaderType.MATMUL, browserType);
+      } catch (error) {
+        console.warn('Failed to load browser-specific shader, falling back to advanced generic implementation', error);
+      }
+    }
     const tileSize = options.tileSize || 16;
     // For advanced implementation, we use a micro-tile approach where each thread
     // computes multiple output elements for better instruction-level parallelism
@@ -1232,6 +1278,26 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
   // Write output
   output[get_output_index(batch, y, x, outChannel)] = sum;
 }`;
+  }
+  
+  /**
+   * Convert browser name string to BrowserType enum
+   * @param browserName Browser name
+   * @returns Browser type enum value
+   */
+  private getBrowserTypeFromString(browserName: string): BrowserType {
+    switch (browserName.toLowerCase()) {
+      case 'chrome':
+        return BrowserType.CHROME;
+      case 'firefox':
+        return BrowserType.FIREFOX;
+      case 'safari':
+        return BrowserType.SAFARI;
+      case 'edge':
+        return BrowserType.EDGE;
+      default:
+        return BrowserType.UNKNOWN;
+    }
   }
   
   /**

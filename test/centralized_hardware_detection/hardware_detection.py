@@ -62,6 +62,7 @@ class HardwareManager:
             self.has_mps = False
             self.has_openvino = False
             self.has_qualcomm = False
+            self.has_samsung_npu = False
             self.has_webnn = False
             self.has_webgpu = False
         
@@ -129,6 +130,48 @@ class HardwareManager:
                 self.qnn_simulation_mode = os.environ.get()))))))))"QNN_SIMULATION_MODE", "0").lower()))))))))) in ()))))))))"1", "true", "yes")
                 logger.warning()))))))))f"QNN detection error: {}}}}}}}}str()))))))))e)}")
         
+        # Samsung NPU detection (for Exynos devices)
+        self.has_samsung_npu = False
+        self.samsung_npu_simulation_mode = False
+        try:
+            # Try to import our Samsung NPU support module
+            try:
+                # Import SamsungDetector if available
+                from samsung_support import SamsungDetector
+                
+                # Initialize detector and detect hardware
+                samsung_detector = SamsungDetector()
+                samsung_chipset = samsung_detector.detect_samsung_hardware()
+                
+                # Set flags based on detection results
+                self.has_samsung_npu = samsung_chipset is not None
+                self.samsung_npu_simulation_mode = "TEST_SAMSUNG_CHIPSET" in os.environ
+                
+                if self.has_samsung_npu:
+                    logger.info()))))))))f"Samsung NPU detected: {}}}}}}}}samsung_chipset.name}")
+                    if self.samsung_npu_simulation_mode:
+                        logger.warning()))))))))"Samsung NPU running in SIMULATION mode")
+                    self.samsung_chipset = samsung_chipset
+            except ImportError:
+                # Fall back to basic environment variable detection
+                self.has_samsung_npu = (
+                    "SAMSUNG_SDK_PATH" in os.environ or
+                    "TEST_SAMSUNG_CHIPSET" in os.environ or
+                    os.environ.get()))))))))"SAMSUNG_NPU_AVAILABLE", "0") == "1"
+                )
+                self.samsung_npu_simulation_mode = (
+                    "TEST_SAMSUNG_CHIPSET" in os.environ or
+                    os.environ.get()))))))))"SAMSUNG_NPU_SIMULATION", "0") == "1"
+                )
+                logger.warning()))))))))"Using basic Samsung NPU detection (samsung_support module not found)")
+        except Exception as e:
+            # Handle errors if modules are not properly installed
+            logger.warning()))))))))f"Samsung NPU detection error: {}}}}}}}}str()))))))))e)}")
+            # Still allow simulation via environment variables
+            if "TEST_SAMSUNG_CHIPSET" in os.environ:
+                self.has_samsung_npu = True
+                self.samsung_npu_simulation_mode = True
+        
         # WebNN detection with proper simulation tracking
                 webnn_library_available = ()))))))))
                 importlib.util.find_spec()))))))))"webnn") is not None or
@@ -192,6 +235,8 @@ class HardwareManager:
             "openvino": False,
             "qualcomm": False,
             "qualcomm_simulation": False,
+            "mediatek": False,
+            "mediatek_simulation": False,
             "rocm": False,
             "webnn": False,
             "webnn_simulation": False,
@@ -214,6 +259,14 @@ class HardwareManager:
         # Qualcomm capabilities with simulation flag
             capabilities["qualcomm"] = self.has_qualcomm,
             capabilities["qualcomm_simulation"] = self.qnn_simulation_mode if self.has_qualcomm else False
+            ,
+        # MediaTek capabilities with simulation flag
+            capabilities["mediatek"] = self.has_mediatek if hasattr(self, 'has_mediatek') else False,
+            capabilities["mediatek_simulation"] = self.mediatek_simulation_mode if hasattr(self, 'has_mediatek') and self.has_mediatek else False
+            ,
+        # Samsung NPU capabilities with simulation flag
+            capabilities["samsung_npu"] = self.has_samsung_npu,
+            capabilities["samsung_npu_simulation"] = self.samsung_npu_simulation_mode if self.has_samsung_npu else False
             ,
         # ROCm capabilities
             capabilities["rocm"] = self.has_rocm
@@ -552,6 +605,8 @@ def check_hardware()))))))))):
             "openvino": self.has_openvino,
             "mps": self.has_mps,
             "qualcomm": self.has_qualcomm,
+            "mediatek": hasattr(self, 'has_mediatek') and self.has_mediatek,
+            "samsung_npu": self.has_samsung_npu,
             "rocm": self.has_rocm,
             "webnn": self.has_webnn,
             "webgpu": self.has_webgpu
@@ -564,7 +619,9 @@ def check_hardware()))))))))):
         if "llava" in model_name:
             compatibility["mps"] = False  # Limited MPS support for LLaVA,
             compatibility["webnn"] = False  # Limited WebNN support for LLaVA,
-            compatibility["webgpu"] = False  # Limited WebGPU support for LLaVA
+            compatibility["webgpu"] = False  # Limited WebGPU support for LLaVA,
+            compatibility["mediatek"] = False  # Limited MediaTek NPU support for LLaVA
+            compatibility["samsung_npu"] = False  # Limited Samsung NPU support for LLaVA
             ,
         # Audio models have limited web support
             if any()))))))))audio_model in model_name for audio_model in ["whisper", "wav2vec2", "clap", "hubert"]):,
@@ -575,7 +632,28 @@ def check_hardware()))))))))):
         # LLMs may have limited web support due to size
             if any()))))))))llm in model_name for llm in ["llama", "gpt", "falcon", "mixtral", "qwen"]):,
             compatibility["webnn"] = compatibility["webnn"] and "WEBNN_LLM_SUPPORT" in os.environ,
-            compatibility["webgpu"] = compatibility["webgpu"] and "WEBGPU_LLM_SUPPORT" in os.environ
+            compatibility["webgpu"] = compatibility["webgpu"] and "WEBGPU_LLM_SUPPORT" in os.environ,
+            compatibility["mediatek"] = compatibility["mediatek"] and (
+                "MEDIATEK_LLM_SUPPORT" in os.environ or  # Check for explicit LLM support
+                (hasattr(self, 'has_mediatek') and self.has_mediatek and 
+                 hasattr(self, 'mediatek_simulation_mode') and not self.mediatek_simulation_mode)  # Real hardware may support it
+            ),
+            compatibility["samsung_npu"] = compatibility["samsung_npu"] and (
+                "SAMSUNG_LLM_SUPPORT" in os.environ or  # Check for explicit LLM support
+                (self.has_samsung_npu and not self.samsung_npu_simulation_mode and  # Real hardware may support it
+                 hasattr(self, 'samsung_chipset') and self.samsung_chipset.npu_tops >= 25.0)  # High-end chipsets only
+            )
+            ,
+        # Models optimized for mobile may have better performance on mobile NPUs
+            if any()))))))))mobile_model in model_name for mobile_model in ["mobilenet", "efficientnet", "mobilevit", "mobilebertx"]):,
+            # These models are well-suited for mobile NPUs
+            if compatibility["mediatek"]:
+                # Prioritize MediaTek for mobile models when available
+                logger.info()))))))))f"Mobile-optimized model {}}}}}}}}model_name} is well-suited for MediaTek NPU")
+            
+            if compatibility["samsung_npu"]:
+                # Prioritize Samsung for mobile models when available
+                logger.info()))))))))f"Mobile-optimized model {}}}}}}}}model_name} is well-suited for Samsung Exynos NPU")
             ,
             return compatibility
 

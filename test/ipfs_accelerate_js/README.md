@@ -16,8 +16,22 @@ IPFS Accelerate JS delivers high-performance AI models directly in the browser u
 - **Cross-Browser Compatibility**: Works in Chrome, Firefox, Edge, and Safari
 - **Multiple Model Support**: Text (BERT), Vision (ViT), and Audio (Whisper) models
 - **Cross-Model Tensor Sharing**: Share tensors between models for efficient multimodal applications
-- **Memory Optimization**: Careful tensor management with proper cleanup
-- **Browser-Specific Optimizations**: Tailored performance for different browsers
+- **Advanced Memory Optimization**: 
+  - Ultra-low precision quantization (1/2/3/4/8-bit precision)
+  - Per-channel quantization for weights with minimal accuracy loss
+  - Up to 93.75% memory reduction with 2-bit quantization
+- **Operation Fusion**: 
+  - Combines multiple operations into single compute shaders for performance
+  - Eliminates intermediate buffers and reduces kernel launches
+  - Specialized fusion patterns for transformer models (attention mechanism)
+- **Browser-Specific Optimizations**: 
+  - Automatic detection of Chrome, Firefox, Safari, and Edge
+  - Tailored shader workgroup sizes and memory access patterns by browser
+  - Specialized optimizations for different GPU architectures
+- **Performance Optimizations**:
+  - Tiled matrix multiplication with shared memory
+  - Advanced WGSL shader compilation and caching
+  - Automatic performance tuning based on input size
 
 ## Quick Start
 
@@ -250,30 +264,157 @@ const vitModel = createVitModel(hardware, {
 });
 ```
 
+### Quantization for Memory Efficiency
+
+```typescript
+// Create model with 4-bit quantization for memory efficiency
+const model = createBertModel(hardware, {
+  modelId: 'bert-base-uncased',
+  quantization: {
+    enabled: true,
+    bitsPerWeight: 4,          // 4-bit precision for weights (8x smaller than FP32)
+    bitsPerActivation: 8,      // 8-bit for activations
+    includeFirstLayer: false,  // Keep first layer in full precision for accuracy
+    includeLastLayer: false    // Keep last layer in full precision for accuracy
+  }
+});
+
+// Ultra-low precision options for extreme memory constraints
+const tinyModel = createVitModel(hardware, {
+  modelId: 'google/vit-base-patch16-224',
+  quantization: {
+    enabled: true,
+    bitsPerWeight: 2,          // 2-bit precision for extreme compression (16x smaller)
+    symmetricQuantization: true, // Use symmetric quantization for better numeric stability
+    perChannelQuantization: true // Per-channel quantization for better accuracy
+  }
+});
+```
+
+### Advanced Performance Optimization
+
+You can combine quantization, operation fusion, and browser-specific optimizations for maximum performance and memory efficiency:
+
+```typescript
+// Configure comprehensive optimizations
+const config = {
+  // Operation fusion with quantization
+  useOperationFusion: true,
+  fusionOptions: {
+    patterns: [
+      'linear_activation',
+      'elementwise_chain', 
+      'attention_pattern',
+      'quantized_matmul',
+      'quantized_matmul_activation',
+      'quantized_attention'
+    ],
+    useQuantizedWeights: true,
+    bitsPerWeight: 3,  // Ultra-low precision (3-bit)
+    useBrowserOptimizations: true
+  },
+  
+  // Advanced quantization options
+  quantization: {
+    enabled: true,
+    bitsPerWeight: 3,
+    symmetricQuantization: true,
+    perChannelQuantization: true,
+    calibrationSamples: 10  // Number of samples for calibration
+  },
+  
+  // Memory optimization
+  memoryOptimization: {
+    aggressiveBufferReuse: true,
+    releaseIntermediateTensors: true,
+    useCompression: true
+  },
+  
+  // Browser-specific optimizations
+  browserOptimizations: {
+    detectBrowserAutomatically: true,
+    customWorkgroupSizes: true,
+    useShaderPrecompilation: true,
+    adaptiveWorkloadDistribution: true
+  }
+};
+
+// Create model with advanced optimizations
+const model = createBertModel(hardware, {
+  modelId: 'bert-base-uncased',
+  ...config
+});
+
+// Process input with optimized execution
+const result = await model.process(input);
+```
+
+This configuration provides:
+- 90.6% memory reduction compared to FP32 (3-bit quantization)
+- Specialized fusion patterns for transformer attention mechanisms
+- Browser-specific optimizations for shader workgroup sizes and memory access
+- Adaptive performance tuning based on input size and device capabilities
+
 ### Browser-Specific Optimizations
 
 ```typescript
-import { getBrowserInfo } from 'ipfs-accelerate-js';
+import { 
+  createVitModel, 
+  detectBrowserType, 
+  BrowserType 
+} from 'ipfs-accelerate-js';
 
-const browserInfo = getBrowserInfo();
-let config = {};
+// Automatic browser detection and optimization
+const model = createVitModel(hardware, {
+  modelId: 'google/vit-base-patch16-224',
+  useBrowserOptimizations: true,  // Automatically detect and apply browser-specific optimizations
+  quantization: {
+    enabled: true,
+    bitsPerWeight: 4,
+    useBrowserOptimizations: true  // Use browser-specific quantization implementations
+  }
+});
 
-if (browserInfo.name === 'chrome') {
-  config = {
-    useChromiumOptimizations: true,
-    workgroupSize: 256
-  };
-} else if (browserInfo.name === 'firefox') {
-  config = {
-    useFirefoxOptimizations: true,
-    workgroupSize: 128
-  };
+// Manual browser optimization configuration
+const browserType = detectBrowserType();
+let config = {
+  modelId: 'google/vit-base-patch16-224',
+  useBrowserOptimizations: true
+};
+
+// Optionally override specific parameters
+switch(browserType) {
+  case BrowserType.CHROME:
+    config.workgroupSize = 256;
+    config.tileSize = 16;
+    config.useSharedMemory = true;
+    break;
+  case BrowserType.FIREFOX:
+    config.workgroupSize = 128;
+    config.tileSize = 8;
+    config.useSimpleLoops = true;
+    break;
+  case BrowserType.SAFARI:
+    config.workgroupSize = 512;
+    config.tileSize = 32;
+    config.useVectorOperations = true;
+    break;
+  case BrowserType.EDGE:
+    config.workgroupSize = 256;
+    config.usePartialLoopUnrolling = true;
+    config.useWebNNWhenAvailable = true;
+    break;
 }
 
-const model = createVitModel(hardware, {
-  ...config,
-  modelId: 'google/vit-base-patch16-224'
-});
+const customModel = createVitModel(hardware, config);
+```
+
+You can run the browser-specific optimization benchmarks to see the impact on your system:
+
+```bash
+# Run browser-specific optimization tests and benchmarks
+./run_browser_optimized_tests.sh benchmark
+# Open browser to http://localhost:8080/examples/browser_specific_quantization_benchmark.html
 ```
 
 ### Memory Management
@@ -303,7 +444,60 @@ try {
 - [Hardware Backends](./docs/hardware/README.md)
 - [Cross-Model Tensor Sharing](./docs/CROSS_MODEL_TENSOR_SHARING.md)
 - [Performance Optimization](./docs/PERFORMANCE_OPTIMIZATION.md)
+- [Quantization and Operation Fusion](./docs/QUANTIZATION_OPERATION_FUSION.md) (NEW)
+- [Browser-Specific Optimizations](./docs/BROWSER_OPTIMIZATIONS.md) (UPDATED)
+- [Benchmark Visualization Guide](./docs/VISUALIZATION_GUIDE.md) (NEW)
+- [Ultra-Low Precision](./docs/ULTRA_LOW_PRECISION.md)
+- [Quantization Guide](./docs/QUANTIZATION_GUIDE.md)
+- [Operation Fusion](./docs/OPERATION_FUSION.md)
+- [Memory Optimization](./docs/MEMORY_OPTIMIZATION.md)
 - [Examples](./examples/README.md)
+
+## Testing and Performance Analysis
+
+We provide comprehensive tests and performance analysis tools to validate the functionality and performance of the library:
+
+- **Unit Tests**: Test individual components and functions
+- **Integration Tests**: Test interactions between components
+- **End-to-End Tests**: Test complete workflows
+- **Performance Tests**: Measure performance across different configurations
+- **Browser Compatibility Tests**: Test across different browsers
+- **Visual Performance Analysis**: Interactive visualization of performance metrics
+
+### Notable Test Files
+
+- [WebGPU Matrix Operations Test](./test/webgpu_matrix_operations_test.ts)
+- [Fusion and Quantization Integration Test](./test/fusion_quantization_test.ts) (NEW)
+- [Browser-Specific Shaders Test](./test/browser_specific_shaders_test.ts) (NEW)
+- [Tensor Sharing Integration Test](./test/tensor_sharing_integration.test.ts)
+
+### Performance Visualization Tools
+
+- [Benchmark Visualization](./examples/benchmark_visualization.html)
+  - Interactive comparison of optimization techniques
+  - Performance analysis across browsers
+  - Memory efficiency visualization
+  - Accuracy vs. memory tradeoff analysis
+  
+- [Browser-Specific Quantization Benchmark](./examples/browser_specific_quantization_benchmark.html) (NEW)
+  - Compare browser-specific optimization performance
+  - Visualize memory reduction across bit-widths
+  - Analyze operation fusion performance
+  - Interactive comparison of different activation functions
+  - Browser-specific parameter visualization
+
+```bash
+# Run core tests
+npm test
+
+# Run browser-specific tests
+npm test -- test/browser_specific_shaders_test.ts
+npm test -- test/browser_specific_fusion_quantization_test.ts
+npm test -- test/fusion_quantization_test.ts
+
+# Run benchmarks and visualize results
+./run_browser_optimized_tests.sh benchmark
+```
 
 ## Contributing
 

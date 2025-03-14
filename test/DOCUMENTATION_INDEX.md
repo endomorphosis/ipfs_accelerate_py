@@ -1,10 +1,53 @@
 # IPFS Accelerate Framework Documentation Index
 
-Last Updated: April 5, 2025
+Last Updated: July 8, 2025
 
 This document provides a comprehensive index of all project documentation, organized by category and implementation phase.
 
 ## Recently Added Documentation
+
+### Samsung Exynos NPU Support (NEW - March 14, 2025)
+
+The IPFS Accelerate Python Framework now includes comprehensive support for Samsung Exynos Neural Processing Units (NPUs), enabling detection, benchmarking, model conversion, and optimization for Samsung NPU hardware:
+
+- [SAMSUNG_NPU_SUPPORT_GUIDE.md](SAMSUNG_NPU_SUPPORT_GUIDE.md) - **NEW** Comprehensive guide to Samsung NPU support
+- [SAMSUNG_NPU_TEST_GUIDE.md](SAMSUNG_NPU_TEST_GUIDE.md) - **NEW** Guide for testing Samsung NPU support
+- [SAMSUNG_NPU_DOCUMENTATION_UPDATES.md](SAMSUNG_NPU_DOCUMENTATION_UPDATES.md) - **NEW** Summary of documentation improvements
+- [samsung_support.py](samsung_support.py) - **NEW** Core implementation of Samsung NPU detection and capabilities
+- [test_samsung_npu_comparison.py](test_samsung_npu_comparison.py) - **NEW** Hardware comparison tool for Samsung NPU
+- [test_samsung_support.py](test_samsung_support.py) - **NEW** Test suite for Samsung NPU support
+- [test_samsung_npu_basic.py](test_samsung_npu_basic.py) - **NEW** Basic test for Samsung NPU support
+- [test_minimal_samsung.py](test_minimal_samsung.py) - **NEW** Ultra-minimal test for Samsung NPU core functionality
+- [test_mobile_npu_comparison.py](test_mobile_npu_comparison.py) - **UPDATED** Mobile NPU comparison with Samsung NPU support
+- [requirements_samsung.txt](requirements_samsung.txt) - **NEW** Dependency requirements for Samsung NPU support
+
+This implementation provides comprehensive support for all Samsung Exynos NPU-equipped devices, including model compatibility assessment, performance benchmarking, power efficiency analysis, and integration with the centralized hardware detection system. The system supports six Samsung Exynos chipsets from entry-level to flagship devices and provides detailed optimization recommendations specific to each chipset. The implementation includes a comprehensive testing suite, from ultra-minimal tests to detailed hardware comparisons.
+
+The documentation has been significantly enhanced with detailed sections on thermal management, model compatibility, framework ecosystem integration, and troubleshooting. Advanced usage examples are provided for optimal performance on Samsung devices. A dedicated requirements file (`requirements_samsung.txt`) has been created to easily install all dependencies needed for Samsung NPU support, with clear documentation on which dependencies are needed for different levels of functionality.
+
+### Simulation Accuracy and Validation Framework (NEW - July 8, 2025)
+
+The Simulation Accuracy and Validation Framework is a comprehensive system for validating, calibrating, and monitoring hardware simulation accuracy, ensuring that simulation results closely match real hardware performance:
+
+- [SIMULATION_ACCURACY_VALIDATION_DESIGN.md](SIMULATION_ACCURACY_VALIDATION_DESIGN.md) - **NEW** Design document for the Simulation Accuracy and Validation Framework
+- [duckdb_api/simulation_validation/README.md](duckdb_api/simulation_validation/README.md) - **NEW** Overview of the simulation validation directory structure and components
+- [duckdb_api/simulation_validation/core/base.py](duckdb_api/simulation_validation/core/base.py) - **NEW** Core interfaces and abstract classes for the framework
+- [duckdb_api/simulation_validation/core/schema.py](duckdb_api/simulation_validation/core/schema.py) - **NEW** Database schema for storing simulation and validation data
+- [test_simulation_validation_foundation.py](test_simulation_validation_foundation.py) - **NEW** Test script for the foundation of the framework
+
+The framework provides tools for comparing simulation results with real hardware measurements, statistical validation of simulation accuracy, calibration of simulation parameters, detection of simulation drift, and comprehensive reporting. Implementation is planned to begin in July 2025 with a target completion date of October 15, 2025.
+
+### Monitoring Dashboard Integration for Advanced Visualization (NEW - July 5, 2025)
+
+The Advanced Visualization System has been fully integrated with the Monitoring Dashboard, enabling centralized visualization management, real-time updates, and improved collaboration:
+
+- [MONITORING_DASHBOARD_INTEGRATION_GUIDE.md](MONITORING_DASHBOARD_INTEGRATION_GUIDE.md) - **NEW** Guide for integrating visualizations with the monitoring dashboard
+- [dashboard_enhanced_visualization.py](duckdb_api/visualization/dashboard_enhanced_visualization.py) - **NEW** Implementation of the enhanced visualization system with dashboard integration
+- [monitor_dashboard_integration.py](duckdb_api/visualization/advanced_visualization/monitor_dashboard_integration.py) - **NEW** Core implementation of the dashboard integration
+- [test_dashboard_enhanced_visualization.py](test_dashboard_enhanced_visualization.py) - **NEW** Comprehensive test suite for the dashboard integration
+- [run_monitoring_dashboard_integration.py](run_monitoring_dashboard_integration.py) - **NEW** Command-line tool for dashboard integration
+
+The integration allows visualizations to be automatically synchronized with a central dashboard, enabling real-time updates via WebSocket, dashboard panel creation, and snapshot export/import capabilities. This marks the completion of the Advanced Visualization System, a major milestone in the project roadmap.
 
 ### BERT Model Implementation with Hardware Acceleration (NEW - April 5, 2025)
 
@@ -236,11 +279,17 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 
 The project is currently focused on completing in-progress components and implementing planned enhancements:
 
-### 0. WebGPU/WebNN JavaScript SDK Migration (✅ COMPLETED - March 13, 2025)
+### 0. WebGPU/WebNN JavaScript SDK Migration (✅ COMPLETED - March 14, 2025)
 
 The WebGPU/WebNN migration to TypeScript has been completed with full type safety and React integration:
 
 - ✅ **Hardware Abstraction Layer**: Unified interface for accessing hardware backends with proper TypeScript generics
+  - [HARDWARE_ABSTRACTION_LAYER_GUIDE.md](HARDWARE_ABSTRACTION_LAYER_GUIDE.md) - **NEW** Comprehensive guide to the HAL
+  - [ipfs_accelerate_js_hardware_abstraction.ts](ipfs_accelerate_js_hardware_abstraction.ts) - **NEW** HAL implementation
+- ✅ **Hardware Abstracted Models**: Model implementations using the HAL for optimal performance
+  - [HARDWARE_ABSTRACTION_VIT_GUIDE.md](HARDWARE_ABSTRACTION_VIT_GUIDE.md) - **NEW** Guide to HAL-accelerated ViT model
+  - [ipfs_accelerate_js_vit_hardware_abstraction.ts](ipfs_accelerate_js_vit_hardware_abstraction.ts) - **NEW** HAL-accelerated ViT
+  - [HardwareAbstractionDemo.html](HardwareAbstractionDemo.html) - **NEW** Interactive demo for HAL capabilities
 - ✅ **WebGPU Backend**: Complete implementation for GPU acceleration via WebGPU API
 - ✅ **WebNN Backend**: Implementation for neural network acceleration via WebNN API
 - ✅ **React Integration**: Custom hooks for easy integration with React applications
@@ -271,9 +320,9 @@ Documentation:
 - [predictive_performance/README.md](predictive_performance/README.md) - Updated main documentation
 - [run_multi_model_web_integration.py](run_multi_model_web_integration.py) - Demo script with browser detection
 
-### 2. Advanced Visualization System (✅ COMPLETED - May 15, 2025)
+### 2. Advanced Visualization System (✅ COMPLETED - July 5, 2025)
 
-The Advanced Visualization System for the Predictive Performance System has been completed, providing comprehensive visualization capabilities:
+The Advanced Visualization System for the Predictive Performance System has been completed, providing comprehensive visualization capabilities with full monitoring dashboard integration:
 
 - ✅ **3D Visualizations**: Multi-dimensional performance exploration with interactive rotation and filtering
 - ✅ **Interactive Dashboards**: Performance metrics with filtering and comparison capabilities
@@ -282,9 +331,13 @@ The Advanced Visualization System for the Predictive Performance System has been
 - ✅ **Dimension Reduction**: Feature importance analysis through PCA and t-SNE visualizations
 - ✅ **Confidence Visualization**: Visual presentation of prediction uncertainties and confidence intervals
 - ✅ **Visualization Reports**: Comprehensive HTML reports combining multiple visualization types
+- ✅ **Monitoring Dashboard Integration**: Centralized visualization management with real-time updates via WebSocket
+- ✅ **Dashboard Panel Creation**: Automatic creation of dashboard panels from visualizations
+- ✅ **Snapshot Export/Import**: Exporting and importing dashboard snapshots for sharing
 
 Documentation:
 - [ADVANCED_VISUALIZATION_GUIDE.md](ADVANCED_VISUALIZATION_GUIDE.md) - Comprehensive visualization guide
+- [MONITORING_DASHBOARD_INTEGRATION_GUIDE.md](MONITORING_DASHBOARD_INTEGRATION_GUIDE.md) - Guide for dashboard integration
 - [predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md](predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md) - Updated main guide with visualization features
 - [run_visualization_demo.py](run_visualization_demo.py) - Demo script with advanced visualization features
 
@@ -313,6 +366,24 @@ Documentation:
 - [WEB_RESOURCE_POOL_DATABASE_INTEGRATION.md](WEB_RESOURCE_POOL_DATABASE_INTEGRATION.md) - Database integration documentation
 - [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md) - Main integration guide
 - [IPFS_RESOURCE_POOL_INTEGRATION_GUIDE.md](IPFS_RESOURCE_POOL_INTEGRATION_GUIDE.md) - IPFS integration guide
+
+### 4. Simulation Accuracy and Validation Framework (🔄 PLANNED - July 2025)
+
+The Simulation Accuracy and Validation Framework is being designed to provide comprehensive tools for validating, calibrating, and monitoring hardware simulation accuracy:
+
+- 📋 **Simulation Validation Methodology**: Statistical metrics and validation protocols for simulation accuracy
+- 📋 **Comparison Pipeline**: Tools for comparing simulation with real hardware measurements
+- 📋 **Statistical Validation Tools**: Statistical methods for quantifying simulation accuracy 
+- 📋 **Calibration System**: Parameter optimization for improving simulation models
+- 📋 **Drift Detection**: Monitoring system for detecting simulation accuracy drift
+- 📋 **Reporting and Visualization**: Comprehensive reports and visualizations for accuracy analysis
+
+Documentation:
+- [SIMULATION_ACCURACY_VALIDATION_DESIGN.md](SIMULATION_ACCURACY_VALIDATION_DESIGN.md) - Design document (NEW - July 8, 2025)
+- [duckdb_api/simulation_validation/README.md](duckdb_api/simulation_validation/README.md) - Implementation overview (NEW - July 8, 2025)
+- [duckdb_api/simulation_validation/core/base.py](duckdb_api/simulation_validation/core/base.py) - Core interfaces (NEW - July 8, 2025)
+- [duckdb_api/simulation_validation/core/schema.py](duckdb_api/simulation_validation/core/schema.py) - Database schema (NEW - July 8, 2025)
+- [test_simulation_validation_foundation.py](test_simulation_validation_foundation.py) - Foundation test script (NEW - July 8, 2025)
 
 ### 3. Distributed Testing Framework (98% Complete)
 
@@ -425,6 +496,10 @@ Documentation:
 - [webnn.d.ts](webnn.d.ts) - Main WebNN type definitions 
 - [src/types/webgpu.d.ts](src/types/webgpu.d.ts) - Structure-specific WebGPU type definitions
 - [src/types/webnn.d.ts](src/types/webnn.d.ts) - Structure-specific WebNN type definitions
+- [WEBNN_GRAPH_BUILDING_GUIDE.md](WEBNN_GRAPH_BUILDING_GUIDE.md) - Comprehensive guide to WebNN graph building (NEW - March 14, 2025)
+- [ipfs_accelerate_js_webnn_graph_builder.ts](ipfs_accelerate_js_webnn_graph_builder.ts) - Core implementation of WebNN graph building for neural networks (NEW - March 14, 2025)
+- [ipfs_accelerate_js_webnn_graph_builder.test.ts](ipfs_accelerate_js_webnn_graph_builder.test.ts) - Comprehensive test suite for WebNN graph building (NEW - March 14, 2025)
+- [ipfs_accelerate_js_webnn_graph_example.ts](ipfs_accelerate_js_webnn_graph_example.ts) - Example code for building neural networks with WebNN (NEW - March 14, 2025)
 
 #### Cross-Model Tensor Sharing (NEW - March 28, 2025)
 
@@ -468,7 +543,15 @@ Documentation:
 - [MODEL_FAMILY_GUIDE.md](MODEL_FAMILY_GUIDE.md) - Guide to model family classification
 - [MODEL_FAMILY_CLASSIFIER_GUIDE.md](MODEL_FAMILY_CLASSIFIER_GUIDE.md) - Model family classifier documentation
 
-## Advanced Features Documentation (May 2025)
+## Advanced Features Documentation (July 2025)
+
+### Simulation Accuracy and Validation Framework (July 2025)
+
+- [SIMULATION_ACCURACY_VALIDATION_DESIGN.md](SIMULATION_ACCURACY_VALIDATION_DESIGN.md) - Design document for the framework (NEW - July 8, 2025)
+- [duckdb_api/simulation_validation/README.md](duckdb_api/simulation_validation/README.md) - Implementation overview (NEW - July 8, 2025)
+- [duckdb_api/simulation_validation/core/base.py](duckdb_api/simulation_validation/core/base.py) - Core interfaces and abstract classes (NEW - July 8, 2025)
+- [duckdb_api/simulation_validation/core/schema.py](duckdb_api/simulation_validation/core/schema.py) - Database schema for simulation and validation data (NEW - July 8, 2025)
+- [test_simulation_validation_foundation.py](test_simulation_validation_foundation.py) - Foundation test script (NEW - July 8, 2025)
 
 ### Predictive Performance System (May 2025)
 

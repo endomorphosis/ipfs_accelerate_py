@@ -10,6 +10,8 @@ import { HardwareBackend } from '../../hardware/interfaces/hardware_backend';
 import { matmul, softmax } from '../../tensor/operations/matrix';
 import { layerNorm, gelu } from '../../tensor/operations/nn';
 import { add, mul } from '../../tensor/operations/basic';
+import { ShaderType } from '../../hardware/webgpu/optimizations/browser_shader_loader';
+import { BrowserType, detectBrowserType } from '../../hardware/webgpu/browser_optimized_operations';
 
 /**
  * Configuration for the ViT model
@@ -39,6 +41,14 @@ export interface ViTConfig {
   useOptimizedOps?: boolean;
   /** Number of channels in input images (3 for RGB) */
   channels?: number;
+  /** Whether to use browser-specific optimizations */
+  useBrowserOptimizations?: boolean;
+  /** Specific browser type to optimize for (auto-detected if not specified) */
+  browserType?: BrowserType;
+  /** Whether to use operation fusion when possible */
+  useOperationFusion?: boolean;
+  /** Attention dropout probability */
+  attentionDropout?: number;
 }
 
 /**
@@ -56,7 +66,10 @@ export const DEFAULT_VIT_CONFIG: ViTConfig = {
   numClasses: 1000,
   backendPreference: ['webgpu', 'webnn', 'cpu'],
   useOptimizedOps: true,
-  channels: 3
+  channels: 3,
+  useBrowserOptimizations: true,
+  useOperationFusion: true,
+  attentionDropout: 0.0
 };
 
 /**

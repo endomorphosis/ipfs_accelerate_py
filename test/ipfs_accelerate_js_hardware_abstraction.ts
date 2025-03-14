@@ -139,7 +139,7 @@ export class HardwareAbstraction {
     switch (type) {
       case 'webgpu':
         try {
-          const { WebGPUBackend } = await import('./backends/webgpu_backend');
+          const { WebGPUBackend } = await import('./ipfs_accelerate_js_webgpu_backend');
           return new WebGPUBackend(options);
         } catch (error) {
           console.error('Failed to load WebGPU backend:', error);
@@ -148,7 +148,7 @@ export class HardwareAbstraction {
         
       case 'webnn':
         try {
-          const { WebNNBackend } = await import('./backends/webnn_backend');
+          const { WebNNBackend } = await import('./ipfs_accelerate_js_webnn_backend');
           return new WebNNBackend(options);
         } catch (error) {
           console.error('Failed to load WebNN backend:', error);
@@ -157,16 +157,18 @@ export class HardwareAbstraction {
         
       case 'wasm':
         try {
-          const { WasmBackend } = await import('./backends/wasm_backend');
-          return new WasmBackend(options);
+          // WASM backend not yet implemented, will be added in future updates
+          console.warn('WASM backend not yet implemented, falling back to CPU');
+          const { CPUBackend } = await import('./ipfs_accelerate_js_cpu_backend');
+          return new CPUBackend(options);
         } catch (error) {
-          console.error('Failed to load WASM backend:', error);
+          console.error('Failed to load fallback CPU backend:', error);
           return null;
         }
         
       case 'cpu':
         try {
-          const { CPUBackend } = await import('./backends/cpu_backend');
+          const { CPUBackend } = await import('./ipfs_accelerate_js_cpu_backend');
           return new CPUBackend(options);
         } catch (error) {
           console.error('Failed to load CPU backend:', error);

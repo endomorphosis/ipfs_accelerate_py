@@ -65,6 +65,13 @@ try:
 except ImportError:
     E2E_TEST_INTEGRATION_AVAILABLE = False
 
+# Import Advanced Visualization System integration if available
+try:
+    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import VisualizationDashboardIntegration
+    VISUALIZATION_INTEGRATION_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_INTEGRATION_AVAILABLE = False
+
 # Import database manager if available
 try:
     from duckdb_api.core.db_manager import BenchmarkDBManager
@@ -109,6 +116,12 @@ def main():
                        help="Directory for E2E test reports")
     parser.add_argument("--e2e-visualization-dir", default="./e2e_visualizations",
                        help="Directory for E2E test visualizations")
+    
+    # Advanced Visualization System integration options
+    parser.add_argument("--enable-visualization-integration", action="store_true",
+                       help="Enable integration with Advanced Visualization System")
+    parser.add_argument("--dashboard-dir", default="./dashboards",
+                       help="Directory to store visualization dashboards")
     
     # Database options
     parser.add_argument("--db-path", 
@@ -201,17 +214,20 @@ def main():
         host=args.host,
         port=args.port,
         coordinator_url=args.coordinator,
-        result_aggregator=result_aggregator,
-        output_dir=args.output_dir
+        result_aggregator_url=None,  # Will be set up separately
+        refresh_interval=args.refresh,
+        theme=args.theme,
+        enable_result_aggregator_integration=not args.disable_aggregator and result_aggregator_integration is not None,
+        result_aggregator_integration=result_aggregator_integration,
+        enable_e2e_test_integration=args.enable_e2e_test_integration,
+        e2e_test_integration=None,  # Will be set up separately
+        enable_performance_analytics=True,
+        enable_visualization_integration=args.enable_visualization_integration,
+        visualization_integration=None,  # Will be set up automatically
+        dashboard_dir=args.dashboard_dir
     )
     
-    # Configure dashboard
-    dashboard.configure({
-        "theme": args.theme,
-        "auto_refresh": args.refresh,
-        "enable_alerts": not args.no_alerts,
-        "real_time_enabled": args.real_time or False
-    })
+    # Dashboard is already configured through constructor parameters
     
     # Store result aggregator integration in dashboard for access in templates
     if result_aggregator_integration:
@@ -245,6 +261,87 @@ def main():
                 traceback.print_exc()
     else:
         dashboard.enable_e2e_test_integration = False
+
+    # Initialize Visualization Dashboard integration if enabled
+    visualization_integration = None
+    if args.enable_visualization_integration and VISUALIZATION_INTEGRATION_AVAILABLE:
+        try:
+            # Create dashboard directory if needed
+            os.makedirs(args.dashboard_dir, exist_ok=True)
+            
+            # Create symbolic link to dashboards in output directory for serving
+            dashboards_link = os.path.join(args.output_dir, 'dashboards')
+            if not os.path.exists(dashboards_link):
+                try:
+                    # Use relative path for the link target if possible
+                    target_path = os.path.relpath(args.dashboard_dir, os.path.dirname(dashboards_link))
+                    os.symlink(target_path, dashboards_link, target_is_directory=True)
+                except Exception as e:
+                    print(f"Warning: Failed to create symbolic link to dashboards: {e}")
+                    # Fall back to normal directory
+                    os.makedirs(dashboards_link, exist_ok=True)
+            
+            # Create visualization integration
+            visualization_integration = VisualizationDashboardIntegration(
+                dashboard_dir=args.dashboard_dir,
+                integration_dir=os.path.join(args.dashboard_dir, 'monitor_integration')
+            )
+            
+            # Store in dashboard
+            dashboard.visualization_integration = visualization_integration
+            dashboard.enable_visualization_integration = True
+            
+            print(f"Advanced Visualization System integration initialized with dashboard dir: {args.dashboard_dir}")
+            
+            # Create default dashboards for main pages if they don't exist
+            if visualization_integration.visualization_available:
+                # Check if we already have dashboards for main pages
+                existing_dashboards = visualization_integration.embedded_dashboards
+                
+                # Create dashboard for Overview page if it doesn't exist
+                if not any(dash.get('page') == 'index' for dash in existing_dashboards.values()):
+                    print("Creating default Overview dashboard")
+                    visualization_integration.create_embedded_dashboard(
+                        name="overview_dashboard",
+                        page="index",
+                        template="overview",
+                        title="System Overview Dashboard",
+                        description="Overview of system performance metrics",
+                        position="below"
+                    )
+                
+                # Create dashboard for Results page if it doesn't exist
+                if not any(dash.get('page') == 'results' for dash in existing_dashboards.values()):
+                    print("Creating default Results dashboard")
+                    visualization_integration.create_embedded_dashboard(
+                        name="results_dashboard",
+                        page="results",
+                        template="model_analysis",
+                        title="Model Performance Dashboard",
+                        description="Detailed analysis of model performance metrics",
+                        position="below"
+                    )
+                
+                # Create dashboard for Performance Analytics page if it doesn't exist
+                if not any(dash.get('page') == 'performance-analytics' for dash in existing_dashboards.values()):
+                    print("Creating default Performance Analytics dashboard")
+                    visualization_integration.create_embedded_dashboard(
+                        name="performance_analytics_dashboard",
+                        page="performance-analytics",
+                        template="hardware_comparison",
+                        title="Hardware Comparison Dashboard",
+                        description="Detailed comparison of hardware performance metrics",
+                        position="below"
+                    )
+                
+        except Exception as e:
+            print(f"Warning: Failed to initialize Visualization Dashboard integration: {e}")
+            dashboard.enable_visualization_integration = False
+            if args.debug:
+                import traceback
+                traceback.print_exc()
+    else:
+        dashboard.enable_visualization_integration = False
     
     print(f"Dashboard configured with theme: {args.theme}, refresh: {args.refresh}s")
     
@@ -262,16 +359,15 @@ def main():
         # Start dashboard (this will block until interrupted)
         print(f"Starting monitoring dashboard at http://{args.host}:{args.port}")
         print("Press Ctrl+C to stop the server")
-        dashboard.start()
+        import asyncio
+        asyncio.run(dashboard.start())
     except KeyboardInterrupt:
         print("\nStopping monitoring dashboard...")
-        dashboard.stop()
     except Exception as e:
         print(f"Error running monitoring dashboard: {e}")
         if args.debug:
             import traceback
             traceback.print_exc()
-        dashboard.stop()
         sys.exit(1)
 
 
