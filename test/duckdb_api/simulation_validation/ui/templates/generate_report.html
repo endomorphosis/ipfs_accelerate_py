@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Report - {{ title }}{% endblock %}
+
+{% block header %}Generate Report{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('validation_results') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Results
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <!-- Report Form -->
+        <div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Create Validation Report</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('generate_report') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <!-- Filters -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="hardware_id" class="form-label">Hardware</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hardware_id" name="hardware_id">
+                                    <option value="">All Hardware</option>
+                                    {% for hw in hardware_types %}
+                                    <option value="{{ hw.id }}">{{ hw.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="model_id" class="form-label">Model</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="model_id" name="model_id">
+                                    <option value="">All Models</option>
+                                    {% for model in model_types %}
+                                    <option value="{{ model.id }}">{{ model.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Report Format -->
+                    <div class="mb-4">
+                        <label class="form-label">Report Format</label>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="format_html" value="html" checked>
+                                    <label class="form-check-label" for="format_html">
+                                        <i class="bi bi-filetype-html"></i> HTML
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="format_markdown" value="markdown">
+                                    <label class="form-check-label" for="format_markdown">
+                                        <i class="bi bi-filetype-md"></i> Markdown
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="format_json" value="json">
+                                    <label class="form-check-label" for="format_json">
+                                        <i class="bi bi-filetype-json"></i> JSON
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="format_csv" value="csv">
+                                    <label class="form-check-label" for="format_csv">
+                                        <i class="bi bi-filetype-csv"></i> CSV
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="format_pdf" value="pdf">
+                                    <label class="form-check-label" for="format_pdf">
+                                        <i class="bi bi-filetype-pdf"></i> PDF
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Options -->
+                    <div class="mb-4">
+                        <label class="form-label">Report Options</label>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="include_visualizations" name="include_visualizations" checked>
+                            <label class="form-check-label" for="include_visualizations">
+                                Include Visualizations
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Add charts and graphs to the report (HTML and PDF formats only)
+                            </div>
+                        </div>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="include_recommendations" name="include_recommendations" checked>
+                            <label class="form-check-label" for="include_recommendations">
+                                Include Recommendations
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Add calibration and improvement recommendations based on validation results
+                            </div>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="include_raw_data" name="include_raw_data">
+                            <label class="form-check-label" for="include_raw_data">
+                                Include Raw Data
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Add detailed raw data to the report (increases file size)
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-file-earmark-text"></i> Generate Report
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Report Formats Guide -->
+        <div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Report Format Guide</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table {% if theme == 'dark' %}table-dark{% endif %}">
+                        <thead>
+                            <tr>
+                                <th>Format</th>
+                                <th>Description</th>
+                                <th>Best For</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><i class="bi bi-filetype-html"></i> HTML</td>
+                                <td>Rich formatting with interactive visualizations</td>
+                                <td>Sharing detailed interactive reports</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-filetype-md"></i> Markdown</td>
+                                <td>Text-based format with basic formatting</td>
+                                <td>Documentation, GitHub, and version control</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-filetype-json"></i> JSON</td>
+                                <td>Machine-readable structured data</td>
+                                <td>Data analysis and programmatic usage</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-filetype-csv"></i> CSV</td>
+                                <td>Tabular data format</td>
+                                <td>Spreadsheet import and data analysis</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-filetype-pdf"></i> PDF</td>
+                                <td>Fixed-layout document with visualizations</td>
+                                <td>Official reports and printing</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle format selection to disable incompatible options
+        const formatRadios = document.querySelectorAll('input[name="format"]');
+        const includeVisualizations = document.getElementById('include_visualizations');
+        
+        function updateOptions() {
+            const selectedFormat = document.querySelector('input[name="format"]:checked').value;
+            
+            // Adjust options based on selected format
+            if (selectedFormat === 'csv' || selectedFormat === 'json') {
+                includeVisualizations.checked = false;
+                includeVisualizations.disabled = true;
+            } else {
+                includeVisualizations.disabled = false;
+            }
+        }
+        
+        // Add event listeners to format radios
+        formatRadios.forEach(radio => {
+            radio.addEventListener('change', updateOptions);
+        });
+        
+        // Initial call to set correct state
+        updateOptions();
+    });
+</script>
+{% endblock %}

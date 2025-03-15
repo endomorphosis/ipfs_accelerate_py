@@ -78,6 +78,89 @@ async def test_provider_interface_implementation():
     
     return success
 
+async def test_artifact_handling_standardization():
+    """Test that all providers support standardized artifact handling."""
+    from distributed_testing.ci.artifact_handler import get_artifact_handler
+    
+    providers = [
+        ("github", GitHubClient),
+        ("gitlab", GitLabClient),
+        ("jenkins", JenkinsClient),
+        ("azure", AzureDevOpsClient)
+    ]
+    
+    logger.info("\nChecking artifact handling standardization...")
+    
+    # Check that all providers implement upload_artifact method
+    success = True
+    for provider_name, provider_class in providers:
+        logger.info(f"Checking {provider_name} provider artifact handling...")
+        
+        # Verify method exists
+        if not hasattr(provider_class, "upload_artifact"):
+            logger.error(f"  - FAILED: {provider_name} does not implement upload_artifact method")
+            success = False
+            continue
+        
+        # Create an instance with mock config
+        provider = provider_class()
+        mock_config = {
+            "token": "test-token",
+            "repository": "test/repo",
+            "organization": "test-org",
+            "project": "test-project"
+        }
+        
+        try:
+            # Initialize with mock config
+            await provider.initialize(mock_config)
+            
+            # Get method reference
+            upload_method = getattr(provider, "upload_artifact")
+            
+            # Check method signature
+            sig = inspect.signature(upload_method)
+            
+            # Check required parameters
+            required_params = ["test_run_id", "artifact_path", "artifact_name"]
+            missing_params = [param for param in required_params if param not in sig.parameters]
+            
+            if missing_params:
+                logger.error(f"  - FAILED: {provider_name} upload_artifact method is missing parameters: {', '.join(missing_params)}")
+                success = False
+                continue
+            
+            # Check return type annotation
+            return_annotation = sig.return_annotation
+            if return_annotation != bool and return_annotation != inspect.Signature.empty:
+                logger.warning(f"  - WARNING: {provider_name} upload_artifact method has unexpected return type annotation: {return_annotation}")
+            
+            # Check if method can be integrated with artifact handler
+            handler = get_artifact_handler()
+            try:
+                handler.register_provider(provider_name, provider)
+                logger.info(f"  - SUCCESS: {provider_name} can be registered with artifact handler")
+            except Exception as e:
+                logger.error(f"  - FAILED: {provider_name} cannot be registered with artifact handler: {str(e)}")
+                success = False
+                continue
+            
+            logger.info(f"  - SUCCESS: {provider_name} implements standardized artifact handling")
+        
+        except Exception as e:
+            logger.error(f"  - ERROR testing {provider_name}: {str(e)}")
+            success = False
+            continue
+        
+        finally:
+            # Clean up
+            try:
+                await provider.close()
+            except:
+                pass
+    
+    return success
+
 async def test_provider_factory():
     """Test that the factory correctly registers and creates providers."""
     # Get available providers
@@ -106,8 +189,11 @@ async def main():
     # Test provider factory
     factory_test_result = await test_provider_factory()
     
+    # Test artifact handling standardization
+    artifact_test_result = await test_artifact_handling_standardization()
+    
     # Print overall result
-    if interface_test_result and factory_test_result:
+    if interface_test_result and factory_test_result and artifact_test_result:
         logger.info("\nAll tests PASSED! CI providers are correctly standardized.")
     else:
         logger.error("\nTests FAILED! Some CI providers are not correctly standardized.")

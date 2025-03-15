@@ -13,6 +13,7 @@ import sys
 import logging
 import datetime
 import json
+import uuid
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 
@@ -38,6 +39,14 @@ from duckdb_api.simulation_validation.methodology import ValidationMethodology
 from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
 from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
 
+# Import enhanced statistical validator
+try:
+    from duckdb_api.simulation_validation.statistical.enhanced_statistical_validator import EnhancedStatisticalValidator
+    enhanced_validator_available = True
+except ImportError:
+    logger.warning("EnhancedStatisticalValidator not available, using basic statistical validator")
+    enhanced_validator_available = False
+
 # Optional imports - these may not exist yet but will be implemented later
 try:
     from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
@@ -45,6 +54,20 @@ try:
 except ImportError:
     logger.warning("BasicSimulationCalibrator not available, calibration functions will be limited")
     calibrator_available = False
+
+try:
+    from duckdb_api.simulation_validation.calibration.advanced_calibrator import AdvancedSimulationCalibrator
+    advanced_calibrator_available = True
+except ImportError:
+    logger.warning("AdvancedSimulationCalibrator not available, advanced calibration functions will be limited")
+    advanced_calibrator_available = False
+
+try:
+    from duckdb_api.simulation_validation.calibration.parameter_discovery import AutomaticParameterDiscovery
+    parameter_discovery_available = True
+except ImportError:
+    logger.warning("AutomaticParameterDiscovery not available, parameter discovery functions will be limited")
+    parameter_discovery_available = False
 
 try:
     from duckdb_api.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
@@ -59,6 +82,13 @@ try:
 except ImportError:
     logger.warning("ValidationReporterImpl not available, reporting functions will be limited")
     reporter_available = False
+
+try:
+    from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+    visualizer_available = True
+except ImportError:
+    logger.warning("ValidationVisualizer not available, visualization functions will be limited")
+    visualizer_available = False
 
 class SimulationValidationFramework:
     """
@@ -82,12 +112,36 @@ class SimulationValidationFramework:
         # Initialize core components
         self.methodology = ValidationMethodology(self.config.get("methodology", {}))
         self.comparison_pipeline = ComparisonPipeline(self.config.get("comparison_pipeline", {}))
-        self.statistical_validator = StatisticalValidator(self.config.get("statistical_validator", {}))
+        
+        # Use enhanced statistical validator if available and enabled
+        use_enhanced_validator = self.config.get("use_enhanced_validator", True)
+        if enhanced_validator_available and use_enhanced_validator:
+            self.statistical_validator = EnhancedStatisticalValidator(self.config.get("statistical_validator", {}))
+            logger.info("Using enhanced statistical validator with advanced metrics")
+        else:
+            self.statistical_validator = StatisticalValidator(self.config.get("statistical_validator", {}))
+            logger.info("Using basic statistical validator")
         
         # Initialize optional components if available
         self.calibrator = None
-        if calibrator_available and self.config.get("enable_calibration", True):
-            self.calibrator = BasicSimulationCalibrator(self.config.get("calibrator", {}))
+        self.parameter_discovery = None
+        
+        # Initialize calibrator based on available implementations and configuration
+        if self.config.get("enable_calibration", True):
+            use_advanced_calibrator = self.config.get("use_advanced_calibrator", True)
+            if advanced_calibrator_available and use_advanced_calibrator:
+                logger.info("Using advanced simulation calibrator with enhanced techniques")
+                self.calibrator = AdvancedSimulationCalibrator(self.config.get("calibrator", {}))
+            elif calibrator_available:
+                logger.info("Using basic simulation calibrator")
+                self.calibrator = BasicSimulationCalibrator(self.config.get("calibrator", {}))
+        
+        # Initialize parameter discovery if available
+        if parameter_discovery_available and self.config.get("enable_parameter_discovery", True):
+            logger.info("Initializing automatic parameter discovery")
+            self.parameter_discovery = AutomaticParameterDiscovery(
+                self.config.get("parameter_discovery", {})
+            )
         
         self.drift_detector = None
         if drift_detector_available and self.config.get("enable_drift_detection", True):
@@ -96,6 +150,11 @@ class SimulationValidationFramework:
         self.reporter = None
         if reporter_available and self.config.get("enable_reporting", True):
             self.reporter = ValidationReporterImpl(self.config.get("reporter", {}))
+        
+        # Initialize visualizer if available
+        self.visualizer = None
+        if visualizer_available and self.config.get("enable_visualization", True):
+            self.visualizer = ValidationVisualizer(self.config.get("visualizer", {}))
         
         # Initialize database connection if specified
         self.db_api = None
@@ -108,7 +167,9 @@ class SimulationValidationFramework:
             calibrator=self.calibrator,
             drift_detector=self.drift_detector,
             reporter=self.reporter,
-            db_api=self.db_api
+            visualizer=self.visualizer,
+            db_api=self.db_api,
+            parameter_discovery=self.parameter_discovery
         )
         
         logger.info("Simulation Validation Framework initialized")
@@ -391,6 +452,341 @@ class SimulationValidationFramework:
         return self.methodology.check_drift_detection_needed(
             validation_results, hardware_id, model_id)
     
+    def discover_parameters(
+        self,
+        validation_results: List[ValidationResult]
+    ) -> Dict[str, Any]:
+        """
+        Discover important parameters and their sensitivity.
+        
+        This method uses the AutomaticParameterDiscovery to analyze validation results
+        and identify parameters that have significant impact on simulation accuracy.
+        It also analyzes parameter sensitivity to different conditions (batch size,
+        precision, etc.) and provides recommendations for calibration.
+        
+        Args:
+            validation_results: List of validation results for analysis
+            
+        Returns:
+            Dictionary of discovered parameters and their importance
+        """
+        if not self.parameter_discovery:
+            logger.warning("Parameter discovery not available, cannot discover parameters")
+            return {
+                "status": "error",
+                "message": "Parameter discovery not available"
+            }
+        
+        if not validation_results:
+            logger.warning("No validation results provided for parameter discovery")
+            return {
+                "status": "error",
+                "message": "No validation results provided"
+            }
+        
+        logger.info("Starting parameter discovery")
+        
+        # Run parameter discovery
+        parameter_recommendations = self.parameter_discovery.discover_parameters(validation_results)
+        
+        # Store results in database if available
+        if self.db_api and parameter_recommendations:
+            self._store_parameter_discovery_results(parameter_recommendations)
+        
+        return parameter_recommendations
+    
+    def analyze_parameter_sensitivity(
+        self,
+        validation_results: List[ValidationResult],
+        parameter_name: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze sensitivity of a specific parameter in detail.
+        
+        This method performs a detailed sensitivity analysis of a specific parameter,
+        examining how it affects simulation accuracy under different conditions such
+        as batch size and precision.
+        
+        Args:
+            validation_results: List of validation results
+            parameter_name: Name of the parameter to analyze
+            
+        Returns:
+            Dictionary of sensitivity analysis results
+        """
+        if not self.parameter_discovery:
+            logger.warning("Parameter discovery not available, cannot analyze parameter sensitivity")
+            return {
+                "status": "error",
+                "message": "Parameter discovery not available"
+            }
+        
+        if not validation_results:
+            logger.warning("No validation results provided for parameter sensitivity analysis")
+            return {
+                "status": "error",
+                "message": "No validation results provided"
+            }
+        
+        logger.info(f"Analyzing sensitivity of parameter: {parameter_name}")
+        
+        # Run parameter sensitivity analysis
+        sensitivity_results = self.parameter_discovery.analyze_parameter_sensitivity(
+            validation_results, parameter_name
+        )
+        
+        return sensitivity_results
+    
+    def generate_parameter_insight_report(self) -> Dict[str, Any]:
+        """
+        Generate a comprehensive report with insights about parameters.
+        
+        This method creates a detailed report containing parameter importance,
+        sensitivity, and relationships, along with optimization recommendations
+        and key findings.
+        
+        Returns:
+            Dictionary with detailed insights and recommendations
+        """
+        if not self.parameter_discovery:
+            logger.warning("Parameter discovery not available, cannot generate parameter insight report")
+            return {
+                "status": "error",
+                "message": "Parameter discovery not available"
+            }
+        
+        logger.info("Generating parameter insight report")
+        
+        # Generate parameter insight report
+        insight_report = self.parameter_discovery.generate_insight_report()
+        
+        return insight_report
+            
+    def visualize_mape_comparison(
+        self,
+        validation_results: List[ValidationResult],
+        metric_name: str = "all",
+        hardware_ids: Optional[List[str]] = None,
+        model_ids: Optional[List[str]] = None,
+        sort_by: str = "hardware",
+        interactive: Optional[bool] = None,
+        output_path: Optional[str] = None,
+        title: Optional[str] = None
+    ) -> Union[str, None]:
+        """
+        Create a chart comparing MAPE values across different hardware/models.
+        
+        Args:
+            validation_results: List of validation results
+            metric_name: Name of the metric to visualize, or "all" for average
+            hardware_ids: List of hardware IDs to include (if None, include all)
+            model_ids: List of model IDs to include (if None, include all)
+            sort_by: Sort results by "hardware", "model", or "value"
+            interactive: Whether to create an interactive plot
+            output_path: Path to save the chart
+            title: Custom title for the chart
+            
+        Returns:
+            Path to the saved chart if output_path is provided, otherwise HTML content
+        """
+        if not self.visualizer:
+            logger.warning("Visualizer not available, cannot create MAPE comparison chart")
+            return None
+            
+        logger.info(f"Creating MAPE comparison visualization for metric '{metric_name}'")
+        return self.visualizer.create_mape_comparison_chart(
+            validation_results,
+            metric_name=metric_name,
+            hardware_ids=hardware_ids,
+            model_ids=model_ids,
+            sort_by=sort_by,
+            interactive=interactive,
+            output_path=output_path,
+            title=title
+        )
+    
+    def visualize_metric_comparison(
+        self,
+        validation_results: List[ValidationResult],
+        hardware_id: str,
+        model_id: str,
+        metrics: Optional[List[str]] = None,
+        show_absolute_values: bool = False,
+        interactive: Optional[bool] = None,
+        output_path: Optional[str] = None,
+        title: Optional[str] = None
+    ) -> Union[str, None]:
+        """
+        Create a chart comparing simulation vs hardware values for specific metrics.
+        
+        Args:
+            validation_results: List of validation results
+            hardware_id: Hardware ID to visualize
+            model_id: Model ID to visualize
+            metrics: List of metrics to include (if None, include common metrics)
+            show_absolute_values: Whether to show absolute values or normalized
+            interactive: Whether to create an interactive plot
+            output_path: Path to save the chart
+            title: Custom title for the chart
+            
+        Returns:
+            Path to the saved chart if output_path is provided, otherwise HTML content
+        """
+        if not self.visualizer:
+            logger.warning("Visualizer not available, cannot create metric comparison chart")
+            return None
+            
+        logger.info(f"Creating metric comparison visualization for {model_id} on {hardware_id}")
+        return self.visualizer.create_metric_comparison_chart(
+            validation_results,
+            hardware_id=hardware_id,
+            model_id=model_id,
+            metrics=metrics,
+            show_absolute_values=show_absolute_values,
+            interactive=interactive,
+            output_path=output_path,
+            title=title
+        )
+    
+    def visualize_hardware_comparison_heatmap(
+        self,
+        validation_results: List[ValidationResult],
+        metric_name: str = "all",
+        model_ids: Optional[List[str]] = None,
+        interactive: Optional[bool] = None,
+        output_path: Optional[str] = None,
+        title: Optional[str] = None
+    ) -> Union[str, None]:
+        """
+        Create a heatmap comparing simulation accuracy across hardware types.
+        
+        Args:
+            validation_results: List of validation results
+            metric_name: Name of the metric to visualize, or "all" for average
+            model_ids: List of model IDs to include (if None, include all)
+            interactive: Whether to create an interactive plot
+            output_path: Path to save the chart
+            title: Custom title for the chart
+            
+        Returns:
+            Path to the saved chart if output_path is provided, otherwise HTML content
+        """
+        if not self.visualizer:
+            logger.warning("Visualizer not available, cannot create hardware comparison heatmap")
+            return None
+            
+        logger.info(f"Creating hardware comparison heatmap for metric '{metric_name}'")
+        return self.visualizer.create_hardware_comparison_heatmap(
+            validation_results,
+            metric_name=metric_name,
+            model_ids=model_ids,
+            interactive=interactive,
+            output_path=output_path,
+            title=title
+        )
+    
+    def visualize_drift_detection(
+        self,
+        drift_results: Dict[str, Any],
+        interactive: Optional[bool] = None,
+        output_path: Optional[str] = None,
+        title: Optional[str] = None
+    ) -> Union[str, None]:
+        """
+        Create a visualization of drift detection results.
+        
+        Args:
+            drift_results: Results from the drift detector
+            interactive: Whether to create an interactive plot
+            output_path: Path to save the visualization
+            title: Custom title for the visualization
+            
+        Returns:
+            Path to the saved visualization if output_path is provided, otherwise HTML content
+        """
+        if not self.visualizer:
+            logger.warning("Visualizer not available, cannot create drift detection visualization")
+            return None
+            
+        logger.info("Creating drift detection visualization")
+        return self.visualizer.create_drift_detection_visualization(
+            drift_results,
+            interactive=interactive,
+            output_path=output_path,
+            title=title
+        )
+    
+    def visualize_calibration_improvement(
+        self,
+        before_calibration: List[ValidationResult],
+        after_calibration: List[ValidationResult],
+        interactive: Optional[bool] = None,
+        output_path: Optional[str] = None,
+        title: Optional[str] = None
+    ) -> Union[str, None]:
+        """
+        Create a chart showing the improvement from calibration.
+        
+        Args:
+            before_calibration: Validation results before calibration
+            after_calibration: Validation results after calibration
+            interactive: Whether to create an interactive plot
+            output_path: Path to save the chart
+            title: Custom title for the chart
+            
+        Returns:
+            Path to the saved chart if output_path is provided, otherwise HTML content
+        """
+        if not self.visualizer:
+            logger.warning("Visualizer not available, cannot create calibration improvement chart")
+            return None
+            
+        logger.info("Creating calibration improvement visualization")
+        return self.visualizer.create_calibration_improvement_chart(
+            before_calibration,
+            after_calibration,
+            interactive=interactive,
+            output_path=output_path,
+            title=title
+        )
+    
+    def create_comprehensive_dashboard(
+        self,
+        validation_results: List[ValidationResult],
+        hardware_id: Optional[str] = None,
+        model_id: Optional[str] = None,
+        output_path: Optional[str] = None,
+        title: Optional[str] = None,
+        include_sections: Optional[List[str]] = None
+    ) -> Union[str, None]:
+        """
+        Create a comprehensive dashboard with multiple visualizations.
+        
+        Args:
+            validation_results: List of validation results
+            hardware_id: Optional hardware ID filter
+            model_id: Optional model ID filter
+            output_path: Path to save the dashboard
+            title: Custom title for the dashboard
+            include_sections: List of sections to include (defaults to all)
+            
+        Returns:
+            Path to the saved dashboard if output_path is provided, otherwise HTML content
+        """
+        if not self.visualizer:
+            logger.warning("Visualizer not available, cannot create comprehensive dashboard")
+            return None
+            
+        logger.info("Creating comprehensive validation dashboard")
+        return self.visualizer.create_comprehensive_dashboard(
+            validation_results,
+            hardware_id=hardware_id,
+            model_id=model_id,
+            output_path=output_path,
+            title=title,
+            include_sections=include_sections
+        )
+    
     def create_validation_plan(
         self,
         hardware_id: str,
@@ -530,6 +926,9 @@ class SimulationValidationFramework:
             "enable_calibration": True,
             "enable_drift_detection": True,
             "enable_reporting": True,
+            "enable_parameter_discovery": True,
+            "use_enhanced_validator": True,
+            "use_advanced_calibrator": True,
             "database": {
                 "enabled": False
             },
@@ -538,7 +937,22 @@ class SimulationValidationFramework:
             "statistical_validator": {},
             "calibrator": {},
             "drift_detector": {},
-            "reporter": {}
+            "reporter": {},
+            "parameter_discovery": {
+                "metrics_to_analyze": [
+                    "throughput_items_per_second", 
+                    "average_latency_ms", 
+                    "memory_peak_mb", 
+                    "power_consumption_w"
+                ],
+                "min_samples_for_analysis": 5,
+                "sensitivity_threshold": 0.05,
+                "importance_calculation_method": "permutation",
+                "cross_parameter_analysis": True,
+                "batch_size_analysis": True,
+                "precision_analysis": True,
+                "model_size_analysis": True
+            }
         }
         
         # Load configuration from file if provided
@@ -867,6 +1281,77 @@ class SimulationValidationFramework:
         except Exception as e:
             logger.error(f"Error loading hardware result {hardware_id} from database: {e}")
             return None
+    
+    def _store_parameter_discovery_results(self, parameter_recommendations: Dict[str, Any]) -> None:
+        """
+        Store parameter discovery results in database.
+        
+        Args:
+            parameter_recommendations: Results from parameter discovery
+        """
+        if not self.db_api:
+            return
+        
+        try:
+            # Check if parameter_discovery table exists, create it if not
+            self.db_api.execute("""
+                CREATE TABLE IF NOT EXISTS parameter_discovery (
+                    id VARCHAR PRIMARY KEY,
+                    timestamp VARCHAR,
+                    parameters_by_metric JSON,
+                    overall_priority_list JSON,
+                    sensitivity_insights JSON,
+                    optimization_recommendations JSON,
+                    key_findings JSON,
+                    created_at TIMESTAMP
+                )
+            """)
+            
+            # Generate a unique ID for this discovery session
+            discovery_id = str(uuid.uuid4())
+            timestamp = datetime.datetime.now().isoformat()
+            
+            # Extract relevant sections from the parameter recommendations
+            parameters_by_metric = parameter_recommendations.get("parameters_by_metric", {})
+            overall_priority_list = parameter_recommendations.get("overall_priority_list", [])
+            sensitivity_insights = parameter_recommendations.get("sensitivity_insights", {})
+            optimization_recommendations = parameter_recommendations.get("optimization_recommendations", {})
+            
+            # Extract key findings if available
+            key_findings = []
+            if "insights" in parameter_recommendations and "key_findings" in parameter_recommendations["insights"]:
+                key_findings = parameter_recommendations["insights"]["key_findings"]
+            
+            # Convert to JSON strings
+            parameters_by_metric_json = json.dumps(parameters_by_metric)
+            overall_priority_list_json = json.dumps(overall_priority_list)
+            sensitivity_insights_json = json.dumps(sensitivity_insights)
+            optimization_recommendations_json = json.dumps(optimization_recommendations)
+            key_findings_json = json.dumps(key_findings)
+            
+            # Store in database
+            self.db_api.execute("""
+                INSERT INTO parameter_discovery
+                VALUES (:id, :timestamp, :parameters_by_metric, :overall_priority_list,
+                        :sensitivity_insights, :optimization_recommendations, :key_findings,
+                        CURRENT_TIMESTAMP)
+            """, {
+                "id": discovery_id,
+                "timestamp": timestamp,
+                "parameters_by_metric": parameters_by_metric_json,
+                "overall_priority_list": overall_priority_list_json,
+                "sensitivity_insights": sensitivity_insights_json,
+                "optimization_recommendations": optimization_recommendations_json,
+                "key_findings": key_findings_json
+            })
+            
+            # Commit transaction
+            self.db_api.commit()
+            logger.info(f"Stored parameter discovery results in database with ID: {discovery_id}")
+            
+        except Exception as e:
+            logger.error(f"Error storing parameter discovery results in database: {e}")
+            self.db_api.rollback()
 
 
 def get_framework_instance(config_path: Optional[str] = None) -> SimulationValidationFramework:

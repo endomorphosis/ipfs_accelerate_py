@@ -12,15 +12,15 @@ from dotenv import load_dotenv
 
 # Setup logging
 import logging
-logger = logging.getLogger())))))__name__)
+logger = logging.getLogger()__name__)
 
 class gemini:
-    def __init__())))))self, resources=None, metadata=None):
+    def __init__()self, resources=None, metadata=None):
         self.resources = resources if resources else {}}}}}}}}}}}}}
         self.metadata = metadata if metadata else {}}}}}}}}}}}}}
         
         # Get API key from metadata or environment
-        self.api_key = self._get_api_key()))))))
+        self.api_key = self._get_api_key()
         
         # Set API base URL:
         self.api_base = "https://generativelanguage.googleapis.com/v1"
@@ -31,16 +31,16 @@ class gemini:
         # Initialize queue and backoff systems
         self.max_concurrent_requests = 5
         self.queue_size = 100
-        self.request_queue = Queue())))))maxsize=self.queue_size)
+        self.request_queue = Queue()maxsize=self.queue_size)
         self.active_requests = 0
-        self.queue_lock = threading.RLock()))))))
+        self.queue_lock = threading.RLock()
         # Batching settings
         self.batching_enabled = True
         self.max_batch_size = 10
         self.batch_timeout = 0.5  # Max seconds to wait for more requests
         self.batch_queue = {}}}}}}}}}}}}}  # Keyed by model name
         self.batch_timers = {}}}}}}}}}}}}}  # Timers for each batch
-        self.batch_lock = threading.RLock()))))))
+        self.batch_lock = threading.RLock()
         
         # Models that support batching
         self.embedding_models = []],,]  # Models supporting batched embeddings,
@@ -53,7 +53,7 @@ class gemini:
         self.reset_timeout = 30  # Seconds to wait before trying half-open
         self.failure_count = 0
         self.last_failure_time = 0
-        self.circuit_lock = threading.RLock()))))))
+        self.circuit_lock = threading.RLock()
 
         # Priority levels
         self.PRIORITY_HIGH = 0
@@ -61,13 +61,13 @@ class gemini:
         self.PRIORITY_LOW = 2
         
         # Change request queue to priority-based
-        self.request_queue = []],,]  # Will store ())))))priority, request_info) tuples
+        self.request_queue = []],,]  # Will store ()priority, request_info) tuples
 
         ,
         # Start queue processor
-        self.queue_processor = threading.Thread())))))target=self._process_queue)
+        self.queue_processor = threading.Thread()target=self._process_queue)
         self.queue_processor.daemon = True
-        self.queue_processor.start()))))))
+        self.queue_processor.start()
         
         # Initialize backoff configuration
         self.max_retries = 5
@@ -81,41 +81,41 @@ class gemini:
         
     return None
 
-    def _get_api_key())))))self):
+    def _get_api_key()self):
         """Get Gemini API key from metadata or environment"""
         # Try to get from metadata
-        api_key = self.metadata.get())))))"gemini_api_key") or self.metadata.get())))))"google_api_key")
+        api_key = self.metadata.get()"gemini_api_key") or self.metadata.get()"google_api_key")
         if api_key:
         return api_key
         
         # Try to get from environment
-        env_key = os.environ.get())))))"GEMINI_API_KEY") or os.environ.get())))))"GOOGLE_API_KEY")
+        env_key = os.environ.get()"GEMINI_API_KEY") or os.environ.get()"GOOGLE_API_KEY")
         if env_key:
         return env_key
         
         # Try to load from dotenv
         try:
-            load_dotenv()))))))
-            env_key = os.environ.get())))))"GEMINI_API_KEY") or os.environ.get())))))"GOOGLE_API_KEY")
+            load_dotenv()
+            env_key = os.environ.get()"GEMINI_API_KEY") or os.environ.get()"GOOGLE_API_KEY")
             if env_key:
             return env_key
         
                     # Track successful request for circuit breaker
-                    if hasattr())))))self, "track_request_result"):
-                        self.track_request_result())))))True)
+                    if hasattr()self, "track_request_result"):
+                        self.track_request_result()True)
             except ImportError:
                         pass
         
         # Raise error if no key found
-            raise ValueError())))))"No Gemini API key found in metadata or environment")
+            raise ValueError()"No Gemini API key found in metadata or environment")
     :
-    def _process_queue())))))self):
+    def _process_queue()self):
         """Process requests in the queue with proper concurrency management"""
         while True:
             try:
-                # Get request from queue ())))))with timeout to allow checking if thread should exit):
+                # Get request from queue ()with timeout to allow checking if thread should exit):
                 try:
-                    future, func, args, kwargs = self.request_queue.get())))))timeout=1.0)
+                    future, func, args, kwargs = self.request_queue.get()timeout=1.0)
                 except Exception:
                     # Queue empty or timeout, just continue
                     continue
@@ -128,139 +128,139 @@ class gemini:
                     retry_count = 0
                 while retry_count <= self.max_retries:
                     try:
-                        result = func())))))*args, **kwargs)
-                        future.set_result())))))result)
+                        result = func()*args, **kwargs)
+                        future.set_result()result)
                     break
                     except Exception as e:
                         retry_count += 1
                         if retry_count > self.max_retries:
-                            future.set_exception())))))e)
-                            logger.error())))))f"Request failed after {}}}}}}}}}}}}self.max_retries} retries: {}}}}}}}}}}}}e}")
+                            future.set_exception()e)
+                            logger.error()f"Request failed after {}}}}}}}}}}}}self.max_retries} retries: {}}}}}}}}}}}}e}")
                         break
                         
                         # Calculate backoff delay
-                        delay = min())))))
-                        self.initial_retry_delay * ())))))self.backoff_factor ** ())))))retry_count - 1)),
+                        delay = min()
+                        self.initial_retry_delay * ()self.backoff_factor ** ()retry_count - 1),
                         self.max_retry_delay
                         )
                         
                         # Sleep with backoff
-                        logger.warning())))))f"Request failed, retrying in {}}}}}}}}}}}}delay} seconds: {}}}}}}}}}}}}e}")
-                        time.sleep())))))delay)
+                        logger.warning()f"Request failed, retrying in {}}}}}}}}}}}}delay} seconds: {}}}}}}}}}}}}e}")
+                        time.sleep()delay)
                 
                 # Update counters and mark task done
                 with self.queue_lock:
                     self.active_requests -= 1
                 
-                    self.request_queue.task_done()))))))
+                    self.request_queue.task_done()
             except Exception as e:
-                logger.error())))))f"Error in queue processor: {}}}}}}}}}}}}e}")
+                logger.error()f"Error in queue processor: {}}}}}}}}}}}}e}")
     
-    def queue_with_priority())))))self, request_info, priority=None):
+    def queue_with_priority()self, request_info, priority=None):
         # Queue a request with a specific priority level
         if priority is None:
             priority = self.PRIORITY_NORMAL
             
         with self.queue_lock:
             # Check if queue is full:
-            if len())))))self.request_queue) >= self.queue_size:
-            raise ValueError())))))f"Request queue is full ()))))){}}}}}}}}}}}}self.queue_size} items). Try again later.")
+            if len()self.request_queue) >= self.queue_size:
+            raise ValueError()f"Request queue is full (){}}}}}}}}}}}}self.queue_size} items). Try again later.")
             
             # Record queue entry time for metrics
-            request_info[]],,"queue_entry_time"] = time.time()))))))
+            request_info[]],,"queue_entry_time"] = time.time()
             ,
             # Add to queue with priority
-            self.request_queue.append())))))())))))priority, request_info))
+            self.request_queue.append()()priority, request_info)
             
-            # Sort queue by priority ())))))lower numbers = higher priority)
-            self.request_queue.sort())))))key=lambda x: x[]],,0])
+            # Sort queue by priority ()lower numbers = higher priority)
+            self.request_queue.sort()key=lambda x: x[]],,0])
             ,
-            logger.info())))))f"Request queued with priority {}}}}}}}}}}}}priority}. Queue size: {}}}}}}}}}}}}len())))))self.request_queue)}")
+            logger.info()f"Request queued with priority {}}}}}}}}}}}}priority}. Queue size: {}}}}}}}}}}}}len()self.request_queue)}")
             
             # Start queue processing if not already running:
             if not self.queue_processing:
-                threading.Thread())))))target=self._process_queue).start()))))))
+                threading.Thread()target=self._process_queue).start()
                 
             # Create future to track result
                 future = {}}}}}}}}}}}}"result": None, "error": None, "completed": False}
                 request_info[]],,"future"] = future,
                     # Track failed request for circuit breaker
-                    if hasattr())))))self, "track_request_result"):
-                        error_type = type())))))e).__name__
-                        self.track_request_result())))))False, error_type)
+                    if hasattr()self, "track_request_result"):
+                        error_type = type()e).__name__
+                        self.track_request_result()False, error_type)
             
                 return future
     
-    def _with_queue_and_backoff())))))self, func, *args, **kwargs):
+    def _with_queue_and_backoff()self, func, *args, **kwargs):
         """Execute a function with queue and backoff"""
-        future = Future()))))))
+        future = Future()
         
         try:
             with self.queue_lock:
                 if self.active_requests >= self.max_concurrent_requests:
                     # Queue the request
-                    self.request_queue.put())))))())))))future, func, args, kwargs))
-                return future.result())))))timeout=300)  # 5 minute timeout
+                    self.request_queue.put()()future, func, args, kwargs)
+                return future.result()timeout=300)  # 5 minute timeout
                 else:
                     # Increment counter
                     self.active_requests += 1
         except Exception as e:
-            logger.error())))))f"Error with queue management: {}}}}}}}}}}}}e}")
+            logger.error()f"Error with queue management: {}}}}}}}}}}}}e}")
             # Fall through to direct processing
         
         # Process directly with retries if not queued
         retry_count = 0:
         while retry_count <= self.max_retries:
             try:
-                result = func())))))*args, **kwargs)
-                future.set_result())))))result)
+                result = func()*args, **kwargs)
+                future.set_result()result)
             break
             except Exception as e:
                 retry_count += 1
                 if retry_count > self.max_retries:
-                    future.set_exception())))))e)
+                    future.set_exception()e)
                     # Decrement counter
                     with self.queue_lock:
-                        self.active_requests = max())))))0, self.active_requests - 1)
+                        self.active_requests = max()0, self.active_requests - 1)
                     raise
                 
                 # Calculate backoff delay
-                    delay = min())))))
-                    self.initial_retry_delay * ())))))self.backoff_factor ** ())))))retry_count - 1)),
+                    delay = min()
+                    self.initial_retry_delay * ()self.backoff_factor ** ()retry_count - 1),
                     self.max_retry_delay
                     )
                 
                 # Sleep with backoff
-                    logger.warning())))))f"Request failed, retrying in {}}}}}}}}}}}}delay} seconds: {}}}}}}}}}}}}e}")
-                    time.sleep())))))delay)
+                    logger.warning()f"Request failed, retrying in {}}}}}}}}}}}}delay} seconds: {}}}}}}}}}}}}e}")
+                    time.sleep()delay)
         
         # Decrement counter
         with self.queue_lock:
-            self.active_requests = max())))))0, self.active_requests - 1)
+            self.active_requests = max()0, self.active_requests - 1)
         
-                    return future.result()))))))
+                    return future.result()
     
-    def make_post_request())))))self, url=None, data=None, api_key=None, request_id=None):
+    def make_post_request()self, url=None, data=None, api_key=None, request_id=None):
         # Check circuit breaker first
-        if hasattr())))))self, "check_circuit_breaker") and not self.check_circuit_breaker())))))):
-        raise Exception())))))f"Circuit breaker is OPEN. Service appears to be unavailable. Try again in {}}}}}}}}}}}}self.reset_timeout} seconds.")
+        if hasattr()self, "check_circuit_breaker") and not self.check_circuit_breaker():
+        raise Exception()f"Circuit breaker is OPEN. Service appears to be unavailable. Try again in {}}}}}}}}}}}}self.reset_timeout} seconds.")
         
         """Make a POST request to the Gemini API"""
-        # Use default API key if not provided::
+        # Use default API key if not provided:
         if not api_key:
             api_key = self.api_key
         
         if not api_key:
-            raise ValueError())))))"No API key provided for Gemini API request")
+            raise ValueError()"No API key provided for Gemini API request")
         
-        # Generate request ID if not provided::
+        # Generate request ID if not provided:
         if not request_id:
-            request_id = f"req_{}}}}}}}}}}}}int())))))time.time())))))))}_{}}}}}}}}}}}}hashlib.md5())))))str())))))data).encode()))))))).hexdigest()))))))[]],,:8]}"
+            request_id = f"req_{}}}}}}}}}}}}int()time.time()}_{}}}}}}}}}}}}hashlib.md5()str()data).encode().hexdigest()[]],,:8]}"
             ,
         # Create URL with API key parameter
         if not url:
             # Default to text generation endpoint
-            url = f"{}}}}}}}}}}}}self.api_base}/models/{}}}}}}}}}}}}data.get())))))'model', 'gemini-1.5-pro')}:generateContent?key={}}}}}}}}}}}}api_key}"
+            url = f"{}}}}}}}}}}}}self.api_base}/models/{}}}}}}}}}}}}data.get()'model', 'gemini-1.5-pro')}:generateContent?key={}}}}}}}}}}}}api_key}"
         elif "?" not in url:
             url = f"{}}}}}}}}}}}}url}?key={}}}}}}}}}}}}api_key}"
         else:
@@ -275,8 +275,8 @@ class gemini:
             headers[]],,"X-Request-ID"] = request_id
             ,
         # Make request
-        def _do_request())))))):
-            response = requests.post())))))
+        def _do_request():
+            response = requests.post()
             url=url,
             json=data,
             headers=headers,
@@ -287,26 +287,26 @@ class gemini:
             if response.status_code != 200:
                 error_message = f"Gemini API request failed with status {}}}}}}}}}}}}response.status_code}"
                 try:
-                    error_data = response.json()))))))
+                    error_data = response.json()
                     if "error" in error_data:
-                        error_message = f"{}}}}}}}}}}}}error_message}: {}}}}}}}}}}}}error_data[]],,'error'].get())))))'message', '')}",
+                        error_message = f"{}}}}}}}}}}}}error_message}: {}}}}}}}}}}}}error_data[]],,'error'].get()'message', '')}",
                 except:
                     error_message = f"{}}}}}}}}}}}}error_message}: {}}}}}}}}}}}}response.text[]],,:100]}"
                     ,
-                        raise ValueError())))))error_message)
+                        raise ValueError()error_message)
             
-                    return response.json()))))))
+                    return response.json()
         
         # Execute with queue and backoff
-                return self._with_queue_and_backoff())))))_do_request)
+                return self._with_queue_and_backoff()_do_request)
     
-    def chat())))))self, messages, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+    def chat()self, messages, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
         """Send a chat request to Gemini API"""
         # Use specified model or default
         model = model or self.default_model
         
         # Format messages for Gemini API
-        formatted_messages = self._format_messages())))))messages)
+        formatted_messages = self._format_messages()messages)
         
         # Prepare request data
         data = {}}}}}}}}}}}}
@@ -315,7 +315,7 @@ class gemini:
         }
         
         # Add generation config if provided
-        generation_config = {}}}}}}}}}}}}}::
+        generation_config = {}}}}}}}}}}}}}:
         if max_tokens is not None:
             generation_config[]],,"maxOutputTokens"] = max_tokens,
         if temperature is not None:
@@ -325,35 +325,35 @@ class gemini:
             for key in []],,"topP", "topK"]:,
             if key in kwargs:
                 generation_config[]],,key] = kwargs[]],,key],
-            elif key.lower())))))) in kwargs:  # Handle snake_case keys too
+            elif key.lower() in kwargs:  # Handle snake_case keys too
                 # Convert snake_case to camelCase
-            snake_key = key.lower()))))))
+            snake_key = key.lower()
             generation_config[]],,key] = kwargs[]],,snake_key]
             ,
         if generation_config:
             data[]],,"generationConfig"] = generation_config
             ,
         # Make request
-            response = self.make_post_request())))))data=data, request_id=request_id)
+            response = self.make_post_request()data=data, request_id=request_id)
         
         # Process and normalize response
             return {}}}}}}}}}}}}
-            "text": self._extract_text())))))response),
+            "text": self._extract_text()response),
             "model": model,
-            "usage": self._extract_usage())))))response),
-            "implementation_type": "())))))REAL)",
+            "usage": self._extract_usage()response),
+            "implementation_type": "()REAL)",
             "raw_response": response  # Include raw response for advanced use
             }
     
-    def generate())))))self, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
-        """Generate text with Gemini ())))))alias for chat)"""
+    def generate()self, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+        """Generate text with Gemini ()alias for chat)"""
         # Convert prompt to messages format
-        if isinstance())))))prompt, list):
+        if isinstance()prompt, list):
             messages = prompt
         else:
             messages = []],,{}}}}}}}}}}}}"role": "user", "content": prompt}]
             ,
-            return self.chat())))))
+            return self.chat()
             messages=messages,
             model=model,
             max_tokens=max_tokens,
@@ -362,9 +362,9 @@ class gemini:
             **kwargs
             )
     
-    def completions())))))self, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
-        """Generate completions with Gemini ())))))alias for chat)"""
-            return self.generate())))))
+    def completions()self, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+        """Generate completions with Gemini ()alias for chat)"""
+            return self.generate()
             prompt=prompt,
             model=model,
             max_tokens=max_tokens,
@@ -373,14 +373,14 @@ class gemini:
             **kwargs
             )
     
-    def process_image())))))self, image_data, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+    def process_image()self, image_data, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
         """Process an image with Gemini API"""
         # Use specified model or multimodal default
         model = model or "gemini-1.5-pro-vision"
         
         # Encode image data to base64
-        if isinstance())))))image_data, bytes):
-            encoded_image = base64.b64encode())))))image_data).decode())))))'utf-8')
+        if isinstance()image_data, bytes):
+            encoded_image = base64.b64encode()image_data).decode()'utf-8')
         else:
             # Assume it's already encoded
             encoded_image = image_data
@@ -393,7 +393,7 @@ class gemini:
             {}}}}}}}}}}}}"text": prompt},
             {}}}}}}}}}}}}
             "inline_data": {}}}}}}}}}}}}
-            "mime_type": kwargs.get())))))"mime_type", "image/jpeg"),
+            "mime_type": kwargs.get()"mime_type", "image/jpeg"),
             "data": encoded_image
             }
             }
@@ -408,7 +408,7 @@ class gemini:
             }
         
         # Add generation config if provided
-        generation_config = {}}}}}}}}}}}}}::
+        generation_config = {}}}}}}}}}}}}}:
         if max_tokens is not None:
             generation_config[]],,"maxOutputTokens"] = max_tokens,
         if temperature is not None:
@@ -418,34 +418,34 @@ class gemini:
             for key in []],,"topP", "topK"]:,
             if key in kwargs:
                 generation_config[]],,key] = kwargs[]],,key],
-            elif key.lower())))))) in kwargs:  # Handle snake_case keys too
-            snake_key = key.lower()))))))
+            elif key.lower() in kwargs:  # Handle snake_case keys too
+            snake_key = key.lower()
             generation_config[]],,key] = kwargs[]],,snake_key]
             ,
         if generation_config:
             data[]],,"generationConfig"] = generation_config
             ,
         # Make request
-            response = self.make_post_request())))))data=data, request_id=request_id)
+            response = self.make_post_request()data=data, request_id=request_id)
         
         # Process and normalize response
             return {}}}}}}}}}}}}
-            "text": self._extract_text())))))response),
+            "text": self._extract_text()response),
             "model": model,
-            "usage": self._extract_usage())))))response),
-            "implementation_type": "())))))REAL)",
+            "usage": self._extract_usage()response),
+            "implementation_type": "()REAL)",
             "raw_response": response  # Include raw response for advanced use
             }
     
-    def _format_messages())))))self, messages):
+    def _format_messages()self, messages):
         """Format messages for Gemini API"""
         formatted_messages = []],,]
         current_role = None
         current_parts = []],,]
         
         for message in messages:
-            role = message.get())))))"role", "user")
-            content = message.get())))))"content", "")
+            role = message.get()"role", "user")
+            content = message.get()"content", "")
             
             # Map standard roles to Gemini roles
             if role == "assistant":
@@ -458,89 +458,89 @@ class gemini:
             
             # If role changes, add previous message
             if current_role and current_role != gemini_role and current_parts:
-                formatted_messages.append()))))){}}}}}}}}}}}}
+                formatted_messages.append(){}}}}}}}}}}}}
                 "role": current_role,
-                "parts": current_parts.copy()))))))
+                "parts": current_parts.copy()
                 })
                 current_parts = []],,]
             
             # Add content to parts
                 current_role = gemini_role
-                current_parts.append()))))){}}}}}}}}}}}}"text": content})
+                current_parts.append(){}}}}}}}}}}}}"text": content})
         
         # Add final message
         if current_role and current_parts:
-            formatted_messages.append()))))){}}}}}}}}}}}}
+            formatted_messages.append(){}}}}}}}}}}}}
             "role": current_role,
-            "parts": current_parts.copy()))))))
+            "parts": current_parts.copy()
             })
         
                 return formatted_messages
     
-    def _extract_text())))))self, response):
+    def _extract_text()self, response):
         """Extract text from Gemini API response"""
         try:
             # Get candidates from response
-            candidates = response.get())))))"candidates", []],,])
+            candidates = response.get()"candidates", []],,])
             if not candidates:
             return ""
             
             # Get content from first candidate
-            content = candidates[]],,0].get())))))"content", {}}}}}}}}}}}}})
+            content = candidates[]],,0].get()"content", {}}}}}}}}}}}}})
             
             # Extract text from parts
-            parts = content.get())))))"parts", []],,])
-            texts = []],,part.get())))))"text", "") for part in parts if "text" in part]
+            parts = content.get()"parts", []],,])
+            texts = []],,part.get()"text", "") for part in parts if "text" in part]
             
             # Join all text parts
-            return "".join())))))texts):
+            return "".join()texts):
         except Exception as e:
-            logger.error())))))f"Error extracting text from response: {}}}}}}}}}}}}e}")
+            logger.error()f"Error extracting text from response: {}}}}}}}}}}}}e}")
                 return ""
     
-    def _extract_usage())))))self, response):
+    def _extract_usage()self, response):
         """Extract usage information from response"""
         try:
             # Get usage information from response
             usage = {}}}}}}}}}}}}"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             
             # Get candidates from response
-            candidates = response.get())))))"candidates", []],,])
+            candidates = response.get()"candidates", []],,])
             if not candidates:
             return usage
             
             # Get token count from first candidate
-            token_count = candidates[]],,0].get())))))"tokenCount", {}}}}}}}}}}}}})
+            token_count = candidates[]],,0].get()"tokenCount", {}}}}}}}}}}}}})
             
             # Extract token counts
-            usage[]],,"prompt_tokens"] = token_count.get())))))"inputTokens", 0)
-            usage[]],,"completion_tokens"] = token_count.get())))))"outputTokens", 0)
-            usage[]],,"total_tokens"] = token_count.get())))))"totalTokens", 0)
+            usage[]],,"prompt_tokens"] = token_count.get()"inputTokens", 0)
+            usage[]],,"completion_tokens"] = token_count.get()"outputTokens", 0)
+            usage[]],,"total_tokens"] = token_count.get()"totalTokens", 0)
             
         return usage
         except Exception as e:
-            logger.error())))))f"Error extracting usage from response: {}}}}}}}}}}}}e}")
+            logger.error()f"Error extracting usage from response: {}}}}}}}}}}}}e}")
         return {}}}}}}}}}}}}"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     
-    def create_gemini_endpoint_handler())))))self):
+    def create_gemini_endpoint_handler()self):
         """Create an endpoint handler for Gemini"""
-        async def endpoint_handler())))))prompt, **kwargs):
+        async def endpoint_handler()prompt, **kwargs):
             """Handle requests to Gemini endpoint"""
             try:
                 # Extract model from kwargs or use default
-                model = kwargs.get())))))"model", self.default_model)
+                model = kwargs.get()"model", self.default_model)
                 
                 # Check if prompt contains an image:
-                if isinstance())))))prompt, dict) and "image" in prompt:
+                if isinstance()prompt, dict) and "image" in prompt:
                     # Process as image request
                     image_data = prompt[]],,"image"]
-                    text_prompt = prompt.get())))))"text", "Describe this image")
+                    text_prompt = prompt.get()"text", "Describe this image")
                     
-                    response = self.process_image())))))image_data, text_prompt, model, **kwargs)
+                    response = self.process_image()image_data, text_prompt, model, **kwargs)
                 return response
                 else:
                     # Create messages from prompt
-                    if isinstance())))))prompt, list):
+                    if isinstance()prompt, list):
                         # Already formatted as messages
                         messages = prompt
                     else:
@@ -548,15 +548,15 @@ class gemini:
                         messages = []],,{}}}}}}}}}}}}"role": "user", "content": prompt}]
                         ,
                     # Make the request
-                        response = self.chat())))))messages, model, **kwargs)
+                        response = self.chat()messages, model, **kwargs)
                         return response
             except Exception as e:
-                logger.error())))))f"Error calling Gemini endpoint: {}}}}}}}}}}}}e}")
-                        return {}}}}}}}}}}}}"text": f"Error: {}}}}}}}}}}}}str())))))e)}", "implementation_type": "())))))ERROR)"}
+                logger.error()f"Error calling Gemini endpoint: {}}}}}}}}}}}}e}")
+                        return {}}}}}}}}}}}}"text": f"Error: {}}}}}}}}}}}}str()e)}", "implementation_type": "()ERROR)"}
         
                     return endpoint_handler
         
-    def test_gemini_endpoint())))))self, model=None):
+    def test_gemini_endpoint()self, model=None):
         """Test the Gemini endpoint"""
         try:
             # Use specified model or default
@@ -566,23 +566,23 @@ class gemini:
             messages = []],,{}}}}}}}}}}}}"role": "user", "content": "Testing the Gemini API. Please respond with a short message."}]
             
             # Make the request
-            response = self.chat())))))messages, model)
+            response = self.chat()messages, model)
             
             # Check if the response contains text
-            return "text" in response and response.get())))))"implementation_type") == "())))))REAL)":
+            return "text" in response and response.get()"implementation_type") == "()REAL)":
         except Exception as e:
-            logger.error())))))f"Error testing Gemini endpoint: {}}}}}}}}}}}}e}")
+            logger.error()f"Error testing Gemini endpoint: {}}}}}}}}}}}}e}")
                 return False
 
-    def check_circuit_breaker())))))self):
+    def check_circuit_breaker()self):
         # Check if circuit breaker allows requests to proceed:
         with self.circuit_lock:
-            now = time.time()))))))
+            now = time.time()
             
             if self.circuit_state == "OPEN":
                 # Check if enough time has passed to try again:
                 if now - self.last_failure_time > self.reset_timeout:
-                    logger.info())))))"Circuit breaker transitioning from OPEN to HALF-OPEN")
+                    logger.info()"Circuit breaker transitioning from OPEN to HALF-OPEN")
                     self.circuit_state = "HALF_OPEN"
                 return True
                 else:
@@ -597,14 +597,14 @@ class gemini:
                 # Normal operation, allow requests
         return True
 
-    def track_request_result())))))self, success, error_type=None):
+    def track_request_result()self, success, error_type=None):
         # Track the result of a request for circuit breaker logic tracking
         with self.circuit_lock:
             if success:
                 # Successful request
                 if self.circuit_state == "HALF_OPEN":
                     # Service is working again, close the circuit
-                    logger.info())))))"Circuit breaker transitioning from HALF-OPEN to CLOSED")
+                    logger.info()"Circuit breaker transitioning from HALF-OPEN to CLOSED")
                     self.circuit_state = "CLOSED"
                     self.failure_count = 0
                 elif self.circuit_state == "CLOSED":
@@ -613,10 +613,10 @@ class gemini:
             else:
                 # Failed request
                 self.failure_count += 1
-                self.last_failure_time = time.time()))))))
+                self.last_failure_time = time.time()
                 
                 # Update error statistics
-                if error_type and hasattr())))))self, "collect_metrics") and self.collect_metrics:
+                if error_type and hasattr()self, "collect_metrics") and self.collect_metrics:
                     with self.stats_lock:
                         if error_type not in self.request_stats[]],,"errors_by_type"]:
                             self.request_stats[]],,"errors_by_type"][]],,error_type] = 0
@@ -624,11 +624,11 @@ class gemini:
                 
                 if self.circuit_state == "CLOSED" and self.failure_count >= self.failure_threshold:
                     # Too many failures, open the circuit
-                    logger.warning())))))f"Circuit breaker transitioning from CLOSED to OPEN after {}}}}}}}}}}}}self.failure_count} failures")
+                    logger.warning()f"Circuit breaker transitioning from CLOSED to OPEN after {}}}}}}}}}}}}self.failure_count} failures")
                     self.circuit_state = "OPEN"
                     
                     # Update circuit breaker statistics
-                    if hasattr())))))self, "stats_lock") and hasattr())))))self, "request_stats"):
+                    if hasattr()self, "stats_lock") and hasattr()self, "request_stats"):
                         with self.stats_lock:
                             if "circuit_breaker_trips" not in self.request_stats:
                                 self.request_stats[]],,"circuit_breaker_trips"] = 0
@@ -636,12 +636,12 @@ class gemini:
                     
                 elif self.circuit_state == "HALF_OPEN":
                     # Failed during test request, back to open
-                    logger.warning())))))"Circuit breaker transitioning from HALF-OPEN to OPEN after test request failure")
+                    logger.warning()"Circuit breaker transitioning from HALF-OPEN to OPEN after test request failure")
                     self.circuit_state = "OPEN"
     
-    def add_to_batch())))))self, model, request_info):
+    def add_to_batch()self, model, request_info):
         # Add a request to the batch queue for the specified model
-        if not hasattr())))))self, "batching_enabled") or not self.batching_enabled or model not in self.supported_batch_models:
+        if not hasattr()self, "batching_enabled") or not self.batching_enabled or model not in self.supported_batch_models:
             # Either batching is disabled or model doesn't support it
         return False
             
@@ -651,36 +651,36 @@ class gemini:
                 self.batch_queue[]],,model] = []],,]
                 
             # Add request to batch
-                self.batch_queue[]],,model].append())))))request_info)
+                self.batch_queue[]],,model].append()request_info)
             
             # Check if we need to start a timer for this batch:
-            if len())))))self.batch_queue[]],,model]) == 1:
+            if len()self.batch_queue[]],,model]) == 1:
                 # First item in batch, start timer
                 if model in self.batch_timers and self.batch_timers[]],,model] is not None:
-                    self.batch_timers[]],,model].cancel()))))))
+                    self.batch_timers[]],,model].cancel()
                 
-                    self.batch_timers[]],,model] = threading.Timer())))))
+                    self.batch_timers[]],,model] = threading.Timer()
                     self.batch_timeout, 
                     self._process_batch,
                     args=[]],,model]
                     )
                     self.batch_timers[]],,model].daemon = True
-                    self.batch_timers[]],,model].start()))))))
+                    self.batch_timers[]],,model].start()
                 
             # Check if batch is full and should be processed immediately:
-            if len())))))self.batch_queue[]],,model]) >= self.max_batch_size:
+            if len()self.batch_queue[]],,model]) >= self.max_batch_size:
                 # Cancel timer since we're processing now
                 if model in self.batch_timers and self.batch_timers[]],,model] is not None:
-                    self.batch_timers[]],,model].cancel()))))))
+                    self.batch_timers[]],,model].cancel()
                     self.batch_timers[]],,model] = None
                     
                 # Process batch immediately
-                    threading.Thread())))))target=self._process_batch, args=[]],,model]).start()))))))
+                    threading.Thread()target=self._process_batch, args=[]],,model]).start()
                 return True
                 
                     return True
     
-    def _process_batch())))))self, model):
+    def _process_batch()self, model):
         # Process a batch of requests for the specified model
         with self.batch_lock:
             # Get all requests for this model
@@ -698,52 +698,52 @@ class gemini:
                 return
             
         # Update batch statistics
-        if hasattr())))))self, "collect_metrics") and self.collect_metrics and hasattr())))))self, "update_stats"):
-            self.update_stats()))))){}}}}}}}}}}}}"batched_requests": len())))))batch_requests)})
+        if hasattr()self, "collect_metrics") and self.collect_metrics and hasattr()self, "update_stats"):
+            self.update_stats(){}}}}}}}}}}}}"batched_requests": len()batch_requests)})
         
         try:
             # Check which type of batch processing to use
             if model in self.embedding_models:
-                self._process_embedding_batch())))))model, batch_requests)
+                self._process_embedding_batch()model, batch_requests)
             elif model in self.completion_models:
-                self._process_completion_batch())))))model, batch_requests)
+                self._process_completion_batch()model, batch_requests)
             else:
-                logger.warning())))))f"Unknown batch processing type for model {}}}}}}}}}}}}model}")
+                logger.warning()f"Unknown batch processing type for model {}}}}}}}}}}}}model}")
                 # Fail all requests in the batch
                 for req in batch_requests:
-                    future = req.get())))))"future")
+                    future = req.get()"future")
                     if future:
-                        future[]],,"error"] = Exception())))))f"No batch processing available for model {}}}}}}}}}}}}model}")
+                        future[]],,"error"] = Exception()f"No batch processing available for model {}}}}}}}}}}}}model}")
                         future[]],,"completed"] = True
                 
         except Exception as e:
-            logger.error())))))f"Error processing batch for model {}}}}}}}}}}}}model}: {}}}}}}}}}}}}e}")
+            logger.error()f"Error processing batch for model {}}}}}}}}}}}}model}: {}}}}}}}}}}}}e}")
             
             # Set error for all futures in the batch
             for req in batch_requests:
-                future = req.get())))))"future")
+                future = req.get()"future")
                 if future:
                     future[]],,"error"] = e
                     future[]],,"completed"] = True
     
-    def _process_embedding_batch())))))self, model, batch_requests):
+    def _process_embedding_batch()self, model, batch_requests):
         # Process a batch of embedding requests for improved throughput
         try:
             # Extract texts from requests
             texts = []],,]
             for req in batch_requests:
-                data = req.get())))))"data", {}}}}}}}}}}}}})
-                text = data.get())))))"text", data.get())))))"input", ""))
-                texts.append())))))text)
+                data = req.get()"data", {}}}}}}}}}}}}})
+                text = data.get()"text", data.get()"input", "")
+                texts.append()text)
             
             # This is a placeholder - subclasses should implement this
             # with the actual batched embedding API call
-                batch_result = {}}}}}}}}}}}}"embeddings": []],,[]],,0.1, 0.2] * 50] * len())))))texts)}
+                batch_result = {}}}}}}}}}}}}"embeddings": []],,[]],,0.1, 0.2] * 50] * len()texts)}
             
             # Distribute results to individual futures
-            for i, req in enumerate())))))batch_requests):
-                future = req.get())))))"future")
-                if future and i < len())))))batch_result.get())))))"embeddings", []],,])):
+            for i, req in enumerate()batch_requests):
+                future = req.get()"future")
+                if future and i < len()batch_result.get()"embeddings", []],,]):
                     future[]],,"result"] = {}}}}}}}}}}}}
                     "embedding": batch_result[]],,"embeddings"][]],,i],
                     "model": model,
@@ -751,34 +751,34 @@ class gemini:
                     }
                     future[]],,"completed"] = True
                 elif future:
-                    future[]],,"error"] = Exception())))))"Batch embedding result index out of range")
+                    future[]],,"error"] = Exception()"Batch embedding result index out of range")
                     future[]],,"completed"] = True
                     
         except Exception as e:
             # Propagate error to all futures
             for req in batch_requests:
-                future = req.get())))))"future")
+                future = req.get()"future")
                 if future:
                     future[]],,"error"] = e
                     future[]],,"completed"] = True
     
-    def _process_completion_batch())))))self, model, batch_requests):
+    def _process_completion_batch()self, model, batch_requests):
         # Process a batch of completion requests in one API call
         try:
             # Extract prompts from requests
             prompts = []],,]
             for req in batch_requests:
-                data = req.get())))))"data", {}}}}}}}}}}}}})
-                prompt = data.get())))))"prompt", data.get())))))"input", ""))
-                prompts.append())))))prompt)
+                data = req.get()"data", {}}}}}}}}}}}}})
+                prompt = data.get()"prompt", data.get()"input", "")
+                prompts.append()prompt)
             
             # This is a placeholder - subclasses should implement this
             # with the actual batched completion API call
-            batch_result = {}}}}}}}}}}}}"completions": []],,f"Mock response for prompt {}}}}}}}}}}}}i}" for i in range())))))len())))))prompts))]}:
+            batch_result = {}}}}}}}}}}}}"completions": []],,f"Mock response for prompt {}}}}}}}}}}}}i}" for i in range()len()prompts)]}:
             # Distribute results to individual futures
-            for i, req in enumerate())))))batch_requests):
-                future = req.get())))))"future")
-                if future and i < len())))))batch_result.get())))))"completions", []],,])):
+            for i, req in enumerate()batch_requests):
+                future = req.get()"future")
+                if future and i < len()batch_result.get()"completions", []],,]):
                     future[]],,"result"] = {}}}}}}}}}}}}
                     "text": batch_result[]],,"completions"][]],,i],
                     "model": model,
@@ -786,13 +786,13 @@ class gemini:
                     }
                     future[]],,"completed"] = True
                 elif future:
-                    future[]],,"error"] = Exception())))))"Batch completion result index out of range")
+                    future[]],,"error"] = Exception()"Batch completion result index out of range")
                     future[]],,"completed"] = True
                     
         except Exception as e:
             # Propagate error to all futures
             for req in batch_requests:
-                future = req.get())))))"future")
+                future = req.get()"future")
                 if future:
                     future[]],,"error"] = e
                     future[]],,"completed"] = True

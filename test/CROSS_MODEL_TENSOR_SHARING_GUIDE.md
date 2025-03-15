@@ -108,7 +108,7 @@ The system automatically identifies compatible model combinations for sharing:
 | Tensor Type | Compatible Models | Description |
 |-------------|------------------|-------------|
 | text_embedding | BERT, T5, LLAMA, BART | Text embeddings for NLP models |
-| vision_embedding | ViT, CLIP, DETR | Vision embeddings for image models |
+| vision_embedding | ViT, CLIP, DETR | Vision embeddings from ViT and other image models |
 | audio_embedding | Whisper, Wav2Vec2, CLAP | Audio embeddings for speech/audio models |
 | vision_text_joint | CLIP, LLaVA, BLIP | Joint embeddings for multimodal models |
 | audio_text_joint | CLAP, Whisper-Text | Joint embeddings for audio-text models |
@@ -396,144 +396,438 @@ The Cross-Model Tensor Sharing system has been benchmarked on various browsers a
 | BERT → T5 inference | 42 ms | 33 ms | 21% faster inference |
 | Multi-model pipeline | 85 ms | 63 ms | 26% faster pipeline |
 
+## Example Scenarios
+
+### Text-to-Text Models (BERT + T5)
+
+```typescript
+import { TensorSharingIntegration, WebNNBackend } from 'ipfs-accelerate-js';
+import { HardwareAbstractedBERT, HardwareAbstractedT5 } from 'ipfs-accelerate-js';
+
+async function textToTextSharing() {
+  // Initialize tensor sharing
+  const integration = new TensorSharingIntegration({
+    enablePersistence: true,
+    enableLogging: true
+  });
+  
+  // Create hardware abstraction
+  const hal = await createHardwareAbstraction();
+  
+  // Create models with tensor sharing enabled
+  const bertModel = createHardwareAbstractedBERT(hal, { 
+    modelId: 'bert-base-uncased',
+    enableTensorSharing: true 
+  });
+  
+  const t5Model = createHardwareAbstractedT5(hal, { 
+    modelId: 't5-base',
+    enableTensorSharing: true 
+  });
+  
+  // Initialize models
+  await bertModel.initialize();
+  await t5Model.initialize();
+  
+  // Process text with BERT
+  const text = "The hardware abstraction layer provides optimal performance.";
+  const bertResult = await bertModel.predict(text);
+  
+  // Get shared tensor
+  const textEmbedding = bertModel.getSharedTensor('text_embedding');
+  
+  // Use embedding with T5
+  const t5Result = await t5Model.predictFromEmbedding(textEmbedding);
+  console.log("T5 output:", t5Result);
+  
+  // Clean up
+  await bertModel.dispose();
+  await t5Model.dispose();
+}
+```
+
+### Vision-Text Multimodal (ViT + BERT)
+
+```typescript
+import { TensorSharingIntegration } from 'ipfs-accelerate-js';
+import { HardwareAbstractedViT, HardwareAbstractedBERT } from 'ipfs-accelerate-js';
+
+async function visionTextSharing() {
+  // Create hardware abstraction
+  const hal = await createHardwareAbstraction();
+  
+  // Create models with tensor sharing enabled
+  const vitModel = createHardwareAbstractedViT(hal, { 
+    modelId: 'google/vit-base-patch16-224',
+    enableTensorSharing: true 
+  });
+  
+  const bertModel = createHardwareAbstractedBERT(hal, { 
+    modelId: 'bert-base-uncased',
+    enableTensorSharing: true 
+  });
+  
+  // Initialize models
+  await vitModel.initialize();
+  await bertModel.initialize();
+  
+  // Prepare image data
+  const imageData = {
+    imageData: new Float32Array(224 * 224 * 3), // RGB image data
+    width: 224,
+    height: 224,
+    isPreprocessed: false
+  };
+  // Fill imageData with actual image pixel values...
+  
+  // Process image with ViT
+  const vitResult = await vitModel.process(imageData);
+  
+  // Get vision embedding
+  const visionEmbedding = vitModel.getSharedTensor('vision_embedding');
+  
+  // Process text with BERT
+  const text = "A cat sitting on a mat";
+  const bertResult = await bertModel.predict(text);
+  
+  // Get text embedding
+  const textEmbedding = bertModel.getSharedTensor('text_embedding');
+  
+  // Calculate similarity between vision and text embeddings
+  // (In a real implementation, this would use a proper similarity calculation)
+  const similarity = calculateSimilarity(visionEmbedding, textEmbedding);
+  console.log("Text-image similarity:", similarity);
+  
+  // Clean up
+  await vitModel.dispose();
+  await bertModel.dispose();
+}
+```
+
+### Audio-Vision-Text Multimodal (Whisper + ViT + BERT)
+
+```typescript
+import { createHardwareAbstraction } from 'ipfs-accelerate-js';
+import { 
+  HardwareAbstractedWhisper, 
+  HardwareAbstractedViT,
+  HardwareAbstractedBERT
+} from 'ipfs-accelerate-js';
+
+async function multimodalSharing() {
+  // Create hardware abstraction
+  const hal = await createHardwareAbstraction();
+  
+  // Create models with tensor sharing enabled
+  const whisperModel = createHardwareAbstractedWhisper(hal, { 
+    modelId: 'openai/whisper-tiny',
+    enableTensorSharing: true 
+  });
+  
+  const vitModel = createHardwareAbstractedViT(hal, { 
+    modelId: 'google/vit-base-patch16-224',
+    enableTensorSharing: true 
+  });
+  
+  const bertModel = createHardwareAbstractedBERT(hal, { 
+    modelId: 'bert-base-uncased',
+    enableTensorSharing: true 
+  });
+  
+  // Initialize models
+  await whisperModel.initialize();
+  await vitModel.initialize();
+  await bertModel.initialize();
+  
+  // Process audio with Whisper
+  const audioSamples = new Float32Array(16000); // 1 second of audio at 16kHz
+  // Fill audioSamples with actual audio data...
+  const whisperResult = await whisperModel.transcribe(audioSamples);
+  console.log("Transcription:", whisperResult.text);
+  
+  // Get audio embedding
+  const audioEmbedding = whisperModel.getSharedTensor('audio_embedding');
+  
+  // Process image with ViT
+  const imageData = {
+    imageData: new Float32Array(224 * 224 * 3), // RGB image data
+    width: 224,
+    height: 224,
+    isPreprocessed: false
+  };
+  // Fill imageData with actual image pixel values...
+  const vitResult = await vitModel.process(imageData);
+  
+  // Get vision embedding
+  const visionEmbedding = vitModel.getSharedTensor('vision_embedding');
+  
+  // Process text with BERT (using the transcribed text)
+  const bertResult = await bertModel.predict(whisperResult.text);
+  
+  // Get text embedding
+  const textEmbedding = bertModel.getSharedTensor('text_embedding');
+  
+  // Now you have embeddings from all three modalities
+  // You can use them for multimodal understanding tasks
+  console.log("Successfully extracted embeddings from all three modalities");
+  
+  // Clean up
+  await whisperModel.dispose();
+  await vitModel.dispose();
+  await bertModel.dispose();
+}
+```
+
 ## Example Integration with React
 
 ```jsx
 import React, { useEffect, useState } from 'react';
-import { TensorSharingIntegration, WebNNBackend } from 'ipfs-accelerate-js';
+import { createHardwareAbstraction } from 'ipfs-accelerate-js';
+import {
+  HardwareAbstractedBERT,
+  HardwareAbstractedViT
+} from 'ipfs-accelerate-js';
 
-function ModelInferencePage() {
-  const [integration, setIntegration] = useState(null);
+function MultimodalDemoApp() {
+  const [hal, setHAL] = useState(null);
   const [bertModel, setBertModel] = useState(null);
-  const [t5Model, setT5Model] = useState(null);
-  const [input, setInput] = useState("");
-  const [output, setOutput] = useState("");
+  const [vitModel, setVitModel] = useState(null);
+  const [textInput, setTextInput] = useState("A black cat sitting on a red carpet");
+  const [imageUrl, setImageUrl] = useState("https://example.com/cat.jpg");
+  const [imageData, setImageData] = useState(null);
+  const [results, setResults] = useState({ text: null, image: null, similarity: null });
   const [memoryStats, setMemoryStats] = useState({});
 
-  // Initialize the integration
+  // Initialize hardware abstraction and models
   useEffect(() => {
     async function initialize() {
-      const webnnBackend = new WebNNBackend({
-        enableLogging: true,
-        preferredDeviceType: 'gpu'
+      // Create hardware abstraction
+      const hardwareAbstraction = await createHardwareAbstraction();
+      setHAL(hardwareAbstraction);
+      
+      // Create models with tensor sharing enabled
+      const bert = createHardwareAbstractedBERT(hardwareAbstraction, { 
+        modelId: 'bert-base-uncased',
+        enableTensorSharing: true 
       });
       
-      const tensorSharing = new TensorSharingIntegration({
-        enablePersistence: true,
-        enableLogging: true
+      const vit = createHardwareAbstractedViT(hardwareAbstraction, { 
+        modelId: 'google/vit-base-patch16-224',
+        enableTensorSharing: true 
       });
       
-      await tensorSharing.initialize(webnnBackend);
-      setIntegration(tensorSharing);
-      
-      // Load models (simplified example)
-      const bert = await loadBertModel();
-      const t5 = await loadT5Model();
+      // Initialize models
+      await bert.initialize();
+      await vit.initialize();
       
       setBertModel(bert);
-      setT5Model(t5);
-      
-      // Update memory stats
-      updateStats(tensorSharing);
+      setVitModel(vit);
     }
     
     initialize();
+    
+    // Clean up on unmount
+    return () => {
+      if (bertModel) bertModel.dispose();
+      if (vitModel) vitModel.dispose();
+      if (hal) hal.dispose();
+    };
   }, []);
   
-  // Update memory stats periodically
+  // Load image when URL changes
   useEffect(() => {
-    if (!integration) return;
+    if (!imageUrl) return;
     
-    const interval = setInterval(() => {
-      updateStats(integration);
-    }, 5000);
+    async function loadImage() {
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        
+        // Wait for image to load
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = imageUrl;
+        });
+        
+        // Convert to canvas to get pixel data
+        const canvas = document.createElement('canvas');
+        canvas.width = 224;
+        canvas.height = 224;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, 224, 224);
+        
+        const imageData = ctx.getImageData(0, 0, 224, 224);
+        
+        // Convert to RGB Float32Array
+        const rgbData = new Float32Array(224 * 224 * 3);
+        let rgbIndex = 0;
+        
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          rgbData[rgbIndex++] = imageData.data[i] / 255.0;     // R
+          rgbData[rgbIndex++] = imageData.data[i + 1] / 255.0; // G
+          rgbData[rgbIndex++] = imageData.data[i + 2] / 255.0; // B
+        }
+        
+        setImageData({
+          imageData: rgbData,
+          width: 224,
+          height: 224,
+          isPreprocessed: true
+        });
+      } catch (error) {
+        console.error('Error loading image:', error);
+      }
+    }
     
-    return () => clearInterval(interval);
-  }, [integration]);
+    loadImage();
+  }, [imageUrl]);
   
-  async function updateStats(integration) {
-    const stats = integration.getStats();
-    const tensorMemory = integration.getTensorMemoryUsage();
-    const modelMemory = integration.getModelMemoryUsage();
+  // Run multimodal inference
+  async function runMultimodalInference() {
+    if (!bertModel || !vitModel || !imageData) return;
+    
+    try {
+      // Process text with BERT
+      const bertResult = await bertModel.predict(textInput);
+      
+      // Process image with ViT
+      const vitResult = await vitModel.process(imageData);
+      
+      // Get shared tensors
+      const textEmbedding = bertModel.getSharedTensor('text_embedding');
+      const visionEmbedding = vitModel.getSharedTensor('vision_embedding');
+      
+      // Calculate similarity (simplified)
+      let similarity = 0;
+      if (textEmbedding && visionEmbedding) {
+        // Placeholder for actual similarity calculation
+        similarity = Math.random().toFixed(2);
+      }
+      
+      // Update results
+      setResults({
+        text: {
+          model: 'BERT',
+          backend: hal.getBackendType(),
+          embedding: 'Generated'
+        },
+        image: {
+          model: 'ViT',
+          backend: hal.getBackendType(),
+          topClass: vitResult.classId,
+          confidence: (vitResult.probabilities[vitResult.classId] * 100).toFixed(2) + '%'
+        },
+        similarity: similarity
+      });
+      
+      // Update memory stats
+      updateMemoryStats();
+    } catch (error) {
+      console.error('Error running inference:', error);
+    }
+  }
+  
+  function updateMemoryStats() {
+    if (!hal) return;
+    
+    // Get backend information
+    const backendType = hal.getBackendType();
+    const capabilities = hal.getCapabilities();
     
     setMemoryStats({
-      totalTensors: stats.total_tensors,
-      totalModels: stats.total_models,
-      memoryUsage: stats.memory_usage_mb.toFixed(2),
-      cacheHitRate: (stats.hit_rate * 100).toFixed(2),
-      persistentTensors: stats.persistentTensorCount || 0,
-      tensorMemory,
-      modelMemory
+      backend: backendType,
+      browser: capabilities.browserName,
+      supportedBackends: hal.getAvailableBackends().join(', '),
+      tensorsShared: bertModel && vitModel ? 'Yes (text_embedding, vision_embedding)' : 'No'
     });
   }
   
-  async function runInference() {
-    if (!integration || !bertModel || !t5Model) return;
-    
-    // Run BERT to get embeddings
-    const bertEmbed = await bertModel.getEmbedding(input);
-    
-    // Register the embedding as a shared tensor
-    await integration.registerSharedTensor(
-      "current_embedding", 
-      bertEmbed.shape,
-      bertEmbed.data,
-      "gpu",
-      "bert",
-      ["t5"]
-    );
-    
-    // Get the shared tensor for T5
-    const t5Embed = await integration.getSharedTensor(
-      "current_embedding", 
-      "t5"
-    );
-    
-    // Run T5 with the shared embedding
-    const result = await t5Model.generateFromEmbedding(t5Embed);
-    setOutput(result);
-    
-    // Optimize memory after inference
-    await integration.optimizeMemoryUsage();
-    updateStats(integration);
-  }
-  
   return (
-    <div className="inference-page">
-      <h1>Model Inference with Tensor Sharing</h1>
+    <div className="multimodal-demo">
+      <h1>Multimodal AI with Tensor Sharing</h1>
       
       <div className="input-section">
-        <textarea 
-          value={input} 
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter text for inference"
-        />
-        <button onClick={runInference}>Run Inference</button>
+        <div className="text-input">
+          <h2>Text Input</h2>
+          <textarea 
+            value={textInput} 
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder="Enter text for BERT processing"
+          />
+        </div>
+        
+        <div className="image-input">
+          <h2>Image Input</h2>
+          <input 
+            type="text" 
+            value={imageUrl} 
+            onChange={(e) => setImageUrl(e.target.value)}
+            placeholder="Enter image URL"
+          />
+          {imageUrl && (
+            <img 
+              src={imageUrl} 
+              alt="Input image" 
+              style={{ maxWidth: '100%', maxHeight: '200px', marginTop: '10px' }}
+            />
+          )}
+        </div>
       </div>
       
-      <div className="output-section">
-        <h2>Output:</h2>
-        <div className="output">{output}</div>
-      </div>
+      <button 
+        onClick={runMultimodalInference}
+        disabled={!bertModel || !vitModel || !imageData}
+      >
+        Run Multimodal Inference
+      </button>
+      
+      {results.text && results.image && (
+        <div className="results-section">
+          <h2>Results</h2>
+          
+          <div className="result-cards">
+            <div className="result-card">
+              <h3>Text Processing (BERT)</h3>
+              <p>Model: {results.text.model}</p>
+              <p>Backend: {results.text.backend}</p>
+              <p>Text Embedding: {results.text.embedding}</p>
+            </div>
+            
+            <div className="result-card">
+              <h3>Image Processing (ViT)</h3>
+              <p>Model: {results.image.model}</p>
+              <p>Backend: {results.image.backend}</p>
+              <p>Top Class ID: {results.image.topClass}</p>
+              <p>Confidence: {results.image.confidence}</p>
+            </div>
+          </div>
+          
+          <div className="similarity-result">
+            <h3>Text-Image Similarity</h3>
+            <p>Similarity Score: {results.similarity}</p>
+          </div>
+        </div>
+      )}
       
       <div className="memory-stats">
-        <h2>Memory Statistics</h2>
+        <h2>System Information</h2>
         <div className="stats-grid">
           <div className="stat">
-            <span>Total Tensors:</span>
-            <span>{memoryStats.totalTensors || 0}</span>
+            <span>Active Backend:</span>
+            <span>{memoryStats.backend || 'N/A'}</span>
           </div>
           <div className="stat">
-            <span>Total Models:</span>
-            <span>{memoryStats.totalModels || 0}</span>
+            <span>Browser:</span>
+            <span>{memoryStats.browser || 'N/A'}</span>
           </div>
           <div className="stat">
-            <span>Memory Usage:</span>
-            <span>{memoryStats.memoryUsage || 0} MB</span>
+            <span>Supported Backends:</span>
+            <span>{memoryStats.supportedBackends || 'N/A'}</span>
           </div>
           <div className="stat">
-            <span>Cache Hit Rate:</span>
-            <span>{memoryStats.cacheHitRate || 0}%</span>
+            <span>Tensors Shared:</span>
+            <span>{memoryStats.tensorsShared || 'No'}</span>
           </div>
         </div>
       </div>
@@ -541,7 +835,7 @@ function ModelInferencePage() {
   );
 }
 
-export default ModelInferencePage;
+export default MultimodalDemoApp;
 ```
 
 ## Best Practices

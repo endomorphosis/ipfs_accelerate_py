@@ -2,14 +2,17 @@
  * Model exports for IPFS Accelerate JS
  */
 
-// Transformer models
+// Transformer models (base implementations)
 export * from './transformers/bert';
 
-// Audio models
+// Audio models (base implementations)
 export * from './audio/whisper';
 
-// Vision models
+// Vision models (base implementations)
 export * from './vision/vit';
+
+// Hardware abstracted models (with automatic backend selection)
+export * from './hardware';
 
 // Export model types grouped by category
 export const MODEL_TYPES = {

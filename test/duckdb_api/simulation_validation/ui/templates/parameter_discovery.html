@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Parameter Discovery - {{ title }}{% endblock %}
+
+{% block header %}Parameter Discovery{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('validation_results') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Results
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-braces"></i> Parameter Discovery Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('parameter_discovery') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <!-- Model and Hardware Selection -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="model_id" class="form-label">Model</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="model_id" name="model_id" required>
+                                    <option value="" selected disabled>Select Model</option>
+                                    {% for model in model_types %}
+                                    <option value="{{ model.id }}">{{ model.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="hardware_id" class="form-label">Hardware</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hardware_id" name="hardware_id" required>
+                                    <option value="" selected disabled>Select Hardware</option>
+                                    {% for hw in hardware_types %}
+                                    <option value="{{ hw.id }}">{{ hw.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Discovery Options -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">Discovery Options</h6>
+                        
+                        <div class="mb-3">
+                            <label for="discovery_method" class="form-label">Discovery Method</label>
+                            <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="discovery_method" name="discovery_method">
+                                <option value="sensitivity" selected>Sensitivity Analysis</option>
+                                <option value="correlation">Correlation Analysis</option>
+                                <option value="pca">Principal Component Analysis</option>
+                                <option value="comprehensive">Comprehensive Analysis</option>
+                            </select>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Method used to analyze parameter importance.
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="parameter_count" class="form-label">Number of Parameters to Discover</label>
+                            <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="parameter_count" name="parameter_count">
+                                <option value="3">Top 3 Parameters</option>
+                                <option value="5" selected>Top 5 Parameters</option>
+                                <option value="10">Top 10 Parameters</option>
+                                <option value="all">All Parameters</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="include_visualizations" name="include_visualizations" checked>
+                            <label class="form-check-label" for="include_visualizations">
+                                Include Visualizations
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Generate charts and graphs to visualize parameter importance.
+                            </div>
+                        </div>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="include_recommendations" name="include_recommendations" checked>
+                            <label class="form-check-label" for="include_recommendations">
+                                Include Recommendations
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Generate recommendations for parameter tuning.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Advanced Settings (Collapsible) -->
+                    <div class="mb-4">
+                        <button class="btn btn-outline-secondary w-100 mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSettings" aria-expanded="false" aria-controls="advancedSettings">
+                            <i class="bi bi-gear"></i> Advanced Settings <i class="bi bi-chevron-down"></i>
+                        </button>
+                        <div class="collapse" id="advancedSettings">
+                            <div class="card {% if theme == 'dark' %}bg-dark text-light border-secondary{% else %}bg-light{% endif %} card-body">
+                                <div class="mb-3">
+                                    <label for="sampling_method" class="form-label">Sampling Method</label>
+                                    <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="sampling_method" name="sampling_method">
+                                        <option value="random" selected>Random Sampling</option>
+                                        <option value="stratified">Stratified Sampling</option>
+                                        <option value="latin">Latin Hypercube Sampling</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="sample_count" class="form-label">Sample Count</label>
+                                    <input type="number" class="form-control {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="sample_count" name="sample_count" min="10" value="100">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="confidence_level" class="form-label">Confidence Level</label>
+                                    <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="confidence_level" name="confidence_level">
+                                        <option value="0.90">90%</option>
+                                        <option value="0.95" selected>95%</option>
+                                        <option value="0.99">99%</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-braces"></i> Discover Parameters
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Parameter Discovery Guide -->
+        <div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-question-circle"></i> Parameter Discovery Guide</h5>
+            </div>
+            <div class="card-body">
+                <h6>What is Parameter Discovery?</h6>
+                <p>
+                    Parameter discovery analyzes validation results to identify which simulation parameters have the most significant 
+                    impact on simulation accuracy. It helps prioritize calibration efforts and understand the sensitivity of 
+                    the simulation to different parameters.
+                </p>
+                
+                <h6>Discovery Methods</h6>
+                <ul>
+                    <li><strong>Sensitivity Analysis</strong>: Measures how much each parameter affects simulation outputs when varied</li>
+                    <li><strong>Correlation Analysis</strong>: Identifies relationships between parameters and accuracy metrics</li>
+                    <li><strong>Principal Component Analysis</strong>: Finds the most important parameters using dimensionality reduction</li>
+                    <li><strong>Comprehensive Analysis</strong>: Combines multiple methods for more robust results</li>
+                </ul>
+                
+                <h6>Using Discovery Results</h6>
+                <p>The results from parameter discovery can help you:</p>
+                <ul>
+                    <li>Focus calibration efforts on the most important parameters</li>
+                    <li>Understand which parameters have the greatest effect on specific metrics (throughput, latency, etc.)</li>
+                    <li>Identify potential issues with the simulation model</li>
+                    <li>Develop more accurate simulation configurations</li>
+                </ul>
+                
+                <div class="alert alert-info mt-3" role="alert">
+                    <i class="bi bi-lightbulb"></i> <strong>Tip:</strong> 
+                    For best results, ensure you have a significant number of validation results across a variety of scenarios 
+                    (different batch sizes, precision levels, etc.) for the selected model and hardware combination.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Toggle chevron direction for advanced settings
+        const advancedSettings = document.getElementById('advancedSettings');
+        
+        if (advancedSettings) {
+            advancedSettings.addEventListener('shown.bs.collapse', function() {
+                const button = document.querySelector('[data-bs-target="#advancedSettings"]');
+                const chevron = button.querySelector('.bi-chevron-down');
+                if (chevron) {
+                    chevron.classList.replace('bi-chevron-down', 'bi-chevron-up');
+                }
+            });
+            
+            advancedSettings.addEventListener('hidden.bs.collapse', function() {
+                const button = document.querySelector('[data-bs-target="#advancedSettings"]');
+                const chevron = button.querySelector('.bi-chevron-up');
+                if (chevron) {
+                    chevron.classList.replace('bi-chevron-up', 'bi-chevron-down');
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

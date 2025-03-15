@@ -20,6 +20,21 @@ The `requirements_samsung.txt` file includes:
 - API dependencies: fastapi, uvicorn, pydantic
 - Visualization: matplotlib, plotly (optional)
 
+### Checking Dependencies
+
+We provide a dependency checker script that verifies if you have all the required dependencies installed. It also runs a basic simulator test to confirm minimal functionality:
+
+```bash
+# Run the dependency checker
+python check_samsung_dependencies.py
+```
+
+This script will:
+1. Check for all Samsung NPU support dependencies
+2. Test if basic functionality works with available dependencies
+3. Provide a summary of available features based on installed packages
+4. Suggest installation commands for any missing dependencies
+
 ## Basic Tests
 
 We provide several test scripts with increasing levels of complexity:

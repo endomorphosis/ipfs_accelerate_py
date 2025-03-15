@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Drift Detection - {{ title }}{% endblock %}
+
+{% block header %}Drift Detection{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('validation_results') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Results
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Drift Detection Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('drift_detection') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <!-- Model and Hardware Selection -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="model_id" class="form-label">Model</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="model_id" name="model_id" required>
+                                    <option value="" selected disabled>Select Model</option>
+                                    {% for model in model_types %}
+                                    <option value="{{ model.id }}">{{ model.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="hardware_id" class="form-label">Hardware</label>
+                                <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hardware_id" name="hardware_id" required>
+                                    <option value="" selected disabled>Select Hardware</option>
+                                    {% for hw in hardware_types %}
+                                    <option value="{{ hw.id }}">{{ hw.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Time Range Settings -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">Time Range Settings</h6>
+                        
+                        <div class="mb-3">
+                            <label for="historical_days" class="form-label">Historical Period (days)</label>
+                            <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="historical_days" name="historical_days">
+                                <option value="7">Last 7 days</option>
+                                <option value="14">Last 14 days</option>
+                                <option value="30" selected>Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                                <option value="180">Last 180 days</option>
+                                <option value="365">Last 365 days</option>
+                            </select>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Select the historical period to use as a baseline for drift detection.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Drift Detection Options -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">Detection Options</h6>
+                        
+                        <div class="mb-3">
+                            <label for="detection_method" class="form-label">Detection Method</label>
+                            <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="detection_method" name="detection_method">
+                                <option value="statistical" selected>Statistical Analysis</option>
+                                <option value="threshold">Threshold-Based</option>
+                                <option value="trend">Trend Analysis</option>
+                                <option value="combined">Combined Methods</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="significance_level" class="form-label">Significance Level</label>
+                            <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="significance_level" name="significance_level">
+                                <option value="0.01">1% (Very Strict)</option>
+                                <option value="0.05" selected>5% (Standard)</option>
+                                <option value="0.1">10% (Relaxed)</option>
+                            </select>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Lower values make drift detection more strict (fewer false positives).
+                            </div>
+                        </div>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="notify_drift" name="notify_drift" checked>
+                            <label class="form-check-label" for="notify_drift">
+                                Enable Drift Notifications
+                            </label>
+                            <div class="form-text {% if theme == 'dark' %}text-light{% endif %}">
+                                Send notifications when drift is detected in the future.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-graph-up"></i> Detect Drift
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Drift Detection Guide -->
+        <div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-question-circle"></i> Drift Detection Guide</h5>
+            </div>
+            <div class="card-body">
+                <h6>What is Drift Detection?</h6>
+                <p>
+                    Drift detection monitors changes in simulation accuracy over time. It helps identify when simulation 
+                    results start to diverge from hardware results, indicating a need for recalibration or model updates.
+                </p>
+                
+                <h6>Detection Methods</h6>
+                <ul>
+                    <li><strong>Statistical Analysis</strong>: Uses statistical tests to detect significant changes</li>
+                    <li><strong>Threshold-Based</strong>: Compares error metrics against predefined thresholds</li>
+                    <li><strong>Trend Analysis</strong>: Examines patterns and trends in error metrics over time</li>
+                    <li><strong>Combined Methods</strong>: Uses multiple approaches for more robust detection</li>
+                </ul>
+                
+                <h6>Common Causes of Drift</h6>
+                <ul>
+                    <li>Hardware changes or updates</li>
+                    <li>Environmental changes (temperature, workload)</li>
+                    <li>Model updates or changes</li>
+                    <li>Changes in data characteristics</li>
+                    <li>System configuration changes</li>
+                </ul>
+                
+                <div class="alert alert-info mt-3" role="alert">
+                    <i class="bi bi-lightbulb"></i> <strong>Tip:</strong> 
+                    Regular drift detection helps maintain simulation accuracy over time. Consider running drift detection 
+                    after major hardware or software updates, or on a regular schedule (e.g., monthly).
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -63,6 +63,23 @@ For minimal functionality (detection and basic simulation), you can install just
 pip install numpy>=1.20.0
 ```
 
+#### Checking Dependencies
+
+To verify that you have all the necessary dependencies installed, you can use the provided dependency checker:
+
+```bash
+# Run the dependency checker
+python check_samsung_dependencies.py
+```
+
+This script will:
+1. Check for all required dependencies
+2. Test basic functionality with available packages
+3. Provide a summary of which features are available based on installed dependencies
+4. Suggest installation commands for any missing dependencies
+
+The script requires no dependencies besides the standard library to check for required packages, making it an ideal first step in troubleshooting installation issues.
+
 ### 3.2 Simulation Mode
 
 For development and testing without Samsung hardware, you can use simulation mode:

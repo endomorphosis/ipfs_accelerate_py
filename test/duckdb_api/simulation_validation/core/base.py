@@ -405,6 +405,7 @@ class SimulationAccuracyFramework:
         calibrator: Optional[SimulationCalibrator] = None,
         drift_detector: Optional[DriftDetector] = None,
         reporter: Optional[ValidationReporter] = None,
+        visualizer = None,
         db_api = None
     ):
         """
@@ -415,12 +416,14 @@ class SimulationAccuracyFramework:
             calibrator: Implementation of SimulationCalibrator
             drift_detector: Implementation of DriftDetector
             reporter: Implementation of ValidationReporter
+            visualizer: Implementation for generating visualizations
             db_api: Database API for storing and retrieving results
         """
         self.validator = validator
         self.calibrator = calibrator
         self.drift_detector = drift_detector
         self.reporter = reporter
+        self.visualizer = visualizer
         self.db_api = db_api
     
     def run_validation(self, simulation_results, hardware_results):

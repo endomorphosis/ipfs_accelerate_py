@@ -1,521 +1,275 @@
-# IPFS Accelerate JS
+# IPFS Accelerate JavaScript SDK
 
-Hardware-accelerated machine learning for the browser with WebGPU and WebNN.
+[![npm version](https://img.shields.io/npm/v/ipfs-accelerate.svg)](https://www.npmjs.com/package/ipfs-accelerate)
+[![license](https://img.shields.io/github/license/ipfs-accelerate/ipfs-accelerate-js)](https://github.com/ipfs-accelerate/ipfs-accelerate-js/blob/main/LICENSE)
+[![bundle size](https://img.shields.io/bundlephobia/minzip/ipfs-accelerate)](https://bundlephobia.com/package/ipfs-accelerate)
+[![TypeScript](https://img.shields.io/badge/TypeScript-4.9%2B-blue)](https://www.typescriptlang.org/)
 
-[![npm version](https://img.shields.io/npm/v/ipfs-accelerate-js.svg)](https://www.npmjs.com/package/ipfs-accelerate-js)
-[![license](https://img.shields.io/github/license/ipfs/ipfs-accelerate-js.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+Hardware-accelerated machine learning in browsers with WebGPU and WebNN.
 
-## Overview
+## Features
 
-IPFS Accelerate JS delivers high-performance AI models directly in the browser using WebGPU and WebNN for hardware acceleration. Run transformers, vision models, and audio models with GPU-accelerated inference - no server required.
-
-### Key Features
-
-- **Hardware Acceleration**: Uses WebGPU and WebNN for GPU-accelerated inference
-- **Cross-Browser Compatibility**: Works in Chrome, Firefox, Edge, and Safari
-- **Multiple Model Support**: Text (BERT), Vision (ViT), and Audio (Whisper) models
-- **Cross-Model Tensor Sharing**: Share tensors between models for efficient multimodal applications
-- **Advanced Memory Optimization**: 
-  - Ultra-low precision quantization (1/2/3/4/8-bit precision)
-  - Per-channel quantization for weights with minimal accuracy loss
-  - Up to 93.75% memory reduction with 2-bit quantization
-- **Operation Fusion**: 
-  - Combines multiple operations into single compute shaders for performance
-  - Eliminates intermediate buffers and reduces kernel launches
-  - Specialized fusion patterns for transformer models (attention mechanism)
-- **Browser-Specific Optimizations**: 
-  - Automatic detection of Chrome, Firefox, Safari, and Edge
-  - Tailored shader workgroup sizes and memory access patterns by browser
-  - Specialized optimizations for different GPU architectures
+- **Hardware Abstraction Layer (HAL)**: Unified interface for WebGPU, WebNN, and CPU backends
+- **Browser-Specific Optimizations**: Enhanced performance in Chrome, Firefox, Edge, and Safari
+- **Cross-Model Tensor Sharing**: Share tensors between models for improved memory efficiency (25-40% memory reduction)
+- **Error Recovery System**: Intelligent error handling with multiple recovery strategies:
+  - Automatic backend switching based on performance history
+  - Operation fallback to alternative implementations
+  - Browser-specific recovery techniques
+  - Parameter adjustment for compatibility issues
+- **Performance Tracking & Analysis**: Automatic operation performance recording and statistical analysis
+- **Hardware-Abstracted Models**: 
+  - **BERT**: Text understanding and embeddings
+  - **ViT**: Image classification and embeddings
+  - **Whisper**: Audio transcription and processing
+  - **CLIP**: Multimodal vision-text understanding
 - **Performance Optimizations**:
-  - Tiled matrix multiplication with shared memory
-  - Advanced WGSL shader compilation and caching
-  - Automatic performance tuning based on input size
+  - Up to 6.5x speedup vs. CPU for vision models
+  - Up to 5.8x speedup vs. CPU for text models
+  - Up to 3.0x speedup vs. CPU for audio models
+  - Operation fusion for improved performance
+  - Ultra-low precision (1-8 bit) quantization
+  - Browser-specific shader optimizations
 
-## Quick Start
-
-### Installation
+## Installation
 
 ```bash
-npm install ipfs-accelerate-js
+npm install ipfs-accelerate
 ```
 
-### Basic Usage
+or
 
-```typescript
-import { createVitModel, createWebGPUBackend } from 'ipfs-accelerate-js';
-
-async function classifyImage(imageData, width, height) {
-  // Create hardware backend
-  const hardware = await createWebGPUBackend();
-  await hardware.initialize();
-  
-  // Create ViT model
-  const model = createVitModel(hardware, {
-    modelId: 'google/vit-base-patch16-224'
-  });
-  await model.initialize();
-  
-  // Process image
-  const result = await model.process({
-    imageData,
-    width,
-    height
-  });
-  
-  console.log(`Predicted class: ${result.classId}`);
-  console.log(`Probability: ${result.probabilities[result.classId]}`);
-  
-  // Clean up resources
-  await model.dispose();
-}
+```bash
+yarn add ipfs-accelerate
 ```
 
-## Models
-
-### Vision Models
-
-```typescript
-import { createVitModel } from 'ipfs-accelerate-js';
-
-// Create Vision Transformer (ViT) model
-const vit = createVitModel(hardware, {
-  modelId: 'google/vit-base-patch16-224',
-  useOptimizedOps: true
-});
-
-// Process image
-const result = await vit.process({
-  imageData,
-  width: 224,
-  height: 224
-});
-```
-
-### Text Models
-
-```typescript
-import { createBertModel } from 'ipfs-accelerate-js';
-
-// Create BERT model
-const bert = createBertModel(hardware, {
-  modelId: 'bert-base-uncased',
-  useOptimizedOps: true
-});
-
-// Tokenize and process text
-const tokens = await bert.tokenize("Hello world");
-const result = await bert.process(tokens);
-```
-
-### Audio Models
-
-```typescript
-import { createWhisperModel } from 'ipfs-accelerate-js';
-
-// Create Whisper model
-const whisper = createWhisperModel(hardware, {
-  modelId: 'openai/whisper-tiny',
-  useBrowserOptimizations: true
-});
-
-// Process audio
-const result = await whisper.process({
-  audioData,
-  sampleRate: 16000
-});
-
-console.log(`Transcription: ${result.text}`);
-```
-
-## Cross-Model Tensor Sharing
-
-Share tensors between models for efficient multimodal applications:
-
-```typescript
-// Process image with ViT
-const vitResult = await vitModel.process(imageInput);
-const visionEmbedding = vitModel.getSharedTensor('vision_embedding');
-
-// Process text with BERT 
-const bertResult = await bertModel.process(tokens);
-const textEmbedding = bertModel.getSharedTensor('text_embedding');
-
-// Use both embeddings in a multimodal application
-// This avoids redundant computation and reduces memory usage
-```
-
-## Hardware Backends
-
-Choose from multiple backends for hardware acceleration:
-
-```typescript
-import { 
-  createWebGPUBackend, 
-  createWebNNBackend,
-  getBrowserHardwareCapabilities 
-} from 'ipfs-accelerate-js';
-
-// Detect available hardware capabilities
-const capabilities = await getBrowserHardwareCapabilities();
-
-// Create appropriate backend based on capabilities
-let hardware;
-if (capabilities.webgpu) {
-  hardware = await createWebGPUBackend();
-} else if (capabilities.webnn) {
-  hardware = await createWebNNBackend();
-} else {
-  // Fallback to CPU backend
-  hardware = await createCPUBackend();
-}
-```
-
-## Browser Support
-
-| Feature | Chrome | Firefox | Edge | Safari |
-|---------|--------|---------|------|--------|
-| WebGPU | 113+ | 118+ | 113+ | 17+ |
-| WebNN | - | - | 113+ | - |
-| CPU Fallback | ✓ | ✓ | ✓ | ✓ |
-
-## Examples
-
-### Browser-Based Image Classification
+### CDN
 
 ```html
-<!DOCTYPE html>
-<html>
-<head>
-  <title>ViT Demo</title>
-  <script src="https://cdn.jsdelivr.net/npm/ipfs-accelerate-js/dist/ipfs-accelerate.min.js"></script>
-</head>
-<body>
-  <input type="file" id="image-input" accept="image/*">
-  <div id="result"></div>
+<!-- UMD build (all features) -->
+<script src="https://unpkg.com/ipfs-accelerate@1.0.0/dist/ipfs-accelerate.min.js"></script>
+
+<!-- ESM build (use with import) -->
+<script type="module">
+  import { createHardwareAbstractionLayer } from 'https://cdn.jsdelivr.net/npm/ipfs-accelerate@1.0.0/dist/ipfs-accelerate.esm.min.js';
+</script>
+```
+
+## Basic Usage
+
+### Hardware Abstraction Layer
+
+```typescript
+import { createHardwareAbstractionLayer } from 'ipfs-accelerate';
+
+async function runMatrixMultiplication() {
+  // Create hardware abstraction layer
+  const hal = await createHardwareAbstractionLayer();
   
-  <script>
-    const { createVitModel, createWebGPUBackend } = IPFSAccelerate;
-    
-    document.getElementById('image-input').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      const img = await createImageBitmap(file);
-      
-      // Create canvas to get image data
-      const canvas = document.createElement('canvas');
-      canvas.width = 224;
-      canvas.height = 224;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, 224, 224);
-      const imageData = ctx.getImageData(0, 0, 224, 224).data;
-      
-      // Convert to RGB format (remove alpha channel)
-      const rgbData = new Uint8Array(224 * 224 * 3);
-      for (let i = 0; i < imageData.length / 4; i++) {
-        rgbData[i * 3] = imageData[i * 4];
-        rgbData[i * 3 + 1] = imageData[i * 4 + 1];
-        rgbData[i * 3 + 2] = imageData[i * 4 + 2];
-      }
-      
-      // Initialize hardware and model
-      const hardware = await createWebGPUBackend();
-      await hardware.initialize();
-      
-      const model = createVitModel(hardware, {
-        modelId: 'google/vit-base-patch16-224'
-      });
-      await model.initialize();
-      
-      // Process image
-      const result = await model.process({
-        imageData: rgbData,
-        width: 224,
-        height: 224
-      });
-      
-      // Display result
-      document.getElementById('result').textContent = 
-        `Top class: ${result.classId} (${result.probabilities[result.classId]})`;
-      
-      // Clean up
-      await model.dispose();
+  try {
+    // Create tensors
+    const a = await hal.createTensor({
+      dimensions: [2, 3],
+      data: new Float32Array([1, 2, 3, 4, 5, 6]),
+      dtype: 'float32'
     });
-  </script>
-</body>
-</html>
+    
+    const b = await hal.createTensor({
+      dimensions: [3, 2],
+      data: new Float32Array([7, 8, 9, 10, 11, 12]),
+      dtype: 'float32'
+    });
+    
+    // Execute matrix multiplication
+    const result = await hal.matmul(a, b, { useOptimization: true });
+    
+    console.log('Result shape:', result.dimensions);
+    console.log('Result data:', await result.getData());
+  } finally {
+    // Always clean up resources
+    hal.dispose();
+  }
+}
 ```
 
-## Advanced Usage
-
-### Custom Configuration
+### Using Hardware-Abstracted Models
 
 ```typescript
-const vitModel = createVitModel(hardware, {
-  modelId: 'google/vit-base-patch16-224',
-  imageSize: 224,
-  patchSize: 16,
-  hiddenSize: 768,
-  numLayers: 12,
-  numHeads: 12,
-  intermediateSize: 3072,
-  backendPreference: ['webgpu', 'webnn', 'cpu'],
-  useOptimizedOps: true
-});
+import { createHardwareAbstractedBERT } from 'ipfs-accelerate';
+
+async function runBertModel() {
+  // Create BERT model with hardware abstraction
+  const bert = await createHardwareAbstractedBERT({
+    modelName: 'bert-base-uncased',
+    quantized: true  // Use quantized model for better performance
+  });
+  
+  try {
+    // Get text embeddings
+    const embeddings = await bert.getEmbeddings('Hello, world!');
+    console.log('Embeddings shape:', embeddings.dimensions);
+    
+    // Run sentiment analysis
+    const sentiment = await bert.analyzeSentiment('I love this product!');
+    console.log('Sentiment:', sentiment);
+  } finally {
+    // Clean up resources
+    bert.dispose();
+  }
+}
 ```
 
-### Quantization for Memory Efficiency
-
-```typescript
-// Create model with 4-bit quantization for memory efficiency
-const model = createBertModel(hardware, {
-  modelId: 'bert-base-uncased',
-  quantization: {
-    enabled: true,
-    bitsPerWeight: 4,          // 4-bit precision for weights (8x smaller than FP32)
-    bitsPerActivation: 8,      // 8-bit for activations
-    includeFirstLayer: false,  // Keep first layer in full precision for accuracy
-    includeLastLayer: false    // Keep last layer in full precision for accuracy
-  }
-});
-
-// Ultra-low precision options for extreme memory constraints
-const tinyModel = createVitModel(hardware, {
-  modelId: 'google/vit-base-patch16-224',
-  quantization: {
-    enabled: true,
-    bitsPerWeight: 2,          // 2-bit precision for extreme compression (16x smaller)
-    symmetricQuantization: true, // Use symmetric quantization for better numeric stability
-    perChannelQuantization: true // Per-channel quantization for better accuracy
-  }
-});
-```
-
-### Advanced Performance Optimization
-
-You can combine quantization, operation fusion, and browser-specific optimizations for maximum performance and memory efficiency:
-
-```typescript
-// Configure comprehensive optimizations
-const config = {
-  // Operation fusion with quantization
-  useOperationFusion: true,
-  fusionOptions: {
-    patterns: [
-      'linear_activation',
-      'elementwise_chain', 
-      'attention_pattern',
-      'quantized_matmul',
-      'quantized_matmul_activation',
-      'quantized_attention'
-    ],
-    useQuantizedWeights: true,
-    bitsPerWeight: 3,  // Ultra-low precision (3-bit)
-    useBrowserOptimizations: true
-  },
-  
-  // Advanced quantization options
-  quantization: {
-    enabled: true,
-    bitsPerWeight: 3,
-    symmetricQuantization: true,
-    perChannelQuantization: true,
-    calibrationSamples: 10  // Number of samples for calibration
-  },
-  
-  // Memory optimization
-  memoryOptimization: {
-    aggressiveBufferReuse: true,
-    releaseIntermediateTensors: true,
-    useCompression: true
-  },
-  
-  // Browser-specific optimizations
-  browserOptimizations: {
-    detectBrowserAutomatically: true,
-    customWorkgroupSizes: true,
-    useShaderPrecompilation: true,
-    adaptiveWorkloadDistribution: true
-  }
-};
-
-// Create model with advanced optimizations
-const model = createBertModel(hardware, {
-  modelId: 'bert-base-uncased',
-  ...config
-});
-
-// Process input with optimized execution
-const result = await model.process(input);
-```
-
-This configuration provides:
-- 90.6% memory reduction compared to FP32 (3-bit quantization)
-- Specialized fusion patterns for transformer attention mechanisms
-- Browser-specific optimizations for shader workgroup sizes and memory access
-- Adaptive performance tuning based on input size and device capabilities
-
-### Browser-Specific Optimizations
+### Cross-Model Tensor Sharing
 
 ```typescript
 import { 
-  createVitModel, 
-  detectBrowserType, 
-  BrowserType 
-} from 'ipfs-accelerate-js';
+  createHardwareAbstractedViT, 
+  createHardwareAbstractedBERT,
+  TensorSharingManager 
+} from 'ipfs-accelerate';
 
-// Automatic browser detection and optimization
-const model = createVitModel(hardware, {
-  modelId: 'google/vit-base-patch16-224',
-  useBrowserOptimizations: true,  // Automatically detect and apply browser-specific optimizations
-  quantization: {
-    enabled: true,
-    bitsPerWeight: 4,
-    useBrowserOptimizations: true  // Use browser-specific quantization implementations
-  }
+// Create tensor sharing manager
+const sharingManager = new TensorSharingManager();
+
+// Create models with tensor sharing
+const vit = await createHardwareAbstractedViT({
+  modelName: 'vit-base-patch16-224',
+  tensorSharingManager: sharingManager
 });
 
-// Manual browser optimization configuration
-const browserType = detectBrowserType();
-let config = {
-  modelId: 'google/vit-base-patch16-224',
-  useBrowserOptimizations: true
-};
+const bert = await createHardwareAbstractedBERT({
+  modelName: 'bert-base-uncased',
+  tensorSharingManager: sharingManager
+});
 
-// Optionally override specific parameters
-switch(browserType) {
-  case BrowserType.CHROME:
-    config.workgroupSize = 256;
-    config.tileSize = 16;
-    config.useSharedMemory = true;
-    break;
-  case BrowserType.FIREFOX:
-    config.workgroupSize = 128;
-    config.tileSize = 8;
-    config.useSimpleLoops = true;
-    break;
-  case BrowserType.SAFARI:
-    config.workgroupSize = 512;
-    config.tileSize = 32;
-    config.useVectorOperations = true;
-    break;
-  case BrowserType.EDGE:
-    config.workgroupSize = 256;
-    config.usePartialLoopUnrolling = true;
-    config.useWebNNWhenAvailable = true;
-    break;
-}
+// Process image and text
+const image = await loadImageAsArray('image.jpg');
+const imageEmbeddings = await vit.getEmbeddings(image);
 
-const customModel = createVitModel(hardware, config);
+const text = 'A description of the image';
+const textEmbeddings = await bert.getEmbeddings(text);
+
+// Get memory usage statistics
+const stats = sharingManager.getStats();
+console.log('Memory saved:', stats.memorySaved, 'bytes');
 ```
 
-You can run the browser-specific optimization benchmarks to see the impact on your system:
+## Browser Compatibility
 
-```bash
-# Run browser-specific optimization tests and benchmarks
-./run_browser_optimized_tests.sh benchmark
-# Open browser to http://localhost:8080/examples/browser_specific_quantization_benchmark.html
-```
+| Browser | WebGPU | WebNN | Best For |
+|---------|--------|-------|----------|
+| Chrome  | ✓      | ⚠️ (Limited) | Vision models, general use |
+| Edge    | ✓      | ✓      | Text models, WebNN acceleration |
+| Firefox | ✓      | ✗      | Audio models (excellent compute shaders) |
+| Safari  | ⚠️ (Limited) | ✗      | Basic acceleration with fallbacks |
 
-### Memory Management
+The Hardware Abstraction Layer automatically selects the best backend based on the browser capabilities and model type.
+
+## Error Recovery System
+
+The Error Recovery System provides intelligent error handling for WebGPU/WebNN operations, making your machine learning applications more robust and resilient.
 
 ```typescript
-// Create model in a try-finally block to ensure cleanup
-let model = null;
-try {
-  model = createVitModel(hardware, config);
-  await model.initialize();
-  
-  // Use the model...
-  const result = await model.process(input);
-  
-} finally {
-  // Always clean up resources
-  if (model) {
-    await model.dispose();
+import { createHardwareAbstractionLayer, createErrorRecoveryManager } from 'ipfs-accelerate';
+
+// Create hardware abstraction layer
+const hal = await createHardwareAbstractionLayer();
+
+// Create error recovery manager
+const errorRecoveryManager = createErrorRecoveryManager(hal.performanceTracker);
+
+// Protect a critical operation with error recovery
+const protectedMatmul = errorRecoveryManager.protect(
+  async (a, b) => await hal.matmul(a, b),
+  {
+    operationName: 'matmul',
+    backendType: hal.getBackendType() as any,
+    availableBackends: hal.backends,
+    activeBackend: hal.getActiveBackend()!,
+    performanceTracker: hal.performanceTracker,
+    setActiveBackend: (backend) => hal.setActiveBackend(backend),
+    browserType: 'chrome',
+    useBrowserOptimizations: true
   }
+);
+
+// Use the protected operation
+try {
+  const result = await protectedMatmul(tensorA, tensorB);
+  console.log('Operation succeeded!');
+} catch (error) {
+  console.error('All recovery attempts failed:', error);
 }
+
+// Get recovery statistics
+const stats = errorRecoveryManager.getStrategySuccessRates();
+console.log('Recovery success rates:', stats);
 ```
 
 ## Documentation
 
-- [API Reference](./docs/api/README.md)
-- [Models](./docs/models/README.md)
-- [Hardware Backends](./docs/hardware/README.md)
-- [Cross-Model Tensor Sharing](./docs/CROSS_MODEL_TENSOR_SHARING.md)
-- [Performance Optimization](./docs/PERFORMANCE_OPTIMIZATION.md)
-- [Quantization and Operation Fusion](./docs/QUANTIZATION_OPERATION_FUSION.md) (NEW)
-- [Browser-Specific Optimizations](./docs/BROWSER_OPTIMIZATIONS.md) (UPDATED)
-- [Benchmark Visualization Guide](./docs/VISUALIZATION_GUIDE.md) (NEW)
-- [Ultra-Low Precision](./docs/ULTRA_LOW_PRECISION.md)
-- [Quantization Guide](./docs/QUANTIZATION_GUIDE.md)
-- [Operation Fusion](./docs/OPERATION_FUSION.md)
-- [Memory Optimization](./docs/MEMORY_OPTIMIZATION.md)
-- [Examples](./examples/README.md)
+For detailed documentation, see the following resources:
 
-## Testing and Performance Analysis
+- [Hardware Abstraction Layer Guide](https://ipfs-accelerate.github.io/docs/hardware-abstraction-layer)
+- [Error Recovery Guide](https://ipfs-accelerate.github.io/docs/error-recovery)
+- [Performance Tracking Guide](https://ipfs-accelerate.github.io/docs/performance-tracking)
+- [Cross-Model Tensor Sharing Guide](https://ipfs-accelerate.github.io/docs/cross-model-tensor-sharing)
+- [Browser Optimization Guide](https://ipfs-accelerate.github.io/docs/browser-optimization)
+- [API Reference](https://ipfs-accelerate.github.io/api)
+- [Examples](https://ipfs-accelerate.github.io/examples)
 
-We provide comprehensive tests and performance analysis tools to validate the functionality and performance of the library:
+## Bundle Sizes
 
-- **Unit Tests**: Test individual components and functions
-- **Integration Tests**: Test interactions between components
-- **End-to-End Tests**: Test complete workflows
-- **Performance Tests**: Measure performance across different configurations
-- **Browser Compatibility Tests**: Test across different browsers
-- **Visual Performance Analysis**: Interactive visualization of performance metrics
+The package is available in multiple bundle formats to optimize size:
 
-### Notable Test Files
+| Bundle | Size (min+gzip) | Import Path |
+|--------|----------------|------------|
+| Full Bundle | 120 KB | `import * from 'ipfs-accelerate'` |
+| Core Only | 28 KB | `import * from 'ipfs-accelerate/dist/core'` |
+| WebGPU Only | 40 KB | `import * from 'ipfs-accelerate/dist/backends/webgpu'` |
+| WebNN Only | 38 KB | `import * from 'ipfs-accelerate/dist/backends/webnn'` |
+| HAL Only | 58 KB | `import * from 'ipfs-accelerate/dist/hal'` |
+| Error Recovery | 18 KB | `import * from 'ipfs-accelerate/dist/error-recovery'` |
+| Performance Tracking | 16 KB | `import * from 'ipfs-accelerate/dist/performance'` |
+| BERT | 22 KB | `import * from 'ipfs-accelerate/dist/models/bert'` |
+| ViT | 20 KB | `import * from 'ipfs-accelerate/dist/models/vit'` |
+| Whisper | 24 KB | `import * from 'ipfs-accelerate/dist/models/whisper'` |
+| CLIP | 25 KB | `import * from 'ipfs-accelerate/dist/models/clip'` |
 
-- [WebGPU Matrix Operations Test](./test/webgpu_matrix_operations_test.ts)
-- [Fusion and Quantization Integration Test](./test/fusion_quantization_test.ts) (NEW)
-- [Browser-Specific Shaders Test](./test/browser_specific_shaders_test.ts) (NEW)
-- [Tensor Sharing Integration Test](./test/tensor_sharing_integration.test.ts)
+## Examples
 
-### Performance Visualization Tools
+The package includes a variety of examples to help you get started:
 
-- [Benchmark Visualization](./examples/benchmark_visualization.html)
-  - Interactive comparison of optimization techniques
-  - Performance analysis across browsers
-  - Memory efficiency visualization
-  - Accuracy vs. memory tradeoff analysis
-  
-- [Browser-Specific Quantization Benchmark](./examples/browser_specific_quantization_benchmark.html) (NEW)
-  - Compare browser-specific optimization performance
-  - Visualize memory reduction across bit-widths
-  - Analyze operation fusion performance
-  - Interactive comparison of different activation functions
-  - Browser-specific parameter visualization
+- [Basic Tensor Operations](https://ipfs-accelerate.github.io/examples/basic-tensor-operations)
+- [BERT Text Classification](https://ipfs-accelerate.github.io/examples/bert-text-classification)
+- [ViT Image Classification](https://ipfs-accelerate.github.io/examples/vit-image-classification)
+- [Whisper Transcription](https://ipfs-accelerate.github.io/examples/whisper-transcription)
+- [CLIP Image Search](https://ipfs-accelerate.github.io/examples/clip-image-search)
+- [Cross-Model Tensor Sharing](https://ipfs-accelerate.github.io/examples/cross-model-tensor-sharing)
+- [Error Recovery System](https://ipfs-accelerate.github.io/examples/error-recovery-system)
+- [Performance Tracking](https://ipfs-accelerate.github.io/examples/performance-tracking)
+- [Browser Optimization Comparison](https://ipfs-accelerate.github.io/examples/browser-optimization-comparison)
+
+## Development
 
 ```bash
-# Run core tests
+# Clone the repository
+git clone https://github.com/ipfs-accelerate/ipfs-accelerate-js.git
+cd ipfs-accelerate-js
+
+# Install dependencies
+npm install
+
+# Build the library
+npm run build
+
+# Run tests
 npm test
 
-# Run browser-specific tests
-npm test -- test/browser_specific_shaders_test.ts
-npm test -- test/browser_specific_fusion_quantization_test.ts
-npm test -- test/fusion_quantization_test.ts
-
-# Run benchmarks and visualize results
-./run_browser_optimized_tests.sh benchmark
+# Start the development server with examples
+npm run start:examples
 ```
-
-## Contributing
-
-Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for more details.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
-## Citation
-
-If you use IPFS Accelerate JS in your research, please cite:
-
-```bibtex
-@software{ipfs_accelerate_js,
-  author = {IPFS Accelerate Team},
-  title = {IPFS Accelerate JS: Hardware-accelerated machine learning for the browser},
-  url = {https://github.com/ipfs/ipfs-accelerate-js},
-  year = {2025},
-}
-```
+This package is licensed under the [MIT License](LICENSE).

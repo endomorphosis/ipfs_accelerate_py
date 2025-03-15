@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hardware Abstracted ViT Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+      grid-column: 1 / -1;
+    }
+    
+    .section {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+    }
+    
+    .header {
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .input-row {
+      display: flex;
+      margin-bottom: 15px;
+    }
+    
+    input[type="text"], select {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-left: 10px;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #2980b9;
+    }
+    
+    button:disabled {
+      background-color: #95a5a6;
+      cursor: not-allowed;
+    }
+    
+    .full-width {
+      grid-column: 1 / -1;
+    }
+    
+    .results {
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 15px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+    }
+    
+    .performance-metrics {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 15px;
+    }
+    
+    .metric {
+      background: #f1f1f1;
+      padding: 10px;
+      border-radius: 4px;
+      text-align: center;
+      flex: 1;
+      margin: 0 5px;
+    }
+    
+    .metric-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #2c3e50;
+    }
+    
+    .metric-label {
+      font-size: 14px;
+      color: #7f8c8d;
+      margin-top: 5px;
+    }
+    
+    .hardware-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    
+    .webgpu-badge {
+      background: #4285f4;
+      color: white;
+    }
+    
+    .webnn-badge {
+      background: #0f9d58;
+      color: white;
+    }
+    
+    .cpu-badge {
+      background: #db4437;
+      color: white;
+    }
+    
+    .auto-badge {
+      background: #f4b400;
+      color: black;
+    }
+    
+    .prediction {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .prediction-bar {
+      height: 20px;
+      background: #3498db;
+      border-radius: 2px;
+      margin-right: 10px;
+    }
+    
+    .prediction-label {
+      min-width: 200px;
+    }
+    
+    .prediction-value {
+      min-width: 60px;
+      text-align: right;
+    }
+    
+    img.preview {
+      max-width: 100%;
+      max-height: 300px;
+      display: block;
+      margin: 0 auto;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    
+    .comparison-table th, .comparison-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    
+    .comparison-table th {
+      background-color: #f2f2f2;
+    }
+    
+    .comparison-table tr.best-row {
+      background-color: #e6f7ff;
+      font-weight: bold;
+    }
+    
+    .chart-container {
+      height: 300px;
+      margin-top: 20px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 20px;
+    }
+    
+    .chart-bar {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      color: white;
+      font-weight: bold;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    
+    .webgpu-bar {
+      background: #4285f4;
+    }
+    
+    .webnn-bar {
+      background: #0f9d58;
+    }
+    
+    .cpu-bar {
+      background: #db4437;
+    }
+    
+    .image-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    
+    .image-option {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    
+    .image-option:hover, .image-option.selected {
+      border-color: #3498db;
+    }
+    
+    .error-message {
+      color: #e74c3c;
+      margin-top: 10px;
+    }
+    
+    .loader {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0, 0, 0, 0.1);
+      border-radius: 50%;
+      border-top-color: #3498db;
+      animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Hardware Abstracted Vision Transformer (ViT)</h1>
+    
+    <div class="section">
+      <div class="header">Hardware Capabilities</div>
+      <p>
+        The Hardware Abstraction Layer (HAL) automatically selects the optimal backend for ViT execution 
+        based on your browser and hardware capabilities.
+      </p>
+      <button id="detect-hardware-btn">Detect Hardware Capabilities</button>
+      <div id="hardware-capabilities" class="results"></div>
+      <div id="backend-badges" class="results" style="display: none;"></div>
+    </div>
+    
+    <div class="section">
+      <div class="header">Model Configuration</div>
+      <div class="input-row">
+        <select id="model-select">
+          <option value="vit-base-patch16-224">ViT-Base (224px, 16px patches)</option>
+          <option value="vit-large-patch16-224">ViT-Large (224px, 16px patches)</option>
+          <option value="vit-base-patch32-384">ViT-Base (384px, 32px patches)</option>
+        </select>
+      </div>
+      <div style="margin-top: 15px;">
+        <label><input type="checkbox" id="quantization-checkbox" checked> Enable quantization</label>
+      </div>
+      <div style="margin-top: 15px;">
+        <label><input type="checkbox" id="tensor-sharing-checkbox" checked> Enable tensor sharing</label>
+      </div>
+      <div style="margin-top: 15px;">
+        <button id="initialize-model-btn">Initialize Model</button>
+      </div>
+      <div id="model-status" class="results" style="display: none;"></div>
+    </div>
+    
+    <div class="section">
+      <div class="header">Input Image</div>
+      <div class="input-row">
+        <input type="text" id="image-url" placeholder="Enter image URL" value="https://storage.googleapis.com/ipfs_accelerate_example_data/cat.jpg">
+        <button id="load-image-btn">Load Image</button>
+      </div>
+      <div class="image-selector" id="sample-images">
+        <img src="https://storage.googleapis.com/ipfs_accelerate_example_data/cat.jpg" class="image-option selected" data-url="https://storage.googleapis.com/ipfs_accelerate_example_data/cat.jpg" alt="Cat">
+        <img src="https://storage.googleapis.com/ipfs_accelerate_example_data/dog.jpg" class="image-option" data-url="https://storage.googleapis.com/ipfs_accelerate_example_data/dog.jpg" alt="Dog">
+        <img src="https://storage.googleapis.com/ipfs_accelerate_example_data/bird.jpg" class="image-option" data-url="https://storage.googleapis.com/ipfs_accelerate_example_data/bird.jpg" alt="Bird">
+        <img src="https://storage.googleapis.com/ipfs_accelerate_example_data/car.jpg" class="image-option" data-url="https://storage.googleapis.com/ipfs_accelerate_example_data/car.jpg" alt="Car">
+      </div>
+      <div style="margin-top: 15px;">
+        <img id="preview-image" src="" class="preview" style="display: none;">
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="header">Classification Results</div>
+      <button id="run-inference-btn" disabled>Run Inference</button>
+      <div class="performance-metrics" style="display: none;" id="performance-metrics">
+        <div class="metric">
+          <div class="metric-value" id="initialization-time">-</div>
+          <div class="metric-label">Init Time (ms)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="preprocessing-time">-</div>
+          <div class="metric-label">Preproc Time (ms)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="inference-time">-</div>
+          <div class="metric-label">Inference Time (ms)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="total-time">-</div>
+          <div class="metric-label">Total Time (ms)</div>
+        </div>
+      </div>
+      <div id="backend-info" style="margin-top: 15px; display: none;"></div>
+      <div id="classification-results" class="results" style="margin-top: 15px;"></div>
+    </div>
+    
+    <div class="section full-width">
+      <div class="header">Backend Comparison</div>
+      <p>
+        Compare inference performance across all available backends to see how the
+        Hardware Abstraction Layer optimizes performance.
+      </p>
+      <button id="run-comparison-btn" disabled>Compare All Backends</button>
+      <div id="comparison-results" style="display: none;">
+        <table class="comparison-table" id="comparison-table">
+          <thead>
+            <tr>
+              <th>Backend</th>
+              <th>Inference Time (ms)</th>
+              <th>Speedup vs. CPU</th>
+              <th>Support Level</th>
+              <th>Top Prediction</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        
+        <div class="chart-container">
+          <div id="comparison-chart"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section full-width">
+      <div class="header">Advanced Features</div>
+      <p>
+        The Hardware Abstracted ViT implementation provides the following advanced features:
+      </p>
+      <ul>
+        <li><strong>Cross-model tensor sharing:</strong> Share embeddings between ViT and other models</li>
+        <li><strong>Adaptive workgroup sizing:</strong> Optimal parameters for different browsers and hardware</li>
+        <li><strong>Operation fusion:</strong> Combines multiple operations for better performance</li>
+        <li><strong>Memory optimization:</strong> Careful tensor management to reduce memory usage</li>
+        <li><strong>Browser-specific optimizations:</strong> Tailored for Chrome, Firefox, Safari, and Edge</li>
+      </ul>
+      
+      <div style="margin-top: 15px;">
+        <button id="multimodal-demo-btn" disabled>Multimodal Demo (ViT + BERT)</button>
+        <div id="multimodal-results" class="results" style="display: none;"></div>
+      </div>
+    </div>
+  </div>
+  
+  <script type="module" src="hardware_abstracted_vit_example.js"></script>
+</body>
+</html>

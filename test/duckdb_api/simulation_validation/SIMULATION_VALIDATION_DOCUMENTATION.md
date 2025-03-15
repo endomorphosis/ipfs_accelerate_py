@@ -107,6 +107,12 @@ The statistical validation tools provide advanced methods for analyzing simulati
 - **MAPE**: Mean Absolute Percentage Error
 - **RMSE**: Root Mean Square Error
 - **Normalized RMSE**: RMSE normalized by data range
+- **MAE**: Mean Absolute Error
+- **MSE**: Mean Squared Error
+- **R-Squared**: Coefficient of determination
+- **Concordance Correlation**: Lin's concordance correlation coefficient
+- **Bias**: Systematic difference between simulation and hardware
+- **Ratio Metrics**: Ratio between simulation and hardware values
 
 ### Statistical Tests
 
@@ -115,6 +121,10 @@ The statistical validation tools provide advanced methods for analyzing simulati
 - **Kolmogorov-Smirnov**: Compare cumulative distributions
 - **Pearson Correlation**: Measure linear correlation
 - **Spearman Correlation**: Measure rank correlation
+- **Shapiro-Wilk**: Test for normality of distributions
+- **Anderson-Darling**: Alternative test for normality
+- **Levene's Test**: Test for equality of variances
+- **Chi-squared Test**: Test for differences in distributions
 
 ### Advanced Metrics
 
@@ -123,6 +133,17 @@ The statistical validation tools provide advanced methods for analyzing simulati
 - **Precision Score**: Measure of simulation precision (consistency)
 - **Reliability Score**: Combined measure of bias and precision
 - **Fidelity Score**: How well simulation preserves relationships
+- **Confidence Intervals**: Statistical bounds on error estimates
+- **Statistical Power**: Power calculations for validation sample sizes
+
+### Bland-Altman Analysis
+
+New method comparison analysis includes:
+
+- **Bias (Mean Difference)**: Average difference between simulation and hardware
+- **Limits of Agreement**: Range within which 95% of differences fall
+- **Proportional Bias**: Whether bias changes with measurement magnitude
+- **Log Transformation**: Optional transformation for proportional differences
 
 ### Group Validation
 
@@ -132,6 +153,8 @@ The framework supports validation of groups of results:
 - **Group Statistical Tests**: Tests on groups of related results
 - **Time Series Validation**: Validation across time series data
 - **Multi-Configuration Validation**: Validation across different configurations
+- **Distribution Metrics**: Comprehensive metrics to compare result distributions
+- **Enhanced Power Analysis**: Statistical power analysis for validation sample size
 
 ## Integration with Database
 
@@ -355,6 +378,7 @@ print(f"Top-3 preservation: {ranking_analysis['percentage_same_top_3']['percenta
 - ✅ **Validation Methodology**: Comprehensive methodology implemented
 - ✅ **Comparison Pipeline**: Complete pipeline for comparing simulation and hardware results
 - ✅ **Statistical Validation**: Advanced statistical validation tools implemented
+  - ✅ **Enhanced Statistical Validation**: Comprehensive statistical methods with confidence intervals and method comparison analysis (July 2025)
 - ✅ **Framework Integration**: Main integration module implemented
 - 🔄 **Calibration System**: Basic implementation available, advanced features in progress
 - 🔄 **Drift Detection**: Basic implementation available, advanced features in progress
@@ -384,7 +408,8 @@ duckdb_api/simulation_validation/
 ├── statistical/                        # Statistical validation tools
 │   ├── __init__.py
 │   ├── basic_validator.py              # Basic statistical validator
-│   └── statistical_validator.py        # Advanced statistical validator
+│   ├── statistical_validator.py        # Advanced statistical validator
+│   └── enhanced_statistical_validator.py # Enhanced validation with advanced statistics
 │
 ├── calibration/                        # Calibration system components
 │   ├── __init__.py
@@ -438,6 +463,7 @@ For more detailed information, refer to the following documentation:
 - [Validation Methodology](methodology.py): Core validation methodology definition
 - [Comparison Pipeline](comparison/comparison_pipeline.py): Implementation of comparison pipeline
 - [Statistical Validation](statistical/statistical_validator.py): Advanced statistical validation tools
+- [Enhanced Statistical Validation](statistical/enhanced_statistical_validator.py): Comprehensive statistical methods with confidence intervals and method comparison analysis
 - [Framework Integration](simulation_validation_framework.py): Main integration module
 - [Test Script](test_validator.py): Test script for the framework
 

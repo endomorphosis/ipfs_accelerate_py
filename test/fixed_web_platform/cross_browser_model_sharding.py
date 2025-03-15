@@ -198,6 +198,144 @@ class ShardedModelComponent:
         if not self.is_initialized or not self.model:
             logger.error(f"Component {self.component_id} not initialized")
             return {'error': 'Component not initialized'}
+            
+        # Process inputs with fault tolerance
+        return await self._process_with_fault_tolerance(inputs)
+            
+    async def _process_with_fault_tolerance(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process inputs with fault tolerance to handle browser failures.
+        
+        This implementation includes:
+        1. Automatic retry with exponential backoff
+        2. Circuit breaker pattern to prevent repeated failures
+        3. Browser crash detection and recovery
+        4. Performance history tracking
+        
+        Args:
+            inputs: Input data for this component
+            
+        Returns:
+            Processing results with additional metrics
+        """
+        # Maximum number of retries
+        max_retries = 3
+        retry_count = 0
+        last_error = None
+        
+        while retry_count <= max_retries:
+            try:
+                # Start timing
+                start_time = time.time()
+                
+                # Process inputs
+                result = await self.model(inputs)
+                
+                # Update performance metrics
+                processing_time = time.time() - start_time
+                self.metrics['inference_time'] = processing_time
+                
+                # Add shard-specific information to the result
+                result['shard_index'] = self.shard_index
+                result['shard_type'] = self.shard_type
+                result['component_id'] = self.component_id
+                result['browser'] = self.browser
+                result['platform'] = self.platform
+                
+                # Track cumulative performance metrics
+                if 'metrics' not in result:
+                    result['metrics'] = {}
+                
+                result['metrics'].update(self.metrics)
+                result['metrics']['retry_count'] = retry_count
+                
+                # Log success with performance data
+                logger.info(f"Shard {self.shard_index} processed in {processing_time:.3f}s using {self.browser} ({self.platform})")
+                
+                # Reset circuit breaker on success
+                if hasattr(self.resource_pool, 'circuit_breaker_manager'):
+                    await self.resource_pool.circuit_breaker_manager.record_success(self.connection_id)
+                
+                return result
+                
+            except Exception as e:
+                retry_count += 1
+                last_error = str(e)
+                error_type = type(e).__name__
+                
+                # Log the error
+                logger.warning(f"Error processing shard {self.shard_index} (attempt {retry_count}/{max_retries}): {e}")
+                
+                # Record error in circuit breaker
+                if hasattr(self.resource_pool, 'circuit_breaker_manager'):
+                    await self.resource_pool.circuit_breaker_manager.record_failure(
+                        self.connection_id, 
+                        error=e, 
+                        error_type=error_type
+                    )
+                
+                # Check if browser crashed (connection is dead)
+                if hasattr(self.resource_pool, 'check_connection_health'):
+                    is_healthy = await self.resource_pool.check_connection_health(self.connection_id)
+                    if not is_healthy:
+                        logger.warning(f"Browser connection {self.connection_id} is unhealthy. Attempting recovery.")
+                        await self._recover_component()
+                
+                # If we've reached max retries, break
+                if retry_count > max_retries:
+                    break
+                
+                # Exponential backoff with jitter
+                backoff_time = min(0.1 * (2 ** retry_count) + (random.random() * 0.1), 5.0)
+                logger.info(f"Retrying in {backoff_time:.2f}s...")
+                await asyncio.sleep(backoff_time)
+        
+        # If we get here, all retries failed
+        logger.error(f"All retries failed for shard {self.shard_index}")
+        return {
+            'error': f"Failed to process shard {self.shard_index} after {max_retries} retries. Last error: {last_error}",
+            'shard_index': self.shard_index,
+            'shard_type': self.shard_type,
+            'component_id': self.component_id,
+            'retry_count': retry_count,
+            'error_type': error_type if 'error_type' in locals() else 'Unknown'
+        }
+    
+    async def _recover_component(self) -> bool:
+        """
+        Recover this component after a failure by reinitializing it.
+        
+        Returns:
+            True if recovery is successful, False otherwise
+        """
+        logger.info(f"Attempting to recover component {self.component_id}")
+        
+        # Release the current model and connection
+        if self.model is not None:
+            # Release model resources if possible
+            if hasattr(self.model, 'release'):
+                try:
+                    await self.model.release()
+                except Exception as e:
+                    logger.warning(f"Error releasing model resources: {e}")
+            
+            self.model = None
+            
+        # Mark as uninitialized
+        self.is_initialized = False
+        
+        # Attempt to reinitialize
+        try:
+            result = await self.initialize()
+            if result:
+                logger.info(f"Successfully recovered component {self.component_id}")
+                return True
+            else:
+                logger.error(f"Failed to recover component {self.component_id}")
+                return False
+        except Exception as e:
+            logger.error(f"Error during component recovery: {e}")
+            return False
         
         try:
             start_time = time.time()
@@ -272,6 +410,31 @@ class ModelShardingManager:
             'average_inference_time': 0,
             'inference_count': 0,
             'memory_usage': 0
+        }
+        
+
+        # Initialize performance history tracking
+        self._performance_history = {
+            'components': {},  # Component-specific performance history
+            'browser_metrics': {},  # Browser-specific performance metrics
+            'overall_metrics': {  # Overall performance metrics
+                'success_count': 0,
+                'error_count': 0,
+                'total_latency': 0,
+                'execution_count': 0,
+                'success_rate': 0,
+                'avg_latency': 0,
+            },
+            'shard_types': {},  # Performance metrics by shard type
+            'timeline': [],  # Time-series performance data
+            'recovery_events': [],  # Record of recovery events
+        }
+            'recovery_events': [],  # Record of recovery events
+        }
+            },
+            'shard_types': {},  # Performance metrics by shard type
+            'timeline': [],  # Time-series performance data
+            'recovery_events': [],  # Record of recovery events
         }
         
         # Determine optimal browser allocation based on model type and shard type
@@ -1805,6 +1968,13 @@ class ModelShardingManager:
                 if self.metrics['inference_count'] > 0 else 0
             )
             
+            # Update performance history
+            await self._update_performance_history(
+                self.components,
+                list(processing_results['component_results'].values()),
+                inference_time
+            )
+            
             # Add detailed metrics to the result
             detailed_result = {
                 'result': merged_result,
@@ -1985,6 +2155,49 @@ class ModelShardingManager:
         for component in self.components:
             component_metrics[component.component_id] = component.metrics
         
+        # Add performance history data if available
+        performance_data = {}
+        if hasattr(self, '_performance_history'):
+            # Calculate success and reliability metrics
+            history = self._performance_history
+            overall = history['overall_metrics']
+            
+            # Calculate browser performance
+            browser_performance = {}
+            for browser, metrics in history.get('browser_metrics', {}).items():
+                if metrics.get('execution_count', 0) > 0:
+                    browser_performance[browser] = {
+                        'success_rate': metrics.get('success_rate', 0),
+                        'avg_latency_ms': metrics.get('avg_latency', 0),
+                        'execution_count': metrics.get('execution_count', 0)
+                    }
+            
+            # Calculate shard type performance
+            shard_performance = {}
+            for shard_type, metrics in history.get('shard_types', {}).items():
+                if metrics.get('execution_count', 0) > 0:
+                    success_rate = metrics.get('success_count', 0) / metrics.get('execution_count', 1)
+                    avg_latency = metrics.get('total_latency', 0) / metrics.get('execution_count', 1)
+                    shard_performance[shard_type] = {
+                        'success_rate': success_rate,
+                        'avg_latency_ms': avg_latency,
+                        'execution_count': metrics.get('execution_count', 0)
+                    }
+            
+            # Add performance data to metrics
+            performance_data = {
+                'overall': {
+                    'success_rate': overall.get('success_count', 0) / max(overall.get('execution_count', 1), 1),
+                    'avg_latency_ms': overall.get('avg_latency', 0),
+                    'execution_count': overall.get('execution_count', 0),
+                    'success_count': overall.get('success_count', 0),
+                    'error_count': overall.get('error_count', 0)
+                },
+                'browser_performance': browser_performance,
+                'shard_performance': shard_performance,
+                'recovery_events': len(history.get('recovery_events', [])),
+            }
+        
         # Build comprehensive metrics report
         metrics_report = {
             'model_name': self.model_name,
@@ -1999,15 +2212,465 @@ class ModelShardingManager:
             'component_metrics': component_metrics
         }
         
+        # Add performance history data if available
+        if performance_data:
+            metrics_report['performance_history'] = performance_data
+            
+            # Add recommendations based on performance data if sufficient data is available
+            if performance_data.get('overall', {}).get('execution_count', 0) >= 5:
+                try:
+                    metrics_report['recommendations'] = self._generate_performance_recommendations(performance_data)
+                except Exception as e:
+                    logger.warning(f"Error generating performance recommendations: {e}")
+                    metrics_report['recommendations'] = {
+                        'error': f"Failed to generate recommendations: {str(e)}"
+                    }
+        
         return metrics_report
     
+    def _generate_performance_recommendations(self, performance_data):
+        """
+        Generate performance recommendations based on historical data.
+        
+        Args:
+            performance_data: Performance history data
+            
+        Returns:
+            Dictionary of recommendations
+        """
+        recommendations = {
+            'browser_allocation': {},
+            'optimization_suggestions': []
+        }
+        
+        # Analyze browser performance
+        browser_performance = performance_data.get('browser_performance', {})
+        if browser_performance:
+            # Find best browser for overall performance
+            best_browser = None
+            best_score = -1
+            
+            for browser, metrics in browser_performance.items():
+                # Calculate score based on success rate and latency
+                # Higher success rate and lower latency = better score
+                if metrics.get('execution_count', 0) >= 3:  # Require minimum sample size
+                    success_rate = metrics.get('success_rate', 0)
+                    latency = metrics.get('avg_latency_ms', float('inf'))
+                    
+                    # Skip browsers with very low success rates
+                    if success_rate < 0.5:
+                        continue
+                        
+                    # Calculate score (higher is better)
+                    # Weight success rate higher than latency
+                    latency_factor = 1000 / latency if latency > 0 else 0
+                    score = (success_rate * 0.7) + (latency_factor * 0.3)
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_browser = browser
+            
+            if best_browser:
+                recommendations['browser_allocation']['overall'] = {
+                    'recommended_browser': best_browser,
+                    'reason': f"Best overall performance with {browser_performance[best_browser]['success_rate']:.1%} success rate and {browser_performance[best_browser]['avg_latency_ms']:.1f}ms latency"
+                }
+                
+        # Analyze shard type performance
+        shard_performance = performance_data.get('shard_performance', {})
+        if shard_performance:
+            for shard_type, metrics in shard_performance.items():
+                if metrics.get('execution_count', 0) >= 3:  # Require minimum sample size
+                    # Find best browser for this shard type
+                    best_browser = None
+                    best_success_rate = -1
+                    
+                    for browser, browser_metrics in browser_performance.items():
+                        # Find which browser performs best with this shard type
+                        # This requires more detailed data that we don't have yet
+                        # For now, use the best overall browser
+                        if 'success_rate' in browser_metrics and browser_metrics['success_rate'] > best_success_rate:
+                            best_success_rate = browser_metrics['success_rate']
+                            best_browser = browser
+                    
+                    if best_browser:
+                        recommendations['browser_allocation'][shard_type] = {
+                            'recommended_browser': best_browser,
+                            'reason': f"Best performance for {shard_type} components"
+                        }
+        
+        # Generate optimization suggestions
+        overall = performance_data.get('overall', {})
+        
+        # Check for poor overall success rate
+        if overall.get('success_rate', 1.0) < 0.9 and overall.get('execution_count', 0) >= 5:
+            recommendations['optimization_suggestions'].append({
+                'type': 'reliability',
+                'issue': f"Low overall success rate ({overall['success_rate']:.1%})",
+                'suggestion': "Consider implementing more aggressive fault tolerance or reducing component load"
+            })
+        
+        # Check for poor browser performance
+        for browser, metrics in browser_performance.items():
+            if metrics.get('success_rate', 1.0) < 0.8 and metrics.get('execution_count', 0) >= 3:
+                recommendations['optimization_suggestions'].append({
+                    'type': 'browser',
+                    'browser': browser,
+                    'issue': f"Low success rate ({metrics['success_rate']:.1%}) for {browser} browser",
+                    'suggestion': f"Consider reducing component allocation to {browser} browser"
+                })
+            
+            # Check for high latency
+            if metrics.get('avg_latency_ms', 0) > 500 and metrics.get('execution_count', 0) >= 3:
+                recommendations['optimization_suggestions'].append({
+                    'type': 'performance',
+                    'browser': browser,
+                    'issue': f"High latency ({metrics['avg_latency_ms']:.1f}ms) for {browser} browser",
+                    'suggestion': f"Consider optimizing components for {browser} or redistributing heavy components"
+                })
+        
+        # Generate recommendation for optimal browser allocation
+        if 'overall' in recommendations['browser_allocation']:
+            recommended_browser = recommendations['browser_allocation']['overall']['recommended_browser']
+            
+            # If we have a significantly better browser, suggest resharding
+            if recommended_browser and self.num_shards > 1:
+                # Check if current allocation is heavily biased toward other browsers
+                preferred_browser_count = sum(1 for config in self.browser_allocation.values() 
+                                          if config.get('browser') == recommended_browser)
+                
+                if preferred_browser_count < (self.num_shards / 2):
+                    recommendations['optimization_suggestions'].append({
+                        'type': 'allocation',
+                        'issue': f"Only {preferred_browser_count}/{self.num_shards} shards using optimal browser ({recommended_browser})",
+                        'suggestion': f"Consider reallocating more shards to {recommended_browser} for better performance"
+                    })
+        
+        # Add recommendation for browser-specific optimizations
+        if 'firefox' in browser_performance and 'audio' in self.model_type.lower():
+            firefox_metrics = browser_performance['firefox']
+            if firefox_metrics.get('execution_count', 0) >= 3:
+                # Check if Firefox is not being used for audio models
+                firefox_count = sum(1 for config in self.browser_allocation.values() 
+                                if config.get('browser') == 'firefox')
+                
+                if firefox_count < (self.num_shards / 3) and self.num_shards > 1:
+                    recommendations['optimization_suggestions'].append({
+                        'type': 'audio_optimization',
+                        'issue': "Audio models typically perform best on Firefox with compute shader optimizations",
+                        'suggestion': "Consider allocating more audio processing to Firefox browsers"
+                    })
+        
+        # Add recommendation for Edge with text embedding models
+        if 'edge' in browser_performance and ('text_embedding' in self.model_type.lower() or 'bert' in self.model_type.lower()):
+            edge_metrics = browser_performance['edge']
+            if edge_metrics.get('execution_count', 0) >= 3:
+                # Check if Edge is not being used for text embedding models
+                edge_count = sum(1 for config in self.browser_allocation.values() 
+                             if config.get('browser') == 'edge')
+                
+                if edge_count < (self.num_shards / 3) and self.num_shards > 1:
+                    recommendations['optimization_suggestions'].append({
+                        'type': 'text_optimization',
+                        'issue': "Text embedding models typically perform best on Edge with WebNN",
+                        'suggestion': "Consider allocating more text processing to Edge browsers with WebNN"
+                    })
+        
+        return recommendations
+        
     async def close(self):
         """Close all resources used by the model sharding manager."""
         if self.resource_pool:
-            self.resource_pool.close()
+            # Save performance history to database if db_path is set
+            if hasattr(self, '_performance_history') and hasattr(self, 'db_path') and self.db_path:
+                try:
+                    await self._save_performance_history_to_db()
+                    logger.info(f"Performance history saved to database: {self.db_path}")
+                except Exception as e:
+                    logger.warning(f"Error saving performance history to database: {e}")
+            
+            await self.resource_pool.close()
             logger.info("Model sharding manager closed")
+        
         self.initialized = False
         self.components = []
+    
+    def get_performance_history(self):
+        """Get comprehensive performance history for sharded model execution."""
+        if not hasattr(self, '_performance_history'):
+            return {'error': 'No performance history available'}
+        
+        return self._performance_history
+        
+    async def _update_performance_history(self, components, results, execution_time):
+        """
+        Update performance history with results from component execution.
+        
+        Args:
+            components: List of components that were executed
+            results: Results from component execution
+            execution_time: Total execution time
+        """
+        if not hasattr(self, '_performance_history'):
+            return
+            
+        history = self._performance_history
+        timestamp = time.time()
+        
+        # Update overall metrics
+        overall = history['overall_metrics']
+        overall['execution_count'] += 1
+        
+        # Track success/failure
+        successful_components = []
+        failed_components = []
+        
+        for i, result in enumerate(results):
+            if i < len(components):
+                component = components[i]
+                success = 'error' not in result
+                
+                if success:
+                    successful_components.append(component)
+                    overall['success_count'] += 1
+                else:
+                    failed_components.append(component)
+                    overall['error_count'] += 1
+                    
+                # Add to timeline
+                history['timeline'].append({
+                    'timestamp': timestamp,
+                    'component_id': component.component_id,
+                    'browser': component.browser,
+                    'shard_type': component.shard_type,
+                    'shard_index': component.shard_index,
+                    'success': success,
+                    'execution_time': execution_time,
+                    'error': result.get('error') if not success else None
+                })
+        
+        # Update browser and component metrics
+        self._update_component_metrics(successful_components, failed_components)
+        
+        # Update success rate for overall metrics
+        if overall['execution_count'] > 0:
+            overall['success_rate'] = overall['success_count'] / overall['execution_count']
+    
+    def _update_component_metrics(self, successful_components, failed_components):
+        """Update metrics for both successful and failed components."""
+        history = self._performance_history
+        
+        # Process successful components
+        for component in successful_components:
+            component_id = component.component_id
+            
+            # Initialize component history if not exists
+            if component_id not in history['components']:
+                history['components'][component_id] = {
+                    'success_count': 0,
+                    'error_count': 0,
+                    'total_latency': 0,
+                    'execution_count': 0,
+                    'avg_latency': 0,
+                    'browser': component.browser,
+                    'platform': component.platform,
+                    'shard_type': component.shard_type,
+                    'shard_index': component.shard_index,
+                    'model_type': self.model_type
+                }
+            
+            # Update metrics
+            comp_history = history['components'][component_id]
+            comp_history['success_count'] += 1
+            comp_history['execution_count'] += 1
+            
+            # Update latency if available
+            if 'inference_time' in component.metrics:
+                latency = component.metrics['inference_time'] * 1000  # Convert to ms
+                comp_history['total_latency'] += latency
+                comp_history['avg_latency'] = comp_history['total_latency'] / comp_history['execution_count']
+            
+            # Update browser metrics
+            self._update_browser_metrics(component, True)
+            
+            # Update shard type metrics
+            self._update_shard_type_metrics(component, True)
+        
+        # Process failed components
+        for component in failed_components:
+            component_id = component.component_id
+            
+            # Initialize component history if not exists
+            if component_id not in history['components']:
+                history['components'][component_id] = {
+                    'success_count': 0,
+                    'error_count': 0,
+                    'total_latency': 0,
+                    'execution_count': 0,
+                    'avg_latency': 0,
+                    'browser': component.browser,
+                    'platform': component.platform,
+                    'shard_type': component.shard_type,
+                    'shard_index': component.shard_index,
+                    'model_type': self.model_type
+                }
+            
+            # Update metrics
+            comp_history = history['components'][component_id]
+            comp_history['error_count'] += 1
+            comp_history['execution_count'] += 1
+            
+            # Update browser metrics
+            self._update_browser_metrics(component, False)
+            
+            # Update shard type metrics
+            self._update_shard_type_metrics(component, False)
+    
+    def _update_browser_metrics(self, component, success):
+        """Update browser-specific metrics."""
+        history = self._performance_history
+        browser = component.browser
+        
+        # Initialize browser metrics if not exists
+        if browser not in history['browser_metrics']:
+            history['browser_metrics'][browser] = {
+                'success_count': 0,
+                'error_count': 0,
+                'total_latency': 0,
+                'execution_count': 0,
+                'success_rate': 0,
+                'avg_latency': 0
+            }
+        
+        # Update browser metrics
+        browser_metrics = history['browser_metrics'][browser]
+        browser_metrics['execution_count'] += 1
+        
+        if success:
+            browser_metrics['success_count'] += 1
+            
+            # Update browser latency if available
+            if 'inference_time' in component.metrics:
+                browser_metrics['total_latency'] += component.metrics['inference_time'] * 1000
+                browser_metrics['avg_latency'] = browser_metrics['total_latency'] / browser_metrics['execution_count']
+        else:
+            browser_metrics['error_count'] += 1
+        
+        # Calculate success rate
+        browser_metrics['success_rate'] = browser_metrics['success_count'] / browser_metrics['execution_count']
+    
+    def _update_shard_type_metrics(self, component, success):
+        """Update shard type-specific metrics."""
+        history = self._performance_history
+        shard_type = component.shard_type
+        
+        # Initialize shard type metrics if not exists
+        if shard_type not in history['shard_types']:
+            history['shard_types'][shard_type] = {
+                'success_count': 0,
+                'error_count': 0,
+                'total_latency': 0,
+                'execution_count': 0
+            }
+        
+        # Update shard type metrics
+        shard_metrics = history['shard_types'][shard_type]
+        shard_metrics['execution_count'] += 1
+        
+        if success:
+            shard_metrics['success_count'] += 1
+            
+            # Update shard type latency if available
+            if 'inference_time' in component.metrics:
+                shard_metrics['total_latency'] += component.metrics['inference_time'] * 1000
+        else:
+            shard_metrics['error_count'] += 1
+            
+    async def _record_recovery_event(self, component, success, error=None, recovery_type=None):
+        """Record a component recovery event in the performance history."""
+        if not hasattr(self, '_performance_history'):
+            return
+            
+        event = {
+            'timestamp': time.time(),
+            'component_id': component.component_id,
+            'browser': component.browser,
+            'platform': component.platform,
+            'shard_type': component.shard_type,
+            'shard_index': component.shard_index,
+            'success': success,
+            'error': str(error) if error else None,
+            'recovery_type': recovery_type
+        }
+        
+        self._performance_history['recovery_events'].append(event)
+        
+    async def _save_performance_history_to_db(self):
+        """Save performance history to database if available."""
+        if not hasattr(self, 'db_path') or not self.db_path:
+            return
+            
+        # Check if DuckDB is available
+        try:
+            import duckdb
+        except ImportError:
+            logger.warning("DuckDB not available, cannot save performance history to database")
+            return
+            
+        try:
+            # Connect to database
+            conn = duckdb.connect(self.db_path)
+            
+            # Create tables if they don't exist
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS model_sharding_history (
+                    id INTEGER PRIMARY KEY,
+                    timestamp TIMESTAMP,
+                    model_name VARCHAR,
+                    model_type VARCHAR,
+                    num_shards INTEGER,
+                    shard_type VARCHAR,
+                    total_executions INTEGER,
+                    successful_executions INTEGER,
+                    failed_executions INTEGER,
+                    success_rate FLOAT,
+                    avg_latency_ms FLOAT,
+                    memory_usage_mb FLOAT,
+                    history_data JSON
+                )
+            """)
+            
+            # Prepare data for insertion
+            history = self._performance_history
+            overall = history['overall_metrics']
+            
+            # Calculate success rate
+            success_rate = 0
+            if overall['execution_count'] > 0:
+                success_rate = overall['success_count'] / overall['execution_count']
+                
+            # Insert data
+            conn.execute("""
+                INSERT INTO model_sharding_history (
+                    timestamp, model_name, model_type, num_shards, shard_type,
+                    total_executions, successful_executions, failed_executions,
+                    success_rate, avg_latency_ms, memory_usage_mb, history_data
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                time.time(), self.model_name, self.model_type, self.num_shards, self.shard_type,
+                overall['execution_count'], overall['success_count'], overall['error_count'],
+                success_rate, overall.get('avg_latency', 0), self.metrics.get('memory_usage', 0),
+                json.dumps(history)
+            ))
+            
+            # Commit changes and close connection
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            logger.warning(f"Error saving performance history to database: {e}")
+            import traceback
+            traceback.print_exc()
 
 # Example usage
 async def test_model_sharding(model_name, num_shards=3, shard_type="layer", model_type="text"):

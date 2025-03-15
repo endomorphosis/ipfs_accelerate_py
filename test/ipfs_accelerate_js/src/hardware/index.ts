@@ -18,6 +18,39 @@ export * from './webnn/capabilities';
 // Hardware detection utilities
 export * from './detection/hardware_detector';
 
+// Export Hardware Abstraction Layer
+export { 
+  HardwareAbstractionLayer, 
+  createHardwareAbstractionLayer,
+  BackendType,
+  ModelType,
+  HardwareRecommendation,
+  BackendSelectionCriteria,
+  HardwareAbstractionLayerConfig
+} from './hardware_abstraction_layer';
+
+// Export Performance Tracking
+export {
+  PerformanceTracker,
+  PerformanceRecord,
+  PerformanceTrend,
+  createPerformanceTracker
+} from './performance_tracking';
+
+// Export Error Recovery System
+export {
+  ErrorRecoveryManager,
+  ErrorCategory,
+  BackendSwitchStrategy,
+  OperationFallbackStrategy,
+  BrowserSpecificRecoveryStrategy,
+  ParameterAdjustmentStrategy,
+  RecoveryContext,
+  ErrorRecoveryStrategy,
+  RecoveryResult,
+  createErrorRecoveryManager
+} from './error_recovery';
+
 // Factory function to create the optimal backend
 import { HardwareBackend } from './interfaces/hardware_backend';
 import { WebGPUBackend, createWebGPUBackend } from './webgpu/backend';

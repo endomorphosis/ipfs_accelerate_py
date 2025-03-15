@@ -332,17 +332,92 @@ class AzureDevOpsClient(CIProviderInterface):
                 logger.error(f"Artifact file not found: {artifact_path}")
                 return False
             
-            # In a real implementation, this would upload to Azure DevOps artifacts
-            # or attach the file to the test run
+            # Determine file content type
+            content_type = self._get_content_type(artifact_path)
             
-            logger.info(f"Artifact upload for Azure DevOps not fully implemented. Would upload {artifact_path} as {artifact_name}")
+            # For Azure DevOps, we can use the test attachments API to associate the artifact with the test run
+            # First, create container for the attachment
+            container_url = f"{self.api_url}test/runs/{test_run_id}/attachments"
             
-            # For demonstration, we'll just return success
-            return True
+            container_payload = {
+                "attachmentType": "GeneralAttachment",
+                "fileName": artifact_name,
+                "comment": f"Artifact uploaded via Distributed Testing Framework"
+            }
+            
+            # Create the attachment container
+            async with self.session.post(container_url, json=container_payload) as response:
+                if response.status == 200:
+                    container_data = await response.json()
+                    attachment_id = container_data.get("id")
+                    
+                    if not attachment_id:
+                        logger.error("Failed to get attachment ID from Azure DevOps response")
+                        return False
+                    
+                    # Now upload the actual file content to the attachment
+                    upload_url = f"{self.api_url}test/runs/{test_run_id}/attachments/{attachment_id}"
+                    
+                    # Read file content
+                    with open(artifact_path, "rb") as f:
+                        file_content = f.read()
+                    
+                    # Upload the file content
+                    async with self.session.put(
+                        upload_url,
+                        headers={"Content-Type": content_type},
+                        data=file_content
+                    ) as upload_response:
+                        if upload_response.status in (200, 201):
+                            logger.info(f"Successfully uploaded artifact {artifact_name} to Azure DevOps test run {test_run_id}")
+                            return True
+                        else:
+                            error_text = await upload_response.text()
+                            logger.error(f"Error uploading artifact content to Azure DevOps: {upload_response.status} - {error_text}")
+                            return False
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Error creating artifact container in Azure DevOps: {response.status} - {error_text}")
+                    return False
             
         except Exception as e:
             logger.error(f"Exception uploading artifact to Azure DevOps: {str(e)}")
             return False
+    
+    def _get_content_type(self, file_path: str) -> str:
+        """
+        Determine the content type based on file extension.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            Content type string
+        """
+        # Get file extension
+        _, ext = os.path.splitext(file_path)
+        ext = ext.lower()
+        
+        # Map extensions to content types
+        content_type_map = {
+            ".json": "application/json",
+            ".txt": "text/plain",
+            ".log": "text/plain",
+            ".csv": "text/csv",
+            ".html": "text/html",
+            ".xml": "application/xml",
+            ".pdf": "application/pdf",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".zip": "application/zip",
+            ".tar": "application/x-tar",
+            ".gz": "application/gzip"
+        }
+        
+        # Default to octet-stream if extension not recognized
+        return content_type_map.get(ext, "application/octet-stream")
     
     async def close(self) -> None:
         """

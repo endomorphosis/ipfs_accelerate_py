@@ -1,443 +1,309 @@
-# Hardware Abstraction Layer for Vision Transformer (ViT)
+# Hardware Abstraction Layer Guide: Vision Transformer (ViT) Model Implementation
 
-This guide explains how to use the Hardware Abstraction Layer (HAL) with Vision Transformer (ViT) models for optimal performance across different hardware backends.
+## Overview
 
-## Introduction
+This guide provides a comprehensive overview of the Vision Transformer (ViT) model implementation using the Hardware Abstraction Layer (HAL). The HAL-based ViT implementation enables automatic hardware backend selection and optimization based on the available hardware and browser environment, ensuring optimal performance across a wide range of devices.
 
-The Hardware Abstraction Layer (HAL) provides a unified interface for executing AI models on different hardware backends (WebGPU, WebNN, CPU). When using the HAL with Vision Transformer (ViT) models, you get:
+## Key Features
 
-1. **Automatic hardware selection** - Uses the best available hardware for your specific browser and device
-2. **Optimized performance** - Applies backend-specific optimizations for maximum throughput
-3. **Graceful fallbacks** - Falls back to alternative backends if the preferred one isn't available
-4. **Consistent API** - Same code works across different hardware configurations
+- **Automatic backend selection**: The system automatically selects the most appropriate backend (WebGPU, WebNN, or CPU) based on hardware availability and model requirements
+- **Browser-specific optimizations**: Optimized implementations for different browsers (Chrome, Edge, Firefox, Safari)
+- **Advanced operation fusion**: Combines multiple operations into fused implementations for better performance
+- **Memory optimization**: Efficient memory management with explicit tensor release
+- **Cross-model tensor sharing**: Share embeddings between models to reduce memory usage
+- **Hardware-aware load balancing**: Distributes computations optimally across available hardware
+- **Fault tolerance**: Graceful degradation with automatic fallback to CPU when preferred backends are unavailable
+- **Performance metrics collection**: Comprehensive timing and performance data collection
 
-## Getting Started
+## Implementation Components
 
-### Installation
+The Hardware Abstracted ViT implementation consists of the following key components:
 
-```bash
-# If using npm
-npm install ipfs-accelerate
+1. **Hardware Abstraction Layer (HAL)**: Provides a unified interface to multiple hardware backends
+2. **HardwareAbstractedViT class**: Main implementation that leverages HAL for optimal performance
+3. **Storage Manager**: Interface for model weights storage and caching
+4. **Backend Selection Logic**: Intelligent selection of optimal backend based on model requirements
+5. **Performance Metrics System**: Collection and analysis of performance data
 
-# If using yarn
-yarn add ipfs-accelerate
-```
+## Configuration
 
-### Basic Usage
+The ViT implementation can be configured with the following options:
 
 ```typescript
-import { HardwareAbstractedVIT, createHardwareAbstraction, StorageManager } from 'ipfs-accelerate';
-
-// Create storage manager for model weights
-const storageManager = new StorageManager('vit-models');
-await storageManager.initialize();
-
-// Create ViT configuration
-const vitConfig = {
-  imageSize: 224,
-  patchSize: 16,
-  numLayers: 12,
-  hiddenSize: 768,
-  numHeads: 12,
-  mlpDim: 3072,
-  numClasses: 1000,
-  useOptimizedAttention: true,
-  modelId: 'vit-base-patch16-224',
-  // Optional quantization for better performance and lower memory usage
-  quantization: {
-    enabled: true,
-    bits: 8,       // 8-bit quantization (can also use 4 for more compression)
-    blockSize: 32  // Block size for quantization
-  }
-};
-
-// Initialize HAL-accelerated ViT model
-const model = new HardwareAbstractedVIT(vitConfig, storageManager);
-await model.initialize();
-
-// Get model information
-const modelInfo = model.getModelInfo();
-console.log(`Selected backend: ${modelInfo.selectedBackend}`);
-console.log(`Available backends: ${modelInfo.availableBackends.join(', ')}`);
-
-// Run inference on an image
-const imageElement = document.getElementById('input-image');
-const probabilities = await model.predict(imageElement);
-
-// Get top 5 predictions
-const indices = Array.from(Array(probabilities.length).keys());
-const topIndices = indices
-  .sort((a, b) => probabilities[b] - probabilities[a])
-  .slice(0, 5);
-
-// Display results (assuming you have ImageNet labels)
-for (const idx of topIndices) {
-  console.log(`${labels[idx]}: ${(probabilities[idx] * 100).toFixed(2)}%`);
+export interface HardwareAbstractedViTConfig {
+  // Model architecture parameters
+  modelId: string;              // Model identifier (e.g., "google/vit-base-patch16-224")
+  imageSize: number;            // Input image size (e.g., 224 for ViT-base-patch16-224)
+  patchSize: number;            // Patch size (e.g., 16 for ViT-base-patch16-224)
+  hiddenSize: number;           // Hidden size (typically 768 for base models)
+  numLayers: number;            // Number of transformer layers
+  numHeads: number;             // Number of attention heads
+  intermediateSize: number;     // Intermediate size in feed-forward networks
+  layerNormEps: number;         // Layer normalization epsilon
+  numClasses: number;           // Number of output classes (e.g., 1000 for ImageNet)
+  channels?: number;            // Number of input channels (default: 3 for RGB)
+  
+  // Hardware optimization parameters
+  backendPreference?: string[]; // Backend preference order
+  prioritizeSpeed?: boolean;    // Whether to prioritize speed over accuracy
+  useQuantization?: boolean;    // Whether to use quantization for memory efficiency
+  enableTensorSharing?: boolean; // Whether to enable tensor sharing with other models
+  browserType?: string;         // Browser type for specific optimizations
 }
-
-// Clean up resources when done
-await model.dispose();
-```
-
-## Configuration Options
-
-The `HardwareAbstractedVIT` class accepts the following configuration options:
-
-```typescript
-interface ViTConfig {
-  imageSize: number;         // Input image size (224 for ViT-Base)
-  patchSize: number;         // Patch size (16 for ViT-Base)
-  numLayers: number;         // Number of transformer layers (12 for ViT-Base)
-  hiddenSize: number;        // Hidden dimension size (768 for ViT-Base)
-  numHeads: number;          // Number of attention heads (12 for ViT-Base)
-  mlpDim: number;            // MLP/FFN dimension (3072 for ViT-Base)
-  numClasses: number;        // Number of output classes (1000 for ImageNet)
-  quantization?: {           // Optional quantization settings
-    enabled: boolean;        // Whether to use quantization
-    bits: number;            // Quantization bit depth (4 or 8)
-    blockSize?: number;      // Quantization block size
-  };
-  batchSize?: number;        // Batch size for inference (default: 1)
-  useOptimizedAttention?: boolean; // Whether to use flash attention (default: true)
-  modelId?: string;          // Model ID for storage and caching
-}
-```
-
-## Architecture
-
-The Hardware Abstracted ViT model is built on top of the Hardware Abstraction Layer (HAL), which provides a unified interface for executing operations across different hardware backends.
-
-### Component Diagram
-
-```
-┌────────────────────────────────┐
-│   HardwareAbstractedVIT        │
-├────────────────────────────────┤
-│ ┌──────────────────────────┐   │
-│ │  Hardware Abstraction    │   │
-│ │        Layer             │   │
-│ └──────────────────────────┘   │
-│          │       │       │     │
-│          ▼       ▼       ▼     │
-│ ┌─────────┐ ┌─────────┐ ┌────┐ │
-│ │ WebGPU  │ │ WebNN   │ │CPU │ │
-│ │ Backend │ │ Backend │ │Back│ │
-│ └─────────┘ └─────────┘ └────┘ │
-└────────────────────────────────┘
-      │              │
-      ▼              ▼
-┌──────────┐  ┌─────────────┐
-│Hardware  │  │StorageManager│
-│Detection │  │   (Weights)  │
-└──────────┘  └─────────────┘
-```
-
-### Backend Selection Logic
-
-The HAL uses the following logic to select the optimal backend for ViT:
-
-1. Vision models (like ViT) typically perform best on WebGPU, so it's tried first if available
-2. If WebGPU is not available or fails, WebNN is tried next
-3. If neither WebGPU nor WebNN are available, the CPU backend is used as a fallback
-4. Browser-specific optimizations are applied based on the detected browser
-
-## Advanced Usage
-
-### Comparing Backends
-
-You can explicitly run performance comparisons across available backends:
-
-```typescript
-import { runCrossBackendPerformanceComparison } from 'ipfs-accelerate';
-
-// Run performance comparison
-const comparison = await runCrossBackendPerformanceComparison(imageUrl);
-
-console.log('Results:', comparison.results);
-console.log('Best backend:', comparison.bestBackend);
-```
-
-### Manual Backend Selection
-
-While automatic backend selection is recommended, you can manually specify which backend to use for specific use cases:
-
-```typescript
-import { HardwareAbstractedVIT, createHardwareAbstraction, StorageManager } from 'ipfs-accelerate';
-
-// Create hardware abstraction with specific backend preferences
-const hal = await createHardwareAbstraction({
-  backendOrder: ['webgpu', 'webnn', 'cpu'], // Priority order to try
-  modelPreferences: {
-    'vision': 'webgpu',     // Force WebGPU for vision models
-    'text': 'webnn',        // Force WebNN for text models
-    'audio': 'webgpu',      // Force WebGPU for audio models
-  },
-  autoFallback: true        // Still allow fallbacks if preferred backend fails
-});
-
-// Create ViT model with the custom HAL
-const model = new HardwareAbstractedVIT(vitConfig, storageManager, hal);
-await model.initialize();
-```
-
-### Handling Multiple Models
-
-When running multiple models, it's more efficient to share the HAL instance:
-
-```typescript
-import { createHardwareAbstraction, HardwareAbstractedVIT, HardwareAbstractedBERT } from 'ipfs-accelerate';
-
-// Create shared HAL
-const hal = await createHardwareAbstraction();
-
-// Create multiple models
-const vitModel = new HardwareAbstractedVIT(vitConfig, storageManager, hal);
-const bertModel = new HardwareAbstractedBERT(bertConfig, storageManager, hal);
-
-// Initialize models
-await vitModel.initialize();
-await bertModel.initialize();
-
-// Run inference
-const vitResults = await vitModel.predict(imageElement);
-const bertResults = await bertModel.predict(textInput);
-
-// Dispose resources
-await vitModel.dispose();
-await bertModel.dispose();
-hal.dispose();
-```
-
-### Cross-Model Tensor Sharing
-
-When running multiple models in sequence, you can share tensors between them for better performance:
-
-```typescript
-import { HardwareAbstractedVIT, HardwareAbstractedCLIP } from 'ipfs-accelerate';
-
-// Initialize models
-const vitModel = new HardwareAbstractedVIT(vitConfig, storageManager);
-const clipModel = new HardwareAbstractedCLIP(clipConfig, storageManager);
-
-await vitModel.initialize();
-await clipModel.initialize();
-
-// Run ViT and extract intermediate embeddings
-const { probabilities, embeddings } = await vitModel.predictWithEmbeddings(imageElement);
-
-// Pass embeddings to CLIP model
-const clipResults = await clipModel.predictFromEmbeddings(embeddings, textPrompts);
 ```
 
 ## Browser-Specific Optimizations
 
-The HAL applies different optimizations based on the detected browser:
+The implementation includes browser-specific optimizations tailored to each browser's strengths:
 
-### Chrome/Edge
+| Browser | Strengths | Specific Optimizations |
+|---------|-----------|------------------------|
+| Chrome  | General WebGPU performance | Larger workgroups, shared memory optimization, aggressive loop unrolling |
+| Firefox | Memory access patterns | Specialized memory access, optimized barriers, workgroups in multiples of 64 |
+| Edge    | WebNN support | WebNN acceleration for models that benefit from it |
+| Safari  | Metal integration | Metal-specific optimizations, strategic precision trade-offs |
 
-- Uses larger workgroup sizes for compute shaders
-- Applies shared memory optimizations for matrix operations
-- Enables more aggressive loop unrolling
-- Pre-compiles pipelines at initialization time
+## Usage Examples
 
-### Firefox
+### Basic Usage
 
-- Uses specialized memory access patterns for better performance
-- Applies optimized barriers for WebGPU operations
-- Uses workgroup sizes that are multiples of 64
-- Applies Firefox-specific optimizations for audio models
+```typescript
+import { createHardwareAbstractedViT } from 'ipfs_accelerate_js';
+import { createHardwareAbstraction } from 'ipfs_accelerate_js';
+import { IndexedDBStorageManager } from 'ipfs_accelerate_js';
 
-### Safari
+// Initialize hardware abstraction layer
+const hal = await createHardwareAbstraction();
 
-- Uses Metal-specific optimizations
-- Makes strategic precision trade-offs for better performance
-- Uses specialized memory management for unified memory architecture
-- Applies optimized workgroup sizes for Apple GPUs
+// Initialize storage manager
+const storageManager = new IndexedDBStorageManager();
+await storageManager.initialize();
+
+// Create ViT model with hardware abstraction
+const model = createHardwareAbstractedViT(hal, {
+  modelId: 'google/vit-base-patch16-224',
+  imageSize: 224,
+  patchSize: 16,
+  hiddenSize: 768,
+  numLayers: 12,
+  numHeads: 12,
+  intermediateSize: 3072,
+  layerNormEps: 1e-12,
+  numClasses: 1000,
+  useQuantization: true,
+  enableTensorSharing: true
+});
+
+// Initialize the model (load weights, prepare operations)
+await model.initialize();
+
+// Prepare image data
+const imageData = {
+  imageData: new Float32Array(224 * 224 * 3), // Image data in RGB format
+  width: 224,
+  height: 224,
+  isPreprocessed: false // Whether the image is already normalized
+};
+
+// Fill imageData with actual image pixel values
+// ...
+
+// Run inference
+const result = await model.process(imageData);
+
+// Get classification results
+console.log('Class ID:', result.classId);
+console.log('Probabilities:', result.probabilities);
+console.log('Backend used:', result.backend);
+
+// Cleanup resources
+await model.dispose();
+```
+
+### Advanced Usage with Hardware Selection
+
+```typescript
+// Create hardware abstraction with specific preferences
+const hal = await createHardwareAbstraction({
+  backendPreference: ['webgpu', 'webnn', 'cpu'],
+  browserOptimizations: true
+});
+
+// Create ViT model with hardware abstraction
+const model = createHardwareAbstractedViT(hal, {
+  modelId: 'google/vit-large-patch16-224',
+  imageSize: 224,
+  patchSize: 16,
+  hiddenSize: 1024,
+  numLayers: 24,
+  numHeads: 16,
+  intermediateSize: 4096,
+  layerNormEps: 1e-12,
+  numClasses: 1000,
+  useQuantization: true,
+  enableTensorSharing: true,
+  prioritizeSpeed: true // Prioritize speed over accuracy
+});
+
+// Initialize the model
+await model.initialize();
+
+// Get model info
+const modelInfo = model.getModelInfo();
+console.log('Selected backend:', modelInfo.selectedBackend);
+console.log('Available backends:', modelInfo.availableBackends);
+
+// Run inference with performance metrics
+const startTime = performance.now();
+const result = await model.process(imageData);
+const endTime = performance.now();
+
+console.log(`Inference time: ${endTime - startTime}ms`);
+console.log('Backend used:', result.backend);
+```
+
+### Cross-Model Tensor Sharing
+
+```typescript
+// Create hardware abstraction layer
+const hal = await createHardwareAbstraction();
+
+// Create ViT model
+const vitModel = createHardwareAbstractedViT(hal, {
+  modelId: 'google/vit-base-patch16-224',
+  enableTensorSharing: true
+});
+
+// Create BERT model
+const bertModel = createHardwareAbstractedBERT(hal, {
+  modelId: 'bert-base-uncased',
+  enableTensorSharing: true
+});
+
+// Initialize both models
+await vitModel.initialize();
+await bertModel.initialize();
+
+// Process an image with ViT
+const imageResult = await vitModel.process(imageData);
+
+// Get the vision embedding
+const visionEmbedding = vitModel.getSharedTensor('vision_embedding');
+
+// Process text with BERT
+const text = "A cat sitting on a mat";
+const textResult = await bertModel.predict(text);
+
+// Get the text embedding
+const textEmbedding = bertModel.getSharedTensor('text_embedding');
+
+// Now you can use both embeddings for multimodal tasks
+// For example, you could pass them to a classifier or similarity function
+```
 
 ## Performance Considerations
 
-To get the best performance from the Hardware Abstracted ViT model:
+### Memory Management
 
-1. **Enable quantization** - 8-bit quantization can significantly reduce memory usage with minimal accuracy impact
-2. **Use browser-optimized attention** - The `useOptimizedAttention` option enables specialized attention implementations for each browser
-3. **Batch inference when possible** - Processing multiple images in a batch is more efficient
-4. **Keep the model loaded** - Initialization has some overhead, so reuse the model instance for multiple inferences
-5. **Dispose resources when done** - Call `dispose()` when you're done with the model to free memory
+The implementation includes careful memory management to avoid memory leaks and reduce memory pressure:
 
-## API Reference
+1. **Explicit tensor release**: Tensors are explicitly released when no longer needed
+2. **Reference counting**: For shared tensors, reference counting ensures proper cleanup
+3. **Intelligent caching**: Caching is used for frequent operations with intelligent cache invalidation
 
-### `HardwareAbstractedVIT`
+### Operation Fusion
 
-The main class for running ViT models with hardware acceleration.
+Operation fusion combines multiple operations into single optimized implementations:
 
-```typescript
-class HardwareAbstractedVIT {
-  constructor(
-    config: ViTConfig,
-    storageManager: StorageManager,
-    hal?: HardwareAbstraction
-  );
-  
-  async initialize(): Promise<void>;
-  async predict(image: Float32Array | HTMLImageElement): Promise<Float32Array>;
-  async predictWithEmbeddings(image: Float32Array | HTMLImageElement): Promise<{
-    probabilities: Float32Array;
-    embeddings: TensorView;
-  }>;
-  getModelInfo(): Record<string, any>;
-  async dispose(): Promise<void>;
-}
-```
+1. **Attention fusion**: Combines query, key, value projections and attention computation
+2. **MatMul + Add + Activation** fusion for feed-forward networks
+3. **Layer normalization fusion**: Combines multiple tensor operations in layer normalization
 
-### `createHardwareAbstraction`
+### Quantization
 
-Factory function to create a Hardware Abstraction Layer instance.
+Quantization reduces memory usage and can improve performance on some hardware:
 
-```typescript
-function createHardwareAbstraction(options?: HardwareAbstractionOptions): Promise<HardwareAbstraction>;
+1. **8-bit quantization**: Reduces memory footprint by ~4x with minimal accuracy loss
+2. **4-bit quantization**: Reduces memory footprint by ~8x with moderate accuracy loss
+3. **Mixed precision**: Uses different precision for different operations based on sensitivity
 
-interface HardwareAbstractionOptions {
-  backendOrder?: HardwareBackendType[];
-  modelPreferences?: Record<string, HardwareBackendType | 'auto'>;
-  backendOptions?: Record<HardwareBackendType, Record<string, any>>;
-  autoFallback?: boolean;
-  autoSelection?: boolean;
-}
-```
+## Model Variants
 
-### `runCrossBackendPerformanceComparison`
+The implementation supports different ViT model variants:
 
-Utility function to compare performance across different backends.
+| Model Name | Parameters | Layers | Hidden Size | Heads | Patch Size | Image Size | Recommended For |
+|------------|------------|--------|-------------|-------|------------|------------|-----------------|
+| vit-tiny   | 5M         | 6      | 512         | 8     | 16         | 224        | Mobile devices, low resources |
+| vit-base   | 86M        | 12     | 768         | 12    | 16         | 224        | General purpose |
+| vit-large  | 307M       | 24     | 1024        | 16    | 16         | 224        | High accuracy requirements |
+| vit-huge   | 632M       | 32     | 1280        | 16    | 14         | 224        | Maximum accuracy |
 
-```typescript
-function runCrossBackendPerformanceComparison(
-  imageUrl: string
-): Promise<{
-  results: Record<string, {
-    inferenceTime: number;
-    supportLevel: string;
-    topPrediction: string;
-  }>;
-  bestBackend: string;
-}>;
-```
+## Browser Compatibility
+
+The implementation has been tested and optimized for the following browsers:
+
+| Browser | WebGPU | WebNN | Recommended For |
+|---------|--------|-------|-----------------|
+| Chrome 113+ | ✅ | ❌ | Vision models |
+| Edge 113+ | ✅ | ✅ | Text models |
+| Firefox 115+ | ✅ | ❌ | Audio models |
+| Safari 16.4+ | ✅ | ❌ | Mobile devices |
+
+## Implementation Files
+
+- `/src/model/vision/hardware_abstracted_vit.ts`: Hardware Abstracted ViT implementation
+- `/src/model/vision/vit.ts`: Base ViT implementation
+- `/src/hardware/hardware_abstraction_layer.ts`: Hardware Abstraction Layer core
+- `/src/hardware/interfaces/hardware_backend.ts`: Hardware backend interface definition
+- `/src/tensor/tensor.ts`: Tensor implementation for computational operations
+- `/src/tensor/shared_tensor.ts`: Shared tensor implementation for cross-model sharing
+
+## Performance Metrics
+
+The implementation collects comprehensive performance metrics including:
+
+1. **Initialization time**: Time taken to initialize the model and hardware
+2. **Preprocessing time**: Time taken to prepare image input
+3. **Inference time**: Time taken for model inference
+4. **Total processing time**: End-to-end processing time
+5. **Backend information**: Information about the selected backend
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **WebGPU not available** - WebGPU is a newer API and may not be available in all browsers. The HAL will automatically fall back to WebNN or CPU.
+1. **Backend initialization failure**: 
+   - Check that browser supports WebGPU/WebNN
+   - Ensure browser is up to date
+   - Check for any browser security settings blocking hardware access
 
-2. **Out of memory** - Vision Transformer models can be memory-intensive. Try:
-   - Enabling quantization with `quantization: { enabled: true, bits: 8 }`
-   - Reducing the batch size
-   - Using a smaller model variant (e.g., ViT-Tiny instead of ViT-Base)
+2. **Out of memory errors**:
+   - Enable quantization
+   - Use a smaller model variant (e.g., ViT-Tiny instead of ViT-Base)
+   - Reduce image size or batch size
 
-3. **Slow initialization** - The first initialization may be slow due to shader compilation. Subsequent runs will be faster.
+3. **Slow performance**:
+   - Check that browser-specific optimizations are enabled
+   - Ensure no other GPU-intensive tasks are running
+   - Compare backends using the benchmarking tools
 
-4. **Model weights not found** - Ensure the model weights are properly loaded into the storage manager.
+### Debugging
 
-### Error Handling
+The implementation includes various debugging facilities:
 
-The HAL includes robust error handling and automatic fallbacks. However, you should still wrap your code in try-catch blocks:
+1. **Detailed metrics**: Track performance across different stages of processing
+2. **Backend comparison**: Compare performance across available backends
+3. **Model information**: Get detailed information about the model configuration
 
-```typescript
-try {
-  const model = new HardwareAbstractedVIT(vitConfig, storageManager);
-  await model.initialize();
-  const probabilities = await model.predict(imageElement);
-  await model.dispose();
-} catch (error) {
-  console.error('Error running ViT model:', error);
-  // Handle the error appropriately
-}
-```
+## Benchmarks
 
-## Examples
+Based on our benchmarking across different browsers and hardware configurations:
 
-### Basic Classification Example
-
-```typescript
-import { HardwareAbstractedVIT, StorageManager } from 'ipfs-accelerate';
-
-async function classifyImage(imageUrl) {
-  // Initialize storage manager
-  const storageManager = new StorageManager('vit-models');
-  await storageManager.initialize();
-  
-  // Create ViT model
-  const vitConfig = {
-    imageSize: 224,
-    patchSize: 16,
-    numLayers: 12,
-    hiddenSize: 768,
-    numHeads: 12,
-    mlpDim: 3072,
-    numClasses: 1000,
-    quantization: {
-      enabled: true,
-      bits: 8
-    },
-    modelId: 'vit-base-patch16-224'
-  };
-  
-  const model = new HardwareAbstractedVIT(vitConfig, storageManager);
-  await model.initialize();
-  
-  // Load image
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  await new Promise(resolve => {
-    img.onload = resolve;
-    img.src = imageUrl;
-  });
-  
-  // Run inference
-  console.time('inference');
-  const probabilities = await model.predict(img);
-  console.timeEnd('inference');
-  
-  // Get top 5 predictions
-  const indices = Array.from(Array(probabilities.length).keys());
-  const sortedIndices = indices
-    .sort((a, b) => probabilities[b] - probabilities[a])
-    .slice(0, 5);
-  
-  // Map to class labels (assuming you have a labels array)
-  const topPredictions = sortedIndices.map(idx => ({
-    label: labels[idx],
-    probability: probabilities[idx]
-  }));
-  
-  console.log('Top predictions:', topPredictions);
-  
-  // Clean up
-  await model.dispose();
-  
-  return topPredictions;
-}
-```
-
-### Interactive Demo Application
-
-See [HardwareAbstractionDemo.html](./HardwareAbstractionDemo.html) for a complete interactive demo that shows:
-
-1. Hardware capability detection
-2. Model inference with ViT
-3. Cross-backend performance comparison
-4. Visualization of results
-
-## Performance Benchmarks
-
-Based on our testing across various hardware configurations and browsers, the Hardware Abstracted ViT model shows significant performance improvements over non-hardware-accelerated implementations:
-
-| Backend | Average Inference Time | Relative Speed | Best For |
+| Backend | Average Inference Time | Speedup vs. CPU | Best For |
 |---------|------------------------|----------------|----------|
-| WebGPU  | 138 ms                 | 6.5x           | Vision models on Chrome/Firefox |
-| WebNN   | 245 ms                 | 3.6x           | Text models on Edge |
-| CPU     | 890 ms                 | 1.0x           | Fallback on all browsers |
-
-*Testing performed on ViT-Base model with 224x224 input images, March 2025*
+| WebGPU  | 138 ms                | 6.5x          | Vision models on Chrome/Firefox |
+| WebNN   | 245 ms                | 3.6x          | Text models on Edge |
+| CPU     | 890 ms                | 1.0x          | Fallback on all browsers |
 
 Browser-specific optimizations result in additional performance gains:
 
@@ -445,29 +311,32 @@ Browser-specific optimizations result in additional performance gains:
 - Firefox: 10-15% faster attention mechanism with optimized memory access patterns
 - Safari: 20-25% better performance with Metal-specific optimizations
 
-## Roadmap
+## Interactive Example
 
-The Hardware Abstracted ViT implementation is part of our broader effort to provide hardware-accelerated AI models across different browsers and devices. Our roadmap includes:
+A fully interactive example demonstrating the Hardware Abstracted ViT implementation is available at:
 
-1. **Q2 2025**:
-   - Complete remaining model implementations (BERT, Whisper, CLIP) with HAL
-   - Add more browser-specific optimizations for each model
-   - Finalize NPM package for distribution
+`/ipfs_accelerate_js/examples/browser/models/hardware_abstracted_vit_example.html`
 
-2. **Q3 2025**:
-   - Add support for more model architectures (stable diffusion, MusicGen)
-   - Implement cross-model fusion for more efficient multi-model pipelines
-   - Add advanced quantization techniques (4-bit, mixed precision)
+This example includes:
 
-3. **Q4 2025**:
-   - Integrate with emerging WebGPU and WebNN capabilities
-   - Add support for mobile-specific optimizations
-   - Implement progressive loading for improved UX
+1. Hardware capability detection for your browser
+2. ViT model configuration options (model variant, quantization, tensor sharing)
+3. Image classification with performance metrics
+4. Cross-backend performance comparison
+5. Multimodal integration with BERT for text-image similarity
 
-## Resources
+## Multimodal Applications
 
-- [Hardware Abstraction Layer Guide](./HARDWARE_ABSTRACTION_LAYER_GUIDE.md) - Complete guide to the HAL
-- [Vision Transformer Paper](https://arxiv.org/abs/2010.11929) - Original ViT paper
-- [WebGPU Documentation](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API) - Mozilla documentation for WebGPU
-- [WebNN Documentation](https://www.w3.org/TR/webnn/) - W3C documentation for WebNN
-- [CROSS_MODEL_TENSOR_SHARING_GUIDE.md](./CROSS_MODEL_TENSOR_SHARING_GUIDE.md) - Guide to efficient tensor sharing between models
+The ViT implementation can be combined with other models to create multimodal applications:
+
+1. **Vision + Text**: Combine ViT with BERT for multimodal understanding
+2. **Vision + Audio**: Combine ViT with Whisper for audio-visual applications
+3. **Cross-modal search**: Use ViT embeddings for visual search or text-image matching
+
+## Conclusion
+
+The Hardware Abstracted ViT implementation provides a powerful, flexible, and efficient way to run Vision Transformer models across a wide range of hardware and browser environments. By leveraging the Hardware Abstraction Layer, it automatically selects the optimal execution strategy based on available hardware, ensuring the best possible performance while providing a consistent API regardless of the underlying execution environment.
+
+Future enhancements will focus on adding support for more ViT variants, implementing additional optimizations for different hardware backends, and improving integration with other models for multimodal applications.
+
+For more information, see [HARDWARE_ABSTRACTION_LAYER_GUIDE.md](./HARDWARE_ABSTRACTION_LAYER_GUIDE.md) and [CROSS_MODEL_TENSOR_SHARING_GUIDE.md](./CROSS_MODEL_TENSOR_SHARING_GUIDE.md).

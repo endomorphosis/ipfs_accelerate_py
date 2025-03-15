@@ -1,0 +1,298 @@
+name: Simulation Accuracy and Validation CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'duckdb_api/simulation_validation/**'
+      - '.github/workflows/simulation_validation_ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'duckdb_api/simulation_validation/**'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - unit
+          - e2e
+          - calibration
+          - drift
+          - visualization
+      hardware_profile:
+        description: 'Hardware profile to validate'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - cpu
+          - gpu
+          - webgpu
+
+jobs:
+  validate-simulation-framework:
+    runs-on: ubuntu-latest
+    outputs:
+      test_results_path: ${{ steps.run_tests.outputs.test_results_path }}
+      validation_timestamp: ${{ steps.timestamp.outputs.timestamp }}
+      validation_run_id: ${{ steps.runid.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+          pip install -r duckdb_api/simulation_validation/requirements.txt
+      
+      - name: Get timestamp
+        id: timestamp
+        run: echo "timestamp=$(date -Iseconds)" >> $GITHUB_OUTPUT
+        
+      - name: Generate run ID
+        id: runid
+        run: echo "run_id=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
+      
+      - name: Set up test environment
+        run: |
+          mkdir -p test_results
+          mkdir -p validation_output
+      
+      - name: Run tests
+        id: run_tests
+        run: |
+          TEST_TYPE="${{ github.event.inputs.test_type || 'all' }}"
+          HARDWARE_PROFILE="${{ github.event.inputs.hardware_profile || 'all' }}"
+          
+          if [ "$TEST_TYPE" = "all" ]; then
+            # Run all tests
+            python -m pytest duckdb_api/simulation_validation/test/ \
+              -v --cov=duckdb_api/simulation_validation --cov-report=xml:test_results/coverage.xml \
+              --junitxml=test_results/test-results.xml
+          else
+            # Run specific test type
+            python -m pytest duckdb_api/simulation_validation/test/test_*${TEST_TYPE}*.py \
+              -v --cov=duckdb_api/simulation_validation --cov-report=xml:test_results/coverage.xml \
+              --junitxml=test_results/test-results.xml
+          fi
+          
+          # Run the validation framework with the selected hardware profile
+          echo "Running simulation validation for profile: $HARDWARE_PROFILE"
+          python -m duckdb_api.simulation_validation.run_e2e_tests \
+            --hardware-profile $HARDWARE_PROFILE \
+            --run-id ${{ steps.runid.outputs.run_id }} \
+            --output-dir validation_output \
+            --html-report
+          
+          echo "test_results_path=test_results" >> $GITHUB_OUTPUT
+      
+      - name: Generate validation report
+        run: |
+          python -m duckdb_api.simulation_validation.simulation_validation_framework \
+            --generate-report \
+            --input-dir validation_output \
+            --output-dir validation_output \
+            --hardware-profile ${{ github.event.inputs.hardware_profile || 'all' }} \
+            --format html,markdown \
+            --run-id ${{ steps.runid.outputs.run_id }}
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: test_results/
+          
+      - name: Upload validation output
+        uses: actions/upload-artifact@v3
+        with:
+          name: validation-output
+          path: validation_output/
+
+  analyze-results:
+    needs: validate-simulation-framework
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r duckdb_api/simulation_validation/requirements.txt
+      
+      - name: Download test results
+        uses: actions/download-artifact@v3
+        with:
+          name: test-results
+          path: test_results/
+          
+      - name: Download validation output
+        uses: actions/download-artifact@v3
+        with:
+          name: validation-output
+          path: validation_output/
+      
+      - name: Analyze validation results
+        run: |
+          # Analyze test coverage
+          echo "### Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          python -m duckdb_api.simulation_validation.analyze_test_coverage \
+            --coverage-file test_results/coverage.xml \
+            --output-format markdown >> $GITHUB_STEP_SUMMARY
+          
+          # Analyze validation results
+          echo -e "\n### Validation Results Summary" >> $GITHUB_STEP_SUMMARY
+          python -m duckdb_api.simulation_validation.analyze_validation_results \
+            --results-dir validation_output \
+            --output-format markdown \
+            --run-id ${{ needs.validate-simulation-framework.outputs.validation_run_id }} >> $GITHUB_STEP_SUMMARY
+      
+      - name: Detect validation issues
+        id: detect_issues
+        run: |
+          # Run validation quality detector to find issues or anomalies
+          ISSUES=$(python -m duckdb_api.simulation_validation.detect_validation_issues \
+            --results-dir validation_output \
+            --threshold 0.1 \
+            --output-format json)
+          
+          # Check if high severity issues exist
+          HIGH_SEVERITY_COUNT=$(echo $ISSUES | python -c "import sys, json; print(sum(1 for i in json.load(sys.stdin)['issues'] if i['severity'] == 'high'))")
+          echo "high_severity_count=$HIGH_SEVERITY_COUNT" >> $GITHUB_OUTPUT
+          
+          # Add to step summary
+          echo -e "\n### Validation Issues" >> $GITHUB_STEP_SUMMARY
+          python -m duckdb_api.simulation_validation.detect_validation_issues \
+            --results-dir validation_output \
+            --threshold 0.1 \
+            --output-format markdown >> $GITHUB_STEP_SUMMARY
+      
+      - name: Create GitHub issue for severe validation issues
+        if: ${{ steps.detect_issues.outputs.high_severity_count > 0 }}
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const fs = require('fs');
+            const issuesOutput = fs.readFileSync('validation_output/validation_issues.md', 'utf8');
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Simulation Validation] High severity issues detected (${new Date().toISOString().slice(0,10)})`,
+              body: issuesOutput,
+              labels: ['simulation-validation', 'bug', 'high-priority']
+            });
+
+  build-dashboard:
+    needs: [validate-simulation-framework, analyze-results]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r duckdb_api/simulation_validation/requirements.txt
+      
+      - name: Download validation output
+        uses: actions/download-artifact@v3
+        with:
+          name: validation-output
+          path: validation_output/
+      
+      - name: Generate dashboard
+        run: |
+          # Create visualization dashboard
+          python -m duckdb_api.simulation_validation.visualization.generate_dashboard \
+            --input-dir validation_output \
+            --output-dir dashboard \
+            --run-id ${{ needs.validate-simulation-framework.outputs.validation_run_id }} \
+            --interactive \
+            --title "Simulation Validation Dashboard - ${{ needs.validate-simulation-framework.outputs.validation_timestamp }}"
+      
+      - name: Create index for GitHub Pages
+        run: |
+          # Create an index.html file
+          cat > dashboard/index.html << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Simulation Validation Dashboard</title>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+          </head>
+          <body>
+              <div class="container mt-4">
+                  <h1>Simulation Validation Dashboard</h1>
+                  <p>Latest validation run: ${{ needs.validate-simulation-framework.outputs.validation_timestamp }}</p>
+                  
+                  <h2>Latest Reports</h2>
+                  <ul>
+                      <li><a href="validation_report.html">Validation Report</a></li>
+                      <li><a href="calibration_report.html">Calibration Report</a></li>
+                      <li><a href="drift_detection_report.html">Drift Detection Report</a></li>
+                      <li><a href="visualization_gallery.html">Visualization Gallery</a></li>
+                      <li><a href="hardware_profiles.html">Hardware Profiles</a></li>
+                  </ul>
+                  
+                  <h2>Performance Analysis</h2>
+                  <p>The simulation validation framework includes performance analysis for simulation vs hardware:</p>
+                  <ul>
+                      <li><a href="performance_analysis.html">Performance Analysis Dashboard</a></li>
+                      <li><a href="metrics_comparison.html">Metrics Comparison</a></li>
+                  </ul>
+                  
+                  <h2>Validation History</h2>
+                  <p>
+                    <a href="history.html" class="btn btn-primary">
+                      View Validation History
+                    </a>
+                  </p>
+                  
+                  <h2>CI/CD Integration</h2>
+                  <p>
+                    This dashboard was automatically generated by the CI/CD system.
+                    The system includes validation of simulation results against real hardware,
+                    drift detection for simulation accuracy over time, and comprehensive visualization.
+                  </p>
+                  <p>
+                    <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" class="btn btn-primary">
+                      View CI Run
+                    </a>
+                  </p>
+              </div>
+          </body>
+          </html>
+          EOF
+      
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dashboard
+          target-folder: simulation-validation

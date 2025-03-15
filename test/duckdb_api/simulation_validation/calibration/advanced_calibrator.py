@@ -37,6 +37,26 @@ from duckdb_api.simulation_validation.core.base import (
 # Import basic calibrator for fallback and utilities
 from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
 
+# Optional imports for advanced methods
+try:
+    from sklearn.linear_model import LinearRegression
+    from sklearn.neural_network import MLPRegressor
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+    from sklearn.model_selection import cross_val_score, KFold
+    sklearn_available = True
+except ImportError:
+    logger.warning("scikit-learn not available, some advanced calibration methods will be limited")
+    sklearn_available = False
+
+try:
+    from skopt import gp_minimize
+    from skopt.space import Real
+    skopt_available = True
+except ImportError:
+    logger.warning("scikit-optimize not available, Bayesian optimization will be limited")
+    skopt_available = False
+
 
 class AdvancedSimulationCalibrator(SimulationCalibrator):
     """
@@ -846,6 +866,27 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
             logger.info(f"Small dataset for {hardware_id}/{model_id}, using linear_scaling")
             return "linear_scaling"
         
+        # Check for recent drift detection results
+        recent_drift = self._check_recent_drift_detection(hardware_id, model_id)
+        if recent_drift and recent_drift.get("significant_drift_detected", False):
+            # If significant drift was detected, use more advanced methods
+            if len(validation_results) >= 15:
+                logger.info(f"Significant drift detected for {hardware_id}/{model_id}, using bayesian optimization")
+                return "bayesian"
+            else:
+                logger.info(f"Significant drift detected for {hardware_id}/{model_id}, but limited data, using ensemble")
+                return "ensemble"
+        
+        # Check if calibration frequency should be adapted based on drift and history
+        calibration_frequency = self._determine_calibration_frequency(
+            hardware_id, model_id, validation_results, self.calibration_history)
+        
+        if calibration_frequency.get("adaptive_method_selection", False):
+            suggested_method = calibration_frequency.get("suggested_method")
+            if suggested_method:
+                logger.info(f"Using adaptive method selection for {hardware_id}/{model_id}: {suggested_method}")
+                return suggested_method
+        
         # For larger datasets, check if relationships are linear or complex
         linear_fit_quality = self._check_linear_fit_quality(validation_results)
         
@@ -873,6 +914,143 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
                 # Not enough data for advanced methods
                 logger.info(f"Not enough data for advanced methods for {hardware_id}/{model_id}, using ensemble")
                 return "ensemble"
+    
+    def _check_recent_drift_detection(
+        self, 
+        hardware_id: str, 
+        model_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Check if there have been recent drift detection results for this hardware-model combination.
+        
+        Args:
+            hardware_id: Hardware ID
+            model_id: Model ID
+            
+        Returns:
+            Dictionary with drift detection results or None if no recent results
+        """
+        # This is a placeholder for integration with the drift detection system
+        # In a real implementation, this would query the drift detection results storage
+        
+        # For now, return None to indicate no drift detection results
+        return None
+        
+    def _determine_calibration_frequency(
+        self, 
+        hardware_id: str, 
+        model_id: str,
+        recent_validation_results: List[ValidationResult],
+        calibration_history: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Determine appropriate calibration frequency based on drift detection and history.
+        
+        Args:
+            hardware_id: Hardware ID
+            model_id: Model ID
+            recent_validation_results: Recent validation results for this combination
+            calibration_history: History of calibration events
+            
+        Returns:
+            Dictionary with calibration frequency recommendations
+        """
+        # Default recommendation
+        recommendation = {
+            "should_calibrate": True,
+            "recommended_frequency_days": 30,  # Default to monthly
+            "reason": "Regular calibration schedule",
+            "adaptive_method_selection": False
+        }
+        
+        # If no history, recommend immediate calibration
+        if not calibration_history:
+            recommendation["should_calibrate"] = True
+            recommendation["recommended_frequency_days"] = 7  # Start with weekly
+            recommendation["reason"] = "No previous calibration"
+            return recommendation
+        
+        # Check when the last calibration was performed
+        try:
+            last_calibration = calibration_history[-1]
+            last_calibration_time = datetime.fromisoformat(last_calibration["timestamp"])
+            days_since_last_calibration = (datetime.now() - last_calibration_time).days
+            
+            # Check for recent drift detection
+            recent_drift = self._check_recent_drift_detection(hardware_id, model_id)
+            
+            if recent_drift and recent_drift.get("significant_drift_detected", False):
+                # If significant drift was detected, recommend immediate calibration
+                recommendation["should_calibrate"] = True
+                recommendation["recommended_frequency_days"] = max(7, days_since_last_calibration // 2)
+                recommendation["reason"] = "Significant drift detected"
+                recommendation["drift_details"] = recent_drift
+                
+                # Also recommend more advanced calibration method
+                recommendation["adaptive_method_selection"] = True
+                if len(recent_validation_results) >= 20:
+                    recommendation["suggested_method"] = "bayesian"
+                elif len(recent_validation_results) >= 10:
+                    recommendation["suggested_method"] = "ensemble"
+                else:
+                    recommendation["suggested_method"] = "regression"
+                
+            elif days_since_last_calibration > 90:
+                # If it's been more than 3 months, recommend calibration
+                recommendation["should_calibrate"] = True
+                recommendation["recommended_frequency_days"] = 30
+                recommendation["reason"] = "Long time since last calibration"
+            elif len(calibration_history) >= 3:
+                # If we have enough history, analyze calibration impact
+                # Check if calibrations are making significant improvements
+                calibration_improvements = [
+                    event.get("improvement_metrics", {}).get("overall_improvement", 0)
+                    for event in calibration_history[-3:]
+                ]
+                
+                avg_improvement = sum(calibration_improvements) / len(calibration_improvements)
+                
+                if avg_improvement < 5:  # Less than 5% improvement
+                    # If calibrations aren't helping much, recommend less frequent calibration
+                    recommendation["should_calibrate"] = days_since_last_calibration > 60
+                    recommendation["recommended_frequency_days"] = 60
+                    recommendation["reason"] = "Limited benefit from recent calibrations"
+                    
+                    # Maybe try a different method if we're not getting good results
+                    if days_since_last_calibration > 30:
+                        previous_method = last_calibration.get("method", "")
+                        if previous_method == "linear_scaling":
+                            recommendation["adaptive_method_selection"] = True
+                            recommendation["suggested_method"] = "regression"
+                        elif previous_method == "regression":
+                            recommendation["adaptive_method_selection"] = True
+                            recommendation["suggested_method"] = "ensemble"
+                        
+                elif avg_improvement > 15:  # More than 15% improvement
+                    # If calibrations are helping a lot, recommend more frequent calibration
+                    recommendation["should_calibrate"] = days_since_last_calibration > 14
+                    recommendation["recommended_frequency_days"] = 14
+                    recommendation["reason"] = "Significant benefit from recent calibrations"
+                    
+                    # Keep using the same method if it's working well
+                    recommendation["adaptive_method_selection"] = True
+                    recommendation["suggested_method"] = last_calibration.get("method", self.config["calibration_method"])
+                else:
+                    # Otherwise, stick with monthly calibration
+                    recommendation["should_calibrate"] = days_since_last_calibration > 30
+                    recommendation["recommended_frequency_days"] = 30
+                    recommendation["reason"] = "Normal calibration schedule"
+            else:
+                # If not enough history, use default recommendation
+                recommendation["should_calibrate"] = days_since_last_calibration > 30
+                
+        except (KeyError, ValueError, IndexError) as e:
+            # If there's an issue with the history, recommend calibration to be safe
+            logger.warning(f"Error analyzing calibration history: {e}")
+            recommendation["should_calibrate"] = True
+            recommendation["reason"] = "Error analyzing calibration history"
+        
+        return recommendation
     
     def _apply_calibration_method(
         self,
@@ -965,6 +1143,7 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
             # Try to import scikit-optimize for Bayesian optimization
             from skopt import gp_minimize
             from skopt.space import Real
+            from sklearn.model_selection import KFold
             import numpy as np
         except ImportError:
             logger.warning("scikit-optimize not available for Bayesian optimization, falling back to regression")
@@ -982,6 +1161,8 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
             # Collect simulation and hardware values
             sim_values = []
             hw_values = []
+            batch_sizes = []
+            precisions = []
             
             for val_result in validation_results:
                 # Check if metric exists in both simulation and hardware results
@@ -997,32 +1178,98 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
                     
                     sim_values.append(sim_value)
                     hw_values.append(hw_value)
+                    
+                    # Collect additional metadata for analysis
+                    if hasattr(val_result.simulation_result, "batch_size") and val_result.simulation_result.batch_size is not None:
+                        batch_sizes.append(val_result.simulation_result.batch_size)
+                    else:
+                        batch_sizes.append(None)
+                        
+                    if hasattr(val_result.simulation_result, "precision") and val_result.simulation_result.precision is not None:
+                        precisions.append(val_result.simulation_result.precision)
+                    else:
+                        precisions.append(None)
             
             if not sim_values or not hw_values:
                 logger.warning(f"No valid data for metric {metric}")
                 continue
             
             # Convert to numpy arrays
-            X = np.array(sim_values)
+            X = np.array(sim_values).reshape(-1, 1)
             y = np.array(hw_values)
             
-            # Define the objective function (minimize RMSE)
+            # Set up cross-validation
+            use_cross_validation = self.config.get("enable_cross_validation", True)
+            n_folds = self.config.get("cross_validation_folds", 3)
+            has_enough_samples = len(sim_values) >= n_folds
+            
+            # If cross-validation is enabled and we have enough samples, set up folds
+            if use_cross_validation and has_enough_samples:
+                cv = KFold(n_splits=n_folds, shuffle=True, random_state=42)
+                fold_indices = list(cv.split(X))
+            else:
+                fold_indices = None
+            
+            # Define the objective function with cross-validation if available
             def objective(params):
                 slope, intercept = params
-                y_pred = X * slope + intercept
-                rmse = np.sqrt(np.mean((y - y_pred) ** 2))
-                return rmse
+                
+                if fold_indices is not None:
+                    # Use cross-validation
+                    fold_errors = []
+                    for train_idx, test_idx in fold_indices:
+                        # Predict on test fold
+                        X_test = X[test_idx]
+                        y_test = y[test_idx]
+                        y_pred = X_test * slope + intercept
+                        
+                        # Calculate error
+                        fold_rmse = np.sqrt(np.mean((y_test - y_pred.flatten()) ** 2))
+                        fold_errors.append(fold_rmse)
+                    
+                    # Return mean RMSE across folds
+                    return np.mean(fold_errors)
+                else:
+                    # No cross-validation
+                    y_pred = X * slope + intercept
+                    rmse = np.sqrt(np.mean((y - y_pred.flatten()) ** 2))
+                    return rmse
             
             # Define the parameter space
+            # Adjust bounds based on the relationship - if using existing parameters
+            min_slope = 0.1
+            max_slope = 3.0
+            min_intercept = -100
+            max_intercept = 100
+            
+            # If we have current factors, use them to adjust the search space
+            if metric in current_factors:
+                current_value = current_factors[metric]
+                if isinstance(current_value, (list, tuple)) and len(current_value) == 2:
+                    current_slope, current_intercept = current_value
+                    min_slope = max(0.1, current_slope * 0.5)
+                    max_slope = min(5.0, current_slope * 1.5)
+                    min_intercept = current_intercept - abs(current_intercept) * 0.5
+                    max_intercept = current_intercept + abs(current_intercept) * 0.5
+                elif isinstance(current_value, (int, float)):
+                    # If we just have a simple scaling factor
+                    current_slope = current_value
+                    min_slope = max(0.1, current_slope * 0.5)
+                    max_slope = min(5.0, current_slope * 1.5)
+            
             space = [
-                Real(0.5, 2.0, name='slope'),
-                Real(-100, 100, name='intercept')
+                Real(min_slope, max_slope, name='slope'),
+                Real(min_intercept, max_intercept, name='intercept')
             ]
             
             # Get current factors as starting point if available
             x0 = None
-            if metric in current_factors and isinstance(current_factors[metric], (list, tuple)) and len(current_factors[metric]) == 2:
-                x0 = current_factors[metric]
+            if metric in current_factors:
+                if isinstance(current_factors[metric], (list, tuple)) and len(current_factors[metric]) == 2:
+                    x0 = current_factors[metric]
+                elif isinstance(current_factors[metric], (int, float)):
+                    # If we just have a simple scaling factor, use it as slope with zero intercept
+                    x0 = [current_factors[metric], 0.0]
             
             # Run Bayesian optimization
             res = gp_minimize(
@@ -1036,8 +1283,113 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
             # Get the best parameters
             slope, intercept = res.x
             
-            correction_factors[metric] = [slope, intercept]
-            logger.info(f"Bayesian optimization for {hardware_id}/{model_id}/{metric}: slope={slope:.4f}, intercept={intercept:.4f}")
+            # Calculate uncertainty metrics using all data
+            y_pred = X * slope + intercept
+            residuals = y - y_pred.flatten()
+            rmse = np.sqrt(np.mean(residuals ** 2))
+            mae = np.mean(np.abs(residuals))
+            mape = np.mean(np.abs(residuals / y)) * 100 if np.all(y != 0) else None
+            
+            # For uncertainty quantification
+            residual_std = np.std(residuals)
+            prediction_interval_95 = 1.96 * residual_std  # 95% prediction interval
+            
+            # Additional analysis for batch sizes and precisions if available
+            batch_analysis = {}
+            if len(batch_sizes) > 0 and not all(bs is None for bs in batch_sizes):
+                unique_batches = sorted(set(bs for bs in batch_sizes if bs is not None))
+                if len(unique_batches) > 1:
+                    batch_analysis = {
+                        "unique_batch_sizes": unique_batches,
+                        "errors_by_batch": {}
+                    }
+                    
+                    for batch in unique_batches:
+                        # Get indices for this batch size
+                        batch_indices = [i for i, bs in enumerate(batch_sizes) if bs == batch]
+                        
+                        # Calculate error metrics for this batch
+                        batch_residuals = residuals[batch_indices]
+                        batch_y = y[batch_indices]
+                        
+                        batch_rmse = np.sqrt(np.mean(batch_residuals ** 2))
+                        batch_mae = np.mean(np.abs(batch_residuals))
+                        batch_mape = np.mean(np.abs(batch_residuals / batch_y)) * 100 if np.all(batch_y != 0) else None
+                        
+                        batch_analysis["errors_by_batch"][str(batch)] = {
+                            "rmse": float(batch_rmse),
+                            "mae": float(batch_mae)
+                        }
+                        if batch_mape is not None:
+                            batch_analysis["errors_by_batch"][str(batch)]["mape"] = float(batch_mape)
+            
+            precision_analysis = {}
+            if len(precisions) > 0 and not all(p is None for p in precisions):
+                unique_precisions = sorted(set(p for p in precisions if p is not None))
+                if len(unique_precisions) > 1:
+                    precision_analysis = {
+                        "unique_precisions": unique_precisions,
+                        "errors_by_precision": {}
+                    }
+                    
+                    for precision in unique_precisions:
+                        # Get indices for this precision
+                        precision_indices = [i for i, p in enumerate(precisions) if p == precision]
+                        
+                        # Calculate error metrics for this precision
+                        precision_residuals = residuals[precision_indices]
+                        precision_y = y[precision_indices]
+                        
+                        precision_rmse = np.sqrt(np.mean(precision_residuals ** 2))
+                        precision_mae = np.mean(np.abs(precision_residuals))
+                        precision_mape = np.mean(np.abs(precision_residuals / precision_y)) * 100 if np.all(precision_y != 0) else None
+                        
+                        precision_analysis["errors_by_precision"][precision] = {
+                            "rmse": float(precision_rmse),
+                            "mae": float(precision_mae)
+                        }
+                        if precision_mape is not None:
+                            precision_analysis["errors_by_precision"][precision]["mape"] = float(precision_mape)
+            
+            # Create comprehensive result with parameters and uncertainty data
+            result = {
+                "parameters": [float(slope), float(intercept)],
+                "model_type": "bayesian_optimization",
+                "error_metrics": {
+                    "rmse": float(rmse),
+                    "mae": float(mae)
+                },
+                "uncertainty": {
+                    "residual_std": float(residual_std),
+                    "prediction_interval_95": float(prediction_interval_95)
+                },
+                "num_samples": len(sim_values)
+            }
+            
+            # Add batch analysis if available
+            if batch_analysis:
+                result["batch_analysis"] = batch_analysis
+                
+            # Add precision analysis if available
+            if precision_analysis:
+                result["precision_analysis"] = precision_analysis
+                
+            # Add MAPE if available
+            if mape is not None:
+                result["error_metrics"]["mape"] = float(mape)
+            
+            # Add cross-validation information if used
+            if fold_indices is not None:
+                result["cross_validation"] = {
+                    "folds": n_folds,
+                    "used": True
+                }
+            
+            correction_factors[metric] = result
+            
+            logger.info(f"Bayesian optimization for {hardware_id}/{model_id}/{metric}: "
+                       f"slope={slope:.4f}, intercept={intercept:.4f}, "
+                       f"RMSE={rmse:.4f}, 95% PI=±{prediction_interval_95:.4f}")
         
         return correction_factors
     
@@ -1064,6 +1416,7 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
             # Try to import scikit-learn for neural network
             from sklearn.neural_network import MLPRegressor
             from sklearn.preprocessing import StandardScaler
+            from sklearn.model_selection import cross_val_score, KFold
             import numpy as np
         except ImportError:
             logger.warning("scikit-learn not available for neural network, falling back to regression")
@@ -1120,7 +1473,7 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
             
-            # Create and train neural network
+            # Create neural network model
             # Use hidden layer sizes from config
             nn = MLPRegressor(
                 hidden_layer_sizes=tuple(self.config["network_hidden_layers"]),
@@ -1128,6 +1481,26 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
                 random_state=42
             )
             
+            # Use cross-validation to evaluate model performance and prevent overfitting
+            model_uncertainty = {}
+            if self.config.get("enable_cross_validation", True) and len(data) >= self.config.get("cross_validation_folds", 3):
+                cv = KFold(n_splits=self.config.get("cross_validation_folds", 3), shuffle=True, random_state=42)
+                cv_scores = cross_val_score(nn, X_scaled, y, cv=cv, scoring='neg_mean_squared_error')
+                
+                # Calculate mean and std of MSE
+                mean_mse = -np.mean(cv_scores)
+                std_mse = np.std(cv_scores)
+                model_uncertainty = {
+                    "cross_val_mean_mse": float(mean_mse),
+                    "cross_val_std_mse": float(std_mse),
+                    "cross_val_coefficient_of_variation": float(std_mse / mean_mse) if mean_mse > 0 else 0.0
+                }
+                
+                logger.info(f"Cross-validation for {hardware_id}/{model_id}/{metric}: "
+                           f"MSE = {mean_mse:.4f} ± {std_mse:.4f}, "
+                           f"CoV = {model_uncertainty['cross_val_coefficient_of_variation']:.4f}")
+            
+            # Train the final model on all data
             nn.fit(X_scaled, y)
             
             # For simplicity in the calibration application, we'll compute
@@ -1152,6 +1525,17 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
             # Get predictions
             test_predictions = nn.predict(test_features_scaled)
             
+            # Also get uncertainty estimates if we did cross-validation
+            prediction_uncertainty = {}
+            if model_uncertainty:
+                # Estimate prediction uncertainty based on residuals
+                residuals = nn.predict(X_scaled) - y
+                residual_std = np.std(residuals)
+                prediction_uncertainty = {
+                    "residual_std": float(residual_std),
+                    "prediction_interval_95": float(1.96 * residual_std)  # 95% prediction interval
+                }
+            
             # Fit a line to the predictions
             from sklearn.linear_model import LinearRegression
             lr = LinearRegression()
@@ -1160,10 +1544,24 @@ class AdvancedSimulationCalibrator(SimulationCalibrator):
             slope = lr.coef_[0]
             intercept = lr.intercept_
             
-            # Store correction factors as [slope, intercept] for consistency
-            correction_factors[metric] = [slope, intercept]
+            # Store correction factors as [slope, intercept] with uncertainty information
+            result = {
+                "parameters": [float(slope), float(intercept)],
+                "model_type": "neural_network",
+                "num_samples": len(data)
+            }
             
-            logger.info(f"Neural network for {hardware_id}/{model_id}/{metric}: approximated as slope={slope:.4f}, intercept={intercept:.4f}")
+            # Add uncertainty information if available
+            if model_uncertainty:
+                result["model_uncertainty"] = model_uncertainty
+            
+            if prediction_uncertainty:
+                result["prediction_uncertainty"] = prediction_uncertainty
+            
+            correction_factors[metric] = result
+            
+            logger.info(f"Neural network for {hardware_id}/{model_id}/{metric}: "
+                       f"approximated as slope={slope:.4f}, intercept={intercept:.4f}")
         
         return correction_factors
     

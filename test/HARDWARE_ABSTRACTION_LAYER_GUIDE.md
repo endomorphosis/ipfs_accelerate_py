@@ -491,3 +491,66 @@ For more information, see the [TypeScript SDK Documentation](README_IPFS_ACCELER
 - [WebNN Backend Documentation](WEBNN_IMPLEMENTATION_SUMMARY.md)
 - [Cross-Model Tensor Sharing Guide](CROSS_MODEL_TENSOR_SHARING_GUIDE.md)
 - [Browser Optimization Guide](BROWSER_OPTIMIZATION_GUIDE.md)
+
+## Hardware-Abstracted Model Implementations
+
+The HAL is used to implement hardware-accelerated versions of popular machine learning models. These implementations automatically select the optimal backend and apply browser-specific optimizations:
+
+### BERT (Text Model)
+
+The Hardware Abstracted BERT implementation provides efficient text processing with automatic backend selection:
+
+- [HARDWARE_ABSTRACTION_BERT_GUIDE.md](HARDWARE_ABSTRACTION_BERT_GUIDE.md) - Comprehensive guide to the HAL-based BERT implementation
+- Best backend: WebNN (Edge) or WebGPU
+- Tasks: Text embeddings, sentiment analysis, question answering
+- 5.8x speedup vs. CPU on optimal hardware
+
+### Whisper (Audio Model)
+
+The Hardware Abstracted Whisper implementation provides efficient audio transcription and translation:
+
+- [HARDWARE_ABSTRACTION_WHISPER_GUIDE.md](HARDWARE_ABSTRACTION_WHISPER_GUIDE.md) - Comprehensive guide to the HAL-based Whisper implementation
+- Best backend: WebGPU (Firefox)
+- Tasks: Audio transcription, translation
+- 3.0x speedup vs. CPU on optimal hardware
+- Special optimizations for Firefox's compute shader performance
+
+### ViT (Vision Model)
+
+The Hardware Abstracted ViT implementation provides efficient image processing:
+
+- [HARDWARE_ABSTRACTION_VIT_GUIDE.md](HARDWARE_ABSTRACTION_VIT_GUIDE.md) - Comprehensive guide to the HAL-based ViT implementation
+- Best backend: WebGPU (Chrome)
+- Tasks: Image classification, visual embeddings
+- 6.5x speedup vs. CPU on optimal hardware
+- Browser-specific optimizations for matrix operations
+
+### Multimodal Integration
+
+These hardware-abstracted models can be combined for efficient multimodal applications through cross-model tensor sharing:
+
+```typescript
+// Create models with tensor sharing enabled
+const vitModel = createHardwareAbstractedViT(hal, { enableTensorSharing: true });
+const bertModel = createHardwareAbstractedBERT(hal, { enableTensorSharing: true });
+
+// Process an image with ViT
+const imageResult = await vitModel.process(imageData);
+
+// Get the vision embedding
+const visionEmbedding = vitModel.getSharedTensor('vision_embedding');
+
+// Process text with BERT
+const textResult = await bertModel.predict(text);
+
+// Get the text embedding
+const textEmbedding = bertModel.getSharedTensor('text_embedding');
+
+// Use both embeddings for multimodal tasks
+// (e.g., image-text matching, visual question answering)
+```
+
+For interactive examples, see:
+- [hardware_abstracted_bert_example.html](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_bert_example.html)
+- [hardware_abstracted_whisper_example.html](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_whisper_example.html)
+- [hardware_abstracted_vit_example.html](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_vit_example.html)

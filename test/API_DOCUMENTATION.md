@@ -549,6 +549,72 @@ Each backend has specific advantages based on hardware and browser:
 - **WebNN Backend**: Provides optimized neural network operations on browsers that support it, with Edge offering the most complete and performant implementation.
 - **Automatic Selection**: The SDK intelligently selects the optimal backend for each operation based on the browser, hardware, and model type.
 
+### Simulation Validation Database Integration API
+
+The framework includes a comprehensive database integration system for the Simulation Accuracy and Validation Framework, allowing storage, retrieval, and analysis of simulation validation data:
+
+```python
+from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
+from duckdb_api.simulation_validation.simulation_validation_framework import get_framework_instance
+
+# Initialize database integration
+db_integration = SimulationValidationDBIntegration(
+    db_path="benchmark_db.duckdb"
+)
+
+# Initialize database schema
+db_integration.initialize_database()
+
+# Store various result types
+db_integration.store_simulation_results(simulation_results)
+db_integration.store_hardware_results(hardware_results)
+db_integration.store_validation_results(validation_results)
+db_integration.store_calibration_parameters(calibration_params)
+db_integration.store_drift_detection_results(drift_results)
+
+# Retrieve results by criteria
+hw_results = db_integration.get_simulation_results_by_hardware("gpu_rtx3080")
+model_results = db_integration.get_hardware_results_by_model("bert-base-uncased")
+validation_results = db_integration.get_validation_results_by_criteria(
+    hardware_id="gpu_rtx3080",
+    model_id="bert-base-uncased",
+    batch_size=16,
+    precision="fp16"
+)
+
+# Get latest calibration parameters
+latest_params = db_integration.get_latest_calibration_parameters()
+
+# Get drift detection history
+drift_history = db_integration.get_drift_detection_history(
+    hardware_type="gpu_rtx3080",
+    model_type="bert-base-uncased"
+)
+
+# Get MAPE by hardware and model
+mape_results = db_integration.get_mape_by_hardware_and_model()
+
+# Analyze calibration effectiveness
+effectiveness = db_integration.analyze_calibration_effectiveness(
+    before_version="uncalibrated_v1.0",
+    after_version="calibrated_v1.0"
+)
+
+# Export visualization data
+db_integration.export_visualization_data(
+    export_path="visualization_data.json",
+    metrics=["throughput_items_per_second", "average_latency_ms"]
+)
+
+# Integrate with the framework
+framework = get_framework_instance()
+framework.set_db_integration(db_integration)
+
+# Now use framework methods with automatic database integration
+validation_results = framework.validate(simulation_results, hardware_results)
+framework.store_validation_results(validation_results)
+```
+
 ## Further Documentation
 
 For more detailed information, please refer to the following resources:
@@ -558,3 +624,5 @@ For more detailed information, please refer to the following resources:
 - [IPFS WebNN/WebGPU SDK Guide](IPFS_WEBNN_WEBGPU_SDK_GUIDE.md) - Complete guide to using WebNN and WebGPU acceleration
 - [Web Resource Pool Integration](WEB_RESOURCE_POOL_INTEGRATION.md) - Resource pool integration with browser-based WebNN/WebGPU acceleration
 - [Real WebNN/WebGPU Benchmarking Guide](REAL_WEBNN_WEBGPU_BENCHMARKING_GUIDE.md) - Comprehensive guide for running real WebNN/WebGPU benchmarks
+- [Simulation Validation Framework Documentation](SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md) - Complete guide to the Simulation Accuracy and Validation Framework
+- [Database Integration Summary](duckdb_api/simulation_validation/db_integration_summary.md) - Detailed documentation on the database integration implementation
