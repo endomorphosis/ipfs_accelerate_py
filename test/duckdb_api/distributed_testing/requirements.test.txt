@@ -16,3 +16,10 @@ pytest-asyncio>=0.20.0
 jsonschema>=4.0.0
 python-dotenv>=1.0.0
 colorama>=0.4.0
+
+# Error Visualization additional dependencies
+scipy>=1.10.0                    # For sound generation
+unittest-xml-reporting>=3.2.0    # For test reporting
+html-testRunner>=1.2.1           # For HTML test reports
+plotly>=5.13.0                   # Optional: for enhanced visualizations
+pandas>=1.5.0                    # Optional: for data processing and analysis

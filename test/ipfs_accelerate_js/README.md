@@ -18,6 +18,11 @@ Hardware-accelerated machine learning in browsers with WebGPU and WebNN.
   - Browser-specific recovery techniques
   - Parameter adjustment for compatibility issues
 - **Performance Tracking & Analysis**: Automatic operation performance recording and statistical analysis
+- **API Backends Integration**:
+  - **VLLM Unified**: Advanced VLLM integration with batch processing, streaming, and model management
+  - **OpenAI**: Full support for GPT models
+  - **Claude**: Integration with Anthropic Claude models
+  - **Hugging Face**: TGI and TEI integrations
 - **Hardware-Abstracted Models**: 
   - **BERT**: Text understanding and embeddings
   - **ViT**: Image classification and embeddings

@@ -45,7 +45,10 @@ class MonitoringDashboard:
         enable_performance_analytics: bool = True,
         enable_visualization_integration: bool = False,
         visualization_integration: Optional[Any] = None,
-        dashboard_dir: str = "./dashboards"
+        enable_error_visualization: bool = False,
+        error_visualization_integration: Optional[Any] = None,
+        dashboard_dir: str = "./dashboards",
+        db_path: Optional[str] = None
     ):
         """Initialize the monitoring dashboard.
         
@@ -104,6 +107,7 @@ class MonitoringDashboard:
         self.enable_visualization_integration = enable_visualization_integration
         self.visualization_integration = visualization_integration
         self.dashboard_dir = dashboard_dir
+        self.db_path = db_path
         
         # Initialize visualization integration if enabled but not provided
         if self.enable_visualization_integration and self.visualization_integration is None:
@@ -134,6 +138,33 @@ class MonitoringDashboard:
             except Exception as e:
                 logger.error(f"Error initializing Visualization Dashboard Integration: {e}")
                 self.enable_visualization_integration = False
+        
+        # Set up Error Visualization integration
+        self.enable_error_visualization = enable_error_visualization
+        self.error_visualization_integration = error_visualization_integration
+        
+        # Initialize error visualization integration if enabled but not provided
+        if self.enable_error_visualization and self.error_visualization_integration is None:
+            try:
+                # Import the error visualization integration
+                from duckdb_api.distributed_testing.dashboard.error_visualization_integration import (
+                    ErrorVisualizationIntegration
+                )
+                
+                # Create output directory for error visualizations
+                error_viz_dir = os.path.join(self.dashboard_dir, 'error_visualizations')
+                os.makedirs(error_viz_dir, exist_ok=True)
+                
+                # Initialize the integration (WebSocket manager will be set after initialization)
+                self.error_visualization_integration = ErrorVisualizationIntegration(
+                    output_dir=error_viz_dir,
+                    db_path=self.db_path,
+                    coordinator_url=self.coordinator_url
+                )
+                logger.info("Error Visualization Integration initialized successfully")
+            except Exception as e:
+                logger.error(f"Error initializing Error Visualization Integration: {e}")
+                self.enable_error_visualization = False
         
         # HTTP client session
         self.session = None
@@ -306,6 +337,11 @@ class MonitoringDashboard:
         
         # Create WebSocket manager
         self.websocket_manager = WebSocketManager()
+        
+        # Set the WebSocket manager in the error visualization integration if available
+        if self.enable_error_visualization and self.error_visualization_integration:
+            self.error_visualization_integration.websocket_manager = self.websocket_manager
+            logger.info("WebSocket manager set in Error Visualization Integration")
         
         # Create web application
         app = web.Application()

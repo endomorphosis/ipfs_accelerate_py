@@ -143,7 +143,7 @@ class openai_api:
         endpoint = "chat/completions"
         
         # Make the request
-        request_id = kwargs.get("request_id", str(uuid4()))
+        request_id = kwargs.get("request_id", str(uuid4()
         
         if stream:
             return self._stream_request(endpoint, data, request_id=request_id)
@@ -250,7 +250,7 @@ class openai_api:
                 "endpoint": endpoint,
                 "data": data,
                 "api_key": self.api_key,
-                "request_id": request_id or str(uuid4()),
+                "request_id": request_id or str(uuid4(),
                 "queue_entry_time": time.time()
             },
             self.PRIORITY_NORMAL
@@ -353,7 +353,7 @@ class openai_api:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
-            "OpenAI-Request-ID": request_id or str(uuid4())
+            "OpenAI-Request-ID": request_id or str(uuid4()
         }
         
         try:
@@ -432,7 +432,7 @@ class openai_api:
             request_info["queue_entry_time"] = time.time()
             
             # Add to queue with priority
-            self.request_queue.append((priority, request_info))
+            self.request_queue.append((priority, request_info)
             
             # Sort queue by priority (lower numbers = higher priority)
             self.request_queue.sort(key=lambda x: x[0])
@@ -602,7 +602,7 @@ class openai_api:
                     
                     # Calculate backoff delay
                     backoff_delay = min(
-                        retry_delay * (self.backoff_factor ** (retries - 1)),
+                        retry_delay * (self.backoff_factor ** (retries - 1),
                         self.max_retry_delay
                     )
                     
@@ -691,9 +691,9 @@ class openai_api:
         report = {
             "summary": {
                 "total_requests": stats.get("total_requests", 0),
-                "success_rate": (stats.get("successful_requests", 0) / stats.get("total_requests", 1)) * 100 if stats.get("total_requests", 0) > 0 else 0,
+                "success_rate": (stats.get("successful_requests", 0) / stats.get("total_requests", 1) * 100 if stats.get("total_requests", 0) > 0 else 0,
                 "average_response_time": stats.get("average_response_time", 0),
-                "retry_rate": (stats.get("retried_requests", 0) / stats.get("total_requests", 1)) * 100 if stats.get("total_requests", 0) > 0 else 0,
+                "retry_rate": (stats.get("retried_requests", 0) / stats.get("total_requests", 1) * 100 if stats.get("total_requests", 0) > 0 else 0,
             },
             "models": stats.get("requests_by_model", {}),
             "errors": stats.get("errors_by_type", {})
@@ -825,7 +825,7 @@ class openai_api:
             texts = []
             for req in batch_requests:
                 data = req.get("data", {})
-                text = data.get("input", data.get("text", ""))
+                text = data.get("input", data.get("text", "")
                 if isinstance(text, list):
                     # If already a list, use the first item
                     text = text[0] if text else ""

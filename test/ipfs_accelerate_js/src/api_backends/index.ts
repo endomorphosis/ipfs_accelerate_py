@@ -27,6 +27,7 @@ export * from './hf_tgi_unified';
 export * from './sample_backend';
 export * from './ovms';
 export * from './vllm';
+export * from './vllm_unified';
 export * from './opea';
 export * from './s3_kit';
 export * from './llvm';
@@ -45,6 +46,7 @@ import { OpenAI } from './openai';
 import { OpenAiMini } from './openai_mini';
 import { OVMS } from './ovms';
 import { VLLM } from './vllm';
+import { VllmUnified } from './vllm_unified';
 import { OPEA } from './opea';
 import { S3Kit } from './s3_kit';
 import { LLVM } from './llvm';
@@ -65,6 +67,7 @@ export const apiBackends = {
   sample_backend: SampleBackend,
   ovms: OVMS,
   vllm: VLLM,
+  vllm_unified: VllmUnified,
   opea: OPEA,
   s3_kit: S3Kit,
   llvm: LLVM

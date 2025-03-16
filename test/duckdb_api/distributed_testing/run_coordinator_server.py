@@ -25,6 +25,17 @@ from duckdb_api.distributed_testing.coordinator_websocket_server import (
     CoordinatorWebSocketServer, run_server
 )
 
+# Import circuit breaker integration
+try:
+    from duckdb_api.distributed_testing.coordinator_integration import (
+        integrate_circuit_breaker_with_coordinator
+    )
+    CIRCUIT_BREAKER_AVAILABLE = True
+except ImportError:
+    CIRCUIT_BREAKER_AVAILABLE = False
+    logger = logging.getLogger("run_coordinator_server")
+    logger.warning("Circuit Breaker integration not available. Advanced fault tolerance features disabled.")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -64,6 +75,12 @@ def parse_args():
         help="Number of demo tasks to submit (0 to disable)"
     )
     
+    parser.add_argument(
+        "--circuit-breaker",
+        action="store_true",
+        help="Enable circuit breaker pattern for enhanced fault tolerance"
+    )
+    
     return parser.parse_args()
 
 
@@ -94,7 +111,7 @@ async def submit_demo_tasks(server: CoordinatorWebSocketServer, num_tasks: int):
     logger.info(f"Submitted {num_tasks} demo tasks")
 
 
-async def run_coordinator_with_demo(host: str, port: int, num_demo_tasks: int):
+async def run_coordinator_with_demo(host: str, port: int, num_demo_tasks: int, enable_circuit_breaker: bool = False):
     """
     Run the coordinator server with optional demo tasks.
     
@@ -102,6 +119,7 @@ async def run_coordinator_with_demo(host: str, port: int, num_demo_tasks: int):
         host: Hostname to bind to
         port: Port to listen on
         num_demo_tasks: Number of demo tasks to submit (0 to disable)
+        enable_circuit_breaker: Whether to enable circuit breaker pattern
     """
     # Create server instance
     server = CoordinatorWebSocketServer(host, port)
@@ -118,6 +136,17 @@ async def run_coordinator_with_demo(host: str, port: int, num_demo_tasks: int):
         loop.add_signal_handler(sig, signal_handler)
     
     try:
+        # Integrate circuit breaker pattern if enabled
+        if enable_circuit_breaker and CIRCUIT_BREAKER_AVAILABLE:
+            logger.info("Integrating circuit breaker pattern with coordinator...")
+            success = integrate_circuit_breaker_with_coordinator(server)
+            if success:
+                logger.info("Circuit breaker pattern successfully integrated with coordinator")
+            else:
+                logger.warning("Failed to integrate circuit breaker pattern with coordinator")
+        elif enable_circuit_breaker and not CIRCUIT_BREAKER_AVAILABLE:
+            logger.warning("Circuit breaker pattern requested but not available. Advanced fault tolerance features disabled.")
+        
         # Start server
         start_task = asyncio.create_task(server.start())
         
@@ -171,7 +200,8 @@ def main():
         asyncio.run(run_coordinator_with_demo(
             host=args.host,
             port=args.port,
-            num_demo_tasks=args.demo_tasks
+            num_demo_tasks=args.demo_tasks,
+            enable_circuit_breaker=args.circuit_breaker
         ))
     except KeyboardInterrupt:
         logger.info("Interrupted by user, shutting down...")

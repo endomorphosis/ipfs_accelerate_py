@@ -9,11 +9,54 @@ A high-performance distributed testing system that enables parallel execution of
 ![Stress Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/stress-status.json)
 ![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/coverage.json)
 
-## New Features (March 17, 2025)
+## New Features (March 20, 2025)
 
 The framework has been enhanced with the following new features:
 
-1. **Comprehensive Monitoring Dashboard** ✅ (NEW): A full-featured web-based monitoring system with:
+1. **Cross-Platform Worker Support** ✅ (NEW): A comprehensive cross-platform support system with:
+   - Unified interface for Linux, Windows, macOS, and containers
+   - Platform-specific hardware detection (CPU, memory, GPU, disk)
+   - Deployment script generation for each supported platform
+   - Path conversion utilities for cross-platform compatibility
+   - Dependency management with platform-specific implementations
+   - Comprehensive test suite with mocked platform support
+   - See [CROSS_PLATFORM_WORKER_README.md](CROSS_PLATFORM_WORKER_README.md) for details
+
+2. **Error Visualization System** ✅: A comprehensive error visualization system with:
+   - Interactive dashboard for error monitoring and analysis
+   - Hierarchical sound notifications (system-critical, critical, warning, info) with distinct audio signatures
+   - Advanced system-critical alerts for highest-priority infrastructure failures
+   - Automated error pattern detection to identify recurring issues
+   - Worker error analysis with status indicators and statistics
+   - Hardware-specific error analysis and visualization
+   - Database integration for historical error tracking
+   - Comprehensive testing suite with unit and end-to-end tests
+   - Full integration with monitoring dashboard and error reporting
+   - See [ERROR_VISUALIZATION_GUIDE.md](ERROR_VISUALIZATION_GUIDE.md) for details
+
+3. **Enhanced Worker Error Reporting** ✅: A worker-side error reporting system with:
+   - Comprehensive system context collection during error conditions
+   - Detailed hardware metrics and status reporting
+   - Error categorization aligned with coordinator error handling
+   - Error frequency analysis and pattern detection
+   - Integration with enhanced worker reconnection system
+   - Error simulation capabilities for testing
+   - Seamless integration with existing worker implementations
+   - See [WORKER_ERROR_REPORTING_GUIDE.md](WORKER_ERROR_REPORTING_GUIDE.md) for details
+
+4. **Enhanced Error Handling System** ✅: A comprehensive error handling framework with:
+   - Standardized error categorization (resource, network, hardware, worker, test execution)
+   - Intelligent retry policies with exponential backoff and jitter
+   - Specialized recovery strategies for different error types
+   - Error pattern detection through similarity analysis
+   - Automatic recovery action execution
+   - Hardware-aware error recovery
+   - Seamless coordinator integration
+   - Integration with monitoring dashboard for visualization
+   - Comprehensive documentation and usage guide
+   - See [ENHANCED_ERROR_HANDLING_GUIDE.md](ENHANCED_ERROR_HANDLING_GUIDE.md) for details
+
+2. **Comprehensive Monitoring Dashboard** ✅: A full-featured web-based monitoring system with:
    - Real-time monitoring of distributed worker nodes and task execution
    - Interactive system topology visualization with drill-down capabilities
    - Live metrics visualization with WebSocket-based updates
@@ -24,7 +67,7 @@ The framework has been enhanced with the following new features:
    - Customizable dashboards with theme support (light/dark)
    - Comprehensive API for programmatic access to monitoring data
 
-2. **Hardware-Aware Fault Tolerance System** ✅: Advanced fault tolerance with hardware-specific strategies:
+3. **Hardware-Aware Fault Tolerance System** ✅: Advanced fault tolerance with hardware-specific strategies:
    - Specialized recovery strategies for different hardware types (CPU, GPU, TPU, WebGPU/WebNN)
    - Machine learning-based failure pattern detection and prevention
    - Intelligent retry policies with exponential backoff and jitter
@@ -33,14 +76,14 @@ The framework has been enhanced with the following new features:
    - Comprehensive visualization and reporting system
    - Integration with heterogeneous hardware scheduler
 
-3. **Intelligent Result Aggregation System**: Advanced result aggregation and analysis pipeline with:
+4. **Intelligent Result Aggregation System** ✅: Advanced result aggregation and analysis pipeline with:
    - Comprehensive statistical analysis of test results
    - Automated performance regression detection
    - Multi-dimensional result analysis across hardware, models, and configurations
    - Customizable visualization and reporting
    - Integration with the coordinator for real-time result processing
 
-4. **Comprehensive CI/CD Integration** ✅: Complete GitHub Actions, GitLab CI, and Jenkins support with:
+5. **Comprehensive CI/CD Integration** ✅: Complete GitHub Actions, GitLab CI, and Jenkins support with:
    - Automatic test discovery and hardware requirement analysis
    - Parallel test execution across test types (integration, fault tolerance, monitoring, stress)
    - Advanced report generation in multiple formats (JSON, Markdown, HTML)
@@ -48,16 +91,17 @@ The framework has been enhanced with the following new features:
    - Coverage tracking and reporting
    - Secure credential management for coordinator access
 
-5. **Coordinator Redundancy and Failover**: Multiple coordinator instances can now operate in a high-availability configuration with automatic leader election and state synchronization.
+6. **Coordinator Redundancy and Failover**: Multiple coordinator instances can now operate in a high-availability configuration with automatic leader election and state synchronization.
 
-6. **Performance Trend Analysis**: Long-term performance trend tracking with statistical analysis, anomaly detection, and predictive forecasting for worker and task performance.
+7. **Performance Trend Analysis**: Long-term performance trend tracking with statistical analysis, anomaly detection, and predictive forecasting for worker and task performance.
 
-7. **Time-Series Data Storage**: Historical performance data storage with efficient querying and aggregation capabilities.
+8. **Time-Series Data Storage**: Historical performance data storage with efficient querying and aggregation capabilities.
 
 ## Features
 
 - **Coordinator-Worker Architecture**: Central coordinator server distributes tasks to worker nodes
 - **DuckDB Integration**: Centralized storage of distributed test results
+- **Cross-Platform Support** ✅ (NEW): Worker nodes that run on Linux, Windows, macOS, and containers
 - **Security**: Comprehensive JWT-based authentication and message signing
 - **Intelligent Task Distribution**: Routes tasks to worker nodes with appropriate hardware
 - **Resource Monitoring**: Tracks worker node health, capabilities, and resource usage
@@ -65,6 +109,9 @@ The framework has been enhanced with the following new features:
 - **Scalability**: Supports dynamic addition and removal of worker nodes
 - **Real-time Dashboard**: Web-based monitoring and management interface
 - **High Availability**: Support for multiple coordinators with automatic leader election and failover
+- **Enhanced Error Handling**: Comprehensive error handling framework with specialized recovery strategies
+- **Error Reporting**: Detailed worker-side error reporting with system context collection
+- **Error Visualization**: Interactive dashboard for error monitoring, pattern detection, and analysis with hierarchical sound notifications
 - **Performance Analytics**: Long-term trend analysis and anomaly detection for performance metrics
 - **Intelligent Result Aggregation**: Advanced statistical analysis and reporting of distributed test results
 - **CI/CD Integration**: Support for GitHub Actions, GitLab CI, and Jenkins with automated test discovery, requirement analysis, and reporting
@@ -178,6 +225,36 @@ The comprehensive monitoring dashboard provides real-time system visualization a
 - Comprehensive API for programmatic access to monitoring data
 - Mobile-responsive design for monitoring on any device
 
+### Error Visualization System
+
+The error visualization system provides comprehensive error monitoring and analysis:
+
+- Interactive error summary dashboard with counts by category and severity
+- Hierarchical sound notification system with four distinct severity levels:
+  - System-critical: Highest-priority alerts for coordinator failure, database corruption, and security issues
+  - Critical: High-priority alerts for hardware issues, resource allocation failures, and worker crashes
+  - Warning: Medium-priority alerts for network issues, timeout errors, and resource cleanup issues
+  - Info: Low-priority notifications for test execution errors and other non-critical issues
+- Specialized sound design with acoustic properties matched to error urgency:
+  - System-critical: Rising frequency pattern (880Hz → 1046.5Hz → 1318.5Hz) with accelerating pulse rate
+  - Critical: Higher frequency (880Hz/440Hz) with consistent pulsing effect
+  - Warning: Medium frequency (660Hz/330Hz) with moderate decay
+  - Info: Lower frequency (523Hz) with quick decay
+- Error distribution visualization with interactive charts and filtering
+- Automated error pattern detection to identify recurring issues
+- Worker-specific error analysis with status indicators and statistics
+- Hardware-specific error analysis to identify problematic hardware types
+- Detailed error context information with system metrics at error time
+- Time range selection for historical error analysis (1h, 6h, 24h, 7d)
+- Database integration for long-term error tracking and historical analysis
+- Pattern similarity analysis using advanced text processing techniques
+- Critical error highlighting for urgent attention
+- Visual indicators for error severity with color coding and animations
+- User-controlled notification settings (volume, mute)
+- Supporting infrastructure for end-to-end testing with simulated errors
+- Comprehensive API for programmatic access to error data
+- Integration with worker error reporting and enhanced error handling
+
 ### Dashboard Server
 
 The web-based dashboard server manages the monitoring dashboard:
@@ -201,8 +278,12 @@ The web-based dashboard server manages the monitoring dashboard:
 - [x] Phase 6: Monitoring Dashboard (March 17, 2025) ✅
 - [x] Phase 7: Coordinator Redundancy (March 10, 2025)
 - [x] Phase 8: Performance Trend Analysis (March 10, 2025)
-- [x] Phase 9: CI/CD Integration (March 13, 2025) ✅
-- [✅] Phase 10: Intelligent Result Aggregation (March 17, 2025 - COMPLETED)
+- [x] Phase 9: Enhanced Error Handling (March 18, 2025) ✅
+- [x] Phase 10: Enhanced Worker Error Reporting (March 18, 2025) ✅
+- [x] Phase 11: Error Visualization System (March 19, 2025) ✅
+- [x] Phase 12: CI/CD Integration (March 13, 2025) ✅
+- [✅] Phase 13: Intelligent Result Aggregation (March 17, 2025 - COMPLETED)
+- [✅] Phase 14: Cross-Platform Worker Support (March 20, 2025 - COMPLETED) ✅ NEW
 
 Target completion for all phases: June 26, 2025 (currently ahead of schedule)
 
@@ -252,6 +333,66 @@ To run tests locally before committing:
 ./run_all_tests.sh --verbose
 ```
 
+### Running the Coordinator with Enhanced Error Handling
+
+To start the coordinator with enhanced error handling capabilities:
+
+```bash
+# Start the coordinator with enhanced error handling
+python run_coordinator_with_error_handling.py --host 0.0.0.0 --port 8080 --db-path ./benchmark_db.duckdb
+
+# Enable comprehensive features
+python run_coordinator_with_error_handling.py --dashboard --load-balancer --result-aggregator
+
+# Set custom API key
+python run_coordinator_with_error_handling.py --api-key YOUR_API_KEY
+
+# Enable debug logging
+python run_coordinator_with_error_handling.py --log-level DEBUG
+```
+
+### Running the Worker with Enhanced Error Reporting
+
+To start a worker with enhanced error reporting capabilities:
+
+```bash
+# Start worker with enhanced error reporting
+python run_enhanced_worker_with_error_reporting.py \
+  --coordinator-host localhost \
+  --coordinator-port 8765 \
+  --api-key YOUR_API_KEY
+
+# Simulate errors for testing the error reporting system
+python run_enhanced_worker_with_error_reporting.py \
+  --coordinator-host localhost \
+  --coordinator-port 8765 \
+  --api-key YOUR_API_KEY \
+  --simulate-error \
+  --error-type "ResourceAllocationError" \
+  --error-message "Simulated out of memory error for testing"
+
+# Configure error history size
+python run_enhanced_worker_with_error_reporting.py \
+  --coordinator-host localhost \
+  --coordinator-port 8765 \
+  --api-key YOUR_API_KEY \
+  --error-history-size 200
+
+# Run with verbose logging
+python run_enhanced_worker_with_error_reporting.py \
+  --coordinator-host localhost \
+  --coordinator-port 8765 \
+  --api-key YOUR_API_KEY \
+  --log-level DEBUG
+
+# Simulate network disconnection
+python run_enhanced_worker_with_error_reporting.py \
+  --coordinator-host localhost \
+  --coordinator-port 8765 \
+  --api-key YOUR_API_KEY \
+  --simulate-disconnect 30
+```
+
 ### Running the Monitoring Dashboard
 
 To start the comprehensive monitoring dashboard:
@@ -289,6 +430,132 @@ python run_monitoring_dashboard.py --disable-aggregator
 
 # Enable debug logging
 python run_monitoring_dashboard.py --debug
+
+# Enable error tracking visualization
+python run_monitoring_dashboard.py --error-tracking
+```
+
+### Running the Error Visualization Dashboard
+
+To start the monitoring dashboard with the new Error Visualization system:
+
+```bash
+# Start the dashboard with error visualization enabled
+python run_monitoring_dashboard_with_error_visualization.py
+
+# Run with custom settings
+python run_monitoring_dashboard_with_error_visualization.py \
+  --host localhost \
+  --port 8080 \
+  --coordinator-url http://localhost:8000 \
+  --db-path ./benchmark_db.duckdb \
+  --refresh-interval 5 \
+  --theme dark
+
+# Run with error visualization and result aggregator integration
+python run_monitoring_dashboard_with_error_visualization.py \
+  --enable-result-aggregator \
+  --result-aggregator-url http://localhost:8085
+
+# Run with error visualization and E2E test integration
+python run_monitoring_dashboard_with_error_visualization.py \
+  --enable-e2e-test
+
+# Run with error visualization and visualization integration
+python run_monitoring_dashboard_with_error_visualization.py \
+  --enable-visualization
+
+# Specify custom dashboard directory
+python run_monitoring_dashboard_with_error_visualization.py \
+  --dashboard-dir ./custom_dashboard_dir
+```
+
+### Running Cross-Platform Worker Support Tools
+
+To use the Cross-Platform Worker Support module:
+
+```bash
+# Run the example with all features
+python -m duckdb_api.distributed_testing.examples.cross_platform_worker_example --all
+
+# Run platform and hardware detection
+python -m duckdb_api.distributed_testing.examples.cross_platform_worker_example --detect
+
+# Generate deployment scripts for the current platform
+python -m duckdb_api.distributed_testing.examples.cross_platform_worker_example --scripts \
+  --coordinator-url "http://coordinator-server:8080" \
+  --api-key "your_api_key" \
+  --output-dir "./workers"
+
+# Generate startup scripts
+python -m duckdb_api.distributed_testing.examples.cross_platform_worker_example --startup \
+  --coordinator-url "http://coordinator-server:8080" \
+  --api-key "your_api_key" \
+  --output-dir "./workers"
+
+# Demonstrate path conversion
+python -m duckdb_api.distributed_testing.examples.cross_platform_worker_example --paths
+```
+
+You can also use the module directly in your code:
+
+```python
+from duckdb_api.distributed_testing.cross_platform_worker_support import CrossPlatformWorkerSupport
+
+# Initialize for your platform
+support = CrossPlatformWorkerSupport()
+
+# Detect hardware capabilities
+hardware_info = support.detect_hardware()
+print(f"Platform: {hardware_info['platform']}")
+print(f"CPU: {hardware_info['cpu']['model']} with {hardware_info['cpu']['cores']} cores")
+print(f"Memory: {hardware_info['memory']['total_gb']} GB")
+print(f"GPUs: {hardware_info['gpu']['count']}")
+
+# Create deployment scripts for distributed workers
+config = {
+    "coordinator_url": "http://coordinator.example.com:8080",
+    "api_key": "your_api_key",
+    "worker_id": "worker_123"
+}
+script_path = support.create_deployment_script(config, "deploy_worker")
+```
+
+### Running Error Visualization Tests
+
+To run tests for the Error Visualization system:
+
+```bash
+# Run all error visualization tests
+python run_error_visualization_tests.py
+
+# Test specific components
+python run_error_visualization_tests.py --type sound     # Test sound notification system
+python run_error_visualization_tests.py --type severity  # Test severity detection
+python run_error_visualization_tests.py --type websocket # Test WebSocket integration
+python run_error_visualization_tests.py --type dashboard # Test dashboard integration
+python run_error_visualization_tests.py --type html      # Test HTML templates
+
+# Test system-critical sound notifications specifically
+python run_error_visualization_tests.py --test-system-critical
+
+# Run only unit tests
+python run_error_visualization_tests.py --unit-only
+
+# Run only end-to-end tests
+python run_error_visualization_tests.py --e2e-only
+
+# Generate test reports
+python run_error_visualization_tests.py --report --report-format html
+
+# Run as part of the complete test suite
+./run_all_tests.sh --type errorviz
+
+# Run only specific test type with filter
+./run_all_tests.sh --type errorviz --filter unit
+
+# Run the interactive error notification demo
+firefox ./dashboard/static/sounds/error_notification_demo.html
 ```
 
 ### Dashboard Features
@@ -306,9 +573,24 @@ The monitoring dashboard provides comprehensive real-time visibility into the di
    - Web platform success rates across browsers and platforms
    - Performance anomaly detection and visualization
    - Historical performance comparisons with improvement/regression tracking
-6. **Alerts**: Real-time alerting for critical events with severity levels
-7. **System Topology**: Interactive visualization of the distributed system structure
-8. **Fault Tolerance**: Monitoring of failure patterns and recovery actions
+6. **Error Visualization** ✅ (NEW): Comprehensive error monitoring and analysis:
+   - Error summary with total counts and category distribution
+   - Hierarchical sound notification system with four distinct severity levels:
+     - System-critical alerts with rising tone pattern for infrastructure failures
+     - Critical alerts with pulsing tones for hardware issues and worker crashes
+     - Warning alerts with moderate tones for network issues and timeouts
+     - Info notifications with subtle tones for non-critical issues
+   - Interactive error distribution visualization with drill-down capabilities
+   - Automated error pattern detection to identify recurring issues
+   - Worker-specific error analysis with status indicators and statistics
+   - Hardware-specific error analysis to identify problematic hardware
+   - Detailed error context information including system metrics at error time
+   - Time range selection for historical error analysis
+   - Integration with database for long-term error tracking
+   - User controls for sound notification preferences
+7. **Alerts**: Real-time alerting for critical events with severity levels
+8. **System Topology**: Interactive visualization of the distributed system structure
+9. **Fault Tolerance**: Monitoring of failure patterns and recovery actions
 
 ### Docker Testing Environment
 

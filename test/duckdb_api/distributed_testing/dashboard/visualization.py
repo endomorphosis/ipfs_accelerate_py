@@ -274,7 +274,7 @@ class VisualizationEngine:
                     }
                     .chart-description {
                         font-size: 14px;
-                        color: """ + ("#666666" if self.config["theme"] == "light"] else "#aaaaaa") + """;
+                        color: """ + ("#666666" if self.config["theme"] == "light" else "#aaaaaa") + """;
                         margin-bottom: 15px;
                     }
                     .regression-marker {

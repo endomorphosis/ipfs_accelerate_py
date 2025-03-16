@@ -429,13 +429,6 @@ class ModelShardingManager:
             'timeline': [],  # Time-series performance data
             'recovery_events': [],  # Record of recovery events
         }
-            'recovery_events': [],  # Record of recovery events
-        }
-            },
-            'shard_types': {},  # Performance metrics by shard type
-            'timeline': [],  # Time-series performance data
-            'recovery_events': [],  # Record of recovery events
-        }
         
         # Determine optimal browser allocation based on model type and shard type
         self.browser_allocation = self._determine_browser_allocation()

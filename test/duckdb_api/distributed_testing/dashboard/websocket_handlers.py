@@ -100,6 +100,34 @@ class WebSocketManager:
                     # Broadcast update to subscribers
                     await self.broadcast(topic, data)
             
+            elif msg_type == "error_visualization_init":
+                # Handle error visualization initialization
+                time_range = data.get("time_range", 24)
+                topic = f"error_visualization:{time_range}"
+                await self.subscribe(conn_id, topic)
+                
+                logger.info(f"Error visualization monitoring initialized for time range {time_range}")
+                
+                # Return confirmation
+                await self.send_to_connection(conn_id, {
+                    "type": "error_visualization_init_confirmed",
+                    "time_range": time_range
+                })
+            
+            elif msg_type == "error_visualization_update":
+                # Handle error update (new error report)
+                error_data = data.get("data", {})
+                time_range = error_data.get("time_range", 24)
+                
+                # Broadcast to all subscribers of this time range
+                topic = f"error_visualization:{time_range}"
+                await self.broadcast(topic, data)
+                
+                # Also broadcast to all error subscribers (for any time range)
+                await self.broadcast("error_visualization", data)
+                
+                logger.info(f"Error update broadcast to {topic} subscribers")
+            
             else:
                 logger.warning(f"Unknown message type: {msg_type}")
         
@@ -246,5 +274,6 @@ def setup_websocket_routes(app: web.Application, websocket_manager: WebSocketMan
     """
     app.router.add_get('/ws', websocket_manager.handle_websocket)
     app.router.add_get('/ws/e2e-test-monitoring', websocket_manager.handle_websocket)
+    app.router.add_get('/ws/error-visualization', websocket_manager.handle_websocket)
     
     logger.info("WebSocket routes configured")

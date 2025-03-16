@@ -11,6 +11,17 @@ from typing import Dict, Any, Optional
 
 from aiohttp import web
 
+# Import circuit breaker visualization
+try:
+    from duckdb_api.distributed_testing.dashboard.circuit_breaker_visualization import (
+        CircuitBreakerDashboardIntegration
+    )
+    CIRCUIT_BREAKER_VISUALIZATION_AVAILABLE = True
+except ImportError:
+    CIRCUIT_BREAKER_VISUALIZATION_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("Circuit Breaker Visualization not available. Circuit breaker monitoring features disabled.")
+
 logger = logging.getLogger(__name__)
 
 async def handle_index(request: web.Request) -> web.Response:
@@ -909,6 +920,206 @@ async def handle_dashboard_management(request: web.Request) -> web.Response:
             content_type='text/html'
         )
 
+async def handle_error_visualization(request: web.Request) -> web.Response:
+    """Handle requests to the error visualization page."""
+    dashboard = request.app['dashboard']
+    theme = request.query.get('theme', dashboard.theme)
+    time_range = int(request.query.get('time_range', '24'))
+    refresh = request.query.get('refresh', 'false').lower() == 'true'
+    
+    # Check if error visualization integration is available
+    if hasattr(dashboard, 'error_visualization_integration') and dashboard.error_visualization_integration:
+        # Force refresh if requested
+        if refresh:
+            # Clear the cache to force refresh
+            dashboard.error_visualization_integration.error_cache = {}
+        
+        # Get error data
+        error_data = await dashboard.error_visualization_integration.get_error_data(time_range_hours=time_range)
+    else:
+        # Return empty error data if integration not available
+        error_data = {
+            "summary": None,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "error": "Error visualization integration not available"
+        }
+    
+    # Render template
+    return web.Response(
+        text=dashboard.env.get_template('error_visualization.html').render(
+            theme=theme,
+            error_data=error_data,
+            time_range=time_range
+        ),
+        content_type='text/html'
+    )
+
+async def handle_api_errors(request: web.Request) -> web.Response:
+    """Handle API requests for error data."""
+    dashboard = request.app['dashboard']
+    time_range = int(request.query.get('time_range', '24'))
+    
+    # Check if error visualization integration is available
+    if hasattr(dashboard, 'error_visualization_integration') and dashboard.error_visualization_integration:
+        error_data = await dashboard.error_visualization_integration.get_error_data(time_range_hours=time_range)
+    else:
+        error_data = {
+            "summary": None,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "error": "Error visualization integration not available"
+        }
+    
+    return web.json_response(error_data)
+
+async def handle_api_report_error(request: web.Request) -> web.Response:
+    """Handle API requests to report a new error."""
+    dashboard = request.app['dashboard']
+    
+    # Check if error visualization integration is available
+    if not hasattr(dashboard, 'error_visualization_integration') or not dashboard.error_visualization_integration:
+        return web.json_response({
+            "status": "error",
+            "message": "Error visualization integration not available"
+        }, status=400)
+    
+    # Check request method
+    if request.method != 'POST':
+        return web.json_response({
+            "status": "error",
+            "message": "Only POST method is allowed"
+        }, status=405)
+    
+    try:
+        # Parse request data
+        error_data = await request.json()
+        
+        # Report the error
+        success = await dashboard.error_visualization_integration.report_error(error_data)
+        
+        if success:
+            return web.json_response({
+                "status": "success",
+                "message": "Error reported successfully"
+            })
+        else:
+            return web.json_response({
+                "status": "error",
+                "message": "Failed to report error"
+            }, status=500)
+    
+    except json.JSONDecodeError:
+        return web.json_response({
+            "status": "error",
+            "message": "Invalid JSON data"
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error handling API request to report error: {e}")
+        return web.json_response({
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}"
+        }, status=500)
+
+async def handle_circuit_breakers(request: web.Request) -> web.Response:
+    """Handle requests to the circuit breakers page."""
+    dashboard = request.app['dashboard']
+    theme = request.query.get('theme', dashboard.theme)
+    
+    # Check if circuit breaker visualization is available
+    if not CIRCUIT_BREAKER_VISUALIZATION_AVAILABLE:
+        return web.Response(
+            text=dashboard.env.get_template('feature_unavailable.html').render(
+                feature="Circuit Breaker Visualization",
+                theme=theme
+            ),
+            content_type='text/html'
+        )
+    
+    # Check if circuit breaker dashboard integration exists
+    circuit_breaker_dashboard = getattr(dashboard, 'circuit_breaker_dashboard', None)
+    
+    # Create it if it doesn't exist
+    if circuit_breaker_dashboard is None:
+        try:
+            # Get coordinator from dashboard
+            coordinator = getattr(dashboard, 'coordinator', None)
+            
+            # Create output directory
+            import os
+            output_dir = os.path.join(dashboard.dashboard_dir, "circuit_breakers")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Initialize integration
+            circuit_breaker_dashboard = CircuitBreakerDashboardIntegration(
+                coordinator=coordinator,
+                output_dir=output_dir
+            )
+            
+            # Store it in dashboard
+            dashboard.circuit_breaker_dashboard = circuit_breaker_dashboard
+            logger.info("Circuit Breaker Dashboard Integration initialized")
+        except Exception as e:
+            logger.error(f"Error initializing Circuit Breaker Dashboard Integration: {e}")
+            return web.Response(
+                text=dashboard.env.get_template('error.html').render(
+                    error=f"Error initializing Circuit Breaker Dashboard: {e}",
+                    theme=theme
+                ),
+                content_type='text/html'
+            )
+    
+    try:
+        # Generate dashboard HTML
+        dashboard_html = circuit_breaker_dashboard.generate_dashboard(theme)
+        
+        # Get metrics summary
+        metrics_summary = circuit_breaker_dashboard.get_metrics_summary()
+        
+        # Return response with dashboard HTML embedded in page template
+        return web.Response(
+            text=dashboard.env.get_template('iframe_embed.html').render(
+                title="Circuit Breaker Dashboard",
+                description="Real-time monitoring of circuit breakers in the distributed testing framework",
+                iframe_html=circuit_breaker_dashboard.get_dashboard_iframe_html(),
+                summary=metrics_summary,
+                theme=theme,
+                refresh_interval=dashboard.refresh_interval
+            ),
+            content_type='text/html'
+        )
+    except Exception as e:
+        logger.error(f"Error generating Circuit Breaker Dashboard: {e}")
+        return web.Response(
+            text=dashboard.env.get_template('error.html').render(
+                error=f"Error generating Circuit Breaker Dashboard: {e}",
+                theme=theme
+            ),
+            content_type='text/html'
+        )
+
+async def handle_api_circuit_breakers(request: web.Request) -> web.Response:
+    """Handle API requests for circuit breaker metrics."""
+    dashboard = request.app['dashboard']
+    
+    # Check if circuit breaker dashboard integration exists
+    circuit_breaker_dashboard = getattr(dashboard, 'circuit_breaker_dashboard', None)
+    
+    if circuit_breaker_dashboard is None:
+        return web.json_response({
+            "error": "Circuit Breaker Dashboard Integration not available"
+        })
+    
+    try:
+        # Get metrics
+        metrics = circuit_breaker_dashboard.get_circuit_breaker_metrics()
+        
+        # Return metrics as JSON
+        return web.json_response(metrics)
+    except Exception as e:
+        logger.error(f"Error getting circuit breaker metrics: {e}")
+        return web.json_response({
+            "error": f"Error getting circuit breaker metrics: {e}"
+        }, status=500)
+
 def setup_routes(app: web.Application) -> None:
     """Set up routes for the monitoring dashboard."""
     app.router.add_get('/', handle_index)
@@ -924,6 +1135,11 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get('/run-performance-analytics', handle_run_performance_analytics)
     app.router.add_post('/api/performance-analytics', handle_api_performance_analytics)
     app.router.add_get('/dashboards', handle_dashboard_management)
+    app.router.add_get('/circuit-breakers', handle_circuit_breakers)
+    app.router.add_get('/error-visualization', handle_error_visualization)
+    app.router.add_get('/api/errors', handle_api_errors)
+    app.router.add_get('/api/circuit-breakers', handle_api_circuit_breakers)
+    app.router.add_post('/api/report-error', handle_api_report_error)
     
     # Set up static routes
     app.router.add_static('/static/', app['dashboard'].static_dir)

@@ -1,0 +1,1815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error Visualization - Distributed Testing Framework</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/{{ theme }}.css">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        .error-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .error-card {
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        .error-section {
+            margin-bottom: 30px;
+        }
+        
+        .error-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .error-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: var(--heading-color);
+            margin: 0;
+        }
+        
+        .error-subtitle {
+            font-size: 1.1em;
+            color: var(--heading-color);
+            margin: 0 0 15px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .tab-container {
+            margin-bottom: 20px;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+        
+        .tab.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 0 0 5px 5px;
+            background-color: var(--card-bg);
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin: 15px 0;
+        }
+        
+        .summary-box {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .error-summary-box {
+            background-color: var(--danger-color-light);
+            border-left: 4px solid var(--danger-color);
+        }
+        
+        .stable-box {
+            background-color: var(--success-color-light);
+            border-left: 4px solid var(--success-color);
+        }
+        
+        .warning-box {
+            background-color: var(--warning-color-light);
+            border-left: 4px solid var(--warning-color);
+        }
+        
+        .time-range-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .time-range-selector label {
+            font-weight: bold;
+        }
+        
+        .time-range-selector select {
+            padding: 5px 10px;
+            border-radius: 5px;
+            background-color: var(--bg-lighter);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+        
+        .error-list {
+            margin-top: 20px;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .error-list-header {
+            display: grid;
+            grid-template-columns: 0.8fr 1fr 1.2fr 1fr 0.8fr;
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 15px;
+            font-weight: bold;
+        }
+        
+        .error-list-item {
+            display: grid;
+            grid-template-columns: 0.8fr 1fr 1.2fr 1fr 0.8fr;
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: var(--bg-lighter);
+        }
+        
+        .error-list-item:nth-child(even) {
+            background-color: var(--card-bg);
+        }
+        
+        .error-list-item:hover {
+            background-color: var(--hover-bg);
+        }
+        
+        .error-category {
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .error-category-RESOURCE {
+            background-color: var(--warning-color-light);
+            color: var(--warning-color-darker);
+        }
+        
+        .error-category-NETWORK {
+            background-color: var(--primary-color-light);
+            color: var(--primary-color-darker);
+        }
+        
+        .error-category-HARDWARE {
+            background-color: var(--danger-color-light);
+            color: var(--danger-color-darker);
+        }
+        
+        .error-category-WORKER {
+            background-color: var(--info-color-light);
+            color: var(--info-color-darker);
+        }
+        
+        .error-category-TEST {
+            background-color: var(--success-color-light);
+            color: var(--success-color-darker);
+        }
+        
+        /* System-critical error styles */
+        .error-category-SYSTEM {
+            background-color: #d81b60;
+            color: white;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+        
+        .error-list-item.system-critical {
+            background-color: rgba(216, 27, 96, 0.1);
+            border-left: 4px solid #d81b60;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        }
+        
+        .error-category-UNKNOWN {
+            background-color: var(--muted-color-light);
+            color: var(--text-color);
+        }
+        
+        .error-details {
+            display: none;
+            background-color: var(--bg-lighter);
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        
+        .error-detail-item {
+            margin-bottom: 10px;
+        }
+        
+        .detail-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .detail-value {
+            padding: 8px;
+            background-color: var(--card-bg);
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        
+        .error-details pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        
+        .recurring-badge {
+            background-color: var(--danger-color);
+            color: white;
+            font-weight: bold;
+            font-size: 0.8em;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }
+        
+        .hardware-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .hardware-card {
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            padding: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .hardware-title {
+            font-weight: bold;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .hardware-status {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+        }
+        
+        .status-label {
+            color: var(--text-muted);
+        }
+        
+        .status-value {
+            font-weight: bold;
+        }
+        
+        .status-critical {
+            color: var(--danger-color);
+        }
+        
+        .status-warning {
+            color: var(--warning-color);
+        }
+        
+        .status-good {
+            color: var(--success-color);
+        }
+        
+        .metric-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .metric-badge {
+            padding: 5px 10px;
+            border-radius: 15px;
+            cursor: pointer;
+            background-color: var(--bg-lighter);
+            color: var(--text-color);
+            transition: background-color 0.3s;
+        }
+        
+        .metric-badge.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .alert-count {
+            display: inline-block;
+            background-color: var(--danger-color);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            font-size: 0.8em;
+            line-height: 20px;
+            margin-left: 5px;
+        }
+        
+        .system-context {
+            margin-top: 15px;
+        }
+        
+        .context-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        
+        .context-card {
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            padding: 15px;
+        }
+        
+        .context-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .context-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+        }
+        
+        .context-label {
+            color: var(--text-muted);
+        }
+        
+        .no-data-message {
+            padding: 30px;
+            text-align: center;
+            color: var(--text-muted);
+            background-color: var(--bg-lighter);
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        
+        .last-update {
+            font-size: 0.9em;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 10px;
+        }
+        
+        .action-button {
+            padding: 8px 15px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .action-button:hover {
+            background-color: var(--primary-color-hover);
+        }
+        
+        .timestamp {
+            color: var(--text-muted);
+            font-size: 0.9em;
+        }
+        
+        .header-controls-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .notification-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px;
+            background-color: var(--bg-lighter);
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .notification-controls label {
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        
+        .notification-controls input[type="range"] {
+            width: 80px;
+        }
+        
+        .mute-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2em;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        
+        .mute-button:hover {
+            background-color: var(--hover-bg);
+        }
+        
+        .reset-count-button {
+            background-color: var(--muted-color);
+            color: var(--text-color);
+            border: none;
+            padding: 2px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-left: 8px;
+        }
+        
+        .reset-count-button:hover {
+            background-color: var(--muted-color-hover);
+        }
+        
+        .auto-refresh-button {
+            background-color: var(--muted-color);
+            color: var(--text-color);
+            border: none;
+            padding: 4px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-left: 8px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .auto-refresh-button:hover {
+            background-color: var(--muted-color-hover);
+        }
+        
+        .auto-refresh-button.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .auto-refresh-button.active:hover {
+            background-color: var(--primary-color-hover);
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .spin-animation {
+            display: inline-block;
+            animation: spin 2s infinite linear;
+        }
+        
+        /* Error animation styles */
+        @keyframes highlight {
+            0% { background-color: var(--primary-color-light); }
+            50% { background-color: var(--primary-color-light); }
+            100% { background-color: inherit; }
+        }
+        
+        @keyframes critical-highlight {
+            0% { background-color: var(--danger-color-light); }
+            50% { background-color: var(--danger-color-light); }
+            100% { background-color: inherit; }
+        }
+        
+        @keyframes warning-highlight {
+            0% { background-color: var(--warning-color-light); }
+            50% { background-color: var(--warning-color-light); }
+            100% { background-color: inherit; }
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .error-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--danger-color);
+            color: white;
+            border-radius: 50%;
+            min-width: 20px;
+            height: 20px;
+            font-size: 0.8em;
+            margin-left: 8px;
+            font-weight: bold;
+        }
+        
+        /* Accessibility helpers */
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        
+        /* High contrast mode */
+        @media (forced-colors: active) {
+            .error-category-HARDWARE {
+                border: 2px solid ButtonText;
+            }
+            .error-category-RESOURCE {
+                border: 2px solid ButtonText;
+            }
+            .error-category-NETWORK {
+                border: 2px solid ButtonText;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Dashboard Sidebar -->
+        {% include 'sidebar.html' %}
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1>Error Visualization</h1>
+                <div class="header-controls">
+                    <div class="theme-toggle">
+                        <span>Theme:</span>
+                        <select id="themeSelector" onchange="changeTheme()">
+                            <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
+                            <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
+                        </select>
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-content">
+                <div class="error-container">
+                    <div class="error-card">
+                        <div class="error-header">
+                            <h2 class="error-title">Error Summary</h2>
+                            <div class="header-controls-container">
+                                <div class="time-range-selector">
+                                    <label for="timeRange">Time Range:</label>
+                                    <select id="timeRange" onchange="changeTimeRange()">
+                                        <option value="1" {% if time_range == 1 %}selected{% endif %}>Last 1 hour</option>
+                                        <option value="6" {% if time_range == 6 %}selected{% endif %}>Last 6 hours</option>
+                                        <option value="24" {% if time_range == 24 %}selected{% endif %}>Last 24 hours</option>
+                                        <option value="168" {% if time_range == 168 %}selected{% endif %}>Last 7 days</option>
+                                    </select>
+                                </div>
+                                <div class="notification-controls">
+                                    <label for="notificationVolume">Alert Volume:</label>
+                                    <input type="range" id="notificationVolume" min="0" max="1" step="0.1" value="0.7" onchange="changeNotificationVolume(this.value)">
+                                    <button id="muteButton" onclick="toggleMute()" class="mute-button" aria-label="Toggle mute">
+                                        <span id="muteIcon">🔊</span>
+                                    </button>
+                                    <button id="resetCountButton" onclick="resetErrorCounts()" class="reset-count-button" title="Reset new error count" aria-label="Reset new error count">
+                                        Clear
+                                    </button>
+                                    <button id="autoRefreshButton" onclick="toggleAutoRefresh()" class="auto-refresh-button" title="Toggle auto refresh" aria-label="Toggle auto refresh">
+                                        <span id="autoRefreshIcon">↻</span> Auto
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% if error_data.summary %}
+                            {% if error_data.summary.total_errors > 0 %}
+                                <div class="summary-box error-summary-box">
+                                    <h3>🚨 Error Summary</h3>
+                                    <p>There are <strong>{{ error_data.summary.total_errors }}</strong> errors in the selected time range.</p>
+                                    <p>Key findings:</p>
+                                    <ul>
+                                        <li><strong>{{ error_data.summary.recurring_errors }}</strong> recurring error patterns identified</li>
+                                        <li><strong>{{ error_data.summary.critical_hardware_errors }}</strong> critical hardware-related errors</li>
+                                        <li><strong>{{ error_data.summary.resource_errors }}</strong> resource allocation errors</li>
+                                        <li><strong>{{ error_data.summary.network_errors }}</strong> network-related errors</li>
+                                    </ul>
+                                </div>
+                            {% else %}
+                                <div class="summary-box stable-box">
+                                    <h3>✅ No Errors Detected</h3>
+                                    <p>No errors were detected in the selected time range.</p>
+                                </div>
+                            {% endif %}
+                            
+                            <div class="last-update">
+                                Last updated: {{ error_data.timestamp }}
+                            </div>
+                        {% else %}
+                            <div class="no-data-message">
+                                <h3>No Error Data Available</h3>
+                                <p>Run distributed tests to generate error data.</p>
+                                <button class="action-button" onclick="refreshErrorData()">Refresh Error Data</button>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="tab-container">
+                        <div class="tabs">
+                            <div class="tab active" onclick="openTab(event, 'errors')">Error Distribution</div>
+                            <div class="tab" onclick="openTab(event, 'patterns')">Error Patterns</div>
+                            <div class="tab" onclick="openTab(event, 'worker-errors')">Worker Errors</div>
+                            <div class="tab" onclick="openTab(event, 'hardware-errors')">Hardware Errors</div>
+                        </div>
+                        
+                        <div id="errors" class="tab-content active">
+                            {% if error_data.error_distribution %}
+                                <div class="chart-container" id="error-distribution-chart"></div>
+                                
+                                <h3 class="error-subtitle">Recent Errors</h3>
+                                <div class="error-list">
+                                    <div class="error-list-header">
+                                        <div>Time</div>
+                                        <div>Worker ID</div>
+                                        <div>Error Type</div>
+                                        <div>Category</div>
+                                        <div>Actions</div>
+                                    </div>
+                                    
+                                    {% for error in error_data.recent_errors %}
+                                        <div class="error-list-item" id="error-row-{{ loop.index }}">
+                                            <div class="timestamp">{{ error.timestamp }}</div>
+                                            <div>{{ error.worker_id }}</div>
+                                            <div>{{ error.error_type }}
+                                                {% if error.is_recurring %}
+                                                    <span class="recurring-badge">Recurring</span>
+                                                {% endif %}
+                                            </div>
+                                            <div>
+                                                <span class="error-category error-category-{{ error.error_category.split('_')[0] }}">
+                                                    {{ error.error_category }}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <button class="action-button" onclick="toggleErrorDetails('{{ loop.index }}')">
+                                                    Details
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="error-details" id="error-details-{{ loop.index }}">
+                                            <div class="error-detail-item">
+                                                <div class="detail-label">Error Message:</div>
+                                                <div class="detail-value">
+                                                    {{ error.message }}
+                                                </div>
+                                            </div>
+                                            
+                                            {% if error.traceback %}
+                                                <div class="error-detail-item">
+                                                    <div class="detail-label">Traceback:</div>
+                                                    <div class="detail-value">
+                                                        <pre>{{ error.traceback }}</pre>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                            
+                                            <div class="error-detail-item">
+                                                <div class="detail-label">System Context:</div>
+                                                <div class="system-context">
+                                                    <div class="context-grid">
+                                                        <div class="context-card">
+                                                            <div class="context-title">System Information</div>
+                                                            <div class="context-item">
+                                                                <div class="context-label">Hostname:</div>
+                                                                <div>{{ error.system_context.hostname }}</div>
+                                                            </div>
+                                                            <div class="context-item">
+                                                                <div class="context-label">Platform:</div>
+                                                                <div>{{ error.system_context.platform }}</div>
+                                                            </div>
+                                                            <div class="context-item">
+                                                                <div class="context-label">Architecture:</div>
+                                                                <div>{{ error.system_context.architecture }}</div>
+                                                            </div>
+                                                            <div class="context-item">
+                                                                <div class="context-label">Python Version:</div>
+                                                                <div>{{ error.system_context.python_version }}</div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {% if error.system_context.metrics %}
+                                                            <div class="context-card">
+                                                                <div class="context-title">CPU Metrics</div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">CPU Usage:</div>
+                                                                    <div>{{ error.system_context.metrics.cpu.percent }}%</div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">CPU Count:</div>
+                                                                    <div>{{ error.system_context.metrics.cpu.count }} ({{ error.system_context.metrics.cpu.physical_count }} physical)</div>
+                                                                </div>
+                                                                {% if error.system_context.metrics.cpu.frequency_mhz %}
+                                                                    <div class="context-item">
+                                                                        <div class="context-label">CPU Frequency:</div>
+                                                                        <div>{{ error.system_context.metrics.cpu.frequency_mhz }} MHz</div>
+                                                                    </div>
+                                                                {% endif %}
+                                                            </div>
+                                                            
+                                                            <div class="context-card">
+                                                                <div class="context-title">Memory Metrics</div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Memory Usage:</div>
+                                                                    <div>{{ error.system_context.metrics.memory.used_percent }}%</div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Total Memory:</div>
+                                                                    <div>{{ error.system_context.metrics.memory.total_gb }} GB</div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Available Memory:</div>
+                                                                    <div>{{ error.system_context.metrics.memory.available_gb }} GB</div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div class="context-card">
+                                                                <div class="context-title">Disk Metrics</div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Disk Usage:</div>
+                                                                    <div>{{ error.system_context.metrics.disk.used_percent }}%</div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Total Disk:</div>
+                                                                    <div>{{ error.system_context.metrics.disk.total_gb }} GB</div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Free Disk:</div>
+                                                                    <div>{{ error.system_context.metrics.disk.free_gb }} GB</div>
+                                                                </div>
+                                                            </div>
+                                                        {% endif %}
+                                                        
+                                                        {% if error.hardware_context %}
+                                                            <div class="context-card">
+                                                                <div class="context-title">Hardware Context</div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Hardware Type:</div>
+                                                                    <div>{{ error.hardware_context.hardware_type }}</div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Hardware Types:</div>
+                                                                    <div>{{ error.hardware_context.hardware_types|join(', ') }}</div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Overheating:</div>
+                                                                    <div class="{% if error.hardware_context.hardware_status.overheating %}status-critical{% else %}status-good{% endif %}">
+                                                                        {{ 'Yes' if error.hardware_context.hardware_status.overheating else 'No' }}
+                                                                    </div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Memory Pressure:</div>
+                                                                    <div class="{% if error.hardware_context.hardware_status.memory_pressure %}status-critical{% else %}status-good{% endif %}">
+                                                                        {{ 'Yes' if error.hardware_context.hardware_status.memory_pressure else 'No' }}
+                                                                    </div>
+                                                                </div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">Throttling:</div>
+                                                                    <div class="{% if error.hardware_context.hardware_status.throttling %}status-warning{% else %}status-good{% endif %}">
+                                                                        {{ 'Yes' if error.hardware_context.hardware_status.throttling else 'No' }}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        {% endif %}
+                                                        
+                                                        {% if error.system_context.gpu_metrics %}
+                                                            <div class="context-card">
+                                                                <div class="context-title">GPU Metrics</div>
+                                                                <div class="context-item">
+                                                                    <div class="context-label">GPU Count:</div>
+                                                                    <div>{{ error.system_context.gpu_metrics.count }}</div>
+                                                                </div>
+                                                                {% for device in error.system_context.gpu_metrics.devices %}
+                                                                    <div class="context-item">
+                                                                        <div class="context-label">GPU {{ device.index }} Name:</div>
+                                                                        <div>{{ device.name }}</div>
+                                                                    </div>
+                                                                    {% if device.memory_utilization %}
+                                                                        <div class="context-item">
+                                                                            <div class="context-label">GPU {{ device.index }} Memory:</div>
+                                                                            <div>{{ device.memory_utilization }}%</div>
+                                                                        </div>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            {% if error.error_frequency %}
+                                                <div class="error-detail-item">
+                                                    <div class="detail-label">Error Frequency:</div>
+                                                    <div class="detail-value">
+                                                        This error has occurred:
+                                                        <ul>
+                                                            <li>{{ error.error_frequency.same_type.last_1h }} times in the last hour</li>
+                                                            <li>{{ error.error_frequency.same_type.last_6h }} times in the last 6 hours</li>
+                                                            <li>{{ error.error_frequency.same_type.last_24h }} times in the last 24 hours</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                <script>
+                                    // Render the error distribution chart
+                                    var distributionData = {{ error_data.error_distribution.chart_data|safe }};
+                                    Plotly.newPlot('error-distribution-chart', distributionData.data, distributionData.layout);
+                                </script>
+                            {% else %}
+                                <div class="no-data-message">
+                                    <h3>No Error Distribution Data Available</h3>
+                                    <p>No error distribution data is available for the current time range.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div id="patterns" class="tab-content">
+                            {% if error_data.error_patterns %}
+                                <div class="chart-container" id="error-patterns-chart"></div>
+                                
+                                <h3 class="error-subtitle">Top Error Patterns</h3>
+                                <div class="error-list">
+                                    <div class="error-list-header">
+                                        <div>Pattern</div>
+                                        <div>Occurrences</div>
+                                        <div>Category</div>
+                                        <div>First Seen</div>
+                                        <div>Last Seen</div>
+                                    </div>
+                                    
+                                    {% for pattern in error_data.error_patterns.top_patterns %}
+                                        <div class="error-list-item">
+                                            <div>{{ pattern.pattern }}</div>
+                                            <div>{{ pattern.occurrences }}</div>
+                                            <div>
+                                                <span class="error-category error-category-{{ pattern.category.split('_')[0] }}">
+                                                    {{ pattern.category }}
+                                                </span>
+                                            </div>
+                                            <div class="timestamp">{{ pattern.first_seen }}</div>
+                                            <div class="timestamp">{{ pattern.last_seen }}</div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                <script>
+                                    // Render the error patterns chart
+                                    var patternsData = {{ error_data.error_patterns.chart_data|safe }};
+                                    Plotly.newPlot('error-patterns-chart', patternsData.data, patternsData.layout);
+                                </script>
+                            {% else %}
+                                <div class="no-data-message">
+                                    <h3>No Error Pattern Data Available</h3>
+                                    <p>No error pattern data is available for the current time range.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div id="worker-errors" class="tab-content">
+                            {% if error_data.worker_errors %}
+                                <div class="chart-container" id="worker-errors-chart"></div>
+                                
+                                <h3 class="error-subtitle">Worker Error Distribution</h3>
+                                <div class="error-list">
+                                    <div class="error-list-header">
+                                        <div>Worker ID</div>
+                                        <div>Error Count</div>
+                                        <div>Most Common Error</div>
+                                        <div>Last Error</div>
+                                        <div>Status</div>
+                                    </div>
+                                    
+                                    {% for worker in error_data.worker_errors.worker_stats %}
+                                        <div class="error-list-item">
+                                            <div>{{ worker.worker_id }}</div>
+                                            <div>{{ worker.error_count }}</div>
+                                            <div>{{ worker.most_common_error }}</div>
+                                            <div class="timestamp">{{ worker.last_error_time }}</div>
+                                            <div>
+                                                <span class="error-category error-category-{{ worker.status }}">
+                                                    {{ worker.status }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                <script>
+                                    // Render the worker errors chart
+                                    var workerErrorsData = {{ error_data.worker_errors.chart_data|safe }};
+                                    Plotly.newPlot('worker-errors-chart', workerErrorsData.data, workerErrorsData.layout);
+                                </script>
+                            {% else %}
+                                <div class="no-data-message">
+                                    <h3>No Worker Error Data Available</h3>
+                                    <p>No worker error data is available for the current time range.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div id="hardware-errors" class="tab-content">
+                            {% if error_data.hardware_errors %}
+                                <div class="chart-container" id="hardware-errors-chart"></div>
+                                
+                                <h3 class="error-subtitle">Hardware Status</h3>
+                                <div class="hardware-info">
+                                    {% for hw_type, status in error_data.hardware_errors.hardware_status.items() %}
+                                        <div class="hardware-card">
+                                            <div class="hardware-title">{{ hw_type }}</div>
+                                            <div class="hardware-status">
+                                                <div class="status-label">Error Rate:</div>
+                                                <div class="status-value {% if status.error_rate > 5 %}status-critical{% elif status.error_rate > 1 %}status-warning{% else %}status-good{% endif %}">
+                                                    {{ status.error_rate }}%
+                                                </div>
+                                            </div>
+                                            <div class="hardware-status">
+                                                <div class="status-label">Error Count:</div>
+                                                <div class="status-value">{{ status.error_count }}</div>
+                                            </div>
+                                            <div class="hardware-status">
+                                                <div class="status-label">Most Common:</div>
+                                                <div class="status-value">{{ status.most_common_error }}</div>
+                                            </div>
+                                            <div class="hardware-status">
+                                                <div class="status-label">Status:</div>
+                                                <div class="status-value {% if status.status == 'Critical' %}status-critical{% elif status.status == 'Warning' %}status-warning{% else %}status-good{% endif %}">
+                                                    {{ status.status }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                <h3 class="error-subtitle">Hardware-Related Errors</h3>
+                                <div class="error-list">
+                                    <div class="error-list-header">
+                                        <div>Hardware Type</div>
+                                        <div>Error Type</div>
+                                        <div>Message</div>
+                                        <div>Worker ID</div>
+                                        <div>Time</div>
+                                    </div>
+                                    
+                                    {% for error in error_data.hardware_errors.recent_errors %}
+                                        <div class="error-list-item">
+                                            <div>{{ error.hardware_type }}</div>
+                                            <div>{{ error.error_type }}</div>
+                                            <div>{{ error.message|truncate(50) }}</div>
+                                            <div>{{ error.worker_id }}</div>
+                                            <div class="timestamp">{{ error.timestamp }}</div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                <script>
+                                    // Render the hardware errors chart
+                                    var hardwareErrorsData = {{ error_data.hardware_errors.chart_data|safe }};
+                                    Plotly.newPlot('hardware-errors-chart', hardwareErrorsData.data, hardwareErrorsData.layout);
+                                </script>
+                            {% else %}
+                                <div class="no-data-message">
+                                    <h3>No Hardware Error Data Available</h3>
+                                    <p>No hardware error data is available for the current time range.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // WebSocket connection
+        let socket;
+        let isConnected = false;
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 5;
+        let reconnectInterval = 3000; // 3 seconds
+        let currentTimeRange = {{ time_range }};
+        let newErrorCount = 0;
+        let newCriticalErrorCount = 0;
+        
+        function initializeWebSocket() {
+            // Close any existing connection
+            if (socket) {
+                socket.close();
+            }
+            
+            // Create new WebSocket connection
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/error-visualization`;
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = function() {
+                console.log('WebSocket connection established');
+                isConnected = true;
+                reconnectAttempts = 0;
+                
+                // Subscribe to error visualization updates for the current time range
+                socket.send(JSON.stringify({
+                    type: 'error_visualization_init',
+                    time_range: currentTimeRange
+                }));
+                
+                // Also subscribe to the general error visualization topic
+                socket.send(JSON.stringify({
+                    type: 'subscribe',
+                    topic: 'error_visualization'
+                }));
+            };
+            
+            socket.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    
+                    // Handle different message types
+                    if (message.type === 'error_visualization_update') {
+                        // Handle error update
+                        handleErrorUpdate(message.data);
+                    } else if (message.type === 'error_visualization_init_confirmed') {
+                        console.log('Error visualization subscription confirmed:', message);
+                    } else if (message.type === 'subscription_confirmed') {
+                        console.log('Subscription confirmed:', message);
+                    }
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            };
+            
+            socket.onclose = function(event) {
+                console.log('WebSocket connection closed');
+                isConnected = false;
+                
+                // Attempt to reconnect
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+                    setTimeout(initializeWebSocket, reconnectInterval);
+                } else {
+                    console.log('Max reconnect attempts reached. Please refresh the page.');
+                }
+            };
+            
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        function handleErrorUpdate(data) {
+            // Check if the error is for the current time range
+            if (data.time_range && data.time_range !== currentTimeRange) {
+                return;
+            }
+            
+            // Check if we have an error
+            if (!data.error) {
+                return;
+            }
+            
+            const error = data.error;
+            console.log('Received real-time error update:', error);
+            
+            // Determine error severity for sound and notification
+            let errorSeverity = 'default';
+            
+            if (error.is_system_critical) {
+                // Highest priority - system-level critical errors
+                errorSeverity = 'system_critical';
+            } else if (error.is_critical) {
+                // High priority - critical errors
+                errorSeverity = 'critical';
+            } else {
+                // Check error category to determine severity
+                const errorCategory = error.error_category || '';
+                
+                if (errorCategory.includes('COORDINATOR_FAILURE') ||
+                    errorCategory.includes('DATABASE_CORRUPTION') ||
+                    errorCategory.includes('SECURITY_BREACH')) {
+                    // System-level failures are system-critical
+                    errorSeverity = 'system_critical';
+                } else if (errorCategory.includes('HARDWARE_NOT_AVAILABLE') || 
+                    errorCategory.includes('RESOURCE_EXHAUSTED') || 
+                    errorCategory.includes('WORKER_CRASHED')) {
+                    // Hardware, resource exhaustion, and worker crash errors are critical
+                    errorSeverity = 'critical';
+                } else if (errorCategory.includes('NETWORK') || 
+                           errorCategory.includes('RESOURCE') ||
+                           errorCategory.includes('WORKER')) {
+                    // Network, other resource, and worker errors are warnings
+                    errorSeverity = 'warning';
+                } else {
+                    // Test and other errors are info
+                    errorSeverity = 'info';
+                }
+            }
+            
+            // Play appropriate sound notification based on severity
+            playErrorNotification(errorSeverity);
+            
+            // Add new error to the list
+            addErrorToList(error);
+            
+            // Update error count in the summary
+            updateErrorSummary(error);
+            
+            // Show notification
+            showNotification(error);
+        }
+        
+        function addErrorToList(error) {
+            // Get the error list container
+            const errorList = document.querySelector('.error-list');
+            if (!errorList) return;
+            
+            // Get the headers section (first child)
+            const headerSection = errorList.querySelector('.error-list-header');
+            if (!headerSection) return;
+            
+            // Create a unique ID for this error
+            const errorId = 'error-' + Date.now();
+            
+            // Create error list item
+            const errorItem = document.createElement('div');
+            errorItem.className = 'error-list-item';
+            errorItem.id = `error-row-${errorId}`;
+            
+            // Create error timestamp
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'timestamp';
+            timestampDiv.textContent = error.timestamp;
+            
+            // Create worker ID
+            const workerIdDiv = document.createElement('div');
+            workerIdDiv.textContent = error.worker_id;
+            
+            // Create error type with recurring badge if applicable
+            const errorTypeDiv = document.createElement('div');
+            errorTypeDiv.textContent = error.error_type || error.type || 'Unknown';
+            if (error.is_recurring) {
+                const recurringBadge = document.createElement('span');
+                recurringBadge.className = 'recurring-badge';
+                recurringBadge.textContent = 'Recurring';
+                errorTypeDiv.appendChild(recurringBadge);
+            }
+            
+            // Create error category
+            const errorCategoryDiv = document.createElement('div');
+            const categorySpan = document.createElement('span');
+            const category = error.error_category || 'UNKNOWN_ERROR';
+            const categoryType = category.split('_')[0];
+            categorySpan.className = `error-category error-category-${categoryType}`;
+            categorySpan.textContent = category;
+            errorCategoryDiv.appendChild(categorySpan);
+            
+            // Create actions
+            const actionsDiv = document.createElement('div');
+            const detailsButton = document.createElement('button');
+            detailsButton.className = 'action-button';
+            detailsButton.textContent = 'Details';
+            detailsButton.onclick = function() { toggleErrorDetails(errorId); };
+            actionsDiv.appendChild(detailsButton);
+            
+            // Add all elements to the error item
+            errorItem.appendChild(timestampDiv);
+            errorItem.appendChild(workerIdDiv);
+            errorItem.appendChild(errorTypeDiv);
+            errorItem.appendChild(errorCategoryDiv);
+            errorItem.appendChild(actionsDiv);
+            
+            // Create error details section
+            const errorDetails = document.createElement('div');
+            errorDetails.className = 'error-details';
+            errorDetails.id = `error-details-${errorId}`;
+            
+            // Create message section
+            const messageItem = document.createElement('div');
+            messageItem.className = 'error-detail-item';
+            
+            const messageLabel = document.createElement('div');
+            messageLabel.className = 'detail-label';
+            messageLabel.textContent = 'Error Message:';
+            
+            const messageValue = document.createElement('div');
+            messageValue.className = 'detail-value';
+            messageValue.textContent = error.message || 'No message';
+            
+            messageItem.appendChild(messageLabel);
+            messageItem.appendChild(messageValue);
+            errorDetails.appendChild(messageItem);
+            
+            // Add error details after the error item
+            errorList.insertBefore(errorItem, headerSection.nextSibling);
+            errorList.insertBefore(errorDetails, errorItem.nextSibling);
+            
+            // Highlight the new item temporarily with animation based on severity
+            const errorCategory = error.error_category || '';
+            const isSystemCritical = error.is_system_critical || 
+                                    errorCategory.includes('COORDINATOR_FAILURE') ||
+                                    errorCategory.includes('DATABASE_CORRUPTION') ||
+                                    errorCategory.includes('SECURITY_BREACH');
+                               
+            const isCritical = !isSystemCritical && (
+                               error.is_critical || 
+                               errorCategory.includes('HARDWARE_AVAILABILITY') || 
+                               errorCategory.includes('RESOURCE_ALLOCATION') || 
+                               errorCategory.includes('WORKER_CRASH'));
+                               
+            const isWarning = !isSystemCritical && !isCritical && (
+                              errorCategory.includes('NETWORK') || 
+                              errorCategory.includes('RESOURCE') ||
+                              errorCategory.includes('WORKER'));
+            
+            if (isSystemCritical) {
+                // Apply system-critical styling and continuous pulse animation
+                errorItem.classList.add('system-critical');
+                errorItem.style.animation = 'pulse 2s infinite';
+                
+                // Update category to show SYSTEM type if it's not already
+                const categorySpan = errorItem.querySelector('.error-category');
+                if (categorySpan) {
+                    categorySpan.className = 'error-category error-category-SYSTEM';
+                    if (!categorySpan.textContent.includes('SYSTEM')) {
+                        categorySpan.textContent = 'SYSTEM_' + categorySpan.textContent;
+                    }
+                }
+            } else if (isCritical) {
+                errorItem.style.animation = 'critical-highlight 3s';
+                // Add a brief pulse animation to make critical errors more noticeable
+                setTimeout(() => {
+                    errorItem.classList.add('pulse-animation');
+                    // Remove the pulse after 10 seconds
+                    setTimeout(() => {
+                        errorItem.classList.remove('pulse-animation');
+                    }, 10000);
+                }, 3000);
+            } else if (isWarning) {
+                errorItem.style.animation = 'warning-highlight 2s';
+            } else {
+                errorItem.style.animation = 'highlight 2s';
+            }
+            
+            // Add aria attributes for accessibility
+            errorItem.setAttribute('aria-live', 'polite');
+            errorItem.setAttribute('aria-atomic', 'true');
+            
+            if (isSystemCritical) {
+                errorItem.setAttribute('aria-label', 'System Critical error: ' + error.message);
+                // Set higher importance for screen readers
+                errorItem.setAttribute('aria-live', 'assertive');
+            } else if (isCritical) {
+                errorItem.setAttribute('aria-label', 'Critical error: ' + error.message);
+            }
+        }
+        
+        function updateErrorSummary(error) {
+            const summaryElement = document.querySelector('.summary-box');
+            if (!summaryElement) return;
+            
+            // Try to find the current error count and update it
+            const countElement = summaryElement.querySelector('strong');
+            if (countElement) {
+                const currentCount = parseInt(countElement.textContent) || 0;
+                countElement.textContent = (currentCount + 1).toString();
+            }
+            
+            // Update the new error count
+            newErrorCount++;
+            
+            // Check if it's a critical error
+            const errorCategory = error.error_category || '';
+            const isCritical = error.is_critical || 
+                               errorCategory.includes('HARDWARE_AVAILABILITY') || 
+                               errorCategory.includes('RESOURCE_ALLOCATION') || 
+                               errorCategory.includes('WORKER_CRASH');
+            
+            if (isCritical) {
+                newCriticalErrorCount++;
+            }
+            
+            // Update the page title to show new error count
+            updatePageTitle();
+            
+            // Update the error summary heading
+            const headingElement = summaryElement.querySelector('h3');
+            if (headingElement) {
+                // If there are new errors, add a badge
+                if (!headingElement.querySelector('.error-count-badge')) {
+                    const badgeEl = document.createElement('span');
+                    badgeEl.className = 'error-count-badge';
+                    badgeEl.id = 'new-error-badge';
+                    badgeEl.innerText = newErrorCount;
+                    
+                    // Add screen reader text
+                    const srText = document.createElement('span');
+                    srText.className = 'visually-hidden';
+                    srText.innerText = ' new errors';
+                    badgeEl.appendChild(srText);
+                    
+                    headingElement.appendChild(badgeEl);
+                } else {
+                    // Update existing badge
+                    const badgeEl = headingElement.querySelector('.error-count-badge');
+                    badgeEl.innerText = newErrorCount;
+                    
+                    // Add screen reader text
+                    const srText = document.createElement('span');
+                    srText.className = 'visually-hidden';
+                    srText.innerText = ' new errors';
+                    badgeEl.appendChild(srText);
+                }
+            }
+        }
+        
+        function updatePageTitle() {
+            // Update the page title to show new error count
+            if (newErrorCount > 0) {
+                if (newCriticalErrorCount > 0) {
+                    document.title = `(${newErrorCount}, ${newCriticalErrorCount} critical) Error Visualization`;
+                } else {
+                    document.title = `(${newErrorCount}) Error Visualization`;
+                }
+            } else {
+                document.title = 'Error Visualization';
+            }
+        }
+        
+        function resetErrorCounts() {
+            // Reset the new error counts
+            newErrorCount = 0;
+            newCriticalErrorCount = 0;
+            
+            // Update the page title
+            updatePageTitle();
+            
+            // Remove the badge if it exists
+            const badgeEl = document.getElementById('new-error-badge');
+            if (badgeEl) {
+                badgeEl.remove();
+            }
+        }
+        
+        function toggleAutoRefresh() {
+            const button = document.getElementById('autoRefreshButton');
+            const icon = document.getElementById('autoRefreshIcon');
+            
+            if (autoRefreshEnabled) {
+                // Disable auto-refresh
+                autoRefreshEnabled = false;
+                
+                // Clear the interval
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+                
+                // Update button styling
+                button.classList.remove('active');
+                icon.classList.remove('spin-animation');
+                
+                // Add aria-checked attribute for accessibility
+                button.setAttribute('aria-checked', 'false');
+                
+                // Add a notification
+                console.log('Auto-refresh disabled');
+            } else {
+                // Enable auto-refresh
+                autoRefreshEnabled = true;
+                
+                // Set up the interval
+                autoRefreshInterval = setInterval(() => {
+                    // Perform AJAX refresh instead of full page reload
+                    fetchErrorData();
+                }, AUTO_REFRESH_TIME);
+                
+                // Update button styling
+                button.classList.add('active');
+                icon.classList.add('spin-animation');
+                
+                // Add aria-checked attribute for accessibility
+                button.setAttribute('aria-checked', 'true');
+                
+                // Add a notification
+                console.log('Auto-refresh enabled - refreshing every ' + (AUTO_REFRESH_TIME / 1000) + ' seconds');
+            }
+            
+            // Save preference to localStorage
+            try {
+                localStorage.setItem('errorVisualization.autoRefreshEnabled', autoRefreshEnabled);
+            } catch (e) {
+                console.log('Could not save auto-refresh preference:', e);
+            }
+        }
+        
+        async function fetchErrorData() {
+            try {
+                // Fetch the current time range
+                const timeRange = document.getElementById('timeRange').value;
+                
+                // Fetch the error data
+                const response = await fetch(`/api/errors?time_range=${timeRange}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Process the error data
+                    console.log('Auto-refreshed error data:', data);
+                    
+                    // Update the last updated timestamp
+                    const lastUpdateElement = document.querySelector('.last-update');
+                    if (lastUpdateElement && data.timestamp) {
+                        lastUpdateElement.textContent = `Last updated: ${data.timestamp}`;
+                    }
+                    
+                    // We could update the charts and other elements here if needed
+                    // For now, we'll just provide a visual indicator of the refresh
+                    
+                    // Flash the refresh icon
+                    const icon = document.getElementById('autoRefreshIcon');
+                    if (icon) {
+                        icon.style.color = 'var(--primary-color)';
+                        setTimeout(() => {
+                            icon.style.color = '';
+                        }, 500);
+                    }
+                    
+                } else {
+                    console.error('Error fetching error data:', response.status);
+                }
+            } catch (e) {
+                console.error('Exception fetching error data:', e);
+            }
+        }
+        
+        function showNotification(error) {
+            // Check if browser supports notifications
+            if (!("Notification" in window)) {
+                console.log("This browser does not support desktop notifications");
+                return;
+            }
+            
+            // Check if permission is already granted
+            if (Notification.permission === "granted") {
+                createNotification(error);
+            }
+            // Otherwise, request permission
+            else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(function (permission) {
+                    if (permission === "granted") {
+                        createNotification(error);
+                    }
+                });
+            }
+        }
+        
+        function createNotification(error) {
+            // Check if this is a system-critical error
+            const isSystemCritical = error.is_system_critical || 
+                                    (error.error_category && (
+                                     error.error_category.includes('COORDINATOR_FAILURE') ||
+                                     error.error_category.includes('DATABASE_CORRUPTION') ||
+                                     error.error_category.includes('SECURITY_BREACH')
+                                    ));
+            
+            // Determine notification type
+            let errorType = 'Error';
+            let timeout = 5000; // Default timeout
+            
+            if (isSystemCritical) {
+                errorType = 'SYSTEM CRITICAL';
+                timeout = 10000; // Longer timeout for system-critical errors
+            } else if (error.is_critical) {
+                errorType = 'Critical Error';
+                timeout = 7000; // Slightly longer timeout for critical errors
+            }
+            
+            const title = `${errorType}: ${error.error_type || error.type || 'Unknown Error'}`;
+            const options = {
+                body: error.message || 'No message',
+                icon: '/static/images/error-icon.png',
+                requireInteraction: isSystemCritical, // Keep system-critical notifications visible until user dismisses
+                vibrate: isSystemCritical ? [200, 100, 200, 100, 200] : [100, 50, 100] // Vibration pattern for mobile devices
+            };
+            
+            const notification = new Notification(title, options);
+            
+            // Close the notification after timeout (unless it's system-critical with requireInteraction)
+            if (!isSystemCritical || !options.requireInteraction) {
+                setTimeout(function() {
+                    notification.close();
+                }, timeout);
+            }
+        }
+        
+        function playErrorNotification(errorType = 'default') {
+            // Skip if notifications are muted
+            if (notificationsMuted) {
+                console.log('Notification sound muted');
+                return;
+            }
+            
+            // Create audio element if it doesn't exist
+            let audio = document.getElementById('error-audio');
+            if (!audio) {
+                audio = document.createElement('audio');
+                audio.id = 'error-audio';
+                document.body.appendChild(audio);
+            }
+            
+            // Set volume from preference
+            audio.volume = notificationVolume;
+            
+            // Set source based on error type
+            let soundFile = 'error-notification.mp3'; // Default sound
+            
+            if (errorType === 'system_critical') {
+                // Highest priority sound for system-level critical errors
+                soundFile = 'error-system-critical.mp3';
+            } else if (errorType === 'critical') {
+                soundFile = 'error-critical.mp3';
+            } else if (errorType === 'warning') {
+                soundFile = 'error-warning.mp3';
+            } else if (errorType === 'info') {
+                soundFile = 'error-info.mp3';
+            }
+            
+            // Set the audio source
+            audio.src = `/static/sounds/${soundFile}`;
+            
+            // Play the sound
+            audio.play().catch(function(error) {
+                console.log(`Error playing ${soundFile}:`, error);
+                
+                // Try the default notification sound as fallback if a different sound failed
+                if (soundFile !== 'error-notification.mp3') {
+                    console.log('Trying fallback sound...');
+                    audio.src = '/static/sounds/error-notification.mp3';
+                    audio.play().catch(function(fallbackError) {
+                        console.log('Error playing fallback notification sound:', fallbackError);
+                    });
+                }
+            });
+        }
+        
+        function openTab(evt, tabName) {
+            // Hide all tab content
+            var tabcontent = document.getElementsByClassName("tab-content");
+            for (var i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].classList.remove("active");
+            }
+            
+            // Remove active class from all tabs
+            var tabs = document.getElementsByClassName("tab");
+            for (var i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove("active");
+            }
+            
+            // Show the current tab and add an "active" class to the button that opened the tab
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+            
+            // Trigger resize to make plotly charts render properly
+            window.dispatchEvent(new Event('resize'));
+        }
+        
+        function toggleErrorDetails(errorId) {
+            var detailsElement = document.getElementById(`error-details-${errorId}`);
+            if (detailsElement.style.display === "block") {
+                detailsElement.style.display = "none";
+            } else {
+                detailsElement.style.display = "block";
+            }
+        }
+        
+        function changeTheme() {
+            var theme = document.getElementById("themeSelector").value;
+            var url = new URL(window.location.href);
+            url.searchParams.set('theme', theme);
+            window.location.href = url.toString();
+        }
+        
+        function changeTimeRange() {
+            var range = document.getElementById("timeRange").value;
+            currentTimeRange = parseInt(range);
+            var url = new URL(window.location.href);
+            url.searchParams.set('time_range', range);
+            window.location.href = url.toString();
+        }
+        
+        function refreshErrorData() {
+            window.location.href = window.location.href.split('?')[0] + '?refresh=true';
+        }
+        
+        // Settings
+        let notificationVolume = 0.7;
+        let notificationsMuted = false;
+        let autoRefreshEnabled = false;
+        let autoRefreshInterval = null;
+        const AUTO_REFRESH_TIME = 60000; // 60 seconds
+        
+        function changeNotificationVolume(volume) {
+            notificationVolume = parseFloat(volume);
+            
+            // Update mute button based on volume
+            const muteIcon = document.getElementById('muteIcon');
+            if (muteIcon) {
+                if (notificationVolume === 0) {
+                    muteIcon.textContent = '🔇';
+                    notificationsMuted = true;
+                } else if (notificationVolume <= 0.3) {
+                    muteIcon.textContent = '🔈';
+                    notificationsMuted = false;
+                } else if (notificationVolume <= 0.7) {
+                    muteIcon.textContent = '🔉';
+                    notificationsMuted = false;
+                } else {
+                    muteIcon.textContent = '🔊';
+                    notificationsMuted = false;
+                }
+            }
+            
+            // Update any existing audio element
+            const audio = document.getElementById('error-audio');
+            if (audio) {
+                audio.volume = notificationVolume;
+            }
+            
+            // Save preference to localStorage
+            try {
+                localStorage.setItem('errorVisualization.notificationVolume', notificationVolume);
+                localStorage.setItem('errorVisualization.notificationsMuted', notificationsMuted);
+            } catch (e) {
+                console.log('Could not save notification preferences:', e);
+            }
+        }
+        
+        function toggleMute() {
+            const volumeSlider = document.getElementById('notificationVolume');
+            const muteIcon = document.getElementById('muteIcon');
+            
+            if (notificationsMuted) {
+                // Unmute - restore previous volume or default to 0.7
+                let savedVolume = localStorage.getItem('errorVisualization.lastVolume');
+                savedVolume = savedVolume ? parseFloat(savedVolume) : 0.7;
+                
+                if (volumeSlider) volumeSlider.value = savedVolume;
+                notificationVolume = savedVolume;
+                notificationsMuted = false;
+                
+                if (muteIcon) muteIcon.textContent = notificationVolume > 0.7 ? '🔊' : (notificationVolume > 0.3 ? '🔉' : '🔈');
+            } else {
+                // Mute - save current volume and set to 0
+                try {
+                    localStorage.setItem('errorVisualization.lastVolume', notificationVolume);
+                } catch (e) {
+                    console.log('Could not save last volume:', e);
+                }
+                
+                if (volumeSlider) volumeSlider.value = 0;
+                notificationVolume = 0;
+                notificationsMuted = true;
+                
+                if (muteIcon) muteIcon.textContent = '🔇';
+            }
+            
+            // Update any existing audio element
+            const audio = document.getElementById('error-audio');
+            if (audio) {
+                audio.volume = notificationVolume;
+            }
+            
+            // Save preference to localStorage
+            try {
+                localStorage.setItem('errorVisualization.notificationVolume', notificationVolume);
+                localStorage.setItem('errorVisualization.notificationsMuted', notificationsMuted);
+            } catch (e) {
+                console.log('Could not save notification preferences:', e);
+            }
+        }
+        
+        // Make sure plots are properly sized
+        window.addEventListener('resize', function() {
+            document.querySelectorAll('.chart-container').forEach(function(container) {
+                var chartId = container.id;
+                if (document.getElementById(chartId)) {
+                    Plotly.relayout(chartId, {
+                        'width': container.offsetWidth,
+                        'height': container.offsetHeight
+                    });
+                }
+            });
+        });
+        
+        // Initialize WebSocket connection and plots when the page is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize WebSocket for real-time updates
+            initializeWebSocket();
+            
+            // Properly size plots
+            window.dispatchEvent(new Event('resize'));
+            
+            // Load notification preferences
+            try {
+                // Load volume setting
+                const savedVolume = localStorage.getItem('errorVisualization.notificationVolume');
+                if (savedVolume !== null) {
+                    notificationVolume = parseFloat(savedVolume);
+                    document.getElementById('notificationVolume').value = notificationVolume;
+                }
+                
+                // Load mute setting
+                const savedMute = localStorage.getItem('errorVisualization.notificationsMuted');
+                if (savedMute !== null) {
+                    notificationsMuted = savedMute === 'true';
+                    
+                    // Update mute button icon
+                    const muteIcon = document.getElementById('muteIcon');
+                    if (muteIcon) {
+                        if (notificationsMuted) {
+                            muteIcon.textContent = '🔇';
+                        } else if (notificationVolume === 0) {
+                            muteIcon.textContent = '🔇';
+                        } else if (notificationVolume <= 0.3) {
+                            muteIcon.textContent = '🔈';
+                        } else if (notificationVolume <= 0.7) {
+                            muteIcon.textContent = '🔉';
+                        } else {
+                            muteIcon.textContent = '🔊';
+                        }
+                    }
+                }
+            } catch (e) {
+                console.log('Error loading notification preferences:', e);
+            }
+            
+            // Load auto-refresh preference
+            try {
+                const savedAutoRefresh = localStorage.getItem('errorVisualization.autoRefreshEnabled');
+                if (savedAutoRefresh === 'true') {
+                    // Enable auto-refresh
+                    toggleAutoRefresh();
+                }
+            } catch (e) {
+                console.log('Error loading auto-refresh preference:', e);
+            }
+        });
+    </script>
+</body>
+</html>

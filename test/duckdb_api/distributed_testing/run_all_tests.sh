@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
       echo -e "${GREEN}Usage: $0 [options]${NC}"
       echo ""
       echo "Options:"
-      echo "  --type TYPE         Type of tests to run: all, integration, fault, monitoring, stress"
+      echo "  --type TYPE         Type of tests to run: all, integration, fault, monitoring, stress, error, errorviz"
       echo "  --filter, -f FILTER Only run tests matching this filter"
       echo "  --verbose, -v       Enable verbose output"
       echo "  --log-dir DIR       Directory to store log files (default: test_logs_<timestamp>)"
@@ -55,6 +55,8 @@ while [[ $# -gt 0 ]]; do
       echo "  $0 --type all"
       echo "  $0 --type fault"
       echo "  $0 --type integration --filter load_balancer"
+      echo "  $0 --type error --filter test_handle_error"
+      echo "  $0 --type errorviz --filter e2e"
       echo "  $0 --type monitoring --verbose"
       exit 0
       ;;
@@ -244,6 +246,121 @@ run_stress_tests() {
   return $exit_status
 }
 
+# Function to run error handling tests
+run_error_handling_tests() {
+  local filter="$1"
+  local log_file="$LOG_DIR/error_handling_tests.log"
+  
+  echo -e "${CYAN}Running enhanced error handling tests...${NC}"
+  
+  # Build command for distributed error handler tests
+  local handler_cmd="python -m unittest duckdb_api.distributed_testing.tests.test_distributed_error_handler"
+  
+  # Build command for coordinator error integration tests
+  local integration_cmd="python -m unittest duckdb_api.distributed_testing.tests.test_coordinator_error_integration"
+  
+  # Add test filter if specified
+  if [ -n "$filter" ]; then
+    handler_cmd="$handler_cmd.$filter"
+    integration_cmd="$integration_cmd.$filter"
+  fi
+  
+  # Add verbose flag if specified
+  if [ $VERBOSE -eq 1 ]; then
+    handler_cmd="$handler_cmd -v"
+    integration_cmd="$integration_cmd -v"
+  fi
+  
+  # Execute commands
+  echo "Command 1: $handler_cmd" | tee "$log_file"
+  echo "Command 2: $integration_cmd" | tee -a "$log_file"
+  echo "Started: $(date)" | tee -a "$log_file"
+  echo -e "${BLUE}------------------------------------------------------------${NC}" | tee -a "$log_file"
+  echo -e "${YELLOW}Running error handler tests:${NC}" | tee -a "$log_file"
+  
+  $handler_cmd 2>&1 | tee -a "$log_file"
+  local handler_status=$?
+  
+  echo -e "${BLUE}------------------------------------------------------------${NC}" | tee -a "$log_file"
+  echo -e "${YELLOW}Running coordinator integration tests:${NC}" | tee -a "$log_file"
+  
+  $integration_cmd 2>&1 | tee -a "$log_file"
+  local integration_status=$?
+  
+  echo -e "${BLUE}------------------------------------------------------------${NC}" | tee -a "$log_file"
+  echo "Finished: $(date)" | tee -a "$log_file"
+  
+  # Check overall status
+  local exit_status=0
+  if [ $handler_status -ne 0 ] || [ $integration_status -ne 0 ]; then
+    exit_status=1
+  fi
+  
+  if [ $exit_status -eq 0 ]; then
+    echo -e "${GREEN}✅ Enhanced error handling tests passed!${NC}" | tee -a "$log_file"
+  else
+    echo -e "${RED}❌ Enhanced error handling tests failed!${NC}" | tee -a "$log_file"
+    if [ $handler_status -ne 0 ]; then
+      echo -e "${RED}  - Error handler tests failed with exit code $handler_status${NC}" | tee -a "$log_file"
+    fi
+    if [ $integration_status -ne 0 ]; then
+      echo -e "${RED}  - Coordinator integration tests failed with exit code $integration_status${NC}" | tee -a "$log_file"
+    fi
+  fi
+  
+  echo -e "${YELLOW}Log saved to: ${GREEN}$log_file${NC}"
+  echo ""
+  
+  return $exit_status
+}
+
+# Function to run error visualization tests
+run_error_visualization_tests() {
+  local filter="$1"
+  local log_file="$LOG_DIR/error_visualization_tests.log"
+  
+  echo -e "${CYAN}Running error visualization tests...${NC}"
+  
+  # Build command for error visualization tests
+  local cmd="python -m duckdb_api.distributed_testing.run_error_visualization_tests"
+  
+  # Add test filter if specified
+  if [ -n "$filter" ]; then
+    if [ "$filter" == "unit" ]; then
+      cmd="$cmd --unit-only"
+    elif [ "$filter" == "e2e" ]; then
+      cmd="$cmd --e2e-only"
+    fi
+  fi
+  
+  # Add verbose flag if specified
+  if [ $VERBOSE -eq 1 ]; then
+    cmd="$cmd --verbose"
+  fi
+  
+  # Execute command
+  echo "Command: $cmd" | tee "$log_file"
+  echo "Started: $(date)" | tee -a "$log_file"
+  echo -e "${BLUE}------------------------------------------------------------${NC}" | tee -a "$log_file"
+  
+  $cmd 2>&1 | tee -a "$log_file"
+  local exit_status=$?
+  
+  echo -e "${BLUE}------------------------------------------------------------${NC}" | tee -a "$log_file"
+  echo "Finished: $(date)" | tee -a "$log_file"
+  
+  if [ $exit_status -eq 0 ]; then
+    echo -e "${GREEN}✅ Error visualization tests passed!${NC}" | tee -a "$log_file"
+  else
+    echo -e "${RED}❌ Error visualization tests failed with exit code $exit_status${NC}" | tee -a "$log_file"
+  fi
+  
+  echo -e "${YELLOW}Log saved to: ${GREEN}$log_file${NC}"
+  echo ""
+  
+  return $exit_status
+}
+
 # Main function to run all tests
 run_all_tests() {
   local status=0
@@ -296,6 +413,28 @@ run_all_tests() {
       echo "❌ Stress tests: FAILED" >> "$summary_file"
     else
       echo "✅ Stress tests: PASSED" >> "$summary_file"
+    fi
+  fi
+  
+  if [[ "$TEST_TYPE" == "all" || "$TEST_TYPE" == "error" ]]; then
+    run_error_handling_tests "$TEST_FILTER"
+    if [ $? -ne 0 ]; then
+      status=1
+      num_failures=$((num_failures + 1))
+      echo "❌ Enhanced error handling tests: FAILED" >> "$summary_file"
+    else
+      echo "✅ Enhanced error handling tests: PASSED" >> "$summary_file"
+    fi
+  fi
+  
+  if [[ "$TEST_TYPE" == "all" || "$TEST_TYPE" == "errorviz" ]]; then
+    run_error_visualization_tests "$TEST_FILTER"
+    if [ $? -ne 0 ]; then
+      status=1
+      num_failures=$((num_failures + 1))
+      echo "❌ Error visualization tests: FAILED" >> "$summary_file"
+    else
+      echo "✅ Error visualization tests: PASSED" >> "$summary_file"
     fi
   fi
   

@@ -45,13 +45,25 @@ This document provides a comprehensive index of all documentation for the Distri
 
 ## Component Documentation
 
-- [COORDINATOR_REDUNDANCY.md](COORDINATOR_REDUNDANCY.md) - Documentation for coordinator redundancy
+### Error Handling and Recovery
+
+- [README_ERROR_RECOVERY.md](../README_ERROR_RECOVERY.md) - Overview of the Performance-Based Error Recovery System
+- [ENHANCED_ERROR_HANDLING_IMPLEMENTATION.md](ENHANCED_ERROR_HANDLING_IMPLEMENTATION.md) - Technical implementation of Enhanced Error Handling
+- [PERFORMANCE_TREND_ANALYSIS.md](PERFORMANCE_TREND_ANALYSIS.md) - Performance tracking and analysis for error recovery
 - [ADVANCED_RECOVERY_STRATEGIES.md](ADVANCED_RECOVERY_STRATEGIES.md) - Guide to advanced recovery strategies
+
+### High Availability
+
+- [COORDINATOR_REDUNDANCY.md](COORDINATOR_REDUNDANCY.md) - Documentation for coordinator redundancy
 - [REDUNDANCY_BENCHMARKS.md](REDUNDANCY_BENCHMARKS.md) - Benchmark results for redundancy features
-- [PERFORMANCE_TREND_ANALYSIS.md](PERFORMANCE_TREND_ANALYSIS.md) - Guide to performance trend analysis
+
+### Hardware Management
+
 - [HETEROGENEOUS_HARDWARE_ENHANCEMENTS.md](HETEROGENEOUS_HARDWARE_ENHANCEMENTS.md) - Design document for heterogeneous hardware support enhancements (PLANNED - June 5-12, 2025)
 - [ENHANCED_HARDWARE_TAXONOMY_IMPLEMENTATION.md](ENHANCED_HARDWARE_TAXONOMY_IMPLEMENTATION.md) - Implementation of the Enhanced Hardware Taxonomy and Hardware Abstraction Layer (COMPLETED - March 13, 2025)
 - [ENHANCED_HARDWARE_TAXONOMY_INTEGRATION.md](../../duckdb_api/distributed_testing/docs/ENHANCED_HARDWARE_TAXONOMY_INTEGRATION.md) - Integration between Enhanced Hardware Taxonomy and Heterogeneous Scheduler (COMPLETED - March 13, 2025)
+- [HARDWARE_AWARE_SCHEDULER_GUIDE.md](../HARDWARE_AWARE_SCHEDULER_GUIDE.md) - Guide to the hardware-aware scheduler
+- [HARDWARE_WORKLOAD_MANAGEMENT_GUIDE.md](../HARDWARE_WORKLOAD_MANAGEMENT_GUIDE.md) - Guide to hardware workload management
 
 ## Deployment Documentation
 
