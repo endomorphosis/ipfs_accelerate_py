@@ -443,6 +443,71 @@ class TestResultReporter:
         
         logger.info(f"Test result reporter initialized with report_dir={self.report_dir}, artifact_dir={self.artifact_dir}")
     
+    async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str], validate: bool = False) -> Dict[str, Optional[str]]:
+        """
+        Retrieve URLs for multiple artifacts in bulk.
+        
+        This method efficiently retrieves URLs for multiple artifacts in a single operation,
+        which is more efficient than retrieving them one by one.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_names: List of artifact names
+            validate: Whether to validate URL accessibility
+            
+        Returns:
+            Dictionary mapping artifact names to their URLs (or None if not found)
+        """
+        if not self.ci_provider or not hasattr(self.ci_provider, 'get_artifact_url'):
+            logger.warning("CI provider doesn't support get_artifact_url method")
+            return {name: None for name in artifact_names}
+        
+        # Create tasks for retrieving URLs in parallel
+        tasks = []
+        for name in artifact_names:
+            task = asyncio.create_task(self.ci_provider.get_artifact_url(test_run_id, name))
+            tasks.append((name, task))
+        
+        # Wait for all tasks to complete
+        urls = {}
+        for name, task in tasks:
+            try:
+                url = await task
+                urls[name] = url
+            except Exception as e:
+                logger.error(f"Error retrieving artifact URL for {name}: {str(e)}")
+                urls[name] = None
+        
+        # Validate URLs if requested
+        if validate and urls:
+            try:
+                # Import the URL validator
+                from ci.url_validator import validate_urls
+                
+                # Get valid URLs (skip None values)
+                valid_urls = {name: url for name, url in urls.items() if url is not None}
+                
+                if valid_urls:
+                    # Run validation on valid URLs
+                    validation_results = await validate_urls(list(valid_urls.values()))
+                    
+                    # Log validation results
+                    for url, (is_valid, status_code, error_message) in validation_results.items():
+                        # Find the artifact name for this URL
+                        name = next((n for n, u in valid_urls.items() if u == url), None)
+                        
+                        if name is not None:
+                            if is_valid:
+                                logger.debug(f"Validated artifact URL for {name}: {url} (Status: {status_code})")
+                            else:
+                                logger.warning(f"Artifact URL for {name} ({url}) is not accessible: {error_message}")
+            except ImportError:
+                logger.warning("URL validator not available, skipping URL validation")
+            except Exception as e:
+                logger.error(f"Error validating artifact URLs: {str(e)}")
+        
+        return urls
+    
     async def report_test_result(self, result: TestRunResult, formats: List[str] = None) -> Dict[str, str]:
         """
         Report test results in various formats and to CI system.
@@ -481,13 +546,45 @@ class TestResultReporter:
         
         # Upload reports as artifacts if CI provider is available
         if self.ci_provider and result.test_run_id:
+            report_artifact_names = {}
+            
+            # Upload all report formats as artifacts
             for fmt, file_path in report_files.items():
                 try:
                     artifact_name = f"{result.test_run_id}_report.{fmt}"
-                    await self.ci_provider.upload_artifact(result.test_run_id, file_path, artifact_name)
-                    logger.info(f"Uploaded {fmt} report as artifact")
+                    success = await self.ci_provider.upload_artifact(result.test_run_id, file_path, artifact_name)
+                    if success:
+                        report_artifact_names[fmt] = artifact_name
+                        logger.info(f"Uploaded {fmt} report as artifact")
                 except Exception as e:
                     logger.error(f"Failed to upload {fmt} report as artifact: {str(e)}")
+            
+            # Retrieve URLs for all uploaded report artifacts
+            if report_artifact_names and hasattr(self.ci_provider, 'get_artifact_url'):
+                try:
+                    # Bulk retrieve URLs for all reports
+                    report_urls = await self.get_artifact_urls(
+                        result.test_run_id, 
+                        list(report_artifact_names.values())
+                    )
+                    
+                    # Add report URLs to result metadata
+                    if "artifacts" not in result.metadata:
+                        result.metadata["artifacts"] = []
+                    
+                    for fmt, artifact_name in report_artifact_names.items():
+                        if artifact_name in report_urls and report_urls[artifact_name]:
+                            report_size = os.path.getsize(report_files[fmt])
+                            result.metadata["artifacts"].append({
+                                "name": f"Report ({fmt.upper()})",
+                                "path": report_files[fmt],
+                                "size_bytes": report_size,
+                                "url": report_urls[artifact_name],
+                                "type": "report"
+                            })
+                            logger.info(f"Added {fmt} report URL to result metadata: {report_urls[artifact_name]}")
+                except Exception as e:
+                    logger.error(f"Failed to retrieve report artifact URLs: {str(e)}")
             
             # Update test run status in CI system
             try:
@@ -516,13 +613,21 @@ class TestResultReporter:
         
         return report_files
     
-    async def collect_and_upload_artifacts(self, test_run_id: str, artifact_patterns: List[str]) -> List[Dict[str, Any]]:
+    async def collect_and_upload_artifacts(
+        self, 
+        test_run_id: str, 
+        artifact_patterns: List[str],
+        validate_urls: bool = False,
+        include_health_info: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         Collect and upload artifacts matching the given patterns.
         
         Args:
             test_run_id: Test run ID
             artifact_patterns: List of glob patterns for artifacts
+            validate_urls: Whether to validate URL accessibility
+            include_health_info: Whether to include health information in artifact metadata
             
         Returns:
             List of artifact information dictionaries
@@ -548,21 +653,75 @@ class TestResultReporter:
                 artifact_url = None
                 if self.ci_provider:
                     try:
+                        # Upload the artifact
                         success = await self.ci_provider.upload_artifact(test_run_id, artifact_path, file_name)
+                        
                         if success:
-                            # This is a placeholder URL - in reality the CI provider might return the actual URL
-                            artifact_url = f"ci://artifacts/{test_run_id}/{file_name}"
+                            # Try to get the actual URL using get_artifact_url
+                            try:
+                                if hasattr(self.ci_provider, 'get_artifact_url'):
+                                    artifact_url = await self.ci_provider.get_artifact_url(test_run_id, file_name)
+                                    if artifact_url:
+                                        logger.info(f"Retrieved artifact URL for {file_name}: {artifact_url}")
+                                    else:
+                                        # Fallback to a placeholder URL if get_artifact_url returned None
+                                        artifact_url = f"ci://artifacts/{test_run_id}/{file_name}"
+                                        logger.warning(f"Could not retrieve URL for artifact {file_name}, using placeholder")
+                                else:
+                                    # Fallback if get_artifact_url method doesn't exist
+                                    artifact_url = f"ci://artifacts/{test_run_id}/{file_name}"
+                                    logger.warning(f"CI provider doesn't support get_artifact_url, using placeholder URL")
+                            except Exception as e:
+                                # Fallback if get_artifact_url fails
+                                artifact_url = f"ci://artifacts/{test_run_id}/{file_name}"
+                                logger.warning(f"Error retrieving artifact URL for {file_name}: {str(e)}, using placeholder")
+                            
                             logger.info(f"Uploaded artifact {file_name}")
                     except Exception as e:
                         logger.error(f"Failed to upload artifact {file_name}: {str(e)}")
                 
-                # Add to artifacts list
-                artifacts.append({
+                # Create base artifact info
+                artifact_info = {
                     "name": file_name,
                     "path": artifact_path,
                     "size_bytes": file_size,
                     "url": artifact_url
-                })
+                }
+                
+                # Validate URL if requested and URL exists
+                if validate_urls and artifact_url and not artifact_url.startswith("ci://artifacts/"):
+                    try:
+                        # Import the URL validator
+                        from ci.url_validator import validate_url
+                        
+                        # Validate the URL
+                        is_valid, status_code, error_message = await validate_url(artifact_url)
+                        
+                        # Add validation info to artifact
+                        artifact_info["url_validated"] = True
+                        artifact_info["url_valid"] = is_valid
+                        
+                        if not is_valid:
+                            logger.warning(f"Artifact URL for {file_name} ({artifact_url}) is not accessible: {error_message}")
+                            artifact_info["url_validation_error"] = error_message
+                        
+                        # Include health info if requested
+                        if include_health_info:
+                            try:
+                                from ci.url_validator import get_validator
+                                validator = await get_validator()
+                                health_info = validator.get_url_health(artifact_url)
+                                artifact_info["url_health"] = health_info
+                            except Exception as e:
+                                logger.error(f"Failed to get URL health info for {file_name}: {str(e)}")
+                        
+                    except ImportError:
+                        logger.warning("URL validator not available, skipping URL validation")
+                    except Exception as e:
+                        logger.error(f"Error validating artifact URL for {file_name}: {str(e)}")
+                
+                # Add to artifacts list
+                artifacts.append(artifact_info)
         
         return artifacts
 

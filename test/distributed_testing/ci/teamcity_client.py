@@ -435,6 +435,111 @@ class TeamCityClient(CIProviderInterface):
             logger.error(f"Exception setting TeamCity build status: {str(e)}")
             return False
     
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """
+        Get the URL for a test run artifact.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            
+        Returns:
+            URL to the artifact or None if not found
+        """
+        await self._ensure_session()
+        
+        try:
+            # Skip if we're using a simulated test run
+            if test_run_id.startswith("teamcity-simulated-"):
+                logger.warning(f"Cannot get artifact URL for simulated test run {test_run_id}")
+                return None
+            
+            # Check if we have the URL cached
+            if hasattr(self, "_artifact_urls") and test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
+                logger.info(f"Using cached artifact URL for {artifact_name}")
+                return self._artifact_urls[test_run_id][artifact_name]
+            
+            # Extract build ID from test run ID
+            parts = test_run_id.split("-", 2)
+            if len(parts) < 3 or parts[0] != "teamcity":
+                logger.error(f"Invalid TeamCity test run ID format: {test_run_id}")
+                return None
+            
+            build_id = parts[1]
+            
+            # First get the build details to ensure it exists and to get the build type ID
+            api_url = urljoin(self.url, f"app/rest/builds/id:{build_id}")
+            
+            async with self.session.get(api_url) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"Error getting build details: {response.status} - {error_text}")
+                    return None
+                
+                build_data = await response.json()
+                build_type_id = build_data.get("buildTypeId")
+                
+                if not build_type_id:
+                    logger.error(f"Could not determine build type ID for build {build_id}")
+                    return None
+                
+                # Now get the artifacts list for this build
+                artifacts_url = urljoin(self.url, f"app/rest/builds/id:{build_id}/artifacts/children")
+                
+                async with self.session.get(artifacts_url) as artifacts_response:
+                    if artifacts_response.status != 200:
+                        error_text = await artifacts_response.text()
+                        logger.error(f"Error getting artifacts list: {artifacts_response.status} - {error_text}")
+                        return None
+                    
+                    artifacts_data = await artifacts_response.json()
+                    
+                    # Look for our artifact in the list
+                    found_artifact = None
+                    for artifact in artifacts_data.get("file", []):
+                        if artifact.get("name") == artifact_name:
+                            found_artifact = artifact
+                            break
+                    
+                    if found_artifact:
+                        # Construct the download URL - TeamCity uses a special format for artifact URLs
+                        artifact_path = found_artifact.get("relativePath", artifact_name)
+                        
+                        # Use the official TeamCity artifact download URL format
+                        artifact_url = urljoin(self.url, f"app/rest/builds/id:{build_id}/artifacts/content/{quote(artifact_path)}")
+                        
+                        # Cache the URL for future use
+                        if not hasattr(self, "_artifact_urls"):
+                            self._artifact_urls = {}
+                        
+                        if test_run_id not in self._artifact_urls:
+                            self._artifact_urls[test_run_id] = {}
+                        
+                        self._artifact_urls[test_run_id][artifact_name] = artifact_url
+                        
+                        logger.info(f"Found artifact URL for {artifact_name}: {artifact_url}")
+                        return artifact_url
+                    
+                    # If we can't find the artifact, try a common URL pattern as a fallback
+                    # This is based on TeamCity's web UI URL structure
+                    fallback_url = urljoin(self.url, f"repository/download/{build_type_id}/{build_id}:id/{quote(artifact_name)}")
+                    logger.warning(f"Artifact not found in API response, using fallback URL: {fallback_url}")
+                    
+                    # Cache the fallback URL
+                    if not hasattr(self, "_artifact_urls"):
+                        self._artifact_urls = {}
+                    
+                    if test_run_id not in self._artifact_urls:
+                        self._artifact_urls[test_run_id] = {}
+                    
+                    self._artifact_urls[test_run_id][artifact_name] = fallback_url
+                    
+                    return fallback_url
+        
+        except Exception as e:
+            logger.error(f"Exception getting artifact URL from TeamCity: {str(e)}")
+            return None
+    
     async def close(self) -> None:
         """Close the client session."""
         if self.session:

@@ -15,6 +15,10 @@ The hardware monitoring system integrates with the existing distributed testing 
 7. HTML and JSON reporting for resource utilization analysis
 8. Comprehensive testing suite for verification and validation
 9. Quality assurance through automated tests
+10. CI/CD integration for continuous testing and validation
+11. Artifact management and test result tracking
+12. Status badge generation for real-time quality indicators
+13. Multi-channel notification system for test failures
 
 ## Components
 
@@ -89,6 +93,35 @@ A dedicated script for running the hardware monitoring test suite:
 - Database path configuration for testing
 - Skip capability for long-running tests
 
+### CI Integration Files
+
+Files for continuous integration and automated testing:
+
+- **`.github/workflows/hardware_monitoring_tests.yml`**: Local GitHub Actions workflow for testing
+- **`.github/workflows/hardware_monitoring_integration.yml`**: Global GitHub Actions workflow
+- **`run_hardware_monitoring_ci_tests.sh`**: Local script for simulating the CI environment
+- **Hardware monitoring integration with global CI/CD pipeline**
+- **Integration with artifact handling system for test results storage**
+- **DuckDB integration for test metrics and results**
+
+### Notification System
+
+Components for automated alerting and reporting:
+
+- **`ci_notification.py`**: Script for sending notifications when tests fail
+- **`notification_config.json`**: Configuration file for notification channels
+- **Email, Slack, and GitHub integration** for comprehensive alerting
+- **Customizable notification templates** for different channels
+
+### Status Badge Generator
+
+Components for generating status indicators:
+
+- **`generate_status_badge.py`**: Script for creating SVG status badges
+- **Auto-updating badges** showing current test status
+- **Multiple badge styles** (flat, square, etc.) for different uses
+- **JSON status export** for custom integrations
+
 ## Usage
 
 ### Running the Demo
@@ -142,6 +175,38 @@ python run_hardware_monitoring_tests.py --html-report ./test_report.html
 # Run all tests with verbose output and generate HTML report
 python run_hardware_monitoring_tests.py --verbose --run-long-tests --html-report ./complete_test_report.html
 ```
+
+### Running CI Tests
+
+The hardware monitoring system includes CI integration for continuous testing. You can run these tests locally to simulate the CI environment:
+
+```bash
+# Run standard tests in CI mode
+./run_hardware_monitoring_ci_tests.sh
+
+# Run full tests in CI mode
+./run_hardware_monitoring_ci_tests.sh --mode full
+
+# Run long tests with specific Python version
+./run_hardware_monitoring_ci_tests.sh --mode long --python python3.9
+
+# Run with CI integration tests
+./run_hardware_monitoring_ci_tests.sh --mode full --ci-integration
+
+# Generate status badge
+./run_hardware_monitoring_ci_tests.sh --mode full --generate-badge
+
+# Send notifications about test results
+./run_hardware_monitoring_ci_tests.sh --mode full --send-notifications
+
+# Run CI tests using a different test database path
+BENCHMARK_DB_PATH=./custom_metrics.duckdb ./run_hardware_monitoring_ci_tests.sh --mode full
+
+# Run full CI simulation with all features
+./run_hardware_monitoring_ci_tests.sh --mode full --ci-integration --generate-badge --send-notifications
+```
+
+The CI test script generates HTML reports and database files similar to the GitHub Actions workflows, allowing you to verify that your changes will pass in the CI environment.
 
 #### Test Command-Line Arguments
 

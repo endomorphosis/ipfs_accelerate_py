@@ -1,4 +1,4 @@
-import { BaseApiBackend } from '../base';
+import { VLLM } from '../vllm/vllm';
 import { ApiMetadata, ApiRequestOptions, Message, ChatCompletionResponse, StreamChunk } from '../types';
 import {
   VllmRequest,
@@ -10,209 +10,483 @@ import {
   VllmLoraAdapter,
   VllmLoadLoraResponse,
   VllmQuantizationConfig,
-  VllmQuantizationResponse
+  VllmQuantizationResponse,
+  VllmContainerConfig,
+  VllmContainerStatus
 } from './types';
+import * as child_process from 'child_process';
+import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
- * VLLM Unified API backend for advanced text generation
- * Supports standard and batch inference, streaming, and advanced model management
+ * VLLM Unified API backend with container management
+ * Extends the base VLLM API backend with Docker container management capabilities
  */
-export class VllmUnified extends BaseApiBackend {
-  private defaultApiUrl: string = 'http://localhost:8000';
-  private defaultModel: string = 'meta-llama/Llama-2-7b-chat-hf';
-  private defaultTimeout: number = 30000; // 30 seconds
-
-  // Standard test inputs for consistency tests
-  private testInputs = [
-    "This is a simple text input",
-    ["Input 1", "Input 2", "Input 3"], // Batch of text inputs
-    { prompt: "Test input with parameters", parameters: { temperature: 0.7 }},
-    { input: "Standard format input", parameters: { max_tokens: 100 }}
-  ];
-
-  // Test parameters for various configurations
-  private testParameters = {
-    "default": {},
-    "creative": { temperature: 0.9, top_p: 0.95 },
-    "precise": { temperature: 0.1, top_p: 0.1 },
-    "fast": { max_tokens: 50, top_k: 10 },
-    "sampling": { use_beam_search: false, temperature: 0.8, top_p: 0.9 },
-    "beam_search": { use_beam_search: true, n: 3 }
-  };
+export class VllmUnified extends VLLM {
+  // Docker container management
+  private containerEnabled: boolean = false;
+  private containerId: string | null = null;
+  private containerConfig: VllmContainerConfig | null = null;
+  private containerImageDefault: string = 'vllm/vllm-openai:latest';
+  private containerStatus: VllmContainerStatus = 'stopped';
+  private containerStartupTimeoutMs: number = 60000; // 60 seconds
+  private containerHealthCheckIntervalMs: number = 5000; // 5 seconds
+  private containerLogs: string[] = [];
+  private containerMaxLogEntries: number = 100;
+  private containerVolumeMounts: string[] = [];
+  private containerEnvVars: Record<string, string> = {};
+  private containerPorts: Record<string, string> = { '8000': '8000' };
+  private containerProcess: any = null;
+  private containerHealthCheckTimer: any = null;
+  private containerStartupPromise: Promise<boolean> | null = null;
+  private containerApiUrl: string = 'http://localhost:8000';
+  private containerConfigPath: string = '';
+  private containerModelsPath: string = '';
+  private containerAutomaticRetryEnabled: boolean = true;
+  private containerRetryCount: number = 0;
+  private containerMaxRetries: number = 3;
 
   constructor(resources: Record<string, any> = {}, metadata: ApiMetadata = {}) {
     super(resources, metadata);
+
+    // Parse container configuration from metadata
+    this.containerEnabled = metadata.vllm_container_enabled === true || 
+                           metadata.vllm_container === true || 
+                           process.env.VLLM_CONTAINER_ENABLED === 'true';
+
+    // Set container related properties
+    this.containerImageDefault = metadata.vllm_container_image || 
+                               process.env.VLLM_CONTAINER_IMAGE || 
+                               this.containerImageDefault;
+
+    this.containerApiUrl = metadata.vllm_api_url || 
+                          metadata.vllmApiUrl || 
+                          process.env.VLLM_API_URL || 
+                          this.containerApiUrl;
+
+    this.containerConfigPath = metadata.vllm_config_path || 
+                              process.env.VLLM_CONFIG_PATH || 
+                              path.join(os.homedir(), '.vllm');
+
+    this.containerModelsPath = metadata.vllm_models_path || 
+                              process.env.VLLM_MODELS_PATH || 
+                              path.join(os.homedir(), '.vllm/models');
+
+    // Configure container if enabled
+    if (this.containerEnabled) {
+      this.configureContainer(metadata);
+    }
   }
 
   /**
-   * Get API key from metadata or environment variables
-   * Note: VLLM often doesn't require an API key for local deployments
+   * Configure Docker container settings
    */
-  protected getApiKey(metadata: ApiMetadata): string {
-    return metadata.vllm_api_key || 
-           metadata.vllmApiKey || 
-           (typeof process !== 'undefined' ? process.env.VLLM_API_KEY || '' : '');
+  private configureContainer(metadata: ApiMetadata) {
+    // Check that we're in a Node.js environment
+    if (typeof process === 'undefined' || typeof child_process === 'undefined') {
+      console.warn('Container mode not supported in this environment');
+      this.containerEnabled = false;
+      return;
+    }
+
+    // Configure the container
+    this.containerConfig = {
+      image: metadata.vllm_container_image || process.env.VLLM_CONTAINER_IMAGE || this.containerImageDefault,
+      gpu: metadata.vllm_container_gpu === true || process.env.VLLM_CONTAINER_GPU === 'true',
+      models_path: metadata.vllm_models_path || process.env.VLLM_MODELS_PATH || this.containerModelsPath,
+      config_path: metadata.vllm_config_path || process.env.VLLM_CONFIG_PATH || this.containerConfigPath,
+      api_port: parseInt(metadata.vllm_api_port || process.env.VLLM_API_PORT || '8000', 10),
+      tensor_parallel_size: parseInt(metadata.vllm_tensor_parallel_size || process.env.VLLM_TENSOR_PARALLEL_SIZE || '1', 10),
+      max_model_len: parseInt(metadata.vllm_max_model_len || process.env.VLLM_MAX_MODEL_LEN || '0', 10),
+      gpu_memory_utilization: parseFloat(metadata.vllm_gpu_memory_utilization || process.env.VLLM_GPU_MEMORY_UTILIZATION || '0.9'),
+      quantization: metadata.vllm_quantization || process.env.VLLM_QUANTIZATION || null,
+      trust_remote_code: metadata.vllm_trust_remote_code === true || process.env.VLLM_TRUST_REMOTE_CODE === 'true',
+      custom_args: metadata.vllm_custom_args || process.env.VLLM_CUSTOM_ARGS || ''
+    };
+
+    // Configure Docker volume mounts for the container
+    this.containerVolumeMounts = [
+      `${this.containerConfig.models_path}:/models`,
+      `${this.containerConfig.config_path}:/root/.vllm`
+    ];
+
+    // Add additional volume mounts if specified
+    if (metadata.vllm_extra_mounts) {
+      const extraMounts = Array.isArray(metadata.vllm_extra_mounts) 
+        ? metadata.vllm_extra_mounts 
+        : [metadata.vllm_extra_mounts];
+      
+      this.containerVolumeMounts = [...this.containerVolumeMounts, ...extraMounts];
+    }
+
+    // Configure container ports
+    this.containerPorts = {
+      [`${this.containerConfig.api_port}`]: '8000'
+    };
+
+    // Configure container environment variables
+    this.containerEnvVars = {
+      'VLLM_MODEL_PATH': metadata.vllm_model || 
+                         process.env.VLLM_MODEL || 
+                         this.defaultModel,
+      'VLLM_TENSOR_PARALLEL_SIZE': this.containerConfig.tensor_parallel_size.toString(),
+      'VLLM_GPU_MEMORY_UTILIZATION': this.containerConfig.gpu_memory_utilization.toString(),
+      'VLLM_ENFORCE_EAGER': 'true' // Ensure eager mode for better stability
+    };
+
+    // Add quantization if specified
+    if (this.containerConfig.quantization) {
+      this.containerEnvVars['VLLM_QUANTIZATION'] = this.containerConfig.quantization;
+    }
+
+    // Set max model length if specified
+    if (this.containerConfig.max_model_len > 0) {
+      this.containerEnvVars['VLLM_MAX_MODEL_LEN'] = this.containerConfig.max_model_len.toString();
+    }
+
+    // Set trust remote code if specified
+    if (this.containerConfig.trust_remote_code) {
+      this.containerEnvVars['VLLM_TRUST_REMOTE_CODE'] = 'true';
+    }
+
+    // Ensure configuration directory exists
+    try {
+      if (!fs.existsSync(this.containerConfig.config_path)) {
+        fs.mkdirSync(this.containerConfig.config_path, { recursive: true });
+      }
+      if (!fs.existsSync(this.containerConfig.models_path)) {
+        fs.mkdirSync(this.containerConfig.models_path, { recursive: true });
+      }
+    } catch (error) {
+      console.error('Failed to create container configuration directories:', error);
+    }
+
+    // Create a VLLM configuration file
+    this.writeContainerConfigFile();
   }
 
   /**
-   * Get default model for this API backend
+   * Write container configuration file
    */
-  protected getDefaultModel(): string {
-    return this.metadata.vllm_model || 
-           this.metadata.vllmModel || 
-           (typeof process !== 'undefined' ? process.env.VLLM_MODEL || this.defaultModel : this.defaultModel);
+  private writeContainerConfigFile() {
+    if (!this.containerConfig) return;
+
+    try {
+      const configFilePath = path.join(this.containerConfig.config_path, 'config.json');
+      const config = {
+        model: this.containerEnvVars['VLLM_MODEL_PATH'],
+        tensor_parallel_size: this.containerConfig.tensor_parallel_size,
+        gpu_memory_utilization: this.containerConfig.gpu_memory_utilization,
+        trust_remote_code: this.containerConfig.trust_remote_code,
+        max_model_len: this.containerConfig.max_model_len > 0 ? this.containerConfig.max_model_len : undefined,
+        quantization: this.containerConfig.quantization || undefined
+      };
+
+      fs.writeFileSync(configFilePath, JSON.stringify(config, null, 2));
+    } catch (error) {
+      console.error('Failed to write container configuration file:', error);
+    }
   }
 
   /**
-   * Check if a model is compatible with VLLM
-   * VLLM generally supports most transformer-based models
+   * Start the VLLM container
    */
-  isCompatibleModel(model: string): boolean {
-    // VLLM supports most transformer models, especially those from HuggingFace
-    return (
-      model.includes('llama') || 
-      model.includes('falcon') || 
-      model.includes('bloom') || 
-      model.includes('gpt') || 
-      model.includes('mistral') || 
-      model.includes('mixtral') || 
-      model.includes('mpt') || 
-      model.includes('opt') || 
-      model.startsWith('meta/') ||
-      model.startsWith('meta-llama/') ||
-      model.startsWith('tiiuae/') ||
-      model.includes('codellama') ||
-      model.includes('vicuna') ||
-      model.includes('starcoder') ||
-      model.includes('pythia') ||
-      model.includes('stablelm') ||
-      model.includes('cerebras') ||
-      model.includes('qwen')
-    );
-  }
+  async startContainer(): Promise<boolean> {
+    // Avoid duplicate startups
+    if (this.containerStartupPromise) {
+      return this.containerStartupPromise;
+    }
 
-  /**
-   * Create an endpoint handler for VLLM
-   */
-  createEndpointHandler(): (data: any) => Promise<any> {
-    return async (data: any) => {
+    // Return early if container is already running
+    if (this.containerStatus === 'running' && this.containerId) {
+      return true;
+    }
+
+    // Create a promise for the startup process
+    this.containerStartupPromise = new Promise<boolean>(async (resolve) => {
       try {
-        const endpointUrl = this.metadata.vllm_api_url || 
-                            this.metadata.vllmApiUrl || 
-                            (typeof process !== 'undefined' ? process.env.VLLM_API_URL || this.defaultApiUrl : this.defaultApiUrl);
-        const model = this.getDefaultModel();
+        // Check if Docker is available
+        try {
+          child_process.execSync('docker --version', { stdio: 'pipe' });
+        } catch (error) {
+          console.error('Docker is not available:', error);
+          this.containerStatus = 'error';
+          resolve(false);
+          return;
+        }
+
+        // Update container status
+        this.containerStatus = 'starting';
+        this.logToContainer('Starting VLLM container...');
+
+        // Check if the image exists, pull if not
+        try {
+          this.logToContainer(`Checking for container image: ${this.containerConfig?.image}`);
+          const imageExists = child_process.execSync(`docker image inspect ${this.containerConfig?.image} 2>/dev/null`);
+        } catch (error) {
+          // Image doesn't exist, pull it
+          this.logToContainer(`Pulling container image: ${this.containerConfig?.image}`);
+          
+          try {
+            child_process.execSync(`docker pull ${this.containerConfig?.image}`, { stdio: 'pipe' });
+          } catch (pullError) {
+            console.error('Failed to pull container image:', pullError);
+            this.containerStatus = 'error';
+            resolve(false);
+            return;
+          }
+        }
+
+        // Prepare run command for Docker
+        let runCommand = 'docker run -d --rm ';
         
-        return await this.makeRequest(endpointUrl, data, model);
+        // Add GPU support if enabled
+        if (this.containerConfig?.gpu) {
+          runCommand += '--gpus all ';
+        }
+        
+        // Add volume mounts
+        for (const mount of this.containerVolumeMounts) {
+          runCommand += `-v ${mount} `;
+        }
+        
+        // Add port mappings
+        for (const [host, container] of Object.entries(this.containerPorts)) {
+          runCommand += `-p ${host}:${container} `;
+        }
+        
+        // Add environment variables
+        for (const [key, value] of Object.entries(this.containerEnvVars)) {
+          runCommand += `-e ${key}="${value}" `;
+        }
+        
+        // Add the image and any custom arguments
+        runCommand += this.containerConfig?.image || this.containerImageDefault;
+        
+        if (this.containerConfig?.custom_args) {
+          runCommand += ` ${this.containerConfig.custom_args}`;
+        }
+
+        // Start the container
+        this.logToContainer(`Starting container with command: ${runCommand}`);
+        const containerId = child_process.execSync(runCommand).toString().trim();
+        this.containerId = containerId;
+        
+        // Start health checks
+        this.startContainerHealthChecks();
+        
+        // Wait for the service to be ready
+        this.logToContainer(`Container started with ID: ${containerId}`);
+        this.logToContainer('Waiting for API to be ready...');
+
+        // Wait for the container to be ready
+        const startTime = Date.now();
+        let isReady = false;
+        
+        while (Date.now() - startTime < this.containerStartupTimeoutMs) {
+          try {
+            // Check if the API is ready
+            const response = await fetch(`${this.containerApiUrl}/v1/models`);
+            if (response.ok) {
+              isReady = true;
+              break;
+            }
+          } catch (error) {
+            // API not ready yet, wait and try again
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+
+        if (isReady) {
+          this.containerStatus = 'running';
+          this.logToContainer('Container API is ready');
+          resolve(true);
+        } else {
+          this.containerStatus = 'error';
+          this.logToContainer('Container startup timed out');
+          
+          // Kill the container if it's still running
+          try {
+            if (this.containerId) {
+              child_process.execSync(`docker kill ${this.containerId}`);
+            }
+          } catch (error) {
+            // Ignore errors during cleanup
+          }
+          
+          resolve(false);
+        }
       } catch (error) {
-        throw this.createApiError(`${this.constructor.name} endpoint error: ${error.message}`, 500);
+        console.error('Failed to start container:', error);
+        this.containerStatus = 'error';
+        resolve(false);
+      } finally {
+        // Clear the startup promise
+        this.containerStartupPromise = null;
       }
-    };
+    });
+
+    return this.containerStartupPromise;
   }
 
   /**
-   * Create a VLLM endpoint handler for a specific URL and model
+   * Stop the VLLM container
    */
-  createVllmEndpointHandler(endpointUrl: string, model?: string): (data: any) => Promise<any> {
-    return async (data: any) => {
-      try {
-        const modelName = model || this.getDefaultModel();
-        return await this.makeRequest(endpointUrl, data, modelName);
-      } catch (error) {
-        throw this.createApiError(`VLLM endpoint error: ${error.message}`, 500);
-      }
-    };
+  async stopContainer(): Promise<boolean> {
+    if (!this.containerId || this.containerStatus !== 'running') {
+      return true;
+    }
+
+    try {
+      this.containerStatus = 'stopping';
+      this.logToContainer('Stopping container...');
+      
+      // Stop the container
+      child_process.execSync(`docker stop ${this.containerId}`);
+      
+      // Clear container ID and status
+      this.containerId = null;
+      this.containerStatus = 'stopped';
+      this.logToContainer('Container stopped');
+      
+      // Stop health checks
+      this.stopContainerHealthChecks();
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to stop container:', error);
+      this.containerStatus = 'error';
+      return false;
+    }
   }
 
   /**
-   * Create a VLLM endpoint handler with specific parameters
+   * Restart the VLLM container
    */
-  createVllmEndpointHandlerWithParams(
-    endpointUrl: string, 
-    model?: string, 
-    parameters?: Record<string, any>
-  ): (data: any) => Promise<any> {
-    return async (data: any) => {
-      try {
-        const modelName = model || this.getDefaultModel();
-        const requestData = this.prepareRequestData(data, modelName, parameters);
-        return await this.makePostRequestVllm(endpointUrl, requestData);
-      } catch (error) {
-        throw this.createApiError(`VLLM endpoint error: ${error.message}`, 500);
-      }
-    };
+  async restartContainer(): Promise<boolean> {
+    await this.stopContainer();
+    return this.startContainer();
   }
 
   /**
-   * Test the VLLM endpoint
+   * Get container status
+   */
+  getContainerStatus(): VllmContainerStatus {
+    return this.containerStatus;
+  }
+
+  /**
+   * Start container health checks
+   */
+  private startContainerHealthChecks() {
+    if (this.containerHealthCheckTimer) {
+      clearInterval(this.containerHealthCheckTimer);
+    }
+    
+    this.containerHealthCheckTimer = setInterval(() => {
+      this.checkContainerHealth();
+    }, this.containerHealthCheckIntervalMs);
+  }
+
+  /**
+   * Stop container health checks
+   */
+  private stopContainerHealthChecks() {
+    if (this.containerHealthCheckTimer) {
+      clearInterval(this.containerHealthCheckTimer);
+      this.containerHealthCheckTimer = null;
+    }
+  }
+
+  /**
+   * Check container health
+   */
+  private async checkContainerHealth() {
+    if (!this.containerId || this.containerStatus !== 'running') {
+      return;
+    }
+
+    try {
+      // Check if container is still running
+      const containerInfo = child_process.execSync(`docker inspect ${this.containerId} --format '{{.State.Running}}'`).toString().trim();
+      
+      if (containerInfo !== 'true') {
+        this.logToContainer('Container is not running');
+        this.containerStatus = 'stopped';
+        this.containerId = null;
+        this.stopContainerHealthChecks();
+        
+        // Auto restart if enabled
+        if (this.containerAutomaticRetryEnabled && this.containerRetryCount < this.containerMaxRetries) {
+          this.containerRetryCount++;
+          this.logToContainer(`Auto-restarting container (attempt ${this.containerRetryCount}/${this.containerMaxRetries})...`);
+          this.startContainer();
+        }
+        
+        return;
+      }
+      
+      // Check if API is still responsive
+      try {
+        const response = await fetch(`${this.containerApiUrl}/v1/models`);
+        if (!response.ok) {
+          this.logToContainer('API is not responsive');
+          // Do not immediately restart, wait for the container check to handle it
+        }
+      } catch (error) {
+        this.logToContainer(`API check failed: ${error.message}`);
+        // Do not immediately restart, wait for the container check to handle it
+      }
+    } catch (error) {
+      console.error('Failed to check container health:', error);
+    }
+  }
+
+  /**
+   * Log message to container logs
+   */
+  private logToContainer(message: string) {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message}`;
+    
+    // Add to logs with limit
+    this.containerLogs.push(logEntry);
+    if (this.containerLogs.length > this.containerMaxLogEntries) {
+      this.containerLogs.shift();
+    }
+    
+    // Also log to console
+    console.log(`VLLM Container: ${message}`);
+  }
+
+  /**
+   * Get container logs
+   */
+  getContainerLogs(): string[] {
+    return [...this.containerLogs];
+  }
+
+  /**
+   * Check if API is ready (overrides base method)
    */
   async testEndpoint(): Promise<boolean> {
-    try {
-      const endpointUrl = this.metadata.vllm_api_url || 
-                          this.metadata.vllmApiUrl || 
-                          (typeof process !== 'undefined' ? process.env.VLLM_API_URL || this.defaultApiUrl : this.defaultApiUrl);
-      const model = this.getDefaultModel();
-
-      // Make a minimal request to verify the endpoint works
-      await this.makeRequest(endpointUrl, { prompt: "Hello", max_tokens: 5 }, model);
-      return true;
-    } catch (error) {
-      console.error(`${this.constructor.name} endpoint test failed:`, error);
-      return false;
+    // If container is enabled, ensure it's running
+    if (this.containerEnabled) {
+      if (this.containerStatus !== 'running') {
+        const started = await this.startContainer();
+        if (!started) {
+          return false;
+        }
+      }
     }
+    
+    // Call the parent method
+    return super.testEndpoint();
   }
 
   /**
-   * Test a specific VLLM endpoint
-   */
-  async testVllmEndpoint(endpointUrl: string, model?: string): Promise<boolean> {
-    try {
-      const modelName = model || this.getDefaultModel();
-      
-      // Prepare a minimal test request
-      const testRequest: VllmRequest = {
-        prompt: "Hello, world!",
-        max_tokens: 5,
-        model: modelName
-      };
-      
-      // Make the request
-      await this.makePostRequestVllm(endpointUrl, testRequest);
-      return true;
-    } catch (error) {
-      console.error(`VLLM endpoint test failed:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Test a VLLM endpoint with specific parameters
-   */
-  async testVllmEndpointWithParams(
-    endpointUrl: string, 
-    model?: string, 
-    parameters?: Record<string, any>
-  ): Promise<boolean> {
-    try {
-      const modelName = model || this.getDefaultModel();
-      
-      // Prepare test request with parameters
-      const testRequest: VllmRequest = {
-        prompt: "Hello, world!",
-        model: modelName,
-        ...parameters
-      };
-      
-      // Make the request
-      await this.makePostRequestVllm(endpointUrl, testRequest);
-      return true;
-    } catch (error) {
-      console.error(`VLLM endpoint test with parameters failed:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Make a request to the VLLM API
+   * Make a request to the VLLM API (overrides base method)
    */
   async makeRequest(
     endpointUrl: string, 
@@ -220,718 +494,451 @@ export class VllmUnified extends BaseApiBackend {
     model?: string, 
     options?: ApiRequestOptions
   ): Promise<any> {
-    const modelName = model || this.getDefaultModel();
-    const requestData = this.prepareRequestData(data, modelName);
-    return await this.makePostRequestVllm(endpointUrl, requestData, options?.requestId, options);
+    // If container is enabled, ensure it's running
+    if (this.containerEnabled) {
+      if (this.containerStatus !== 'running') {
+        const started = await this.startContainer();
+        if (!started) {
+          throw this.createApiError('VLLM container failed to start', 500, 'container_error');
+        }
+      }
+    }
+    
+    // Call the parent method
+    return super.makeRequest(endpointUrl, data, model, options);
   }
 
   /**
-   * Make a POST request to the VLLM API
-   */
-  async makePostRequestVllm(
-    endpointUrl: string,
-    data: any,
-    requestId?: string,
-    options?: ApiRequestOptions
-  ): Promise<VllmUnifiedResponse> {
-    // Process with queue and circuit breaker
-    return this.retryableRequest(async () => {
-      // Prepare request headers
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-
-      // Add API key if available
-      const apiKey = options?.apiKey || this.getApiKey(this.metadata);
-      if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-      
-      // Add request ID if provided
-      if (requestId) {
-        headers['X-Request-ID'] = requestId;
-      }
-
-      // Prepare request body
-      const requestBody = JSON.stringify(data);
-
-      // Set up timeout
-      const timeoutMs = options?.timeout || 
-                       this.metadata.timeout || 
-                       (typeof process !== 'undefined' ? parseInt(process.env.VLLM_TIMEOUT || '30000', 10) : this.defaultTimeout);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      try {
-        // Make the request
-        const response = await fetch(endpointUrl, {
-          method: 'POST',
-          headers,
-          body: requestBody,
-          signal: controller.signal
-        });
-
-        // Check for errors
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          const errorMessage = errorData.error || `HTTP error ${response.status}`;
-          
-          // Handle rate limiting
-          if (response.status === 429) {
-            const retryAfter = response.headers.get('retry-after');
-            const error = this.createApiError(errorMessage, response.status, 'rate_limit_error');
-            error.retryAfter = retryAfter ? parseInt(retryAfter, 10) : 1;
-            error.isRateLimitError = true;
-            throw error;
-          }
-          
-          throw this.createApiError(errorMessage, response.status);
-        }
-
-        // Parse response
-        const responseData = await response.json();
-        return responseData;
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          throw this.createApiError(`Request timed out after ${timeoutMs}ms`, 408, 'timeout_error');
-        }
-        throw error;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    }, options?.maxRetries || this.maxRetries);
-  }
-
-  /**
-   * Make a streaming request to the VLLM API
+   * Make a streaming request to the VLLM API (overrides base method)
    */
   async *makeStreamRequestVllm(
     endpointUrl: string,
     data: any,
     options?: ApiRequestOptions
   ): AsyncGenerator<VllmStreamChunk> {
-    // Prepare request headers
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
+    // If container is enabled, ensure it's running
+    if (this.containerEnabled) {
+      if (this.containerStatus !== 'running') {
+        const started = await this.startContainer();
+        if (!started) {
+          throw this.createApiError('VLLM container failed to start', 500, 'container_error');
+        }
+      }
+    }
+    
+    // Call the parent method
+    yield* super.makeStreamRequestVllm(endpointUrl, data, options);
+  }
+
+  /**
+   * Get the container configuration
+   */
+  getContainerConfig(): VllmContainerConfig | null {
+    return this.containerConfig;
+  }
+
+  /**
+   * Set the container configuration
+   */
+  setContainerConfig(config: Partial<VllmContainerConfig>): void {
+    if (!this.containerConfig) {
+      this.containerConfig = {
+        image: this.containerImageDefault,
+        gpu: false,
+        models_path: this.containerModelsPath,
+        config_path: this.containerConfigPath,
+        api_port: 8000,
+        tensor_parallel_size: 1,
+        max_model_len: 0,
+        gpu_memory_utilization: 0.9,
+        quantization: null,
+        trust_remote_code: false,
+        custom_args: ''
+      };
+    }
+    
+    // Update configuration
+    this.containerConfig = {
+      ...this.containerConfig,
+      ...config
     };
-
-    // Add API key if available
-    const apiKey = options?.apiKey || this.getApiKey(this.metadata);
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
+    
+    // Update container environment variables
+    if (config.tensor_parallel_size) {
+      this.containerEnvVars['VLLM_TENSOR_PARALLEL_SIZE'] = config.tensor_parallel_size.toString();
     }
     
-    // Add request ID if provided
-    if (options?.requestId) {
-      headers['X-Request-ID'] = options.requestId;
+    if (config.gpu_memory_utilization) {
+      this.containerEnvVars['VLLM_GPU_MEMORY_UTILIZATION'] = config.gpu_memory_utilization.toString();
     }
-
-    // Ensure stream option is set
-    const streamData = { ...data, stream: true };
-
-    // Prepare request body
-    const requestBody = JSON.stringify(streamData);
-
-    // Set up timeout
-    const timeoutMs = options?.timeout || 
-                     this.metadata.timeout || 
-                     (typeof process !== 'undefined' ? parseInt(process.env.VLLM_TIMEOUT || '60000', 10) : 60000);
     
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    if (config.max_model_len && config.max_model_len > 0) {
+      this.containerEnvVars['VLLM_MAX_MODEL_LEN'] = config.max_model_len.toString();
+    }
+    
+    if (config.quantization) {
+      this.containerEnvVars['VLLM_QUANTIZATION'] = config.quantization;
+    }
+    
+    if (config.trust_remote_code !== undefined) {
+      this.containerEnvVars['VLLM_TRUST_REMOTE_CODE'] = config.trust_remote_code ? 'true' : 'false';
+    }
+    
+    // Write updated configuration to file
+    this.writeContainerConfigFile();
+  }
 
-    try {
-      // Make the request
-      const response = await fetch(endpointUrl, {
-        method: 'POST',
-        headers,
-        body: requestBody,
-        signal: controller.signal
+  /**
+   * Enable container mode
+   */
+  enableContainerMode(config?: Partial<VllmContainerConfig>): void {
+    this.containerEnabled = true;
+    
+    if (config) {
+      this.setContainerConfig(config);
+    }
+    
+    if (this.containerStatus !== 'running') {
+      this.startContainer().catch(error => {
+        console.error('Failed to start container:', error);
       });
-
-      // Check for errors
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw this.createApiError(
-          errorData.error || `HTTP error ${response.status}`,
-          response.status
-        );
-      }
-
-      // Process the stream
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw this.createApiError('Response body is null', 500, 'stream_error');
-      }
-
-      // VLLM typically returns newline-delimited JSON
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
-
-        for (const line of lines) {
-          if (line.trim() === '') continue;
-          
-          try {
-            // Parse the JSON chunk
-            const parsed = JSON.parse(line);
-            yield parsed;
-          } catch (e) {
-            console.warn('Failed to parse stream data:', line);
-          }
-        }
-      }
-
-      // Process any remaining data in the buffer
-      if (buffer.trim() !== '') {
-        try {
-          const parsed = JSON.parse(buffer);
-          yield parsed;
-        } catch (e) {
-          console.warn('Failed to parse final stream data:', buffer);
-        }
-      }
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        throw this.createApiError(`Stream request timed out after ${timeoutMs}ms`, 408, 'timeout_error');
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
   /**
-   * Process a batch of requests
+   * Disable container mode
    */
-  async processBatch(
-    endpointUrl: string,
-    batchData: string[],
-    model?: string,
-    parameters?: Record<string, any>
-  ): Promise<string[]> {
-    // Prepare batch request
-    const modelName = model || this.getDefaultModel();
-    const requestData = {
-      prompts: batchData,
-      model: modelName,
-      ...parameters
-    };
+  async disableContainerMode(): Promise<void> {
+    this.containerEnabled = false;
     
-    // Make the request
-    const response = await this.makePostRequestVllm(`${endpointUrl}/batch`, requestData) as VllmBatchResponse;
-    
-    // Return the results
-    return response.texts || [];
+    if (this.containerStatus === 'running') {
+      await this.stopContainer();
+    }
   }
 
   /**
-   * Process a batch of requests with parameters
-   */
-  async processBatchWithParams(
-    endpointUrl: string,
-    batchData: string[],
-    model?: string,
-    parameters?: Record<string, any>
-  ): Promise<string[]> {
-    // Use the base batch processing method with parameters
-    return this.processBatch(endpointUrl, batchData, model, parameters);
-  }
-
-  /**
-   * Process a batch with detailed metrics
-   */
-  async processBatchWithMetrics(
-    endpointUrl: string,
-    batchData: string[],
-    model?: string,
-    parameters?: Record<string, any>
-  ): Promise<[string[], Record<string, any>]> {
-    // Prepare batch request
-    const modelName = model || this.getDefaultModel();
-    const requestData = {
-      prompts: batchData,
-      model: modelName,
-      ...parameters
-    };
-    
-    // Make the request
-    const response = await this.makePostRequestVllm(`${endpointUrl}/batch`, requestData) as VllmBatchResponse;
-    
-    // Extract metrics
-    const metrics = {
-      model: response.metadata?.model || modelName,
-      finish_reasons: response.metadata?.finish_reasons || [],
-      usage: response.metadata?.usage || {
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0
-      }
-    };
-    
-    // Return the results and metrics
-    return [response.texts || [], metrics];
-  }
-
-  /**
-   * Stream text generation
-   */
-  async *streamGeneration(
-    endpointUrl: string,
-    prompt: string,
-    model?: string,
-    parameters?: Record<string, any>
-  ): AsyncGenerator<VllmStreamChunk> {
-    // Prepare request data
-    const modelName = model || this.getDefaultModel();
-    const requestData = {
-      prompt,
-      model: modelName,
-      stream: true,
-      ...parameters
-    };
-    
-    // Get the stream
-    yield* this.makeStreamRequestVllm(endpointUrl, requestData);
-  }
-
-  /**
-   * Stream text generation with parameters
-   */
-  async *streamGenerationWithParams(
-    endpointUrl: string,
-    prompt: string,
-    model?: string,
-    parameters?: Record<string, any>
-  ): AsyncGenerator<VllmStreamChunk> {
-    // Use the base streaming method with parameters
-    yield* this.streamGeneration(endpointUrl, prompt, model, parameters);
-  }
-
-  /**
-   * Get information about a model
+   * Get model information
    */
   async getModelInfo(
-    endpointUrl: string,
-    model?: string
+    model: string = this.getDefaultModel()
   ): Promise<VllmModelInfo> {
-    const modelName = model || this.getDefaultModel();
-    
-    // Make a GET request to the model info endpoint
-    const response = await fetch(`${endpointUrl}/models/${modelName}`);
-    
-    // Check for errors
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw this.createApiError(
-        errorData.error || `HTTP error ${response.status}`,
-        response.status
-      );
+    // If container is enabled, ensure it's running
+    if (this.containerEnabled) {
+      if (this.containerStatus !== 'running') {
+        const started = await this.startContainer();
+        if (!started) {
+          throw this.createApiError('VLLM container failed to start', 500, 'container_error');
+        }
+      }
     }
     
-    // Parse and return model info
-    return await response.json() as VllmModelInfo;
+    const url = `${this.containerApiUrl}/v1/models/${model}`;
+    
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw this.createApiError(
+          `Failed to get model info: ${response.statusText}`,
+          response.status,
+          'vllm_error'
+        );
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get model info:', error);
+      throw error;
+    }
   }
 
   /**
    * Get model statistics
    */
   async getModelStatistics(
-    endpointUrl: string,
-    model?: string
+    model: string = this.getDefaultModel()
   ): Promise<VllmModelStatistics> {
-    const modelName = model || this.getDefaultModel();
-    
-    // Make a GET request to the model statistics endpoint
-    const response = await fetch(`${endpointUrl}/models/${modelName}/stats`);
-    
-    // Check for errors
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw this.createApiError(
-        errorData.error || `HTTP error ${response.status}`,
-        response.status
-      );
-    }
-    
-    // Parse and return model statistics
-    return await response.json() as VllmModelStatistics;
-  }
-
-  /**
-   * List LoRA adapters
-   */
-  async listLoraAdapters(
-    endpointUrl: string
-  ): Promise<VllmLoraAdapter[]> {
-    // Make a GET request to the LoRA adapters endpoint
-    const response = await fetch(`${endpointUrl}/lora_adapters`);
-    
-    // Check for errors
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw this.createApiError(
-        errorData.error || `HTTP error ${response.status}`,
-        response.status
-      );
-    }
-    
-    // Parse and return LoRA adapters list
-    const responseJson = await response.json();
-    return responseJson.lora_adapters || [];
-  }
-
-  /**
-   * Load a LoRA adapter
-   */
-  async loadLoraAdapter(
-    endpointUrl: string,
-    adapterData: Record<string, any>
-  ): Promise<VllmLoadLoraResponse> {
-    // Prepare request headers
-    const headers = {
-      'Content-Type': 'application/json'
-    };
-    
-    // Make a POST request to the LoRA adapter loading endpoint
-    const response = await fetch(`${endpointUrl}/lora_adapters/load`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(adapterData)
-    });
-    
-    // Check for errors
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw this.createApiError(
-        errorData.error || `HTTP error ${response.status}`,
-        response.status
-      );
-    }
-    
-    // Parse and return response
-    return await response.json() as VllmLoadLoraResponse;
-  }
-
-  /**
-   * Set quantization configuration
-   */
-  async setQuantization(
-    endpointUrl: string,
-    model: string,
-    config: VllmQuantizationConfig
-  ): Promise<VllmQuantizationResponse> {
-    // Prepare request headers
-    const headers = {
-      'Content-Type': 'application/json'
-    };
-    
-    // Prepare request data
-    const requestData = {
-      model,
-      quantization: config
-    };
-    
-    // Make a POST request to the quantization endpoint
-    const response = await fetch(`${endpointUrl}/models/${model}/quantize`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestData)
-    });
-    
-    // Check for errors
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw this.createApiError(
-        errorData.error || `HTTP error ${response.status}`,
-        response.status
-      );
-    }
-    
-    // Parse and return response
-    return await response.json() as VllmQuantizationResponse;
-  }
-
-  /**
-   * Format a request for the VLLM API
-   */
-  formatRequest(
-    handler: (data: any) => Promise<any>,
-    input: any
-  ): Promise<any> {
-    // Format different types of inputs
-    if (typeof input === 'string') {
-      // Simple string prompt
-      return handler({ prompt: input });
-    } else if (Array.isArray(input)) {
-      // Batch of prompts
-      return handler({ prompts: input });
-    } else if (typeof input === 'object') {
-      // Object with prompt and parameters
-      if (input.prompt) {
-        return handler({ prompt: input.prompt, ...input.parameters });
-      } else if (input.input) {
-        // Alternative input field
-        return handler({ prompt: input.input, ...input.parameters });
-      }
-    }
-    
-    // Default fallback
-    return handler(input);
-  }
-
-  /**
-   * Format a request with parameters
-   */
-  formatRequestWithParams(
-    handler: (data: any) => Promise<any>,
-    input: any,
-    parameters: Record<string, any>
-  ): Promise<any> {
-    // Format different types of inputs with parameters
-    if (typeof input === 'string') {
-      // Simple string prompt with parameters
-      return handler({ prompt: input, ...parameters });
-    } else if (Array.isArray(input)) {
-      // Batch of prompts with parameters
-      return handler({ prompts: input, ...parameters });
-    } else if (typeof input === 'object') {
-      // Merge parameters with existing ones
-      const mergedParams = { ...input.parameters, ...parameters };
-      
-      if (input.prompt) {
-        return handler({ prompt: input.prompt, ...mergedParams });
-      } else if (input.input) {
-        return handler({ prompt: input.input, ...mergedParams });
-      }
-    }
-    
-    // Default fallback
-    return handler({ ...input, ...parameters });
-  }
-
-  /**
-   * Format a chat request
-   */
-  formatChatRequest(
-    handler: (data: any) => Promise<any>,
-    messages: Message[]
-  ): Promise<any> {
-    // Format chat messages for VLLM
-    return handler({ messages });
-  }
-
-  /**
-   * Chat completion implementation
-   */
-  async chat(
-    messages: Message[],
-    options?: ApiRequestOptions
-  ): Promise<ChatCompletionResponse> {
-    // Get API URL and model from metadata or environment
-    const endpointUrl = this.metadata.vllm_api_url || 
-                        this.metadata.vllmApiUrl || 
-                        (typeof process !== 'undefined' ? process.env.VLLM_API_URL || this.defaultApiUrl : this.defaultApiUrl);
-    const modelName = options?.model || this.getDefaultModel();
-    
-    // Prepare request data
-    const requestData: VllmRequest = {
-      messages,
-      model: modelName,
-      max_tokens: options?.maxTokens,
-      temperature: options?.temperature,
-      top_p: options?.topP,
-      stream: false
-    };
-    
-    // Make the request
-    const response = await this.makePostRequestVllm(endpointUrl, requestData, options?.requestId, options);
-    
-    // Convert to standard format
-    return {
-      model: modelName,
-      content: response.text || '',
-      usage: response.metadata?.usage || { 
-        prompt_tokens: 0, 
-        completion_tokens: 0, 
-        total_tokens: 0 
-      }
-    };
-  }
-
-  /**
-   * Streaming chat completion
-   */
-  async *streamChat(
-    messages: Message[],
-    options?: ApiRequestOptions
-  ): AsyncGenerator<StreamChunk> {
-    // Get API URL and model from metadata or environment
-    const endpointUrl = this.metadata.vllm_api_url || 
-                        this.metadata.vllmApiUrl || 
-                        (typeof process !== 'undefined' ? process.env.VLLM_API_URL || this.defaultApiUrl : this.defaultApiUrl);
-    const modelName = options?.model || this.getDefaultModel();
-    
-    // Prepare request data
-    const requestData: VllmRequest = {
-      messages,
-      model: modelName,
-      max_tokens: options?.maxTokens,
-      temperature: options?.temperature,
-      top_p: options?.topP,
-      stream: true
-    };
-    
-    // Get the stream
-    const stream = this.makeStreamRequestVllm(endpointUrl, requestData, options);
-    
-    // Process and yield stream chunks
-    for await (const chunk of stream) {
-      yield {
-        content: chunk.text || '',
-        type: 'delta',
-        done: chunk.metadata?.finish_reason !== null && chunk.metadata?.is_streaming === false
-      };
-    }
-  }
-
-  /**
-   * Make a request with a specific endpoint
-   */
-  async makeRequestWithEndpoint(
-    endpointId: string,
-    prompt: any,
-    model?: string,
-    parameters?: Record<string, any>
-  ): Promise<any> {
-    // Check if endpoint exists
-    if (!this.endpoints[endpointId]) {
-      throw this.createApiError(`Endpoint ${endpointId} not found`, 404);
-    }
-    
-    const endpoint = this.endpoints[endpointId];
-    const requestId = `${endpointId}_${Date.now()}`;
-    const modelName = model || endpoint.model || this.getDefaultModel();
-    
-    // Get endpoint URL from metadata
-    const endpointUrl = this.metadata.vllm_api_url || 
-                        this.metadata.vllmApiUrl || 
-                        (typeof process !== 'undefined' ? process.env.VLLM_API_URL || this.defaultApiUrl : this.defaultApiUrl);
-    
-    // Prepare request data based on input type
-    let requestData;
-    if (typeof prompt === 'string') {
-      requestData = {
-        prompt,
-        model: modelName,
-        ...parameters
-      };
-    } else if (Array.isArray(prompt)) {
-      requestData = {
-        messages: prompt,
-        model: modelName,
-        ...parameters
-      };
-    } else {
-      requestData = {
-        ...prompt,
-        model: modelName,
-        ...parameters
-      };
-    }
-    
-    // Make the request with endpoint configuration
-    try {
-      const response = await this.makePostRequestVllm(
-        endpointUrl,
-        requestData,
-        requestId,
-        {
-          apiKey: endpoint.apiKey,
-          maxRetries: endpoint.maxRetries,
-          timeout: endpoint.timeout
+    // If container is enabled, ensure it's running
+    if (this.containerEnabled) {
+      if (this.containerStatus !== 'running') {
+        const started = await this.startContainer();
+        if (!started) {
+          throw this.createApiError('VLLM container failed to start', 500, 'container_error');
         }
-      );
+      }
+    }
+    
+    const url = `${this.containerApiUrl}/v1/models/${model}/statistics`;
+    
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
       
-      this.trackRequestResult(true, requestId);
-      return response;
+      if (!response.ok) {
+        throw this.createApiError(
+          `Failed to get model statistics: ${response.statusText}`,
+          response.status,
+          'vllm_error'
+        );
+      }
+      
+      return await response.json();
     } catch (error) {
-      this.trackRequestResult(false, requestId, error);
+      console.error('Failed to get model statistics:', error);
       throw error;
     }
   }
 
   /**
-   * Helper method to prepare request data
+   * Process a batch with detailed metrics (overriding parent implementation)
    */
-  private prepareRequestData(
-    data: any,
-    model: string,
+  async processBatchWithMetrics(
+    batchData: string[],
+    model?: string,
     parameters?: Record<string, any>
-  ): VllmRequest {
-    // Format different types of inputs with optional parameters
-    if (typeof data === 'string') {
-      // Simple string prompt
-      return {
-        prompt: data,
-        model,
-        ...parameters
-      };
-    } else if (Array.isArray(data)) {
-      if (data.every(item => typeof item === 'object' && ('role' in item || 'content' in item))) {
-        // Array of messages
-        return {
-          messages: data,
-          model,
-          ...parameters
-        };
-      } else {
-        // Batch of prompts
-        return {
-          prompts: data,
-          model,
-          ...parameters
-        };
+  ): Promise<[string[], Record<string, any>]> {
+    // If container is enabled, ensure it's running
+    if (this.containerEnabled) {
+      if (this.containerStatus !== 'running') {
+        const started = await this.startContainer();
+        if (!started) {
+          throw this.createApiError('VLLM container failed to start', 500, 'container_error');
+        }
       }
-    } else if (data.messages) {
-      // Chat messages
-      return {
-        messages: data.messages,
-        model,
-        ...parameters,
-        ...data
-      };
-    } else if (data.prompt) {
-      // Object with prompt field
-      return {
-        prompt: data.prompt,
-        model,
-        ...parameters,
-        ...data
-      };
-    } else if (data.input) {
-      // Object with input field
-      return {
-        prompt: data.input,
-        model,
-        ...parameters,
-        ...data
-      };
     }
     
-    // Default fallback
-    return {
-      ...data,
-      model,
+    // Use the parent implementation for the container API endpoint
+    const endpointUrl = `${this.containerApiUrl}/v1/completions`;
+    
+    // Start timing
+    const startTime = Date.now();
+    
+    // Prepare batch request
+    const modelName = model || this.getDefaultModel();
+    const requestData = {
+      prompts: batchData,
+      model: modelName,
       ...parameters
     };
+    
+    try {
+      // Make the request
+      const response = await this.makePostRequestVllm(`${endpointUrl}/batch`, requestData) as VllmBatchResponse;
+      
+      // Calculate metrics
+      const endTime = Date.now();
+      const totalDuration = endTime - startTime;
+      
+      // Extract metrics
+      const metrics = {
+        model: response.metadata?.model || modelName,
+        batch_size: batchData.length,
+        successful_items: (response.texts?.length || 0),
+        total_time_ms: totalDuration,
+        average_time_per_item_ms: totalDuration / batchData.length,
+        finish_reasons: response.metadata?.finish_reasons || [],
+        usage: response.metadata?.usage || {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0
+        }
+      };
+      
+      // Return the results and metrics
+      return [response.texts || [], metrics];
+    } catch (error) {
+      console.error('Batch processing failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stream text generation with container support
+   */
+  async *streamGeneration(
+    prompt: string,
+    model?: string,
+    parameters?: Record<string, any>
+  ): AsyncGenerator<string> {
+    // If container is enabled, ensure it's running
+    if (this.containerEnabled) {
+      if (this.containerStatus !== 'running') {
+        const started = await this.startContainer();
+        if (!started) {
+          throw this.createApiError('VLLM container failed to start', 500, 'container_error');
+        }
+      }
+    }
+    
+    const endpointUrl = `${this.containerApiUrl}/v1/completions`;
+    const modelName = model || this.getDefaultModel();
+    
+    const requestData: VllmRequest = {
+      prompt,
+      model: modelName,
+      stream: true,
+      ...parameters
+    };
+    
+    const stream = await this.makeStreamRequestVllm(endpointUrl, requestData);
+    
+    for await (const chunk of stream) {
+      if (chunk.text) {
+        yield chunk.text;
+      }
+    }
+  }
+
+  /**
+   * Check container port availability
+   */
+  private async checkPortAvailability(port: number): Promise<boolean> {
+    if (typeof process === 'undefined' || typeof child_process === 'undefined') {
+      return true; // Can't check in non-Node environment
+    }
+    
+    try {
+      // Different check commands based on platform
+      if (os.platform() === 'win32') {
+        const output = child_process.execSync(`netstat -ano | findstr :${port}`).toString();
+        return output.trim() === '';
+      } else {
+        const output = child_process.execSync(`lsof -i:${port}`).toString();
+        return output.trim() === '';
+      }
+    } catch (error) {
+      // If command fails, port is likely available
+      return true;
+    }
+  }
+
+  /**
+   * Load models into the container
+   */
+  async loadModels(modelPaths: string[]): Promise<boolean> {
+    if (!this.containerEnabled || !this.containerConfig) {
+      throw new Error('Container mode is not enabled');
+    }
+    
+    try {
+      // Ensure container is running
+      if (this.containerStatus !== 'running') {
+        const started = await this.startContainer();
+        if (!started) {
+          throw new Error('Failed to start container');
+        }
+      }
+      
+      let success = true;
+      
+      // Copy each model to the models directory
+      for (const modelPath of modelPaths) {
+        try {
+          const modelName = path.basename(modelPath);
+          const targetPath = path.join(this.containerConfig.models_path, modelName);
+          
+          // Create directory if needed
+          if (!fs.existsSync(targetPath)) {
+            fs.mkdirSync(targetPath, { recursive: true });
+          }
+          
+          // Copy files (this is simplified and would need to be more robust for production)
+          if (fs.statSync(modelPath).isDirectory()) {
+            fs.readdirSync(modelPath).forEach(file => {
+              const srcFile = path.join(modelPath, file);
+              const dstFile = path.join(targetPath, file);
+              fs.copyFileSync(srcFile, dstFile);
+            });
+          } else {
+            fs.copyFileSync(modelPath, targetPath);
+          }
+          
+          this.logToContainer(`Model loaded: ${modelName}`);
+        } catch (error) {
+          this.logToContainer(`Failed to load model ${modelPath}: ${error.message}`);
+          success = false;
+        }
+      }
+      
+      return success;
+    } catch (error) {
+      this.logToContainer(`Error loading models: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Validate container capabilities
+   */
+  async validateContainerCapabilities(): Promise<Record<string, boolean>> {
+    if (!this.containerEnabled) {
+      throw new Error('Container mode is not enabled');
+    }
+    
+    const capabilities: Record<string, boolean> = {
+      docker_available: false,
+      gpu_support: false,
+      port_available: false,
+      api_accessible: false,
+      model_loaded: false
+    };
+    
+    try {
+      // Check if Docker is available
+      try {
+        child_process.execSync('docker --version', { stdio: 'pipe' });
+        capabilities.docker_available = true;
+      } catch (error) {
+        capabilities.docker_available = false;
+      }
+      
+      // Check if GPU is available (if enabled)
+      if (this.containerConfig?.gpu) {
+        try {
+          const gpuInfo = child_process.execSync('nvidia-smi', { stdio: 'pipe' }).toString();
+          capabilities.gpu_support = gpuInfo.includes('NVIDIA-SMI');
+        } catch (error) {
+          capabilities.gpu_support = false;
+        }
+      } else {
+        capabilities.gpu_support = true; // Not needed if not enabled
+      }
+      
+      // Check if port is available
+      const port = this.containerConfig?.api_port || 8000;
+      capabilities.port_available = await this.checkPortAvailability(port);
+      
+      // Check if API is accessible (only if container is running)
+      if (this.containerStatus === 'running') {
+        try {
+          const response = await fetch(`${this.containerApiUrl}/v1/models`);
+          capabilities.api_accessible = response.ok;
+        } catch (error) {
+          capabilities.api_accessible = false;
+        }
+        
+        // Check if model is loaded
+        try {
+          const modelResponse = await fetch(`${this.containerApiUrl}/v1/models/${this.getDefaultModel()}`);
+          capabilities.model_loaded = modelResponse.ok;
+        } catch (error) {
+          capabilities.model_loaded = false;
+        }
+      }
+      
+      return capabilities;
+    } catch (error) {
+      console.error('Failed to validate container capabilities:', error);
+      return capabilities;
+    }
   }
 }

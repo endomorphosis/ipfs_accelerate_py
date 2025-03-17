@@ -108,3 +108,108 @@ export interface VllmQuantizationResponse {
   model: string;
   quantization: VllmQuantizationConfig;
 }
+
+/**
+ * Container configuration for the VLLM Unified backend
+ */
+export interface VllmContainerConfig {
+  /**
+   * Docker image to use for the container
+   */
+  image: string;
+  
+  /**
+   * Whether to enable GPU support
+   */
+  gpu: boolean;
+  
+  /**
+   * Path to the models directory on the host
+   */
+  models_path: string;
+  
+  /**
+   * Path to the configuration directory on the host
+   */
+  config_path: string;
+  
+  /**
+   * API port to expose
+   */
+  api_port: number;
+  
+  /**
+   * Number of GPUs to use for tensor parallelism
+   */
+  tensor_parallel_size: number;
+  
+  /**
+   * Maximum model context length (0 means use default)
+   */
+  max_model_len: number;
+  
+  /**
+   * GPU memory utilization (0.0-1.0)
+   */
+  gpu_memory_utilization: number;
+  
+  /**
+   * Quantization method to use (null = no quantization)
+   */
+  quantization: string | null;
+  
+  /**
+   * Whether to trust remote code when loading models
+   */
+  trust_remote_code: boolean;
+  
+  /**
+   * Custom arguments to pass to the container
+   */
+  custom_args: string;
+}
+
+/**
+ * Container status for the VLLM Unified backend
+ */
+export type VllmContainerStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
+
+/**
+ * Container metrics for the VLLM Unified backend
+ */
+export interface VllmContainerMetrics {
+  /**
+   * CPU usage percentage (0-100)
+   */
+  cpu_usage: number;
+  
+  /**
+   * Memory usage in MB
+   */
+  memory_usage: number;
+  
+  /**
+   * GPU memory usage in MB (if GPU is enabled)
+   */
+  gpu_memory_usage?: number;
+  
+  /**
+   * Number of requests processed
+   */
+  requests_processed: number;
+  
+  /**
+   * Number of tokens generated
+   */
+  tokens_generated: number;
+  
+  /**
+   * Average latency in ms
+   */
+  average_latency: number;
+  
+  /**
+   * Throughput in tokens per second
+   */
+  throughput: number;
+}

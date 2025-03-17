@@ -88,6 +88,20 @@ class CIProviderInterface(abc.ABC):
         pass
     
     @abc.abstractmethod
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """
+        Get the URL for a test run artifact.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            
+        Returns:
+            URL to the artifact or None if not found
+        """
+        pass
+    
+    @abc.abstractmethod
     async def get_test_run_status(self, test_run_id: str) -> Dict[str, Any]:
         """
         Get the status of a test run.

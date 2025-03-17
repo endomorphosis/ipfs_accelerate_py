@@ -309,8 +309,8 @@ class GitLabClient(CIProviderInterface):
         """
         Upload an artifact for a test run.
         
-        Note: GitLab doesn't allow uploading job artifacts via API directly. This is a simplified
-        implementation that would need more work for a production system.
+        This implementation uploads files to GitLab project's repository using the Repository Files API
+        to store them in a dedicated branch for test artifacts.
         
         Args:
             test_run_id: Test run ID
@@ -322,12 +322,163 @@ class GitLabClient(CIProviderInterface):
         """
         await self._ensure_session()
         
-        # In a real implementation, this might upload to a GitLab package registry,
-        # or use the project file upload API.
+        try:
+            # Skip if we're using a simulated test run
+            if test_run_id.startswith("gl-simulated-"):
+                logger.info(f"Skipping artifact upload for simulated test run {test_run_id}")
+                return True
+            
+            # Check if file exists
+            if not os.path.exists(artifact_path):
+                logger.error(f"Artifact file not found: {artifact_path}")
+                return False
+            
+            # Create a dedicated branch name for artifacts if needed
+            artifact_branch = f"test-artifacts/{test_run_id}"
+            
+            # Determine if we need to create the branch
+            should_create_branch = True
+            
+            # Check if branch exists
+            branch_url = f"{self.api_url}/projects/{self.project}/repository/branches/{artifact_branch}"
+            async with self.session.get(branch_url) as response:
+                if response.status == 200:
+                    should_create_branch = False
+                    logger.info(f"Artifact branch {artifact_branch} already exists")
+            
+            # Create branch if needed
+            if should_create_branch:
+                branch_create_url = f"{self.api_url}/projects/{self.project}/repository/branches"
+                
+                # Get the default branch to use as a reference
+                default_branch = "main"  # Default fallback
+                project_url = f"{self.api_url}/projects/{self.project}"
+                
+                async with self.session.get(project_url) as response:
+                    if response.status == 200:
+                        project_data = await response.json()
+                        default_branch = project_data.get("default_branch", "main")
+                    
+                branch_create_data = {
+                    "branch": artifact_branch,
+                    "ref": default_branch
+                }
+                
+                async with self.session.post(branch_create_url, json=branch_create_data) as response:
+                    if response.status not in (201, 200):
+                        error_text = await response.text()
+                        logger.error(f"Failed to create artifact branch: {response.status} - {error_text}")
+                        return False
+                    
+                    logger.info(f"Created artifact branch {artifact_branch}")
+            
+            # Read file content
+            with open(artifact_path, "rb") as f:
+                content = f.read()
+            
+            # Encode binary content to base64 if needed
+            import base64
+            is_binary = False
+            try:
+                content_str = content.decode("utf-8")
+            except UnicodeDecodeError:
+                content_str = base64.b64encode(content).decode("utf-8")
+                is_binary = True
+            
+            # Construct the file path in the repository
+            repo_file_path = f"artifacts/{test_run_id}/{artifact_name}"
+            
+            # Create or update the file in the repository
+            file_url = f"{self.api_url}/projects/{self.project}/repository/files/{repo_file_path.replace('/', '%2F')}"
+            
+            file_data = {
+                "branch": artifact_branch,
+                "content": content_str,
+                "commit_message": f"Add artifact {artifact_name} for test run {test_run_id}",
+                "encoding": "base64" if is_binary else "text"
+            }
+            
+            async with self.session.post(file_url, json=file_data) as response:
+                if response.status in (201, 200):
+                    logger.info(f"Uploaded artifact {artifact_name} to GitLab repository")
+                    
+                    # Cache the artifact URL for later retrieval
+                    if not hasattr(self, "_artifact_urls"):
+                        self._artifact_urls = {}
+                    
+                    if test_run_id not in self._artifact_urls:
+                        self._artifact_urls[test_run_id] = {}
+                    
+                    # URL to raw file content
+                    self._artifact_urls[test_run_id][artifact_name] = (
+                        f"{self.api_url.replace('/api/v4', '')}/{self.project}/-/raw/{artifact_branch}/{repo_file_path}"
+                    )
+                    
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Failed to upload artifact to GitLab: {response.status} - {error_text}")
+                    return False
         
-        logger.info(f"Artifact upload for GitLab not fully implemented. Would upload {artifact_path} as {artifact_name}")
-        return True
+        except Exception as e:
+            logger.error(f"Exception uploading artifact to GitLab: {str(e)}")
+            return False
     
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """
+        Get the URL for a test run artifact.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            
+        Returns:
+            URL to the artifact or None if not found
+        """
+        await self._ensure_session()
+        
+        try:
+            # Skip for simulated test runs
+            if test_run_id.startswith("gl-simulated-"):
+                logger.warning(f"Cannot get artifact URL for simulated test run {test_run_id}")
+                return None
+            
+            # Check if we have the URL cached
+            if hasattr(self, "_artifact_urls") and test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
+                return self._artifact_urls[test_run_id][artifact_name]
+            
+            # Try to find the artifact URL by checking the repository
+            artifact_branch = f"test-artifacts/{test_run_id}"
+            repo_file_path = f"artifacts/{test_run_id}/{artifact_name}"
+            encoded_path = repo_file_path.replace('/', '%2F')
+            
+            # Check if file exists in the repository
+            file_url = f"{self.api_url}/projects/{self.project}/repository/files/{encoded_path}?ref={artifact_branch}"
+            
+            async with self.session.get(file_url) as response:
+                if response.status == 200:
+                    # File exists, construct the raw URL
+                    raw_url = f"{self.api_url.replace('/api/v4', '')}/{self.project}/-/raw/{artifact_branch}/{repo_file_path}"
+                    
+                    # Cache the URL for future use
+                    if not hasattr(self, "_artifact_urls"):
+                        self._artifact_urls = {}
+                    
+                    if test_run_id not in self._artifact_urls:
+                        self._artifact_urls[test_run_id] = {}
+                    
+                    self._artifact_urls[test_run_id][artifact_name] = raw_url
+                    
+                    logger.info(f"Found artifact URL for {artifact_name}: {raw_url}")
+                    return raw_url
+                else:
+                    logger.warning(f"Artifact {artifact_name} not found in repository for test run {test_run_id}")
+                    return None
+                
+        except Exception as e:
+            logger.error(f"Error getting artifact URL: {str(e)}")
+            return None
+            
     async def close(self) -> None:
         """
         Close the CI provider and clean up resources.

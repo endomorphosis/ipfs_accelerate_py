@@ -44,3 +44,7 @@ test/webnn_webgpu_test_results/*.json
 node_modules/
 node_modules/*
 *node_modules/*
+*/test_output/*
+test_output
+test_output2
+test_outputs

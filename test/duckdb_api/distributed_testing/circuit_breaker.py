@@ -350,6 +350,30 @@ class CircuitBreakerRegistry:
         """
         with self.registry_lock:
             return self.circuits.get(name)
+            
+    def exists(self, name: str) -> bool:
+        """
+        Check if a circuit breaker exists in the registry.
+        
+        Args:
+            name: Name of the circuit breaker
+            
+        Returns:
+            True if the circuit breaker exists, False otherwise
+        """
+        with self.registry_lock:
+            return name in self.circuits
+            
+    def register(self, circuit: CircuitBreaker) -> None:
+        """
+        Register a circuit breaker in the registry.
+        
+        Args:
+            circuit: CircuitBreaker instance to register
+        """
+        with self.registry_lock:
+            self.circuits[circuit.name] = circuit
+            logger.info(f"Circuit breaker '{circuit.name}' registered")
     
     def reset_all(self):
         """Reset all circuit breakers to CLOSED state."""
@@ -367,6 +391,16 @@ class CircuitBreakerRegistry:
         """
         with self.registry_lock:
             return {name: circuit.get_metrics() for name, circuit in self.circuits.items()}
+            
+    def get_all_circuits(self) -> Dict[str, CircuitBreaker]:
+        """
+        Get all registered circuit breakers.
+        
+        Returns:
+            Dictionary of all circuit breakers
+        """
+        with self.registry_lock:
+            return self.circuits.copy()
     
     def get_aggregate_metrics(self) -> Dict[str, Any]:
         """

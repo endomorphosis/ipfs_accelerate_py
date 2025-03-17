@@ -6,24 +6,19 @@ This script runs the comprehensive monitoring dashboard for the distributed
 testing framework, providing real-time monitoring of workers, tasks,
 and system metrics.
 
-Implementation Date: March 17, 2025 (Originally planned for June 19-26, 2025)
+Implementation Date: March 18, 2025 (Originally planned for June 19-26, 2025)
 
 Usage:
     python run_monitoring_dashboard.py [options]
 
 Options:
     --host HOST             Host to bind the server to (default: localhost)
-    --port PORT             Port to bind the server to (default: 8082)
+    --port PORT             Port to bind the server to (default: 8080)
     --coordinator URL       URL of the coordinator server
-    --theme THEME           Dashboard theme (light or dark, default: dark)
-    --refresh SECONDS       Auto-refresh interval in seconds (default: 30, 0 to disable)
-    --output-dir DIR        Output directory for dashboard files (default: ./monitoring_dashboard)
-    --browser               Open dashboard in browser
-    --no-alerts             Disable alert generation
-    --real-time             Enable real-time updates via WebSockets
-    --time-range DAYS       Time range in days for result aggregation (default: 7)
-    --disable-aggregator    Disable result aggregator integration
+    --db-path PATH          Path to SQLite database file
+    --auto-open             Open dashboard in browser automatically
     --debug                 Enable debug logging
+    --generate-sample-data  Generate sample data for demonstration
 """
 
 import os
@@ -32,343 +27,203 @@ import logging
 import argparse
 from pathlib import Path
 
-# Add parent directory to path to import modules
-parent_dir = str(Path(__file__).parent.parent.parent)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+# Import monitoring dashboard
+from monitoring_dashboard import MonitoringDashboard
 
-# Import dashboard component
-try:
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
-    DASHBOARD_AVAILABLE = True
-except ImportError:
-    DASHBOARD_AVAILABLE = False
-
-# Import result aggregator if available
-try:
-    from duckdb_api.distributed_testing.result_aggregator.service import ResultAggregatorService
-    RESULT_AGGREGATOR_AVAILABLE = True
-except ImportError:
-    RESULT_AGGREGATOR_AVAILABLE = False
-
-# Import result aggregator integration if available
-try:
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_result_aggregator_integration import ResultAggregatorIntegration
-    RESULT_AGGREGATOR_INTEGRATION_AVAILABLE = True
-except ImportError:
-    RESULT_AGGREGATOR_INTEGRATION_AVAILABLE = False
-
-# Import E2E test integration if available
-try:
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_e2e_integration import E2ETestResultsIntegration
-    E2E_TEST_INTEGRATION_AVAILABLE = True
-except ImportError:
-    E2E_TEST_INTEGRATION_AVAILABLE = False
-
-# Import Advanced Visualization System integration if available
-try:
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import VisualizationDashboardIntegration
-    VISUALIZATION_INTEGRATION_AVAILABLE = True
-except ImportError:
-    VISUALIZATION_INTEGRATION_AVAILABLE = False
-
-# Import database manager if available
-try:
-    from duckdb_api.core.db_manager import BenchmarkDBManager
-    DB_MANAGER_AVAILABLE = True
-except ImportError:
-    DB_MANAGER_AVAILABLE = False
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def main():
-    """Run the monitoring dashboard."""
-    parser = argparse.ArgumentParser(description="Run Monitoring Dashboard for Distributed Testing")
-    
-    # General options
-    parser.add_argument("--host", default="localhost", help="Host to bind the server to")
-    parser.add_argument("--port", type=int, default=8082, help="Port to bind the server to")
-    parser.add_argument("--coordinator", help="URL of the coordinator server")
-    parser.add_argument("--output-dir", default="./monitoring_dashboard", 
-                       help="Output directory for dashboard files")
-    
-    # Appearance options
-    parser.add_argument("--theme", choices=["light", "dark"], default="dark", 
-                       help="Dashboard theme")
-    parser.add_argument("--refresh", type=int, default=30, 
-                       help="Auto-refresh interval in seconds (0 to disable)")
-    
-    # Feature options
-    parser.add_argument("--browser", action="store_true", 
-                       help="Open dashboard in browser")
-    parser.add_argument("--no-alerts", action="store_true", 
-                       help="Disable alert generation")
-    parser.add_argument("--real-time", action="store_true", 
-                       help="Enable real-time updates via WebSockets")
-    parser.add_argument("--time-range", type=int, default=7,
-                       help="Time range in days for result aggregation")
-    parser.add_argument("--disable-aggregator", action="store_true",
-                       help="Disable result aggregator integration")
-    
-    # E2E test integration options
-    parser.add_argument("--enable-e2e-test-integration", action="store_true",
-                       help="Enable integration with E2E testing framework")
-    parser.add_argument("--e2e-report-dir", default="./e2e_test_reports",
-                       help="Directory for E2E test reports")
-    parser.add_argument("--e2e-visualization-dir", default="./e2e_visualizations",
-                       help="Directory for E2E test visualizations")
-    
-    # Advanced Visualization System integration options
-    parser.add_argument("--enable-visualization-integration", action="store_true",
-                       help="Enable integration with Advanced Visualization System")
-    parser.add_argument("--dashboard-dir", default="./dashboards",
-                       help="Directory to store visualization dashboards")
-    
-    # Database options
-    parser.add_argument("--db-path", 
-                       help="Path to DuckDB database file (default: ./benchmark_db.duckdb)")
-    
-    # Debug options
-    parser.add_argument("--debug", action="store_true", 
-                       help="Enable debug logging")
+    """Main entry point for the dashboard server."""
+    parser = argparse.ArgumentParser(description="Monitoring Dashboard for Distributed Testing Framework")
+    parser.add_argument("--host", type=str, default="localhost", help="Host to bind the dashboard server")
+    parser.add_argument("--port", type=int, default=8080, help="Port to bind the dashboard server")
+    parser.add_argument("--coordinator-url", type=str, help="URL of the coordinator server")
+    parser.add_argument("--db-path", type=str, help="Path to SQLite database for metrics")
+    parser.add_argument("--auto-open", action="store_true", help="Automatically open the dashboard in a browser")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--generate-sample-data", action="store_true", help="Generate sample data for demonstration")
     
     args = parser.parse_args()
     
-    # Set up logging
-    log_level = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
-    )
+    # Set debug logging if requested
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Debug logging enabled")
     
-    # Check dashboard availability
-    if not DASHBOARD_AVAILABLE:
-        print("Error: Monitoring dashboard is not available. Make sure all dependencies are installed.")
-        sys.exit(1)
+    # Set default database path if not provided
+    if not args.db_path:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        args.db_path = os.path.join(script_dir, "monitoring_dashboard.db")
+        logger.info(f"Using default database path: {args.db_path}")
     
-    # Create database manager if available
-    db_manager = None
-    if DB_MANAGER_AVAILABLE:
-        try:
-            db_path = args.db_path or "./benchmark_db.duckdb"
-            db_manager = BenchmarkDBManager(db_path)
-            print(f"Using database at: {db_path}")
-        except Exception as e:
-            print(f"Warning: Failed to initialize database manager: {e}")
-            print("Some dashboard features will be limited")
-    
-    # Create result aggregator if available
-    result_aggregator = None
-    if RESULT_AGGREGATOR_AVAILABLE and not args.disable_aggregator:
-        try:
-            result_aggregator = ResultAggregatorService(db_manager=db_manager)
-            print("Result aggregator initialized successfully")
-        except Exception as e:
-            print(f"Warning: Failed to initialize result aggregator: {e}")
-            print("Dashboard will run with limited result aggregation functionality")
-    
-    # Create enhanced result aggregator integration if available
-    result_aggregator_integration = None
-    if RESULT_AGGREGATOR_INTEGRATION_AVAILABLE and result_aggregator and not args.disable_aggregator:
-        try:
-            result_aggregator_integration = ResultAggregatorIntegration(
-                result_aggregator=result_aggregator,
-                output_dir=args.output_dir
-            )
-            # Configure integration
-            result_aggregator_integration.configure({
-                "theme": args.theme,
-                "max_items_in_charts": 10,
-                "chart_height": 500,
-                "chart_width": 900,
-                "enable_annotations": True
-            })
-            print("Enhanced result aggregator integration initialized successfully")
-            
-            # Generate initial dashboard summary
-            print(f"Generating initial dashboard summary for the last {args.time_range} days...")
-            dashboard_summary = result_aggregator_integration.create_dashboard_result_summary(args.time_range)
-            if "error" not in dashboard_summary:
-                print("Initial dashboard summary generated successfully")
-                if args.debug:
-                    # Print summary statistics in debug mode
-                    stats = dashboard_summary.get("overall_stats", {})
-                    print(f"Total tests run: {stats.get('total_tests_run', 0)}")
-                    print(f"Model-hardware pairs: {stats.get('total_model_hardware_pairs', 0)}")
-                    print(f"Compatibility rate: {stats.get('compatibility_rate', 0):.1f}%")
-                    print(f"Integration test pass rate: {stats.get('integration_pass_rate', 0):.1f}%")
-                    print(f"Web platform success rate: {stats.get('web_platform_success_rate', 0):.1f}%")
-            else:
-                print(f"Warning: Failed to generate initial dashboard summary: {dashboard_summary['error']}")
-        except Exception as e:
-            print(f"Warning: Failed to initialize enhanced result aggregator integration: {e}")
-            print("Advanced result visualization will be limited")
-            if args.debug:
-                import traceback
-                traceback.print_exc()
-    
-    # Create output directory if needed
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Create and configure the monitoring dashboard
+    # Create dashboard
     dashboard = MonitoringDashboard(
         host=args.host,
         port=args.port,
-        coordinator_url=args.coordinator,
-        result_aggregator_url=None,  # Will be set up separately
-        refresh_interval=args.refresh,
-        theme=args.theme,
-        enable_result_aggregator_integration=not args.disable_aggregator and result_aggregator_integration is not None,
-        result_aggregator_integration=result_aggregator_integration,
-        enable_e2e_test_integration=args.enable_e2e_test_integration,
-        e2e_test_integration=None,  # Will be set up separately
-        enable_performance_analytics=True,
-        enable_visualization_integration=args.enable_visualization_integration,
-        visualization_integration=None,  # Will be set up automatically
-        dashboard_dir=args.dashboard_dir
+        coordinator_url=args.coordinator_url,
+        db_path=args.db_path,
+        auto_open=args.auto_open
     )
     
-    # Dashboard is already configured through constructor parameters
-    
-    # Store result aggregator integration in dashboard for access in templates
-    if result_aggregator_integration:
-        dashboard.result_aggregator_integration = result_aggregator_integration
-        dashboard.result_aggregator_time_range = args.time_range
-    
-    # Initialize E2E test integration if enabled
-    e2e_test_integration = None
-    if args.enable_e2e_test_integration and E2E_TEST_INTEGRATION_AVAILABLE:
-        try:
-            # Create directories if needed
-            os.makedirs(args.e2e_report_dir, exist_ok=True)
-            os.makedirs(args.e2e_visualization_dir, exist_ok=True)
-            
-            # Create E2E test integration
-            e2e_test_integration = E2ETestResultsIntegration(
-                report_dir=args.e2e_report_dir,
-                visualization_dir=args.e2e_visualization_dir
-            )
-            
-            # Store in dashboard
-            dashboard.e2e_test_integration = e2e_test_integration
-            dashboard.enable_e2e_test_integration = True
-            
-            print(f"E2E test integration initialized with report dir: {args.e2e_report_dir}")
-        except Exception as e:
-            print(f"Warning: Failed to initialize E2E test integration: {e}")
-            dashboard.enable_e2e_test_integration = False
-            if args.debug:
-                import traceback
-                traceback.print_exc()
-    else:
-        dashboard.enable_e2e_test_integration = False
-
-    # Initialize Visualization Dashboard integration if enabled
-    visualization_integration = None
-    if args.enable_visualization_integration and VISUALIZATION_INTEGRATION_AVAILABLE:
-        try:
-            # Create dashboard directory if needed
-            os.makedirs(args.dashboard_dir, exist_ok=True)
-            
-            # Create symbolic link to dashboards in output directory for serving
-            dashboards_link = os.path.join(args.output_dir, 'dashboards')
-            if not os.path.exists(dashboards_link):
-                try:
-                    # Use relative path for the link target if possible
-                    target_path = os.path.relpath(args.dashboard_dir, os.path.dirname(dashboards_link))
-                    os.symlink(target_path, dashboards_link, target_is_directory=True)
-                except Exception as e:
-                    print(f"Warning: Failed to create symbolic link to dashboards: {e}")
-                    # Fall back to normal directory
-                    os.makedirs(dashboards_link, exist_ok=True)
-            
-            # Create visualization integration
-            visualization_integration = VisualizationDashboardIntegration(
-                dashboard_dir=args.dashboard_dir,
-                integration_dir=os.path.join(args.dashboard_dir, 'monitor_integration')
-            )
-            
-            # Store in dashboard
-            dashboard.visualization_integration = visualization_integration
-            dashboard.enable_visualization_integration = True
-            
-            print(f"Advanced Visualization System integration initialized with dashboard dir: {args.dashboard_dir}")
-            
-            # Create default dashboards for main pages if they don't exist
-            if visualization_integration.visualization_available:
-                # Check if we already have dashboards for main pages
-                existing_dashboards = visualization_integration.embedded_dashboards
-                
-                # Create dashboard for Overview page if it doesn't exist
-                if not any(dash.get('page') == 'index' for dash in existing_dashboards.values()):
-                    print("Creating default Overview dashboard")
-                    visualization_integration.create_embedded_dashboard(
-                        name="overview_dashboard",
-                        page="index",
-                        template="overview",
-                        title="System Overview Dashboard",
-                        description="Overview of system performance metrics",
-                        position="below"
-                    )
-                
-                # Create dashboard for Results page if it doesn't exist
-                if not any(dash.get('page') == 'results' for dash in existing_dashboards.values()):
-                    print("Creating default Results dashboard")
-                    visualization_integration.create_embedded_dashboard(
-                        name="results_dashboard",
-                        page="results",
-                        template="model_analysis",
-                        title="Model Performance Dashboard",
-                        description="Detailed analysis of model performance metrics",
-                        position="below"
-                    )
-                
-                # Create dashboard for Performance Analytics page if it doesn't exist
-                if not any(dash.get('page') == 'performance-analytics' for dash in existing_dashboards.values()):
-                    print("Creating default Performance Analytics dashboard")
-                    visualization_integration.create_embedded_dashboard(
-                        name="performance_analytics_dashboard",
-                        page="performance-analytics",
-                        template="hardware_comparison",
-                        title="Hardware Comparison Dashboard",
-                        description="Detailed comparison of hardware performance metrics",
-                        position="below"
-                    )
-                
-        except Exception as e:
-            print(f"Warning: Failed to initialize Visualization Dashboard integration: {e}")
-            dashboard.enable_visualization_integration = False
-            if args.debug:
-                import traceback
-                traceback.print_exc()
-    else:
-        dashboard.enable_visualization_integration = False
-    
-    print(f"Dashboard configured with theme: {args.theme}, refresh: {args.refresh}s")
-    
-    # Auto-open in browser if requested
-    if args.browser:
-        try:
-            import webbrowser
-            url = f"http://{args.host}:{args.port}"
-            print(f"Opening dashboard in browser: {url}")
-            webbrowser.open(url)
-        except Exception as e:
-            print(f"Warning: Failed to open browser: {e}")
+    # Generate sample data if requested
+    if args.generate_sample_data:
+        generate_sample_data(dashboard.metrics)
     
     try:
-        # Start dashboard (this will block until interrupted)
-        print(f"Starting monitoring dashboard at http://{args.host}:{args.port}")
-        print("Press Ctrl+C to stop the server")
-        import asyncio
-        asyncio.run(dashboard.start())
+        logger.info(f"Starting dashboard at http://{args.host}:{args.port}")
+        dashboard.start()
     except KeyboardInterrupt:
-        print("\nStopping monitoring dashboard...")
-    except Exception as e:
-        print(f"Error running monitoring dashboard: {e}")
-        if args.debug:
-            import traceback
-            traceback.print_exc()
-        sys.exit(1)
+        logger.info("Dashboard stopped by user")
+        dashboard.stop()
+
+
+def generate_sample_data(metrics):
+    """Generate sample data for demonstration purposes."""
+    logger.info("Generating sample data for demonstration")
+    
+    # Add workers
+    for i in range(1, 6):
+        worker_id = f"worker-{i}"
+        status = "active" if i < 4 else ("inactive" if i == 4 else "error")
+        capabilities = ["cpu"]
+        if i % 2 == 0:
+            capabilities.append("cuda")
+        if i % 3 == 0:
+            capabilities.append("rocm")
+        
+        metrics.record_entity(
+            entity_id=worker_id,
+            entity_type="worker",
+            entity_name=f"Worker {i}",
+            entity_data={
+                "capabilities": capabilities,
+                "host": f"worker-host-{i}.example.com",
+                "port": 8000 + i,
+                "last_seen": "2025-03-16T12:00:00",
+                "version": "1.0.0",
+                "os": "Linux",
+                "resource_usage": {
+                    "cpu": 20 + i * 10,
+                    "memory": 30 + i * 5,
+                    "gpu": 10 + i * 15
+                },
+                "task_count": i * 2
+            },
+            status=status
+        )
+        
+        # Record resource usage metrics
+        metrics.record_metric(
+            metric_name="cpu_utilization",
+            metric_value=20 + i * 10,
+            entity_id=worker_id,
+            entity_type="worker",
+            category="resources"
+        )
+        
+        metrics.record_metric(
+            metric_name="memory_utilization",
+            metric_value=30 + i * 5,
+            entity_id=worker_id,
+            entity_type="worker",
+            category="resources"
+        )
+        
+        metrics.record_metric(
+            metric_name="gpu_utilization",
+            metric_value=10 + i * 15,
+            entity_id=worker_id,
+            entity_type="worker",
+            category="resources"
+        )
+    
+    # Add tasks
+    task_types = ["benchmark", "test", "validation", "conversion"]
+    statuses = ["pending", "running", "completed", "failed"]
+    
+    for i in range(1, 21):
+        task_id = f"task-{i}"
+        task_type = task_types[i % len(task_types)]
+        status = statuses[i % len(statuses)]
+        worker_id = f"worker-{(i % 3) + 1}" if status in ["running", "completed"] else None
+        
+        # Execution time for completed tasks
+        execution_time = None
+        if status == "completed":
+            execution_time = 10 + (i * 5)
+        
+        metrics.record_task(
+            task_id=task_id,
+            task_type=task_type,
+            task_data={
+                "parameters": {
+                    "model": f"model-{i % 5 + 1}",
+                    "batch_size": i % 8 + 1,
+                    "precision": "fp16" if i % 2 == 0 else "int8"
+                },
+                "description": f"Sample task {i}"
+            },
+            status=status,
+            worker_id=worker_id,
+            priority=i % 5 + 1
+        )
+        
+        # Add execution time for completed tasks
+        if status == "completed":
+            metrics.record_metric(
+                metric_name="task_execution_time",
+                metric_value=execution_time,
+                entity_id=task_id,
+                entity_type="task",
+                category="performance"
+            )
+    
+    # Add error events
+    error_types = ["connection_error", "timeout_error", "resource_error", "task_error"]
+    severities = ["info", "warning", "error"]
+    
+    for i in range(1, 11):
+        error_type = error_types[i % len(error_types)]
+        severity = severities[i % len(severities)]
+        entity_id = f"worker-{i % 3 + 1}" if i % 2 == 0 else f"task-{i}"
+        entity_type = "worker" if i % 2 == 0 else "task"
+        
+        metrics.record_event(
+            event_type=error_type,
+            event_data={
+                "message": f"Sample error {i}: {error_type}",
+                "details": f"This is a sample error event for demonstration purposes"
+            },
+            entity_id=entity_id,
+            entity_type=entity_type,
+            severity=severity
+        )
+    
+    # Add alerts
+    alert_types = ["system_alert", "resource_alert", "task_alert", "security_alert"]
+    severities = ["info", "warning", "critical"]
+    
+    for i in range(1, 6):
+        alert_type = alert_types[i % len(alert_types)]
+        severity = severities[i % len(severities)]
+        entity_id = f"worker-{i % 3 + 1}" if i % 2 == 0 else None
+        entity_type = "worker" if i % 2 == 0 else None
+        
+        metrics.record_alert(
+            alert_type=alert_type,
+            alert_message=f"Sample alert {i}: {alert_type}",
+            severity=severity,
+            entity_id=entity_id,
+            entity_type=entity_type
+        )
+    
+    logger.info("Sample data generation complete")
 
 
 if __name__ == "__main__":

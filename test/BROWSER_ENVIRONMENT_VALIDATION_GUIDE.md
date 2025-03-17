@@ -31,7 +31,7 @@ Browser environment validation is crucial for several reasons:
 - **Interactive Dashboard**: Visualize test results with an interactive web dashboard
 - **Selenium Integration**: Use Selenium for automated browser testing with hardware acceleration detection
 - **Advanced Hardware Detection**: Detailed reporting on GPU capabilities and WebGPU feature support
-- **Comprehensive Reporting**: Generate HTML, Markdown, and JSON reports with detailed test results
+- **Comprehensive Reporting**: Generate HTML, Markdown, JSON, and CSV reports with detailed test results
 - **Browser-Specific Optimizations**: Test specialized optimizations like Firefox's compute shader performance for audio models
 
 ## Command-line Usage
@@ -165,6 +165,40 @@ async def run_browser_test():
 asyncio.run(run_browser_test())
 ```
 
+## Selenium Integration
+
+The system integrates with Selenium WebDriver for automated browser testing with hardware acceleration detection and recovery capabilities. This integration includes:
+
+1. **Selenium Browser Bridge**: A bridge between Python and Selenium WebDriver with recovery capabilities
+2. **Model-Aware Browser Configuration**: Automatically configures browsers for different model types
+3. **Recovery Strategies**: Sophisticated recovery strategies for different failure scenarios
+4. **Circuit Breaker Pattern**: Fault tolerance with circuit breaker protection
+5. **Comprehensive Test Suite**: Systematic testing of browser and model combinations
+
+### Running the Comprehensive Selenium Test Suite
+
+```bash
+# Run a quick test with Chrome only
+./distributed_testing/run_selenium_integration_tests.sh --quick
+
+# Run the full test suite with all browsers and models
+./distributed_testing/run_selenium_integration_tests.sh --full
+
+# Test Firefox with audio models (optimal for audio processing)
+./distributed_testing/run_selenium_integration_tests.sh --firefox-only --audio-only
+
+# Test Edge with text models and WebNN platform (optimal for text models)
+./distributed_testing/run_selenium_integration_tests.sh --edge-only --text-only --webnn-only
+
+# Run tests without failure injection
+./distributed_testing/run_selenium_integration_tests.sh --no-failures
+
+# Run in simulation mode and save test report
+./distributed_testing/run_selenium_integration_tests.sh --simulate --save-report
+```
+
+For more information, see the [Selenium Integration README](distributed_testing/SELENIUM_INTEGRATION_README.md).
+
 ## Hardware Acceleration Detection
 
 The system detects hardware acceleration by:
@@ -235,7 +269,29 @@ The browser environment validation system consists of several integrated compone
    - Hardware vs. simulation detection with comprehensive reporting
    - Optimized for CI/CD integration
 
-4. **.github/workflows/browser_environment_validation.yml**
+4. **distributed_testing/selenium_browser_bridge.py**
+   - Bridge between Python and Selenium WebDriver
+   - WebGPU/WebNN feature detection
+   - Model-aware browser configuration
+   - Recovery strategy integration
+   - Circuit breaker pattern integration
+   - Simulation fallback mode
+
+5. **distributed_testing/test_selenium_browser_integration.py**
+   - Comprehensive test suite for Selenium integration
+   - Test case generation for browser and model combinations
+   - Failure injection for testing recovery strategies
+   - Metrics collection and reporting
+   - Browser-specific optimization testing
+   - Model-specific optimization testing
+
+6. **distributed_testing/run_selenium_integration_tests.sh**
+   - Bash script for running the comprehensive test suite
+   - Support for specific browser and model selections
+   - Test configuration with different platforms and features
+   - Report generation and test statistics
+
+7. **.github/workflows/browser_environment_validation.yml**
    - GitHub Actions workflow for automated testing
    - Support for testing specific browsers or all available browsers
    - Feature flag configuration for enhanced feature testing
@@ -243,7 +299,7 @@ The browser environment validation system consists of several integrated compone
    - Artifact storage for test results
    - GitHub Pages deployment for interactive dashboard
 
-5. **test_browser_environment_validation.py**
+8. **test_browser_environment_validation.py**
    - Comprehensive unit tests for the validation system
    - Tests for browser detection, feature flag parsing, and capability reporting
    - Mocked browser testing for CI/CD environments
@@ -278,39 +334,49 @@ The system follows a layered architecture:
 
 ### Recent Improvements (March 2025)
 
-1. **Compute Shader Optimization**
+1. **Selenium Integration with Recovery**
+   - Comprehensive integration of Selenium WebDriver with browser recovery strategies
+   - Model-aware browser configuration for different model types
+   - Circuit breaker pattern integration for fault tolerance
+   - Simulation fallback mode for environments without Selenium
+   - Progressive recovery strategies with increasing levels of intervention
+   - Comprehensive test suite for browser and model combinations
+   - Failure injection for testing recovery strategies
+   - Detailed metrics collection and reporting
+
+2. **Compute Shader Optimization**
    - Firefox now has 20-25% better performance for audio models with compute shader optimization
    - Custom workgroup sizes (256x1x1 for Firefox vs. Chrome's 128x2x1)
    - Specialized audio processing optimizations
    - Integrated with WebGPU backend for Whisper, Wav2Vec2, and CLAP models
 
-2. **Shader Precompilation**
+3. **Shader Precompilation**
    - Reduces model startup time by 30-45% for all WebGPU models
    - Precompiles shaders during initialization phase
    - Browser-specific shader caching strategies
    - Particularly effective for large vision models
 
-3. **Parallel Model Loading**
+4. **Parallel Model Loading**
    - Reduces loading time by 30-45% for multimodal models
    - Loads multiple model components concurrently
    - Optimized for models with separate encoders (vision, text)
    - Resource-aware loading to prevent browser crashes
 
-4. **Browser-Specific Optimizations**
+5. **Browser-Specific Optimizations**
    - Firefox optimizations for audio models
    - Chrome optimizations for vision models
    - Edge optimizations for WebNN models
    - Safari fallback strategies
    - Browser detection with specialized configuration
 
-5. **Feature Detection**
+6. **Feature Detection**
    - Detailed WebGPU adapter capabilities reporting
    - WebGPU features and limits inspection
    - WebNN backend detection
    - Support for checking compute shader availability
    - WebGPU limits validation for specific model requirements
 
-6. **CI/CD Integration**
+7. **CI/CD Integration**
    - Automated browser testing in GitHub Actions
    - Interactive dashboard generation
    - Historical tracking of browser capabilities

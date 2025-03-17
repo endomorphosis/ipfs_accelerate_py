@@ -14,6 +14,16 @@ The Monitoring Dashboard integrates with all aspects of the distributed testing 
 - Alerts and notifications for critical events
 - Performance trends and historical analysis
 
+## Key Features
+
+- **Real-time Monitoring**: Track system status, workers, tasks, and resources in real-time
+- **Interactive Dashboard**: Web-based UI with responsive design
+- **WebSocket Communication**: Real-time updates via WebSockets
+- **Metrics Collection**: Comprehensive metrics tracking and storage
+- **Visualization**: Interactive charts for performance metrics and system status
+- **Alert Management**: System for tracking and managing alerts
+- **REST API**: Comprehensive API for programmatic access to dashboard data
+
 ## Getting Started
 
 ### Prerequisites
@@ -21,10 +31,19 @@ The Monitoring Dashboard integrates with all aspects of the distributed testing 
 The monitoring dashboard depends on the following Python packages:
 
 ```
-aiohttp>=3.8.0          # Web server and WebSocket support
-jinja2>=3.0.0           # HTML template rendering
-matplotlib>=3.6.0       # Static visualization generation
-plotly>=5.10.0          # Optional: Interactive visualizations
+tornado>=6.2.0          # Web server framework
+websockets>=10.3.0      # WebSocket client support
+plotly>=5.10.0          # Interactive visualizations
+pandas>=1.4.0           # Data manipulation
+numpy>=1.20.0           # Numerical computing
+```
+
+### Installation
+
+Install the required packages:
+
+```bash
+pip install tornado websockets plotly pandas numpy
 ```
 
 ### Running the Dashboard
@@ -35,30 +54,32 @@ You can run the monitoring dashboard using the provided script:
 python run_monitoring_dashboard.py
 ```
 
-By default, this will start the dashboard server at http://localhost:8082.
+By default, this will start the dashboard server at http://localhost:8080.
 
 ### Command-Line Options
 
 The dashboard supports various command-line options:
 
 ```
---host HOST             Host to bind the server to (default: localhost)
---port PORT             Port to bind the server to (default: 8082)
---coordinator URL       URL of the coordinator server
---theme THEME           Dashboard theme (light or dark, default: dark)
---refresh SECONDS       Auto-refresh interval in seconds (default: 30, 0 to disable)
---output-dir DIR        Output directory for dashboard files (default: ./monitoring_dashboard)
---browser               Open dashboard in browser
---no-alerts             Disable alert generation
---real-time             Enable real-time updates via WebSockets
---db-path PATH          Path to DuckDB database file (default: ./benchmark_db.duckdb)
---debug                 Enable debug logging
+--host HOST                Host to bind the server to (default: localhost)
+--port PORT                Port to bind the server to (default: 8080)
+--coordinator-url URL      URL of the coordinator server
+--db-path PATH             Path to SQLite database file
+--auto-open                Open dashboard in browser automatically
+--debug                    Enable debug logging
+--generate-sample-data     Generate sample data for demonstration
 ```
 
 Example with custom options:
 
 ```bash
-python run_monitoring_dashboard.py --host 0.0.0.0 --port 8085 --coordinator http://coordinator-server:8080 --theme light --refresh 10 --browser
+python run_monitoring_dashboard.py --host 0.0.0.0 --port 8085 --coordinator-url http://coordinator-server:8000 --auto-open --debug
+```
+
+Example with sample data for demonstration:
+
+```bash
+python run_monitoring_dashboard.py --generate-sample-data --auto-open
 ```
 
 ## Dashboard Components

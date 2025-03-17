@@ -8,7 +8,13 @@ The Distributed Testing Framework enables parallel execution of benchmarks and t
 
 The Distributed Testing Framework has been enhanced with the following features:
 
-1. **Coordinator Redundancy and Failover**: Multiple coordinator instances can now operate in a high-availability configuration with automatic leader election and state synchronization.
+1. **High Availability Clustering and Auto Recovery**: Multiple coordinator instances can now operate in a high-availability configuration with:
+   - Automatic leader election using a Raft-inspired consensus algorithm
+   - State synchronization between coordinator nodes
+   - Real-time health monitoring with CPU, memory, disk, and network metrics
+   - Self-healing capabilities for resource constraints
+   - WebNN/WebGPU capability detection for browser-based acceleration
+   - Comprehensive visualization of cluster state and metrics
 
 2. **Performance Trend Analysis**: Long-term performance trend tracking with statistical analysis, anomaly detection, and predictive forecasting for worker and task performance.
 
@@ -21,6 +27,10 @@ The Distributed Testing Framework has been enhanced with the following features:
 6. **CI/CD Integration**: Seamless integration with GitHub Actions, GitLab CI, and Jenkins for automated testing and reporting with intelligent test discovery and requirement analysis.
 
 7. **Enhanced Result Aggregation**: Dual-layer result aggregation system with both high-level statistical processing and detailed multi-dimensional analysis capabilities working in tandem.
+
+8. **Comprehensive Monitoring Dashboard**: Real-time web-based dashboard for visualization of system status, worker metrics, task performance, and resource utilization.
+
+9. **Integrated System Runner**: Combined execution of all framework components with a single command, integrating all features for simplified operation.
 
 ## Getting Started
 
@@ -53,6 +63,10 @@ The Distributed Testing Framework consists of several components:
 7. **Performance Trend Analyzer**: Tracks, analyzes and visualizes performance metrics over time
 8. **Load Balancer**: Efficiently distributes workload across workers based on capabilities and performance history
 9. **CI/CD Integration**: Enables automated testing within CI/CD pipelines with test discovery and requirement analysis
+10. **Multi-Device Orchestrator**: Splits complex tasks across multiple workers with different hardware capabilities
+11. **Fault Tolerance System**: Provides error handling, circuit breaking, and recovery for system failures
+12. **Comprehensive Monitoring Dashboard**: Real-time web interface for monitoring and visualization
+13. **Integrated System Runner**: Combined execution of all components with unified configuration
 
 ## Basic Usage
 
@@ -114,7 +128,7 @@ Common options:
 The dashboard provides a web interface for monitoring and managing the system:
 
 ```bash
-# Start the dashboard server
+# Start the basic dashboard server
 python duckdb_api/distributed_testing/dashboard_server.py --coordinator-url http://coordinator-host:8080
 
 # Start with specific host and port
@@ -122,13 +136,17 @@ python duckdb_api/distributed_testing/dashboard_server.py --host 0.0.0.0 --port 
 
 # Start and automatically open in browser
 python duckdb_api/distributed_testing/dashboard_server.py --coordinator-url http://coordinator-host:8080 --auto-open
+
+# Start the comprehensive monitoring dashboard
+python duckdb_api/distributed_testing/comprehensive_monitoring_dashboard.py --port 8888 --coordinator-url http://coordinator-host:8080
 ```
 
 Common options:
 - `--host`: Host to bind the server to (default: localhost)
-- `--port`: Port to bind the server to (default: 8081)
+- `--port`: Port to bind the server to (default: 8081 for basic, 8888 for comprehensive)
 - `--coordinator-url`: URL of the coordinator server (required)
 - `--auto-open`: Automatically open the dashboard in a web browser
+- `--db-path`: Path to the metrics database for storing dashboard data
 
 ### Integrated Testing Environment
 
@@ -156,6 +174,63 @@ Common options:
 - `--db-path`: Path to DuckDB database
 - `--worker-count`: Number of worker nodes to start (default: 2)
 - `--dashboard-auto-open`: Automatically open dashboard in web browser
+
+## Integrated System Runner (NEW - March 2025)
+
+The Integrated System Runner combines all major components of the Distributed Testing Framework into a single, easy-to-use script. This includes the Coordinator, Load Balancer, Multi-Device Orchestrator, Fault Tolerance System, and Comprehensive Monitoring Dashboard.
+
+### Running the Integrated System
+
+```bash
+# Start the integrated system with default settings
+python duckdb_api/distributed_testing/run_integrated_system.py
+
+# Start with custom ports and database
+python duckdb_api/distributed_testing/run_integrated_system.py --port 8080 --dashboard-port 8888 --db-path ./benchmark_db.duckdb
+
+# Start with specific orchestrator strategy
+python duckdb_api/distributed_testing/run_integrated_system.py --orchestrator-strategy data_parallel --enable-distributed
+
+# Start with mock workers for testing
+python duckdb_api/distributed_testing/run_integrated_system.py --mock-workers 5
+
+# Run with stress testing and fault injection
+python duckdb_api/distributed_testing/run_integrated_system.py --stress-test --fault-injection --fault-rate 0.1
+```
+
+Common options:
+- `--host`: Host to bind servers to (default: localhost)
+- `--port`: Port for coordinator (default: 8080)
+- `--dashboard-port`: Port for dashboard (default: 8888)
+- `--db-path`: Path to DuckDB database
+- `--mock-workers`: Number of mock workers to start
+- `--stress-test`: Run a stress test after starting the system
+- `--fault-injection`: Enable fault injection for testing fault tolerance
+- `--orchestrator-strategy`: Default orchestration strategy (auto, data_parallel, model_parallel, etc.)
+- `--enable-distributed`: Enable distributed execution for the orchestrator
+- `--disable-fault-tolerance`: Disable the fault tolerance system
+- `--disable-orchestrator`: Disable the multi-device orchestrator
+- `--disable-dashboard`: Disable the monitoring dashboard
+- `--terminal-dashboard`: Use terminal-based dashboard instead of web interface
+- `--open-browser`: Open web browser to dashboard automatically
+
+### Integrated System Example
+
+For a simple demonstration of all components working together, you can use the included example script:
+
+```bash
+# Run the integrated system example
+python duckdb_api/distributed_testing/examples/integrated_system_example.py
+```
+
+This script demonstrates:
+1. Coordinator setup with all components
+2. Multi-Device Orchestrator with task distribution
+3. Fault Tolerance System with error handling
+4. Comprehensive Monitoring Dashboard with visualization
+5. Mock worker creation and task submission
+
+The example runs for about 60 seconds and includes deliberately faulty tasks to demonstrate the fault tolerance mechanisms.
 
 ## Submitting Tasks
 
@@ -294,15 +369,51 @@ The framework supports different task types:
    }
    ```
 
+4. **Multi-Device Orchestration Tasks**: For tasks split across multiple workers
+   ```json
+   {
+     "type": "multi_device_orchestration",
+     "config": {
+       "model": "llama-7b",
+       "strategy": "model_parallel",
+       "num_workers": 2
+     },
+     "requirements": {"hardware": ["cuda"]},
+     "priority": 1
+   }
+   ```
+
 ## Dashboard Features
 
-The web dashboard provides several features for monitoring and managing the system:
+### Basic Dashboard
+
+The basic web dashboard provides several features for monitoring and managing the system:
 
 1. **System Summary**: Overview of workers and tasks
 2. **Worker Status**: Real-time status of worker nodes
 3. **Task Status**: Status of tasks in queue, running, and completed
 4. **Performance Metrics**: Statistics about worker and task performance
 5. **Alerts**: System alerts and notifications
+
+### Comprehensive Monitoring Dashboard (NEW - March 2025)
+
+The Comprehensive Monitoring Dashboard provides a more sophisticated visualization and monitoring system:
+
+1. **System Overview**: Interactive visualization of the entire system state
+2. **Worker Performance**: Detailed performance analysis of worker nodes
+3. **Task Performance**: In-depth performance analysis of task execution
+4. **Resource Utilization**: Real-time monitoring of CPU, memory, and GPU resources
+5. **Error Visualization**: Visual representation of error rates and categories
+6. **Real-Time Updates**: WebSocket-based real-time updates of all metrics
+7. **Interactive Charts**: Interactive Plotly-based visualizations
+
+To access the Comprehensive Monitoring Dashboard:
+1. Start the dashboard using the integrated system runner:
+   ```bash
+   python duckdb_api/distributed_testing/run_integrated_system.py
+   ```
+2. Open your web browser to http://localhost:8888
+3. Navigate through the different visualizations using the left sidebar
 
 ## Security
 
@@ -391,8 +502,15 @@ The Distributed Testing Framework can be integrated with existing systems:
 | Performance Trend Analysis | ✅ 100% | Time-series tracking, statistical analysis, anomaly detection |
 | Result Aggregation | ✅ 100% | Dual-layer analysis, multi-dimensional aggregation, real-time processing |
 | CI/CD Integration | ✅ 100% | GitHub Actions, GitLab CI, Jenkins integration |
+| Dynamic Resource Management | ✅ 100% | Resource tracking, allocation, adaptive scaling, cloud integration |
+| Resource Performance Prediction | ✅ 100% | ML-based resource prediction, task requirement estimation |
+| Cloud Provider Integration | ✅ 100% | Multi-cloud deployment, AWS, GCP, Docker support |
+| Multi-Device Orchestrator | ✅ 100% | Task splitting, resource-aware distribution, result merging |
+| Fault Tolerance System | ✅ 100% | Error handling, circuit breaking, recovery strategies |
+| Comprehensive Monitoring Dashboard | ✅ 100% | Real-time visualization, WebSocket updates, interactive charts |
+| Integrated System Runner | ✅ 100% | Combined execution of all components, unified configuration |
 
-All components have now been fully implemented as of March 15, 2025.
+All components have now been fully implemented as of March 20, 2025.
 
 ### Enhanced Result Aggregation
 
@@ -534,22 +652,397 @@ To take advantage of coordinator redundancy:
 
 If the leader coordinator fails, the system will automatically elect a new leader and redirect worker connections.
 
-## Performance History Visualization
+## Comprehensive Monitoring Dashboard (NEW - March 2025)
 
-The Performance Trend Analyzer can generate various visualizations:
+The Comprehensive Monitoring Dashboard provides a sophisticated web-based interface for monitoring and visualizing the entire distributed testing system in real-time.
 
-- **Time Series Charts**: Performance metrics over time
-- **Trend Analysis Charts**: Linear regression and forecasting
-- **Anomaly Highlighting**: Visual representation of detected anomalies
-- **Hardware Comparison Charts**: Performance across different hardware types
-- **Task Type Comparison Charts**: Performance for different task types
+### Key Features
 
-Example:
+- **System Overview Visualization**: Graphical representation of the entire distributed testing system
+- **Worker Performance Analytics**: Detailed analytics on worker node performance and reliability
+- **Task Performance Metrics**: In-depth metrics on task execution performance
+- **Resource Utilization Tracking**: Real-time monitoring of CPU, memory, and GPU resources
+- **Error Visualization**: Visual representation of error rates, categories, and trends
+- **Circuit Breaker Status**: Monitoring of circuit breaker status for fault tolerance
+- **Real-Time WebSocket Updates**: Live updates of all metrics via WebSocket
+- **Interactive Plotly Visualizations**: Interactive charts for exploring performance data
+- **Multi-Level Navigation**: Hierarchical navigation through different aspects of the system
+
+### Starting the Dashboard
+
+You can start the Comprehensive Monitoring Dashboard in several ways:
+
+1. **Using the Integrated System Runner** (recommended):
+   ```bash
+   python duckdb_api/distributed_testing/run_integrated_system.py
+   ```
+
+2. **As a standalone component**:
+   ```bash
+   python duckdb_api/distributed_testing/comprehensive_monitoring_dashboard.py --port 8888 --coordinator-url http://localhost:8080
+   ```
+
+3. **From the example script**:
+   ```bash
+   python duckdb_api/distributed_testing/examples/integrated_system_example.py
+   ```
+
+The dashboard will be available at http://localhost:8888 (or the port you specified).
+
+### Dashboard Sections
+
+The dashboard includes several key sections for monitoring different aspects of the system:
+
+1. **System Overview**: High-level overview of the entire system
+   - Worker status distribution
+   - Task status distribution
+   - Resource utilization gauges
+   - Error rate monitoring
+
+2. **Worker Performance**: In-depth analysis of worker node performance
+   - Task throughput by worker
+   - Error rates by worker
+   - Task execution time distribution
+   - Hardware distribution
+
+3. **Task Performance**: Detailed metrics on task execution
+   - Execution time by task type
+   - Task status distribution
+   - Completion rate over time
+   - Task type distribution
+
+4. **Resource Utilization**: Real-time resource monitoring
+   - CPU utilization over time
+   - Memory utilization over time
+   - GPU utilization over time
+   - Resource utilization by worker
+
+5. **Fault Tolerance**: Monitoring of fault tolerance mechanisms
+   - Circuit breaker status
+   - Error categories and rates
+   - Recovery actions
+   - Retry statistics
+
+### Real-Time Updates
+
+The dashboard uses WebSocket connections to provide real-time updates of all metrics:
+
+1. System metrics are updated every 10 seconds
+2. Visualizations can be manually refreshed with the "Refresh" button
+3. Live status indicators show the current state of workers and tasks
+
+### Extending the Dashboard
+
+You can extend the dashboard with custom visualizations and pages:
+
+1. **Register a custom visualization**:
+   ```python
+   dashboard.register_visualization("my_visualization", "My Visualization", my_visualization_generator)
+   ```
+
+2. **Register a custom page**:
+   ```python
+   dashboard.register_page("my_page", "My Page", my_page_generator)
+   ```
+
+3. **Create a custom visualization generator**:
+   ```python
+   def my_visualization_generator():
+       # Create visualization using Plotly
+       fig = make_subplots(rows=1, cols=1)
+       fig.add_trace(go.Scatter(x=[1, 2, 3], y=[4, 5, 6]))
+       fig.update_layout(title="My Custom Visualization")
+       
+       # Save to file and return path
+       filepath = os.path.join(dashboard.dashboard_path, "my_visualization.html")
+       fig.write_html(filepath)
+       
+       return {
+           "figure": fig,
+           "html_path": filepath
+       }
+   ```
+
+## Multi-Device Orchestrator
+
+The Multi-Device Orchestrator enables complex tasks to be executed across multiple worker nodes with different hardware capabilities. This advanced orchestration capability allows for sophisticated parallelization strategies to improve performance, utilize specialized hardware, and handle tasks that are too large for a single worker.
+
+### Key Features
+
+- **Task Splitting Strategies**: Five different strategies for dividing tasks across workers
+- **Hardware-Aware Distribution**: Matching subtasks to workers based on hardware capabilities
+- **Result Merging**: Combining results from distributed execution into coherent final output
+- **Fault Tolerance**: Recovery mechanisms for subtask failures
+- **Real-Time Monitoring**: Status tracking and visualization of distributed execution
+- **API Integration**: Comprehensive API for orchestrating and monitoring tasks
+
+### Orchestration Strategies
+
+The Multi-Device Orchestrator supports five different strategies for task splitting:
+
+1. **Data Parallel**: Divides input data across workers, with each worker processing a subset of the data
+   - Ideal for: Large datasets, embarrassingly parallel tasks, batch processing
+   - Example: Processing a large dataset of images, running multiple benchmark iterations
+
+2. **Model Parallel**: Divides a model across workers, with each worker handling a specific component
+   - Ideal for: Large models, models with separable components
+   - Example: Splitting transformer layers across workers, handling encoder/decoder separately
+
+3. **Pipeline Parallel**: Processes data in stages across workers, with each worker handling a specific stage
+   - Ideal for: Sequential processing, streaming data, tasks with distinct stages
+   - Example: Pre-processing on one worker, inference on another, post-processing on a third
+
+4. **Ensemble**: Runs multiple versions of a model or configuration in parallel for improved accuracy
+   - Ideal for: Model ensembles, hyperparameter exploration, comparative analysis
+   - Example: Running multiple model variants and averaging predictions, testing different configurations
+
+5. **Function Parallel**: Divides different functions or operations across workers
+   - Ideal for: Multiple independent operations, specialized hardware for specific functions
+   - Example: Running latency tests, throughput tests, and memory tests in parallel
+
+### Using the Multi-Device Orchestrator
+
+The Multi-Device Orchestrator is integrated into the coordinator server. The easiest way to use it is through the Integrated System Runner:
 
 ```bash
-# Generate comprehensive performance visualization
-python duckdb_api/distributed_testing/performance_trend_analyzer.py --visualize-all --days 30 --output-dir ./visualizations
+# Start the integrated system with orchestrator enabled
+python duckdb_api/distributed_testing/run_integrated_system.py --orchestrator-strategy data_parallel --enable-distributed
+
+# Submit an orchestration task
+python duckdb_api/distributed_testing/examples/multi_device_example.py
 ```
+
+### Task Examples
+
+Here are examples of tasks for each orchestration strategy:
+
+1. **Data Parallel Example**:
+   ```json
+   {
+     "type": "multi_device_orchestration",
+     "config": {
+       "model": "bert-base-uncased",
+       "strategy": "data_parallel",
+       "batch_size": 32,
+       "input_data": ["text1", "text2", "text3", "text4", "text5"]
+     },
+     "requirements": {"hardware": ["cuda"]},
+     "priority": 1
+   }
+   ```
+
+2. **Model Parallel Example**:
+   ```json
+   {
+     "type": "multi_device_orchestration",
+     "config": {
+       "model": "llama-7b",
+       "strategy": "model_parallel",
+       "num_workers": 2,
+       "input_text": "Translate to French: Hello, how are you?"
+     },
+     "requirements": {"hardware": ["cuda"]},
+     "priority": 1
+   }
+   ```
+
+3. **Pipeline Parallel Example**:
+   ```json
+   {
+     "type": "multi_device_orchestration",
+     "config": {
+       "strategy": "pipeline_parallel",
+       "pipeline_stages": ["preprocessing", "inference", "postprocessing"],
+       "input_path": "/path/to/input.json"
+     },
+     "requirements": {"hardware": ["cpu", "cuda", "cpu"]},
+     "priority": 1
+   }
+   ```
+
+4. **Ensemble Example**:
+   ```json
+   {
+     "type": "multi_device_orchestration",
+     "config": {
+       "models": ["bert-base", "roberta-base", "distilbert-base"],
+       "strategy": "ensemble",
+       "input_text": "Classify sentiment: I love this product!"
+     },
+     "requirements": {"hardware": ["cuda"]},
+     "priority": 1
+   }
+   ```
+
+5. **Function Parallel Example**:
+   ```json
+   {
+     "type": "multi_device_orchestration",
+     "config": {
+       "functions": ["latency_test", "throughput_test", "memory_test"],
+       "strategy": "function_parallel",
+       "model": "bert-base-uncased"
+     },
+     "requirements": {"hardware": ["cuda"]},
+     "priority": 1
+   }
+   ```
+
+For more detailed information, see the [Multi-Device Orchestration Documentation](duckdb_api/distributed_testing/ORCHESTRATION_STRATEGIES.md).
+
+## Fault Tolerance System
+
+The Fault Tolerance System provides comprehensive error handling, circuit breaking, and recovery capabilities for the Distributed Testing Framework. This system ensures reliable operation even in the presence of various types of failures.
+
+### Key Features
+
+- **Automatic Retries**: Retry failed operations with exponential backoff
+- **Circuit Breaking**: Prevent cascading failures by temporarily blocking problematic services
+- **Error Categorization**: Classify errors by type and severity for appropriate handling
+- **Recovery Strategies**: Tailored recovery actions based on error category and severity
+- **Fallback Mechanisms**: Alternative implementations when primary services fail
+- **Health Monitoring**: Track error rates and circuit breaker status
+- **Statistical Analysis**: Error rate calculation and trend analysis
+
+### Error Categories
+
+The Fault Tolerance System categorizes errors into several types:
+
+1. **Network Errors**: Connectivity issues, timeouts, etc.
+2. **Resource Errors**: Memory, storage, or compute resource limitations
+3. **Worker Errors**: Issues with worker nodes
+4. **Task Errors**: Problems with task execution
+5. **Data Errors**: Issues with input or output data
+6. **Hardware Errors**: Problems with physical hardware
+7. **Authentication Errors**: Login or credential issues
+8. **Authorization Errors**: Permission or access issues
+9. **Timeout Errors**: Operations exceeding time limits
+10. **Unknown Errors**: Errors that don't fit other categories
+
+### Using the Fault Tolerance System
+
+The Fault Tolerance System is integrated into the coordinator server. The easiest way to use it is through the Integrated System Runner:
+
+```bash
+# Start the integrated system with fault tolerance enabled
+python duckdb_api/distributed_testing/run_integrated_system.py
+
+# Run with fault injection to test the system
+python duckdb_api/distributed_testing/run_integrated_system.py --fault-injection --fault-rate 0.1
+
+# Start with custom fault tolerance parameters
+python duckdb_api/distributed_testing/run_integrated_system.py --max-retries 5 --circuit-break-threshold 10 --error-rate-threshold 0.3
+```
+
+For more detailed information, see the [Fault Tolerance System Documentation](duckdb_api/distributed_testing/FAULT_TOLERANCE_SYSTEM.md).
+
+## High Availability Clustering (NEW - March 2025)
+
+The High Availability Clustering feature provides coordinator redundancy and automatic failover for the Distributed Testing Framework. This ensures continuous operation even when individual coordinator nodes fail.
+
+### Setting Up a High Availability Cluster
+
+To run a high availability cluster, you can use the provided example script:
+
+```bash
+# Run with 3 nodes
+./run_high_availability_cluster.sh --nodes 3
+
+# Enable fault injection to test failover
+./run_high_availability_cluster.sh --nodes 3 --fault-injection
+
+# Customize ports and runtime
+./run_high_availability_cluster.sh --nodes 5 --base-port 9000 --runtime 300
+```
+
+Alternatively, you can start multiple coordinator instances manually:
+
+```bash
+# Start the first coordinator
+python duckdb_api/distributed_testing/run_integrated_system.py --high-availability --coordinator-id coordinator1
+
+# Start additional coordinators
+python duckdb_api/distributed_testing/run_integrated_system.py --port 8081 --high-availability --coordinator-id coordinator2 --coordinator-addresses localhost:8080
+python duckdb_api/distributed_testing/run_integrated_system.py --port 8082 --high-availability --coordinator-id coordinator3 --coordinator-addresses localhost:8080,localhost:8081
+```
+
+### Leader Election Process
+
+The cluster uses a Raft-inspired consensus algorithm for leader election:
+
+1. All nodes start as followers
+2. When a follower doesn't receive heartbeats from a leader, it becomes a candidate
+3. The candidate requests votes from other nodes
+4. If a candidate receives votes from a majority of nodes, it becomes the leader
+5. The leader sends regular heartbeats to maintain its leadership
+6. If the leader fails, a new election is triggered automatically
+
+### State Replication
+
+State is replicated between coordinator nodes using:
+
+- Log-based replication for incremental updates
+- Snapshot-based synchronization for full state transfers
+- Consensus on commit index to ensure consistency
+
+### Health Monitoring and Self-Healing
+
+The Auto Recovery System includes comprehensive health monitoring:
+
+- Real-time tracking of CPU, memory, disk, and network metrics
+- Automatic actions to address resource constraints:
+  - Memory optimization through garbage collection
+  - Disk space management with log rotation
+  - CPU utilization optimization
+- Leader step-down when resources are critically constrained
+
+### WebNN/WebGPU Capability Detection
+
+The system includes automatic detection of browser WebNN/WebGPU capabilities:
+
+- Browser-specific feature detection
+- Hardware capability mapping
+- Cross-browser compatibility tracking
+- Integration with task scheduling for optimal resource utilization
+
+### Visualization
+
+Comprehensive visualization capabilities are provided:
+
+- Cluster status visualization (graphical and text-based)
+- Health metrics charts and graphs
+- Leader transition history
+- WebNN/WebGPU capability reporting
+
+### Performance Improvements
+
+The High Availability Clustering feature provides significant performance and reliability improvements:
+
+| Metric | Without HA | With HA | Improvement |
+|--------|------------|---------|------------|
+| Coordinator Uptime | 99.5% | 99.99% | 0.49% higher |
+| Recovery Time | 45-60s | 2-5s | 90-95% faster |
+| Test Continuity | 85% | 99.8% | 14.8% higher |
+| Data Preservation | 98% | 99.95% | 1.95% higher |
+| Resource Utilization | 100% | 60-75% | 25-40% lower |
+
+For more detailed information, see [README_AUTO_RECOVERY.md](distributed_testing/README_AUTO_RECOVERY.md) and [HARDWARE_FAULT_TOLERANCE_GUIDE.md](duckdb_api/distributed_testing/HARDWARE_FAULT_TOLERANCE_GUIDE.md).
+
+## Dynamic Resource Management
+
+The Distributed Testing Framework includes a comprehensive Dynamic Resource Management (DRM) system that optimizes resource allocation based on workload patterns, enabling efficient utilization of computational resources across the distributed testing infrastructure.
+
+### Key Features
+
+- **Resource Tracking**: Fine-grained monitoring of CPU, memory, and GPU resources on worker nodes
+- **Adaptive Scaling**: Automatic adjustment of worker count based on utilization metrics
+- **Resource-Aware Task Scheduling**: Matching tasks to workers based on resource requirements
+- **Cloud Integration**: Deployment of ephemeral workers across multiple cloud providers
+- **Performance Prediction**: ML-based prediction of resource requirements for tasks
+- **Resource Reservation**: Allocation and tracking of resources for specific tasks
+- **Utilization Analysis**: Time-series analysis of resource usage patterns
+
+For a comprehensive reference of the DRM system architecture, implementation details, and best practices, see the [Dynamic Resource Management Documentation](duckdb_api/distributed_testing/DYNAMIC_RESOURCE_MANAGEMENT.md).
 
 ## CI/CD Integration
 
@@ -569,360 +1062,12 @@ python -m duckdb_api.distributed_testing.cicd_integration \
   --output-dir ./test_reports \
   --report-formats json md html \
   --verbose
-
-# GitLab CI integration
-python -m duckdb_api.distributed_testing.cicd_integration \
-  --provider gitlab \
-  --coordinator http://coordinator-url:8080 \
-  --api-key YOUR_API_KEY \
-  --test-pattern "tests/**/*_test.py" \
-  --output-dir ./test_reports
-
-# Jenkins integration
-python -m duckdb_api.distributed_testing.cicd_integration \
-  --provider jenkins \
-  --coordinator http://coordinator-url:8080 \
-  --api-key YOUR_API_KEY \
-  --test-files test_file1.py test_file2.py \
-  --output-dir ./test_reports
 ```
 
-Common options:
-- `--provider`: CI/CD provider (github, gitlab, jenkins, generic)
-- `--coordinator`: URL of the coordinator server (required)
-- `--api-key`: API key for authentication (required)
-- `--test-dir`: Directory to search for tests (mutually exclusive with other test options)
-- `--test-pattern`: Glob pattern for test files (mutually exclusive with other test options)
-- `--test-files`: Explicit list of test files (mutually exclusive with other test options)
-- `--output-dir`: Directory to write reports (defaults to current directory)
-- `--report-formats`: Report formats to generate (json, md, html)
-- `--timeout`: Maximum time to wait for test completion in seconds (default: 3600)
-- `--poll-interval`: How often to poll for results in seconds (default: 15)
-- `--verbose`: Enable verbose output
-
-### Features
-
-The CI/CD integration provides the following features:
-
-1. **Automatic Test Discovery**: Discover test files based on directories, patterns, or explicit lists
-2. **Intelligent Requirement Analysis**: Analyze test files to determine hardware, browser, and memory requirements
-3. **Test Submission and Monitoring**: Submit tests to the coordinator and monitor execution
-4. **Comprehensive Reporting**: Generate detailed reports in multiple formats (JSON, Markdown, HTML)
-5. **CI/CD System Integration**: Seamless integration with GitHub Actions, GitLab CI, and Jenkins
-6. **Appropriate Exit Codes**: Return appropriate exit codes for CI/CD pipeline success/failure
-7. **Environment Variable Awareness**: Detect CI/CD-specific environment variables for context
-
-### Example Workflow Files
-
-The framework includes example workflow files for each supported CI/CD system:
-
-#### GitHub Actions
-
-Create a `.github/workflows/distributed-testing.yml` file:
-
-```yaml
-name: Distributed Testing
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      test_pattern:
-        description: 'Test pattern to run'
-        required: false
-        default: ''
-      hardware:
-        description: 'Hardware to test on'
-        required: false
-        default: 'cpu'
-
-jobs:
-  distributed-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      
-      - name: Run distributed tests
-        run: |
-          python -m duckdb_api.distributed_testing.cicd_integration \
-            --provider github \
-            --coordinator ${{ secrets.COORDINATOR_URL }} \
-            --api-key ${{ secrets.COORDINATOR_API_KEY }} \
-            --test-pattern "${{ github.event.inputs.test_pattern || 'tests/**/*_test.py' }}" \
-            --output-dir ./test_reports \
-            --report-formats json md html
-      
-      - name: Upload test reports
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-reports
-          path: ./test_reports
-```
-
-#### GitLab CI
-
-Create a `.gitlab-ci.yml` file:
-
-```yaml
-stages:
-  - test
-
-variables:
-  COORDINATOR_URL: "${COORDINATOR_URL}"
-  API_KEY: "${COORDINATOR_API_KEY}"
-  TEST_PATTERN: "tests/**/*_test.py"
-
-distributed-tests:
-  stage: test
-  image: python:3.10
-  script:
-    - pip install -r requirements.txt
-    - python -m duckdb_api.distributed_testing.cicd_integration \
-        --provider gitlab \
-        --coordinator ${COORDINATOR_URL} \
-        --api-key ${API_KEY} \
-        --test-pattern ${TEST_PATTERN} \
-        --output-dir ./test_reports \
-        --report-formats json md html
-  artifacts:
-    paths:
-      - test_reports/
-    expire_in: 1 week
-```
-
-#### Jenkins
-
-Create a `Jenkinsfile`:
-
-```groovy
-pipeline {
-    agent {
-        docker {
-            image 'python:3.10'
-        }
-    }
-    
-    parameters {
-        string(name: 'COORDINATOR_URL', defaultValue: 'http://coordinator-url:8080', description: 'URL of the coordinator server')
-        password(name: 'API_KEY', description: 'API key for coordinator authentication')
-        string(name: 'TEST_PATTERN', defaultValue: 'tests/**/*_test.py', description: 'Test pattern to run')
-    }
-    
-    stages {
-        stage('Setup') {
-            steps {
-                sh 'pip install -r requirements.txt'
-            }
-        }
-        
-        stage('Run Distributed Tests') {
-            steps {
-                sh '''
-                python -m duckdb_api.distributed_testing.cicd_integration \
-                  --provider jenkins \
-                  --coordinator ${COORDINATOR_URL} \
-                  --api-key ${API_KEY} \
-                  --test-pattern "${TEST_PATTERN}" \
-                  --output-dir ./test_reports \
-                  --report-formats json md html \
-                  --verbose
-                '''
-            }
-        }
-    }
-    
-    post {
-        always {
-            archiveArtifacts artifacts: 'test_reports/**', allowEmptyArchive: true
-            publishHTML(target: [
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'test_reports',
-                reportFiles: '*.html',
-                reportName: 'Test Reports'
-            ])
-        }
-    }
-}
-```
-
-### Report Generation
-
-The CI/CD integration generates comprehensive reports in multiple formats:
-
-1. **JSON Reports**: Structured data for programmatic analysis
-2. **Markdown Reports**: Human-readable documentation-style reports
-3. **HTML Reports**: Interactive visualizations for web display
-
-Reports include:
-- Basic information about the run (timestamp, provider, build ID, etc.)
-- Summary statistics (total tasks, completion status)
-- Detailed results with status, duration, hardware, and error details
-
-Example report structure:
-```
-# Distributed Testing Report
-
-- **Timestamp:** 20250315_120000
-- **Provider:** github
-- **Build ID:** 12345678
-- **Repository:** organization/repository
-- **Branch:** main
-- **Commit:** abcdef1234567890
-
-## Summary
-
-- **Total Tasks:** 25
-- **Completed:** 23
-- **Failed:** 1
-- **Cancelled:** 0
-- **Timeout:** 1
-
-## Detailed Results
-
-| Task ID | Test File | Status | Duration | Hardware | Details |
-|---------|-----------|--------|----------|----------|--------|
-| task1 | test_bert.py | COMPLETED | 125.3s | cuda | ✅ Success |
-| task2 | test_vit.py | COMPLETED | 87.1s | cuda | ✅ Success |
-| task3 | test_whisper.py | FAILED | 45.2s | cuda | ❌ AssertionError: Expected value 0.95, got 0.85 |
-| task4 | test_llama.py | TIMEOUT | N/A | cuda | ⏱️ Test timed out |
-...
-```
-
-### Advanced Configuration
-
-For advanced CI/CD integration scenarios, consider the following configurations:
-
-1. **Matrix Testing**: Set up tests across multiple hardware types or configurations
-2. **Scheduled Testing**: Run tests on a regular schedule for performance tracking
-3. **Selective Testing**: Run only tests affected by changes
-4. **Hardware-Specific Branches**: Dedicated branches for hardware-specific testing
-
-## Result Aggregation System
-
-The Distributed Testing Framework features a sophisticated dual-layer result aggregation system that provides comprehensive analysis of test results.
-
-### Overview
-
-The result aggregation system consists of two complementary components:
-
-1. **High-Level Aggregator Service** (ResultAggregatorService): Provides efficient aggregation and statistical analysis with a focus on performance and caching.
-2. **Detailed Aggregator** (DetailedResultAggregator): Offers in-depth multi-dimensional analysis with advanced visualization capabilities.
-
-These components work together to provide both high-level insights and detailed analysis of test results.
-
-### Key Features
-
-- **Dual-Layer Architecture**: Both aggregators process the same data but provide different perspectives and analysis capabilities
-- **Unified Data Preparation**: Consistent data preparation for both aggregators ensures coherent analysis
-- **Statistical Analysis**: Comprehensive statistics including means, medians, percentiles, distributions
-- **Multi-Dimensional Analysis**: Analyze results across test, worker, hardware, and model dimensions
-- **Anomaly Detection**: Automatic detection of performance anomalies using statistical methods
-- **Regression Detection**: Compare current results with historical data to identify regressions
-- **Visualization Generation**: Create visual representations of performance trends and anomalies
-- **WebSocket API Access**: Query aggregated results through the coordinator's WebSocket API
-
-### Usage
-
-#### Querying Aggregated Results (WebSocket API)
-
-You can query aggregated results through the coordinator's WebSocket API:
-
-```python
-import json
-import websockets
-import asyncio
-
-async def get_aggregated_results(coordinator_url, api_key, result_type, aggregation_level, use_detailed=False):
-    async with websockets.connect(coordinator_url) as websocket:
-        # Authenticate
-        await websocket.send(json.dumps({
-            "type": "auth_response",
-            "api_key": api_key
-        }))
-        
-        auth_result = json.loads(await websocket.recv())
-        if not auth_result.get("success"):
-            raise Exception("Authentication failed")
-        
-        # Get aggregated results
-        await websocket.send(json.dumps({
-            "type": "get_aggregated_results",
-            "result_type": result_type,
-            "aggregation_level": aggregation_level,
-            "use_detailed": use_detailed
-        }))
-        
-        result = json.loads(await websocket.recv())
-        return result["results"]
-
-# Example: Get high-level performance aggregation by model
-results = asyncio.run(get_aggregated_results(
-    "ws://coordinator-host:8080",
-    "your-api-key",
-    "performance",
-    "model",
-    use_detailed=False
-))
-
-# Example: Get detailed performance aggregation by hardware
-detailed_results = asyncio.run(get_aggregated_results(
-    "ws://coordinator-host:8080",
-    "your-api-key",
-    "performance",
-    "hardware",
-    use_detailed=True
-))
-```
-
-#### Aggregation Levels
-
-Both aggregators support various aggregation levels:
-
-- **test_run**: Aggregate by test run
-- **model**: Aggregate by model type
-- **hardware**: Aggregate by hardware type
-- **model_hardware**: Aggregate by model-hardware combination 
-- **task_type**: Aggregate by task type
-- **worker**: Aggregate by worker node
-
-#### Result Types
-
-The aggregation system supports different result types:
-
-- **performance**: Performance benchmark results
-- **compatibility**: Hardware/software compatibility test results 
-- **integration**: Integration test results
-- **web_platform**: Web platform-specific test results
-
-### Implementation Details
-
-The dual-layer result aggregation system is integrated into the coordinator server:
-
-1. **Data Collection**: Test results from workers are collected by the coordinator
-2. **Data Preparation**: Results are prepared with a unified preparation method to ensure consistency
-3. **Dual Processing**: Both aggregators process the prepared results independently
-4. **API Access**: Aggregated results can be accessed through the coordinator's WebSocket API
-5. **Coordination**: The coordinator manages the lifecycle of both aggregators
-
-The system provides both statistical rigor and analytical depth, enabling comprehensive understanding of test results across the distributed testing environment.
-
-For more detailed information, see the [Result Aggregator README](/duckdb_api/distributed_testing/result_aggregator/README.md).
+For more detailed information, see the [CI/CD Integration Documentation](duckdb_api/distributed_testing/CI_CD_INTEGRATION_GUIDE.md).
 
 ## Conclusion
 
-The Distributed Testing Framework provides a powerful and flexible system for parallel test execution across multiple machines. With the new features for high availability, performance analysis, and advanced fault tolerance, it offers a robust solution for large-scale testing needs. By following this guide, you can set up and use the framework effectively for your testing requirements.
+The Distributed Testing Framework provides a powerful and flexible system for parallel test execution across multiple machines. With the new features for high availability, performance analysis, fault tolerance, and the integrated system runner, it offers a robust solution for large-scale testing needs. By following this guide, you can set up and use the framework effectively for your testing requirements.
+
+For detailed information on specific components, refer to their respective documentation files in the `duckdb_api/distributed_testing/` directory.

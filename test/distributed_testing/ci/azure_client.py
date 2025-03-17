@@ -355,6 +355,18 @@ class AzureDevOpsClient(CIProviderInterface):
                         logger.error("Failed to get attachment ID from Azure DevOps response")
                         return False
                     
+                    # Store the attachment information for later URL retrieval
+                    if not hasattr(self, "_artifact_attachments"):
+                        self._artifact_attachments = {}
+                    
+                    if test_run_id not in self._artifact_attachments:
+                        self._artifact_attachments[test_run_id] = {}
+                    
+                    self._artifact_attachments[test_run_id][artifact_name] = {
+                        "attachment_id": attachment_id,
+                        "url": container_data.get("url")
+                    }
+                    
                     # Now upload the actual file content to the attachment
                     upload_url = f"{self.api_url}test/runs/{test_run_id}/attachments/{attachment_id}"
                     
@@ -512,6 +524,84 @@ class AzureDevOpsClient(CIProviderInterface):
                 "error": f"Exception: {str(e)}"
             }
             
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """
+        Get the URL for a test run artifact.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            
+        Returns:
+            URL to the artifact or None if not found
+        """
+        await self._ensure_session()
+        
+        try:
+            # Skip if we're using a simulated test run
+            if test_run_id.startswith("azure-simulated-"):
+                logger.warning(f"Cannot get artifact URL for simulated test run {test_run_id}")
+                return None
+            
+            # Check if we have the URL cached in artifact attachments
+            if hasattr(self, "_artifact_attachments") and test_run_id in self._artifact_attachments and artifact_name in self._artifact_attachments[test_run_id]:
+                attachment_info = self._artifact_attachments[test_run_id][artifact_name]
+                
+                # If we have a URL directly, use it
+                if "url" in attachment_info and attachment_info["url"]:
+                    return attachment_info["url"]
+                
+                # Otherwise, construct the URL using the attachment ID
+                if "attachment_id" in attachment_info:
+                    attachment_id = attachment_info["attachment_id"]
+                    # The URL format for test attachments in Azure DevOps
+                    return f"{self.api_url}test/runs/{test_run_id}/attachments/{attachment_id}"
+            
+            # If not cached, we need to query for the attachment
+            # Get all attachments for the test run
+            attachments_url = f"{self.api_url}test/runs/{test_run_id}/attachments"
+            
+            async with self.session.get(attachments_url) as response:
+                if response.status == 200:
+                    attachments_data = await response.json()
+                    
+                    # Look for our artifact in the list
+                    for attachment in attachments_data.get("value", []):
+                        if attachment.get("fileName") == artifact_name:
+                            # Found the attachment, get the URL
+                            attachment_id = attachment.get("id")
+                            
+                            if attachment_id:
+                                # Construct the attachment URL
+                                # The URL format for test attachments in Azure DevOps
+                                attachment_url = f"{self.api_url}test/runs/{test_run_id}/attachments/{attachment_id}"
+                                
+                                # Cache for future use
+                                if not hasattr(self, "_artifact_attachments"):
+                                    self._artifact_attachments = {}
+                                
+                                if test_run_id not in self._artifact_attachments:
+                                    self._artifact_attachments[test_run_id] = {}
+                                
+                                self._artifact_attachments[test_run_id][artifact_name] = {
+                                    "attachment_id": attachment_id,
+                                    "url": attachment_url
+                                }
+                                
+                                logger.info(f"Found artifact URL for {artifact_name}: {attachment_url}")
+                                return attachment_url
+                    
+                    # Artifact not found
+                    logger.warning(f"Artifact {artifact_name} not found in test run {test_run_id}")
+                    return None
+                else:
+                    logger.warning(f"Failed to get attachments for test run {test_run_id}: {response.status}")
+                    return None
+                
+        except Exception as e:
+            logger.error(f"Exception getting artifact URL from Azure DevOps: {str(e)}")
+            return None
+    
     async def set_build_status(self, status: str, description: str) -> bool:
         """
         Set the build status in the CI system.

@@ -16,9 +16,10 @@ The End-to-End Testing Framework provides a comprehensive solution for testing A
           │                          │                          │
           └──────────────────┬──────────────────┬──────────────┘
                              ▼                  ▼
-                    ┌─────────────────┐ ┌─────────────────┐
-                    │ File Storage    │ │ DuckDB Storage  │
-                    └─────────────────┘ └─────────────────┘
+                    ┌─────────────────┐ ┌─────────────────┐    ┌─────────────────┐
+                    │ File Storage    │ │ DuckDB Storage  │───►│ Visualization   │
+                    └─────────────────┘ └─────────────────┘    │ Dashboard       │
+                                                                └─────────────────┘
 ```
 
 ### Core Components
@@ -28,6 +29,7 @@ The End-to-End Testing Framework provides a comprehensive solution for testing A
 3. **ModelDocGenerator**: Generates comprehensive documentation for model implementations
 4. **HardwareDetection**: Detects available hardware platforms and tracks simulation status
 5. **DatabaseIntegration**: Stores test results with rich metadata in DuckDB
+6. **VisualizationDashboard**: Interactive web dashboard for visualizing test results and performance metrics
 
 ## Detailed Component Description
 
@@ -186,9 +188,84 @@ CREATE TABLE test_results (
     git_info JSON,
     ci_environment JSON,
     result_data JSON,
-    comparison_data JSON
+    comparison_data JSON,
+    details JSON
 );
 ```
+
+### Visualization Dashboard and Integrated Reporting System
+
+The VisualizationDashboard class provides an interactive web dashboard for visualizing test results and performance metrics. It uses Dash and Plotly to create dynamic visualizations that update in real-time.
+
+Key features:
+- Real-time monitoring of test execution and results
+- Comprehensive performance visualization for model-hardware combinations
+- Comparative analysis tools for cross-hardware performance
+- Simulation validation visualization 
+- Historical trend analysis with statistical significance testing
+- Customizable views and filtering options
+
+The dashboard is organized into five main tabs:
+1. **Overview**: High-level summary of test results and success rates
+2. **Performance Analysis**: Detailed performance metrics by model and hardware
+3. **Hardware Comparison**: Comparative analysis of different hardware platforms
+4. **Time Series Analysis**: Performance trends over time with statistical analysis
+5. **Simulation Validation**: Validation of simulation accuracy against real hardware
+
+#### Basic Dashboard Usage
+
+```bash
+# Start the visualization dashboard server
+python visualization_dashboard.py
+
+# Start with custom configuration
+python visualization_dashboard.py --port 8050 --db-path ./benchmark_db.duckdb
+
+# Run in development mode with hot reloading 
+python visualization_dashboard.py --debug
+```
+
+To install the required dependencies:
+```bash
+pip install -r dashboard_requirements.txt
+```
+
+#### Integrated Visualization and Reports System
+
+The framework now includes an integrated system that combines the Visualization Dashboard with the Enhanced CI/CD Reports Generator, providing a unified interface for both systems:
+
+```bash
+# Start the dashboard only
+python integrated_visualization_reports.py --dashboard
+
+# Generate reports only
+python integrated_visualization_reports.py --reports
+
+# Start dashboard and generate reports
+python integrated_visualization_reports.py --dashboard --reports
+
+# Specify database path and automatically open browser
+python integrated_visualization_reports.py --dashboard --db-path ./benchmark_db.duckdb --open-browser
+
+# Generate specific report types
+python integrated_visualization_reports.py --reports --simulation-validation
+
+# Export dashboard visualizations for offline viewing
+python integrated_visualization_reports.py --dashboard-export
+```
+
+The integrated system provides:
+- Unified command-line interface for dashboard and reports
+- Consistent database access across all components
+- Report generation based on live dashboard data
+- Easy-to-use commands for common scenarios
+- Support for both interactive exploration and CI/CD integration
+
+For detailed documentation on the visualization dashboard and integrated system, see:
+- [VISUALIZATION_DASHBOARD_README.md](./VISUALIZATION_DASHBOARD_README.md) - Comprehensive dashboard guide
+- [SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md) - Detailed system architecture
+- [TROUBLESHOOTING_GUIDE.md](./TROUBLESHOOTING_GUIDE.md) - Solutions for common issues
+- [INTEGRATION_SUMMARY.md](./INTEGRATION_SUMMARY.md) - Overview of integration architecture
 
 ## Hardware Detection Implementation
 
@@ -298,6 +375,15 @@ comparison_result = comparer.compare_with_file(expected_path, result)
    - Check simulation status for hardware platforms
    - Adjust tolerance for float comparison issues
    - Examine database error logs when available
+   - For dashboard and integrated reports system issues:
+     - Refer to the [SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md) for a comprehensive overview of the system design and component interactions
+     - Consult the [TROUBLESHOOTING_GUIDE.md](./TROUBLESHOOTING_GUIDE.md) for detailed solutions to common issues, including:
+       - Dashboard process management issues
+       - Database connectivity problems
+       - Report generation failures
+       - Visualization rendering problems
+       - Browser integration challenges
+       - CI/CD integration troubleshooting
 
 ## Distributed Testing
 
@@ -331,6 +417,8 @@ def _run_tests_distributed(self):
     
     return results
 ```
+
+> **Note**: While a more advanced Distributed Testing Framework is in development (currently 40% complete), its integration with the End-to-End Testing Framework is currently out of scope. The current implementation using worker threads provides sufficient parallelization for most testing needs.
 
 ## API Reference
 

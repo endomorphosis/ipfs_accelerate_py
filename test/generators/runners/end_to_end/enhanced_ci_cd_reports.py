@@ -4,13 +4,17 @@ Enhanced CI/CD Reports Generator for End-to-End Testing Framework
 
 This script generates comprehensive CI/CD reports for the end-to-end testing framework,
 including detailed test results, performance metrics, hardware compatibility matrices,
-and trend analysis. It can be used both within CI/CD pipelines and locally.
+trend analysis, and simulation validation reports. It can be used both within CI/CD 
+pipelines and locally.
 
 Features:
 - Comprehensive test status reports with detailed metrics
 - Hardware compatibility matrix generation
 - Trend analysis of test results over time
 - Performance comparison across hardware platforms
+- Simulation validation for hardware platforms not physically available
+- Cross-hardware performance comparisons
+- Interactive visualization for performance metrics
 - Badge generation for status dashboards
 - HTML and Markdown report formats
 - GitHub integration
@@ -27,6 +31,12 @@ Usage:
 
     # Generate reports and upload to GitHub Pages
     python enhanced_ci_cd_reports.py --github-pages
+    
+    # Generate simulation validation report
+    python enhanced_ci_cd_reports.py --simulation-validation
+    
+    # Generate cross-hardware performance comparison
+    python enhanced_ci_cd_reports.py --cross-hardware-comparison
 """
 
 import os
@@ -40,8 +50,14 @@ import tempfile
 import re
 import numpy as np
 import glob
+import math
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for server environments
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+import seaborn as sns
 from pathlib import Path
-from typing import Dict, List, Any, Tuple, Optional, Union, Set
+from typing import Dict, List, Any, Tuple, Optional, Union, Set, Callable
 
 # Add parent directory to path so we can import project modules
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -50,6 +66,7 @@ sys.path.append(test_dir)
 
 # Import utilities
 from simple_utils import setup_logging, ensure_dir_exists
+from validation_utils import SimulationValidator, CrossHardwareComparison, HARDWARE_PERFORMANCE_RATIOS, SIMULATION_TOLERANCE
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -63,6 +80,7 @@ logger.setLevel(logging.INFO)
 COLLECTED_RESULTS_DIR = os.path.join(os.path.dirname(script_dir), "collected_results")
 EXPECTED_RESULTS_DIR = os.path.join(os.path.dirname(script_dir), "expected_results")
 DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(script_dir), "reports")
+SIMULATION_VALIDATION_DIR = os.path.join(os.path.dirname(script_dir), "simulation_validation")
 
 # Define styles for HTML reports
 HTML_STYLE = """
@@ -181,6 +199,7 @@ tr:nth-child(even) {
 }
 </style>
 """
+
 
 class StatusBadgeGenerator:
     """Generates status badges for CI/CD dashboards."""
@@ -393,6 +412,14 @@ class ReportGenerator:
         self.badge_only = args.badge_only
         self.ci = args.ci
         self.github_pages = args.github_pages
+        self.simulation_validation = args.simulation_validation
+        self.cross_hardware_comparison = args.cross_hardware_comparison
+        self.combined_report = getattr(args, 'combined_report', False)
+        self.tolerance = args.tolerance
+        self.include_visualizations = args.include_visualizations
+        self.visualization_format = args.visualization_format
+        self.export_metrics = getattr(args, 'export_metrics', False)
+        self.highlight_simulation = getattr(args, 'highlight_simulation', False)
         self.test_results = {}
         
         # Create output directory if it doesn't exist
@@ -623,31 +650,293 @@ class ReportGenerator:
                             logger.warning(f"Error loading result file {result_file}: {str(e)}")
         
         return metrics
-    
-    def generate_report(self) -> Dict[str, str]:
+
+    def _is_simulation(self, result: Dict[str, Any]) -> bool:
         """
-        Generate comprehensive CI/CD reports.
+        Helper method to determine if a result is from a simulated environment.
         
+        Args:
+            result: Test result dictionary
+            
         Returns:
-            Dictionary mapping report names to file paths
+            True if the result is from a simulation, False otherwise
         """
-        # Collect test results
-        self.test_results = self.collect_results()
+        # If we have a result path, read the actual result file for more accurate detection
+        if "result_path" in result:
+            result_file = os.path.join(result["result_path"], "result.json")
+            if os.path.exists(result_file):
+                try:
+                    with open(result_file, 'r') as f:
+                        result_data = json.load(f)
+                    
+                    # Check for explicit simulation flags
+                    if result_data.get("simulation", False):
+                        return True
+                    
+                    # Check for simulation markers in metadata
+                    metadata = result_data.get("metadata", {})
+                    if metadata.get("simulation", False) or metadata.get("simulated", False):
+                        return True
+                    
+                    # Check for simulation indicators in the environment
+                    env = metadata.get("environment", {})
+                    if env.get("simulation", False) or "simulator" in env.get("platform", "").lower():
+                        return True
+                    
+                    # Check execution metadata
+                    exec_metadata = result_data.get("execution_metadata", {})
+                    if exec_metadata.get("simulated", False):
+                        return True
+                        
+                except Exception:
+                    pass
         
-        if not self.test_results:
-            logger.error("No test results found")
-            return {}
+        # If we don't have a result file or couldn't read it, fall back to simple detection
+        if "status" in result and result["status"] == "error":
+            # Errors can sometimes indicate simulation attempts
+            return True
+            
+        # Use comparison data as another hint
+        if "comparison" in result:
+            comparison = result["comparison"]
+            if comparison.get("matches", True) == False and len(comparison.get("differences", {})) > 3:
+                # If there are many differences, it might be a simulation
+                return True
         
-        # Generate reports based on format
-        if self.badge_only:
-            return self._generate_badges()
-        elif self.format == "html":
-            return self._generate_html_reports()
-        elif self.format == "markdown":
-            return self._generate_markdown_reports()
+        return False
+                            
+    def _export_metrics_to_csv(self, results: Dict[str, Dict[str, Any]]) -> str:
+        """
+        Export performance metrics from test results to a CSV file.
+        
+        Args:
+            results: Dictionary mapping models to hardware results
+            
+        Returns:
+            Path to the generated CSV file
+        """
+        import csv
+        csv_path = os.path.join(self.output_dir, "performance_metrics.csv")
+        
+        # Extract metrics from results
+        metrics_data = []
+        for model, hw_results in results.items():
+            for hw, result in hw_results.items():
+                # Check if this is a simulation
+                is_simulation = self._is_simulation(result)
+                
+                # Extract metrics from the result
+                if "result_path" in result:
+                    result_file = os.path.join(result["result_path"], "result.json")
+                    if os.path.exists(result_file):
+                        try:
+                            with open(result_file, 'r') as f:
+                                result_data = json.load(f)
+                            
+                            # Extract metrics
+                            metrics = {}
+                            if "metrics" in result_data:
+                                metrics = result_data["metrics"]
+                            elif "output" in result_data and "metrics" in result_data["output"]:
+                                metrics = result_data["output"]["metrics"]
+                            
+                            # Add basic metadata
+                            metrics_row = {
+                                "model": model,
+                                "hardware": hw,
+                                "simulation": "Yes" if is_simulation else "No",
+                                "status": result.get("status", "unknown")
+                            }
+                            
+                            # Add all metrics
+                            for metric_name, metric_value in metrics.items():
+                                metrics_row[metric_name] = metric_value
+                            
+                            metrics_data.append(metrics_row)
+                            
+                        except Exception as e:
+                            logger.error(f"Error extracting metrics for {model} on {hw}: {str(e)}")
+        
+        # Write CSV file
+        if metrics_data:
+            # Get all unique column names
+            columns = set()
+            for row in metrics_data:
+                columns.update(row.keys())
+            
+            # Ensure essential columns come first
+            sorted_columns = ["model", "hardware", "simulation", "status"]
+            for col in sorted(columns):
+                if col not in sorted_columns:
+                    sorted_columns.append(col)
+            
+            with open(csv_path, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=sorted_columns)
+                writer.writeheader()
+                writer.writerows(metrics_data)
+            
+            logger.info(f"Exported {len(metrics_data)} metrics rows to {csv_path}")
         else:
-            logger.error(f"Unsupported format: {self.format}")
-            return {}
+            logger.warning("No metrics data found to export")
+            with open(csv_path, 'w', newline='') as f:
+                f.write("No metrics data available\n")
+        
+        return csv_path
+    
+    def _generate_combined_html_report(self, 
+                                     results: Dict[str, Dict[str, Any]], 
+                                     simulation_validation_report: str, 
+                                     hardware_comparison_report: str) -> str:
+        """
+        Generate a combined HTML report with both simulation validation and hardware comparison.
+        
+        Args:
+            results: Dictionary with test results
+            simulation_validation_report: Path to the simulation validation report
+            hardware_comparison_report: Path to the hardware comparison report
+            
+        Returns:
+            Path to the generated combined report
+        """
+        combined_report_path = os.path.join(self.output_dir, "combined_report.html")
+        
+        # Read the simulation validation report
+        try:
+            with open(simulation_validation_report, 'r') as f:
+                simulation_validation_content = f.read()
+                # Extract body content
+                sim_validation_body = re.search(r'<body>(.*?)</body>', simulation_validation_content, re.DOTALL)
+                if sim_validation_body:
+                    sim_validation_body = sim_validation_body.group(1)
+                else:
+                    sim_validation_body = "Simulation validation report not available"
+        except Exception as e:
+            logger.error(f"Error reading simulation validation report: {str(e)}")
+            sim_validation_body = "Error reading simulation validation report"
+        
+        # Read the hardware comparison report
+        try:
+            with open(hardware_comparison_report, 'r') as f:
+                hardware_comparison_content = f.read()
+                # Extract body content
+                hw_comparison_body = re.search(r'<body>(.*?)</body>', hardware_comparison_content, re.DOTALL)
+                if hw_comparison_body:
+                    hw_comparison_body = hw_comparison_body.group(1)
+                else:
+                    hw_comparison_body = "Hardware comparison report not available"
+        except Exception as e:
+            logger.error(f"Error reading hardware comparison report: {str(e)}")
+            hw_comparison_body = "Error reading hardware comparison report"
+        
+        with open(combined_report_path, 'w') as f:
+            # Write HTML header
+            f.write("<!DOCTYPE html>\n")
+            f.write("<html lang=\"en\">\n")
+            f.write("<head>\n")
+            f.write("  <meta charset=\"UTF-8\">\n")
+            f.write("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
+            f.write("  <title>Combined Report - Simulation Validation and Hardware Comparison</title>\n")
+            f.write(HTML_STYLE)
+            f.write("</head>\n")
+            f.write("<body>\n")
+            
+            # Combined report header
+            f.write("<h1>Combined Report - Simulation Validation and Hardware Comparison</h1>\n")
+            f.write("<p>This report combines the simulation validation and cross-hardware comparison results.</p>\n")
+            
+            # Add navigation
+            f.write("<div style='display: flex; justify-content: space-between; margin: 2em 0;'>\n")
+            f.write("  <a href='#simulation-validation'>Simulation Validation</a>\n")
+            f.write("  <a href='#hardware-comparison'>Hardware Comparison</a>\n")
+            f.write("</div>\n")
+            
+            # Simulation validation section
+            f.write("<div id='simulation-validation'>\n")
+            f.write("<h2>Simulation Validation</h2>\n")
+            f.write(sim_validation_body)
+            f.write("</div>\n")
+            
+            # Hardware comparison section
+            f.write("<div id='hardware-comparison'>\n")
+            f.write("<h2>Hardware Comparison</h2>\n")
+            f.write(hw_comparison_body)
+            f.write("</div>\n")
+            
+            # HTML footer
+            f.write("</body>\n")
+            f.write("</html>\n")
+        
+        return combined_report_path
+    
+    def _generate_combined_markdown_report(self, 
+                                         results: Dict[str, Dict[str, Any]], 
+                                         simulation_validation_report: str, 
+                                         hardware_comparison_report: str) -> str:
+        """
+        Generate a combined Markdown report with both simulation validation and hardware comparison.
+        
+        Args:
+            results: Dictionary with test results
+            simulation_validation_report: Path to the simulation validation report
+            hardware_comparison_report: Path to the hardware comparison report
+            
+        Returns:
+            Path to the generated combined report
+        """
+        combined_report_path = os.path.join(self.output_dir, "combined_report.md")
+        
+        # Read the simulation validation report
+        try:
+            with open(simulation_validation_report, 'r') as f:
+                simulation_validation_content = f.read()
+        except Exception as e:
+            logger.error(f"Error reading simulation validation report: {str(e)}")
+            simulation_validation_content = "Error reading simulation validation report"
+        
+        # Read the hardware comparison report
+        try:
+            with open(hardware_comparison_report, 'r') as f:
+                hardware_comparison_content = f.read()
+        except Exception as e:
+            logger.error(f"Error reading hardware comparison report: {str(e)}")
+            hardware_comparison_content = "Error reading hardware comparison report"
+        
+        with open(combined_report_path, 'w') as f:
+            # Write report header
+            f.write("# Combined Report - Simulation Validation and Hardware Comparison\n\n")
+            f.write("This report combines the simulation validation and cross-hardware comparison results.\n\n")
+            
+            # Add navigation
+            f.write("## Table of Contents\n\n")
+            f.write("- [Simulation Validation](#simulation-validation)\n")
+            f.write("- [Hardware Comparison](#hardware-comparison)\n\n")
+            
+            # Simulation validation section
+            f.write("## Simulation Validation {#simulation-validation}\n\n")
+            f.write(simulation_validation_content)
+            f.write("\n\n")
+            
+            # Hardware comparison section
+            f.write("## Hardware Comparison {#hardware-comparison}\n\n")
+            f.write(hardware_comparison_content)
+            
+            if self.highlight_simulation:
+                f.write("\n\n## Highlighted Simulations\n\n")
+                f.write("The following hardware platforms have been detected as simulations:\n\n")
+                
+                for model, hw_results in results.items():
+                    simulated_hw = []
+                    for hw, result in hw_results.items():
+                        if self._is_simulation(result):
+                            simulated_hw.append(hw)
+                    
+                    if simulated_hw:
+                        f.write(f"### {model}\n\n")
+                        for hw in simulated_hw:
+                            f.write(f"- {hw} (SIMULATION)\n")
+                        f.write("\n")
+            
+        return combined_report_path
     
     def _generate_badges(self) -> Dict[str, str]:
         """
@@ -862,39 +1151,31 @@ class ReportGenerator:
                         status = result.get("status", "unknown")
                         status_class = "success" if status == "success" else "failure" if status == "failure" else "error"
                         
-                        f.write(f"<div class=\"metrics-box\">\n")
-                        f.write(f"<h4>{hw}</h4>\n")
+                        # Check if this is a simulation
+                        is_simulation = self._is_simulation(result)
+                        simulation_tag = " (SIMULATION)" if is_simulation and self.highlight_simulation else ""
+                        
+                        f.write(f"<h4>{hw}{simulation_tag}</h4>\n")
                         f.write(f"<p><strong>Status:</strong> <span class=\"{status_class}\">{status.upper()}</span></p>\n")
                         
                         if "error" in result:
                             f.write(f"<p><strong>Error:</strong> {result['error']}</p>\n")
                         
                         if "comparison" in result and "differences" in result["comparison"]:
-                            f.write("<p><strong>Differences:</strong></p>\n")
+                            f.write("<p><strong>Differences found:</strong></p>\n")
                             f.write("<ul>\n")
-                            
                             for key, diff in result["comparison"]["differences"].items():
                                 f.write(f"<li>{key}: {json.dumps(diff)}</li>\n")
-                            
                             f.write("</ul>\n")
                         
                         if "result_path" in result:
                             f.write(f"<p><strong>Results:</strong> {result['result_path']}</p>\n")
-                        
-                        f.write("</div>\n")
             
             # HTML footer
             f.write("</body>\n")
             f.write("</html>\n")
         
         reports["main"] = main_report
-        
-        # Generate GitHub Pages index if requested
-        if self.github_pages:
-            index_path = os.path.join(reports_dir, "index.html")
-            shutil.copy(main_report, index_path)
-            reports["index"] = index_path
-        
         return reports
     
     def _generate_markdown_reports(self) -> Dict[str, str]:
@@ -925,6 +1206,7 @@ class ReportGenerator:
         # Generate main report
         main_report = os.path.join(reports_dir, "e2e_test_report.md")
         with open(main_report, 'w') as f:
+            # Write report header
             f.write(f"# End-to-End Test Report - {timestamp}\n\n")
             
             # Summary section
@@ -936,17 +1218,17 @@ class ReportGenerator:
             
             success_rate = (success / total) * 100 if total > 0 else 0
             
-            f.write(f"- **Total Tests**: {total}\n")
-            f.write(f"- **Successful**: {success}\n")
-            f.write(f"- **Failed**: {failure}\n")
-            f.write(f"- **Errors**: {error}\n")
-            f.write(f"- **Success Rate**: {success_rate:.1f}%\n\n")
+            f.write(f"- **Total Tests:** {total}\n")
+            f.write(f"- **Successful:** {success}\n")
+            f.write(f"- **Failed:** {failure}\n")
+            f.write(f"- **Errors:** {error}\n")
+            f.write(f"- **Success Rate:** {success_rate:.1f}%\n\n")
             
             # Historical trends if available
             if historical and "success_rates" in historical and historical["success_rates"]:
                 f.write("## Historical Trends\n\n")
                 
-                # Table for trends
+                # Simple trend visualization using a table
                 f.write("| Date | Success Rate | Total Tests |\n")
                 f.write("|------|--------------|-------------|\n")
                 
@@ -977,7 +1259,7 @@ class ReportGenerator:
                 
                 hardware_platforms = sorted(list(hardware_platforms))
                 
-                # Generate table
+                # Header row
                 f.write("| Model | " + " | ".join(hardware_platforms) + " |\n")
                 f.write("|-------|" + "|".join(["---" for _ in hardware_platforms]) + "|\n")
                 
@@ -1034,7 +1316,11 @@ class ReportGenerator:
                         status = result.get("status", "unknown")
                         status_icon = "✅" if status == "success" else "❌" if status == "failure" else "⚠️"
                         
-                        f.write(f"- {status_icon} **{hw}**: {status.upper()}\n")
+                        # Check if this is a simulation
+                        is_simulation = self._is_simulation(result)
+                        simulation_tag = " (SIMULATION)" if is_simulation and self.highlight_simulation else ""
+                        
+                        f.write(f"- {status_icon} **{hw}{simulation_tag}**: {status.upper()}\n")
                         
                         if "error" in result:
                             f.write(f"  - Error: {result['error']}\n")
@@ -1051,6 +1337,128 @@ class ReportGenerator:
         
         reports["main"] = main_report
         return reports
+    
+    def generate_report(self) -> Dict[str, str]:
+        """
+        Generate comprehensive CI/CD reports.
+        
+        Returns:
+            Dictionary mapping report names to file paths
+        """
+        # Collect test results
+        self.test_results = self.collect_results()
+        
+        if not self.test_results:
+            logger.error("No test results found")
+            return {}
+        
+        # Generate reports based on format and options
+        if self.badge_only:
+            return self._generate_badges()
+        elif self.combined_report:
+            # Generate both simulation validation and cross-hardware comparison reports
+            reports = {}
+            
+            # Generate simulation validation report
+            validator = SimulationValidator(tolerance=self.tolerance)
+            sim_reports = validator.generate_validation_report(
+                self.test_results.get("results", {}),
+                os.path.join(self.output_dir, "simulation_validation")
+            )
+            
+            # Add simulation reports with prefixed keys
+            for key, path in sim_reports.items():
+                reports[f"simulation_{key}"] = path
+            
+            # Generate cross-hardware comparison report
+            comparator = CrossHardwareComparison(
+                output_dir=os.path.join(self.output_dir, "cross_hardware")
+            )
+            hw_reports = comparator.generate_comparison_report(
+                self.test_results.get("results", {})
+            )
+            
+            # Add hardware comparison reports with prefixed keys
+            for key, path in hw_reports.items():
+                reports[f"hardware_{key}"] = path
+            
+            # Generate combined summary report based on format
+            if self.format == "html":
+                combined_path = self._generate_combined_html_report(
+                    self.test_results.get("results", {}),
+                    sim_reports.get("html"),
+                    hw_reports.get("html")
+                )
+                reports["combined"] = combined_path
+            elif self.format == "markdown":
+                combined_path = self._generate_combined_markdown_report(
+                    self.test_results.get("results", {}),
+                    sim_reports.get("markdown"),
+                    hw_reports.get("markdown")
+                )
+                reports["combined"] = combined_path
+            
+            # Export metrics to CSV if requested
+            if self.export_metrics:
+                metrics_path = self._export_metrics_to_csv(self.test_results.get("results", {}))
+                reports["metrics_csv"] = metrics_path
+                
+            return reports
+            
+        elif self.simulation_validation:
+            # Generate simulation validation report
+            validator = SimulationValidator(tolerance=self.tolerance)
+            reports = validator.generate_validation_report(
+                self.test_results.get("results", {}),
+                os.path.join(self.output_dir, "simulation_validation")
+            )
+            
+            # Export metrics to CSV if requested
+            if self.export_metrics:
+                metrics_path = self._export_metrics_to_csv(self.test_results.get("results", {}))
+                reports["metrics_csv"] = metrics_path
+                
+            return reports
+            
+        elif self.cross_hardware_comparison:
+            # Generate cross-hardware comparison report
+            comparator = CrossHardwareComparison(
+                output_dir=os.path.join(self.output_dir, "cross_hardware")
+            )
+            reports = comparator.generate_comparison_report(
+                self.test_results.get("results", {})
+            )
+            
+            # Export metrics to CSV if requested
+            if self.export_metrics:
+                metrics_path = self._export_metrics_to_csv(self.test_results.get("results", {}))
+                reports["metrics_csv"] = metrics_path
+                
+            return reports
+            
+        elif self.format == "html":
+            reports = self._generate_html_reports()
+            
+            # Export metrics to CSV if requested
+            if self.export_metrics:
+                metrics_path = self._export_metrics_to_csv(self.test_results.get("results", {}))
+                reports["metrics_csv"] = metrics_path
+                
+            return reports
+            
+        elif self.format == "markdown":
+            reports = self._generate_markdown_reports()
+            
+            # Export metrics to CSV if requested
+            if self.export_metrics:
+                metrics_path = self._export_metrics_to_csv(self.test_results.get("results", {}))
+                reports["metrics_csv"] = metrics_path
+                
+            return reports
+            
+        else:
+            logger.error(f"Unsupported format: {self.format}")
+            return {}
 
 
 def parse_arguments():
@@ -1078,6 +1486,26 @@ def parse_arguments():
                        help="Generate reports for CI/CD integration")
     parser.add_argument("--github-pages", action="store_true",
                        help="Generate reports for GitHub Pages")
+    
+    # New report types
+    parser.add_argument("--simulation-validation", action="store_true",
+                       help="Generate simulation validation report for hardware verification")
+    parser.add_argument("--cross-hardware-comparison", action="store_true",
+                       help="Generate cross-hardware performance comparison report")
+    parser.add_argument("--combined-report", action="store_true",
+                       help="Generate combined report with both simulation validation and cross-hardware comparison")
+    parser.add_argument("--tolerance", type=float, default=SIMULATION_TOLERANCE,
+                       help=f"Tolerance for simulation validation (as percentage, default: {SIMULATION_TOLERANCE*100}%%)")
+    parser.add_argument("--export-metrics", action="store_true",
+                       help="Export performance metrics to CSV for further analysis")
+    parser.add_argument("--highlight-simulation", action="store_true",
+                       help="Highlight simulated hardware in reports")
+    
+    # Visualization options
+    parser.add_argument("--include-visualizations", action="store_true", default=True,
+                       help="Include visualizations in reports")
+    parser.add_argument("--visualization-format", choices=["png", "svg", "pdf"], default="png",
+                       help="Format for visualization images (default: png)")
     
     # Logging options
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")

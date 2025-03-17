@@ -20,10 +20,66 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Union
 
 import jinja2
-import plotly
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
+
+# Try to import plotly, but provide fallbacks if not available
+try:
+    import plotly
+    import plotly.graph_objects as go
+    import plotly.express as px
+    from plotly.subplots import make_subplots
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    logging.warning("Plotly not available. Using mock implementations for visualization.")
+    
+    # Mock classes for plotly
+    class MockFigure:
+        def __init__(self, *args, **kwargs):
+            self.data = []
+            self.layout = {}
+        
+        def update_layout(self, *args, **kwargs):
+            pass
+            
+        def update_yaxes(self, *args, **kwargs):
+            pass
+            
+        def add_trace(self, *args, **kwargs):
+            pass
+            
+        def to_json(self):
+            return '{}'
+    
+    class MockGraphObjects:
+        @staticmethod
+        def Figure(*args, **kwargs):
+            return MockFigure()
+            
+        @staticmethod
+        def Indicator(*args, **kwargs):
+            return {}
+            
+        @staticmethod
+        def Pie(*args, **kwargs):
+            return {}
+            
+        @staticmethod
+        def Bar(*args, **kwargs):
+            return {}
+            
+        @staticmethod
+        def Scatter(*args, **kwargs):
+            return {}
+    
+    class MockSubplots:
+        @staticmethod
+        def make_subplots(*args, **kwargs):
+            return MockFigure()
+    
+    # Create mock objects
+    go = MockGraphObjects()
+    px = MockGraphObjects()
+    make_subplots = MockSubplots.make_subplots
 
 # Set up logging
 logging.basicConfig(
@@ -77,7 +133,8 @@ class CircuitBreakerVisualization:
         indicators = {
             "workers": [],
             "tasks": [],
-            "endpoints": []
+            "endpoints": [],
+            "browsers": []
         }
         
         # Process worker circuits
@@ -138,6 +195,26 @@ class CircuitBreakerVisualization:
                 "health": health,
                 "color": color,
                 "metrics": endpoint_metrics
+            })
+            
+        # Process browser circuits
+        for browser_id, browser_metrics in metrics.get("browser_circuits", {}).items():
+            state = browser_metrics.get("state", "UNKNOWN")
+            health = browser_metrics.get("health_percentage", 0.0)
+            
+            # Determine color based on state
+            color = "green"
+            if state == "OPEN":
+                color = "red"
+            elif state == "HALF_OPEN":
+                color = "yellow"
+            
+            indicators["browsers"].append({
+                "id": browser_id,
+                "state": state,
+                "health": health,
+                "color": color,
+                "metrics": browser_metrics
             })
         
         return indicators
@@ -224,6 +301,12 @@ class CircuitBreakerVisualization:
             state = endpoint_metrics.get("state", "UNKNOWN")
             if state in state_counts:
                 state_counts[state] += 1
+                
+        # Count browser states
+        for browser_metrics in metrics.get("browser_circuits", {}).values():
+            state = browser_metrics.get("state", "UNKNOWN")
+            if state in state_counts:
+                state_counts[state] += 1
         
         # Create pie chart
         fig = go.Figure(data=[go.Pie(
@@ -262,7 +345,8 @@ class CircuitBreakerVisualization:
         failure_rates = {
             "workers": [],
             "tasks": [],
-            "endpoints": []
+            "endpoints": [],
+            "browsers": []
         }
         
         # Calculate worker failure rates
@@ -315,6 +399,23 @@ class CircuitBreakerVisualization:
                 "total_calls": total_calls,
                 "total_failures": total_failures
             })
+            
+        # Calculate browser failure rates
+        for browser_id, browser_metrics in metrics.get("browser_circuits", {}).items():
+            total_successes = browser_metrics.get("success_count", 0)  # different field name in browser metrics
+            total_failures = browser_metrics.get("failure_count", 0)   # different field name in browser metrics
+            total_calls = total_successes + total_failures
+            
+            failure_rate = 0.0
+            if total_calls > 0:
+                failure_rate = (total_failures / total_calls) * 100.0
+            
+            failure_rates["browsers"].append({
+                "id": browser_id,
+                "rate": failure_rate,
+                "total_calls": total_calls,
+                "total_failures": total_failures
+            })
         
         # Create bar chart - only include circuits with at least 1 call
         worker_ids = [w["id"] for w in failure_rates["workers"] if w["total_calls"] > 0]
@@ -326,9 +427,13 @@ class CircuitBreakerVisualization:
         endpoint_ids = [e["id"] for e in failure_rates["endpoints"] if e["total_calls"] > 0]
         endpoint_rates = [e["rate"] for e in failure_rates["endpoints"] if e["total_calls"] > 0]
         
+        browser_ids = [b["id"] for b in failure_rates["browsers"] if b["total_calls"] > 0]
+        browser_rates = [b["rate"] for b in failure_rates["browsers"] if b["total_calls"] > 0]
+        
         # Create figure with subplots
-        fig = make_subplots(rows=3, cols=1, 
-                            subplot_titles=("Worker Failure Rates", "Task Failure Rates", "Endpoint Failure Rates"),
+        fig = make_subplots(rows=4, cols=1, 
+                            subplot_titles=("Worker Failure Rates", "Task Failure Rates", 
+                                           "Endpoint Failure Rates", "Browser Failure Rates"),
                             vertical_spacing=0.1)
         
         # Add worker failure rates
@@ -351,10 +456,17 @@ class CircuitBreakerVisualization:
                 go.Bar(x=endpoint_ids, y=endpoint_rates, name="Endpoint Failure Rates", marker_color="green"),
                 row=3, col=1
             )
+            
+        # Add browser failure rates
+        if browser_ids:
+            fig.add_trace(
+                go.Bar(x=browser_ids, y=browser_rates, name="Browser Failure Rates", marker_color="purple"),
+                row=4, col=1
+            )
         
         # Update layout
         fig.update_layout(
-            height=600,
+            height=700,
             showlegend=False,
             title_text="Failure Rates by Circuit Type",
             margin=dict(l=50, r=20, t=70, b=20)
@@ -646,6 +758,20 @@ class CircuitBreakerVisualization:
                             </div>
                             {% else %}
                             <p>No task circuits found</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="dashboard-item full-width">
+                        <h2>Browsers</h2>
+                        <div class="indicator-container">
+                            {% for browser in indicators.browsers %}
+                            <div class="indicator {{ browser.color }}">
+                                <h3>{{ browser.id }}</h3>
+                                <p>State: {{ browser.state }}</p>
+                                <p>Health: {{ "%.1f"|format(browser.health) }}%</p>
+                            </div>
+                            {% else %}
+                            <p>No browser circuits found</p>
                             {% endfor %}
                         </div>
                     </div>

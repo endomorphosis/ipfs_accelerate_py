@@ -305,6 +305,117 @@ class CircleCIClient(CIProviderInterface):
                 "error": f"Exception: {str(e)}"
             }
     
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """
+        Get the URL for a test run artifact.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            
+        Returns:
+            URL to the artifact or None if not found
+        """
+        await self._ensure_session()
+        
+        try:
+            # Skip if we're using a simulated test run
+            if test_run_id.startswith("circleci-simulated-"):
+                logger.warning(f"Cannot get artifact URL for simulated test run {test_run_id}")
+                return None
+            
+            # Check if we have the URL cached
+            if hasattr(self, "_artifact_urls") and test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
+                return self._artifact_urls[test_run_id][artifact_name]
+            
+            # Extract project slug and job number from test run ID
+            parts = test_run_id.split("-", 2)
+            if len(parts) < 3 or parts[0] != "circleci":
+                logger.error(f"Invalid CircleCI test run ID format: {test_run_id}")
+                return None
+            
+            project_slug = parts[1]
+            job_number = parts[2]
+            
+            # In CircleCI v2 API, we need to get the artifacts list for a job
+            # First verify the job/pipeline exists using the API
+            job_url = f"{self.api_url}/project/{project_slug}/job/{job_number}"
+            
+            async with self.session.get(job_url) as response:
+                if response.status != 200:
+                    logger.warning(f"Failed to verify job exists: {response.status}")
+                    
+                    # Try the pipeline/workflow approach
+                    if hasattr(self, "pipeline_id") and hasattr(self, "workflow_id"):
+                        # Try to get artifacts from pipeline/workflow
+                        artifacts_url = f"{self.api_url}/pipeline/{self.pipeline_id}/workflow/{self.workflow_id}/job/{job_number}/artifacts"
+                        
+                        async with self.session.get(artifacts_url) as artifacts_response:
+                            if artifacts_response.status == 200:
+                                artifacts_data = await artifacts_response.json()
+                                
+                                # Look for our artifact in the list
+                                for artifact in artifacts_data.get("items", []):
+                                    if artifact.get("name") == artifact_name or artifact.get("path") == artifact_name:
+                                        # Found the artifact, get the URL
+                                        artifact_url = artifact.get("url")
+                                        
+                                        if artifact_url:
+                                            # Cache the URL for future use
+                                            if not hasattr(self, "_artifact_urls"):
+                                                self._artifact_urls = {}
+                                            
+                                            if test_run_id not in self._artifact_urls:
+                                                self._artifact_urls[test_run_id] = {}
+                                            
+                                            self._artifact_urls[test_run_id][artifact_name] = artifact_url
+                                            
+                                            logger.info(f"Found artifact URL for {artifact_name}: {artifact_url}")
+                                            return artifact_url
+                                
+                                # Artifact not found
+                                logger.warning(f"Artifact {artifact_name} not found in CircleCI job {job_number}")
+                                return None
+                    
+                    return None
+                
+                # Get the list of artifacts
+                artifacts_url = f"{self.api_url}/project/{project_slug}/job/{job_number}/artifacts"
+                
+                async with self.session.get(artifacts_url) as artifacts_response:
+                    if artifacts_response.status == 200:
+                        artifacts_data = await artifacts_response.json()
+                        
+                        # Look for our artifact in the list
+                        for artifact in artifacts_data.get("items", []):
+                            if artifact.get("name") == artifact_name or artifact.get("path") == artifact_name:
+                                # Found the artifact, get the URL
+                                artifact_url = artifact.get("url")
+                                
+                                if artifact_url:
+                                    # Cache the URL for future use
+                                    if not hasattr(self, "_artifact_urls"):
+                                        self._artifact_urls = {}
+                                    
+                                    if test_run_id not in self._artifact_urls:
+                                        self._artifact_urls[test_run_id] = {}
+                                    
+                                    self._artifact_urls[test_run_id][artifact_name] = artifact_url
+                                    
+                                    logger.info(f"Found artifact URL for {artifact_name}: {artifact_url}")
+                                    return artifact_url
+                        
+                        # Artifact not found
+                        logger.warning(f"Artifact {artifact_name} not found in CircleCI job {job_number}")
+                        return None
+                    else:
+                        logger.warning(f"Failed to get artifacts: {artifacts_response.status}")
+                        return None
+                
+        except Exception as e:
+            logger.error(f"Exception getting artifact URL from CircleCI: {str(e)}")
+            return None
+    
     async def set_build_status(self, status: str, description: str) -> bool:
         """
         Set the build status in the CI system.

@@ -1,0 +1,212 @@
+name: Hardware Monitoring Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'test/distributed_testing/hardware_utilization_monitor.py'
+      - 'test/distributed_testing/coordinator_hardware_monitoring_integration.py'
+      - 'test/distributed_testing/tests/test_hardware_utilization_monitor.py'
+      - 'test/distributed_testing/run_hardware_monitoring_tests.py'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'test/distributed_testing/hardware_utilization_monitor.py'
+      - 'test/distributed_testing/coordinator_hardware_monitoring_integration.py'
+      - 'test/distributed_testing/tests/test_hardware_utilization_monitor.py'
+      - 'test/distributed_testing/run_hardware_monitoring_tests.py'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode'
+        required: true
+        default: 'standard'
+        type: choice
+        options:
+          - standard
+          - basic
+          - full
+          - long
+
+jobs:
+  hardware-monitoring-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9]
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install duckdb psutil numpy pandas matplotlib pytest
+
+    - name: Create test database directory
+      run: |
+        mkdir -p test_data
+    
+    - name: Run hardware monitoring tests
+      run: |
+        cd test/distributed_testing
+        if [ "${{ github.event.inputs.test_mode }}" == "basic" ]; then
+          python run_hardware_monitoring_tests.py --db-path ../../test_data/test_metrics.duckdb --html-report ../../test_data/test_report.html
+        elif [ "${{ github.event.inputs.test_mode }}" == "full" ]; then
+          python run_hardware_monitoring_tests.py --verbose --db-path ../../test_data/test_metrics.duckdb --html-report ../../test_data/test_report.html
+        elif [ "${{ github.event.inputs.test_mode }}" == "long" ]; then
+          python run_hardware_monitoring_tests.py --verbose --run-long-tests --db-path ../../test_data/test_metrics.duckdb --html-report ../../test_data/test_report.html
+        else
+          python run_hardware_monitoring_tests.py --html-report ../../test_data/test_report.html
+        fi
+    
+    - name: Upload test report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: hardware-monitoring-test-report-${{ matrix.python-version }}
+        path: test_data/test_report.html
+    
+    - name: Upload test database
+      if: always() && github.event.inputs.test_mode != 'standard'
+      uses: actions/upload-artifact@v3
+      with:
+        name: hardware-monitoring-test-db-${{ matrix.python-version }}
+        path: test_data/test_metrics.duckdb
+        
+    - name: Send notifications on failure
+      if: failure()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        cd test/distributed_testing
+        python ci_notification.py \
+          --test-status failure \
+          --test-report ../../test_data/test_report.html \
+          --notification-config notification_config.json \
+          --channels github
+
+  hardware-monitoring-tests-macos:
+    runs-on: macos-latest
+    if: ${{ github.event.inputs.test_mode == 'full' || github.event.inputs.test_mode == 'long' }}
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install duckdb psutil numpy pandas matplotlib pytest
+
+    - name: Create test database directory
+      run: |
+        mkdir -p test_data
+    
+    - name: Run hardware monitoring tests on macOS
+      run: |
+        cd test/distributed_testing
+        if [ "${{ github.event.inputs.test_mode }}" == "long" ]; then
+          python run_hardware_monitoring_tests.py --verbose --run-long-tests --db-path ../../test_data/test_metrics_macos.duckdb --html-report ../../test_data/test_report_macos.html
+        else
+          python run_hardware_monitoring_tests.py --verbose --db-path ../../test_data/test_metrics_macos.duckdb --html-report ../../test_data/test_report_macos.html
+        fi
+    
+    - name: Upload macOS test report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: hardware-monitoring-test-report-macos
+        path: test_data/test_report_macos.html
+
+  integration-with-ci-system:
+    runs-on: ubuntu-latest
+    needs: hardware-monitoring-tests
+    if: ${{ github.event.inputs.test_mode == 'full' || github.event.inputs.test_mode == 'long' }}
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install duckdb psutil numpy pandas matplotlib pytest requests
+
+    - name: Create test database directory
+      run: |
+        mkdir -p test_data
+    
+    - name: Test integration with CI system
+      run: |
+        cd test/distributed_testing
+        # Creates a test run in the CI system using the CI/CD integration plugin
+        python -c "
+        import sys
+        import os
+        import json
+        from pathlib import Path
+        
+        # Add parent directory to path
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath('.'))))
+        
+        # Import the CI plugin framework
+        try:
+            from distributed_testing.ci.register_providers import register_all_providers
+            from distributed_testing.ci.api_interface import CIProviderFactory
+            
+            # Register all providers
+            register_all_providers()
+            
+            # Create a mock provider for testing
+            provider = CIProviderFactory.create_provider('mock', {})
+            
+            # Create a test run
+            test_run = provider.create_test_run({
+                'name': 'Hardware Monitoring Integration Test',
+                'commit_sha': '${{ github.sha }}',
+                'branch': '${{ github.ref_name }}'
+            })
+            
+            # Write the test run ID to a file
+            Path('../../test_data/test_run.json').write_text(json.dumps({
+                'test_run_id': test_run['id'],
+                'status': 'created'
+            }))
+            
+            print(f'Created test run: {test_run[\"id\"]}')
+        except Exception as e:
+            print(f'Error creating test run: {str(e)}')
+            # Create empty file to avoid subsequent errors
+            Path('../../test_data/test_run.json').write_text(json.dumps({
+                'test_run_id': 'mock-test-run',
+                'status': 'error',
+                'error': str(e)
+            }))
+        "
+        
+        # Run the specialized CI integration test
+        python run_hardware_monitoring_tests.py --verbose --html-report ../../test_data/ci_integration_report.html
+    
+    - name: Upload CI integration test report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: hardware-monitoring-ci-integration-report
+        path: test_data/ci_integration_report.html

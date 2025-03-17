@@ -304,9 +304,38 @@ class GitHubClient(CIProviderInterface):
                 logger.error(f"Artifact file not found: {artifact_path}")
                 return False
             
-            # Option 1: Create a Gist to store the artifact
-            # This is one way to store artifacts when using GitHub's API
+            # Determine if file is binary or text
+            is_binary = False
+            try:
+                with open(artifact_path, 'r', encoding='utf-8') as f:
+                    f.read(1024)  # Try to read as text
+            except UnicodeDecodeError:
+                is_binary = True
             
+            if is_binary:
+                # For binary files, use GitHub Releases API
+                return await self._upload_binary_artifact(test_run_id, artifact_path, artifact_name)
+            else:
+                # For text files, use GitHub Gists API
+                return await self._upload_text_artifact(test_run_id, artifact_path, artifact_name)
+        
+        except Exception as e:
+            logger.error(f"Exception uploading artifact to GitHub: {str(e)}")
+            return False
+    
+    async def _upload_text_artifact(self, test_run_id: str, artifact_path: str, artifact_name: str) -> bool:
+        """
+        Upload a text artifact using GitHub Gists API.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_path: Path to artifact file
+            artifact_name: Name of artifact
+            
+        Returns:
+            True if upload succeeded
+        """
+        try:
             # Read file content
             with open(artifact_path, 'r', encoding='utf-8', errors='replace') as f:
                 file_content = f.read()
@@ -328,47 +357,25 @@ class GitHubClient(CIProviderInterface):
                 if response.status == 201:
                     data = await response.json()
                     gist_url = data.get("html_url")
+                    raw_url = data.get("files", {}).get(artifact_name, {}).get("raw_url")
                     
                     if gist_url:
                         logger.info(f"Created Gist for artifact {artifact_name}: {gist_url}")
                         
-                        # Option 2: Update the check run to include a link to the artifact
-                        # This links the artifact to the check run
+                        # Store the artifact URL in the instance for later retrieval
+                        if not hasattr(self, "_artifact_urls"):
+                            self._artifact_urls = {}
                         
-                        check_run_url = f"{self.api_url}/repos/{self.repository}/check-runs/{test_run_id}"
+                        if test_run_id not in self._artifact_urls:
+                            self._artifact_urls[test_run_id] = {}
                         
-                        # Get existing output
-                        async with self.session.get(check_run_url) as get_response:
-                            if get_response.status == 200:
-                                check_data = await get_response.json()
-                                existing_output = check_data.get("output", {})
-                                
-                                # Update output to include artifact link
-                                output_title = existing_output.get("title", "Test Run Results")
-                                output_summary = existing_output.get("summary", "")
-                                
-                                # Add artifact information
-                                artifact_info = f"\n\n## Artifacts\n\n- [{artifact_name}]({gist_url})"
-                                
-                                updated_output = {
-                                    "title": output_title,
-                                    "summary": output_summary + artifact_info
-                                }
-                                
-                                # Update the check run
-                                update_payload = {
-                                    "output": updated_output
-                                }
-                                
-                                async with self.session.patch(check_run_url, json=update_payload) as update_response:
-                                    if update_response.status == 200:
-                                        logger.info(f"Updated check run {test_run_id} with artifact link")
-                                    else:
-                                        error_text = await update_response.text()
-                                        logger.error(f"Error updating check run with artifact link: {update_response.status} - {error_text}")
-                            else:
-                                error_text = await get_response.text()
-                                logger.warning(f"Could not get check run to update with artifact link: {get_response.status} - {error_text}")
+                        self._artifact_urls[test_run_id][artifact_name] = {
+                            "url": gist_url,
+                            "raw_url": raw_url
+                        }
+                        
+                        # Update the check run to include a link to the artifact
+                        await self._update_check_run_with_artifact(test_run_id, artifact_name, gist_url)
                         
                         return True
                     else:
@@ -377,16 +384,241 @@ class GitHubClient(CIProviderInterface):
                 else:
                     error_text = await response.text()
                     logger.error(f"Error creating Gist for artifact: {response.status} - {error_text}")
-                    
-                    # Option 3: For binary files or if Gist creation fails, we could use another approach
-                    # like creating a release asset or using GitHub Packages
-                    
-                    logger.info("Falling back to alternative artifact storage for GitHub")
-                    return True  # Simulate success for now
+                    return False
         
         except Exception as e:
-            logger.error(f"Exception uploading artifact to GitHub: {str(e)}")
+            logger.error(f"Error uploading text artifact: {str(e)}")
             return False
+    
+    async def _upload_binary_artifact(self, test_run_id: str, artifact_path: str, artifact_name: str) -> bool:
+        """
+        Upload a binary artifact using GitHub Releases API.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_path: Path to artifact file
+            artifact_name: Name of artifact
+            
+        Returns:
+            True if upload succeeded
+        """
+        try:
+            # Create a tag for the release
+            tag_name = f"test-run-{test_run_id}"
+            
+            # Try to get the commit SHA if available
+            commit_sha = self.commit_sha
+            if not commit_sha:
+                # Use default branch if no commit SHA available
+                branch_url = f"{self.api_url}/repos/{self.repository}/branches/main"
+                async with self.session.get(branch_url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        commit_sha = data.get("commit", {}).get("sha")
+                    else:
+                        commit_sha = "HEAD"
+            
+            # Create a release
+            release_url = f"{self.api_url}/repos/{self.repository}/releases"
+            
+            release_payload = {
+                "tag_name": tag_name,
+                "name": f"Test Run {test_run_id}",
+                "body": f"Artifacts for test run {test_run_id}",
+                "draft": False,
+                "prerelease": True,
+                "target_commitish": commit_sha
+            }
+            
+            async with self.session.post(release_url, json=release_payload) as response:
+                # Check if release creation was successful
+                if response.status in (201, 200):
+                    release_data = await response.json()
+                    release_id = release_data.get("id")
+                    upload_url = release_data.get("upload_url").split("{")[0]
+                    
+                    # Upload the asset
+                    with open(artifact_path, "rb") as f:
+                        content = f.read()
+                    
+                    # Set up headers for binary upload
+                    headers = {
+                        "Content-Type": "application/octet-stream",
+                        "Content-Length": str(os.path.getsize(artifact_path))
+                    }
+                    
+                    # Upload the asset
+                    asset_url = f"{upload_url}?name={artifact_name}"
+                    async with self.session.post(asset_url, data=content, headers=headers) as upload_response:
+                        if upload_response.status == 201:
+                            asset_data = await upload_response.json()
+                            browser_download_url = asset_data.get("browser_download_url")
+                            
+                            if browser_download_url:
+                                logger.info(f"Uploaded binary artifact {artifact_name} to {browser_download_url}")
+                                
+                                # Store the artifact URL for later retrieval
+                                if not hasattr(self, "_artifact_urls"):
+                                    self._artifact_urls = {}
+                                
+                                if test_run_id not in self._artifact_urls:
+                                    self._artifact_urls[test_run_id] = {}
+                                
+                                self._artifact_urls[test_run_id][artifact_name] = {
+                                    "url": browser_download_url,
+                                    "release_id": release_id
+                                }
+                                
+                                # Update the check run to include a link to the artifact
+                                await self._update_check_run_with_artifact(test_run_id, artifact_name, browser_download_url)
+                                
+                                return True
+                            else:
+                                logger.error("Failed to get download URL from response")
+                                return False
+                        else:
+                            error_text = await upload_response.text()
+                            logger.error(f"Error uploading binary artifact: {upload_response.status} - {error_text}")
+                            return False
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Error creating release: {response.status} - {error_text}")
+                    return False
+        
+        except Exception as e:
+            logger.error(f"Error uploading binary artifact: {str(e)}")
+            return False
+    
+    async def _update_check_run_with_artifact(self, test_run_id: str, artifact_name: str, artifact_url: str) -> bool:
+        """
+        Update a check run to include a link to an artifact.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            artifact_url: URL to artifact
+            
+        Returns:
+            True if update succeeded
+        """
+        try:
+            # Skip for simulated test runs
+            if test_run_id.startswith("gh-simulated-"):
+                return True
+            
+            check_run_url = f"{self.api_url}/repos/{self.repository}/check-runs/{test_run_id}"
+            
+            # Get existing output
+            async with self.session.get(check_run_url) as get_response:
+                if get_response.status == 200:
+                    check_data = await get_response.json()
+                    existing_output = check_data.get("output", {})
+                    
+                    # Update output to include artifact link
+                    output_title = existing_output.get("title", "Test Run Results")
+                    output_summary = existing_output.get("summary", "")
+                    
+                    # Check if we already have an Artifacts section
+                    if "## Artifacts" in output_summary:
+                        # Add to existing Artifacts section
+                        output_summary += f"\n- [{artifact_name}]({artifact_url})"
+                    else:
+                        # Add new Artifacts section
+                        output_summary += f"\n\n## Artifacts\n\n- [{artifact_name}]({artifact_url})"
+                    
+                    updated_output = {
+                        "title": output_title,
+                        "summary": output_summary
+                    }
+                    
+                    # Update the check run
+                    update_payload = {
+                        "output": updated_output
+                    }
+                    
+                    async with self.session.patch(check_run_url, json=update_payload) as update_response:
+                        if update_response.status == 200:
+                            logger.info(f"Updated check run {test_run_id} with artifact link")
+                            return True
+                        else:
+                            error_text = await update_response.text()
+                            logger.error(f"Error updating check run with artifact link: {update_response.status} - {error_text}")
+                            return False
+                else:
+                    error_text = await get_response.text()
+                    logger.warning(f"Could not get check run to update with artifact link: {get_response.status} - {error_text}")
+                    return False
+            
+        except Exception as e:
+            logger.error(f"Error updating check run with artifact: {str(e)}")
+            return False
+            
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """
+        Get the URL for a test run artifact.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            
+        Returns:
+            URL to the artifact or None if not found
+        """
+        await self._ensure_session()
+        
+        try:
+            # Skip for simulated test runs
+            if test_run_id.startswith("gh-simulated-"):
+                logger.warning(f"Cannot get artifact URL for simulated test run {test_run_id}")
+                return None
+            
+            # Check if we have the URL cached
+            if hasattr(self, "_artifact_urls") and test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
+                artifact_info = self._artifact_urls[test_run_id][artifact_name]
+                return artifact_info.get("raw_url") or artifact_info.get("url")
+            
+            # Try to find the artifact URL from the check run
+            check_run_url = f"{self.api_url}/repos/{self.repository}/check-runs/{test_run_id}"
+            
+            async with self.session.get(check_run_url) as response:
+                if response.status == 200:
+                    check_data = await response.json()
+                    output = check_data.get("output", {})
+                    summary = output.get("summary", "")
+                    
+                    # Look for the artifact link in the summary
+                    import re
+                    artifact_pattern = rf"\[{re.escape(artifact_name)}\]\((.*?)\)"
+                    match = re.search(artifact_pattern, summary)
+                    
+                    if match:
+                        return match.group(1)
+                    else:
+                        logger.warning(f"Artifact {artifact_name} not found in check run {test_run_id}")
+                else:
+                    logger.warning(f"Failed to get check run {test_run_id}")
+            
+            # Try to find the artifact in releases
+            # First, try to get the release by tag name
+            tag_name = f"test-run-{test_run_id}"
+            releases_url = f"{self.api_url}/repos/{self.repository}/releases/tags/{tag_name}"
+            
+            async with self.session.get(releases_url) as response:
+                if response.status == 200:
+                    release_data = await response.json()
+                    assets = release_data.get("assets", [])
+                    
+                    for asset in assets:
+                        if asset.get("name") == artifact_name:
+                            return asset.get("browser_download_url")
+            
+            # If we didn't find the artifact, return None
+            logger.warning(f"Artifact {artifact_name} not found for test run {test_run_id}")
+            return None
+                
+        except Exception as e:
+            logger.error(f"Error getting artifact URL: {str(e)}")
+            return None
     
     async def get_test_run_status(self, test_run_id: str) -> Dict[str, Any]:
         """

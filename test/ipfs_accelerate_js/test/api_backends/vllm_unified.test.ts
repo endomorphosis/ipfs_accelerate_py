@@ -1,14 +1,18 @@
-// Tests for VLLM Unified API Backend
-import { VLLM } from '../../src/api_backends/vllm/vllm';
+// Basic tests for VLLM Unified API Backend with Container Management
+// For comprehensive tests, see vllm_unified_comprehensive.test.ts
+import { VllmUnified } from '../../src/api_backends/vllm_unified/vllm_unified';
 import { 
-  VLLMRequestData, 
-  VLLMResponse, 
-  VLLMRequestOptions,
-  VLLMModelInfo,
-  VLLMLoraAdapter,
-  VLLMQuantizationConfig
-} from '../../src/api_backends/vllm/types';
-import { ApiMetadata, Message, ApiRequestOptions, PriorityLevel } from '../../src/api_backends/types';
+  VllmRequest,
+  VllmUnifiedResponse,
+  VllmBatchResponse,
+  VllmStreamChunk,
+  VllmModelInfo,
+  VllmLoraAdapter,
+  VllmQuantizationConfig,
+  VllmContainerConfig,
+  VllmContainerStatus
+} from '../../src/api_backends/vllm_unified/types';
+import { ApiMetadata, Message, ApiRequestOptions } from '../../src/api_backends/types';
 
 // Mock child_process for container tests
 jest.mock('child_process', () => ({
@@ -16,27 +20,40 @@ jest.mock('child_process', () => ({
   spawn: jest.fn()
 }));
 
-// Mock os for platform checks
+// Mock os for platform checks and path operations
 jest.mock('os', () => ({
-  platform: jest.fn().mockReturnValue('linux')
+  platform: jest.fn().mockReturnValue('linux'),
+  homedir: jest.fn().mockReturnValue('/home/user')
 }));
 
 // Mock fs for file operations
 jest.mock('fs', () => ({
   existsSync: jest.fn().mockReturnValue(true),
   writeFileSync: jest.fn(),
-  readFileSync: jest.fn().mockReturnValue(Buffer.from('{}'))
+  readFileSync: jest.fn().mockReturnValue(Buffer.from('{}')),
+  mkdirSync: jest.fn(),
+  statSync: jest.fn().mockReturnValue({
+    isDirectory: jest.fn().mockReturnValue(true)
+  }),
+  readdirSync: jest.fn().mockReturnValue(['file1', 'file2']),
+  copyFileSync: jest.fn()
+}));
+
+// Mock path for path operations
+jest.mock('path', () => ({
+  join: jest.fn((...args) => args.join('/')),
+  basename: jest.fn((path) => path.split('/').pop())
 }));
 
 // Mock fetch for testing
 global.fetch = jest.fn();
 
-// Mock AbortSignal for timeout
-global.AbortSignal = {
-  timeout: jest.fn().mockReturnValue({
-    aborted: false
-  })
-} as any;
+// Mock AbortController for timeout
+global.AbortController = class {
+  signal = { aborted: false };
+  abort() { this.signal.aborted = true; }
+};
+AbortController.timeout = jest.fn().mockReturnValue(new AbortController());
 
 // Mock TextEncoder and TextDecoder for streaming response tests
 global.TextEncoder = require('util').TextEncoder;
@@ -46,13 +63,16 @@ global.TextDecoder = require('util').TextDecoder;
 const mockReadableStream = () => {
   const chunks = [
     `data: ${JSON.stringify({
-      choices: [{ delta: { content: 'Hello', role: 'assistant' }, finish_reason: null }]
+      text: 'Hello',
+      metadata: { finish_reason: null, is_streaming: true }
     })}`,
     `data: ${JSON.stringify({
-      choices: [{ delta: { content: ', world!', role: 'assistant' }, finish_reason: null }]
+      text: ', world!',
+      metadata: { finish_reason: null, is_streaming: true }
     })}`,
     `data: ${JSON.stringify({
-      choices: [{ delta: { content: '', role: 'assistant' }, finish_reason: 'stop' }]
+      text: '',
+      metadata: { finish_reason: 'stop', is_streaming: false }
     })}`,
     'data: [DONE]'
   ];
@@ -79,9 +99,12 @@ const mockReadableStream = () => {
   };
 };
 
-describe('VLLM Unified API Backend', () => {
-  let backend: VLLM;
+describe('VLLM Unified API Backend with Container Management', () => {
+  let backend: VllmUnified;
   let mockMetadata: ApiMetadata;
+  const childProcess = require('child_process');
+  const fs = require('fs');
+  const os = require('os');
   
   beforeEach(() => {
     // Reset mocks
@@ -93,19 +116,14 @@ describe('VLLM Unified API Backend', () => {
       json: jest.fn().mockResolvedValue({
         id: 'test-id',
         model: 'test-model',
-        choices: [
-          {
-            message: {
-              role: 'assistant',
-              content: 'Hello, I am an AI assistant.'
-            },
-            finish_reason: 'stop'
+        text: 'Hello, I am an AI assistant.',
+        metadata: {
+          finish_reason: 'stop',
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30
           }
-        ],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 20,
-          total_tokens: 30
         }
       })
     });
@@ -113,542 +131,701 @@ describe('VLLM Unified API Backend', () => {
     // Set up test data
     mockMetadata = {
       vllm_api_key: 'test-api-key',
-      vllm_api_url: 'https://vllm-api.example.com',
-      vllm_model: 'meta-llama/Llama-2-7b-chat-hf'
+      vllm_api_url: 'http://localhost:8000',
+      vllm_model: 'meta-llama/Llama-2-7b-chat-hf',
+      vllm_container_enabled: true,
+      vllm_container_image: 'vllm/vllm-openai:latest',
+      vllm_container_gpu: true,
+      vllm_tensor_parallel_size: 2,
+      vllm_gpu_memory_utilization: 0.8
     };
     
     // Create backend instance
-    backend = new VLLM({}, mockMetadata);
+    backend = new VllmUnified({}, mockMetadata);
   });
   
   // Core Functionality Tests
   
-  test('should initialize correctly', () => {
+  test('should initialize with container configuration', () => {
     expect(backend).toBeDefined();
     
-    // Test with custom API URL
-    const customBackend = new VLLM({}, { 
-      vllm_api_url: 'https://custom-vllm-url.com',
-      vllm_model: 'custom-model'
+    // Check container configuration
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnabled).toBe(true);
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig).toBeDefined();
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig.image).toBe('vllm/vllm-openai:latest');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig.gpu).toBe(true);
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig.tensor_parallel_size).toBe(2);
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig.gpu_memory_utilization).toBe(0.8);
+    
+    // Check environment variables
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnvVars).toBeDefined();
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnvVars.VLLM_MODEL_PATH).toBe('meta-llama/Llama-2-7b-chat-hf');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnvVars.VLLM_TENSOR_PARALLEL_SIZE).toBe('2');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnvVars.VLLM_GPU_MEMORY_UTILIZATION).toBe('0.8');
+    
+    // Check that configuration directories are created
+    expect(fs.mkdirSync).toHaveBeenCalled();
+    expect(fs.writeFileSync).toHaveBeenCalled();
+  });
+  
+  test('should initialize without container management when not enabled', () => {
+    // Create backend instance without container management
+    const nonContainerBackend = new VllmUnified({}, {
+      vllm_api_url: 'http://localhost:8000',
+      vllm_model: 'meta-llama/Llama-2-7b-chat-hf'
     });
-    expect(customBackend).toBeDefined();
     
-    // @ts-ignore - Accessing protected property for testing
-    expect(customBackend.apiUrl).toBe('https://custom-vllm-url.com');
-    // @ts-ignore - Accessing protected property for testing
-    expect(customBackend.defaultModel).toBe('custom-model');
+    expect(nonContainerBackend).toBeDefined();
+    // @ts-ignore - Accessing private property for testing
+    expect(nonContainerBackend.containerEnabled).toBe(false);
+    // @ts-ignore - Accessing private property for testing
+    expect(nonContainerBackend.containerConfig).toBeNull();
   });
   
-  test('should get API key from metadata', () => {
-    // @ts-ignore - Testing protected method
-    const apiKey = backend.getApiKey(mockMetadata);
-    expect(apiKey).toBe('test-api-key');
+  test('should start container successfully', async () => {
+    // Mock Docker available and image exists
+    childProcess.execSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('docker --version')) {
+        return Buffer.from('Docker version 20.10.21');
+      } else if (cmd.includes('docker image inspect')) {
+        return Buffer.from('{"Id": "image-id"}');
+      } else if (cmd.includes('docker run')) {
+        return Buffer.from('container-id');
+      } else {
+        return Buffer.from('');
+      }
+    });
     
-    // Test environment variable fallback
-    const originalEnv = process.env.VLLM_API_KEY;
-    process.env.VLLM_API_KEY = 'env-api-key';
-    // @ts-ignore - Testing protected method
-    const envApiKey = backend.getApiKey({});
-    expect(envApiKey).toBe('env-api-key');
+    // Mock successful API connection
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ models: ['model1', 'model2'] })
+    });
     
-    // Restore original environment
-    process.env.VLLM_API_KEY = originalEnv;
-  });
-  
-  test('should get default model', () => {
-    // @ts-ignore - Testing protected method
-    const model = backend.getDefaultModel();
-    expect(model).toBeDefined();
-    expect(typeof model).toBe('string');
-    expect(model).toBe('meta-llama/Llama-2-7b-chat-hf');
-  });
-  
-  test('should create endpoint handler', () => {
-    const handler = backend.createEndpointHandler();
-    expect(handler).toBeDefined();
-    expect(typeof handler).toBe('function');
+    // Start the container
+    const result = await backend.startContainer();
     
-    // Test with custom URL
-    const customHandler = backend.createEndpointHandler('https://custom-endpoint.com');
-    expect(customHandler).toBeDefined();
-    expect(typeof customHandler).toBe('function');
-  });
-  
-  test('should create chat endpoint handler', () => {
-    // @ts-ignore - Testing method not in interface but in implementation
-    const handler = backend.createVLLMChatEndpointHandler();
-    expect(handler).toBeDefined();
-    expect(typeof handler).toBe('function');
-    
-    // Test with custom URL
-    // @ts-ignore - Testing method not in interface but in implementation
-    const customHandler = backend.createVLLMChatEndpointHandler('https://custom-chat-endpoint.com');
-    expect(customHandler).toBeDefined();
-    expect(typeof customHandler).toBe('function');
-  });
-  
-  test('should test endpoint', async () => {
-    const result = await backend.testEndpoint();
+    // Check result
     expect(result).toBe(true);
-    expect(global.fetch).toHaveBeenCalled();
     
-    // Test with custom URL and model
-    const customResult = await backend.testEndpoint('https://custom-endpoint.com', 'custom-model');
-    expect(customResult).toBe(true);
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    // Check container status and ID
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('running');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerId).toBe('container-id');
+    
+    // Check Docker commands
+    expect(childProcess.execSync).toHaveBeenCalledWith('docker --version', expect.anything());
+    expect(childProcess.execSync).toHaveBeenCalledWith(expect.stringContaining('docker run -d --rm '), expect.anything());
+    
+    // Check health check is started
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerHealthCheckTimer).toBeDefined();
   });
   
-  test('should test chat endpoint', async () => {
-    // @ts-ignore - Testing method not in interface but in implementation
-    const result = await backend.testVLLMChatEndpoint();
+  test('should handle container startup failure', async () => {
+    // Mock Docker command failure
+    childProcess.execSync.mockImplementationOnce(() => { throw new Error('Docker not found'); });
+    
+    // Start the container
+    const result = await backend.startContainer();
+    
+    // Check result
+    expect(result).toBe(false);
+    
+    // Check container status
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('error');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerId).toBeNull();
+  });
+  
+  test('should stop container successfully', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Stop the container
+    const result = await backend.stopContainer();
+    
+    // Check result
     expect(result).toBe(true);
-    expect(global.fetch).toHaveBeenCalled();
     
-    // Test with custom URL and model
-    // @ts-ignore - Testing method not in interface but in implementation
-    const customResult = await backend.testVLLMChatEndpoint('https://custom-chat-endpoint.com', 'custom-model');
-    expect(customResult).toBe(true);
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    // Check container status and ID
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('stopped');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerId).toBeNull();
+    
+    // Check Docker command
+    expect(childProcess.execSync).toHaveBeenCalledWith('docker stop container-id');
   });
   
-  test('should make POST request to VLLM', async () => {
-    // @ts-ignore - Testing protected method
-    const response = await backend.makePostRequestVLLM(
-      'https://vllm-api.example.com/v1/completions',
-      { prompt: 'Hello', max_tokens: 10 }
-    );
+  test('should handle container stop when not running', async () => {
+    // Setup container as not running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'stopped';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = null;
     
-    expect(response).toBeDefined();
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://vllm-api.example.com/v1/completions',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'Content-Type': 'application/json'
-        }),
-        body: expect.any(String)
+    // Stop the container
+    const result = await backend.stopContainer();
+    
+    // Check result
+    expect(result).toBe(true);
+    
+    // Check Docker command was not called
+    expect(childProcess.execSync).not.toHaveBeenCalledWith(expect.stringContaining('docker stop'));
+  });
+  
+  test('should restart container successfully', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Mock Docker command success
+    childProcess.execSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('docker --version')) {
+        return Buffer.from('Docker version 20.10.21');
+      } else if (cmd.includes('docker stop')) {
+        return Buffer.from('');
+      } else if (cmd.includes('docker image inspect')) {
+        return Buffer.from('{"Id": "image-id"}');
+      } else if (cmd.includes('docker run')) {
+        return Buffer.from('new-container-id');
+      } else {
+        return Buffer.from('');
+      }
+    });
+    
+    // Mock successful API connection
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ models: ['model1', 'model2'] })
+    });
+    
+    // Restart the container
+    const result = await backend.restartContainer();
+    
+    // Check result
+    expect(result).toBe(true);
+    
+    // Check container status and ID
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('running');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerId).toBe('new-container-id');
+    
+    // Check Docker commands
+    expect(childProcess.execSync).toHaveBeenCalledWith('docker stop container-id');
+    expect(childProcess.execSync).toHaveBeenCalledWith(expect.stringContaining('docker run -d --rm '), expect.anything());
+  });
+  
+  test('should get container status', () => {
+    // Set status for test
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    
+    // Get status
+    const status = backend.getContainerStatus();
+    
+    // Check result
+    expect(status).toBe('running');
+  });
+  
+  test('should get container logs', () => {
+    // Set logs for test
+    const testLogs = ['[2025-03-16T12:00:00.000Z] Log entry 1', '[2025-03-16T12:01:00.000Z] Log entry 2'];
+    // @ts-ignore - Setting private property for testing
+    backend.containerLogs = testLogs;
+    
+    // Get logs
+    const logs = backend.getContainerLogs();
+    
+    // Check result
+    expect(logs).toEqual(testLogs);
+    expect(logs).not.toBe(testLogs); // Should be a copy, not the same reference
+  });
+  
+  test('should check container health', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Mock Docker command for container running
+    childProcess.execSync.mockImplementationOnce((cmd: string) => {
+      if (cmd.includes('docker inspect')) {
+        return Buffer.from('true');
+      } else {
+        return Buffer.from('');
+      }
+    });
+    
+    // Mock successful API connection
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ models: ['model1', 'model2'] })
+    });
+    
+    // Check health
+    // @ts-ignore - Calling private method for testing
+    await backend.checkContainerHealth();
+    
+    // Container should still be running
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('running');
+    
+    // Docker inspect should have been called
+    expect(childProcess.execSync).toHaveBeenCalledWith(expect.stringContaining('docker inspect container-id'));
+  });
+  
+  test('should handle container stopped in health check', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    // @ts-ignore - Setting private property for testing
+    backend.containerAutomaticRetryEnabled = false;
+    
+    // Mock Docker command for container stopped
+    childProcess.execSync.mockImplementationOnce((cmd: string) => {
+      if (cmd.includes('docker inspect')) {
+        return Buffer.from('false');
+      } else {
+        return Buffer.from('');
+      }
+    });
+    
+    // Check health
+    // @ts-ignore - Calling private method for testing
+    await backend.checkContainerHealth();
+    
+    // Container should be marked as stopped
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('stopped');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerId).toBeNull();
+  });
+  
+  test('should handle API not responsive in health check', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Mock Docker command for container running
+    childProcess.execSync.mockImplementationOnce((cmd: string) => {
+      if (cmd.includes('docker inspect')) {
+        return Buffer.from('true');
+      } else {
+        return Buffer.from('');
+      }
+    });
+    
+    // Mock API connection failure
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Connection refused'));
+    
+    // Check health
+    // @ts-ignore - Calling private method for testing
+    await backend.checkContainerHealth();
+    
+    // Container should still be running (we wait for Docker check to handle it)
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('running');
+    
+    // Logs should mention API failure
+    // @ts-ignore - Accessing private property for testing
+    const logs = backend.containerLogs;
+    expect(logs[logs.length - 1]).toContain('API check failed');
+  });
+  
+  test('should set container configuration', () => {
+    // Update configuration
+    const newConfig: Partial<VllmContainerConfig> = {
+      gpu_memory_utilization: 0.9,
+      tensor_parallel_size: 4,
+      max_model_len: 4096,
+      quantization: 'awq'
+    };
+    
+    backend.setContainerConfig(newConfig);
+    
+    // Check configuration was updated
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig.gpu_memory_utilization).toBe(0.9);
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig.tensor_parallel_size).toBe(4);
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig.max_model_len).toBe(4096);
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerConfig.quantization).toBe('awq');
+    
+    // Check environment variables were updated
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnvVars.VLLM_GPU_MEMORY_UTILIZATION).toBe('0.9');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnvVars.VLLM_TENSOR_PARALLEL_SIZE).toBe('4');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnvVars.VLLM_MAX_MODEL_LEN).toBe('4096');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnvVars.VLLM_QUANTIZATION).toBe('awq');
+    
+    // Check configuration file was updated
+    expect(fs.writeFileSync).toHaveBeenCalled();
+  });
+  
+  test('should get container configuration', () => {
+    // Set configuration for test
+    // @ts-ignore - Setting private property for testing
+    backend.containerConfig = {
+      image: 'vllm/vllm-openai:latest',
+      gpu: true,
+      models_path: '/home/user/.vllm/models',
+      config_path: '/home/user/.vllm',
+      api_port: 8000,
+      tensor_parallel_size: 2,
+      max_model_len: 4096,
+      gpu_memory_utilization: 0.8,
+      quantization: 'awq',
+      trust_remote_code: false,
+      custom_args: ''
+    };
+    
+    // Get configuration
+    const config = backend.getContainerConfig();
+    
+    // Check result
+    expect(config).toBeDefined();
+    expect(config?.image).toBe('vllm/vllm-openai:latest');
+    expect(config?.gpu).toBe(true);
+    expect(config?.tensor_parallel_size).toBe(2);
+    expect(config?.quantization).toBe('awq');
+  });
+  
+  test('should enable container mode', () => {
+    // Create backend without container mode
+    const nonContainerBackend = new VllmUnified({}, {
+      vllm_api_url: 'http://localhost:8000',
+      vllm_model: 'meta-llama/Llama-2-7b-chat-hf'
+    });
+    
+    // Check container mode is disabled
+    // @ts-ignore - Accessing private property for testing
+    expect(nonContainerBackend.containerEnabled).toBe(false);
+    
+    // Enable container mode
+    nonContainerBackend.enableContainerMode({
+      gpu: true,
+      tensor_parallel_size: 4
+    });
+    
+    // Check container mode is enabled
+    // @ts-ignore - Accessing private property for testing
+    expect(nonContainerBackend.containerEnabled).toBe(true);
+    // @ts-ignore - Accessing private property for testing
+    expect(nonContainerBackend.containerConfig).toBeDefined();
+    // @ts-ignore - Accessing private property for testing
+    expect(nonContainerBackend.containerConfig.gpu).toBe(true);
+    // @ts-ignore - Accessing private property for testing
+    expect(nonContainerBackend.containerConfig.tensor_parallel_size).toBe(4);
+  });
+  
+  test('should disable container mode', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Disable container mode
+    await backend.disableContainerMode();
+    
+    // Check container mode is disabled
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerEnabled).toBe(false);
+    
+    // Container should be stopped
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('stopped');
+    
+    // Docker stop should have been called
+    expect(childProcess.execSync).toHaveBeenCalledWith('docker stop container-id');
+  });
+  
+  test('should load models into container', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Load models
+    const result = await backend.loadModels(['/path/to/model1', '/path/to/model2']);
+    
+    // Check result
+    expect(result).toBe(true);
+    
+    // Check directory creation and file copying
+    expect(fs.mkdirSync).toHaveBeenCalled();
+    expect(fs.copyFileSync).toHaveBeenCalled();
+  });
+  
+  test('should validate container capabilities', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Mock Docker command success
+    childProcess.execSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('docker --version')) {
+        return Buffer.from('Docker version 20.10.21');
+      } else if (cmd.includes('nvidia-smi')) {
+        return Buffer.from('NVIDIA-SMI 535.154.05');
+      } else {
+        return Buffer.from('');
+      }
+    });
+    
+    // Mock successful API connection
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ models: ['model1', 'model2'] })
+    }).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ model: 'meta-llama/Llama-2-7b-chat-hf' })
+    });
+    
+    // Validate capabilities
+    const capabilities = await backend.validateContainerCapabilities();
+    
+    // Check result
+    expect(capabilities).toBeDefined();
+    expect(capabilities.docker_available).toBe(true);
+    expect(capabilities.gpu_support).toBe(true);
+    expect(capabilities.api_accessible).toBe(true);
+    expect(capabilities.model_loaded).toBe(true);
+  });
+  
+  test('should auto-start container when making a request', async () => {
+    // Setup container as not running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'stopped';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = null;
+    
+    // Mock Docker command success
+    childProcess.execSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('docker --version')) {
+        return Buffer.from('Docker version 20.10.21');
+      } else if (cmd.includes('docker image inspect')) {
+        return Buffer.from('{"Id": "image-id"}');
+      } else if (cmd.includes('docker run')) {
+        return Buffer.from('container-id');
+      } else {
+        return Buffer.from('');
+      }
+    });
+    
+    // Mock successful API connection for container startup
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ models: ['model1', 'model2'] })
+    }).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        id: 'test-id',
+        model: 'test-model',
+        text: 'Hello, I am an AI assistant.',
+        metadata: {
+          finish_reason: 'stop',
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30
+          }
+        }
       })
-    );
+    });
     
-    // Test with options
-    // @ts-ignore - Testing protected method
-    const responseWithOptions = await backend.makePostRequestVLLM(
-      'https://vllm-api.example.com/v1/completions',
+    // Make a request
+    const result = await backend.makeRequest(
+      'http://localhost:8000',
       { prompt: 'Hello', max_tokens: 10 },
-      { temperature: 0.5, top_p: 0.9, apiKey: 'custom-key' }
-    );
-    
-    expect(responseWithOptions).toBeDefined();
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(global.fetch).toHaveBeenLastCalledWith(
-      'https://vllm-api.example.com/v1/completions',
-      expect.objectContaining({
-        body: expect.stringContaining('"temperature":0.5')
-      })
-    );
-  });
-  
-  test('should handle API errors in makePostRequestVLLM', async () => {
-    // Mock error responses for different status codes
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      text: jest.fn().mockResolvedValue('Model not found')
-    });
-    
-    // @ts-ignore - Testing protected method
-    await expect(backend.makePostRequestVLLM('https://vllm-api.example.com/v1/completions', {}))
-      .rejects.toThrow('VLLM API error: Model not found');
-    
-    // 401 error
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      text: jest.fn().mockResolvedValue('Unauthorized')
-    });
-    
-    // @ts-ignore - Testing protected method
-    await expect(backend.makePostRequestVLLM('https://vllm-api.example.com/v1/completions', {}))
-      .rejects.toThrow('VLLM API error: Unauthorized');
-    
-    // 500 error
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      text: jest.fn().mockResolvedValue('Internal server error')
-    });
-    
-    // @ts-ignore - Testing protected method
-    await expect(backend.makePostRequestVLLM('https://vllm-api.example.com/v1/completions', {}))
-      .rejects.toThrow('VLLM API error: Internal server error');
-  });
-  
-  test('should make streaming request to VLLM', async () => {
-    // Mock streaming response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      body: mockReadableStream(),
-      status: 200
-    });
-    
-    // @ts-ignore - Testing protected method
-    const stream = await backend.makeStreamRequestVLLM(
-      'https://vllm-api.example.com/v1/completions',
-      { prompt: 'Hello', max_tokens: 10 }
-    );
-    
-    expect(stream).toBeDefined();
-    
-    // Collect items from the stream
-    const chunks = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
-    
-    expect(chunks.length).toBeGreaterThan(0);
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://vllm-api.example.com/v1/completions',
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.stringContaining('"stream":true')
-      })
-    );
-  });
-  
-  test('should handle errors in makeStreamRequestVLLM', async () => {
-    // Mock error response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      text: jest.fn().mockResolvedValue('Unauthorized')
-    });
-    
-    // @ts-ignore - Testing protected method
-    await expect(backend.makeStreamRequestVLLM(
-      'https://vllm-api.example.com/v1/completions',
-      { prompt: 'Hello', max_tokens: 10 }
-    )).rejects.toThrow('VLLM API streaming error: Unauthorized');
-  });
-  
-  test('should handle null body in streaming response', async () => {
-    // Mock response with null body
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      body: null,
-      status: 200
-    });
-    
-    // @ts-ignore - Testing protected method
-    await expect(backend.makeStreamRequestVLLM(
-      'https://vllm-api.example.com/v1/completions',
-      { prompt: 'Hello', max_tokens: 10 }
-    )).rejects.toThrow('Response body is null');
-  });
-  
-  test('should handle chat completion', async () => {
-    const messages: Message[] = [
-      { role: 'user', content: 'Hello' }
-    ];
-    
-    const response = await backend.chat(messages);
-    
-    expect(response).toBeDefined();
-    expect(response.content).toBe('Hello, I am an AI assistant.');
-    expect(global.fetch).toHaveBeenCalled();
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/chat/completions'),
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.stringContaining('"messages"')
-      })
-    );
-    
-    // Test with options
-    const responseWithOptions = await backend.chat(messages, {
-      model: 'custom-model',
-      temperature: 0.5,
-      top_p: 0.9,
-      max_tokens: 50
-    });
-    
-    expect(responseWithOptions).toBeDefined();
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/chat/completions'),
-      expect.objectContaining({
-        body: expect.stringContaining('"model":"custom-model"')
-      })
-    );
-  });
-  
-  test('should stream chat completion', async () => {
-    // Mock streaming response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      body: mockReadableStream(),
-      status: 200
-    });
-    
-    const messages: Message[] = [
-      { role: 'user', content: 'Hello' }
-    ];
-    
-    const stream = backend.streamChat(messages);
-    expect(stream).toBeDefined();
-    
-    // Collect items from the stream
-    const chunks = [];
-    for await (const chunk of await stream) {
-      chunks.push(chunk);
-    }
-    
-    expect(chunks.length).toBeGreaterThan(0);
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/chat/completions'),
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.stringContaining('"stream":true')
-      })
-    );
-  });
-  
-  test('should implement makePostRequest abstract method', async () => {
-    const data = { prompt: 'Hello', max_tokens: 10 };
-    const response = await backend.makePostRequest(data);
-    
-    expect(response).toBeDefined();
-    expect(global.fetch).toHaveBeenCalled();
-    
-    // Test with messages
-    const messageData = { 
-      messages: [{ role: 'user', content: 'Hello' }],
-      max_tokens: 10
-    };
-    const messageResponse = await backend.makePostRequest(messageData);
-    
-    expect(messageResponse).toBeDefined();
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(global.fetch).toHaveBeenLastCalledWith(
-      expect.stringContaining('/v1/chat/completions'),
-      expect.any(Object)
-    );
-    
-    // Test with custom endpoint
-    const customResponse = await backend.makePostRequest(data, undefined, {
-      endpoint: 'https://custom-endpoint.com'
-    });
-    
-    expect(customResponse).toBeDefined();
-    expect(global.fetch).toHaveBeenCalledTimes(3);
-    expect(global.fetch).toHaveBeenLastCalledWith(
-      'https://custom-endpoint.com',
-      expect.any(Object)
-    );
-  });
-  
-  test('should implement makeStreamRequest abstract method', async () => {
-    // Mock streaming response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      body: mockReadableStream(),
-      status: 200
-    });
-    
-    const data = { prompt: 'Hello', max_tokens: 10 };
-    const stream = await backend.makeStreamRequest(data);
-    
-    expect(stream).toBeDefined();
-    
-    // Collect items from the stream
-    const chunks = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
-    
-    expect(chunks.length).toBeGreaterThan(0);
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/completions'),
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.stringContaining('"stream":true')
-      })
-    );
-    
-    // Test with messages
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      body: mockReadableStream(),
-      status: 200
-    });
-    
-    const messageData = { 
-      messages: [{ role: 'user', content: 'Hello' }]
-    };
-    const messageStream = await backend.makeStreamRequest(messageData);
-    
-    expect(messageStream).toBeDefined();
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(global.fetch).toHaveBeenLastCalledWith(
-      expect.stringContaining('/v1/chat/completions'),
-      expect.any(Object)
-    );
-  });
-  
-  test('should check model compatibility', () => {
-    // Test with compatible model prefixes
-    expect(backend.isCompatibleModel('meta-llama/llama-7b')).toBe(true);
-    expect(backend.isCompatibleModel('mistralai/mistral-7b')).toBe(true);
-    
-    // Test with compatible model architectures
-    expect(backend.isCompatibleModel('custom-llama-model')).toBe(true);
-    expect(backend.isCompatibleModel('my-falcon-model')).toBe(true);
-    
-    // Test with incompatible model
-    expect(backend.isCompatibleModel('')).toBe(false);
-    expect(backend.isCompatibleModel('clip-vit-base')).toBe(false);
-    expect(backend.isCompatibleModel('BAAI/bge-small-en')).toBe(false);
-  });
-  
-  test('should process batch of prompts', async () => {
-    // @ts-ignore - Testing method not in interface but in implementation
-    const results = await backend.processBatch(
-      'https://vllm-api.example.com/v1/completions',
-      ['Hello', 'How are you?'],
       'test-model'
     );
     
-    expect(results).toBeDefined();
-    expect(Array.isArray(results)).toBe(true);
-    expect(results.length).toBe(2);
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    // Check request was successful
+    expect(result).toBeDefined();
+    
+    // Container should be started
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('running');
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerId).toBe('container-id');
+    
+    // Docker commands should have been called
+    expect(childProcess.execSync).toHaveBeenCalledWith('docker --version', expect.anything());
+    expect(childProcess.execSync).toHaveBeenCalledWith(expect.stringContaining('docker run -d --rm '), expect.anything());
   });
-  
-  test('should process batch with metrics', async () => {
-    // @ts-ignore - Testing method not in interface but in implementation
+
+  test('should successfully process batch with metrics', async () => {
+    // Setup for test
+    const batchData = ['Question 1', 'Question 2', 'Question 3'];
+    const model = 'meta-llama/Llama-2-7b-chat-hf';
+    
+    // Mock API response
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        texts: ['Answer 1', 'Answer 2', 'Answer 3'],
+        metadata: {
+          model: 'meta-llama/Llama-2-7b-chat-hf',
+          finish_reasons: ['stop', 'stop', 'stop'],
+          usage: {
+            prompt_tokens: 30,
+            completion_tokens: 60,
+            total_tokens: 90
+          }
+        }
+      })
+    });
+    
+    // Process batch
     const [results, metrics] = await backend.processBatchWithMetrics(
-      'https://vllm-api.example.com/v1/completions',
-      ['Hello', 'How are you?'],
-      'test-model'
+      batchData,
+      model
     );
     
-    expect(results).toBeDefined();
-    expect(Array.isArray(results)).toBe(true);
-    expect(results.length).toBe(2);
+    // Check results
+    expect(results).toEqual(['Answer 1', 'Answer 2', 'Answer 3']);
     
+    // Check metrics
     expect(metrics).toBeDefined();
-    expect(metrics.batch_size).toBe(2);
-    expect(metrics.successful_items).toBe(2);
+    expect(metrics.model).toBe('meta-llama/Llama-2-7b-chat-hf');
+    expect(metrics.batch_size).toBe(3);
+    expect(metrics.successful_items).toBe(3);
     expect(metrics.total_time_ms).toBeGreaterThanOrEqual(0);
     expect(metrics.average_time_per_item_ms).toBeGreaterThanOrEqual(0);
-    
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(metrics.usage).toBeDefined();
+    expect(metrics.usage.total_tokens).toBe(90);
   });
   
-  test('should stream generation', async () => {
-    // Mock streaming response
+  test('should stream generation with container support', async () => {
+    // Setup for test
+    const prompt = 'Tell me about quantum computing';
+    const model = 'meta-llama/Llama-2-7b-chat-hf';
+    
+    // Mock API streaming response
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       body: mockReadableStream(),
       status: 200
     });
     
-    // @ts-ignore - Testing method not in interface but in implementation
+    // Start streaming
     const stream = backend.streamGeneration(
-      'https://vllm-api.example.com/v1/completions',
-      'Hello, how are you?',
-      'test-model'
+      prompt,
+      model
     );
     
-    expect(stream).toBeDefined();
-    
-    // Collect items from the stream
+    // Collect chunks from the stream
     const chunks = [];
-    for await (const chunk of await stream) {
+    for await (const chunk of stream) {
       chunks.push(chunk);
     }
     
-    expect(chunks.length).toBeGreaterThan(0);
+    // Check results
+    expect(chunks).toEqual(['Hello', ', world!']);
+    
+    // Check API request was made correctly
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://vllm-api.example.com/v1/completions',
+      'http://localhost:8000/v1/completions',
       expect.objectContaining({
         method: 'POST',
+        body: expect.stringContaining('"prompt":"Tell me about quantum computing"'),
+        body: expect.stringContaining('"model":"meta-llama/Llama-2-7b-chat-hf"'),
         body: expect.stringContaining('"stream":true')
       })
     );
   });
   
-  test('should get model info', async () => {
-    // Mock model info response
+  test('should get model info with container support', async () => {
+    // Setup for test
+    const model = 'meta-llama/Llama-2-7b-chat-hf';
+    
+    // Mock API response
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue({
         model: 'meta-llama/Llama-2-7b-chat-hf',
         max_model_len: 4096,
-        num_gpu: 1,
+        num_gpu: 2,
         dtype: 'float16',
-        gpu_memory_utilization: 0.85,
+        gpu_memory_utilization: 0.8,
         quantization: {
-          enabled: false
+          enabled: true,
+          method: 'awq',
+          bits: 4
         }
       })
     });
     
-    const modelInfo = await backend.getModelInfo();
+    // Get model info
+    const modelInfo = await backend.getModelInfo(model);
     
+    // Check results
     expect(modelInfo).toBeDefined();
     expect(modelInfo.model).toBe('meta-llama/Llama-2-7b-chat-hf');
     expect(modelInfo.max_model_len).toBe(4096);
-    expect(modelInfo.num_gpu).toBe(1);
+    expect(modelInfo.num_gpu).toBe(2);
+    expect(modelInfo.dtype).toBe('float16');
+    expect(modelInfo.gpu_memory_utilization).toBe(0.8);
+    expect(modelInfo.quantization).toBeDefined();
+    expect(modelInfo.quantization?.enabled).toBe(true);
+    expect(modelInfo.quantization?.method).toBe('awq');
+    expect(modelInfo.quantization?.bits).toBe(4);
+    
+    // Check API request was made correctly
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/models/'),
+      'http://localhost:8000/v1/models/meta-llama/Llama-2-7b-chat-hf',
       expect.objectContaining({
-        method: 'GET'
+        method: 'GET',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json'
+        })
       })
-    );
-    
-    // Test with custom model name
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: jest.fn().mockResolvedValue({
-        model: 'custom-model',
-        max_model_len: 2048,
-        num_gpu: 2,
-        dtype: 'float16',
-        gpu_memory_utilization: 0.75
-      })
-    });
-    
-    const customModelInfo = await backend.getModelInfo('custom-model');
-    
-    expect(customModelInfo).toBeDefined();
-    expect(customModelInfo.model).toBe('custom-model');
-    expect(global.fetch).toHaveBeenLastCalledWith(
-      expect.stringContaining('/v1/models/custom-model'),
-      expect.any(Object)
     );
   });
   
-  test('should handle errors in getModelInfo', async () => {
-    // Mock error response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      statusText: 'Not Found'
-    });
+  test('should get model statistics with container support', async () => {
+    // Setup for test
+    const model = 'meta-llama/Llama-2-7b-chat-hf';
     
-    await expect(backend.getModelInfo()).rejects.toThrow('Failed to get model info: Not Found');
-    
-    // Test network error
-    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Connection error'));
-    
-    await expect(backend.getModelInfo()).rejects.toThrow('Connection error');
-  });
-  
-  test('should get model statistics', async () => {
-    // Mock model statistics response
+    // Mock API response
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValue({
-        model: 'test-model',
+        model: 'meta-llama/Llama-2-7b-chat-hf',
         statistics: {
           requests_processed: 100,
           tokens_generated: 5000,
@@ -662,220 +839,153 @@ describe('VLLM Unified API Backend', () => {
       })
     });
     
-    const stats = await backend.getModelStatistics();
+    // Get model statistics
+    const stats = await backend.getModelStatistics(model);
     
+    // Check results
     expect(stats).toBeDefined();
-    expect(stats.model).toBe('test-model');
+    expect(stats.model).toBe('meta-llama/Llama-2-7b-chat-hf');
+    expect(stats.statistics).toBeDefined();
     expect(stats.statistics.requests_processed).toBe(100);
     expect(stats.statistics.tokens_generated).toBe(5000);
+    expect(stats.statistics.avg_tokens_per_request).toBe(50);
+    expect(stats.statistics.throughput).toBe(100);
+    
+    // Check API request was made correctly
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/models/'),
+      'http://localhost:8000/v1/models/meta-llama/Llama-2-7b-chat-hf/statistics',
       expect.objectContaining({
-        method: 'GET'
+        method: 'GET',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json'
+        })
       })
-    );
-    
-    // Test with custom model name
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: jest.fn().mockResolvedValue({
-        model: 'custom-model',
-        statistics: {
-          requests_processed: 50,
-          tokens_generated: 2500
-        }
-      })
-    });
-    
-    const customStats = await backend.getModelStatistics('custom-model');
-    
-    expect(customStats).toBeDefined();
-    expect(customStats.model).toBe('custom-model');
-    expect(customStats.statistics.requests_processed).toBe(50);
-    expect(global.fetch).toHaveBeenLastCalledWith(
-      expect.stringContaining('/v1/models/custom-model/statistics'),
-      expect.any(Object)
     );
   });
   
-  test('should handle errors in getModelStatistics', async () => {
-    // Mock error response
+  test('should start container automatically when testing endpoint', async () => {
+    // Setup container as not running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'stopped';
+    
+    // Mock Docker command success
+    childProcess.execSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('docker --version')) {
+        return Buffer.from('Docker version 20.10.21');
+      } else if (cmd.includes('docker image inspect')) {
+        return Buffer.from('{"Id": "image-id"}');
+      } else if (cmd.includes('docker run')) {
+        return Buffer.from('container-id');
+      } else {
+        return Buffer.from('');
+      }
+    });
+    
+    // Mock successful API connection
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({ // For the container readiness check
+        ok: true,
+        json: jest.fn().mockResolvedValue({ models: ['model1', 'model2'] })
+      })
+      .mockResolvedValueOnce({ // For the actual test endpoint call
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          id: 'test-id',
+          model: 'test-model',
+          text: 'Hello, I am an AI assistant.',
+          metadata: { finish_reason: 'stop' }
+        })
+      });
+    
+    // Test endpoint
+    const result = await backend.testEndpoint();
+    
+    // Check result
+    expect(result).toBe(true);
+    
+    // Container should be started
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('running');
+  });
+  
+  test('should handle container start failure when testing endpoint', async () => {
+    // Setup container as not running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'stopped';
+    
+    // Mock Docker command failure
+    childProcess.execSync.mockImplementationOnce(() => { throw new Error('Docker not found'); });
+    
+    // Test endpoint
+    const result = await backend.testEndpoint();
+    
+    // Check result
+    expect(result).toBe(false);
+    
+    // Container should be in error state
+    // @ts-ignore - Accessing private property for testing
+    expect(backend.containerStatus).toBe('error');
+  });
+  
+  // Error Handling Tests
+  
+  test('should handle API errors with container', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Mock API error
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,
       status: 500,
-      statusText: 'Internal Server Error'
+      json: jest.fn().mockResolvedValue({ error: 'Internal server error' })
     });
     
-    await expect(backend.getModelStatistics()).rejects.toThrow('Failed to get model statistics: Internal Server Error');
+    // Make request
+    await expect(backend.makeRequest(
+      'http://localhost:8000',
+      { prompt: 'Hello', max_tokens: 10 },
+      'test-model'
+    )).rejects.toThrow('Internal server error');
   });
   
-  test('should list LoRA adapters', async () => {
-    // Mock LoRA adapter response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: jest.fn().mockResolvedValue({
-        lora_adapters: [
-          {
-            id: 'adapter1',
-            name: 'test-adapter',
-            base_model: 'meta-llama/Llama-2-7b-chat-hf',
-            size_mb: 10,
-            active: true
-          },
-          {
-            id: 'adapter2',
-            name: 'another-adapter',
-            base_model: 'meta-llama/Llama-2-7b-chat-hf',
-            size_mb: 15,
-            active: false
-          }
-        ]
-      })
+  test('should handle timeout errors with container', async () => {
+    // Setup container as running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'running';
+    // @ts-ignore - Setting private property for testing
+    backend.containerId = 'container-id';
+    
+    // Mock timeout error
+    (global.fetch as jest.Mock).mockImplementationOnce(() => {
+      const error = new Error('AbortError');
+      error.name = 'AbortError';
+      throw error;
     });
     
-    const adapters = await backend.listLoraAdapters();
-    
-    expect(adapters).toBeDefined();
-    expect(Array.isArray(adapters)).toBe(true);
-    expect(adapters.length).toBe(2);
-    expect(adapters[0].id).toBe('adapter1');
-    expect(adapters[1].name).toBe('another-adapter');
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/lora_adapters'),
-      expect.objectContaining({
-        method: 'GET'
-      })
-    );
+    // Make request
+    await expect(backend.makeRequest(
+      'http://localhost:8000',
+      { prompt: 'Hello', max_tokens: 10 },
+      'test-model'
+    )).rejects.toThrow('Request timed out');
   });
   
-  test('should handle empty LoRA adapter response', async () => {
-    // Mock empty LoRA adapter response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: jest.fn().mockResolvedValue({})
-    });
+  test('should handle container start failure when making request', async () => {
+    // Setup container as not running
+    // @ts-ignore - Setting private property for testing
+    backend.containerStatus = 'stopped';
     
-    const adapters = await backend.listLoraAdapters();
+    // Mock Docker command failure
+    childProcess.execSync.mockImplementationOnce(() => { throw new Error('Docker not found'); });
     
-    expect(adapters).toBeDefined();
-    expect(Array.isArray(adapters)).toBe(true);
-    expect(adapters.length).toBe(0);
-  });
-  
-  test('should handle errors in listLoraAdapters', async () => {
-    // Mock error response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      statusText: 'Internal Server Error'
-    });
-    
-    await expect(backend.listLoraAdapters()).rejects.toThrow('Failed to list LoRA adapters: Internal Server Error');
-  });
-  
-  test('should load LoRA adapter', async () => {
-    // Mock successful LoRA adapter loading
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: jest.fn().mockResolvedValue({
-        success: true,
-        adapter: {
-          id: 'adapter1',
-          name: 'test-adapter',
-          base_model: 'meta-llama/Llama-2-7b-chat-hf',
-          size_mb: 10,
-          active: true
-        }
-      })
-    });
-    
-    const adapterData = {
-      adapter_name: 'test-adapter',
-      adapter_path: '/path/to/adapter',
-      base_model: 'meta-llama/Llama-2-7b-chat-hf'
-    };
-    
-    const result = await backend.loadLoraAdapter(adapterData);
-    
-    expect(result).toBeDefined();
-    expect(result.success).toBe(true);
-    expect(result.adapter.name).toBe('test-adapter');
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/lora_adapters'),
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.stringContaining('"adapter_name":"test-adapter"')
-      })
-    );
-  });
-  
-  test('should handle errors in loadLoraAdapter', async () => {
-    // Mock error response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      statusText: 'Bad Request'
-    });
-    
-    const adapterData = {
-      adapter_name: 'invalid-adapter',
-      adapter_path: '/path/to/invalid',
-      base_model: 'meta-llama/Llama-2-7b-chat-hf'
-    };
-    
-    await expect(backend.loadLoraAdapter(adapterData)).rejects.toThrow('Failed to load LoRA adapter: Bad Request');
-  });
-  
-  test('should set quantization', async () => {
-    // Mock successful quantization update
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: jest.fn().mockResolvedValue({
-        success: true,
-        model: 'test-model',
-        quantization: {
-          enabled: true,
-          method: 'awq',
-          bits: 4
-        }
-      })
-    });
-    
-    const quantConfig: VLLMQuantizationConfig = {
-      enabled: true,
-      method: 'awq',
-      bits: 4
-    };
-    
-    const result = await backend.setQuantization('test-model', quantConfig);
-    
-    expect(result).toBeDefined();
-    expect(result.success).toBe(true);
-    expect(result.quantization.enabled).toBe(true);
-    expect(result.quantization.method).toBe('awq');
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/models/test-model/quantization'),
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.stringContaining('"method":"awq"')
-      })
-    );
-  });
-  
-  test('should handle errors in setQuantization', async () => {
-    // Mock error response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      statusText: 'Bad Request'
-    });
-    
-    const quantConfig: VLLMQuantizationConfig = {
-      enabled: true,
-      method: 'invalid-method',
-      bits: 3
-    };
-    
-    await expect(backend.setQuantization('test-model', quantConfig)).rejects.toThrow('Failed to set quantization: Bad Request');
+    // Make request
+    await expect(backend.makeRequest(
+      'http://localhost:8000',
+      { prompt: 'Hello', max_tokens: 10 },
+      'test-model'
+    )).rejects.toThrow('VLLM container failed to start');
   });
 });

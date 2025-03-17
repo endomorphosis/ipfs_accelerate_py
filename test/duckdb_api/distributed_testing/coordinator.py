@@ -55,6 +55,28 @@ except ImportError:
     logger.warning("Result Aggregator not available. Intelligent result aggregation features disabled.")
     RESULT_AGGREGATOR_AVAILABLE = False
 
+# Dynamic Resource Management components
+try:
+    from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
+    DYNAMIC_RESOURCE_MANAGER_AVAILABLE = True
+except ImportError:
+    logger.warning("Dynamic Resource Manager not available. Advanced resource management features disabled.")
+    DYNAMIC_RESOURCE_MANAGER_AVAILABLE = False
+
+try:
+    from duckdb_api.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
+    RESOURCE_PREDICTOR_AVAILABLE = True
+except ImportError:
+    logger.warning("Resource Performance Predictor not available. Resource prediction features disabled.")
+    RESOURCE_PREDICTOR_AVAILABLE = False
+
+try:
+    from duckdb_api.distributed_testing.cloud_provider_integration import CloudProviderManager
+    CLOUD_PROVIDER_AVAILABLE = True
+except ImportError:
+    logger.warning("Cloud Provider Integration not available. Cloud scaling features disabled.")
+    CLOUD_PROVIDER_AVAILABLE = False
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -905,33 +927,76 @@ class TaskManager:
         return task_id
     
     def get_next_task(self, worker_id: str, 
-                     worker_capabilities: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Get the next task for a worker based on capabilities.
+                     worker_capabilities: Dict[str, Any], worker_resources: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+        """Get the next task for a worker based on capabilities and resources.
         
         Args:
             worker_id: ID of the worker
             worker_capabilities: Capabilities of the worker
+            worker_resources: Detailed resource information for dynamic resource management
             
         Returns:
             Task dict if a suitable task is found, None otherwise
         """
+        # Get the parent CoordinatorServer instance to access dynamic_resource_manager
+        coordinator = self._get_coordinator_server()
+        dynamic_resource_mgr = None
+        resource_predictor = None
+        
+        if coordinator:
+            dynamic_resource_mgr = getattr(coordinator, 'dynamic_resource_manager', None)
+            resource_predictor = getattr(coordinator, 'resource_predictor', None)
+        
         with self.task_lock:
             if not self.task_queue:
                 return None
-                
-            # Find first matching task
-            matching_index = None
-            matching_task = None
             
-            for i, (_, _, task_id, task) in enumerate(self.task_queue):
-                if self._worker_meets_requirements(worker_capabilities, task["requirements"]):
-                    matching_index = i
-                    matching_task = task
-                    break
+            # Initialize fitness scores for task-worker matching
+            task_fitness_scores = []
+            
+            # Calculate fitness scores for each task
+            for i, (priority, create_time, task_id, task) in enumerate(self.task_queue):
+                # First check if the worker meets basic requirements
+                if not self._worker_meets_requirements(worker_capabilities, task["requirements"]):
+                    continue
+                
+                # If we have a dynamic resource manager, check resource availability
+                reservation_possible = True
+                fitness_score = 1.0  # Default baseline score
+                
+                if dynamic_resource_mgr and worker_resources:
+                    task_resources = self._estimate_task_resources(task, resource_predictor)
                     
-            if matching_index is not None:
+                    # Check if worker has enough resources
+                    try:
+                        # Calculate fitness score (0.0-1.0) based on how well the resources match
+                        fitness_score = dynamic_resource_mgr.calculate_task_worker_fitness(
+                            worker_id, task_resources
+                        )
+                        
+                        # Check if reservation is possible
+                        reservation_possible = dynamic_resource_mgr.check_resource_availability(
+                            worker_id, task_resources
+                        )
+                        
+                        logger.debug(f"Task {task_id} fitness score for worker {worker_id}: {fitness_score:.2f}")
+                    except Exception as e:
+                        logger.error(f"Error calculating resource fitness: {e}")
+                        reservation_possible = True  # Fall back to basic scheduling
+                
+                if reservation_possible:
+                    # Add to list of potential tasks with fitness score
+                    task_fitness_scores.append((i, fitness_score, priority, create_time, task_id, task))
+            
+            # Sort by fitness score (descending), then priority (ascending), then create_time (ascending)
+            if task_fitness_scores:
+                task_fitness_scores.sort(key=lambda x: (-x[1], x[2], x[3]))
+                
+                # Get the best matching task
+                task_index, fitness_score, _, _, task_id, matching_task = task_fitness_scores[0]
+                
                 # Remove from queue
-                self.task_queue.pop(matching_index)
+                self.task_queue.pop(task_index)
                 
                 # Mark as assigned
                 matching_task["status"] = TASK_STATUS_ASSIGNED
@@ -942,6 +1007,22 @@ class TaskManager:
                 # Track in running tasks
                 self.running_tasks[matching_task["task_id"]] = worker_id
                 
+                # Reserve resources if dynamic resource manager is available
+                if dynamic_resource_mgr and worker_resources:
+                    task_resources = self._estimate_task_resources(matching_task, resource_predictor)
+                    try:
+                        # Create resource reservation
+                        reservation_id = dynamic_resource_mgr.reserve_resources(
+                            worker_id=worker_id,
+                            task_id=matching_task["task_id"],
+                            resource_requirements=task_resources
+                        )
+                        # Store reservation ID in task for later release
+                        matching_task["resource_reservation_id"] = reservation_id
+                        logger.debug(f"Reserved resources for task {matching_task['task_id']} on worker {worker_id}")
+                    except Exception as e:
+                        logger.error(f"Error reserving resources: {e}")
+                
                 # Update in database if available
                 if self.db_manager:
                     self.db_manager.update_task_status(
@@ -950,10 +1031,83 @@ class TaskManager:
                         worker_id
                     )
                 
-                logger.info(f"Assigned task {matching_task['task_id']} to worker {worker_id}")
+                logger.info(f"Assigned task {matching_task['task_id']} to worker {worker_id} with fitness {fitness_score:.2f}")
                 return matching_task
             
             return None
+    
+    def _estimate_task_resources(self, task: Dict[str, Any], resource_predictor=None) -> Dict[str, Any]:
+        """Estimate resource requirements for a task.
+        
+        Args:
+            task: Task configuration
+            resource_predictor: Optional resource predictor for ML-based estimation
+            
+        Returns:
+            Dict with estimated resource requirements
+        """
+        # Extract relevant task parameters for resource prediction
+        task_type = task.get("type", "unknown")
+        model = task.get("config", {}).get("model", "unknown")
+        batch_size = task.get("config", {}).get("batch_size", 1)
+        precision = task.get("config", {}).get("precision", "fp32")
+        
+        # Default resource requirements (conservative estimates)
+        resource_requirements = {
+            "cpu_cores": 2,
+            "memory_mb": 4096,
+            "gpu_memory_mb": 0
+        }
+        
+        # If using a resource predictor, get ML-based prediction
+        if resource_predictor:
+            try:
+                predicted_resources = resource_predictor.predict_resource_requirements(
+                    task_type=task_type,
+                    model=model,
+                    batch_size=batch_size,
+                    precision=precision
+                )
+                
+                if predicted_resources:
+                    resource_requirements = predicted_resources
+                    logger.debug(f"Using ML-predicted resources for task {task['task_id']}: {resource_requirements}")
+            except Exception as e:
+                logger.error(f"Error predicting resources: {e}")
+        
+        # Use explicit requirements from task if specified (override predictions)
+        explicit_requirements = task.get("requirements", {})
+        
+        if "cpu_cores" in explicit_requirements:
+            resource_requirements["cpu_cores"] = explicit_requirements["cpu_cores"]
+            
+        if "memory_mb" in explicit_requirements:
+            resource_requirements["memory_mb"] = explicit_requirements["memory_mb"]
+            
+        if "gpu_memory_mb" in explicit_requirements:
+            resource_requirements["gpu_memory_mb"] = explicit_requirements["gpu_memory_mb"]
+        
+        return resource_requirements
+    
+    def _get_coordinator_server(self):
+        """Get the parent CoordinatorServer instance.
+        
+        Returns:
+            CoordinatorServer instance or None
+        """
+        # This is a helper method to access the parent CoordinatorServer
+        # which contains the dynamic_resource_manager
+        try:
+            frame = sys._getframe(1)
+            while frame:
+                if 'self' in frame.f_locals:
+                    instance = frame.f_locals['self']
+                    if isinstance(instance, CoordinatorServer):
+                        return instance
+                frame = frame.f_back
+        except Exception:
+            pass
+        return None
     
     def _worker_meets_requirements(self, worker_capabilities: Dict[str, Any],
                                  task_requirements: Dict[str, Any]) -> bool:
@@ -1038,6 +1192,25 @@ class TaskManager:
                 
             # Remove from running tasks
             del self.running_tasks[task_id]
+            
+            # Release resources if there was a reservation
+            task = self.db_manager.get_task(task_id) if self.db_manager else None
+            resource_reservation_id = metadata.get("resource_reservation_id")
+            
+            if resource_reservation_id or (task and "resource_reservation_id" in task):
+                coordinator = self._get_coordinator_server()
+                if coordinator and coordinator.dynamic_resource_manager:
+                    try:
+                        # Get the reservation ID either from metadata or task
+                        reservation_id = resource_reservation_id
+                        if not reservation_id and task:
+                            reservation_id = task.get("resource_reservation_id")
+                            
+                        if reservation_id:
+                            coordinator.dynamic_resource_manager.release_resources(reservation_id)
+                            logger.debug(f"Released resources for completed task {task_id}")
+                    except Exception as e:
+                        logger.error(f"Error releasing resources for task {task_id}: {e}")
         
         # Update task status in database
         if self.db_manager:
@@ -1159,6 +1332,25 @@ class TaskManager:
                 
             # Remove from running tasks
             del self.running_tasks[task_id]
+            
+            # Release resources if there was a reservation
+            task = self.db_manager.get_task(task_id) if self.db_manager else None
+            resource_reservation_id = metadata.get("resource_reservation_id")
+            
+            if resource_reservation_id or (task and "resource_reservation_id" in task):
+                coordinator = self._get_coordinator_server()
+                if coordinator and coordinator.dynamic_resource_manager:
+                    try:
+                        # Get the reservation ID either from metadata or task
+                        reservation_id = resource_reservation_id
+                        if not reservation_id and task:
+                            reservation_id = task.get("resource_reservation_id")
+                            
+                        if reservation_id:
+                            coordinator.dynamic_resource_manager.release_resources(reservation_id)
+                            logger.debug(f"Released resources for failed task {task_id}")
+                    except Exception as e:
+                        logger.error(f"Error releasing resources for task {task_id}: {e}")
             
             # Check if we should retry
             task = self.db_manager.get_task(task_id) if self.db_manager else None
@@ -1448,7 +1640,7 @@ class WorkerManager:
     
     def register_worker(self, worker_id: str, hostname: str, 
                        capabilities: Dict[str, Any], websocket=None,
-                       tags: Dict[str, Any] = None) -> bool:
+                       tags: Dict[str, Any] = None, resources: Dict[str, Any] = None) -> bool:
         """Register a new worker or update an existing one.
         
         Args:
@@ -1457,6 +1649,7 @@ class WorkerManager:
             capabilities: Dict containing hardware capabilities
             websocket: WebSocket connection for the worker
             tags: Optional tags for worker categorization
+            resources: Detailed resource information for dynamic resource management
             
         Returns:
             True if successful, False otherwise
@@ -1474,7 +1667,8 @@ class WorkerManager:
                 "status": WORKER_STATUS_ACTIVE,
                 "capabilities": capabilities,
                 "hardware_metrics": {},
-                "tags": tags or {}
+                "tags": tags or {},
+                "resources": resources or {}
             }
             
             self.workers[worker_id] = worker_info
@@ -1487,9 +1681,39 @@ class WorkerManager:
             if self.db_manager and not worker_exists:
                 self.db_manager.add_worker(worker_id, hostname, capabilities, tags)
             
+            # Register with Dynamic Resource Manager if available
+            coordinator = self._get_coordinator_server()
+            if coordinator and coordinator.dynamic_resource_manager and resources:
+                try:
+                    # Register with dynamic resource manager
+                    coordinator.dynamic_resource_manager.register_worker(worker_id, resources)
+                    logger.info(f"Registered worker {worker_id} with Dynamic Resource Manager")
+                except Exception as e:
+                    logger.error(f"Error registering worker with Dynamic Resource Manager: {e}")
+            
             action = "Updated" if worker_exists else "Registered"
             logger.info(f"{action} worker {worker_id} ({hostname})")
             return True
+    
+    def _get_coordinator_server(self):
+        """Get the parent CoordinatorServer instance.
+        
+        Returns:
+            CoordinatorServer instance or None
+        """
+        # This is a helper method to access the parent CoordinatorServer
+        # which contains the dynamic_resource_manager
+        try:
+            frame = sys._getframe(1)
+            while frame:
+                if 'self' in frame.f_locals:
+                    instance = frame.f_locals['self']
+                    if isinstance(instance, CoordinatorServer):
+                        return instance
+                frame = frame.f_back
+        except Exception:
+            pass
+        return None
     
     def update_worker_heartbeat(self, worker_id: str) -> bool:
         """Update the heartbeat timestamp for a worker.
@@ -1787,6 +2011,49 @@ class CoordinatorServer:
         # Initialize worker manager
         self.worker_manager = WorkerManager(self.db_manager, heartbeat_timeout)
         
+        # Initialize dynamic resource manager if available
+        self.dynamic_resource_manager = None
+        if DYNAMIC_RESOURCE_MANAGER_AVAILABLE:
+            try:
+                self.dynamic_resource_manager = DynamicResourceManager(
+                    target_utilization=0.7,
+                    scale_up_threshold=0.8,
+                    scale_down_threshold=0.3
+                )
+                logger.info("Dynamic Resource Manager initialized")
+            except Exception as e:
+                logger.error(f"Error initializing Dynamic Resource Manager: {e}")
+                self.dynamic_resource_manager = None
+        
+        # Initialize resource performance predictor if available
+        self.resource_predictor = None
+        if RESOURCE_PREDICTOR_AVAILABLE:
+            try:
+                resource_db_path = None
+                if self.db_path:
+                    # Use a separate SQLite database for resource predictions
+                    resource_db_path = self.db_path.replace(".duckdb", "_resources.sqlite")
+                
+                self.resource_predictor = ResourcePerformancePredictor(database_path=resource_db_path)
+                logger.info("Resource Performance Predictor initialized")
+            except Exception as e:
+                logger.error(f"Error initializing Resource Performance Predictor: {e}")
+                self.resource_predictor = None
+        
+        # Initialize cloud provider manager if available
+        self.cloud_provider_manager = None
+        if CLOUD_PROVIDER_AVAILABLE:
+            try:
+                self.cloud_provider_manager = CloudProviderManager()
+                # Add available cloud providers
+                self.cloud_provider_manager.add_provider("aws")
+                self.cloud_provider_manager.add_provider("gcp")
+                self.cloud_provider_manager.add_provider("docker_local")
+                logger.info("Cloud Provider Manager initialized")
+            except Exception as e:
+                logger.error(f"Error initializing Cloud Provider Manager: {e}")
+                self.cloud_provider_manager = None
+        
         # Initialize auto recovery system if enabled
         self.auto_recovery = None
         if auto_recovery and AUTO_RECOVERY_AVAILABLE:
@@ -1906,6 +2173,11 @@ class CoordinatorServer:
                 self.result_aggregator = None
                 self.detailed_result_aggregator = None
         
+        # Set up scaling evaluation thread and parameters
+        self.scaling_thread = None
+        self.scaling_interval = 300  # 5 minutes
+        self.scaling_enabled = True
+        
         # WebSocket server
         self.websocket_server = None
         self.running = False
@@ -1948,6 +2220,16 @@ class CoordinatorServer:
             # If both aggregators are running, log dual-layer system status
             if self.result_aggregator and self.detailed_result_aggregator:
                 logger.info("Dual-layer intelligent result aggregation system is active")
+                
+            # Start dynamic resource management and scaling evaluation if available
+            if self.dynamic_resource_manager and self.cloud_provider_manager:
+                # Start scaling evaluation thread
+                self.scaling_thread = threading.Thread(
+                    target=self._scaling_evaluation_loop,
+                    daemon=True
+                )
+                self.scaling_thread.start()
+                logger.info("Dynamic resource scaling evaluation started")
             
             # Start WebSocket server
             logger.info(f"Starting WebSocket server on {self.host}:{self.port}")
@@ -2014,6 +2296,37 @@ class CoordinatorServer:
         # If both aggregators were running, log shutdown
         if self.result_aggregator and self.detailed_result_aggregator:
             logger.info("Dual-layer intelligent result aggregation system shutdown complete")
+            
+        # Set running to false to stop scaling evaluation thread
+        self.running = False
+        
+        # Wait for scaling thread to complete
+        if self.scaling_thread and self.scaling_thread.is_alive():
+            logger.info("Waiting for scaling thread to complete...")
+            self.scaling_thread.join(timeout=5.0)
+            
+        # Cleanup dynamic resource manager if available
+        if self.dynamic_resource_manager:
+            try:
+                self.dynamic_resource_manager.cleanup()
+                logger.info("Dynamic Resource Manager cleaned up")
+            except Exception as e:
+                logger.error(f"Error cleaning up Dynamic Resource Manager: {e}")
+                
+        # Cleanup resource predictor if available
+        if self.resource_predictor:
+            try:
+                self.resource_predictor.cleanup()
+                logger.info("Resource Performance Predictor cleaned up")
+            except Exception as e:
+                logger.error(f"Error cleaning up Resource Performance Predictor: {e}")
+        
+        # Wait for scaling thread to terminate if it was started
+        if self.scaling_thread and self.scaling_thread.is_alive():
+            logger.info("Waiting for scaling evaluation thread to terminate...")
+            self.scaling_thread.join(timeout=5.0)  # Wait up to 5 seconds
+            if self.scaling_thread.is_alive():
+                logger.warning("Scaling evaluation thread did not terminate cleanly")
         
         # Close WebSocket server
         if self.websocket_server:
@@ -2262,6 +2575,7 @@ class CoordinatorServer:
             worker_id = message.get("worker_id")
             hostname = message.get("hostname")
             capabilities = message.get("capabilities", {})
+            resources = message.get("resources", {})  # Get resource information
             tags = message.get("tags", {})
             
             if not worker_id or not hostname:
@@ -2273,10 +2587,19 @@ class CoordinatorServer:
                 }))
                 return
             
-            # Register worker
+            # Register worker with resource information
             success = self.worker_manager.register_worker(
-                worker_id, hostname, capabilities, websocket, tags
+                worker_id, hostname, capabilities, websocket, tags, resources
             )
+            
+            # Register with dynamic resource manager if available
+            if hasattr(self, 'dynamic_resource_manager') and self.dynamic_resource_manager and resources:
+                try:
+                    # Register worker with dynamic resource manager
+                    self.dynamic_resource_manager.register_worker(worker_id, resources)
+                    logger.info(f"Registered worker {worker_id} with Dynamic Resource Manager")
+                except Exception as e:
+                    logger.error(f"Error registering worker with Dynamic Resource Manager: {e}")
             
             # Send response
             await websocket.send(json.dumps({
@@ -2288,6 +2611,8 @@ class CoordinatorServer:
         elif message_type == "heartbeat":
             # Update worker heartbeat
             worker_id = message.get("worker_id")
+            resources = message.get("resources", {})  # Get updated resource information
+            hardware_metrics = message.get("hardware_metrics", {})  # Get hardware metrics
             
             if not worker_id:
                 logger.warning("Invalid heartbeat message")
@@ -2300,6 +2625,20 @@ class CoordinatorServer:
             
             # Update heartbeat
             success = self.worker_manager.update_worker_heartbeat(worker_id)
+            
+            # Update worker info with latest resource metrics
+            worker = self.worker_manager.get_worker(worker_id)
+            if worker and hardware_metrics:
+                # Update hardware metrics in worker info
+                worker["hardware_metrics"] = hardware_metrics
+            
+            # Update dynamic resource manager if available
+            if hasattr(self, 'dynamic_resource_manager') and self.dynamic_resource_manager and resources:
+                try:
+                    # Update worker resources in dynamic resource manager
+                    self.dynamic_resource_manager.update_worker_resources(worker_id, resources)
+                except Exception as e:
+                    logger.error(f"Error updating worker resources in Dynamic Resource Manager: {e}")
             
             # Send response
             await websocket.send(json.dumps({
@@ -2327,8 +2666,18 @@ class CoordinatorServer:
             if worker and capabilities:
                 worker["capabilities"].update(capabilities)
             
-            # Get next task
-            task = self.task_manager.get_next_task(worker_id, worker["capabilities"])
+            # Get worker resources if available
+            resources = message.get("resources", {})
+            if resources:
+                # Update worker resources before getting a task
+                if hasattr(self, 'dynamic_resource_manager') and self.dynamic_resource_manager:
+                    try:
+                        self.dynamic_resource_manager.update_worker_resources(worker_id, resources)
+                    except Exception as e:
+                        logger.error(f"Error updating worker resources: {e}")
+            
+            # Get next task with resource-aware scheduling
+            task = self.task_manager.get_next_task(worker_id, worker["capabilities"], resources)
             
             if task:
                 # Update worker status to busy
@@ -2565,6 +2914,90 @@ class CoordinatorServer:
                 "error": f"Unknown message type: {message_type}"
             }))
     
+    def _scaling_evaluation_loop(self):
+        """Background thread for periodic scaling evaluation."""
+        while self.running:
+            try:
+                # Sleep first to allow system to initialize fully
+                time.sleep(self.scaling_interval)
+                
+                if not self.running:
+                    break
+                    
+                if not self.dynamic_resource_manager or not self.cloud_provider_manager:
+                    continue
+                
+                # Evaluate if scaling is needed
+                scaling_decision = self.dynamic_resource_manager.evaluate_scaling()
+                
+                if scaling_decision.action == "scale_up":
+                    # Need to scale up, provision new workers
+                    workers_to_add = scaling_decision.count
+                    logger.info(f"Scaling up: Adding {workers_to_add} worker(s)")
+                    
+                    # Determine resource requirements for new workers
+                    resource_requirements = scaling_decision.resource_requirements
+                    
+                    # Choose provider based on requirements
+                    provider_name = "docker_local"  # Default to local for testing
+                    if resource_requirements.get("gpu_required", False):
+                        provider_name = "aws"  # Use AWS for GPU instances
+                    
+                    # Create workers
+                    for i in range(workers_to_add):
+                        try:
+                            # Create worker with required resources
+                            worker_info = self.cloud_provider_manager.create_worker(
+                                provider=provider_name,
+                                resources=resource_requirements,
+                                worker_type=scaling_decision.worker_type,
+                                use_spot=scaling_decision.use_spot_instances
+                            )
+                            
+                            if worker_info:
+                                logger.info(f"Created new worker: {worker_info['worker_id']} on {provider_name}")
+                            else:
+                                logger.error(f"Failed to create worker on {provider_name}")
+                        except Exception as e:
+                            logger.error(f"Error creating worker: {e}")
+                
+                elif scaling_decision.action == "scale_down":
+                    # Need to scale down, terminate excess workers
+                    workers_to_remove = scaling_decision.count
+                    worker_ids = scaling_decision.worker_ids
+                    
+                    logger.info(f"Scaling down: Removing {workers_to_remove} worker(s)")
+                    
+                    # Terminate each worker
+                    for worker_id in worker_ids:
+                        try:
+                            # Find provider for this worker
+                            worker_info = self.worker_manager.get_worker(worker_id)
+                            if not worker_info:
+                                continue
+                                
+                            # Get provider name from worker tags
+                            provider_name = worker_info.get("tags", {}).get("provider", "unknown")
+                            
+                            # Terminate worker
+                            if provider_name != "unknown":
+                                success = self.cloud_provider_manager.terminate_worker(
+                                    provider=provider_name,
+                                    worker_id=worker_id
+                                )
+                                
+                                if success:
+                                    logger.info(f"Terminated worker: {worker_id} on {provider_name}")
+                                else:
+                                    logger.error(f"Failed to terminate worker: {worker_id} on {provider_name}")
+                        except Exception as e:
+                            logger.error(f"Error terminating worker {worker_id}: {e}")
+                
+            except Exception as e:
+                logger.error(f"Error in scaling evaluation loop: {e}")
+        
+        logger.info("Scaling evaluation thread stopped")
+
     def generate_worker_key(self, name: str = None) -> Dict[str, Any]:
         """Generate an API key for a worker.
         

@@ -1,299 +1,268 @@
 #!/usr/bin/env python3
 """
-CI/CD Integration Example for Distributed Testing Framework
+CI Integration Example
 
-This example demonstrates how to use the CI/CD Integration plugin to report
-test results to CI/CD systems like GitHub Actions, GitLab CI, Jenkins, and Azure DevOps.
+This script demonstrates how to use the CI integration features
+of the hardware monitoring system, including:
+1. Running tests with CI integration
+2. Generating status badges
+3. Sending notifications based on test results
+
+Usage:
+    python ci_integration_example.py [options]
+
+Options:
+    --test-mode MODE       Test mode (standard, basic, full, long)
+    --notification         Enable test notifications
+    --generate-badge       Generate status badge
+    --output-dir DIR       Output directory for reports and badges
+    --db-path PATH         Path to test database
 """
 
-import asyncio
-import logging
 import os
-import time
+import sys
+import argparse
+import subprocess
+import logging
+import json
+from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any, Optional
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ci_integration_example")
 
-# Import plugin and plugin architecture
-from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
-from distributed_testing.integration.ci_cd_integration_plugin import CICDIntegrationPlugin
+# Add parent directory to path to ensure imports work
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+sys.path.insert(0, parent_dir)
 
-# Create a simple mock coordinator for the example
-class MockCoordinator:
-    """Simple mock coordinator for testing the CI/CD Integration plugin."""
+# Try to import CI modules
+try:
+    from ci_notification import build_notification_context, send_notifications, load_config
+    from generate_status_badge import generate_badge_svg, get_test_status
+    CI_MODULES_AVAILABLE = True
+except ImportError:
+    logger.warning("CI modules not found. Some features may not be available.")
+    CI_MODULES_AVAILABLE = False
+
+
+def run_tests(args):
+    """
+    Run hardware monitoring tests with CI integration.
     
-    def __init__(self):
-        """Initialize the mock coordinator."""
-        self.tasks = {}
-        self.workers = {}
+    Args:
+        args: Command-line arguments
     
-    async def create_task(self, task_id: str, task_data: Dict[str, Any]):
-        """Create a task in the mock coordinator."""
-        self.tasks[task_id] = {
-            "id": task_id,
-            "data": task_data,
-            "status": "created",
-            "created_at": datetime.now().isoformat()
-        }
+    Returns:
+        bool: Success status
+    """
+    logger.info("Running hardware monitoring tests with CI integration...")
+    
+    # Build command
+    cmd = [
+        os.path.join(parent_dir, "run_hardware_monitoring_ci_tests.sh"),
+        f"--mode", args.test_mode
+    ]
+    
+    # Add options
+    if args.generate_badge:
+        cmd.append("--generate-badge")
+    
+    if args.notification:
+        cmd.append("--send-notifications")
+    
+    if args.ci_integration:
+        cmd.append("--ci-integration")
+    
+    # Set environment variables
+    env = os.environ.copy()
+    if args.db_path:
+        env["BENCHMARK_DB_PATH"] = args.db_path
+    
+    # Run command
+    try:
+        result = subprocess.run(
+            cmd,
+            env=env,
+            cwd=parent_dir,
+            check=False,
+            capture_output=True,
+            text=True
+        )
         
-        # Invoke hooks for task creation
-        await self.plugin_manager.invoke_hook(HookType.TASK_CREATED, task_id, task_data)
+        # Log output
+        logger.info(f"Command output:\n{result.stdout}")
+        if result.stderr:
+            logger.warning(f"Command errors:\n{result.stderr}")
         
-        return task_id
+        # Return success status
+        return result.returncode == 0
     
-    async def complete_task(self, task_id: str, result: Any):
-        """Complete a task in the mock coordinator."""
-        if task_id in self.tasks:
-            self.tasks[task_id]["status"] = "completed"
-            self.tasks[task_id]["completed_at"] = datetime.now().isoformat()
-            self.tasks[task_id]["result"] = result
-            
-            # Invoke hooks for task completion
-            await self.plugin_manager.invoke_hook(HookType.TASK_COMPLETED, task_id, result)
-            
-            return True
+    except Exception as e:
+        logger.error(f"Error running tests: {str(e)}")
+        return False
+
+
+def generate_badge(args):
+    """
+    Generate status badge.
+    
+    Args:
+        args: Command-line arguments
+    
+    Returns:
+        bool: Success status
+    """
+    if not CI_MODULES_AVAILABLE:
+        logger.error("Badge generation requires CI modules that aren't available.")
         return False
     
-    async def fail_task(self, task_id: str, error: str):
-        """Fail a task in the mock coordinator."""
-        if task_id in self.tasks:
-            self.tasks[task_id]["status"] = "failed"
-            self.tasks[task_id]["failed_at"] = datetime.now().isoformat()
-            self.tasks[task_id]["error"] = error
-            
-            # Invoke hooks for task failure
-            await self.plugin_manager.invoke_hook(HookType.TASK_FAILED, task_id, error)
-            
-            return True
-        return False
+    logger.info("Generating status badge...")
     
-    async def register_worker(self, worker_id: str, capabilities: Dict[str, Any]):
-        """Register a worker in the mock coordinator."""
-        self.workers[worker_id] = {
-            "id": worker_id,
-            "capabilities": capabilities,
-            "status": "registered",
-            "registered_at": datetime.now().isoformat()
-        }
+    try:
+        # Define paths
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Invoke hooks for worker registration
-        await self.plugin_manager.invoke_hook(HookType.WORKER_REGISTERED, worker_id, capabilities)
+        badge_path = output_dir / "hardware_monitoring_status.svg"
+        json_path = output_dir / "hardware_monitoring_status.json"
         
-        return worker_id
-    
-    async def disconnect_worker(self, worker_id: str):
-        """Disconnect a worker from the mock coordinator."""
-        if worker_id in self.workers:
-            self.workers[worker_id]["status"] = "disconnected"
-            self.workers[worker_id]["disconnected_at"] = datetime.now().isoformat()
-            
-            # Invoke hooks for worker disconnection
-            await self.plugin_manager.invoke_hook(HookType.WORKER_DISCONNECTED, worker_id)
-            
-            return True
-        return False
-    
-    async def start(self):
-        """Start the mock coordinator."""
-        # Initialize plugin manager
-        self.plugin_manager = MockPluginManager(self)
+        # Get test status from database
+        db_path = args.db_path or os.path.join(parent_dir, "hardware_metrics.duckdb")
+        status, passing_runs, total_runs = get_test_status(db_path, days=1, min_runs=1)
         
-        # Invoke startup hook
-        await self.plugin_manager.invoke_hook(HookType.COORDINATOR_STARTUP, self)
+        logger.info(f"Test status: {status} ({passing_runs}/{total_runs} passing)")
         
-        logger.info("Mock coordinator started")
+        # Generate badge
+        badge_svg = generate_badge_svg("tests", status)
         
-        return True
-    
-    async def shutdown(self):
-        """Shutdown the mock coordinator."""
-        # Invoke shutdown hook
-        await self.plugin_manager.invoke_hook(HookType.COORDINATOR_SHUTDOWN, self)
+        # Write badge to file
+        badge_path.write_text(badge_svg)
+        logger.info(f"Badge generated at {badge_path}")
         
-        # Shutdown plugin manager
-        await self.plugin_manager.shutdown()
-        
-        logger.info("Mock coordinator shutdown")
-        
-        return True
-
-# Create a simple mock plugin manager for the example
-class MockPluginManager:
-    """Simple mock plugin manager for testing the CI/CD Integration plugin."""
-    
-    def __init__(self, coordinator):
-        """Initialize the mock plugin manager."""
-        self.coordinator = coordinator
-        self.plugins = {}
-        self.hooks = {}
-        
-        for hook_type in HookType:
-            self.hooks[hook_type] = []
-    
-    async def load_plugin(self, plugin: Plugin):
-        """Load a plugin in the mock plugin manager."""
-        # Initialize plugin
-        await plugin.initialize(self.coordinator)
-        
-        # Store plugin
-        self.plugins[plugin.id] = plugin
-        
-        # Register hooks
-        for hook_type, callbacks in plugin.hooks.items():
-            for callback in callbacks:
-                self.hooks[hook_type].append((plugin.id, callback))
-        
-        return plugin.id
-    
-    async def invoke_hook(self, hook_type: HookType, *args, **kwargs):
-        """Invoke a hook in the mock plugin manager."""
-        results = []
-        
-        for plugin_id, callback in self.hooks.get(hook_type, []):
-            if plugin_id in self.plugins:
-                plugin = self.plugins[plugin_id]
-                
-                if plugin.enabled:
-                    try:
-                        result = callback(*args, **kwargs)
-                        
-                        # Handle coroutines
-                        if asyncio.iscoroutine(result):
-                            result = await result
-                            
-                        results.append((plugin_id, result))
-                    except Exception as e:
-                        logger.error(f"Error invoking hook {hook_type.value} in plugin {plugin.name}: {str(e)}")
-        
-        return results
-    
-    async def shutdown(self):
-        """Shutdown the mock plugin manager."""
-        for plugin_id, plugin in list(self.plugins.items()):
-            try:
-                await plugin.shutdown()
-                logger.info(f"Shutdown plugin {plugin.name}")
-            except Exception as e:
-                logger.error(f"Error shutting down plugin {plugin.name}: {str(e)}")
-        
-        # Clear registries
-        self.plugins.clear()
-        
-        for hook_type in HookType:
-            self.hooks[hook_type] = []
-        
-        logger.info("Mock plugin manager shutdown complete")
-
-# Main example function
-async def run_example():
-    """Run the CI/CD Integration example."""
-    logger.info("Starting CI/CD Integration example...")
-    
-    # Create mock coordinator
-    coordinator = MockCoordinator()
-    
-    # Create CI/CD Integration plugin
-    ci_plugin = CICDIntegrationPlugin()
-    
-    # Configure plugin for simulation mode
-    ci_plugin.configure({
-        "ci_system": "github",  # Simulate GitHub Actions
-        "repository": "user/repo",
-        "api_token": "mock_token",
-        "update_interval": 5,  # More frequent updates for the example
-        "detailed_logging": True,
-        "artifact_dir": "ci_artifacts"
-    })
-    
-    # Start coordinator
-    await coordinator.start()
-    
-    # Load plugin
-    await coordinator.plugin_manager.load_plugin(ci_plugin)
-    
-    # Register workers
-    await coordinator.register_worker("worker-001", {
-        "hardware_type": "gpu",
-        "cpu_cores": 8,
-        "memory_gb": 16,
-        "gpu_memory_gb": 8,
-        "supports_cuda": True,
-        "supports_webgpu": True,
-        "supports_webnn": True
-    })
-    
-    await coordinator.register_worker("worker-002", {
-        "hardware_type": "cpu",
-        "cpu_cores": 16,
-        "memory_gb": 32,
-        "supports_cuda": False,
-        "supports_webgpu": False,
-        "supports_webnn": False
-    })
-    
-    # Create and execute tasks
-    task_ids = []
-    
-    # Create 10 tasks
-    for i in range(1, 11):
-        task_id = f"task-{i}"
-        task_data = {
-            "name": f"Test Task {i}",
-            "type": "model_test",
-            "model_name": f"model-{i}",
-            "hardware_requirements": {
-                "min_memory_gb": 4,
-                "min_gpu_memory_gb": 4 if i % 2 == 0 else 0,
-                "requires_cuda": i % 2 == 0,
-                "requires_webgpu": i % 4 == 0,
-                "requires_webnn": i % 4 == 0
+        # Generate JSON status file
+        status_json = {
+            "schemaVersion": 1,
+            "label": "tests",
+            "message": status,
+            "color": "#4c1" if status == "passing" else "#e05d44",
+            "isError": status == "failing",
+            "timestamp": datetime.now().isoformat(),
+            "runs": {
+                "passing": passing_runs,
+                "total": total_runs
             }
         }
         
-        await coordinator.create_task(task_id, task_data)
-        task_ids.append(task_id)
+        with open(json_path, "w") as f:
+            json.dump(status_json, f, indent=2)
         
-        logger.info(f"Created task {task_id}")
-    
-    # Process tasks with some successes and failures
-    for i, task_id in enumerate(task_ids):
-        # Wait briefly to simulate task execution
-        await asyncio.sleep(0.5)
+        logger.info(f"Status JSON generated at {json_path}")
         
-        # Complete or fail the task
-        if i % 5 == 4:  # Fail every 5th task
-            await coordinator.fail_task(task_id, f"Task {task_id} failed due to simulated error")
-            logger.info(f"Failed task {task_id}")
-        else:
-            result = {
-                "execution_time": i * 1.5,
-                "memory_usage": i * 512,
-                "accuracy": 0.9 - (i * 0.01),
-                "status": "success"
-            }
-            
-            await coordinator.complete_task(task_id, result)
-            logger.info(f"Completed task {task_id}")
+        return True
     
-    # Disconnect workers
-    await coordinator.disconnect_worker("worker-001")
-    await coordinator.disconnect_worker("worker-002")
-    
-    # Wait for periodic updates to occur
-    logger.info("Waiting for periodic updates...")
-    await asyncio.sleep(10)
-    
-    # Shutdown coordinator
-    await coordinator.shutdown()
-    
-    logger.info("CI/CD Integration example completed")
+    except Exception as e:
+        logger.error(f"Error generating badge: {str(e)}")
+        return False
 
-# Run the example
+
+def send_notification(args, test_status):
+    """
+    Send test notifications.
+    
+    Args:
+        args: Command-line arguments
+        test_status: Test status (success or failure)
+    
+    Returns:
+        bool: Success status
+    """
+    if not CI_MODULES_AVAILABLE:
+        logger.error("Notification requires CI modules that aren't available.")
+        return False
+    
+    logger.info(f"Sending test notifications for status: {test_status}...")
+    
+    try:
+        # Define paths
+        config_path = os.path.join(parent_dir, "notification_config.json")
+        report_path = os.path.join(args.output_dir, "test_report.html")
+        
+        # Load configuration
+        config = load_config(config_path)
+        
+        # Build notification context
+        context = {
+            "status": test_status,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "workflow": "Example CI Integration",
+            "run_id": f"example-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "commit": "example",
+            "summary": f"Example test run with status: {test_status}",
+            "report_url": os.path.abspath(report_path) if os.path.exists(report_path) else "",
+            "dry_run": True  # Set to True for example purposes
+        }
+        
+        # Send notifications
+        channels = ["email", "slack", "github"] if args.all_channels else ["github"]
+        for channel in channels:
+            logger.info(f"Sending notification to {channel}...")
+            
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error sending notifications: {str(e)}")
+        return False
+
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="CI Integration Example")
+    parser.add_argument("--test-mode", choices=["standard", "basic", "full", "long"], default="standard",
+                      help="Test mode")
+    parser.add_argument("--notification", action="store_true",
+                      help="Enable test notifications")
+    parser.add_argument("--generate-badge", action="store_true",
+                      help="Generate status badge")
+    parser.add_argument("--ci-integration", action="store_true",
+                      help="Run CI integration tests")
+    parser.add_argument("--output-dir", default="./example_output",
+                      help="Output directory for reports and badges")
+    parser.add_argument("--db-path",
+                      help="Path to test database")
+    parser.add_argument("--all-channels", action="store_true",
+                      help="Use all notification channels")
+    
+    return parser.parse_args()
+
+
+def main():
+    """Main entry point."""
+    args = parse_arguments()
+    
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Run tests
+    success = run_tests(args)
+    
+    # Generate badge if requested
+    if args.generate_badge:
+        badge_success = generate_badge(args)
+        success = success and badge_success
+    
+    # Send notifications if requested
+    if args.notification:
+        notification_success = send_notification(args, "success" if success else "failure")
+        success = success and notification_success
+    
+    # Return exit code based on success
+    return 0 if success else 1
+
+
 if __name__ == "__main__":
-    asyncio.run(run_example())
+    sys.exit(main())

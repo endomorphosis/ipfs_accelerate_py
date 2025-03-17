@@ -259,7 +259,7 @@ class CoordinatorCircuitBreakerIntegration:
                 with self.metrics_lock:
                     # Update worker circuits
                     worker_circuits = {}
-                    for name, circuit in self.circuit_registry.get_all_circuits().items():
+                    for name, circuit in self.circuit_registry.circuits.items():
                         if name.startswith("worker_"):
                             metrics = circuit.get_metrics()
                             worker_id = name.replace("worker_", "")
@@ -267,7 +267,7 @@ class CoordinatorCircuitBreakerIntegration:
                     
                     # Update task circuits
                     task_circuits = {}
-                    for name, circuit in self.circuit_registry.get_all_circuits().items():
+                    for name, circuit in self.circuit_registry.circuits.items():
                         if name.startswith("task_"):
                             metrics = circuit.get_metrics()
                             task_type = name.replace("task_", "")
@@ -275,7 +275,7 @@ class CoordinatorCircuitBreakerIntegration:
                     
                     # Update endpoint circuits
                     endpoint_circuits = {}
-                    for name, circuit in self.circuit_registry.get_all_circuits().items():
+                    for name, circuit in self.circuit_registry.circuits.items():
                         if name.startswith("endpoint_"):
                             metrics = circuit.get_metrics()
                             endpoint = name.replace("endpoint_", "")

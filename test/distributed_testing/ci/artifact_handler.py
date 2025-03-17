@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Set, Tuple
 
 from distributed_testing.ci.api_interface import CIProviderInterface
+from distributed_testing.ci.artifact_metadata import ArtifactMetadata, ArtifactDiscovery
 
 # Configure logging
 logging.basicConfig(
@@ -27,113 +28,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class ArtifactMetadata:
-    """
-    Metadata for an artifact.
-    
-    This class represents metadata for an artifact, including its name, type,
-    file size, content hash, and other properties.
-    """
-    
-    def __init__(
-        self,
-        artifact_name: str,
-        artifact_path: str,
-        artifact_type: str,
-        test_run_id: str,
-        provider_name: str,
-        provider_specific_id: Optional[str] = None
-    ):
-        """
-        Initialize artifact metadata.
-        
-        Args:
-            artifact_name: Name of the artifact
-            artifact_path: Path to the artifact file
-            artifact_type: Type of artifact (e.g., log, report, data)
-            test_run_id: ID of the test run this artifact belongs to
-            provider_name: Name of the CI provider
-            provider_specific_id: Provider-specific artifact ID (optional)
-        """
-        self.artifact_name = artifact_name
-        self.artifact_path = artifact_path
-        self.artifact_type = artifact_type
-        self.test_run_id = test_run_id
-        self.provider_name = provider_name
-        self.provider_specific_id = provider_specific_id
-        self.creation_time = datetime.now().isoformat()
-        
-        # Calculate file size and content hash if file exists
-        if os.path.exists(artifact_path):
-            self.file_size = os.path.getsize(artifact_path)
-            self.content_hash = self._calculate_file_hash(artifact_path)
-        else:
-            self.file_size = 0
-            self.content_hash = None
-    
-    def _calculate_file_hash(self, file_path: str) -> str:
-        """
-        Calculate SHA-256 hash of file content.
-        
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            SHA-256 hash of file content
-        """
-        sha256_hash = hashlib.sha256()
-        
-        with open(file_path, "rb") as f:
-            # Read and update hash in chunks for memory efficiency
-            for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
-        
-        return sha256_hash.hexdigest()
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert to dictionary.
-        
-        Returns:
-            Dictionary representation
-        """
-        return {
-            "artifact_name": self.artifact_name,
-            "artifact_path": self.artifact_path,
-            "artifact_type": self.artifact_type,
-            "test_run_id": self.test_run_id,
-            "provider_name": self.provider_name,
-            "provider_specific_id": self.provider_specific_id,
-            "creation_time": self.creation_time,
-            "file_size": self.file_size,
-            "content_hash": self.content_hash
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ArtifactMetadata':
-        """
-        Create from dictionary.
-        
-        Args:
-            data: Dictionary representation
-            
-        Returns:
-            ArtifactMetadata instance
-        """
-        metadata = cls(
-            artifact_name=data["artifact_name"],
-            artifact_path=data["artifact_path"],
-            artifact_type=data["artifact_type"],
-            test_run_id=data["test_run_id"],
-            provider_name=data["provider_name"],
-            provider_specific_id=data.get("provider_specific_id")
-        )
-        
-        metadata.creation_time = data.get("creation_time", metadata.creation_time)
-        metadata.file_size = data.get("file_size", 0)
-        metadata.content_hash = data.get("content_hash")
-        
-        return metadata
+# ArtifactMetadata is now imported from artifact_metadata.py
 
 class ArtifactStorage:
     """

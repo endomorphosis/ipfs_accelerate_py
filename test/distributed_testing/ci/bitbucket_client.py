@@ -404,6 +404,103 @@ class BitbucketClient(CIProviderInterface):
             logger.error(f"Exception setting Bitbucket build status: {str(e)}")
             return False
     
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """
+        Get the URL for a test run artifact.
+        
+        Bitbucket Pipelines doesn't have a built-in artifacts API comparable to GitHub
+        Actions or CircleCI. This implementation uses the Bitbucket Downloads API as
+        a workaround for storing artifacts.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            
+        Returns:
+            URL to the artifact or None if not found
+        """
+        await self._ensure_session()
+        
+        try:
+            # Skip if we're using a simulated test run
+            if test_run_id.startswith("bitbucket-simulated-"):
+                logger.warning(f"Cannot get artifact URL for simulated test run {test_run_id}")
+                return None
+            
+            # Check if we have the URL cached
+            if hasattr(self, "_artifact_urls") and test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
+                logger.info(f"Using cached artifact URL for {artifact_name}")
+                return self._artifact_urls[test_run_id][artifact_name]
+            
+            # Extract workspace, repository, and report ID from test run ID
+            parts = test_run_id.split("-", 3)
+            if len(parts) < 4 or parts[0] != "bitbucket":
+                logger.error(f"Invalid Bitbucket test run ID format: {test_run_id}")
+                return None
+            
+            workspace = parts[1]
+            repository = parts[2]
+            report_id = parts[3]
+            
+            # In Bitbucket, the closest equivalent to artifacts is the Downloads API
+            # We'll form a URL pattern based on the workspace/repository/downloads
+            # https://developer.atlassian.com/cloud/bitbucket/rest/api-group-downloads/
+            
+            # First check if the file exists in the downloads section
+            downloads_url = f"{self.api_url}/repositories/{workspace}/{repository}/downloads"
+            
+            # Try to get the downloads list
+            async with self.session.get(downloads_url) as response:
+                if response.status == 200:
+                    downloads_data = await response.json()
+                    
+                    # Look for our artifact in the list
+                    for download in downloads_data.get("values", []):
+                        # Match on name - in a real implementation, we might use a more specific pattern
+                        # like f"{test_run_id}-{artifact_name}" to avoid conflicts
+                        if download.get("name") == artifact_name or download.get("name") == f"{report_id}-{artifact_name}":
+                            # Found the artifact, get the URL
+                            artifact_url = download.get("links", {}).get("self", {}).get("href")
+                            
+                            if artifact_url:
+                                # Cache the URL for future use
+                                if not hasattr(self, "_artifact_urls"):
+                                    self._artifact_urls = {}
+                                
+                                if test_run_id not in self._artifact_urls:
+                                    self._artifact_urls[test_run_id] = {}
+                                
+                                self._artifact_urls[test_run_id][artifact_name] = artifact_url
+                                
+                                logger.info(f"Found artifact URL for {artifact_name}: {artifact_url}")
+                                return artifact_url
+                    
+                    # If we didn't find the artifact in the downloads list, see if we can construct a URL
+                    # This is a fallback approach and may not work in all cases
+                    # In a real implementation, we might use a different storage solution with direct URL access
+                    fallback_url = f"https://bitbucket.org/{workspace}/{repository}/downloads/{report_id}-{artifact_name}"
+                    logger.warning(f"Artifact not found in downloads API, using fallback URL: {fallback_url}")
+                    
+                    # Cache the fallback URL
+                    if not hasattr(self, "_artifact_urls"):
+                        self._artifact_urls = {}
+                    
+                    if test_run_id not in self._artifact_urls:
+                        self._artifact_urls[test_run_id] = {}
+                    
+                    self._artifact_urls[test_run_id][artifact_name] = fallback_url
+                    
+                    return fallback_url
+                else:
+                    # API error - log and fail gracefully
+                    error_text = await response.text()
+                    logger.error(f"Error getting Bitbucket downloads list: {response.status} - {error_text}")
+                    return None
+        
+        except Exception as e:
+            logger.error(f"Exception getting artifact URL from Bitbucket: {str(e)}")
+            return None
+    
     async def close(self) -> None:
         """Close the client session."""
         if self.session:

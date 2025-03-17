@@ -30,7 +30,16 @@ Key features:
 - Comprehensive reporting in multiple formats (JUnit XML, HTML, JSON)
 - Pull request/merge request comments with detailed test results
 - Artifact management and upload to CI systems
+- Multi-channel notification system (Email, Slack, GitHub)
+- Status badge generation with automatic repository updates
+- Local CI simulation for pre-commit validation
 - Graceful degradation when CI systems are unavailable
+
+The CI/CD integration is also used by the hardware monitoring system for its testing workflow:
+- GitHub Actions workflows for automated test execution
+- Database integration for test result storage
+- Multi-platform testing support (Ubuntu, macOS)
+- Multi-channel notifications for test failures
 
 Example usage:
 
@@ -57,6 +66,11 @@ Configuration options:
 | `update_interval` | 60 | Status update interval in seconds |
 | `result_format` | junit | Result format (junit, json, html, all) |
 | `enable_pr_comments` | true | Enable PR comments with results |
+| `enable_notifications` | false | Enable notifications for test failures |
+| `notification_channels` | [] | Notification channels to use (email, slack, github) |
+| `generate_badge` | false | Generate and update status badge |
+| `badge_style` | flat | Badge style (flat, flat-square, plastic, for-the-badge, social) |
+| `multi_platform` | false | Enable testing on multiple platforms (Ubuntu, macOS) |
 
 ### Custom Scheduler
 
@@ -84,4 +98,8 @@ coordinator = DistributedTestingCoordinator(
 )
 ```
 
-Refer to the [Integration and Extensibility Guide](../INTEGRATION_EXTENSIBILITY_GUIDE.md) for comprehensive documentation and examples.
+Refer to the following documentation for more information:
+- [Integration and Extensibility Guide](../INTEGRATION_EXTENSIBILITY_GUIDE.md): Comprehensive guide to all integration features
+- [README_CI_INTEGRATION.md](../README_CI_INTEGRATION.md): Quick guide to hardware monitoring CI integration features
+- [CI_INTEGRATION_SUMMARY.md](../CI_INTEGRATION_SUMMARY.md): Detailed implementation summary for CI integration
+- [TEST_SUITE_GUIDE.md](../TEST_SUITE_GUIDE.md): Guide for the hardware monitoring test suite with CI information

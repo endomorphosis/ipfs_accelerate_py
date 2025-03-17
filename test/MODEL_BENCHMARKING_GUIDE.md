@@ -4,9 +4,46 @@
 
 This guide provides instructions for benchmarking models across different hardware platforms using the IPFS Accelerate Python Framework. It covers performance testing, hardware compatibility verification, and optimization techniques.
 
+## Enhanced Hardware Benchmarking Tools (NEW - March 2025)
+
+We have developed a new suite of hardware benchmarking tools that provide comprehensive testing across different hardware backends. For detailed information, see the [Hardware Benchmarking README](HARDWARE_BENCHMARKING_README.md).
+
+### Interactive Benchmarking
+
+The easiest way to run benchmarks is with our new interactive tool:
+
+```bash
+./interactive_hardware_benchmark.py
+```
+
+This tool:
+- Automatically detects available hardware on your system
+- Guides you through selecting models and hardware to benchmark
+- Generates comprehensive performance reports
+
+### Command-line Hardware Comparison
+
+For more control or automation, use the hardware comparison script:
+
+```bash
+./run_hardware_benchmark.sh --model-set text_embedding --hardware "cpu cuda openvino" --batch-sizes "1 4 16" --format csv
+```
+
+This command will generate a CSV report that can be easily imported into spreadsheet applications for custom analysis.
+
+### Direct Python API
+
+For maximum flexibility, use the direct Python API:
+
+```bash
+python run_hardware_comparison.py --models prajjwal1/bert-tiny google/t5-efficient-tiny --hardware cpu cuda --batch-sizes 1 4 16 --format csv
+```
+
+The direct API supports the same three output formats as the shell script: markdown, json, and csv.
+
 ## Quick Start
 
-To run basic model benchmarks:
+To run basic model benchmarks using the original framework components:
 
 ```bash
 python generators/benchmark_generators/run_model_benchmarks.py --output-dir ./benchmark_results
@@ -85,6 +122,7 @@ The framework supports the following hardware platforms:
 - `rocm`: AMD ROCm GPUs
 - `mps`: Apple Metal Performance Shaders (Apple Silicon)
 - `openvino`: Intel OpenVINO
+- `qualcomm`: Qualcomm AI Engine (QNN)
 - `webnn`: Web Neural Network API
 - `webgpu`: WebGPU API
 
@@ -92,6 +130,12 @@ The framework supports the following hardware platforms:
 
 The framework provides predefined model sets for benchmarking:
 
+- `text_embedding`: BERT models for text embeddings
+- `text_generation`: T5 models for text generation
+- `vision`: Vision Transformer (ViT) models
+- `audio`: Whisper models for speech recognition
+- `all`: All model types listed above
+- `quick`: Fast subset for quick testing (bert-tiny, t5-efficient-tiny)
 - `key`: Standard set of key models for each family
 - `small`: Smaller variants of models for faster testing
 - `custom`: Custom model set defined in a JSON file
@@ -161,6 +205,20 @@ The hardware model predictor uses machine learning trained on benchmark data to 
 
 For more details, see the [Hardware Model Predictor Guide](HARDWARE_MODEL_PREDICTOR_GUIDE.md).
 
+## OpenVINO Integration (Enhanced - March 2025)
+
+The enhanced hardware benchmarking tools now provide better OpenVINO integration:
+
+- Uses Optimum library for optimal model conversion
+- Supports different precision levels (FP32, FP16, INT8)
+- Graceful fallback to CPU when OpenVINO fails
+
+To specify OpenVINO precision:
+
+```bash
+./run_hardware_benchmark.sh --models "prajjwal1/bert-tiny" --hardware openvino --openvino-precision FP16
+```
+
 ## Advanced Usage
 
 ### Custom Model Sets
@@ -216,6 +274,17 @@ python test/benchmark_all_key_models.py --output-dir ./benchmark_results --auto-
 
 This integrates with the DuckDB/Parquet-based database system for efficient storage and analysis of benchmark results.
 
+## Performance Scaling Insights
+
+One key benefit of benchmarking across multiple hardware platforms is understanding performance scaling:
+
+- **Batch Size Scaling**: How throughput and latency change with different batch sizes
+- **Memory Usage Growth**: How memory requirements scale with batch size on various hardware
+- **Hardware Efficiency Crossover**: When to switch hardware platforms based on workload
+- **Optimal Batch Size**: Finding the sweet spot for each model-hardware combination
+
+The new benchmarking tools generate detailed reports that highlight these scaling characteristics, helping you make informed decisions about deployment configuration.
+
 ## Troubleshooting
 
 Common issues and solutions:
@@ -224,3 +293,4 @@ Common issues and solutions:
 - **Hardware detection failures**: Ensure hardware drivers are properly installed
 - **Model loading errors**: Check model compatibility with the specified hardware platform
 - **Implementation issues**: Use the `--debug` flag to get more information about implementation issues and fixes
+- **OpenVINO errors**: Try specifying different precision (FP32/FP16/INT8) or check that Optimum is installed

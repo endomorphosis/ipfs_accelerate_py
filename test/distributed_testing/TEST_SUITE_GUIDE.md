@@ -181,6 +181,21 @@ The test suite can be integrated with CI pipelines to run tests automatically:
 3. Run the test suite with appropriate options
 4. Generate test reports for review
 5. Fail the CI if tests fail
+6. Register test results with the benchmark database
+7. Integrate with the artifact handling system
+
+The test suite is now integrated with the CI pipeline through two main workflow files:
+
+1. `hardware_monitoring_tests.yml` (local workflow in the distributed_testing directory)
+2. `hardware_monitoring_integration.yml` (global workflow at project root)
+
+These workflows provide:
+- Testing on multiple Python versions (3.8, 3.9)
+- Testing on different operating systems (Ubuntu, macOS)
+- Multiple test modes (standard, basic, full, long)
+- HTML report generation and upload as artifacts
+- Database integration for test results storage
+- CI/CD artifact system integration
 
 Example GitHub Actions workflow:
 
@@ -190,31 +205,167 @@ name: Hardware Monitoring Tests
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'test/distributed_testing/hardware_utilization_monitor.py'
+      - 'test/distributed_testing/coordinator_hardware_monitoring_integration.py'
+      - 'test/distributed_testing/tests/test_hardware_utilization_monitor.py'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'test/distributed_testing/hardware_utilization_monitor.py'
+      - 'test/distributed_testing/coordinator_hardware_monitoring_integration.py'
+      - 'test/distributed_testing/tests/test_hardware_utilization_monitor.py'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode'
+        required: true
+        default: 'standard'
+        type: choice
+        options:
+          - standard
+          - basic
+          - full
+          - long
 
 jobs:
-  test:
+  hardware-monitoring-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9]
+
     steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Run tests
-        run: |
-          python test/distributed_testing/run_hardware_monitoring_tests.py --verbose --html-report test_report.html
-      - name: Upload test report
-        uses: actions/upload-artifact@v2
-        with:
-          name: test-report
-          path: test_report.html
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install duckdb psutil numpy pandas matplotlib
+    
+    - name: Run hardware monitoring tests
+      run: |
+        cd test/distributed_testing
+        python run_hardware_monitoring_tests.py --verbose --html-report ../../test_report.html
+    
+    - name: Upload test report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: hardware-monitoring-test-report-${{ matrix.python-version }}
+        path: test_report.html
 ```
+
+### Local CI Testing
+
+For local testing before pushing to GitHub, a helper script `run_hardware_monitoring_ci_tests.sh` has been created. This script simulates the CI environment and can be run as follows:
+
+```bash
+# Run standard tests
+./run_hardware_monitoring_ci_tests.sh
+
+# Run full tests
+./run_hardware_monitoring_ci_tests.sh --mode full
+
+# Run long tests with specific Python version
+./run_hardware_monitoring_ci_tests.sh --mode long --python python3.9
+
+# Run with CI integration tests
+./run_hardware_monitoring_ci_tests.sh --mode full --ci-integration
+
+# Run macOS-specific tests (on macOS only)
+./run_hardware_monitoring_ci_tests.sh --mode full --macos
+
+# Generate status badge
+./run_hardware_monitoring_ci_tests.sh --mode full --generate-badge
+
+# Send test notifications
+./run_hardware_monitoring_ci_tests.sh --mode full --send-notifications
+
+# Run full CI simulation
+./run_hardware_monitoring_ci_tests.sh --mode full --ci-integration --generate-badge --send-notifications
+```
+
+The script generates the same test reports and database files as the GitHub Actions workflows, allowing you to verify that your changes will pass in the CI environment.
+
+### CI Artifact Integration
+
+The test suite integrates with the artifact handling system, which allows:
+
+1. Uploading test reports to the CI provider
+2. Storing test results in a centralized database
+3. Linking test runs to specific code changes
+4. Retrieving historical test data for trend analysis
+
+This integration is handled by the `ci-artifact-integration` job in the workflow, which:
+- Creates a test run in the CI system
+- Uploads test reports as artifacts
+- Registers test results in the benchmark database
+
+### Notification System
+
+The CI integration includes a notification system that sends alerts when tests fail:
+
+1. **GitHub Integration**:
+   - Updates commit status using GitHub's Status API
+   - Adds comments to pull requests with test results
+   - Links to detailed test reports
+
+2. **Email Notifications** (configurable):
+   - Sends email alerts for test failures
+   - Includes test summary and links to reports
+   - Customizable templates for different notification types
+
+3. **Slack Notifications** (configurable):
+   - Sends alerts to Slack channels
+   - Includes test summary with formatting
+   - Custom bot name and emoji
+
+Configure notifications in `notification_config.json`:
+```json
+{
+  "email": {
+    "enabled": true,
+    "smtp_server": "smtp.example.com",
+    "to_addresses": ["team@example.com"]
+  },
+  "slack": {
+    "enabled": true,
+    "webhook_url": "https://hooks.slack.com/services/XXX/YYY/ZZZ",
+    "channel": "#ci-alerts"
+  },
+  "github": {
+    "enabled": true,
+    "commit_status": true,
+    "pr_comment": true
+  }
+}
+```
+
+### Status Badge Generation
+
+The CI system automatically generates a status badge showing the current test status:
+
+1. **Badge Types**:
+   - SVG badge for embedding in README files
+   - JSON data for custom badge rendering
+   - Multiple badge styles (flat, flat-square, plastic, etc.)
+
+2. **Automatic Updates**:
+   - Badge is updated after each test run
+   - Automatically committed to the repository
+   - Shows real-time test status
+
+3. **Badge Usage**:
+   - Embed in README files with: `![Hardware Monitoring Tests](path/to/hardware_monitoring_status.svg)`
+   - Use in documentation to show test status
+   - Link to detailed test reports
 
 ## Troubleshooting Tests
 

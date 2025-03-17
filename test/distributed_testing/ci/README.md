@@ -108,8 +108,11 @@ The CI/CD clients now support standardized artifact handling through the new `ar
 - **Provider-Independent**: Same API regardless of the underlying CI system
 - **Batch Operations**: Upload multiple artifacts at once
 - **Failure Handling**: Graceful fallbacks when CI provider uploads fail
+- **Artifact URL Retrieval**: Universal mechanism to retrieve artifact URLs across all CI providers
 
-Example usage:
+### Artifact Upload and Management
+
+Example usage for basic artifact management:
 
 ```python
 from distributed_testing.ci.artifact_handler import get_artifact_handler
@@ -150,6 +153,110 @@ report = artifact_handler.get_artifact_by_name("test-123", "test_results.json")
 await artifact_handler.purge_artifacts_for_test_run("test-123")
 ```
 
+### Artifact URL Retrieval
+
+All CI providers now implement the `get_artifact_url` method that retrieves URLs for artifacts uploaded to the CI system. This method provides a standardized way to access artifacts across different CI platforms, even when the underlying storage mechanisms vary:
+
+```python
+from distributed_testing.ci.register_providers import register_all_providers
+from distributed_testing.ci.api_interface import CIProviderFactory
+
+# Register all providers
+register_all_providers()
+
+# Create a provider
+provider = await CIProviderFactory.create_provider("github", {
+    "token": "github_token",
+    "repository": "owner/repo"
+})
+
+# Upload an artifact
+result = await provider.upload_artifact(
+    test_run_id="test-123",
+    artifact_path="./test_results.json",
+    artifact_name="test_results.json"
+)
+
+if result:
+    # Retrieve the artifact URL
+    url = await provider.get_artifact_url(
+        test_run_id="test-123",
+        artifact_name="test_results.json"
+    )
+    
+    if url:
+        print(f"Artifact URL: {url}")
+        # URL can be used to download or access the artifact directly
+```
+
+#### Provider-Specific Implementations
+
+Each CI provider implements `get_artifact_url` with provider-specific logic:
+
+| Provider | URL Mechanism | URL Pattern Example |
+|----------|---------------|---------------------|
+| GitHub | GitHub API | `https://github.com/owner/repo/suites/{id}/artifacts/{artifact_id}` |
+| GitLab | GitLab Jobs Artifacts | `https://gitlab.com/api/v4/projects/{project_id}/jobs/{job_id}/artifacts/{path}` |
+| Jenkins | Jenkins Artifacts | `https://jenkins.example.com/job/{job_name}/{build_id}/artifact/{path}` |
+| CircleCI | CircleCI Artifacts API | `https://circleci.com/api/v2/project/{project_slug}/{job_number}/artifacts/{path}` |
+| Azure DevOps | Test Attachments API | `https://dev.azure.com/{org}/{project}/_apis/test/runs/{run_id}/attachments/{id}` |
+| TeamCity | TeamCity Artifacts API | `https://teamcity.example.com/app/rest/builds/id:{build_id}/artifacts/content/{path}` |
+| Travis CI | Custom storage (e.g. S3) | `https://s3.amazonaws.com/travis-artifacts/{repo}/{build_id}/{artifact_name}` |
+| Bitbucket | Bitbucket Downloads API | `https://bitbucket.org/{workspace}/{repo}/downloads/{path}` |
+
+#### Implementation Features
+
+The `get_artifact_url` implementations include:
+
+- **URL Caching**: URLs are cached to minimize API calls
+- **Error Handling**: Robust error handling with appropriate logging
+- **Fallback Mechanisms**: Alternative URL resolution strategies when primary methods fail
+- **Simulation Support**: Graceful handling of simulated test runs
+
+#### Example Integration with Artifact Handler
+
+```python
+from distributed_testing.ci.artifact_handler import get_artifact_handler
+from distributed_testing.ci.register_providers import register_all_providers
+from distributed_testing.ci.api_interface import CIProviderFactory
+
+# Register all providers
+register_all_providers()
+
+# Create provider
+provider = await CIProviderFactory.create_provider("github", {
+    "token": "github_token",
+    "repository": "owner/repo"
+})
+
+# Get artifact handler
+artifact_handler = get_artifact_handler()
+artifact_handler.register_provider("github", provider)
+
+# Upload artifact
+success, metadata = await artifact_handler.upload_artifact(
+    source_path="./test_results.json",
+    artifact_name="test_results.json",
+    artifact_type="report",
+    test_run_id="test-123",
+    provider_name="github"
+)
+
+if success:
+    # Get artifact URL
+    url = await provider.get_artifact_url("test-123", "test_results.json")
+    
+    if url:
+        # Store URL in metadata for future reference
+        metadata.update({"url": url})
+        artifact_handler.update_artifact_metadata("test-123", "test_results.json", metadata)
+        
+        # URL can now be used in reports, notifications, etc.
+        print(f"Artifact available at: {url}")
+```
+
+### Testing and Demos
+
 To run tests and demos for the artifact handling system:
 
 ```bash
@@ -167,6 +274,70 @@ python ci/test_artifact_handling.py
 
 # Run artifact handling demo
 python run_test_artifact_handling.py --provider github --token YOUR_TOKEN --repository owner/repo
+
+# Test artifact URL retrieval specifically
+python distributed_testing/test_artifact_url_retrieval.py
 ```
 
 For more details on how these clients are used as part of the CI/CD Integration plugin, see [../integration/README.md](../integration/README.md).
+
+## Hardware Monitoring CI Integration
+
+The CI/CD clients are also used by the hardware monitoring system's CI integration, which provides:
+
+- **GitHub Actions Workflows**: Automated test execution with GitHub Actions
+- **Multi-Channel Notification System**: Notifications via Email, Slack, and GitHub
+- **Status Badge Generation**: SVG badges showing current test status
+- **Local CI Simulation**: Script for testing CI workflow locally
+
+### Notification System
+
+The hardware monitoring system includes a notification system that sends alerts when tests fail:
+
+```python
+from distributed_testing.ci_notification import send_notifications, load_config
+
+# Load notification configuration
+config = load_config("notification_config.json")
+
+# Send notifications about test results
+success = send_notifications({
+    "test_status": "failure",
+    "test_report": "./test_report.html",
+    "channels": ["github", "slack", "email"]
+}, config)
+```
+
+### Status Badge Generator
+
+The status badge generator creates SVG badges showing the current test status:
+
+```python
+from distributed_testing.generate_status_badge import generate_badge_svg, get_test_status
+
+# Get test status from database
+status, passing_runs, total_runs = get_test_status("./test_metrics.duckdb")
+
+# Generate badge
+badge_svg = generate_badge_svg("tests", status)
+
+# Write badge to file
+with open("test_status.svg", "w") as f:
+    f.write(badge_svg)
+```
+
+### CI Simulation
+
+The hardware monitoring system includes a script for simulating the CI environment locally:
+
+```bash
+# Run basic CI tests
+./run_hardware_monitoring_ci_tests.sh
+
+# Run with badge generation and notifications
+./run_hardware_monitoring_ci_tests.sh --mode full --generate-badge --send-notifications
+```
+
+For more details on the hardware monitoring CI integration, see:
+- [../README_CI_INTEGRATION.md](../README_CI_INTEGRATION.md) - Quick guide to CI integration features
+- [../CI_INTEGRATION_SUMMARY.md](../CI_INTEGRATION_SUMMARY.md) - Detailed implementation summary

@@ -905,21 +905,47 @@ class TaskRunner:
         """Get current hardware metrics.
         
         Returns:
-            Dict containing hardware metrics
+            Dict containing hardware metrics and resource information for dynamic resource management
         """
-        metrics = {}
+        metrics = {
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Add resource metrics for dynamic resource management
+        resources = {
+            "cpu": {},
+            "memory": {},
+            "gpu": {}
+        }
         
         if PSUTIL_AVAILABLE:
             try:
-                # CPU usage
+                # CPU usage and resource information
                 metrics["cpu_percent"] = psutil.cpu_percent(interval=0.1)
                 metrics["cpu_per_core"] = psutil.cpu_percent(interval=0.1, percpu=True)
                 
-                # Memory usage
+                # Add CPU resource metrics
+                cpu_count = psutil.cpu_count(logical=True)
+                cpu_physical = psutil.cpu_count(logical=False)
+                cpu_load = [x / 100.0 for x in psutil.getloadavg()] if hasattr(psutil, 'getloadavg') else [0.0, 0.0, 0.0]
+                
+                resources["cpu"]["cores"] = cpu_count
+                resources["cpu"]["physical_cores"] = cpu_physical
+                resources["cpu"]["available_cores"] = max(0.1, cpu_count - cpu_load[0])  # Estimate available cores
+                resources["cpu"]["load_average"] = cpu_load
+                resources["cpu"]["percent_used"] = metrics["cpu_percent"]
+                
+                # Memory usage and resource information
                 memory = psutil.virtual_memory()
                 metrics["memory_percent"] = memory.percent
                 metrics["memory_used_gb"] = round(memory.used / (1024 ** 3), 2)
                 metrics["memory_available_gb"] = round(memory.available / (1024 ** 3), 2)
+                
+                # Add memory resource metrics
+                resources["memory"]["total_mb"] = int(memory.total / (1024 * 1024))
+                resources["memory"]["used_mb"] = int(memory.used / (1024 * 1024))
+                resources["memory"]["available_mb"] = int(memory.available / (1024 * 1024))
+                resources["memory"]["percent_used"] = memory.percent
                 
                 # Disk usage
                 disk = psutil.disk_usage(self.work_dir)
@@ -935,6 +961,13 @@ class TaskRunner:
                 gpus = GPUtil.getGPUs()
                 metrics["gpu_metrics"] = []
                 
+                # Track GPU resource info for dynamic resource management
+                resources["gpu"]["devices"] = len(gpus)
+                resources["gpu"]["available_devices"] = 0  # Will increment for available GPUs
+                resources["gpu"]["total_memory_mb"] = 0
+                resources["gpu"]["available_memory_mb"] = 0
+                
+                # Process individual GPUs
                 for gpu in gpus:
                     gpu_metrics = {
                         "id": gpu.id,
@@ -946,6 +979,26 @@ class TaskRunner:
                         "temperature": gpu.temperature
                     }
                     metrics["gpu_metrics"].append(gpu_metrics)
+                    
+                    # Update resource tracking for this GPU
+                    resources["gpu"]["total_memory_mb"] += gpu.memoryTotal
+                    
+                    # Calculate available memory
+                    available_memory_mb = gpu.memoryTotal - gpu.memoryUsed
+                    resources["gpu"]["available_memory_mb"] += available_memory_mb
+                    
+                    # Consider a GPU "available" if it has less than 70% memory utilization
+                    if gpu.memoryUtil < 0.7:
+                        resources["gpu"]["available_devices"] += 1
+                        
+                    # Add per-device info
+                    resources["gpu"][f"device_{gpu.id}"] = {
+                        "name": gpu.name,
+                        "total_memory_mb": gpu.memoryTotal,
+                        "available_memory_mb": available_memory_mb,
+                        "load_percent": gpu.load * 100,
+                        "temperature": gpu.temperature
+                    }
             except Exception as e:
                 logger.warning(f"Error getting GPU metrics with GPUtil: {e}")
                 
@@ -953,23 +1006,67 @@ class TaskRunner:
         if TORCH_AVAILABLE and torch.cuda.is_available():
             try:
                 metrics["torch_gpu_metrics"] = []
+                cuda_device_count = torch.cuda.device_count()
                 
-                for i in range(torch.cuda.device_count()):
+                # Set device count in resources if not already set
+                if resources["gpu"].get("devices", 0) == 0:
+                    resources["gpu"]["devices"] = cuda_device_count
+                    resources["gpu"]["available_devices"] = 0
+                    resources["gpu"]["total_memory_mb"] = 0
+                    resources["gpu"]["available_memory_mb"] = 0
+                
+                for i in range(cuda_device_count):
                     torch_gpu_metrics = {
                         "id": i,
                         "name": torch.cuda.get_device_name(i)
                     }
                     
                     # Get memory usage
+                    reserved_bytes = 0
+                    allocated_bytes = 0
+                    
                     if hasattr(torch.cuda, "memory_reserved"):
-                        torch_gpu_metrics["memory_reserved_bytes"] = torch.cuda.memory_reserved(i)
+                        reserved_bytes = torch.cuda.memory_reserved(i)
+                        torch_gpu_metrics["memory_reserved_bytes"] = reserved_bytes
                     
                     if hasattr(torch.cuda, "memory_allocated"):
-                        torch_gpu_metrics["memory_allocated_bytes"] = torch.cuda.memory_allocated(i)
+                        allocated_bytes = torch.cuda.memory_allocated(i)
+                        torch_gpu_metrics["memory_allocated_bytes"] = allocated_bytes
+                    
+                    # Get total memory if possible
+                    total_memory_bytes = 0
+                    try:
+                        props = torch.cuda.get_device_properties(i)
+                        total_memory_bytes = props.total_memory
+                        torch_gpu_metrics["total_memory_bytes"] = total_memory_bytes
+                    except Exception:
+                        pass
+                    
+                    # Convert to MB for resource tracking if not already tracked by GPUtil
+                    if f"device_{i}" not in resources["gpu"] and total_memory_bytes > 0:
+                        total_memory_mb = total_memory_bytes / (1024 * 1024)
+                        available_memory_mb = (total_memory_bytes - allocated_bytes) / (1024 * 1024)
                         
+                        resources["gpu"]["total_memory_mb"] += total_memory_mb
+                        resources["gpu"]["available_memory_mb"] += available_memory_mb
+                        
+                        # Consider a GPU "available" if it has less than 70% memory utilization
+                        if allocated_bytes / total_memory_bytes < 0.7:
+                            resources["gpu"]["available_devices"] += 1
+                        
+                        resources["gpu"][f"device_{i}"] = {
+                            "name": torch.cuda.get_device_name(i),
+                            "total_memory_mb": total_memory_mb,
+                            "available_memory_mb": available_memory_mb,
+                            "utilization_percent": (allocated_bytes / total_memory_bytes * 100) if total_memory_bytes > 0 else 0
+                        }
+                    
                     metrics["torch_gpu_metrics"].append(torch_gpu_metrics)
             except Exception as e:
                 logger.warning(f"Error getting PyTorch GPU metrics: {e}")
+        
+        # Add resources info to metrics
+        metrics["resources"] = resources
         
         return metrics
     
@@ -1183,15 +1280,23 @@ class WorkerClient:
             # Prepare hostname
             hostname = socket.gethostname()
             
-            # Send registration request
+            # Get current hardware metrics including resource information
+            hardware_metrics = self.task_runner._get_hardware_metrics()
+            
+            # Send registration request with resource information
             register_request = {
                 "type": "register",
                 "worker_id": self.worker_id,
                 "hostname": hostname,
                 "capabilities": self.capabilities,
+                "resources": hardware_metrics.get("resources", {}),  # Include resource information
                 "tags": {
                     "version": "0.1.0",
-                    "py_version": platform.python_version()
+                    "py_version": platform.python_version(),
+                    "psutil_available": PSUTIL_AVAILABLE,
+                    "gputil_available": GPUTIL_AVAILABLE,
+                    "torch_available": TORCH_AVAILABLE,
+                    "cuda_available": TORCH_AVAILABLE and torch.cuda.is_available()
                 }
             }
             
@@ -1226,11 +1331,20 @@ class WorkerClient:
             return False
             
         try:
-            # Send heartbeat request
+            # Get updated hardware metrics
+            hardware_metrics = self.task_runner._get_hardware_metrics()
+            
+            # Send heartbeat request with resource updates
             heartbeat_request = {
                 "type": "heartbeat",
                 "worker_id": self.worker_id,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "resources": hardware_metrics.get("resources", {}),  # Include latest resource info
+                "hardware_metrics": {
+                    "cpu_percent": hardware_metrics.get("cpu_percent", 0),
+                    "memory_percent": hardware_metrics.get("memory_percent", 0),
+                    "gpu_utilization": next((gpu.get("load_percent", 0) for gpu in hardware_metrics.get("gpu_metrics", [])), 0) if hardware_metrics.get("gpu_metrics") else 0
+                }
             }
             
             await self.websocket.send(json.dumps(heartbeat_request))

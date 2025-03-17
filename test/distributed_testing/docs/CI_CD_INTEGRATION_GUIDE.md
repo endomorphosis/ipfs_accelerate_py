@@ -7,15 +7,16 @@ This comprehensive guide explains how to integrate the Distributed Testing Frame
 1. [Overview](#overview)
 2. [Standardized API Architecture](#standardized-api-architecture)
 3. [Supported CI/CD Systems](#supported-cicd-systems)
-4. [Integration Options](#integration-options)
-5. [Plugin-Based Integration](#plugin-based-integration)
-6. [Command-Line Integration](#command-line-integration)
-7. [API-Based Integration](#api-based-integration)
-8. [Configuration Options](#configuration-options)
-9. [Performance History Tracking](#performance-history-tracking)
-10. [Advanced Usage](#advanced-usage)
-11. [Troubleshooting](#troubleshooting)
-12. [API Reference](#api-reference)
+4. [Enhanced Artifact Handling](#enhanced-artifact-handling)
+5. [Integration Options](#integration-options)
+6. [Plugin-Based Integration](#plugin-based-integration)
+7. [Command-Line Integration](#command-line-integration)
+8. [API-Based Integration](#api-based-integration)
+9. [Configuration Options](#configuration-options)
+10. [Performance History Tracking](#performance-history-tracking)
+11. [Advanced Usage](#advanced-usage)
+12. [Troubleshooting](#troubleshooting)
+13. [API Reference](#api-reference)
 
 ## Overview
 
@@ -247,6 +248,158 @@ The framework currently supports the following CI/CD systems:
 | Bitbucket Pipelines | `bitbucket` | Pipelines, PR comments, artifacts | Pipeline integration, PR comments, artifact upload | Username/App Password |
 | TeamCity | `teamcity` | Build status, test reports, artifacts | Build integration, test reporting, artifact archiving | Username/Password |
 | Local Mode | `local` | File-based storage, history tracking | Local storage, history tracking, trend analysis | None |
+
+## Enhanced Artifact Handling
+
+The framework now includes an Enhanced Artifact Handling System for comprehensive management, discovery, and analysis of artifacts across different CI/CD providers.
+
+This system provides:
+
+- **Standardized Metadata**: Uniform metadata extraction across all CI providers
+- **Content Classification**: Automatic detection of artifact types and content
+- **Efficient Retrieval**: Smart caching system for fast artifact access
+- **Trend Analysis**: Tools for analyzing metrics trends across test runs
+- **Discovery**: Powerful search capabilities for finding artifacts by criteria
+- **Comparison**: Tools for comparing artifacts between versions
+
+### Key Components
+
+The Enhanced Artifact Handling System consists of three main components:
+
+1. **Artifact Metadata** (`ArtifactMetadata`): Extracts and manages metadata about artifacts
+2. **Artifact Discovery** (`ArtifactDiscovery`): Provides search and analysis capabilities 
+3. **Artifact Retriever** (`ArtifactRetriever`): Retrieves and caches artifacts efficiently
+
+### Artifact Metadata
+
+The `ArtifactMetadata` class provides comprehensive metadata extraction:
+
+```python
+# Create artifact metadata with automatic type detection
+metadata = ArtifactMetadata(
+    artifact_name="test_report.json",
+    artifact_path="/path/to/report.json",
+    test_run_id="test-123",
+    provider_name="github"
+)
+
+# Add custom labels for categorization
+metadata.add_label("performance")
+metadata.add_label("regression-test")
+
+# Add custom metadata
+metadata.add_metadata("version", "1.0")
+metadata.add_metadata("platform", "linux")
+
+# Validate artifact (checks file exists and hash matches)
+if metadata.validate():
+    print("Artifact valid!")
+```
+
+### Artifact Discovery
+
+The `ArtifactDiscovery` class provides powerful search and analysis tools:
+
+```python
+# Discover artifacts matching criteria
+matching_artifacts = ArtifactDiscovery.discover_artifacts(
+    artifacts=all_artifacts,
+    artifact_type="performance_report",
+    labels=["regression-test"],
+    metadata_query={"platform": "linux"},
+    content_query={"metrics.throughput": 1250.5}
+)
+
+# Group artifacts by type
+grouped_artifacts = ArtifactDiscovery.group_artifacts_by_type(all_artifacts)
+
+# Find latest artifact of a specific type
+latest_perf_report = ArtifactDiscovery.find_latest_artifact(
+    artifacts=all_artifacts,
+    artifact_type="performance_report"
+)
+
+# Extract metrics from multiple artifacts for analysis
+metrics = ArtifactDiscovery.extract_metrics_from_artifacts(
+    artifacts=perf_artifacts,
+    metric_names=["throughput", "latency", "memory_usage"]
+)
+```
+
+### Artifact Retriever
+
+The `ArtifactRetriever` efficiently retrieves and caches artifacts from CI providers:
+
+```python
+# Create retriever with custom settings
+retriever = ArtifactRetriever(
+    cache_dir="./artifact_cache",
+    max_cache_size_mb=1024,
+    max_cache_age_days=7
+)
+
+# Register CI providers
+retriever.register_provider("github", github_client)
+retriever.register_provider("gitlab", gitlab_client)
+
+# Retrieve artifact with caching
+artifact_path, metadata = await retriever.retrieve_artifact(
+    test_run_id="test-123",
+    artifact_name="performance_report.json",
+    provider_name="github",
+    use_cache=True
+)
+
+# Batch retrieve multiple artifacts in parallel
+artifacts_to_retrieve = [
+    {"test_run_id": "test-123", "artifact_name": "logs.txt", "provider_name": "github"},
+    {"test_run_id": "test-123", "artifact_name": "metrics.json", "provider_name": "github"},
+    {"test_run_id": "test-456", "artifact_name": "report.json", "provider_name": "gitlab"}
+]
+
+results = await retriever.retrieve_artifacts_batch(artifacts_to_retrieve)
+
+# Compare artifacts between versions
+comparison = await retriever.compare_artifacts(
+    artifact1={"test_run_id": "test-123", "artifact_name": "report.json", "provider_name": "github"},
+    artifact2={"test_run_id": "test-456", "artifact_name": "report.json", "provider_name": "github"}
+)
+```
+
+### CI Provider-Specific Implementations
+
+The system provides specialized artifact handling for each CI provider:
+
+- **GitHub**: Uses GitHub Gists API for text artifacts and Releases API for binary artifacts
+- **GitLab**: Uses Repository Files API with dedicated branches for storing artifacts
+- **Jenkins**: Uses Jenkins Artifact Storage API with direct artifact uploading
+- **Azure DevOps**: Uses Test Attachment API for test-associated artifacts
+
+### Initialization with Providers
+
+```python
+from distributed_testing.ci.register_providers import initialize_artifact_systems
+
+# Initialize with providers
+providers = await initialize_artifact_systems(
+    provider_configs={
+        "github": {"token": "github_token", "repository": "owner/repo"},
+        "gitlab": {"token": "gitlab_token", "project": "group/project"}
+    },
+    artifact_handler_storage_dir="./artifacts",
+    artifact_retriever_cache_dir="./artifact_cache"
+)
+
+# Access registered providers
+github_provider = providers["github"]
+gitlab_provider = providers["gitlab"]
+
+# Systems are pre-configured with providers
+artifact_handler = get_artifact_handler()
+artifact_retriever = get_artifact_retriever()
+```
+
+For more details, see the [Enhanced Artifact Handling System documentation](ENHANCED_ARTIFACT_HANDLING.md).
 
 ## Integration Options
 

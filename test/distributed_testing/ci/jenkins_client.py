@@ -291,6 +291,18 @@ class JenkinsClient(CIProviderInterface):
             # This would require a more complex integration with Jenkins plugins or custom implementation.
             logger.info(f"Artifact upload for Jenkins not fully implemented. Would upload {artifact_path} as {artifact_name}")
             
+            # Store the artifact URL for later retrieval
+            if not hasattr(self, "_artifact_urls"):
+                self._artifact_urls = {}
+            
+            if test_run_id not in self._artifact_urls:
+                self._artifact_urls[test_run_id] = {}
+            
+            # Create a mock URL for the artifact
+            # In a real implementation, this would be the actual URL to the artifact in Jenkins
+            artifact_url = f"{self.url}job/{job_name}/{build_id}/artifact/{artifact_name}"
+            self._artifact_urls[test_run_id][artifact_name] = artifact_url
+            
             # For demonstration, we'll just return success
             return True
             
@@ -411,6 +423,85 @@ class JenkinsClient(CIProviderInterface):
                 "error": f"Exception: {str(e)}"
             }
             
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """
+        Get the URL for a test run artifact.
+        
+        Args:
+            test_run_id: Test run ID
+            artifact_name: Name of artifact
+            
+        Returns:
+            URL to the artifact or None if not found
+        """
+        await self._ensure_session()
+        
+        try:
+            # Skip if we're using a simulated test run
+            if test_run_id.startswith("jenkins-simulated-"):
+                logger.warning(f"Cannot get artifact URL for simulated test run {test_run_id}")
+                return None
+            
+            # Check if we have the URL cached
+            if hasattr(self, "_artifact_urls") and test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
+                return self._artifact_urls[test_run_id][artifact_name]
+            
+            # Extract job name and build ID from test run ID
+            parts = test_run_id.split("-", 2)
+            if len(parts) < 3 or parts[0] != "jenkins":
+                logger.error(f"Invalid Jenkins test run ID format: {test_run_id}")
+                return None
+            
+            job_name = parts[1]
+            build_id = parts[2]
+            
+            # In Jenkins, artifact URLs follow a predictable pattern
+            artifact_url = f"{self.url}job/{quote(job_name)}/{build_id}/artifact/{artifact_name}"
+            
+            # Check if the artifact exists (this is a best-effort check)
+            # First, check if the build exists
+            build_url = f"{self.url}job/{quote(job_name)}/{build_id}/api/json"
+            
+            async with self.session.get(build_url) as response:
+                if response.status != 200:
+                    logger.warning(f"Failed to verify build exists: {response.status}")
+                    return None
+                
+                # Now check if the build has artifacts
+                build_data = await response.json()
+                
+                # Check if the build has artifacts
+                if not build_data.get("artifacts", []):
+                    logger.warning(f"Build {job_name} #{build_id} has no artifacts")
+                    return None
+                
+                # Look for our artifact in the list
+                for artifact in build_data.get("artifacts", []):
+                    if artifact.get("fileName") == artifact_name or artifact.get("relativePath") == artifact_name:
+                        # Found the artifact, construct the full URL
+                        relative_path = artifact.get("relativePath") or artifact_name
+                        absolute_url = f"{self.url}job/{quote(job_name)}/{build_id}/artifact/{relative_path}"
+                        
+                        # Cache the URL for future use
+                        if not hasattr(self, "_artifact_urls"):
+                            self._artifact_urls = {}
+                        
+                        if test_run_id not in self._artifact_urls:
+                            self._artifact_urls[test_run_id] = {}
+                        
+                        self._artifact_urls[test_run_id][artifact_name] = absolute_url
+                        
+                        logger.info(f"Found artifact URL for {artifact_name}: {absolute_url}")
+                        return absolute_url
+                
+                # Artifact not found in the build
+                logger.warning(f"Artifact {artifact_name} not found in build {job_name} #{build_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Exception getting artifact URL from Jenkins: {str(e)}")
+            return None
+    
     async def set_build_status(self, status: str, description: str) -> bool:
         """
         Set the build status in the CI system.

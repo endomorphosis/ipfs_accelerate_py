@@ -3,14 +3,62 @@
 This guide provides detailed information about running comprehensive benchmarks for all model types across all hardware platforms using the updated benchmarking system.
 
 **Date: April 2025**  
-**Last Updated: April 9, 2025**  
-**Status: IN PROGRESS (65% Complete)**
+**Last Updated: March 16, 2025**  
+**Status: IN PROGRESS (85% Complete)**
 
 ## Overview
 
 The comprehensive benchmarking system executes benchmarks for 13 key model types across 8 hardware platforms, collecting detailed performance metrics and storing them in a centralized DuckDB database for analysis and reporting.
 
 The system has been enhanced with a new orchestration script that simplifies the process of running benchmarks and provides better integration with the database.
+
+## NEW: Enhanced Hardware Benchmarking Tools (March 2025)
+
+We've developed new hardware benchmarking tools that provide an even simpler interface for running hardware comparisons:
+
+### Interactive Benchmarking Tool
+
+The easiest way to run benchmarks is with our new interactive tool:
+
+```bash
+./interactive_hardware_benchmark.py
+```
+
+This tool:
+- Automatically detects available hardware backends on your system
+- Guides you through selecting models, hardware, and benchmark parameters
+- Runs the benchmarks and generates comprehensive reports
+- Provides real-time feedback during benchmark execution
+
+### Command-line Hardware Benchmark Runner
+
+For more control or automation, use the hardware benchmark script:
+
+```bash
+./run_hardware_benchmark.sh --model-set text_embedding --hardware "cpu cuda openvino" --batch-sizes "1 4 16"
+```
+
+Key features:
+- Supports predefined model sets or custom model lists
+- Detects available hardware backends automatically
+- Provides detailed performance metrics with memory profiling
+- Generates markdown and JSON reports with hardware comparisons
+
+### Direct Python API with OpenVINO Integration
+
+For maximum flexibility, use the direct Python API:
+
+```bash
+python run_hardware_comparison.py --models prajjwal1/bert-tiny google/t5-efficient-tiny --hardware cpu cuda openvino --batch-sizes 1 4 16
+```
+
+Enhanced features:
+- Uses Optimum library for optimal OpenVINO model conversion
+- Supports different precision levels (FP32, FP16, INT8)
+- Graceful fallback to CPU when OpenVINO fails
+- Proper batch input handling for different model types
+
+For complete documentation of these new tools, see [Hardware Benchmarking README](HARDWARE_BENCHMARKING_README.md).
 
 ## Components
 
@@ -72,7 +120,7 @@ python test/run_comprehensive_benchmarks.py --timeout 1200
 - **Small Model Support**: Use smaller model variants for faster testing
 - **Real-time Logging**: View benchmark progress in real-time
 - **Status Tracking**: Stores benchmark status in JSON files for monitoring and resume capabilities
-- **Report Format Options**: Generate reports in HTML, Markdown, or JSON formats
+- **Report Format Options**: Generate reports in HTML, Markdown, JSON, or CSV formats
 - **Performance Metrics**: Captures detailed metrics on latency, throughput, and memory usage 
 - **Timeout Control**: Set custom timeouts for benchmarks to prevent hanging
 - **Comprehensive Status Reporting**: Detailed status reporting with timing and error information
@@ -162,6 +210,7 @@ To generate reports in different formats:
 python test/run_comprehensive_benchmarks.py --report-format html
 python test/run_comprehensive_benchmarks.py --report-format markdown
 python test/run_comprehensive_benchmarks.py --report-format json
+python test/run_comprehensive_benchmarks.py --report-format csv
 ```
 
 #### Setting Timeouts
@@ -294,6 +343,7 @@ To generate a report from existing benchmark data:
 python test/benchmark_timing_report.py --generate --format html --output report.html
 python test/benchmark_timing_report.py --generate --format markdown --output report.md
 python test/benchmark_timing_report.py --generate --format json --output report.json
+python test/benchmark_timing_report.py --generate --format csv --output report.csv
 ```
 
 ## Implementation Progress (April 2025)
@@ -338,9 +388,10 @@ The comprehensive benchmarking system implementation is currently at **65%** com
    - Added symlinks to latest reports and status files
 
 4. **Multiple Report Formats**
-   - Added support for HTML, Markdown, and JSON reports
+   - Added support for HTML, Markdown, JSON, and CSV reports
    - Added more detailed performance metrics
    - Improved visualization capabilities
+   - CSV format for data analysis in spreadsheet applications
 
 ## Conclusion
 

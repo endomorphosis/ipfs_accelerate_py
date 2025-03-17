@@ -304,15 +304,47 @@ Enhanced JWT authentication is planned to provide secure communication between t
 - **Fine-Grained Permissions**: Detailed operation-level access control
 - **Secure Storage**: Proper token storage on worker nodes
 
-### 5. CI/CD Pipeline Integration (Phase 5 - Planned)
+### 5. CI/CD Pipeline Integration (Phase 5 - Completed)
 
-CI/CD integration will automate distributed testing during development workflows:
+CI/CD integration automates distributed testing during development workflows, with comprehensive artifact management and test reporting:
 
-- **GitHub Actions**: Workflow for distributed testing
-- **Coordinator Deployment**: Automatic deployment of coordinator
-- **Worker Provisioning**: Dynamic provisioning of worker nodes
-- **Status Reporting**: Test status reporting to GitHub
-- **PR Review Dashboards**: Comprehensive test result visualization
+- **CI Provider Interface**: Standardized interface for all CI providers (GitHub, GitLab, Jenkins, etc.)
+- **Artifact Handling**: Standardized artifact uploading, management, and URL retrieval
+- **Status Reporting**: Automated test status reporting to CI systems
+- **PR/MR Comments**: Automatic commenting on Pull/Merge Requests with test results
+- **Worker Provisioning**: Dynamic provisioning of worker nodes for distributed testing
+- **Result Collection**: Centralized collection and storage of test results
+- **Report Generation**: Comprehensive test reports with visualization
+
+#### Key Components
+
+- **CIProviderInterface**: Abstract base class defining standard operations for all CI providers
+- **Provider Implementations**: Concrete implementations for GitHub, GitLab, Jenkins, Azure DevOps, CircleCI, TeamCity, Travis CI, and Bitbucket
+- **Artifact Management**: System for storing, retrieving, and managing test artifacts
+- **TestRunResult**: Standardized representation of test results across different CI systems
+- **TestResultFormatter**: Formatting test results for different output formats (Markdown, HTML, JSON)
+- **TestResultReporter**: Centralized reporting of test results to CI systems
+- **CIProviderFactory**: Factory pattern for creating CI provider instances
+
+#### Artifact URL Retrieval System
+
+A key enhancement is the standardized artifact URL retrieval system that works across all CI providers:
+
+- **Universal Interface**: Consistent `get_artifact_url` method across all providers
+- **URL Caching**: Minimizes API calls by caching URLs
+- **Fallback Mechanisms**: Multiple URL resolution strategies when primary methods fail
+- **Provider-Specific Logic**: Each provider implements URL retrieval according to its own artifact storage mechanisms
+- **Integration with Test Reports**: Artifact URLs can be included in test reports and notifications
+
+#### Implementation Details
+
+The CI/CD integration has been implemented with:
+
+- Comprehensive testing of all CI providers
+- Standardized error handling and logging
+- Consistent artifact management across providers
+- Transparent simulation mode for testing
+- Integration with the DuckDB result storage system
 
 ### 6. Dynamic Resource Management (Phase 6 - Planned)
 
@@ -324,6 +356,251 @@ Dynamic resource management will optimize resource allocation based on workload:
 - **Cloud Integration**: Support for ephemeral workers on cloud platforms
 - **Reservation Tracking**: Resource reservation and release tracking
 
+### 7. Auto Recovery System - High Availability (Phase 7 - Completed)
+
+The Auto Recovery System provides high availability clustering for the coordinator component, ensuring continuous operation even when individual nodes fail.
+
+#### Core Features
+
+- **Coordinator Redundancy**: Multiple coordinator instances running in parallel with automatic failover
+- **Leader Election**: Raft-inspired consensus algorithm for reliable leader selection
+- **State Synchronization**: Efficient state replication between coordinator nodes
+- **Health Monitoring**: Comprehensive system health tracking and issue detection
+- **Self-Healing**: Automatic recovery from common failure conditions
+- **WebNN/WebGPU Awareness**: Hardware capability detection for web platform acceleration
+- **Visualization**: Real-time visualization of cluster state and health metrics
+
+#### Architecture
+
+The Auto Recovery System implements a state machine-based approach with the following states:
+
+- **Leader**: Active coordinator that handles client requests and distributes tasks
+- **Follower**: Standby coordinator that replicates state from the leader
+- **Candidate**: Coordinator attempting to become leader during an election
+- **Offline**: Coordinator that is currently unreachable
+
+State transitions are triggered by:
+- **Heartbeat Timeout**: Follower transitions to candidate when leader heartbeat is missed
+- **Election Success**: Candidate transitions to leader when receiving majority votes
+- **Higher Term Discovery**: Any node transitions to follower when a higher term is discovered
+- **Leader Heartbeat**: Candidate or follower resets election timeout when leader heartbeat received
+
+#### State Replication
+
+State replication is performed through a log-based approach:
+
+- **Log Entries**: Operations are recorded as log entries with term numbers
+- **Append-Only Log**: New entries are appended to the log in order
+- **Consistency Check**: Each entry includes the term number of the previous entry
+- **Commit Index**: Tracks the highest log entry known to be committed
+- **State Snapshots**: Periodic snapshots reduce recovery time after failures
+
+#### Key Components
+
+- **AutoRecoverySystem**: Extends the base AutoRecovery class with enhanced features including:
+  - Health monitoring with self-healing capabilities
+  - WebNN/WebGPU capability detection
+  - State visualization and metric reporting
+  - Message integrity verification via cryptographic hashing
+
+- **Health Monitoring System**: 
+  - Tracks CPU, memory, disk, and network metrics
+  - Identifies resource constraints and performance issues
+  - Implements recovery actions for common issues
+  - Provides historical trend analysis
+
+- **WebNN/WebGPU Capability Detection**:
+  - Detects browser support for WebNN and WebGPU
+  - Maps hardware capabilities to browser features
+  - Tracks browser version-specific feature support
+  - Enables hardware-aware task assignment
+
+- **Visualization Engine**:
+  - Generates cluster state visualizations
+  - Creates health metrics charts and graphs
+  - Visualizes leader transitions and state changes
+  - Supports both HTML and text-based output formats
+
+#### Advanced Features
+
+The Auto Recovery System includes several advanced features:
+
+1. **Message Integrity Verification**:
+   - Hash-based verification of all inter-coordinator messages
+   - Prevents message tampering and corruption
+   - Ensures data integrity during coordination
+
+2. **Adaptive Election Timeouts**:
+   - Randomized timeouts to prevent election conflicts
+   - Range-based timeout selection for stability
+   - Configurable bounds for environment-specific tuning
+
+3. **Self-Healing Capabilities**:
+   - Memory reclamation through garbage collection
+   - Disk space management with log rotation
+   - Leader step-down under resource constraints
+   - Error rate monitoring with threshold alerts
+
+4. **Progressive Recovery Strategies**:
+   - Graduated approach to recovery actions
+   - Least-disruptive actions attempted first
+   - Escalation path for persistent issues
+   - Resource-aware decision making
+
+#### Usage Examples
+
+```python
+from duckdb_api.distributed_testing.auto_recovery import AutoRecoverySystem
+
+# Initialize the auto recovery system
+auto_recovery = AutoRecoverySystem(
+    coordinator_id="coordinator-1",
+    coordinator_addresses=["localhost:8081", "localhost:8082"],
+    db_path="./benchmark_db.duckdb",
+    visualization_path="./visualizations"
+)
+
+# Start the system
+auto_recovery.start()
+
+# Register callbacks for leader transitions
+def on_become_leader():
+    print("This node is now the leader!")
+    
+def on_leader_changed(old_leader, new_leader):
+    print(f"Leader changed from {old_leader} to {new_leader}")
+    
+auto_recovery.register_become_leader_callback(on_become_leader)
+auto_recovery.register_leader_changed_callback(on_leader_changed)
+
+# Get current health metrics
+health_metrics = auto_recovery.get_health_metrics()
+print(f"CPU Usage: {health_metrics['cpu_usage']}%")
+print(f"Memory Usage: {health_metrics['memory_usage']}%")
+
+# Get browser capabilities
+web_capabilities = auto_recovery.get_web_capabilities()
+print(f"WebNN Support: {web_capabilities['webnn_supported']}")
+print(f"WebGPU Support: {web_capabilities['webgpu_supported']}")
+
+# Create visualization
+auto_recovery.create_visualization(output_dir="./visualizations")
+
+# Stop when done
+auto_recovery.stop()
+```
+
+#### Integration with Existing Components
+
+The Auto Recovery System integrates with other components of the Distributed Testing Framework:
+
+1. **Coordinator Integration**:
+   - Registers with coordinator to receive status updates
+   - Provides leader election and failover capabilities
+   - Enhances coordinator with health monitoring
+
+2. **DuckDB Integration**:
+   - Uses DuckDB for state persistence
+   - Synchronizes database state between coordinators
+   - Maintains consistent view of test results
+
+3. **Task Scheduler Integration**:
+   - Provides WebNN/WebGPU capability information to scheduler
+   - Enables hardware-aware scheduling decisions
+   - Ensures task continuity during failovers
+
+4. **Monitoring Dashboard Integration**:
+   - Publishes health metrics to dashboard
+   - Provides visualization components
+   - Enables real-time monitoring of cluster state
+
+The system replicates state between coordinators using a log-based approach:
+
+- **Log Entries**: Append-only log of operations (task creation, worker registration, etc.)
+- **Term Numbers**: Monotonically increasing election term numbers
+- **Commit Index**: Index up to which log entries are considered committed
+- **State Snapshots**: Periodic full state snapshots for efficient synchronization
+
+#### Health Monitoring
+
+The system includes comprehensive health monitoring:
+
+- **CPU Usage**: Tracks CPU utilization with critical thresholds
+- **Memory Usage**: Monitors memory consumption with automatic memory reclamation
+- **Disk Usage**: Tracks disk space with cleanup procedures for critical levels
+- **Network Latency**: Measures communication latency between coordinators
+- **Error Rate**: Tracks error frequency and trends
+
+#### WebNN/WebGPU Integration
+
+The Auto Recovery System integrates with WebNN/WebGPU capabilities:
+
+- **Browser Detection**: Identifies available browsers and their capabilities
+- **Feature Detection**: Determines available WebNN/WebGPU features
+- **Capability Visualization**: Visualizes web platform acceleration capabilities
+- **Hardware-Aware Routing**: Routes tasks to workers with optimal capabilities
+
+#### Visualization
+
+The system generates comprehensive visualizations:
+
+- **Cluster Status**: Network graph of coordinator nodes showing status
+- **Health Metrics**: Charts of CPU, memory, disk, and error metrics
+- **Leader Transitions**: Timeline of leadership changes
+- **Web Capabilities**: Browser support for WebNN/WebGPU features
+
+#### Implementation Details
+
+The Auto Recovery System includes:
+
+- **Base Class**: `AutoRecovery` implementing core consensus protocol
+- **Enhanced Class**: `AutoRecoverySystem` with extended capabilities
+- **Health Monitoring Thread**: Background thread monitoring system health
+- **Visualization Thread**: Background thread generating visualizations
+- **WebNN/WebGPU Detection**: Integration with hardware detection
+- **Secure Messaging**: Hash-based message integrity verification
+
+#### Code Examples
+
+**Starting a high availability cluster:**
+```python
+# Create Auto Recovery System instance
+auto_recovery = AutoRecoverySystem(
+    coordinator_id="coordinator-1",
+    coordinator_addresses=["localhost:8081", "localhost:8082"],
+    db_path="./benchmark_db.duckdb",
+    auto_leader_election=True,
+    visualization_path="./visualizations"
+)
+
+# Start the system
+auto_recovery.start()
+
+# Check if this node is the leader
+if auto_recovery.is_leader():
+    # Perform leader-only operations
+    pass
+```
+
+**Handling leader transitions:**
+```python
+# Callback when this coordinator becomes leader
+auto_recovery.on_become_leader(lambda: print("I am now the leader"))
+
+# Callback when leader changes
+auto_recovery.on_leader_changed(lambda old_leader, new_leader: 
+    print(f"Leader changed from {old_leader} to {new_leader}"))
+```
+
+**Health monitoring and visualization:**
+```python
+# Generate health metrics visualization
+auto_recovery._generate_health_metrics_visualization()
+
+# Generate cluster status visualization
+auto_recovery._generate_cluster_status_visualization()
+```
+
 ## Implementation Status
 
 | Phase | Component | Status | Completion Date |
@@ -333,7 +610,9 @@ Dynamic resource management will optimize resource allocation based on workload:
 | 3 | JWT Authentication | ⏸️ Deferred | - |
 | 4 | Cross-Platform Worker Support | ✅ Complete | March 20, 2025 |
 | 5 | CI/CD Pipeline Integration | ✅ Complete | March 27, 2025 |
+| 5.1 | Artifact URL Retrieval | ✅ Complete | March 16, 2025 |
 | 6 | Dynamic Resource Management | 📅 Planned | Target: April 5, 2025 |
+| 7 | Auto Recovery System (High Availability) | ✅ Complete | March 16, 2025 |
 
 ## Usage Examples
 
@@ -406,6 +685,134 @@ startup_script = support.get_startup_script(
     api_key="your_api_key",
     worker_id="worker_abc123"
 )
+```
+
+### CI/CD Pipeline Integration with Artifact URL Retrieval
+
+```python
+from distributed_testing.ci.api_interface import CIProviderFactory, TestRunResult
+from distributed_testing.ci.result_reporter import TestResultReporter
+from distributed_testing.ci.register_providers import register_all_providers
+
+# Register all providers
+register_all_providers()
+
+# Create a CI provider
+ci_config = {
+    "token": "YOUR_GITHUB_TOKEN",
+    "repository": "your-username/your-repo"
+}
+ci_provider = await CIProviderFactory.create_provider("github", ci_config)
+
+# Upload an artifact
+test_run_id = "test-123"
+artifact_result = await ci_provider.upload_artifact(
+    test_run_id=test_run_id,
+    artifact_path="./test_results.json",
+    artifact_name="test_results.json"
+)
+
+# Retrieve the artifact URL for inclusion in reports or notifications
+if artifact_result:
+    url = await ci_provider.get_artifact_url(
+        test_run_id=test_run_id,
+        artifact_name="test_results.json"
+    )
+    if url:
+        print(f"Artifact available at: {url}")
+        # URL can be used in reports, notifications, or dashboards
+        
+        # Example: Include artifact URL in test report
+        report = f"""
+        # Test Run Report
+        
+        Test run {test_run_id} completed successfully.
+        
+        ## Artifacts
+        
+        - [Test Results JSON]({url})
+        """
+```
+
+### Auto Recovery System - High Availability Cluster
+
+```python
+from duckdb_api.distributed_testing.auto_recovery import AutoRecoverySystem
+
+# Initialize Auto Recovery System
+auto_recovery = AutoRecoverySystem(
+    coordinator_id="coordinator-1",
+    coordinator_addresses=["localhost:8081", "localhost:8082"],
+    db_path="./benchmark_db.duckdb",
+    auto_leader_election=True,
+    visualization_path="./visualizations"
+)
+
+# Register callbacks for leader transitions
+def on_become_leader():
+    print(f"Coordinator {auto_recovery.coordinator_id} became the leader")
+    # Perform leader-specific initialization
+    # For example, start primary load balancer
+
+def on_leader_changed(old_leader_id, new_leader_id):
+    print(f"Leader changed from {old_leader_id} to {new_leader_id}")
+    # Update local state based on leader change
+    # For example, redirect clients to new leader
+
+auto_recovery.auto_recovery.on_become_leader(on_become_leader)
+auto_recovery.auto_recovery.on_leader_changed(on_leader_changed)
+
+# Start the system
+auto_recovery.start()
+
+try:
+    # Register another coordinator
+    auto_recovery.register_coordinator(
+        coordinator_id="coordinator-2",
+        address="localhost",
+        port=8082,
+        capabilities={"hardware_types": ["cpu", "cuda"]}
+    )
+    
+    # Check if we're the leader
+    if auto_recovery.is_leader():
+        print("This coordinator is the leader")
+        
+        # Perform leader-only operations
+        # For example, start distributing tasks
+    else:
+        print(f"Current leader is: {auto_recovery.get_leader_id()}")
+        
+        # Sync state with leader
+        auto_recovery.sync_with_leader()
+        
+    # Get system status
+    status = auto_recovery.get_status()
+    print(f"Cluster size: {status['coordinators_count']} coordinators")
+    print(f"Active coordinators: {status['active_coordinators']}")
+    
+    # Generate visualizations
+    auto_recovery._generate_cluster_status_visualization()
+    auto_recovery._generate_health_metrics_visualization()
+    
+    # Run until interrupted
+    while True:
+        time.sleep(1)
+        
+except KeyboardInterrupt:
+    # Gracefully shut down
+    auto_recovery.stop()
+    print("Auto Recovery System stopped")
+```
+
+### Running High Availability Cluster Example
+
+```bash
+# Start a 3-node high availability cluster with fault injection
+./run_high_availability_cluster.sh --nodes 3 --fault-injection --runtime 300
+
+# Start a 5-node cluster on higher ports
+./run_high_availability_cluster.sh --nodes 5 --base-port 9000 --runtime 600
 ```
 
 ## Testing

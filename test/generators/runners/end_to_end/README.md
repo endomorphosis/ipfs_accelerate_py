@@ -13,6 +13,45 @@ The End-to-End Testing Framework is a comprehensive solution for testing model i
 
 This approach ensures that models work correctly across the entire pipeline and helps identify issues at the generator level rather than in individual files.
 
+## Component Testing Frameworks
+
+### Unified Component Tester
+
+The **Unified Component Tester** is our latest enhanced implementation that provides a complete solution for generating and testing model components across different hardware platforms. It builds on the integrated component tester with:
+
+1. **Complete Component Integration**: Generates, tests, and evaluates all components together as a cohesive unit
+2. **Enhanced Result Organization**: Creates robust expected/collected results structure with historical tracking
+3. **Advanced Documentation Generation**: Produces detailed markdown documentation with model-family and hardware-specific content
+4. **Comprehensive Testing**: Validates components across all model families and hardware platforms
+5. **Template-Driven Development**: Uses a robust template system for maintenance efficiency
+6. **Parallel Execution**: Supports multi-worker execution for faster testing
+7. **Database Integration**: Stores results in DuckDB with simulation status tracking
+
+```bash
+# Test a model with the unified component tester
+python unified_component_tester.py --model bert-base-uncased --hardware cpu
+
+# Run a comprehensive test across model families
+python unified_component_tester.py --model-family text-embedding --hardware cpu,cuda
+
+# Run tests in parallel with documentation
+python unified_component_tester.py --all-models --priority-hardware --max-workers 4 --generate-docs
+```
+
+[Learn more about the Unified Component Tester](./unified_component_tester.py)
+
+### Integrated Component Testing Framework (Previous Version)
+
+The **Integrated Component Testing Framework** was our initial implementation that addresses the prioritized tasks from our roadmap:
+
+1. **Joint Component Generation**: Generates skill, test, and benchmark components together for every model
+2. **Expected/Collected Results Organization**: Creates structured directories for verification
+3. **Comprehensive Documentation**: Generates Markdown documentation of HuggingFace class skills
+4. **Generator-Focused Fixes**: Focuses on fixing generators rather than individual files
+5. **Template-Driven Approach**: Implements a template-driven workflow for maintenance efficiency
+
+[Learn more about the Integrated Component Testing Framework](./INTEGRATED_COMPONENT_TESTING.md)
+
 ## Key Features
 
 - **Joint Component Generation**: Creates skill, test, and benchmark files together
@@ -28,7 +67,61 @@ This approach ensures that models work correctly across the entire pipeline and 
 
 ## Usage
 
-### Basic Usage
+### Unified Component Tester
+
+```bash
+# Test a single model on a single hardware platform
+python unified_component_tester.py --model bert-base-uncased --hardware cpu
+
+# Test with documentation generation
+python unified_component_tester.py --model bert-base-uncased --hardware cpu --generate-docs
+
+# Update expected results
+python unified_component_tester.py --model bert-base-uncased --hardware cpu --update-expected
+
+# Enable verbose logging
+python unified_component_tester.py --model bert-base-uncased --hardware cpu --verbose
+
+# Run comprehensive tests
+python unified_component_tester.py --model-family text-embedding --hardware cpu,cuda,webgpu --generate-docs --max-workers 4
+
+# Run a quick test with minimal validation
+python unified_component_tester.py --model bert-base-uncased --hardware cpu --quick-test
+
+# Run tests and store results in custom database
+python unified_component_tester.py --model bert-base-uncased --hardware cpu --db-path ./my_test_db.duckdb
+
+# Run tests for all models on priority hardware platforms
+python unified_component_tester.py --all-models --priority-hardware --generate-docs
+
+# Clean up old test results
+python unified_component_tester.py --clean-old-results --days 14
+```
+
+### Run Unified Component Tests Script
+
+For a comprehensive test of the unified component tester itself:
+
+```bash
+# Run basic tests
+./run_unified_component_tests.sh
+
+# Run with realistic tests (takes longer)
+./run_unified_component_tests.sh --realistic
+```
+
+### CI Testing
+
+For continuous integration environments:
+
+```bash
+# Run the CI-optimized tests
+python ci_unified_component_test.py
+```
+
+### Legacy End-to-End Tests
+
+The original end-to-end testing framework is still available:
 
 ```bash
 # Test a single model on a single hardware platform
@@ -37,27 +130,11 @@ python run_e2e_tests.py --model bert-base-uncased --hardware cpu
 # Test with documentation generation
 python run_e2e_tests.py --model bert-base-uncased --hardware cpu --generate-docs
 
-# Update expected results
-python run_e2e_tests.py --model bert-base-uncased --hardware cpu --update-expected
-
-# Enable verbose logging
-python run_e2e_tests.py --model bert-base-uncased --hardware cpu --verbose
-```
-
-### Advanced Usage
-
-```bash
-# Test a model on multiple hardware platforms
-python run_e2e_tests.py --model bert-base-uncased --hardware cpu,cuda,webgpu
-
 # Test all models in a family
 python run_e2e_tests.py --model-family text-embedding --hardware cpu
 
 # Test all supported models
 python run_e2e_tests.py --all-models --priority-hardware
-
-# Clean up old test results
-python run_e2e_tests.py --clean-old-results --days 14
 ```
 
 ## Directory Structure
@@ -276,6 +353,66 @@ The CI/CD integration includes:
 5. **Database Integration**: Store results in DuckDB with CI environment metadata
 6. **Pull Request Comments**: Automatic test summary comments on pull requests
 
+## Completed Features and Implementation Status
+
+The Unified Component Tester successfully implements all the required features for the Improved End-to-End Testing Framework as prioritized in CLAUDE.md:
+
+✅ **Generation and testing of all components together for every model**
+- Fully implemented in the `UnifiedComponentTester.generate_components()` method
+- Ensures skill, test, and benchmark files are created and tested as a unit
+- Validates all components work correctly together
+- Focuses on fixing generators rather than individual files
+
+✅ **Creation of "expected_results" and "collected_results" folders for verification**
+- Creates organized directory structure for results with timestamps
+- Supports comparison between expected and actual results
+- Enables regression testing with configurable tolerance
+- Stores comprehensive metadata with results
+
+✅ **Markdown documentation of HuggingFace class skills to compare with templates**
+- Generates detailed documentation with model-family specific content
+- Includes hardware-specific optimization information
+- Captures API details, usage examples, and benchmark results
+- Supports enhanced visualization with ASCII charts
+
+✅ **Focus on fixing generators rather than individual test files**
+- Template-driven approach to component generation
+- Robust error handling and fallback mechanisms
+- Validation of components against expected structure
+- Consistent code generation across the system
+
+✅ **Template-driven approach for maintenance efficiency**
+- Support for model-family-specific templates
+- Hardware-specific template customization
+- Cross-platform compatibility built into templates
+- Advanced variable substitution with transformations
+
+Additional enhancements:
+
+✅ **Database Integration**
+- Complete integration with DuckDB for result storage
+- Schema support for comprehensive metrics
+- Simulation detection and tracking
+- Historical performance analysis
+
+✅ **Parallel Execution**
+- Multi-worker support for distributed testing
+- Efficient resource utilization with worker pools
+- Centralized result aggregation
+- Configurable worker count via `--max-workers`
+
+✅ **CI/CD Integration**
+- Specialized test script for CI environments
+- Quick test mode for faster validation
+- Exit code handling for test status
+- Comprehensive test summary output
+
+✅ **Comprehensive Testing**
+- Support for all model families (text-embedding, text-generation, vision, audio, multimodal)
+- Support for all hardware platforms (cpu, cuda, rocm, mps, openvino, qnn, webnn, webgpu)
+- Automated test suite for the framework itself
+- Batch testing with configurable options
+
 ## Troubleshooting
 
 1. **Tests are failing but the implementation looks correct**:
@@ -296,7 +433,17 @@ The CI/CD integration includes:
    - Examine the db_error.log files in the results directory
    - Try using `--no-db` to disable database integration temporarily
 
-4. **Hardware detection issues**:
+4. **Visualization Dashboard and Integrated Reports System issues**:
+   - Consult the comprehensive [TROUBLESHOOTING_GUIDE.md](./TROUBLESHOOTING_GUIDE.md) for detailed solutions to:
+     - Dashboard process management issues
+     - Database connectivity problems
+     - Report generation failures
+     - Visualization rendering issues
+     - Browser integration problems
+     - Combined workflow challenges
+     - CI/CD integration issues
+
+5. **Hardware detection issues**:
    - Ensure required libraries are installed for hardware detection
    - Check hardware-specific environment variables and drivers
    - Use `--verbose` to see detailed hardware detection logs
@@ -313,6 +460,80 @@ The CI/CD integration includes:
    - Reduce batch size or use smaller model variants for faster testing
    - Run tests for specific hardware or models to reduce workload
 
+## Visualization Dashboard
+
+The framework includes a comprehensive visualization dashboard for exploring test results and performance metrics:
+
+```bash
+# Start the dashboard with default settings
+python visualization_dashboard.py
+
+# Customize port and database path
+python visualization_dashboard.py --port 8050 --db-path ./benchmark_db.duckdb
+
+# Run in development mode
+python visualization_dashboard.py --debug
+```
+
+The dashboard provides:
+- Real-time monitoring of test results and performance
+- Interactive visualizations for comparing hardware platforms
+- Time series analysis with statistical testing
+- Simulation validation visualization
+- Customizable filtering and views
+
+To install dashboard dependencies:
+```bash
+pip install -r dashboard_requirements.txt
+```
+
+### Integrated Visualization and Reports System
+
+For enhanced functionality, you can use the integrated system that combines the dashboard with the CI/CD reporting tools:
+
+```bash
+# Start the dashboard only
+python integrated_visualization_reports.py --dashboard
+
+# Generate reports only
+python integrated_visualization_reports.py --reports
+
+# Start dashboard and generate reports
+python integrated_visualization_reports.py --dashboard --reports
+
+# Specify database path and automatically open browser
+python integrated_visualization_reports.py --dashboard --db-path ./benchmark_db.duckdb --open-browser
+
+# Generate specific report types
+python integrated_visualization_reports.py --reports --simulation-validation
+
+# Export dashboard visualizations for offline viewing
+python integrated_visualization_reports.py --dashboard-export
+```
+
+The integrated system provides:
+- Unified command-line interface for dashboard and reports
+- Consistent database access across all components
+- Report generation based on live dashboard data
+- Easy-to-use commands for common scenarios
+- Support for both interactive exploration and CI/CD integration
+
+For detailed documentation on the visualization dashboard and integrated system, see:
+- [VISUALIZATION_DASHBOARD_README.md](./VISUALIZATION_DASHBOARD_README.md)
+- [SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)
+- [TROUBLESHOOTING_GUIDE.md](./TROUBLESHOOTING_GUIDE.md)
+- [INTEGRATION_SUMMARY.md](./INTEGRATION_SUMMARY.md)
+
+## Next Steps
+
+For further enhancement of the unified component tester:
+
+1. **Expanded Visualization Dashboard**: Add more advanced analytics and visualization types
+2. **Performance Prediction**: Implement ML-based performance prediction for untested configurations
+3. **Anomaly Detection**: Add automated detection of performance anomalies and regressions
+4. **Distributed Testing Integration**: Complete integration with the Distributed Testing Framework
+5. **Mobile-Friendly Interface**: Optimize dashboard for mobile and tablet devices
+
 ## Contact
 
-If you have questions or need support with the end-to-end testing framework, please contact the infrastructure team.
+If you have questions or need support with the unified component testing framework, please contact the infrastructure team.

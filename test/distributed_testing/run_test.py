@@ -5,11 +5,16 @@ Distributed Testing Framework - Test Runner
 This script helps run and test the distributed testing framework components.
 It can start both coordinator and worker processes to test their interaction.
 
+IMPORTANT NOTICE: As of March 16, 2025, security and authentication features have been 
+marked as OUT OF SCOPE for the distributed testing framework. Please refer to
+SECURITY_DEPRECATED.md for more information. Any security-related tests
+will be skipped.
+
 Usage:
     python run_test.py --mode=all --db-path=./test_db.duckdb
     python run_test.py --mode=coordinator --db-path=./test_db.duckdb
     python run_test.py --mode=worker --coordinator=http://localhost:8080
-    """
+"""
 
     import argparse
     import asyncio
@@ -36,8 +41,14 @@ Usage:
     async def run_coordinator())))))))db_path, host="localhost", port=8080, security_config="./security_config.json",
     generate_keys=True, disable_health_monitor=False, disable_advanced_scheduler=False,
                    disable_load_balancer=False, max_tasks_per_worker=1):
-                       """Run coordinator process."""
+                       """
+                       Run coordinator process.
+                       
+                       NOTE: Security features are OUT OF SCOPE. Security parameters are kept for 
+                       backward compatibility but have no effect. See SECURITY_DEPRECATED.md.
+                       """
                        logger.info())))))))f"Starting coordinator with database at {}}}db_path}")
+                       logger.info())))))))f"NOTICE: Security features are OUT OF SCOPE.")
     
     # Ensure database directory exists
                        db_dir = os.path.dirname())))))))db_path)
@@ -102,8 +113,15 @@ Usage:
                 return process, None
 :
 async def run_worker())))))))coordinator_url, db_path=None, worker_id=None, api_key=None):
-    """Run worker process."""
+    """
+    Run worker process.
+    
+    NOTE: Security features are OUT OF SCOPE. API key parameter is kept for 
+    backward compatibility but has no effect. See SECURITY_DEPRECATED.md.
+    """
     logger.info())))))))f"Starting worker connecting to {}}}coordinator_url}")
+    if api_key:
+        logger.info())))))))f"NOTICE: Security features are OUT OF SCOPE. API key has no effect.")
     
     cmd = []],,sys.executable, "./worker.py", f"--coordinator={}}}coordinator_url}"]
     
@@ -147,33 +165,23 @@ async def log_process_output())))))))process, name):
             )
 
 async def submit_test_tasks())))))))coordinator_url, num_tasks=3, api_key=None):
-    """Submit test tasks to the coordinator."""
+    """
+    Submit test tasks to the coordinator.
+    
+    NOTE: Security features are OUT OF SCOPE. API key parameter is kept for 
+    backward compatibility but has no effect. See SECURITY_DEPRECATED.md.
+    """
     import aiohttp
     
     logger.info())))))))f"Submitting {}}}num_tasks} test tasks to coordinator")
+    logger.info())))))))f"NOTICE: Security features are OUT OF SCOPE. Authentication is not required.")
     
-    # Try to get API key from security config if not provided:
-    if not api_key:
-        try:
-            import json
-            with open())))))))"./test_security_config.json", "r") as f:
-                security_config = json.load())))))))f)
-                # Get the first admin API key
-                for key, details in security_config.get())))))))"api_keys", {}}}}).items())))))))):
-                    if "admin" in details.get())))))))"roles", []],,]):
-                        api_key = key
-                        logger.info())))))))f"Found admin API key from config: {}}}api_key[]],,:8]}...")
-                    break
-        except Exception as e:
-            logger.warning())))))))f"Could not load API key from security config: {}}}str())))))))e)}")
-    
-    # Prepare headers with authentication if we have an API key
-    headers = {}}}}:
+    # Security is out of scope, no need to load API keys
     if api_key:
-        headers[]],,"X-API-Key"] = api_key
-        logger.info())))))))"Using API key authentication for task submission")
-    else:
-        logger.warning())))))))"No API key available. Task submission may fail due to authentication.")
+        logger.info())))))))f"NOTICE: API key provided but security features are OUT OF SCOPE.")
+    
+    # No authentication headers - security is out of scope
+    headers = {}}}}:)
     
     async with aiohttp.ClientSession())))))))headers=headers) as session:
         for i in range())))))))num_tasks):
@@ -219,10 +227,10 @@ async def submit_test_tasks())))))))coordinator_url, num_tasks=3, api_key=None):
                        worker_processes = []],,]
     
     try:
-        # Start coordinator with security
-        logger.info())))))))"Starting coordinator with security...")
+        # Start coordinator (security features out of scope)
+        logger.info())))))))"NOTICE: Security features are OUT OF SCOPE. Starting coordinator...")
         coordinator_process, worker_api_key = await run_coordinator())))))))
-        db_path, host, port, security_config, generate_keys=True,
+        db_path, host, port, security_config, generate_keys=False,  # No key generation needed
         disable_health_monitor=disable_health_monitor,
         disable_advanced_scheduler=disable_advanced_scheduler,
         disable_load_balancer=disable_load_balancer,
@@ -233,10 +241,8 @@ async def submit_test_tasks())))))))coordinator_url, num_tasks=3, api_key=None):
         logger.info())))))))"Waiting for coordinator to start...")
         await asyncio.sleep())))))))5)
         
-        if not worker_api_key:
-            logger.warning())))))))"No worker API key found. Workers might fail to authenticate.")
-        else:
-            logger.info())))))))f"Worker API key obtained for testing: {}}}worker_api_key[]],,:8]}...")
+        # SECURITY OUT OF SCOPE: No authentication needed
+        logger.info())))))))f"NOTICE: Security features are OUT OF SCOPE. No authentication needed.")
         
         # Start multiple workers
         for i in range())))))))num_workers):
@@ -246,24 +252,13 @@ async def submit_test_tasks())))))))coordinator_url, num_tasks=3, api_key=None):
             # Wait a bit between starting workers
             await asyncio.sleep())))))))1)
         
-        # Wait for workers to connect and authenticate
-            logger.info())))))))"Waiting for workers to connect and authenticate...")
+        # Wait for workers to connect
+            logger.info())))))))"Waiting for workers to connect...")
             await asyncio.sleep())))))))8)
         
-        # Try to extract admin API key from security config
-            admin_api_key = None
-        try:
-            import json
-            with open())))))))security_config, "r") as f:
-                config = json.load())))))))f)
-                # Find admin API key
-                for key, details in config.get())))))))"api_keys", {}}}}).items())))))))):
-                    if "admin" in details.get())))))))"roles", []],,]):
-                        admin_api_key = key
-                        logger.info())))))))f"Found admin API key for task submission: {}}}admin_api_key[]],,:8]}...")
-                    break
-        except Exception as e:
-            logger.warning())))))))f"Failed to extract admin API key from config: {}}}str())))))))e)}")
+        # SECURITY OUT OF SCOPE: No need for API keys
+            logger.info())))))))f"NOTICE: Security features are OUT OF SCOPE. No API keys needed for task submission.")
+            admin_api_key = None  # Kept for backward compatibility
         
         # Submit test tasks with admin API key
             await submit_test_tasks())))))))coordinator_url, num_tasks=num_test_tasks, api_key=admin_api_key)
@@ -343,38 +338,48 @@ async def main())))))))):
     parser.add_argument())))))))"--num-test-tasks", type=int, default=5,
     help="Number of test tasks to submit in test mode")
     
+    # Add a new argument to skip security tests (default True because security is OUT OF SCOPE)
+    parser.add_argument())))))))"--skip-security-tests", action="store_true", default=True,
+    help="Skip security-related tests (default: True as security is OUT OF SCOPE)")
+    
     args = parser.parse_args()))))))))
     
+    # Print notice about security being out of scope
+    logger.info())))))))f"NOTICE: Security and authentication features have been marked as OUT OF SCOPE.")
+    logger.info())))))))f"Please refer to SECURITY_DEPRECATED.md for more information.")
+    logger.info())))))))f"Security-related tests will be skipped."))
+    
     if args.mode == "coordinator":
-        # Run coordinator only
+        # Run coordinator only (security features out of scope)
+        logger.info())))))))f"NOTICE: Security features are OUT OF SCOPE. Running coordinator...")
         coordinator_process, worker_api_key = await run_coordinator())))))))
         args.db_path,
         args.host,
         args.port,
         args.security_config,
-        args.generate_keys,
+        False,  # No key generation needed (security is OUT OF SCOPE)
         args.disable_health_monitor,
         args.disable_advanced_scheduler,
         args.disable_load_balancer,
         args.max_tasks_per_worker
         )
-        
-        if worker_api_key and args.generate_keys:
-            logger.info())))))))f"Generated worker API key: {}}}worker_api_key}")
             
             await log_process_output())))))))coordinator_process, "Coordinator")
         
     elif args.mode == "worker":
-        # Run worker only
+        # Run worker only (security features out of scope)
         if not args.coordinator:
             logger.error())))))))"Coordinator URL must be provided in worker mode")
         return
-            
+        
+        logger.info())))))))f"NOTICE: Security features are OUT OF SCOPE. Running worker...")
+        
+        # No API key needed (security is OUT OF SCOPE)
         worker_process = await run_worker())))))))
         args.coordinator,
         args.db_path,
         args.worker_id,
-        args.api_key
+        None  # No API key needed (security is OUT OF SCOPE)
         )
         
         await log_process_output())))))))worker_process, "Worker")
