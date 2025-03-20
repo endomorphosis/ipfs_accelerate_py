@@ -15,6 +15,63 @@ Core features:
 - Efficient batch submission to the coordinator
 """
 
+def generate_test(template_name, context, output_path, overwrite=False):
+    """Generate a test from a template and context data.
+    
+    Args:
+        template_name: Name of the template file
+        context: Dictionary of context variables for template substitution
+        output_path: Path where the generated test will be saved
+        overwrite: Whether to overwrite existing files (default: False)
+        
+    Returns:
+        bool: True if generation was successful, False otherwise
+    """
+    import os
+    import logging
+    from datetime import datetime
+    
+    logger = logging.getLogger("test_generator")
+    
+    # Check if output file already exists
+    if os.path.exists(output_path) and not overwrite:
+        logger.warning(f"Output file already exists: {output_path}")
+        return False
+    
+    # Get template directory
+    template_dir = os.path.join(os.path.dirname(__file__), "templates")
+    template_path = os.path.join(template_dir, template_name)
+    
+    # Load template
+    try:
+        with open(template_path, 'r') as f:
+            template_content = f.read()
+    except Exception as e:
+        logger.error(f"Error loading template {template_name}: {e}")
+        return False
+    
+    # Add generation metadata
+    context['generated_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    context['generator_version'] = '1.0.0'
+    
+    # Replace placeholders in template
+    for key, value in context.items():
+        placeholder = f"{{{{ {key} }}}}"
+        template_content = template_content.replace(placeholder, str(value))
+    
+    # Save generated test
+    try:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        with open(output_path, 'w') as f:
+            f.write(template_content)
+        
+        logger.info(f"Generated test saved to: {output_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving generated test: {e}")
+        return False
+
 import os
 import sys
 import json
@@ -601,8 +658,8 @@ class TestGeneratorIntegration:
             logger.info("Closed template database connection")
 
 
-# Example usage
-if __name__ == "__main__":
+def main():
+    """Main entry point for the test generator integration script."""
     import argparse
     
     parser = argparse.ArgumentParser(description="Test Generator Integration")
@@ -628,7 +685,7 @@ if __name__ == "__main__":
         if args.add_template:
             if not args.template_name or not args.model_family or not args.template_file:
                 logger.error("Template name, model family, and template file are required for adding a template")
-                sys.exit(1)
+                return 1
                 
             with open(args.template_file, 'r') as f:
                 content = f.read()
@@ -645,11 +702,12 @@ if __name__ == "__main__":
                 print(f"Added template with ID {template_id}")
             else:
                 print("Failed to add template")
+                return 1
                 
         elif args.add_mapping:
             if not args.model or not args.model_family:
                 logger.error("Model name and model family are required for adding a mapping")
-                sys.exit(1)
+                return 1
                 
             success = integration.add_model_mapping(
                 args.model,
@@ -661,11 +719,12 @@ if __name__ == "__main__":
                 print(f"Added mapping for {args.model} to {args.model_family}")
             else:
                 print("Failed to add mapping")
+                return 1
                 
         elif args.generate:
             if not args.model:
                 logger.error("Model name is required for test generation")
-                sys.exit(1)
+                return 1
                 
             hardware_types = args.hardware.split(',') if args.hardware else None
             batch_sizes = [int(b) for b in args.batch_sizes.split(',')] if args.batch_sizes else None
@@ -682,11 +741,12 @@ if __name__ == "__main__":
                     print(f"Test {i+1}: {test['model_name']} on {test['hardware_type']} with batch size {test['batch_size']}")
             else:
                 print("Failed to generate tests")
+                return 1
                 
         elif args.list_templates:
             if not integration.template_db:
                 print("Template database not available")
-                sys.exit(1)
+                return 1
                 
             templates = integration.template_db.execute("SELECT * FROM templates").fetchall()
             
@@ -698,5 +758,11 @@ if __name__ == "__main__":
                 print("No templates found")
         else:
             print("No action specified. Use --add-template, --add-mapping, --generate, or --list-templates")
+            
+        return 0
     finally:
         integration.close()
+
+# Example usage
+if __name__ == "__main__":
+    sys.exit(main())
