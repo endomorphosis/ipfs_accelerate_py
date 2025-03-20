@@ -1,0 +1,12 @@
+2025-03-19 20:56:49,523 - INFO - Regenerating test files for: bert
+2025-03-19 20:56:49,523 - INFO - Regenerating test file for bert...
+2025-03-19 20:56:49,608 - INFO - Applying indentation fixes to fixed_tests/test_hf_bert.py...
+2025-03-19 20:56:49,608 - INFO - Created backup at fixed_tests/test_hf_bert.py.bak
+2025-03-19 20:56:50,053 - INFO - ✅ Fixed indentation in fixed_tests/test_hf_bert.py
+2025-03-19 20:56:50,055 - ERROR - ❌ Syntax error in fixed_tests/test_hf_bert.py: unexpected indent (test_hf_bert.py, line 47)
+2025-03-19 20:56:50,055 - INFO - 
+Regeneration Summary:
+2025-03-19 20:56:50,055 - INFO - - Successful: 0
+2025-03-19 20:56:50,055 - INFO - - Failed: 1
+2025-03-19 20:56:50,055 - INFO - - Total: 1
+2025-03-19 20:56:50,055 - INFO - - Output directory: fixed_tests

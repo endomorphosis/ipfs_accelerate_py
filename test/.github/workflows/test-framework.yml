@@ -1,0 +1,137 @@
+name: IPFS Accelerate Test Framework
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of tests to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - model
+          - hardware
+          - api
+          - integration
+      model:
+        description: 'Model to test (for model tests)'
+        required: false
+        type: string
+      platform:
+        description: 'Platform to test (for hardware tests)'
+        required: false
+        type: string
+      distributed:
+        description: 'Run tests in distributed mode'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  verify-environment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f test/requirements_test.txt ]; then pip install -r test/requirements_test.txt; fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Verify test environment
+        run: |
+          cd test
+          python verify_test_environment.py
+
+  run-tests:
+    needs: verify-environment
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.10']
+        include:
+          - os: windows-latest
+            python-version: '3.10'
+          - os: macos-latest
+            python-version: '3.10'
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f test/requirements_test.txt ]; then pip install -r test/requirements_test.txt; fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Run tests
+        run: |
+          cd test
+          TEST_ARGS=""
+          if [ "${{ github.event.inputs.test_type }}" != "" ] && [ "${{ github.event.inputs.test_type }}" != "all" ]; then
+            TEST_ARGS="$TEST_ARGS --test-type ${{ github.event.inputs.test_type }}"
+          fi
+          if [ "${{ github.event.inputs.model }}" != "" ]; then
+            TEST_ARGS="$TEST_ARGS --model ${{ github.event.inputs.model }}"
+          fi
+          if [ "${{ github.event.inputs.platform }}" != "" ]; then
+            TEST_ARGS="$TEST_ARGS --platform ${{ github.event.inputs.platform }}"
+          fi
+          if [ "${{ github.event.inputs.distributed }}" == "true" ]; then
+            TEST_ARGS="$TEST_ARGS --distributed --worker-count 2"
+          fi
+          
+          ./run.sh --generate-reports $TEST_ARGS
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: |
+            test/report.html
+            test/test-results.xml
+            test/test_results_report.md
+
+  analyze-tests:
+    needs: run-tests
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install junitparser matplotlib seaborn pandas
+      - name: Download test reports
+        uses: actions/download-artifact@v3
+        with:
+          path: test-reports
+      - name: Analyze test results
+        run: |
+          python test/analyze_test_results.py --reports-dir test-reports
+      - name: Upload analysis
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-analysis
+          path: |
+            test/test_analysis_report.md
+            test/test_performance_chart.png

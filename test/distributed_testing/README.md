@@ -119,6 +119,28 @@ pip install -r requirements.txt
 python -m distributed_testing.init_db
 ```
 
+### Quick Start with Enhanced Tools
+
+The latest version includes enhanced tools for managing the distributed testing framework:
+
+1. **Enhanced Worker Example**: Comprehensive worker implementation with high availability, performance tuning, and more
+2. **Submit Tasks Tool**: Advanced command-line tool for submitting tasks with periodic execution and monitoring
+3. **Web Dashboard**: Real-time monitoring dashboard for system status and task execution
+4. **Comprehensive Deployment Guide**: Production-ready deployment instructions for all components
+
+```bash
+# Start a worker with enhanced features
+python run_worker_example.py --profile benchmark --tags gpu,cuda,transformers --high-availability
+
+# Submit tasks with the new submission tool
+python submit_tasks.py --coordinator http://localhost:8080 --generate benchmark --model bert-base-uncased
+
+# Start the real-time monitoring dashboard
+python dashboard_server.py --coordinator http://localhost:8080
+```
+
+For more details, see the [Worker Guide](WORKER_GUIDE.md), [Worker Examples](WORKER_EXAMPLES.md), and [Deployment Guide](DEPLOYMENT_GUIDE.md).
+
 ### Basic Usage
 
 1. **Start the coordinator** with worker auto-discovery:
@@ -137,6 +159,16 @@ python -m distributed_testing.run_web_dashboard --port 8050 --update-interval 5
 
 ```bash
 python -m distributed_testing.worker --coordinator-url http://coordinator:8000 --auto-register
+```
+
+For advanced worker deployment with multiple nodes:
+
+```bash
+# Run multiple workers with different configurations
+./run_multiple_workers.sh
+
+# Run a single worker with custom capabilities
+python run_worker_example.py --coordinator http://coordinator:8000 --api-key YOUR_API_KEY --tags gpu,cuda,transformers
 ```
 
 3. **Submit tasks** for distributed execution:
@@ -223,6 +255,8 @@ For comprehensive documentation, please refer to:
 
 - [Documentation Index](docs/DOCUMENTATION_INDEX.md): Index of all documentation
 - [Implementation Status](docs/IMPLEMENTATION_STATUS.md): Current implementation status
+- [Worker Guide](WORKER_GUIDE.md): Comprehensive guide to setting up and running worker nodes
+- [Worker Examples](WORKER_EXAMPLES.md): Example implementations and configurations for workers
 - [Real-time Monitoring Dashboard](docs/REAL_TIME_MONITORING_DASHBOARD.md): Guide to the real-time monitoring dashboard for cluster health, worker nodes, and task execution
 - [Web Dashboard Guide](docs/WEB_DASHBOARD_GUIDE.md): Guide to using the web dashboard for result visualization
 - [README_MONITORING_DASHBOARD.md](README_MONITORING_DASHBOARD.md): Overview of the Real-time Monitoring Dashboard implementation

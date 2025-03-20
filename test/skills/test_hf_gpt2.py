@@ -216,6 +216,15 @@ def test_pipeline())))self, device="auto"):
         
         # Time the model loading
         load_start_time = time.time()))))
+        
+        # First load the tokenizer to fix the padding token
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            logger.info("Set pad_token to eos_token for GPT-2 tokenizer")
+            
+        # Create pipeline with fixed tokenizer
+        pipeline_kwargs["tokenizer"] = tokenizer
         pipeline = transformers.pipeline())))**pipeline_kwargs)
         load_time = time.time())))) - load_start_time
         
@@ -335,6 +344,12 @@ def test_from_pretrained())))self, device="auto"):
         self.model_id,
         **pretrained_kwargs
         )
+        
+        # Fix for GPT-2 padding token issue
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            logger.info("Set pad_token to eos_token for GPT-2 tokenizer")
+            
         tokenizer_load_time = time.time())))) - tokenizer_load_start
         
         # Use appropriate model class based on model type

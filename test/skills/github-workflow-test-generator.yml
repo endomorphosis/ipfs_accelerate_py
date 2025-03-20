@@ -1,0 +1,104 @@
+name: Test Generator Validation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'test/test_generator.py'
+      - 'test/skills/test_generator_*.py'
+      - 'test/test_hf_*.py'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'test/test_generator.py'
+      - 'test/skills/test_generator_*.py'
+      - 'test/test_hf_*.py'
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  validate-generator:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch transformers pytest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Run test generator test suite
+      run: |
+        cd test/skills
+        python test_generator_test_suite.py
+    
+    - name: Verify syntax of existing test files
+      run: |
+        cd test
+        for file in test_hf_*.py; do
+          echo "Checking syntax: $file"
+          python -m py_compile "$file"
+        done
+    
+    - name: Generate sample test files
+      run: |
+        cd test
+        python test_generator.py --family bert --output ./generated_tests
+        python test_generator.py --family gpt2 --output ./generated_tests
+        python test_generator.py --family t5 --output ./generated_tests
+        python test_generator.py --family vit --output ./generated_tests
+    
+    - name: Verify generated test files
+      run: |
+        cd test/generated_tests
+        for file in test_hf_*.py; do
+          echo "Checking syntax of generated file: $file"
+          python -m py_compile "$file"
+        done
+    
+    - name: Run basic functionality test
+      run: |
+        cd test/generated_tests
+        python test_hf_bert.py --model bert-base-uncased --cpu-only
+
+  nightly-test-generation:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch transformers pytest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Generate test files for all model families
+      run: |
+        cd test/skills
+        python generate_all_missing_tests.py --batch 10
+    
+    - name: Generate coverage report
+      run: |
+        cd test/skills
+        python generate_missing_hf_tests.py --report
+    
+    - name: Archive test coverage report
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-coverage-report
+        path: test/skills/HF_COVERAGE_REPORT.md

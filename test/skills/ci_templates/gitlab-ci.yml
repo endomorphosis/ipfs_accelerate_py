@@ -1,0 +1,150 @@
+stages:
+  - syntax
+  - test
+  - coverage
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+# Cache dependencies between jobs
+cache:
+  key: ${CI_JOB_NAME}
+  paths:
+    - .pip-cache/
+
+# Base definition for all Python jobs
+.python:
+  image: python:3.9
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+
+# Syntax validation job
+syntax-validation:
+  extends: .python
+  stage: syntax
+  script:
+    - pip install pytest flake8
+    - flake8 test/test_generator.py --count --select=E9,F63,F7,F82 --show-source --statistics
+    - cd test
+    - |
+      for file in test_hf_*.py; do
+        echo "Checking syntax: $file"
+        python -m py_compile "$file"
+      done
+    - cd skills
+    - python test_generator_test_suite.py
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
+      changes:
+        - test/test_generator.py
+        - test/test_hf_*.py
+        - test/skills/test_generator_*.py
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - test/test_generator.py
+        - test/test_hf_*.py
+        - test/skills/test_generator_*.py
+
+# Indentation check job
+indentation-check:
+  extends: .python
+  stage: syntax
+  script:
+    - pip install black
+    - cd test
+    - |
+      for file in test_hf_*.py; do
+        echo "Checking indentation: $file"
+        black --check --line-length 100 "$file" || echo "Indentation issues detected in $file"
+      done
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
+      changes:
+        - test/test_hf_*.py
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - test/test_hf_*.py
+
+# Core functionality test job
+core-functionality:
+  extends: .python
+  stage: test
+  script:
+    - pip install torch transformers
+    - cd test
+    - python test_hf_bert.py --model bert-base-uncased --cpu-only
+    - python test_hf_gpt2.py --model gpt2 --cpu-only
+    - python test_hf_t5.py --model t5-small --cpu-only
+    - python test_hf_vit.py --model google/vit-base-patch16-224 --cpu-only
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
+      changes:
+        - test/test_generator.py
+        - test/test_hf_*.py
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - test/test_generator.py
+        - test/test_hf_*.py
+
+# Coverage report job
+coverage-report:
+  extends: .python
+  stage: coverage
+  script:
+    - pip install matplotlib numpy pandas
+    - cd test/skills
+    - python visualize_test_coverage.py
+  artifacts:
+    paths:
+      - test/skills/coverage_visualizations/
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
+      changes:
+        - test/test_hf_*.py
+
+# Nightly tests job
+nightly-tests:
+  extends: .python
+  stage: test
+  script:
+    - pip install torch transformers
+    - cd test/skills
+    - mkdir -p temp_generated
+    - python ../test_generator.py --family bert --output ./temp_generated
+    - python ../test_generator.py --family gpt2 --output ./temp_generated
+    - python ../test_generator.py --family t5 --output ./temp_generated
+    - python ../test_generator.py --family vit --output ./temp_generated
+    - |
+      for file in temp_generated/test_hf_*.py; do
+        echo "Testing generated file: $file"
+        python -m py_compile "$file"
+      done
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+
+# Update documentation job
+update-docs:
+  extends: .python
+  stage: deploy
+  script:
+    - pip install matplotlib numpy pandas
+    - cd test/skills
+    - python visualize_test_coverage.py
+    - |
+      # Update the HF_COVERAGE_REPORT.md file
+      cp coverage_visualizations/detailed_coverage_report.md HF_COVERAGE_REPORT.md
+    - |
+      # Update the timestamp in TEST_AUTOMATION.md
+      sed -i "s/Last update: .*/Last update: $(date +'%B %d, %Y') - Updated coverage report/" TEST_AUTOMATION.md
+  artifacts:
+    paths:
+      - test/skills/HF_COVERAGE_REPORT.md
+      - test/skills/TEST_AUTOMATION.md
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  environment:
+    name: documentation

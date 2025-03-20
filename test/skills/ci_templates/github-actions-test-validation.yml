@@ -1,0 +1,131 @@
+name: Test Validation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'test/test_generator.py'
+      - 'test/test_hf_*.py'
+      - 'test/skills/test_generator_*.py'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'test/test_generator.py'
+      - 'test/test_hf_*.py'
+      - 'test/skills/test_generator_*.py'
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  syntax-validation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest flake8
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Lint with flake8
+      run: |
+        flake8 test/test_generator.py --count --select=E9,F63,F7,F82 --show-source --statistics
+    
+    - name: Verify syntax of test files
+      run: |
+        cd test
+        for file in test_hf_*.py; do
+          echo "Checking syntax: $file"
+          python -m py_compile "$file"
+        done
+    
+    - name: Run test generator test suite
+      run: |
+        cd test/skills
+        python test_generator_test_suite.py
+
+  indentation-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black
+    
+    - name: Check test file indentation
+      run: |
+        cd test
+        for file in test_hf_*.py; do
+          echo "Checking indentation: $file"
+          black --check --line-length 100 "$file" || echo "Indentation issues detected in $file"
+        done
+
+  core-functionality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch transformers pytest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Test core model functionality
+      run: |
+        cd test
+        python test_hf_bert.py --model bert-base-uncased --cpu-only
+        python test_hf_gpt2.py --model gpt2 --cpu-only
+        python test_hf_t5.py --model t5-small --cpu-only
+        python test_hf_vit.py --model google/vit-base-patch16-224 --cpu-only
+
+  nightly-coverage:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install matplotlib numpy pandas
+    
+    - name: Generate coverage report
+      run: |
+        cd test/skills
+        python visualize_test_coverage.py
+    
+    - name: Archive coverage artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: |
+          test/skills/coverage_visualizations/

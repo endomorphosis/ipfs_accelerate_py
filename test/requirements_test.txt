@@ -1,0 +1,48 @@
+# Core testing requirements
+pytest>=7.0.0
+pytest-cov>=4.1.0
+pytest-html>=3.2.0
+pytest-xdist>=3.3.0  # For distributed testing
+pytest-benchmark>=4.0.0  # For performance testing
+
+# Hardware-specific requirements
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Model-specific requirements
+transformers>=4.30.0
+diffusers>=0.15.0
+accelerate>=0.20.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+bitsandbytes>=0.41.0
+
+# Browser testing
+pytest-selenium>=4.0.0
+selenium>=4.10.0
+
+# API testing
+openai>=1.0.0
+anthropic>=0.5.0
+requests>=2.31.0
+
+# Database and analysis
+duckdb>=0.8.0
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.15.0
+
+# Utilities
+tqdm>=4.65.0
+pyyaml>=6.0.0
+jsonschema>=4.17.0
+
+# Optional dependencies
+# uncomment as needed
+# librosa>=0.10.0  # For audio processing
+# opencv-python>=4.7.0  # For image processing
+# pillow>=10.0.0  # For image processing
+# ffmpeg-python>=0.2.0  # For video processing

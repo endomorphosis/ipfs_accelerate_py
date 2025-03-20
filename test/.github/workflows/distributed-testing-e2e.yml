@@ -1,0 +1,292 @@
+name: Distributed Testing E2E Integration Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'test/distributed_testing/**'
+      - '.github/workflows/distributed-testing-e2e.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'test/distributed_testing/**'
+      - '.github/workflows/distributed-testing-e2e.yml'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type to run (e2e, component, integration, all)'
+        required: false
+        default: 'e2e'
+      test_filter:
+        description: 'Test filter pattern'
+        required: false
+        default: ''
+      hardware:
+        description: 'Hardware to test on (comma-separated: cpu,cuda,webgpu)'
+        required: false
+        default: 'cpu'
+      timeout:
+        description: 'Timeout in seconds'
+        required: false
+        default: '1800'
+      visualize:
+        description: 'Generate visualization reports'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up test matrix
+        id: set-matrix
+        run: |
+          # Determine test types based on input (or default to e2e)
+          TEST_TYPE="${{ github.event.inputs.test_type || 'e2e' }}"
+          
+          if [ "$TEST_TYPE" == "all" ]; then
+            TYPES='["e2e", "component", "integration"]'
+          else
+            TYPES="[\"$TEST_TYPE\"]"
+          fi
+          
+          echo "matrix={\"test_type\":$TYPES}" >> $GITHUB_OUTPUT
+
+  test:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    env:
+      TEST_TYPE: ${{ matrix.test_type }}
+      TEST_FILTER: ${{ github.event.inputs.test_filter || '' }}
+      COORDINATOR_URL: ${{ secrets.COORDINATOR_URL || 'http://localhost:8080' }}
+      API_KEY: ${{ secrets.COORDINATOR_API_KEY || 'test_key' }}
+      TIMEOUT: ${{ github.event.inputs.timeout || '1800' }}
+      DT_TEST_TEMP_DIR: /tmp/dt_temp_test_${{ matrix.test_type }}
+      
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f test/distributed_testing/requirements.test.txt ]; then
+            pip install -r test/distributed_testing/requirements.test.txt
+          else
+            pip install pytest pytest-cov pytest-timeout pytest-asyncio aiohttp websocket-client
+            pip install numpy pandas matplotlib duckdb flask flask-cors flask-socketio
+            pip install psutil prometheus-client aiohttp aiohttp_cors cryptography
+          fi
+          # Ensure PYTHONPATH includes the repository root
+          echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+      
+      # Set up test environment
+      - name: Set up test environment
+        run: |
+          # Create temp directory
+          mkdir -p $DT_TEST_TEMP_DIR
+          mkdir -p $DT_TEST_TEMP_DIR/conf
+          mkdir -p $DT_TEST_TEMP_DIR/logs
+          mkdir -p $DT_TEST_TEMP_DIR/metrics
+          
+          # Copy test configurations
+          cp -r test/distributed_testing/config/* $DT_TEST_TEMP_DIR/conf/
+      
+      # Run tests based on matrix type
+      - name: Run ${{ matrix.test_type }} tests
+        id: run-tests
+        run: |
+          mkdir -p test/distributed_testing/test_output/${{ matrix.test_type }}
+          
+          if [[ "${{ matrix.test_type }}" == "e2e" ]]; then
+            # Run end-to-end tests
+            python test/distributed_testing/run_e2e_integration_test.py \
+              --output-dir test/distributed_testing/test_output/${{ matrix.test_type }} \
+              --temp-dir $DT_TEST_TEMP_DIR \
+              --timeout ${{ env.TIMEOUT }} \
+              --test-filter "${{ env.TEST_FILTER }}" \
+              --verbose
+          elif [[ "${{ matrix.test_type }}" == "component" ]]; then
+            # Run component tests
+            python test/distributed_testing/tests/test_component_integration.py \
+              --output-dir test/distributed_testing/test_output/${{ matrix.test_type }} \
+              --temp-dir $DT_TEST_TEMP_DIR
+          elif [[ "${{ matrix.test_type }}" == "integration" ]]; then
+            # Run integration tests
+            python test/distributed_testing/run_integration_tests.py \
+              --output-dir test/distributed_testing/test_output/${{ matrix.test_type }} \
+              --temp-dir $DT_TEST_TEMP_DIR \
+              --test-filter "${{ env.TEST_FILTER }}"
+          else
+            echo "Unknown test type: ${{ matrix.test_type }}"
+            exit 1
+          fi
+          
+          # Record test status
+          echo "status=$?" >> $GITHUB_OUTPUT
+
+      # Generate coverage report
+      - name: Generate coverage report
+        if: ${{ always() && steps.run-tests.outputs.status != '' }}
+        run: |
+          cd test/distributed_testing
+          python -m pytest --cov=. --cov-report=xml:test_output/${{ matrix.test_type }}/coverage.xml
+
+      # Upload coverage to Codecov
+      - name: Upload coverage to Codecov
+        if: ${{ always() && steps.run-tests.outputs.status != '' }}
+        uses: codecov/codecov-action@v3
+        with:
+          files: test/distributed_testing/test_output/${{ matrix.test_type }}/coverage.xml
+          flags: ${{ matrix.test_type }}
+          name: distributed-testing-${{ matrix.test_type }}
+          fail_ci_if_error: false
+          
+      # Upload test artifacts
+      - name: Upload test artifacts
+        if: ${{ always() && steps.run-tests.outputs.status != '' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.test_type }}
+          path: test/distributed_testing/test_output/${{ matrix.test_type }}
+          retention-days: 14
+
+      # Create JSON result file for badge
+      - name: Create badge data
+        if: ${{ always() && steps.run-tests.outputs.status != '' }}
+        run: |
+          cd test/distributed_testing
+          mkdir -p .github/badges
+          
+          if [ "${{ steps.run-tests.outputs.status }}" == "0" ]; then
+            STATUS="passing"
+            COLOR="green"
+          else
+            STATUS="failing"
+            COLOR="red"
+          fi
+          
+          # Create JSON file for badge
+          cat > .github/badges/${{ matrix.test_type }}-status.json << EOF
+          {
+            "schemaVersion": 1,
+            "label": "${{ matrix.test_type }} tests",
+            "message": "$STATUS",
+            "color": "$COLOR"
+          }
+          EOF
+
+  # Generate reports and visualizations
+  report:
+    needs: test
+    runs-on: ubuntu-latest
+    if: ${{ always() && (github.event.inputs.visualize != 'false') }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install matplotlib pandas numpy seaborn plotly duckdb
+          pip install pytest pytest-cov
+
+      - name: Download all test results
+        uses: actions/download-artifact@v3
+        with:
+          path: test-results
+      
+      - name: Set up badge directory
+        run: |
+          mkdir -p test/distributed_testing/.github/badges
+      
+      - name: Generate combined badge
+        run: |
+          # Check if any tests failed
+          FAILED=0
+          for TYPE in e2e component integration; do
+            if [ -f "test-results/test-results-$TYPE/results.json" ] && grep -q '"status":1' "test-results/test-results-$TYPE/results.json"; then
+              FAILED=1
+              break
+            fi
+          done
+          
+          # Create badge JSON
+          if [ "$FAILED" == "0" ]; then
+            STATUS="passing"
+            COLOR="green"
+          else
+            STATUS="failing"
+            COLOR="red"
+          fi
+          
+          # Create combined status badge
+          cat > test/distributed_testing/.github/badges/combined-status.json << EOF
+          {
+            "schemaVersion": 1,
+            "label": "tests",
+            "message": "$STATUS",
+            "color": "$COLOR"
+          }
+          EOF
+      
+      - name: Generate visualizations
+        run: |
+          cd test/distributed_testing
+          mkdir -p test_output/visualizations
+          
+          # Generate visualizations
+          python visualize_test_results.py \
+            --input-dir ../../test-results \
+            --output-dir test_output/visualizations
+      
+      - name: Upload visualization artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-visualizations
+          path: test/distributed_testing/test_output/visualizations
+          retention-days: 30
+      
+      - name: Update README with badges
+        run: |
+          cd test/distributed_testing
+          
+          # Check if README exists
+          if [ -f "README.md" ]; then
+            # Add badges section if it doesn't exist
+            if ! grep -q "## Test Status" README.md; then
+              cat >> README.md << EOF
+          
+          ## Test Status
+          
+          ![Combined Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/distributed_testing/.github/badges/combined-status.json)
+          ![E2E Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/distributed_testing/.github/badges/e2e-status.json)
+          ![Component Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/distributed_testing/.github/badges/component-status.json)
+          ![Integration Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/distributed_testing/.github/badges/integration-status.json)
+          EOF
+            fi
+          fi
+      
+      - name: Commit and push badge updates
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Update distributed testing badge status [skip ci]"
+          file_pattern: |
+            test/distributed_testing/.github/badges/*.json
+            test/distributed_testing/README.md

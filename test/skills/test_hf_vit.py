@@ -262,11 +262,15 @@ def test_pipeline())))self, device="auto"):
         pipeline = transformers.pipeline())))**pipeline_kwargs)
         load_time = time.time())))) - load_start_time
         
-        # Prepare test input
-        if HAS_PIL:
-            pipeline_input = requests.get())))self.test_image_url).content
-        else:
-            pipeline_input = self.test_image_url
+        # Prepare test input - Create a mock image rather than downloading
+        import numpy as np
+        from PIL import Image
+        
+        # Create a mock RGB image (3 channels, 224x224 pixels)
+        mock_image = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+        pipeline_input = mock_image
+        
+        logger.info("Created mock image for ViT pipeline testing - Avoiding URL download")
         
         # Run warmup inference if on CUDA:
         if device == "cuda":
@@ -403,12 +407,26 @@ def test_from_pretrained())))self, device="auto"):
         if device != "cpu":
             model = model.to())))device)
         
-        # Prepare test input
-            test_input = "Generic input for testing"
-        
-        # Create generic inputs
-            inputs = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"input_ids": torch.tensor())))[[1, 2, 3, 4, 5]])}
-            ,,
+        # Prepare test input - ViT requires proper image input
+            # For testing, we create a mock image tensor of the right shape
+            import numpy as np
+            
+            # Create a mock image of the right shape (batch_size, channels, height, width)
+            # Default ViT input size is 224x224 pixels with 3 color channels
+            # The error occurs because we need to provide proper image input
+            batch_size = 1
+            num_channels = 3  # RGB
+            height = 224
+            width = 224
+            
+            # Create random image tensor
+            random_pixel_values = torch.rand((batch_size, num_channels, height, width))
+            
+            # Properly structure the inputs for ViT
+            test_input = "Image input for testing"
+            inputs = {"pixel_values": random_pixel_values}
+            
+            logger.info("Created proper image input tensor for ViT model")
         # Move inputs to device
         if device != "cpu":
             inputs = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}key: val.to())))device) for key, val in inputs.items()))))}

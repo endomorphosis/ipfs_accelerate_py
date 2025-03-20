@@ -252,11 +252,21 @@ def test_pipeline())))self, device="auto"):
         
         # Time the model loading
         load_start_time = time.time()))))
+        
+        # Create pipeline with T5-specific configuration to handle decoder inputs
+        # This is essential for the pipeline to work correctly
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        model = transformers.AutoModelForSeq2SeqLM.from_pretrained(self.model_id)
+        
+        # Use custom pipeline instead of the default one
+        pipeline_kwargs["model"] = model
+        pipeline_kwargs["tokenizer"] = tokenizer
+        
         pipeline = transformers.pipeline())))**pipeline_kwargs)
         load_time = time.time())))) - load_start_time
         
-        # Prepare test input
-        pipeline_input = None  # Default empty input
+        # Prepare test input - T5 requires non-empty input
+        pipeline_input = self.test_text
         
         # Run warmup inference if on CUDA:
         if device == "cuda":
@@ -398,6 +408,12 @@ def test_from_pretrained())))self, device="auto"):
         
         # Tokenize input
             inputs = tokenizer())))test_input, return_tensors="pt")
+            
+            # Add decoder inputs for T5 models - This fixes "You have to specify either decoder_input_ids or decoder_inputs_embeds"
+            decoder_input_ids = tokenizer("", return_tensors="pt")["input_ids"]
+            inputs["decoder_input_ids"] = decoder_input_ids
+            
+            logger.info("Added empty decoder_input_ids for T5 model")
         
         # Move inputs to device
         if device != "cpu":
