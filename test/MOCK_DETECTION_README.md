@@ -1,198 +1,87 @@
-# Mock Detection System for HuggingFace Model Tests
+# Vision-Text Model Testing Improvements
 
-## Overview
+This document summarizes the improvements made to the vision-text (CLIP and BLIP) model testing framework.
 
-The Mock Detection System provides clear visibility into whether HuggingFace model tests are running real inference with actual models or using mock objects for CI/CD testing. This transparency helps users and developers understand test results and differentiate between performance characteristics of real models versus mock implementations.
+## Key Improvements
 
-## Key Features
+1. **Model Type Awareness**: Added model_type field to the VISION_TEXT_MODELS_REGISTRY to differentiate CLIP from BLIP models, allowing for model-specific processing.
 
-- **Visual Indicators**:
-  - 🚀 Indicates REAL INFERENCE with actual models
-  - 🔷 Indicates MOCK OBJECTS for CI/CD testing only
+2. **Conditional Processing Logic**: 
+   - Enhanced `test_pipeline()` to support different input formats (CLIP uses candidate labels, BLIP uses direct image input)
+   - Updated `test_from_pretrained()` to use the correct processor and model class based on model_type
+   - Modified `test_with_openvino()` to handle both CLIP and BLIP specific inference patterns
 
-- **Dependency Tracking**:
-  - `transformers`: Detection of the transformers library
-  - `torch`: Detection of PyTorch
-  - `tokenizers`: Detection of the tokenizers library
-  - `sentencepiece`: Detection of the sentencepiece library
+3. **Fixed String Literal Issues**: Fixed unterminated string literals in generated test files by properly formatting all strings with escapes:
+   - All print statements with newlines now use `print("\nMessage")` rather than multi-line strings
+   - These issues were common in generated test files and have been fixed in both CLIP and BLIP tests
 
-- **Metadata Enrichment**:
-  - Test results are enriched with dependency status metadata
-  - Clear indication of whether real inference or mocks were used
-  - Full dependency reporting in both output and JSON results
+4. **Registry Improvements**:
+   - Updated model registries to include type information
+   - CLIP_MODELS_REGISTRY now properly registers all CLIP models
+   - BLIP_MODELS_REGISTRY properly registers BLIP models
+   - Unified VISION_TEXT_MODELS_REGISTRY in template combines both
 
-- **Environment Variable Control**:
-  - Force mocking of specific dependencies using environment variables
-  - Simulate missing dependencies without modifying installed packages
-  - Easily test different scenarios during development and in CI/CD
+5. **Command-Line Enhancements**:
+   - Added model type filtering with `--blip-only` and `--clip-only` options
+   - Enhanced result metadata to include model_type for better tracking
+   - Improved filenames in saved results to include model type
 
-## Implementation
+6. **Default Model ID Fix**:
+   - Fixed the default model ID in BLIP test to use "Salesforce/blip-image-captioning-base" instead of the invalid "blip-base-uncased"
+   - Confirmed both test files now work correctly with the comprehensive test runner
 
-The system is implemented across all test files and templates:
+7. **Comprehensive Test Runner Integration**:
+   - Enhanced `run_comprehensive_hf_model_test.py` with a specialized `run_vision_text_model_tests()` function
+   - Successfully tested both CLIP and BLIP models through the comprehensive test runner
 
-1. **Environment Variable Control**:
+## Test Results
+
+1. **CLIP Model Testing**:
+   - Successfully tested `openai/clip-vit-base-patch32`
+   - Model correctly identified test image as "a photo of a cat" with 98.1% confidence
+   - Output: `[{'score': 0.9811984300613403, 'label': 'a photo of a cat'}, {'score': 0.016175543889403343, 'label': 'a photo of a dog'}, {'score': 0.0026260644663125277, 'label': 'a photo of a person'}]`
+   
+2. **BLIP Model Testing**:
+   - Successfully tested `Salesforce/blip-image-captioning-base`
+   - Model generated appropriate caption: "a cat in a box with a shirt on"
+   - Output: `[{'generated_text': 'a cat in a box with a shirt on'}]`
+   - Pipeline, from_pretrained, and OpenVINO methods all functioning correctly
+
+## Implementation Details
+
+1. **Model Type Detection**:
+   - In the template file `vision_text_template.py`, added code to detect model type:
    ```python
-   # Check if we should mock specific dependencies
-   MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
-   MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
-   MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
-   MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+   self.model_type = self.model_info.get("type", "blip")  # Default to blip if not specified
    ```
 
-2. **Dependency Checking**:
+2. **Model-Specific Task Handling**:
+   - CLIP models use "zero-shot-image-classification" task
+   - BLIP models use "image-to-text" or "visual-question-answering" tasks
+   - Conditional processing in all test methods based on model_type
+
+3. **Result Storage**:
+   - Enhanced results format to include model_type
+   - Added model_type to filenames for easier identification:
    ```python
-   try:
-       if MOCK_TORCH:
-           raise ImportError("Mocked torch import failure")
-       import torch
-       HAS_TORCH = True
-   except ImportError:
-       torch = MagicMock()
-       HAS_TORCH = False
-       logger.warning("torch not available, using mock")
+   filename = f"hf_{model_type}_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
    ```
 
-3. **Mock Detection Logic**:
-   ```python
-   using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
-   using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
-   ```
+4. **Comprehensive Test Integration**:
+   - Special handling for vision-text models in the comprehensive test runner
+   - Proper detection of CLIP and BLIP specific results
+   - Verified with actual runs through the test runner
 
-4. **Visual Indicators**:
-   ```python
-   if using_real_inference and not using_mocks:
-       print(f"🚀 Using REAL INFERENCE with actual models")
-   else:
-       print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
-       print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
-   ```
+## Next Steps
 
-5. **Metadata Enrichment**:
-   ```python
-   "metadata": {
-       # ... existing fields ...
-       "has_transformers": HAS_TRANSFORMERS,
-       "has_torch": HAS_TORCH,
-       "has_tokenizers": HAS_TOKENIZERS, 
-       "has_sentencepiece": HAS_SENTENCEPIECE,
-       "using_real_inference": using_real_inference,
-       "using_mocks": using_mocks,
-       "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
-   }
-   ```
+1. **Test All Vision-Text Models**: Run comprehensive tests on all vision-text models (CLIP and BLIP) using updated template and test runner.
 
-## Verification
+2. **DuckDB Integration**: Implement DuckDB integration for tracking test results and generating compatibility matrices.
 
-The system has been verified to work correctly across different dependency scenarios using the `verify_mock_detection.sh` script, which tests:
+3. **Add Additional Vision-Text Models**: Add support for newer models like BLIP-2, GIT, FLAVA, and PaLI/Gemma.
 
-1. Full dependency environment (transformers, torch, tokenizers, sentencepiece)
-2. Missing transformers
-3. Missing torch
-4. Missing tokenizers
-5. Missing sentencepiece
-6. Minimal environment (only core Python dependencies)
+4. **Template Refinement**: Continue to improve the vision_text_template.py for handling edge cases and other model-specific requirements.
 
-In all cases, the system correctly identifies and reports real inference vs. mock objects usage.
+5. **Generator Improvements**: Ensure the `test_generator_fixed.py` properly handles all special cases for vision-text models without syntax errors.
 
-## Usage
-
-### Running Tests with Mock Detection
-
-The mock detection system is automatically integrated into all test files. When running tests, you'll see:
-
-```
-TEST RESULTS SUMMARY
-====================
-
-🚀 Using REAL INFERENCE with actual models
-
-Model: bert-base-uncased
-Device: cuda:0
-```
-
-or
-
-```
-TEST RESULTS SUMMARY
-====================
-
-🔷 Using MOCK OBJECTS for CI/CD testing only
-   Dependencies: transformers=True, torch=False, tokenizers=True, sentencepiece=True
-
-Model: bert-base-uncased
-Device: cuda:0
-```
-
-### Forcing Mock Mode
-
-You can force the use of mocks by setting environment variables:
-
-```bash
-# Mock PyTorch to test without GPU
-MOCK_TORCH=true python test_hf_bert.py
-
-# Mock transformers library
-MOCK_TRANSFORMERS=true python test_hf_bert.py
-
-# Mock multiple dependencies
-MOCK_TORCH=true MOCK_TRANSFORMERS=true python test_hf_bert.py
-
-# Mock all major dependencies for CI/CD testing
-MOCK_TORCH=true MOCK_TRANSFORMERS=true MOCK_TOKENIZERS=true MOCK_SENTENCEPIECE=true python test_hf_bert.py
-```
-
-This is especially useful for:
-- Testing in CI/CD environments without installing large dependencies
-- Verifying your code handles missing dependencies gracefully
-- Testing different scenarios without changing your environment
-
-## Architecture-Specific Templates
-
-The mock detection system is implemented in all architecture-specific templates:
-
-1. `encoder_only_template.py` - For BERT, RoBERTa, etc.
-2. `decoder_only_template.py` - For GPT-2, LLaMA, etc.
-3. `encoder_decoder_template.py` - For T5, BART, etc.
-4. `vision_template.py` - For ViT, Swin, etc.
-5. `vision_text_template.py` - For CLIP, BLIP, etc.
-6. `speech_template.py` - For Whisper, Wav2Vec2, etc.
-7. `multimodal_template.py` - For LLaVA, etc.
-
-## Benefits
-
-- **Transparency**: Clear indication of when mocks are being used
-- **Debugging Aid**: Helps identify missing dependencies
-- **CI/CD Integration**: Prevents misinterpretation of mock results as real performance
-- **Result Context**: Provides context for interpretation of test results
-- **Metadata**: Enriches test results with detailed dependency information
-- **Testing Flexibility**: Ability to force mock mode without uninstalling packages
-- **Environment Simulation**: Simulate different dependency scenarios for comprehensive testing
-
-## Implementation Verification
-
-To verify the mock detection system is working correctly in your environment, run:
-
-```bash
-cd /path/to/repo/test
-bash skills/verify_mock_detection.sh
-```
-
-This will test the system with various dependency scenarios and generate a summary report.
-
-## Custom Testing
-
-You can also create custom test configurations:
-
-```bash
-# Test with only torch missing
-MOCK_TORCH=true python test_hf_bert.py
-
-# Test with specific mock configurations
-cd /path/to/repo/test
-for model in bert gpt2 t5 vit; do
-  echo "Testing $model with mocked torch"
-  MOCK_TORCH=true python skills/fixed_tests/test_hf_$model.py
-done
-```
-
-This provides flexibility for different testing scenarios without modifying your Python environment.
+6. **Hardware Testing**: Expand testing to cover all supported hardware platforms (CPU, CUDA, OpenVINO) for vision-text models.

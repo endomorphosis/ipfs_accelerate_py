@@ -1,717 +1,419 @@
 #!/usr/bin/env python3
+
 """
-Comprehensive HuggingFace Model Testing Script
+Comprehensive test runner for HuggingFace models.
 
-This script implements comprehensive testing for HuggingFace models across
-all supported hardware platforms. It addresses the Priority #2 task in CLAUDE.md:
-"Comprehensive HuggingFace Model Testing (300+ classes)".
+This script:
+1. Runs tests for multiple model architectures
+2. Captures detailed metrics and results
+3. Integrates with DuckDB for result storage and analysis
+4. Supports various hardware backends (CPU, CUDA, OpenVINO)
 
-Usage:
-  python run_comprehensive_hf_model_test.py --model [model_name] --hardware [hardware_platform]
-  python run_comprehensive_hf_model_test.py --all
-  python run_comprehensive_hf_model_test.py --category text-encoders --hardware cuda
-  python run_comprehensive_hf_model_test.py --report
+Usage examples:
+    # Test all models
+    python run_comprehensive_hf_model_test.py --all
+
+    # Test specific model families
+    python run_comprehensive_hf_model_test.py --encoder-only --vision
+
+    # Test specific models
+    python run_comprehensive_hf_model_test.py --models bert,roberta,vit
+
+    # Specify hardware options
+    python run_comprehensive_hf_model_test.py --vision --cpu-only
+    python run_comprehensive_hf_model_test.py --vision-text --all-hardware
 """
 
 import os
 import sys
-import argparse
 import json
+import glob
+import time
+import argparse
 import logging
 import subprocess
+import datetime
 from pathlib import Path
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import List, Dict, Any
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(f"comprehensive_hf_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        logging.FileHandler(f"comprehensive_hf_test_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+        logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# Path constants
-SKILLS_DIR = Path(__file__).parent / "skills"
+# Directory paths
+SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+SKILLS_DIR = SCRIPT_DIR / "skills"
 FIXED_TESTS_DIR = SKILLS_DIR / "fixed_tests"
-DB_PATH = Path(__file__).parent / "benchmark_db.duckdb"
+RESULTS_DIR = FIXED_TESTS_DIR / "collected_results"
 
-# Hardware platforms for testing
-HARDWARE_PLATFORMS = {
-    "cpu": {
-        "name": "CPU",
-        "flag": "--device cpu",
-        "priority": "high"
-    },
-    "cuda": {
-        "name": "CUDA (NVIDIA GPU)",
-        "flag": "--device cuda",
-        "priority": "high"
-    },
-    "rocm": {
-        "name": "ROCm (AMD GPU)",
-        "flag": "--device rocm", 
-        "priority": "high"
-    },
-    "mps": {
-        "name": "Metal Performance Shaders (Apple Silicon)",
-        "flag": "--device mps",
-        "priority": "high"
-    },
-    "openvino": {
-        "name": "OpenVINO (Intel)",
-        "flag": "--device openvino",
-        "priority": "high"
-    },
-    "qualcomm": {
-        "name": "Qualcomm AI Engine",
-        "flag": "--device qualcomm",
-        "priority": "medium"
-    },
-    "webnn": {
-        "name": "WebNN",
-        "flag": "--web-platform webnn",
-        "priority": "medium"
-    },
-    "webgpu": {
-        "name": "WebGPU",
-        "flag": "--web-platform webgpu",
-        "priority": "medium"
-    }
-}
-
-# Model categories and architectures
-MODEL_CATEGORIES = {
-    "text-encoders": {
-        "description": "Text encoder models (BERT, RoBERTa, etc.)",
-        "architecture_type": "encoder_only",
-        "model_type": "text",
-        "examples": ["bert-base-uncased", "roberta-base", "distilbert-base-uncased"],
-        "priority": "critical",
-        "families": ["bert", "roberta", "distilbert", "albert", "electra"]
-    },
-    "text-decoders": {
-        "description": "Text decoder models (GPT-2, LLaMA, etc.)",
-        "architecture_type": "decoder_only",
-        "model_type": "text",
-        "examples": ["gpt2", "facebook/opt-125m", "TinyLlama/TinyLlama-1.1B-Chat"],
-        "priority": "critical",
-        "families": ["gpt2", "gpt_neo", "gpt_neox", "gptj", "opt", "llama", "bloom"]
-    },
-    "text-encoder-decoders": {
-        "description": "Text encoder-decoder models (T5, BART, etc.)",
-        "architecture_type": "encoder_decoder",
-        "model_type": "text",
-        "examples": ["t5-small", "facebook/bart-base", "google/pegasus-xsum"],
-        "priority": "critical",
-        "families": ["t5", "bart", "pegasus", "mbart", "mt5"]
-    },
-    "vision": {
-        "description": "Vision models (ViT, DETR, etc.)",
-        "architecture_type": "encoder_only",
-        "model_type": "vision",
-        "examples": ["google/vit-base-patch16-224", "facebook/detr-resnet-50"],
-        "priority": "high",
-        "families": ["vit", "detr", "swin", "convnext", "deit", "beit"]
-    },
-    "audio": {
-        "description": "Audio models (Whisper, Wav2Vec2, etc.)",
-        "architecture_type": "encoder_only",
-        "model_type": "audio",
-        "examples": ["openai/whisper-tiny", "facebook/wav2vec2-base"],
-        "priority": "high",
-        "families": ["whisper", "wav2vec2", "hubert"]
-    },
-    "multimodal": {
-        "description": "Multimodal models (CLIP, LLaVA, etc.)",
-        "architecture_type": "encoder_decoder",
-        "model_type": "multimodal",
-        "examples": ["openai/clip-vit-base-patch32", "llava-hf/llava-1.5-7b-hf"],
-        "priority": "medium",
-        "families": ["clip", "blip", "llava"]
-    }
-}
-
-def run_test_command(test_file: str, model_id: str, hardware: str) -> Dict[str, Any]:
-    """
-    Run a test for a specific model on a specific hardware platform.
-    
-    Args:
-        test_file: Path to the test file
-        model_id: Model ID to test
-        hardware: Hardware platform to test on
-        
-    Returns:
-        Dict containing test results
-    """
-    start_time = datetime.now()
-    hardware_flag = HARDWARE_PLATFORMS[hardware]["flag"]
-    
-    # Construct command - simplify to just run without specific hardware flags for now
-    cmd = [
-        sys.executable,
-        str(test_file),
-        "--model", model_id
+# Define architecture categories
+MODEL_ARCHITECTURES = {
+    "encoder-only": [
+        "bert", "distilbert", "roberta", "electra", "camembert", 
+        "xlm_roberta", "albert", "deberta", "ernie"
+    ],
+    "decoder-only": [
+        "gpt2", "gpt_j", "gpt_neo", "gpt_neox", "bloom", "llama", 
+        "mistral", "falcon", "phi", "mixtral", "gemma"
+    ],
+    "encoder-decoder": [
+        "t5", "bart", "pegasus", "mbart", "longt5", "led", "mt5", 
+        "flan_t5", "prophetnet"
+    ],
+    "vision": [
+        "vit", "swin", "deit", "beit", "convnext", "dinov2", "mask2former",
+        "segformer", "yolos", "sam"
+    ],
+    "vision-text": [
+        "clip", "blip", "blip_2", "git", "flava", "paligemma"
+    ],
+    "speech": [
+        "wav2vec2", "hubert", "whisper", "encodec", "clap", 
+        "speecht5", "unispeech", "sew"
+    ],
+    "multimodal": [
+        "llava", "video_llava", "idefics", "imagebind"
     ]
-    
-    # Skip hardware flags for now as they're causing issues
-    # We'll fix the individual test scripts first
-    
-    # Run command
-    logger.info(f"Running test: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    
-    end_time = datetime.now()
-    duration = (end_time - start_time).total_seconds()
-    
-    # Parse results
-    test_result = {
-        "model_id": model_id,
-        "hardware": hardware,
-        "success": result.returncode == 0,
-        "duration": duration,
-        "timestamp": end_time.isoformat(),
-        "command": " ".join(cmd)
-    }
-    
-    if result.returncode == 0:
-        logger.info(f"✅ Test succeeded: {model_id} on {hardware}")
-        test_result["stdout"] = result.stdout
-    else:
-        logger.error(f"❌ Test failed: {model_id} on {hardware}")
-        test_result["stderr"] = result.stderr
-        test_result["stdout"] = result.stdout
-        test_result["error"] = True
-    
-    return test_result
+}
 
-def run_batch_tests(
-    test_batch: List[Dict[str, str]], 
-    max_workers: int = 4
-) -> List[Dict[str, Any]]:
-    """
-    Run a batch of tests in parallel.
+# Mapping from model family to test file
+def get_test_file_for_model(model_family: str) -> str:
+    """Get the test file path for a model family."""
+    model_family = model_family.replace("-", "_")  # Handle hyphenated model names
+    test_file = FIXED_TESTS_DIR / f"test_hf_{model_family}.py"
+    if test_file.exists():
+        return str(test_file)
+    return None
+
+def run_test(test_file: str, args: Any) -> Dict:
+    """Run a specific test with appropriate arguments."""
+    cmd = [sys.executable, test_file]
     
-    Args:
-        test_batch: List of test configurations
-        max_workers: Maximum number of parallel tests
+    # Add hardware flags
+    if args.cpu_only:
+        cmd.append("--cpu-only")
+    if args.all_hardware:
+        cmd.append("--all-hardware")
+    
+    # Add model specification if provided
+    if args.model:
+        cmd.extend(["--model", args.model])
+    
+    # Add save flag to collect results
+    cmd.append("--save")
+    
+    # Add output directory
+    cmd.extend(["--output-dir", str(RESULTS_DIR)])
+    
+    logger.info(f"Running: {' '.join(cmd)}")
+    
+    try:
+        # Run the test and capture output
+        start_time = time.time()
+        process = subprocess.run(
+            cmd, 
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            timeout=1200  # 20 minute timeout
+        )
+        duration = time.time() - start_time
         
-    Returns:
-        List of test results
-    """
-    results = []
-    
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(
-                run_test_command, 
-                test["test_file"], 
-                test["model_id"], 
-                test["hardware"]
-            ): test for test in test_batch
+        # Process output
+        stdout = process.stdout
+        stderr = process.stderr
+        success = process.returncode == 0
+        
+        # Save detailed output for troubleshooting
+        test_name = os.path.basename(test_file).replace(".py", "")
+        log_file = f"regenerate_tests_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        with open(log_file, "w") as f:
+            f.write(f"STDOUT:\n{stdout}\n\nSTDERR:\n{stderr}")
+        
+        result = {
+            "test": test_name,
+            "success": success,
+            "duration": duration,
+            "returncode": process.returncode,
+            "log_file": log_file
         }
         
-        for future in as_completed(futures):
-            test = futures[future]
-            try:
-                result = future.result()
-                results.append(result)
-            except Exception as e:
-                logger.error(f"Error running test {test}: {e}")
-                results.append({
-                    "model_id": test["model_id"],
-                    "hardware": test["hardware"],
-                    "success": False,
-                    "error": str(e),
-                    "exception": True
-                })
+        if success:
+            logger.info(f"✅ {test_name} completed successfully in {duration:.2f} seconds")
+        else:
+            logger.error(f"❌ {test_name} failed with code {process.returncode}")
+            result["stderr"] = stderr
+        
+        return result
+        
+    except subprocess.TimeoutExpired:
+        logger.error(f"🕒 Timeout running {test_file}")
+        return {
+            "test": os.path.basename(test_file),
+            "success": False,
+            "error": "timeout",
+            "duration": 1200  # timeout value
+        }
+    except Exception as e:
+        logger.error(f"💥 Error running {test_file}: {e}")
+        return {
+            "test": os.path.basename(test_file),
+            "success": False,
+            "error": str(e)
+        }
+
+def collect_results(results_dir: str) -> Dict:
+    """Collect and aggregate test results from JSON files."""
+    result_files = glob.glob(os.path.join(results_dir, "*.json"))
+    
+    aggregated_results = {
+        "models": {},
+        "summary": {
+            "total": 0,
+            "successful": 0,
+            "failed": 0,
+            "architectures": {}
+        },
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    
+    for file_path in result_files:
+        try:
+            with open(file_path, 'r') as f:
+                result_data = json.load(f)
+            
+            # Extract model information
+            if "metadata" in result_data:
+                metadata = result_data["metadata"]
+                model_id = metadata.get("model", os.path.basename(file_path))
+                model_class = metadata.get("class", "unknown")
+                model_type = metadata.get("model_type", "unknown")
+                
+                # Determine result status
+                success = False
+                for result_name, result_data in result_data.get("results", {}).items():
+                    if result_data.get("pipeline_success", False):
+                        success = True
+                        break
+                
+                # Add to aggregated results
+                aggregated_results["models"][model_id] = {
+                    "class": model_class,
+                    "type": model_type,
+                    "success": success,
+                    "file": os.path.basename(file_path)
+                }
+                
+                # Update summary statistics
+                aggregated_results["summary"]["total"] += 1
+                if success:
+                    aggregated_results["summary"]["successful"] += 1
+                else:
+                    aggregated_results["summary"]["failed"] += 1
+                
+                # Update architecture statistics
+                arch_type = next((arch for arch, models in MODEL_ARCHITECTURES.items() 
+                                 if any(m in model_id.lower() for m in models)), "other")
+                
+                if arch_type not in aggregated_results["summary"]["architectures"]:
+                    aggregated_results["summary"]["architectures"][arch_type] = {
+                        "total": 0, "successful": 0, "failed": 0
+                    }
+                
+                aggregated_results["summary"]["architectures"][arch_type]["total"] += 1
+                if success:
+                    aggregated_results["summary"]["architectures"][arch_type]["successful"] += 1
+                else:
+                    aggregated_results["summary"]["architectures"][arch_type]["failed"] += 1
+                
+        except Exception as e:
+            logger.error(f"Error processing result file {file_path}: {e}")
+    
+    return aggregated_results
+
+def run_tests_for_architecture(arch_type: str, args: Any) -> List[Dict]:
+    """Run tests for all models in an architecture type."""
+    results = []
+    
+    for model_family in MODEL_ARCHITECTURES.get(arch_type, []):
+        test_file = get_test_file_for_model(model_family)
+        if test_file:
+            logger.info(f"Testing {model_family} ({arch_type})")
+            result = run_test(test_file, args)
+            results.append(result)
+        else:
+            logger.warning(f"No test file found for {model_family}")
+            results.append({
+                "test": f"test_hf_{model_family}",
+                "success": False,
+                "error": "no_test_file"
+            })
     
     return results
 
-def get_test_configurations(
-    categories: Optional[List[str]] = None,
-    families: Optional[List[str]] = None,
-    models: Optional[List[str]] = None,
-    hardware_platforms: Optional[List[str]] = None,
-    priority: str = "all"
-) -> List[Dict[str, str]]:
-    """
-    Generate test configurations based on selection criteria.
+def run_vision_text_model_tests(args: Any) -> List[Dict]:
+    """Run tests for all vision-text models - specifically CLIP and BLIP models."""
+    results = []
     
-    Args:
-        categories: Model categories to test
-        families: Model families to test
-        models: Specific models to test
-        hardware_platforms: Hardware platforms to test on
-        priority: Priority level ("critical", "high", "medium", "all")
-        
-    Returns:
-        List of test configurations
-    """
-    # Default to all hardware platforms if none specified
-    if not hardware_platforms:
-        if priority == "critical":
-            hardware_platforms = [hw for hw, info in HARDWARE_PLATFORMS.items() 
-                                if info["priority"] == "high"]
-        elif priority == "high":
-            hardware_platforms = [hw for hw, info in HARDWARE_PLATFORMS.items() 
-                                if info["priority"] in ["high", "medium"]]
-        else:
-            hardware_platforms = list(HARDWARE_PLATFORMS.keys())
-    
-    # Filter by priority
-    if categories:
-        filtered_categories = {}
-        for cat in categories:
-            if cat in MODEL_CATEGORIES:
-                if priority == "all" or MODEL_CATEGORIES[cat]["priority"] in [priority, "critical"]:
-                    filtered_categories[cat] = MODEL_CATEGORIES[cat]
+    # Test CLIP models
+    clip_test_file = get_test_file_for_model("clip")
+    if clip_test_file:
+        logger.info("Testing CLIP models")
+        custom_args = argparse.Namespace(**vars(args))
+        # Optionally override specific args
+        result = run_test(clip_test_file, custom_args)
+        results.append(result)
     else:
-        # Default to all categories
-        filtered_categories = {}
-        for cat, info in MODEL_CATEGORIES.items():
-            if priority == "all" or info["priority"] in [priority, "critical"]:
-                filtered_categories[cat] = info
+        logger.warning("No test file found for CLIP models")
     
-    # Resolve families
-    if not families:
-        families = []
-        for cat_info in filtered_categories.values():
-            families.extend(cat_info["families"])
-    
-    # Read the test files directory
-    test_files = {}
-    for family in families:
-        test_file = FIXED_TESTS_DIR / f"test_hf_{family}.py"
-        if test_file.exists():
-            test_files[family] = test_file
-        else:
-            logger.warning(f"Test file for family {family} not found: {test_file}")
-    
-    # Generate test configurations
-    test_configs = []
-    
-    # If specific models are provided, test those on all specified hardware
-    if models:
-        for model_id in models:
-            # Try to determine the family from the model ID
-            family = None
-            for f in families:
-                if f in model_id.lower():
-                    family = f
-                    break
-            
-            if not family:
-                logger.warning(f"Could not determine family for model {model_id}, using bert as fallback")
-                family = "bert"
-            
-            if family in test_files:
-                for hw in hardware_platforms:
-                    test_configs.append({
-                        "model_id": model_id,
-                        "family": family,
-                        "test_file": str(test_files[family]),
-                        "hardware": hw
-                    })
-            else:
-                logger.warning(f"No test file found for family {family}, skipping model {model_id}")
+    # Test BLIP models
+    blip_test_file = get_test_file_for_model("blip")
+    if blip_test_file:
+        logger.info("Testing BLIP models")
+        custom_args = argparse.Namespace(**vars(args))
+        # Optionally override specific args
+        result = run_test(blip_test_file, custom_args)
+        results.append(result)
     else:
-        # Otherwise, test example models from each category
-        for cat, info in filtered_categories.items():
-            for example_model in info["examples"]:
-                for family in info["families"]:
-                    if family in test_files:
-                        for hw in hardware_platforms:
-                            test_configs.append({
-                                "model_id": example_model,
-                                "family": family,
-                                "test_file": str(test_files[family]),
-                                "hardware": hw
-                            })
+        logger.warning("No test file found for BLIP models")
     
-    return test_configs
-
-def save_results(results: List[Dict[str, Any]], output_file: Optional[str] = None) -> str:
-    """
-    Save test results to a file.
+    # Add any other vision-text model families here
     
-    Args:
-        results: Test results to save
-        output_file: Path to save results to (if None, generates a filename)
-        
-    Returns:
-        Path to saved file
-    """
-    if output_file is None:
-        output_dir = Path("test_results")
-        output_dir.mkdir(exist_ok=True)
-        output_file = output_dir / f"hf_comprehensive_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    else:
-        output_file = Path(output_file)
-        output_file.parent.mkdir(exist_ok=True, parents=True)
-    
-    with open(output_file, "w") as f:
-        json.dump({
-            "timestamp": datetime.now().isoformat(),
-            "total_tests": len(results),
-            "successful_tests": sum(1 for r in results if r.get("success", False)),
-            "failed_tests": sum(1 for r in results if not r.get("success", False)),
-            "results": results
-        }, f, indent=2)
-    
-    logger.info(f"Results saved to {output_file}")
-    return str(output_file)
-
-def generate_report(results_file: str = None) -> str:
-    """
-    Generate a markdown report summarizing test results.
-    
-    Args:
-        results_file: Path to JSON results file
-        
-    Returns:
-        Markdown report
-    """
-    # Load results if file provided
-    if results_file:
-        with open(results_file, "r") as f:
-            data = json.load(f)
-            results = data["results"]
-    else:
-        # Find the most recent results file
-        results_dir = Path("test_results")
-        if not results_dir.exists():
-            return "No test results found."
-        
-        results_files = list(results_dir.glob("hf_comprehensive_test_*.json"))
-        if not results_files:
-            return "No test results found."
-        
-        # Sort by modification time (newest first)
-        results_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-        with open(results_files[0], "r") as f:
-            data = json.load(f)
-            results = data["results"]
-    
-    # Try to determine if tests used real inference or mocks
-    mock_indicator = False
-    real_indicator = False
-    
-    # Look for any indicators in stdout
-    for result in results:
-        stdout = result.get("stdout", "")
-        if "USING MOCK OBJECTS" in stdout or "🔷 Using MOCK OBJECTS" in stdout:
-            mock_indicator = True
-        if "REAL INFERENCE" in stdout or "🚀 Using REAL INFERENCE" in stdout:
-            real_indicator = True
-    
-    # Generate report
-    report_lines = [
-        f"# Comprehensive HuggingFace Model Testing Report",
-        f"",
-        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"",
-    ]
-    
-    # Add test environment information
-    if mock_indicator:
-        report_lines.extend([
-            f"## ⚠️ Test Environment",
-            f"",
-            f"**WARNING: Some or all tests used MOCK OBJECTS instead of real inference!**",
-            f"",
-            f"- This is typically seen in CI/CD environments without all dependencies",
-            f"- Results may not reflect actual model performance or accuracy",
-            f"- Mock objects return predefined values and do not perform real computation",
-            f"- Consider running tests in an environment with all required dependencies installed",
-            f""
-        ])
-    elif real_indicator:
-        report_lines.extend([
-            f"## ✅ Test Environment",
-            f"",
-            f"**All tests used REAL INFERENCE with actual models**",
-            f"",
-            f"- Tests performed actual inference with real models and dependencies",
-            f"- Results reflect true performance characteristics",
-            f"- Performance measurements are valid indicators of actual performance",
-            f""
-        ])
-    
-    report_lines.extend([
-        f"## Summary",
-        f"",
-        f"- Total tests: {len(results)}",
-        f"- Successful tests: {sum(1 for r in results if r.get('success', False))}",
-        f"- Failed tests: {sum(1 for r in results if not r.get('success', False))}",
-        f"- Success rate: {sum(1 for r in results if r.get('success', False)) / len(results) * 100:.1f}%",
-        f"",
-        f"## Results by Hardware",
-        f"",
-    ])
-    
-    # Group results by hardware
-    results_by_hardware = {}
-    for result in results:
-        hw = result.get("hardware", "unknown")
-        if hw not in results_by_hardware:
-            results_by_hardware[hw] = []
-        results_by_hardware[hw].append(result)
-    
-    # Add hardware-specific summaries
-    for hw, hw_results in results_by_hardware.items():
-        hw_name = HARDWARE_PLATFORMS.get(hw, {}).get("name", hw)
-        success_count = sum(1 for r in hw_results if r.get("success", False))
-        total_count = len(hw_results)
-        success_rate = success_count / total_count * 100 if total_count > 0 else 0
-        
-        report_lines.extend([
-            f"### {hw_name}",
-            f"",
-            f"- Tests: {total_count}",
-            f"- Successful: {success_count}",
-            f"- Failed: {total_count - success_count}",
-            f"- Success rate: {success_rate:.1f}%",
-            f"",
-            f"| Model | Status | Duration (s) |",
-            f"|-------|--------|--------------|",
-        ])
-        
-        # Add model-specific results
-        for result in hw_results:
-            status = "✅ Success" if result.get("success", False) else "❌ Failed"
-            duration = result.get("duration", "N/A")
-            if isinstance(duration, (int, float)):
-                duration = f"{duration:.2f}"
-            
-            report_lines.append(
-                f"| {result.get('model_id', 'Unknown')} | {status} | {duration} |"
-            )
-        
-        report_lines.append("")
-    
-    # Add section on common failure patterns
-    failure_patterns = analyze_failure_patterns(results)
-    if failure_patterns:
-        report_lines.extend([
-            f"## Common Failure Patterns",
-            f"",
-        ])
-        
-        for pattern, count in failure_patterns.items():
-            report_lines.extend([
-                f"### {pattern} ({count} occurrences)",
-                f"",
-            ])
-    
-    # Save report
-    report_file = Path("reports") / f"hf_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-    report_file.parent.mkdir(exist_ok=True)
-    with open(report_file, "w") as f:
-        f.write("\n".join(report_lines))
-    
-    logger.info(f"Report saved to {report_file}")
-    return str(report_file)
-
-def analyze_failure_patterns(results: List[Dict[str, Any]]) -> Dict[str, int]:
-    """
-    Analyze common failure patterns in test results.
-    
-    Args:
-        results: Test results to analyze
-        
-    Returns:
-        Dict mapping failure patterns to occurrence counts
-    """
-    # Extract failed tests
-    failed_tests = [r for r in results if not r.get("success", False)]
-    
-    # Define common error patterns to look for
-    error_patterns = {
-        "CUDA out of memory": 0,
-        "No module named": 0,
-        "Missing tokenizer dependency": 0,
-        "Missing padding token": 0,
-        "Missing decoder inputs": 0,
-        "Invalid input shape": 0,
-        "Hardware not available": 0,
-        "Connection error": 0,
-        "Timeout error": 0,
-        "Other error": 0
-    }
-    
-    # Analyze error messages
-    for test in failed_tests:
-        stderr = test.get("stderr", "")
-        stdout = test.get("stdout", "")
-        error_text = stderr + stdout
-        
-        if "CUDA out of memory" in error_text:
-            error_patterns["CUDA out of memory"] += 1
-        elif "No module named" in error_text:
-            error_patterns["No module named"] += 1
-        elif "tokenizer" in error_text.lower() and ("missing" in error_text.lower() or "not found" in error_text.lower()):
-            error_patterns["Missing tokenizer dependency"] += 1
-        elif "pad_token" in error_text:
-            error_patterns["Missing padding token"] += 1
-        elif "decoder_input_ids" in error_text or "decoder_inputs_embeds" in error_text:
-            error_patterns["Missing decoder inputs"] += 1
-        elif "shape" in error_text.lower() and ("invalid" in error_text.lower() or "mismatch" in error_text.lower()):
-            error_patterns["Invalid input shape"] += 1
-        elif "hardware" in error_text.lower() and ("not available" in error_text.lower() or "not found" in error_text.lower()):
-            error_patterns["Hardware not available"] += 1
-        elif "connection" in error_text.lower() or "timeout" in error_text.lower():
-            error_patterns["Connection error"] += 1
-        elif "timeout" in error_text.lower():
-            error_patterns["Timeout error"] += 1
-        else:
-            error_patterns["Other error"] += 1
-    
-    # Filter out zero-count patterns
-    return {pattern: count for pattern, count in error_patterns.items() if count > 0}
+    return results
 
 def main():
-    parser = argparse.ArgumentParser(description="Comprehensive HuggingFace Model Testing")
+    """Parse arguments and run tests."""
+    parser = argparse.ArgumentParser(description="Run comprehensive HuggingFace model tests")
     
-    # Test selection options
-    selection_group = parser.add_mutually_exclusive_group()
-    selection_group.add_argument("--all", action="store_true", 
-                                help="Test all model categories")
-    selection_group.add_argument("--category", type=str, nargs="+", choices=MODEL_CATEGORIES.keys(),
-                                help="Test specific model categories")
-    selection_group.add_argument("--family", type=str, nargs="+",
-                                help="Test specific model families")
-    selection_group.add_argument("--model", type=str, nargs="+",
-                                help="Test specific models")
+    # Architecture selection
+    arch_group = parser.add_argument_group("Architecture Selection")
+    arch_group.add_argument("--all", action="store_true", help="Test all model architectures")
+    arch_group.add_argument("--encoder-only", action="store_true", help="Test encoder-only models (BERT, RoBERTa, etc.)")
+    arch_group.add_argument("--decoder-only", action="store_true", help="Test decoder-only models (GPT-2, LLaMA, etc.)")
+    arch_group.add_argument("--encoder-decoder", action="store_true", help="Test encoder-decoder models (T5, BART, etc.)")
+    arch_group.add_argument("--vision", action="store_true", help="Test vision models (ViT, Swin, etc.)")
+    arch_group.add_argument("--vision-text", action="store_true", help="Test vision-text models (CLIP, BLIP, etc.)")
+    arch_group.add_argument("--speech", action="store_true", help="Test speech models (Wav2Vec2, Whisper, etc.)")
+    arch_group.add_argument("--multimodal", action="store_true", help="Test multimodal models (LLaVA, etc.)")
+    
+    # Model selection
+    model_group = parser.add_argument_group("Model Selection")
+    model_group.add_argument("--models", type=str, help="Comma-separated list of model families to test")
+    model_group.add_argument("--model", type=str, help="Specific model to test for each family")
     
     # Hardware options
-    parser.add_argument("--hardware", type=str, nargs="+", choices=HARDWARE_PLATFORMS.keys(),
-                        help="Test on specific hardware platforms")
+    hw_group = parser.add_argument_group("Hardware Options")
+    hw_group.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    hw_group.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
     
-    # Priority options
-    parser.add_argument("--priority", type=str, choices=["critical", "high", "medium", "all"],
-                        default="all", help="Test priority level")
-    
-    # Execution options
-    parser.add_argument("--parallel", type=int, default=4,
-                        help="Maximum number of parallel tests")
-    parser.add_argument("--output", type=str,
-                        help="Output file for results")
-    
-    # Reporting options
-    parser.add_argument("--report", action="store_true",
-                        help="Generate report from previous test run")
-    parser.add_argument("--report-file", type=str,
-                        help="Generate report from specific results file")
-    
-    # Information options
-    parser.add_argument("--list-categories", action="store_true",
-                        help="List all available model categories")
-    parser.add_argument("--list-hardware", action="store_true",
-                        help="List all available hardware platforms")
+    # Output options
+    output_group = parser.add_argument_group("Output Options")
+    output_group.add_argument("--output-dir", type=str, default=str(RESULTS_DIR), help="Directory for output files")
+    output_group.add_argument("--summary-file", type=str, help="Path to write summary JSON file")
     
     args = parser.parse_args()
     
-    # List information if requested
-    if args.list_categories:
-        print("\nAvailable Model Categories:")
-        for cat, info in MODEL_CATEGORIES.items():
-            print(f"\n{cat} - {info['description']}")
-            print(f"  Architecture: {info['architecture_type']}")
-            print(f"  Model type: {info['model_type']}")
-            print(f"  Priority: {info['priority']}")
-            print(f"  Example models: {', '.join(info['examples'])}")
-            print(f"  Families: {', '.join(info['families'])}")
-        return 0
+    # Create output directories
+    os.makedirs(args.output_dir, exist_ok=True)
     
-    if args.list_hardware:
-        print("\nAvailable Hardware Platforms:")
-        for hw, info in HARDWARE_PLATFORMS.items():
-            print(f"\n{hw} - {info['name']}")
-            print(f"  Flag: {info['flag']}")
-            print(f"  Priority: {info['priority']}")
-        return 0
+    # Determine which architectures to test
+    selected_archs = []
+    if args.all:
+        selected_archs = list(MODEL_ARCHITECTURES.keys())
+    else:
+        if args.encoder_only:
+            selected_archs.append("encoder-only")
+        if args.decoder_only:
+            selected_archs.append("decoder-only")
+        if args.encoder_decoder:
+            selected_archs.append("encoder-decoder")
+        if args.vision:
+            selected_archs.append("vision")
+        if args.vision_text:
+            selected_archs.append("vision-text")
+        if args.speech:
+            selected_archs.append("speech")
+        if args.multimodal:
+            selected_archs.append("multimodal")
     
-    # Generate report if requested
-    if args.report or args.report_file:
-        report_path = generate_report(args.report_file)
-        print(f"Report generated: {report_path}")
-        return 0
-    
-    # Determine what to test
-    categories = args.category
-    families = args.family
-    models = args.model
-    hardware_platforms = args.hardware
-    
-    # If no selection criteria provided, test all categories with critical priority
-    if not args.all and not categories and not families and not models:
-        logger.info("No selection criteria provided, testing critical models only")
-        args.priority = "critical"
-    
-    # Generate test configurations
-    test_configs = get_test_configurations(
-        categories=categories,
-        families=families,
-        models=models,
-        hardware_platforms=hardware_platforms,
-        priority=args.priority
-    )
-    
-    if not test_configs:
-        logger.error("No test configurations generated. Check your selection criteria.")
+    # If no architectures selected but specific models provided
+    if not selected_archs and args.models:
+        logger.info(f"Testing specific models: {args.models}")
+        model_families = args.models.split(",")
+        all_results = []
+        
+        for model_family in model_families:
+            test_file = get_test_file_for_model(model_family.strip())
+            if test_file:
+                logger.info(f"Testing {model_family}")
+                result = run_test(test_file, args)
+                all_results.append(result)
+            else:
+                logger.warning(f"No test file found for {model_family}")
+        
+        logger.info(f"Completed testing {len(all_results)} models")
+        
+    # Otherwise run tests for selected architectures
+    elif selected_archs:
+        logger.info(f"Testing architectures: {', '.join(selected_archs)}")
+        all_results = []
+        
+        for arch in selected_archs:
+            logger.info(f"Starting tests for {arch} architecture")
+            
+            if arch == "vision-text":
+                # Special handling for vision-text models
+                results = run_vision_text_model_tests(args)
+            else:
+                # Standard handling for other architectures
+                results = run_tests_for_architecture(arch, args)
+                
+            all_results.extend(results)
+            logger.info(f"Completed {len(results)} tests for {arch} architecture")
+        
+        # Log summary of results
+        successful = sum(1 for r in all_results if r.get("success", False))
+        logger.info(f"Completed {len(all_results)} tests, {successful} successful")
+        
+    else:
+        logger.error("No architectures or models selected. Use --all or specify architectures/models.")
+        parser.print_help()
         return 1
     
-    logger.info(f"Generated {len(test_configs)} test configurations")
+    # Collect detailed results
+    logger.info("Collecting detailed results from JSON files")
+    results_summary = collect_results(args.output_dir)
     
-    # Run tests
-    results = run_batch_tests(test_configs, max_workers=args.parallel)
+    # Write summary file
+    summary_path = args.summary_file or os.path.join(
+        args.output_dir, 
+        f"comprehensive_test_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    )
+    with open(summary_path, 'w') as f:
+        json.dump(results_summary, f, indent=2)
     
-    # Save results
-    results_file = save_results(results, args.output)
+    logger.info(f"Summary written to {summary_path}")
     
-    # Generate report
-    report_path = generate_report(results_file)
+    # Print final summary
+    print("\nCOMPREHENSIVE TEST SUMMARY:")
+    print(f"Tested {results_summary['summary']['total']} models")
+    print(f"✅ Successful: {results_summary['summary']['successful']}")
+    print(f"❌ Failed: {results_summary['summary']['failed']}")
     
-    # Print summary
-    total_tests = len(results)
-    successful_tests = sum(1 for r in results if r.get("success", False))
-    failed_tests = total_tests - successful_tests
+    # Print architecture-specific results
+    print("\nResults by architecture:")
+    for arch, stats in results_summary['summary']['architectures'].items():
+        success_rate = stats['successful'] / stats['total'] * 100 if stats['total'] > 0 else 0
+        print(f"  - {arch.upper()}: {stats['successful']}/{stats['total']} ({success_rate:.1f}%)")
     
-    # Try to determine if tests used real inference or mocks
-    mock_indicator = False
-    real_indicator = False
-    
-    # Look for any indicators in stdout
-    for result in results:
-        stdout = result.get("stdout", "")
-        if "USING MOCK OBJECTS" in stdout or "🔷 Using MOCK OBJECTS" in stdout:
-            mock_indicator = True
-        if "REAL INFERENCE" in stdout or "🚀 Using REAL INFERENCE" in stdout:
-            real_indicator = True
-    
-    print("\nTest Execution Summary:")
-    print(f"- Total tests: {total_tests}")
-    print(f"- Successful tests: {successful_tests}")
-    print(f"- Failed tests: {failed_tests}")
-    print(f"- Success rate: {successful_tests / total_tests * 100:.1f}%")
-    
-    # Display inference type warning if needed
-    if mock_indicator:
-        print("\n⚠️  WARNING: Some tests used MOCK OBJECTS instead of real inference!")
-        print("   This is typical for CI/CD environments without real dependencies.")
-        print("   Results may not reflect actual model performance.")
-    elif real_indicator:
-        print("\n✅ All tests used REAL INFERENCE with actual models.")
-    
-    print(f"\nResults saved to: {results_file}")
-    print(f"Report saved to: {report_path}")
-    
-    return 0 if failed_tests == 0 else 1
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

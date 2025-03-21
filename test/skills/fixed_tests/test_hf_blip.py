@@ -133,17 +133,23 @@ BLIP_MODELS_REGISTRY = {
     "Salesforce/blip-image-captioning-base": {
         "description": "BLIP image captioning base model",
         "class": "BlipForConditionalGeneration",
+        "type": "blip",
         "image_size": 384,
+        "task": "image-to-text"
     },
     "Salesforce/blip-image-captioning-large": {
         "description": "BLIP image captioning large model",
         "class": "BlipForConditionalGeneration",
+        "type": "blip",
         "image_size": 384,
+        "task": "image-to-text"
     },
     "Salesforce/blip-vqa-base": {
         "description": "BLIP visual question answering base model",
         "class": "BlipForQuestionAnswering",
+        "type": "blip",
         "image_size": 384,
+        "task": "visual-question-answering"
     }
 }
 
@@ -162,7 +168,8 @@ class TestBlipModels:
             self.model_info = BLIP_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
-        self.task = "image-to-text" if "captioning" in self.model_id else "visual-question-answering"
+        self.model_type = self.model_info.get("type", "blip")  # Default to blip if not specified
+        self.task = self.model_info.get("task", "image-to-text" if "captioning" in self.model_id else "visual-question-answering")
         self.class_name = self.model_info["class"]
         self.description = self.model_info["description"]
         self.image_size = self.model_info["image_size"]
@@ -219,7 +226,8 @@ class TestBlipModels:
             "model": self.model_id,
             "device": device,
             "task": self.task,
-            "class": self.class_name
+            "class": self.class_name,
+            "model_type": self.model_type
         }
         
         # Check for dependencies
@@ -355,7 +363,8 @@ class TestBlipModels:
             "model": self.model_id,
             "device": device,
             "task": self.task,
-            "class": self.class_name
+            "class": self.class_name,
+            "model_type": self.model_type
         }
         
         # Check for dependencies
@@ -527,7 +536,8 @@ class TestBlipModels:
         results = {
             "model": self.model_id,
             "task": self.task,
-            "class": self.class_name
+            "class": self.class_name,
+            "model_type": self.model_type
         }
         
         # Check for OpenVINO support
@@ -679,6 +689,7 @@ class TestBlipModels:
                 "model": self.model_id,
                 "task": self.task,
                 "class": self.class_name,
+                "model_type": self.model_type,
                 "description": self.description,
                 "timestamp": datetime.datetime.now().isoformat(),
                 "has_transformers": HAS_TRANSFORMERS,
@@ -698,7 +709,10 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_blip_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    
+    # Determine model type (default to blip) from results metadata
+    model_type = results.get("metadata", {}).get("model_type", "blip")
+    filename = f"hf_{model_type}_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -779,15 +793,14 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("
-BERT Models Testing Summary:")
+        print("\nBLIP Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "blip-base-uncased"
+    model_id = args.model or "Salesforce/blip-image-captioning-base"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -810,8 +823,7 @@ BERT Models Testing Summary:")
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
     using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
     
-    print("
-TEST RESULTS SUMMARY:")
+    print("\nTEST RESULTS SUMMARY:")
     
     # Indicate real vs mock inference clearly
     if using_real_inference and not using_mocks:
@@ -830,8 +842,7 @@ TEST RESULTS SUMMARY:")
         
         # Print example outputs if available
         if results.get("examples") and len(results["examples"]) > 0:
-            print("
-Example output:")
+            print("\nExample output:")
             example = results["examples"][0]
             if "predictions" in example:
                 print(f"  Input: {example['input']}")
@@ -848,8 +859,7 @@ Example output:")
                 print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
                 print(f"    {result.get('pipeline_error', 'Unknown error')}")
     
-    print("
-For detailed results, use --save flag and check the JSON output file.")
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
     main()
