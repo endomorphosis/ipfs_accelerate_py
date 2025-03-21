@@ -66,10 +66,27 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-
 # Try to import tokenizers
 try:
+    if MOCK_TOKENIZERS:
+        raise ImportError("Mocked tokenizers import failure")
     import tokenizers
+    HAS_TOKENIZERS = True
+except ImportError:
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
+
+# Try to import sentencepiece
+try:
+    if MOCK_SENTENCEPIECE:
+        raise ImportError("Mocked sentencepiece import failure")
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
     HAS_TOKENIZERS = True
 except ImportError:
     tokenizers = MagicMock()
@@ -135,15 +152,15 @@ HW_CAPABILITIES = check_hardware()
 GPT2_MODELS_REGISTRY = {
     "gpt2": {
         "description": "GPT-2 small model",
-        "class": "Gpt2LMHeadModel",
+        "class": "GPT2LMHeadModel",
     },
     "gpt2": {
         "description": "GPT-2 medium model",
-        "class": "Gpt2LMHeadModel",
+        "class": "GPT2LMHeadModel",
     },
     "distilgpt2": {
         "description": "DistilGPT-2 model",
-        "class": "Gpt2LMHeadModel",
+        "class": "GPT2LMHeadModel",
     }
 }
 
@@ -361,8 +378,8 @@ class TestGpt2Models:
             
             # Use appropriate model class based on model type
             model_class = None
-            if self.class_name == "Gpt2LMHeadModel":
-                model_class = transformers.Gpt2LMHeadModel
+            if self.class_name == "GPT2LMHeadModel" or self.class_name == "GPT2LMHeadModel":
+                model_class = transformers.GPT2LMHeadModel
             else:
                 # Fallback to Auto class
                 model_class = transformers.AutoModelForCausalLM

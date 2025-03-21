@@ -1,123 +1,186 @@
 #!/usr/bin/env python3
 """
-Fix basic syntax issues in Python test files.
+Fix syntax errors in a test file.
 
-This script applies very basic indentation rules to make the file at least syntactically valid.
-It doesn't aim for perfect PEP 8 compliance, just enough to compile.
-
-Usage:
-    python fix_syntax.py <file_path>
+This script focuses specifically on fixing syntax errors like unterminated strings.
 """
 
-import sys
 import os
+import sys
 import re
 import logging
+import argparse
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+)
 logger = logging.getLogger(__name__)
 
-def fix_syntax(file_path, backup=True):
-    """Fix basic syntax issues in a Python file."""
+def fix_unterminated_strings(file_path):
+    """Fix unterminated strings in the file."""
     try:
-        # Read the file content
         with open(file_path, 'r') as f:
-            content = f.read()
+            lines = f.readlines()
         
-        # Create backup if requested
-        if backup:
-            backup_path = f"{file_path}.bak"
-            with open(backup_path, 'w') as f:
-                f.write(content)
-            logger.info(f"Created backup at {backup_path}")
+        # Create backup
+        backup_path = f"{file_path}.syntax.bak"
+        with open(backup_path, 'w') as f:
+            f.writelines(lines)
+        logger.info(f"Created backup at: {backup_path}")
         
-        # Simple replacements to fix obvious syntax errors
-        
-        # 1. Fix class definition indent - must be at column 0
-        content = re.sub(r'^\s+class\s+(\w+):', r'class \1:', content, flags=re.MULTILINE)
-        
-        # 2. Fix method definition indent - must be 4 spaces
-        content = re.sub(r'^\s*def\s+(\w+)\(self', r'    def \1(self', content, flags=re.MULTILINE)
-        
-        # 3. Fix function definition indent - must be at column 0
-        content = re.sub(r'^\s+def\s+(\w+)\((?!self)', r'def \1(', content, flags=re.MULTILINE)
-        
-        # 4. Fix docstring indentation - must be 4 spaces more than containing block
-        content = re.sub(r'^\s{1,3}(""".*?""")', r'    \1', content, flags=re.MULTILINE)
-        
-        # 5. Fix method body indentation - minimum 8 spaces
-        lines = content.split('\n')
-        in_method = False
+        # Look for problematic lines
         fixed_lines = []
+        in_triple_quote = False
         
-        for line in lines:
-            stripped = line.strip()
+        for i, line in enumerate(lines):
+            # Check for problematic triple quotes (""""" or '''')
+            if '""""' in line:
+                logger.info(f"Fixing extra quotes on line {i+1}")
+                line = line.replace('""""', '"""')
+            if "''''" in line:
+                logger.info(f"Fixing extra quotes on line {i+1}")
+                line = line.replace("''''", "'''")
             
-            # Skip empty lines
-            if not stripped:
-                fixed_lines.append(line)
-                continue
-            
-            # Check for method definition
-            if stripped.startswith('def ') and 'self' in stripped:
-                in_method = True
-                fixed_lines.append(line)
-            # Check for class definition or function definition (exit method context)
-            elif stripped.startswith(('class ', 'def ')) and 'self' not in stripped:
-                in_method = False
-                fixed_lines.append(line)
-            # Fix method body indentation
-            elif in_method and not line.startswith('    def '):
-                # Already has 8+ spaces, keep as is
-                if line.startswith('        '):
-                    fixed_lines.append(line)
-                # Has 4-7 spaces, increase to 8
-                elif line.startswith('    '):
-                    fixed_lines.append('        ' + line.lstrip())
-                # Less than 4 spaces, set to 8
+            # Check for odd number of quotes
+            if line.count('"""') % 2 == 1:
+                if not in_triple_quote:
+                    in_triple_quote = True
                 else:
-                    fixed_lines.append('        ' + stripped)
-            # Keep other lines as is
-            else:
-                fixed_lines.append(line)
+                    in_triple_quote = False
+            
+            # Fix unterminated strings (not inside triple quotes)
+            if not in_triple_quote:
+                if line.count('"') % 2 == 1 and not line.strip().startswith('#'):
+                    logger.info(f"Fixing unterminated double quote on line {i+1}")
+                    line = line.rstrip() + '"\n'
+                
+                if line.count("'") % 2 == 1 and not line.strip().startswith('#'):
+                    logger.info(f"Fixing unterminated single quote on line {i+1}")
+                    line = line.rstrip() + "'\n"
+            
+            fixed_lines.append(line)
         
-        # Join lines back together
-        content = '\n'.join(fixed_lines)
+        # Add closing triple quote if needed
+        if in_triple_quote:
+            logger.info("Adding missing triple quote at end of file")
+            fixed_lines.append('"""\n')
         
         # Write fixed content
         with open(file_path, 'w') as f:
-            f.write(content)
+            f.writelines(fixed_lines)
         
         # Verify syntax
-        try:
-            compile(content, file_path, 'exec')
-            logger.info(f"✅ Fixed syntax in {file_path}")
-            return True
-        except SyntaxError as e:
-            logger.error(f"❌ Syntax errors remain in {file_path}: {e}")
-            logger.error(f"  Line {e.lineno}, column {e.offset}: {e.text.strip() if e.text else ''}")
+        with open(file_path, 'r') as f:
+            content = f.read()
+        compile(content, file_path, 'exec')
+        logger.info(f"✅ Syntax is valid after fixes")
+        return True
+    
+    except SyntaxError as e:
+        logger.error(f"❌ Syntax error after fixes: {e}")
+        # Show the problematic line for debugging
+        if hasattr(e, 'lineno') and e.lineno is not None:
+            line_no = e.lineno - 1  # 0-based index
+            if 0 <= line_no < len(fixed_lines):
+                logger.error(f"Problematic line {e.lineno}: {fixed_lines[line_no].rstrip()}")
+        
+        # Restore from backup
+        logger.info("Restoring from backup...")
+        with open(backup_path, 'r') as f:
+            content = f.read()
+        with open(file_path, 'w') as f:
+            f.write(content)
+        return False
+    
+    except Exception as e:
+        logger.error(f"Error fixing file: {e}")
+        return False
+
+def fix_specific_line(file_path, line_number):
+    """Fix a specific line in the file."""
+    try:
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+        
+        # Create backup
+        backup_path = f"{file_path}.line.bak"
+        with open(backup_path, 'w') as f:
+            f.writelines(lines)
+        logger.info(f"Created backup at: {backup_path}")
+        
+        # Fix the specific line
+        if 1 <= line_number <= len(lines):
+            line = lines[line_number-1]
+            
+            # Check for specific issues
+            if '""""' in line:
+                logger.info(f"Fixing extra quotes on line {line_number}")
+                lines[line_number-1] = line.replace('""""', '"""')
+            elif "''''" in line:
+                logger.info(f"Fixing extra quotes on line {line_number}")
+                lines[line_number-1] = line.replace("''''", "'''")
+            else:
+                # Remove all quotes and add the correct ones
+                stripped = line.strip().rstrip(',')
+                if stripped.startswith(('"""', "'''")):
+                    logger.info(f"Fixing triple quotes on line {line_number}")
+                    lines[line_number-1] = '        """\n'
+                elif stripped.startswith(('"', "'")):
+                    logger.info(f"Fixing string quotes on line {line_number}")
+                    lines[line_number-1] = f'        "{stripped.strip("\'\"")}"'
+                else:
+                    logger.info(f"Line doesn't seem to have quote issues, replacing with empty string")
+                    lines[line_number-1] = '        ""\n'
+        else:
+            logger.error(f"Line number {line_number} out of range (file has {len(lines)} lines)")
             return False
         
+        # Write fixed content
+        with open(file_path, 'w') as f:
+            f.writelines(lines)
+        
+        # Verify syntax
+        with open(file_path, 'r') as f:
+            content = f.read()
+        compile(content, file_path, 'exec')
+        logger.info(f"✅ Syntax is valid after fixes")
+        return True
+    
+    except SyntaxError as e:
+        logger.error(f"❌ Syntax error after fixes: {e}")
+        # Restore from backup
+        logger.info("Restoring from backup...")
+        with open(backup_path, 'r') as f:
+            content = f.read()
+        with open(file_path, 'w') as f:
+            f.write(content)
+        return False
+    
     except Exception as e:
-        logger.error(f"❌ Error fixing syntax in {file_path}: {e}")
+        logger.error(f"Error fixing file: {e}")
         return False
 
 def main():
-    if len(sys.argv) < 2:
-        logger.error("Usage: python fix_syntax.py <file_path>")
-        return 1
+    parser = argparse.ArgumentParser(description="Fix syntax errors in test files")
+    parser.add_argument("--file", type=str, required=True, help="Path to the file to fix")
+    parser.add_argument("--line", type=int, help="Specific line number to fix")
     
-    file_path = sys.argv[1]
-    if not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
-        return 1
+    args = parser.parse_args()
     
-    # Fix syntax
-    if fix_syntax(file_path):
-        return 0
+    if args.line:
+        success = fix_specific_line(args.file, args.line)
     else:
+        success = fix_unterminated_strings(args.file)
+    
+    if success:
+        print(f"Successfully fixed syntax in {args.file}")
+    else:
+        print(f"Failed to fix syntax in {args.file}")
         return 1
+    
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

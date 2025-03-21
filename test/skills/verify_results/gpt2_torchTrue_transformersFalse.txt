@@ -1,19 +1,21 @@
-2025-03-20 20:07:56,646 - WARNING - torch not available, using mock
-2025-03-20 20:07:59,320 - INFO - Testing model: gpt2
-2025-03-20 20:07:59,320 - INFO - Using cpu as preferred device
-2025-03-20 20:07:59,320 - INFO - Testing gpt2 with pipeline() on cpu...
-2025-03-20 20:08:00,005 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
+2025-03-20 20:13:34,395 - WARNING - torch not available, using mock
+2025-03-20 20:13:36,680 - INFO - Testing model: gpt2
+2025-03-20 20:13:36,680 - INFO - Using cpu as preferred device
+2025-03-20 20:13:36,680 - INFO - Testing gpt2 with pipeline() on cpu...
+2025-03-20 20:13:37,325 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
 <frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
-2025-03-20 20:08:11,265 - INFO - Testing gpt2 with from_pretrained() on cpu...
-2025-03-20 20:08:11,534 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
-2025-03-20 20:08:11,610 - ERROR - Error testing from_pretrained on cpu: module transformers has no attribute Gpt2LMHeadModel
-Traceback (most recent call last):
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 823, in <module>
-    main()
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 770, in main
-    results = tester.run_tests(all_hardware=args.all_hardware)
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 659, in run_tests
-    "has_sentencepiece": HAS_SENTENCEPIECE,
-                         ^^^^^^^^^^^^^^^^^
-NameError: name 'HAS_SENTENCEPIECE' is not defined. Did you mean: 'MOCK_SENTENCEPIECE'?
+2025-03-20 20:13:45,711 - INFO - Testing gpt2 with from_pretrained() on cpu...
+2025-03-20 20:13:45,992 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
+
+TEST RESULTS SUMMARY:
+[34m🔷 Using MOCK OBJECTS for CI/CD testing only[0m
+   Dependencies: transformers=True, torch=False, tokenizers=True, sentencepiece=True
+✅ Successfully tested gpt2
+  - pipeline_cpu: 1.8615s average inference time
+  - from_pretrained_cpu: 0.0456s average inference time
+
+Example output:
+  Input: Once upon a time
+  Output: [{'generated_text': 'Once upon a time of many centuries the Church was an all-powerful social and cultural force, with considerable power and influence over the world. But before that, it possessed an...
+
+For detailed results, use --save flag and check the JSON output file.

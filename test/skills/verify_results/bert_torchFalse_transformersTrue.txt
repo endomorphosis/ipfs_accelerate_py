@@ -1,11 +1,11 @@
 <frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
-2025-03-20 20:07:43,664 - WARNING - transformers not available, using mock
-2025-03-20 20:07:43,693 - INFO - CUDA available: version 12.4
-2025-03-20 20:07:43,711 - INFO - Number of CUDA devices: 1
-2025-03-20 20:07:43,712 - INFO - CUDA Device 0: Quadro P4000 with 7.92 GB memory
-2025-03-20 20:07:43,712 - INFO - MPS not available
-2025-03-20 20:07:43,713 - WARNING - Transformers library not available, skipping pipeline test
-2025-03-20 20:07:43,713 - WARNING - Transformers or torch library not available, skipping from_pretrained test
+2025-03-20 20:13:22,269 - WARNING - transformers not available, using mock
+2025-03-20 20:13:22,288 - INFO - CUDA available: version 12.4
+2025-03-20 20:13:22,302 - INFO - Number of CUDA devices: 1
+2025-03-20 20:13:22,303 - INFO - CUDA Device 0: Quadro P4000 with 7.92 GB memory
+2025-03-20 20:13:22,304 - INFO - MPS not available
+2025-03-20 20:13:22,304 - WARNING - Transformers library not available, skipping pipeline test
+2025-03-20 20:13:22,304 - WARNING - Transformers or torch library not available, skipping from_pretrained test
 
 ==================================================
 TEST RESULTS SUMMARY

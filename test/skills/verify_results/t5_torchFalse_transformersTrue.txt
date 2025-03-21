@@ -1,14 +1,11 @@
 <frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
-2025-03-20 20:05:16,360 - WARNING - transformers not available, using mock
-2025-03-20 20:05:16,390 - INFO - Testing model: t5-small
-2025-03-20 20:05:16,390 - INFO - Using cuda as preferred device
-Traceback (most recent call last):
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 957, in <module>
-    main()
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 904, in main
-    results = tester.run_tests(all_hardware=args.all_hardware)
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 792, in run_tests
-    "has_tokenizers": HAS_TOKENIZERS,
-                      ^^^^^^^^^^^^^^
-NameError: name 'HAS_TOKENIZERS' is not defined. Did you mean: 'MOCK_TOKENIZERS'?
+2025-03-20 20:14:11,989 - WARNING - transformers not available, using mock
+2025-03-20 20:14:12,023 - INFO - Testing model: t5-small
+2025-03-20 20:14:12,023 - INFO - Using cuda as preferred device
+
+TEST RESULTS SUMMARY:
+[34m🔷 Using MOCK OBJECTS for CI/CD testing only[0m
+   Dependencies: transformers=False, torch=True, tokenizers=True, sentencepiece=True
+❌ Failed to test t5-small
+
+For detailed results, use --save flag and check the JSON output file.

@@ -114,6 +114,28 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
+# Try to import tokenizers
+try:
+    if MOCK_TOKENIZERS:
+        raise ImportError("Mocked tokenizers import failure")
+    import tokenizers
+    HAS_TOKENIZERS = True
+except ImportError:
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
+
+# Try to import sentencepiece
+try:
+    if MOCK_SENTENCEPIECE:
+        raise ImportError("Mocked sentencepiece import failure")
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
+
 # Try to import PIL
 try:
     from PIL import Image
@@ -193,7 +215,7 @@ HW_CAPABILITIES = check_hardware()
 VIT_MODELS_REGISTRY = {
     "google/vit-base-patch16-224": {
         "description": "ViT Base model (patch size 16, image size 224)",
-        "class": "VitForImageClassification",
+        "class": "ViTForImageClassification",
     },
     "facebook/deit-base-patch16-224": {
         "description": "DeiT Base model (patch size 16, image size 224)",
@@ -403,8 +425,8 @@ class TestVitModels:
             
             # Use appropriate model class based on model type
             model_class = None
-            if self.class_name == "VitForImageClassification":
-                model_class = transformers.VitForImageClassification
+            if self.class_name == "ViTForImageClassification":
+                model_class = transformers.ViTForImageClassification
             elif self.class_name == "DeiTForImageClassification":
                 model_class = transformers.DeiTForImageClassification
             else:

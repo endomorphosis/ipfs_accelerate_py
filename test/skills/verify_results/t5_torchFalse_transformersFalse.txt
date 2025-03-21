@@ -1,17 +1,19 @@
 <frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
-2025-03-20 20:08:19,276 - INFO - Testing model: t5-small
-2025-03-20 20:08:19,277 - INFO - Using cuda as preferred device
-2025-03-20 20:08:19,277 - INFO - Testing t5-small with pipeline() on cuda...
-2025-03-20 20:08:24,962 - INFO - Testing t5-small with from_pretrained() on cuda...
-2025-03-20 20:08:25,767 - INFO - Added empty decoder_input_ids for T5 model
+2025-03-20 20:13:53,835 - INFO - Testing model: t5-small
+2025-03-20 20:13:53,835 - INFO - Using cuda as preferred device
+2025-03-20 20:13:53,835 - INFO - Testing t5-small with pipeline() on cuda...
+2025-03-20 20:13:58,977 - INFO - Testing t5-small with from_pretrained() on cuda...
+2025-03-20 20:13:59,762 - INFO - Added empty decoder_input_ids for T5 model
 Passing a tuple of `past_key_values` is deprecated and will be removed in Transformers v4.48.0. You should pass an instance of `EncoderDecoderCache` instead, e.g. `past_key_values=EncoderDecoderCache.from_legacy_cache(past_key_values)`.
-Traceback (most recent call last):
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 957, in <module>
-    main()
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 904, in main
-    results = tester.run_tests(all_hardware=args.all_hardware)
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 776, in run_tests
-    using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
-                                                  ^^^^^^^^^^^^^^
-NameError: name 'HAS_TOKENIZERS' is not defined. Did you mean: 'MOCK_TOKENIZERS'?
+
+TEST RESULTS SUMMARY:
+[32m🚀 Using REAL INFERENCE with actual models[0m
+✅ Successfully tested t5-small
+  - pipeline_cuda: 0.1617s average inference time
+  - from_pretrained_cuda: 0.0186s average inference time
+
+Example output:
+  Input: Translate to French: Hello, how are you?
+  Output: [{'translation_text': 'Traduction française : Bonjour, comment êtes-vous ?'}]
+
+For detailed results, use --save flag and check the JSON output file.

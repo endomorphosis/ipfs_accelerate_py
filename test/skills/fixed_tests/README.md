@@ -238,7 +238,18 @@ This work completes Priority #2 from CLAUDE.md: "Comprehensive HuggingFace Model
 
 
 
-## Recent Updates (2025-03-20 19:01)
+## Recent Updates (2025-03-20 20:31)
+
+### Fixed Hyphenated Model Names
+
+Fixed issues with hyphenated model names:
+- Resolved syntax errors in files with hyphenated model names (gpt-j, gpt-neo, xlm-roberta, etc.)
+- Replaced hyphens with underscores in variable names, class names, and identifiers
+- Fixed registry key consistency across all test files
+- Ensured proper Python syntax validation for all fixed files
+- Created comprehensive fixing tool suite for automated repairs
+
+### Added New Models
 
 Recently added models:
 - Added 20 new test files out of 23 attempted
@@ -246,7 +257,7 @@ Recently added models:
 - Verified compatibility with architecture-specific templates
 - All new tests include hardware detection and acceleration support
 
-Recently added models:
+Previously added models:
 - Added 9 new test files out of 19 attempted
 - Updated testing coverage information
 - Verified compatibility with architecture-specific templates

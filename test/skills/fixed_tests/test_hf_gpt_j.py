@@ -153,13 +153,13 @@ else:
     HAS_MPS = False
     logger.info("MPS detection skipped (torch not available)")
 
-# Main BERT model registry
-DECODER-ONLY_MODELS_REGISTRY = {
-    "decoder-only-base-uncased": {
-        "full_name": "BERT Base Uncased",
+# Main Gpt_j model registry
+GPT_J_MODELS_REGISTRY = {
+    "gpt_j-base-uncased": {
+        "full_name": "Gpt_j Base Uncased",
         "architecture": "encoder-only",
-        "description": "BERT Base model with uncased vocabulary",
-        "model_type": "decoder-only",
+        "description": "Gpt_j Base model with uncased vocabulary",
+        "model_type": "gpt_j",
         "parameters": "110M",
         "context_length": 512,
         "embedding_dim": 768,
@@ -167,11 +167,11 @@ DECODER-ONLY_MODELS_REGISTRY = {
         "layers": 12,
         "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     },
-    "decoder-only-large-uncased": {
-        "full_name": "BERT Large Uncased",
+    "gpt_j-large-uncased": {
+        "full_name": "Gpt_j Large Uncased",
         "architecture": "encoder-only",
-        "description": "BERT Large model with uncased vocabulary",
-        "model_type": "decoder-only",
+        "description": "Gpt_j Large model with uncased vocabulary",
+        "model_type": "gpt_j",
         "parameters": "336M",
         "context_length": 512,
         "embedding_dim": 1024,
@@ -179,11 +179,11 @@ DECODER-ONLY_MODELS_REGISTRY = {
         "layers": 24,
         "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     },
-    "decoder-only-base-cased": {
-        "full_name": "BERT Base Cased",
+    "gpt_j-base-cased": {
+        "full_name": "Gpt_j Base Cased",
         "architecture": "encoder-only",
-        "description": "BERT Base model with cased vocabulary",
-        "model_type": "decoder-only",
+        "description": "Gpt_j Base model with cased vocabulary",
+        "model_type": "gpt_j",
         "parameters": "110M",
         "context_length": 512,
         "embedding_dim": 768,
@@ -288,12 +288,12 @@ class MockSentencePieceProcessor:
     def load(cls, model_path):
         return cls()
 
-class TestDecoder-onlyModels:
-    def __init__(self, model_id="decoder-only-base-uncased", device=None):
-        """Initialize the test class for BERT models.
+class TestGpt_jModels:
+    def __init__(self, model_id="gpt_j-base-uncased", device=None):
+        """Initialize the test class for Gpt_j models.
         
         Args:
-            model_id: The model ID to test (default: "decoder-only-base-uncased")
+            model_id: The model ID to test (default: "gpt_j-base-uncased")
             device: The device to run tests on (default: None = auto-select)
         """
         self.model_id = model_id
@@ -307,7 +307,7 @@ class TestDecoder-onlyModels:
                 logger.warning("Transformers library not available, skipping pipeline test")
                 return {"success": False, "error": "Transformers library not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with pipeline API on {self.device}")
+            logger.info(f"Testing Gpt_j model {self.model_id} with pipeline API on {self.device}")
             
             # Record start time
             start_time = time.time()
@@ -375,13 +375,13 @@ class TestDecoder-onlyModels:
                 logger.warning("Transformers or torch library not available, skipping from_pretrained test")
                 return {"success": False, "error": "Required libraries not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with from_pretrained API on {self.device}")
+            logger.info(f"Testing Gpt_j model {self.model_id} with from_pretrained API on {self.device}")
             
             # Record start time
             start_time = time.time()
             
             # Load the model and tokenizer
-            model = transformers.BertForMaskedLM.from_pretrained(self.model_id)
+            model = transformers.Gpt_jForMaskedLM.from_pretrained(self.model_id)
             tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
             
             # Move the model to the appropriate device
@@ -458,7 +458,7 @@ class TestDecoder-onlyModels:
                 logger.warning("Transformers library not available, skipping OpenVINO test")
                 return {"success": False, "error": "Transformers library not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with OpenVINO")
+            logger.info(f"Testing Gpt_j model {self.model_id} with OpenVINO")
             
             # Record start time
             start_time = time.time()
@@ -478,7 +478,7 @@ class TestDecoder-onlyModels:
                 os.makedirs(os.path.dirname(model_path), exist_ok=True)
                 
                 # Load the PyTorch model
-                pt_model = transformers.BertForMaskedLM.from_pretrained(self.model_id)
+                pt_model = transformers.Gpt_jForMaskedLM.from_pretrained(self.model_id)
                 
                 # Get example inputs
                 example_input = "The quick brown fox jumps over the [MASK] dog."
@@ -635,7 +635,7 @@ def save_results(results, model_id=None, output_dir="collected_results"):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         model_id = model_id or results.get("metadata", {}).get("model_id", "unknown_model")
         model_id_safe = model_id.replace("/", "__")
-        filename = f"hf_decoder-only_{model_id_safe}_{timestamp}.json"
+        filename = f"hf_gpt_j_{model_id_safe}_{timestamp}.json"
         file_path = os.path.join(output_dir, filename)
         
         # Save results to file
@@ -650,19 +650,19 @@ def save_results(results, model_id=None, output_dir="collected_results"):
 
 def main():
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Test BERT HuggingFace models")
-    parser.add_argument("--model", type=str, default="decoder-only-base-uncased", help="Model ID to test")
+    parser = argparse.ArgumentParser(description="Test Gpt_j HuggingFace models")
+    parser.add_argument("--model", type=str, default="gpt_j-base-uncased", help="Model ID to test")
     parser.add_argument("--device", type=str, help="Device to run tests on (cuda, cpu, mps)")
     parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
     parser.add_argument("--save", action="store_true", help="Save results to JSON file")
-    parser.add_argument("--list-models", action="store_true", help="List available BERT models")
+    parser.add_argument("--list-models", action="store_true", help="List available Gpt_j models")
     
     args = parser.parse_args()
     
     # List models if requested
     if args.list_models:
-        print("\nAvailable BERT models:")
-        for model_id, info in DECODER-ONLY_MODELS_REGISTRY.items():
+        print("\nAvailable Gpt_j models:")
+        for model_id, info in GPT_J_MODELS_REGISTRY.items():
             print(f"  - {model_id} ({info['full_name']})")
             print(f"      Parameters: {info['parameters']}, Embedding: {info['embedding_dim']}, Context: {info['context_length']}")
             print(f"      Description: {info['description']}")
@@ -670,10 +670,10 @@ def main():
         return
     
     # Initialize the test class
-    decoder-only_tester = TestDecoder-onlyModels(model_id=args.model, device=args.device)
+    gpt_j_tester = TestGpt_jModels(model_id=args.model, device=args.device)
     
     # Run the tests
-    results = decoder-only_tester.run_tests(all_hardware=args.all_hardware)
+    results = gpt_j_tester.run_tests(all_hardware=args.all_hardware)
     
     # Print a summary
     print("\n" + "="*50)
@@ -691,7 +691,7 @@ def main():
         print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
     
     print(f"\nModel: {args.model}")
-    print(f"Device: {decoder-only_tester.device}")
+    print(f"Device: {gpt_j_tester.device}")
     
     # Pipeline results
     pipeline_success = results["pipeline"].get("success", False)
@@ -736,7 +736,7 @@ def main():
         if file_path:
             print(f"\nResults saved to {file_path}")
     
-    print(f"\nSuccessfully tested BERT model: {args.model}")
+    print(f"\nSuccessfully tested Gpt_j model: {args.model}")
 
 if __name__ == "__main__":
     main()

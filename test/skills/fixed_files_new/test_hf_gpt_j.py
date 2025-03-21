@@ -42,6 +42,14 @@ import numpy as np
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
 MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
+
+try:
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
 MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
 MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
 # Try to import torch
@@ -132,34 +140,34 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 
 # Models registry - Maps model IDs to their specific configurations
-GPT2_MODELS_REGISTRY = {
-    "gpt2": {
+GPT_GPT_GPT_GPT_J_MODELS_REGISTRY = {
+    "gpt_j": {
         "description": "GPT-2 small model",
-        "class": "GPT2LMHeadModel",
+        "class": "GptJLMHeadModel",
     },
-    "gpt2-medium": {
+    "gpt_j-medium": {
         "description": "GPT-2 medium model",
-        "class": "GPT2LMHeadModel",
+        "class": "GptJLMHeadModel",
     },
-    "distilgpt2": {
+    "distilgpt_j": {
         "description": "DistilGPT-2 model",
-        "class": "GPT2LMHeadModel",
+        "class": "GptJLMHeadModel",
     }
 }
 
-class TestGpt2Models:
+class TestGptJModels:
     """Base test class for all GPT-2-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "gpt2"
+        self.model_id = model_id or "gpt_j"
         
         # Verify model exists in registry
-        if self.model_id not in GPT2_MODELS_REGISTRY:
+        if self.model_id not in GPT_GPT_GPT_GPT_J_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = GPT2_MODELS_REGISTRY["gpt2"]
+            self.model_info = GPT_GPT_GPT_GPT_J_MODELS_REGISTRY["gpt_j"]
         else:
-            self.model_info = GPT2_MODELS_REGISTRY[self.model_id]
+            self.model_info = GPT_GPT_GPT_GPT_J_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
         self.task = "text-generation"
@@ -361,8 +369,8 @@ class TestGpt2Models:
             
             # Use appropriate model class based on model type
             model_class = None
-            if self.class_name == "GPT2LMHeadModel":
-                model_class = transformers.GPT2LMHeadModel
+            if self.class_name == "GptJLMHeadModel":
+                model_class = transformers.GptJLMHeadModel
             else:
                 # Fallback to Auto class
                 model_class = transformers.AutoModelForCausalLM
@@ -670,7 +678,7 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_gpt2_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"hf_gpt_j_j_j_j_j_j_j_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -682,7 +690,7 @@ def save_results(model_id, results, output_dir="collected_results"):
 
 def get_available_models():
     """Get a list of all available GPT-2 models in the registry."""
-    return list(GPT2_MODELS_REGISTRY.keys())
+    return list(GPT_GPT_GPT_GPT_J_MODELS_REGISTRY.keys())
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
     """Test all registered GPT-2 models."""
@@ -691,7 +699,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestGpt2Models(model_id)
+        tester = TestGptJModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -704,7 +712,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         }
     
     # Save summary
-    summary_path = os.path.join(output_dir, f"hf_gpt2_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    summary_path = os.path.join(output_dir, f"hf_gpt_j_j_j_j_j_j_j_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
@@ -738,7 +746,7 @@ def main():
         models = get_available_models()
         print("\nAvailable GPT-2-family models:")
         for model in models:
-            info = GPT2_MODELS_REGISTRY[model]
+            info = GPT_GPT_GPT_GPT_J_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
         return
     
@@ -758,7 +766,7 @@ def main():
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "gpt2"
+    model_id = args.model or "gpt_j"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -766,7 +774,7 @@ def main():
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
     # Run test
-    tester = TestGpt2Models(model_id)
+    tester = TestGptJModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested

@@ -1,10 +1,10 @@
 <frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
-2025-03-20 20:07:44,544 - WARNING - torch not available, using mock
-2025-03-20 20:07:44,544 - WARNING - transformers not available, using mock
-2025-03-20 20:07:44,553 - INFO - CUDA detection skipped (torch not available)
-2025-03-20 20:07:44,553 - INFO - MPS detection skipped (torch not available)
-2025-03-20 20:07:44,555 - WARNING - Transformers library not available, skipping pipeline test
-2025-03-20 20:07:44,555 - WARNING - Transformers or torch library not available, skipping from_pretrained test
+2025-03-20 20:13:23,061 - WARNING - torch not available, using mock
+2025-03-20 20:13:23,061 - WARNING - transformers not available, using mock
+2025-03-20 20:13:23,070 - INFO - CUDA detection skipped (torch not available)
+2025-03-20 20:13:23,071 - INFO - MPS detection skipped (torch not available)
+2025-03-20 20:13:23,072 - WARNING - Transformers library not available, skipping pipeline test
+2025-03-20 20:13:23,072 - WARNING - Transformers or torch library not available, skipping from_pretrained test
 
 ==================================================
 TEST RESULTS SUMMARY

@@ -42,6 +42,14 @@ import numpy as np
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
 MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
+
+try:
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
 MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
 MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
 # Try to import torch
@@ -75,17 +83,6 @@ except ImportError:
     tokenizers = MagicMock()
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
-
-# Try to import sentencepiece
-try:
-    if MOCK_SENTENCEPIECE:
-        raise ImportError("Mocked sentencepiece import failure")
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
-except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
 
 
 # Mock implementations for missing dependencies
@@ -143,34 +140,34 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 
 # Models registry - Maps model IDs to their specific configurations
-LLAMA_MODELS_REGISTRY = {
-    "llama": {
+DECODER_ONLY_MODELS_REGISTRY = {
+    "decoder_only": {
         "description": "GPT-2 small model",
-        "class": "LlamaLMHeadModel",
+        "class": "DecoderOnlyLMHeadModel",
     },
-    "llama-medium": {
+    "decoder_only-medium": {
         "description": "GPT-2 medium model",
-        "class": "LlamaLMHeadModel",
+        "class": "DecoderOnlyLMHeadModel",
     },
-    "distilllama": {
+    "distildecoder_only": {
         "description": "DistilGPT-2 model",
-        "class": "LlamaLMHeadModel",
+        "class": "DecoderOnlyLMHeadModel",
     }
 }
 
-class TestLlamaModels:
+class TestDecoderOnlyModels:
     """Base test class for all GPT-2-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "llama"
+        self.model_id = model_id or "decoder_only"
         
         # Verify model exists in registry
-        if self.model_id not in LLAMA_MODELS_REGISTRY:
+        if self.model_id not in DECODER_ONLY_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = LLAMA_MODELS_REGISTRY["llama"]
+            self.model_info = DECODER_ONLY_MODELS_REGISTRY["decoder_only"]
         else:
-            self.model_info = LLAMA_MODELS_REGISTRY[self.model_id]
+            self.model_info = DECODER_ONLY_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
         self.task = "text-generation"
@@ -372,8 +369,8 @@ class TestLlamaModels:
             
             # Use appropriate model class based on model type
             model_class = None
-            if self.class_name == "LlamaLMHeadModel":
-                model_class = transformers.LlamaLMHeadModel
+            if self.class_name == "DecoderOnlyLMHeadModel":
+                model_class = transformers.DecoderOnlyLMHeadModel
             else:
                 # Fallback to Auto class
                 model_class = transformers.AutoModelForCausalLM
@@ -681,7 +678,7 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_llama_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"hf_decoder_only_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -693,7 +690,7 @@ def save_results(model_id, results, output_dir="collected_results"):
 
 def get_available_models():
     """Get a list of all available GPT-2 models in the registry."""
-    return list(LLAMA_MODELS_REGISTRY.keys())
+    return list(DECODER_ONLY_MODELS_REGISTRY.keys())
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
     """Test all registered GPT-2 models."""
@@ -702,7 +699,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestLlamaModels(model_id)
+        tester = TestDecoderOnlyModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -715,7 +712,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         }
     
     # Save summary
-    summary_path = os.path.join(output_dir, f"hf_llama_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    summary_path = os.path.join(output_dir, f"hf_decoder_only_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
@@ -749,7 +746,7 @@ def main():
         models = get_available_models()
         print("\nAvailable GPT-2-family models:")
         for model in models:
-            info = LLAMA_MODELS_REGISTRY[model]
+            info = DECODER_ONLY_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
         return
     
@@ -769,7 +766,7 @@ def main():
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "llama"
+    model_id = args.model or "decoder_only"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -777,7 +774,7 @@ def main():
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
     # Run test
-    tester = TestLlamaModels(model_id)
+    tester = TestDecoderOnlyModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested

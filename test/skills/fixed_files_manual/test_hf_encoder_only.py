@@ -153,13 +153,13 @@ else:
     HAS_MPS = False
     logger.info("MPS detection skipped (torch not available)")
 
-# Main BERT model registry
-ENCODER_DECODER_MODELS_REGISTRY = {
-    "encoder-decoder-base-uncased": {
-        "full_name": "BERT Base Uncased",
-        "architecture": "encoder-only",
-        "description": "BERT Base model with uncased vocabulary",
-        "model_type": "encoder-decoder",
+# Main EncoderOnly model registry
+ENCODER_ONLY_MODELS_REGISTRY = {
+    "encoder_only-base-uncased": {
+        "full_name": "EncoderOnly Base Uncased",
+        "architecture": "encoder_only",
+        "description": "EncoderOnly Base model with uncased vocabulary",
+        "model_type": "encoder_only",
         "parameters": "110M",
         "context_length": 512,
         "embedding_dim": 768,
@@ -167,11 +167,11 @@ ENCODER_DECODER_MODELS_REGISTRY = {
         "layers": 12,
         "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     },
-    "encoder-decoder-large-uncased": {
-        "full_name": "BERT Large Uncased",
-        "architecture": "encoder-only",
-        "description": "BERT Large model with uncased vocabulary",
-        "model_type": "encoder-decoder",
+    "encoder_only-large-uncased": {
+        "full_name": "EncoderOnly Large Uncased",
+        "architecture": "encoder_only",
+        "description": "EncoderOnly Large model with uncased vocabulary",
+        "model_type": "encoder_only",
         "parameters": "336M",
         "context_length": 512,
         "embedding_dim": 1024,
@@ -179,11 +179,11 @@ ENCODER_DECODER_MODELS_REGISTRY = {
         "layers": 24,
         "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     },
-    "encoder-decoder-base-cased": {
-        "full_name": "BERT Base Cased",
-        "architecture": "encoder-only",
-        "description": "BERT Base model with cased vocabulary",
-        "model_type": "encoder-decoder",
+    "encoder_only-base-cased": {
+        "full_name": "EncoderOnly Base Cased",
+        "architecture": "encoder_only",
+        "description": "EncoderOnly Base model with cased vocabulary",
+        "model_type": "encoder_only",
         "parameters": "110M",
         "context_length": 512,
         "embedding_dim": 768,
@@ -288,12 +288,12 @@ class MockSentencePieceProcessor:
     def load(cls, model_path):
         return cls()
 
-class TestEncoder-decoderModels:
-    def __init__(self, model_id="encoder-decoder-base-uncased", device=None):
-        """Initialize the test class for BERT models.
+class TestEncoderOnlyModels:
+    def __init__(self, model_id="encoder_only-base-uncased", device=None):
+        """Initialize the test class for EncoderOnly models.
         
         Args:
-            model_id: The model ID to test (default: "encoder-decoder-base-uncased")
+            model_id: The model ID to test (default: "encoder_only-base-uncased")
             device: The device to run tests on (default: None = auto-select)
         """
         self.model_id = model_id
@@ -307,7 +307,7 @@ class TestEncoder-decoderModels:
                 logger.warning("Transformers library not available, skipping pipeline test")
                 return {"success": False, "error": "Transformers library not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with pipeline API on {self.device}")
+            logger.info(f"Testing EncoderOnly model {self.model_id} with pipeline API on {self.device}")
             
             # Record start time
             start_time = time.time()
@@ -375,13 +375,13 @@ class TestEncoder-decoderModels:
                 logger.warning("Transformers or torch library not available, skipping from_pretrained test")
                 return {"success": False, "error": "Required libraries not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with from_pretrained API on {self.device}")
+            logger.info(f"Testing EncoderOnly model {self.model_id} with from_pretrained API on {self.device}")
             
             # Record start time
             start_time = time.time()
             
             # Load the model and tokenizer
-            model = transformers.Encoder-decoderForMaskedLM.from_pretrained(self.model_id)
+            model = transformers.EncoderOnlyForMaskedLM.from_pretrained(self.model_id)
             tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
             
             # Move the model to the appropriate device
@@ -458,7 +458,7 @@ class TestEncoder-decoderModels:
                 logger.warning("Transformers library not available, skipping OpenVINO test")
                 return {"success": False, "error": "Transformers library not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with OpenVINO")
+            logger.info(f"Testing EncoderOnly model {self.model_id} with OpenVINO")
             
             # Record start time
             start_time = time.time()
@@ -478,7 +478,7 @@ class TestEncoder-decoderModels:
                 os.makedirs(os.path.dirname(model_path), exist_ok=True)
                 
                 # Load the PyTorch model
-                pt_model = transformers.Encoder-decoderForMaskedLM.from_pretrained(self.model_id)
+                pt_model = transformers.EncoderOnlyForMaskedLM.from_pretrained(self.model_id)
                 
                 # Get example inputs
                 example_input = "The quick brown fox jumps over the [MASK] dog."
@@ -635,7 +635,7 @@ def save_results(results, model_id=None, output_dir="collected_results"):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         model_id = model_id or results.get("metadata", {}).get("model_id", "unknown_model")
         model_id_safe = model_id.replace("/", "__")
-        filename = f"hf_encoder-decoder_{model_id_safe}_{timestamp}.json"
+        filename = f"hf_encoder_only_{model_id_safe}_{timestamp}.json"
         file_path = os.path.join(output_dir, filename)
         
         # Save results to file
@@ -650,19 +650,19 @@ def save_results(results, model_id=None, output_dir="collected_results"):
 
 def main():
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Test BERT HuggingFace models")
-    parser.add_argument("--model", type=str, default="encoder-decoder-base-uncased", help="Model ID to test")
+    parser = argparse.ArgumentParser(description="Test EncoderOnly HuggingFace models")
+    parser.add_argument("--model", type=str, default="encoder_only-base-uncased", help="Model ID to test")
     parser.add_argument("--device", type=str, help="Device to run tests on (cuda, cpu, mps)")
     parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
     parser.add_argument("--save", action="store_true", help="Save results to JSON file")
-    parser.add_argument("--list-models", action="store_true", help="List available BERT models")
+    parser.add_argument("--list-models", action="store_true", help="List available EncoderOnly models")
     
     args = parser.parse_args()
     
     # List models if requested
     if args.list_models:
-        print("\nAvailable BERT models:")
-        for model_id, info in ENCODER_DECODER_MODELS_REGISTRY.items():
+        print("\nAvailable EncoderOnly models:")
+        for model_id, info in ENCODER_ONLY_MODELS_REGISTRY.items():
             print(f"  - {model_id} ({info['full_name']})")
             print(f"      Parameters: {info['parameters']}, Embedding: {info['embedding_dim']}, Context: {info['context_length']}")
             print(f"      Description: {info['description']}")
@@ -670,10 +670,10 @@ def main():
         return
     
     # Initialize the test class
-    encoder-decoder_tester = TestEncoder-decoderModels(model_id=args.model, device=args.device)
+    encoder_only_tester = TestEncoderOnlyModels(model_id=args.model, device=args.device)
     
     # Run the tests
-    results = encoder-decoder_tester.run_tests(all_hardware=args.all_hardware)
+    results = encoder_only_tester.run_tests(all_hardware=args.all_hardware)
     
     # Print a summary
     print("\n" + "="*50)
@@ -691,7 +691,7 @@ def main():
         print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
     
     print(f"\nModel: {args.model}")
-    print(f"Device: {encoder-decoder_tester.device}")
+    print(f"Device: {encoder_only_tester.device}")
     
     # Pipeline results
     pipeline_success = results["pipeline"].get("success", False)
@@ -736,7 +736,7 @@ def main():
         if file_path:
             print(f"\nResults saved to {file_path}")
     
-    print(f"\nSuccessfully tested BERT model: {args.model}")
+    print(f"\nSuccessfully tested EncoderOnly model: {args.model}")
 
 if __name__ == "__main__":
     main()

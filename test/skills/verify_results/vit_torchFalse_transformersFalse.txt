@@ -1,19 +1,21 @@
 <frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
-2025-03-20 20:05:19,725 - INFO - Testing model: google/vit-base-patch16-224
-2025-03-20 20:05:19,726 - INFO - Using cuda as preferred device
-2025-03-20 20:05:19,726 - INFO - Testing google/vit-base-patch16-224 with pipeline() on cuda...
+2025-03-20 20:14:15,273 - INFO - Testing model: google/vit-base-patch16-224
+2025-03-20 20:14:15,273 - INFO - Using cuda as preferred device
+2025-03-20 20:14:15,273 - INFO - Testing google/vit-base-patch16-224 with pipeline() on cuda...
 Fast image processor class <class 'transformers.models.vit.image_processing_vit_fast.ViTImageProcessorFast'> is available for this model. Using slow image processor class. To use the fast image processor class set `use_fast=True`.
-2025-03-20 20:05:22,910 - INFO - Created mock image for ViT pipeline testing - Avoiding URL download
-2025-03-20 20:05:23,425 - INFO - Testing google/vit-base-patch16-224 with from_pretrained() on cuda...
+2025-03-20 20:14:18,494 - INFO - Created mock image for ViT pipeline testing - Avoiding URL download
+2025-03-20 20:14:18,799 - INFO - Testing google/vit-base-patch16-224 with from_pretrained() on cuda...
 Fast image processor class <class 'transformers.models.vit.image_processing_vit_fast.ViTImageProcessorFast'> is available for this model. Using slow image processor class. To use the fast image processor class set `use_fast=True`.
-2025-03-20 20:05:23,795 - ERROR - Error testing from_pretrained on cuda: module transformers has no attribute VitForImageClassification
-Traceback (most recent call last):
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_vit.py", line 874, in <module>
-    main()
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_vit.py", line 821, in main
-    results = tester.run_tests(all_hardware=args.all_hardware)
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_vit.py", line 692, in run_tests
-    using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
-                                                  ^^^^^^^^^^^^^^
-NameError: name 'HAS_TOKENIZERS' is not defined. Did you mean: 'MOCK_TOKENIZERS'?
+2025-03-20 20:14:19,501 - INFO - Created proper image input tensor for ViT model
+
+TEST RESULTS SUMMARY:
+[32m🚀 Using REAL INFERENCE with actual models[0m
+✅ Successfully tested google/vit-base-patch16-224
+  - pipeline_cuda: 0.0278s average inference time
+  - from_pretrained_cuda: 0.0080s average inference time
+
+Example output:
+  Input: <PIL.Image.Image image mode=RGB size=224x224 at 0x7C47CD010B90>
+  Output: [{'label': 'rubber eraser, rubber, pencil eraser', 'score': 0.09118251502513885}, {'label': 'tray', 'score': 0.06809276342391968}, {'label': 'jigsaw puzzle', 'score': 0.06198092922568321}, {'label': '...
+
+For detailed results, use --save flag and check the JSON output file.

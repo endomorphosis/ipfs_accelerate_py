@@ -76,6 +76,17 @@ except ImportError:
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
 
+# Try to import sentencepiece
+try:
+    if MOCK_SENTENCEPIECE:
+        raise ImportError("Mocked sentencepiece import failure")
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
+
 
 # Mock implementations for missing dependencies
 if not HAS_TOKENIZERS:

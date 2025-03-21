@@ -1,18 +1,19 @@
-2025-03-20 20:07:47,157 - INFO - Testing model: gpt2
-2025-03-20 20:07:47,157 - INFO - Using cuda as preferred device
-2025-03-20 20:07:47,158 - INFO - Testing gpt2 with pipeline() on cuda...
-2025-03-20 20:07:47,773 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
+2025-03-20 20:13:25,770 - INFO - Testing model: gpt2
+2025-03-20 20:13:25,771 - INFO - Using cuda as preferred device
+2025-03-20 20:13:25,771 - INFO - Testing gpt2 with pipeline() on cuda...
+2025-03-20 20:13:26,422 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
 <frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
-2025-03-20 20:07:54,896 - INFO - Testing gpt2 with from_pretrained() on cuda...
-2025-03-20 20:07:55,133 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
-2025-03-20 20:07:55,203 - ERROR - Error testing from_pretrained on cuda: module transformers has no attribute Gpt2LMHeadModel
-Traceback (most recent call last):
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 823, in <module>
-    main()
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 770, in main
-    results = tester.run_tests(all_hardware=args.all_hardware)
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 642, in run_tests
-    using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
-                                                                        ^^^^^^^^^^^^^^^^^
-NameError: name 'HAS_SENTENCEPIECE' is not defined. Did you mean: 'MOCK_SENTENCEPIECE'?
+2025-03-20 20:13:31,951 - INFO - Testing gpt2 with from_pretrained() on cuda...
+2025-03-20 20:13:32,165 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
+
+TEST RESULTS SUMMARY:
+[32m🚀 Using REAL INFERENCE with actual models[0m
+✅ Successfully tested gpt2
+  - pipeline_cuda: 0.4459s average inference time
+  - from_pretrained_cuda: 0.0081s average inference time
+
+Example output:
+  Input: Once upon a time
+  Output: [{'generated_text': 'Once upon a time the city turned into a city, the land would be taken from the peasantry and settled on a plantation.\n\nThe plantation would become the property of their tribe, t...
+
+For detailed results, use --save flag and check the JSON output file.

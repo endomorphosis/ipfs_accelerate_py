@@ -95,6 +95,28 @@ python test_hf_bert.py --list-models
 
 ## Recent Improvements (March 20, 2025)
 
+### Hyphenated Model Name Fixes (March 20, 2025, 20:31)
+
+The following improvements have been made to address issues with hyphenated model names:
+
+1. **Hyphenated Model Name Detection and Fixing**:
+   - Created tools to detect and fix files with hyphenated model names (gpt-j, gpt-neo, xlm-roberta, etc.)
+   - Replaced hyphens with underscores in variable names, class names, and identifiers
+   - Fixed registry key consistency across all test files
+   - Ensured proper Python syntax validation for all fixed files
+
+2. **Comprehensive Fixing Tools**:
+   - `fix_hyphenated_model_names.py`: Fixes hyphenated model names in variable names, class names, and identifiers
+   - `fix_syntax.py`: Fixes common syntax errors like unterminated strings
+   - `fix_single_file.py`: Single-file direct fix approach for problematic files
+   - `comprehensive_test_fix.py`: Comprehensive tool to fix all test files with hyphenated model names
+
+3. **Fixed Test Files**:
+   - Successfully fixed all hyphenated model test files
+   - Created clean versions in `fixed_files_manual/` directory
+   - All fixed files pass Python syntax validation
+   - Model registries now use consistent naming conventions
+
 1. **Integration of Indentation Fixing**: Directly integrated into the test generator:
    - No longer need separate indentation fixing step
    - Properly formatted code generated on first pass

@@ -104,6 +104,17 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
+# Try to import tokenizers
+try:
+    if MOCK_TOKENIZERS:
+        raise ImportError("Mocked tokenizers import failure")
+    import tokenizers
+    HAS_TOKENIZERS = True
+except ImportError:
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
+
 
 # Try to import sentencepiece
 try:

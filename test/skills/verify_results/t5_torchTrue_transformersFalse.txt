@@ -1,2 +1,21 @@
 <frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
-2025-03-20 20:08:27,209 - WARNING - torch not available, using mock
+2025-03-20 20:14:01,313 - WARNING - torch not available, using mock
+2025-03-20 20:14:03,358 - INFO - Testing model: t5-small
+2025-03-20 20:14:03,359 - INFO - Using cpu as preferred device
+2025-03-20 20:14:03,359 - INFO - Testing t5-small with pipeline() on cpu...
+2025-03-20 20:14:08,079 - INFO - Testing t5-small with from_pretrained() on cpu...
+2025-03-20 20:14:08,904 - INFO - Added empty decoder_input_ids for T5 model
+Passing a tuple of `past_key_values` is deprecated and will be removed in Transformers v4.48.0. You should pass an instance of `EncoderDecoderCache` instead, e.g. `past_key_values=EncoderDecoderCache.from_legacy_cache(past_key_values)`.
+
+TEST RESULTS SUMMARY:
+[34m🔷 Using MOCK OBJECTS for CI/CD testing only[0m
+   Dependencies: transformers=True, torch=False, tokenizers=True, sentencepiece=True
+✅ Successfully tested t5-small
+  - pipeline_cpu: 0.3830s average inference time
+  - from_pretrained_cpu: 0.0341s average inference time
+
+Example output:
+  Input: Translate to French: Hello, how are you?
+  Output: [{'translation_text': 'Traduction française : Bonjour, comment êtes-vous ?'}]
+
+For detailed results, use --save flag and check the JSON output file.
