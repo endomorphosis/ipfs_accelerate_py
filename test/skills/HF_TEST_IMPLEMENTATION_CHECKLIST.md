@@ -36,14 +36,18 @@ For each model architecture, follow these steps:
 - [ ] Add pipeline-based testing method
 - [ ] Add hardware detection and device selection logic
 - [ ] Implement proper error handling
+- [ ] Handle hyphenated model names (e.g., "gpt-j", "xlm-roberta")
+- [ ] Ensure proper class name capitalization (using CLASS_NAME_FIXES if needed)
 
 ### 3. Validation
 
-- [ ] Verify syntax correctness
+- [ ] Verify syntax correctness (use `compile()` to check syntax validity)
+- [ ] Validate Python identifiers (ensure no hyphens in variable or function names)
 - [ ] Test functionality with default model
 - [ ] Test with CPU-only mode
 - [ ] Check result structure and completeness
 - [ ] Verify error handling
+- [ ] Test list-models functionality
 
 ### 4. Documentation
 
@@ -107,7 +111,7 @@ For each model architecture, follow these steps:
 - [ ] DeBERTa
 - [ ] ALBERT
 - [ ] ELECTRA
-- [ ] XLM-RoBERTa
+- [ ] XLM-RoBERTa (⚠️ Hyphenated name: needs special handling)
 - [ ] DistilBERT
 - [ ] CamemBERT
 - [ ] XLNet
@@ -119,8 +123,8 @@ For each model architecture, follow these steps:
 - [ ] Mistral
 - [ ] Phi
 - [ ] OPT
-- [ ] GPT-J
-- [ ] GPT-Neo
+- [ ] GPT-J (⚠️ Hyphenated name: needs special handling)
+- [ ] GPT-Neo (⚠️ Hyphenated name: needs special handling)
 - [ ] Gemma
 
 ### Encoder-Decoder (Seq2Seq)
@@ -184,11 +188,25 @@ For each model architecture, follow these steps:
 ## Next Steps (March 2025)
 
 1. Complete the implementation of high-priority models (RoBERTa, BART, LLaMA, Whisper, CLIP)
-2. Update coverage report with newly implemented models
-3. Create automated test generation schedule for remaining models
-4. Integrate coverage reporting into nightly CI/CD pipeline
-5. Expand comprehensive testing to include quantized models and hardware-specific optimizations
+2. Fix all hyphenated model name issues using the regenerate_fixed_tests.py script
+3. Update coverage report with newly implemented models
+4. Create automated test generation schedule for remaining models
+5. Integrate coverage reporting into nightly CI/CD pipeline
+6. Expand comprehensive testing to include quantized models and hardware-specific optimizations
+7. Update the model registry with all 300+ HuggingFace model classes
+
+## Handling Hyphenated Model Names
+
+Special attention is needed for models with hyphenated names:
+
+1. **In Registry Keys**: Convert hyphens to underscores (e.g., "gpt-j" → "gpt_j")
+2. **In Class Names**: Join and capitalize each part (e.g., "gpt-j" → "GptJ", "xlm-roberta" → "XlmRoberta")
+3. **In Constants**: Use uppercase with underscores (e.g., "GPT_J_MODELS_REGISTRY")
+4. **In Variable Names**: Use snake_case with underscores (e.g., "gpt_j_test_texts")
+5. **In Filenames**: Use underscores (e.g., "test_hf_gpt_j.py")
+
+Always use the `to_valid_identifier()` function to convert model names to valid Python identifiers before using them in code.
 
 ---
 
-Last updated: March 19, 2025
+Last updated: March 20, 2025

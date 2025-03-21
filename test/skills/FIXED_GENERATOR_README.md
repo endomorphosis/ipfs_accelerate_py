@@ -6,6 +6,74 @@ This document describes the fixed version of the HuggingFace test generator, whi
 
 The test generator creates test files for HuggingFace transformers models with proper indentation and architecture-specific implementations. It supports different model architectures and hardware backends.
 
+
+## Hyphenated Model Name Handling
+
+The test generator now properly handles hyphenated model names like "gpt-j", "gpt-neo", and "xlm-roberta". 
+This prevents syntax errors in the generated test files.
+
+### Key Features
+
+1. **Valid Python Identifiers**: The `to_valid_identifier()` function converts hyphenated model names to valid Python identifiers.
+
+```python
+def to_valid_identifier(text):
+    # Replace hyphens with underscores
+    text = text.replace("-", "_")
+    # Remove any other invalid characters
+    text = re.sub(r'[^a-zA-Z0-9_]', '', text)
+    # Ensure it doesn't start with a number
+    if text and text[0].isdigit():
+        text = '_' + text
+    return text
+```
+
+2. **Proper Capitalization**: Special logic handles capitalization of hyphenated model names for class names.
+
+```python
+# Create proper capitalized name for class (handling cases like gpt-j → GptJ)
+if "-" in model_family:
+    model_capitalized = ''.join(part.capitalize() for part in model_family.split('-'))
+    test_class = model_config.get("test_class", f"Test{model_capitalized}Models")
+```
+
+3. **Syntax Validation**: Generated files are validated using Python's `compile()` function to ensure valid syntax.
+
+```python
+# Validate syntax
+try:
+    compile(content, output_file, 'exec')
+    logger.info(f"✅ Syntax is valid for {output_file}")
+except SyntaxError as e:
+    logger.error(f"❌ Syntax error in generated file: {e}")
+    # Additional error handling and fixing...
+```
+
+4. **Command-Line Options**: Added the `--hyphenated-only` flag to specifically target models with hyphens.
+
+```
+python test_generator_fixed.py --hyphenated-only --output-dir fixed_tests --verify
+```
+
+### Supported Hyphenated Models
+
+- **gpt-j**: GPT-J autoregressive language models
+- **gpt-neo**: GPT-Neo autoregressive language models
+- **xlm-roberta**: XLM-RoBERTa masked language models for cross-lingual understanding
+
+### Class Name Fixes
+
+Fixed capitalization issues in class names with the `CLASS_NAME_FIXES` dictionary:
+
+```
+CLASS_NAME_FIXES = {
+    # Original fixes...
+    "GptjForCausalLM": "GPTJForCausalLM",
+    "GptneoForCausalLM": "GPTNeoForCausalLM",
+    "XlmRobertaForMaskedLM": "XLMRobertaForMaskedLM",
+    "XlmRobertaModel": "XLMRobertaModel"
+}
+```
 ## Key Components
 
 1. **test_generator_fixed.py**: Fixed generator with architecture awareness and proper indentation
@@ -167,17 +235,29 @@ We've successfully:
    - Added decoder input initialization for encoder-decoder models
    - Added architecture detection for proper model class selection
 
-3. **Enhanced Test Result Clarity**:
+3. **Hyphenated Model Name Fixes** (March 20, 2025, 20:31):
+   - Fixed issues with models that have hyphens in their names (gpt-j, gpt-neo, xlm-roberta, etc.)
+   - Created specialized tools for detecting and fixing hyphenated model names
+   - Implemented proper registry key consistency across all test files
+   - Added comprehensive testing for syntax validation
+   - Created clean versions of all hyphenated model test files
+
+4. **Enhanced Test Result Clarity**:
    - Added comprehensive mock detection system to clearly indicate when tests are using mock objects vs. real inference
    - Implemented visual indicators (🚀 for real inference, 🔷 for mock objects) with detailed dependency reporting
    - Added granular dependency tracking in test metadata to improve transparency (`has_transformers`, `has_torch`, `has_tokenizers`, `has_sentencepiece`)
    - Enhanced test output to show complete environment information and dependency status
    - Added test type indicator in metadata (`REAL INFERENCE` vs. `MOCK OBJECTS (CI/CD)`)
 
-4. **Reduced Code Debt**:
+5. **Reduced Code Debt**:
    - Integrated fixes directly into the generator
    - Created a direct template application approach
    - Added architecture-aware processing at the source
+   - Developed specialized tools for common issues:
+     - `fix_hyphenated_model_names.py`: Fixes hyphenated model names
+     - `fix_syntax.py`: Fixes common syntax errors
+     - `fix_single_file.py`: Direct fix approach for problematic files
+     - `comprehensive_test_fix.py`: Comprehensive tool for fixing all test files
 
 ## Next Steps
 

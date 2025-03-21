@@ -1,0 +1,115 @@
+name: HuggingFace Tests Mock Detection
+
+on:
+  pull_request:
+    paths:
+      - 'test/skills/fixed_tests/**'
+      - 'test/skills/templates/**'
+      - 'test/skills/verify_*.py'
+      - 'test/skills/fix_*.py'
+  workflow_dispatch:
+
+jobs:
+  verify-mock-detection:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install minimal test dependencies - we don't need actual model dependencies
+          # since we're just verifying the mock detection system
+          pip install pytest pytest-mock unittest-mock
+          
+      - name: Verify mock detection
+        working-directory: test/skills
+        run: |
+          # Check mock detection in all files without making changes
+          # In CI mode, we just want to verify that the files are correct
+          python verify_all_mock_detection.py --check-only
+          
+      - name: Generate verification report
+        if: success() || failure()
+        working-directory: test/skills
+        run: |
+          # Generate a full report with verification details
+          python verify_all_mock_detection.py --check-only --verify
+          
+      - name: Upload verification report
+        if: success() || failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: mock-detection-report
+          path: test/skills/mock_detection_report_*.txt
+          
+  test-mock-configurations:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        model: [bert, gpt2, t5, vit]
+        config: [all-real, no-torch, no-transformers, no-tokenizers, all-mock]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # For real inference tests, install actual dependencies
+          if [[ "${{ matrix.config }}" == "all-real" ]]; then
+            pip install torch transformers tokenizers sentencepiece numpy
+          else
+            # For mock tests, we only need minimal dependencies
+            pip install numpy unittest-mock
+          fi
+          
+      - name: Run test with configuration
+        working-directory: test/skills
+        run: |
+          # Set environment variables based on the configuration
+          export MOCK_TORCH="False"
+          export MOCK_TRANSFORMERS="False"
+          export MOCK_TOKENIZERS="False"
+          export MOCK_SENTENCEPIECE="False"
+          
+          if [[ "${{ matrix.config }}" == "no-torch" ]]; then
+            export MOCK_TORCH="True"
+          elif [[ "${{ matrix.config }}" == "no-transformers" ]]; then
+            export MOCK_TRANSFORMERS="True"
+          elif [[ "${{ matrix.config }}" == "no-tokenizers" ]]; then
+            export MOCK_TOKENIZERS="True"
+          elif [[ "${{ matrix.config }}" == "all-mock" ]]; then
+            export MOCK_TORCH="True"
+            export MOCK_TRANSFORMERS="True"
+            export MOCK_TOKENIZERS="True"
+            export MOCK_SENTENCEPIECE="True"
+          fi
+          
+          # Run the test
+          TEST_FILE="fixed_tests/test_hf_${{ matrix.model }}.py"
+          echo "Running $TEST_FILE with configuration: ${{ matrix.config }}"
+          
+          # Use the run_test_with_mock_control.sh script
+          ./run_test_with_mock_control.sh --file $TEST_FILE
+          
+      - name: Upload test output
+        if: success() || failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-output-${{ matrix.model }}-${{ matrix.config }}
+          path: test/skills/test_output_*.txt

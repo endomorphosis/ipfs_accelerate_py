@@ -44,6 +44,37 @@ def fix_class_method_indentation(content):
     """Fix indentation issues in class methods."""
     return content
 
+def fix_syntax_errors(content):
+    """Fix common syntax errors like unterminated string literals."""
+    # Fix extra quotes ("""")
+    content = content.replace('""""', '"""')
+    
+    # Check for unclosed triple quotes
+    triple_quotes_count = content.count('"""')
+    if triple_quotes_count % 2 != 0:
+        logger.info(f"Odd number of triple quotes found: {triple_quotes_count}, fixing...")
+        # Try to find the problem location
+        lines = content.split('\n')
+        found_docstring = False
+        line_num = 0
+        
+        for i, line in enumerate(lines):
+            if '"""' in line:
+                if found_docstring:
+                    found_docstring = False
+                else:
+                    found_docstring = True
+                    line_num = i
+            
+            # If we found an open docstring and there are extra quotes, fix them
+            if found_docstring and '""""' in line:
+                lines[i] = line.replace('""""', '"""')
+                logger.info(f"Fixed extra quotes on line {i+1}")
+        
+        content = '\n'.join(lines)
+    
+    return content
+
 def fix_test_indentation(template_content):
     """Fix indentation issues in generated test files."""
     try:
@@ -160,6 +191,47 @@ MODEL_REGISTRY = {
         "module_name": "test_hf_vit",
         "tasks": ["image-classification"],
         "inputs": {}
+    },
+    "gpt-j": {
+        "family_name": "GPT-J",
+        "description": "GPT-J autoregressive language models",
+        "default_model": "EleutherAI/gpt-j-6b",
+        "class": "GPTJForCausalLM",
+        "test_class": "TestGPTJModels",
+        "module_name": "test_hf_gpt_j",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "GPT-J is a transformer model that"
+        },
+        "task_specific_args": {
+            "text-generation": {
+                "max_length": 50
+            }
+        }
+    },
+    "gpt-neo": {
+        "family_name": "GPT-Neo",
+        "description": "GPT-Neo autoregressive language models",
+        "default_model": "EleutherAI/gpt-neo-1.3B",
+        "class": "GPTNeoForCausalLM",
+        "test_class": "TestGPTNeoModels",
+        "module_name": "test_hf_gpt_neo",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "GPT-Neo is a transformer model that"
+        }
+    },
+    "xlm-roberta": {
+        "family_name": "XLM-RoBERTa",
+        "description": "XLM-RoBERTa masked language models for cross-lingual understanding",
+        "default_model": "xlm-roberta-base",
+        "class": "XLMRobertaForMaskedLM",
+        "test_class": "TestXLMRobertaModels",
+        "module_name": "test_hf_xlm_roberta",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "XLM-RoBERTa is a <mask> language model."
+        }
     }
 }
 
@@ -172,8 +244,21 @@ CLASS_NAME_FIXES = {
     "ConvnextForImageClassification": "ConvNextForImageClassification",
     "Gpt2LMHeadModel": "GPT2LMHeadModel",
     "GptjForCausalLM": "GPTJForCausalLM",
-    "GptneoForCausalLM": "GPTNeoForCausalLM"
+    "GptneoForCausalLM": "GPTNeoForCausalLM",
+    "XlmRobertaForMaskedLM": "XLMRobertaForMaskedLM",
+    "XlmRobertaModel": "XLMRobertaModel"
 }
+
+def to_valid_identifier(text):
+    """Convert text to a valid Python identifier."""
+    # Replace hyphens with underscores
+    text = text.replace("-", "_")
+    # Remove any other invalid characters
+    text = re.sub(r'[^a-zA-Z0-9_]', '', text)
+    # Ensure it doesn't start with a number
+    if text and text[0].isdigit():
+        text = '_' + text
+    return text
 
 def get_architecture_type(model_type):
     """Determine architecture type based on model type."""
@@ -215,10 +300,21 @@ def generate_test_file(model_family, output_dir="."):
         logger.error(f"Model family '{model_family}' not found in registry")
         return False
     
+    # Fix hyphenated model names for valid Python identifiers
+    model_family_valid = to_valid_identifier(model_family)
+    
     # Get model configuration from registry
     model_config = MODEL_REGISTRY[model_family]
-    module_name = model_config.get("module_name", f"test_hf_{model_family}")
-    test_class = model_config.get("test_class", f"Test{model_family.upper()}Models")
+    module_name = model_config.get("module_name", f"test_hf_{model_family_valid}")
+    
+    # Create proper capitalized name for class (handling cases like gpt-j → GptJ, xlm-roberta → XlmRoberta)
+    if "-" in model_family:
+        # Handle hyphenated model names by capitalizing each part
+        model_capitalized = ''.join(part.capitalize() for part in model_family.split('-'))
+        test_class = model_config.get("test_class", f"Test{model_capitalized}Models")
+    else:
+        test_class = model_config.get("test_class", f"Test{model_family.upper()}Models")
+    
     default_model = model_config.get("default_model", f"{model_family}-base")
     tasks = model_config.get("tasks", ["text-generation"])
     inputs = model_config.get("inputs", {})
@@ -236,8 +332,14 @@ def generate_test_file(model_family, output_dir="."):
             template = f.read()
         
         # Prepare replacements
-        model_capitalized = model_family.capitalize()
-        model_upper = model_family.upper()
+        if "-" in model_family:
+            # For hyphenated model names, handle capitalization specially
+            model_capitalized = ''.join(part.capitalize() for part in model_family.split('-'))
+            model_upper = model_family_valid.upper()
+        else:
+            model_capitalized = model_family.capitalize()
+            model_upper = model_family.upper()
+            
         default_task = tasks[0] if tasks else "fill-mask"
         
         # Make replacements based on model type
@@ -259,11 +361,15 @@ def generate_test_file(model_family, output_dir="."):
             "ViT": model_capitalized,
             
             # Replace lowercase identifiers
-            "bert": model_family,
-            "vit": model_family,
+            "bert": model_family_valid,
+            "vit": model_family_valid,
             
             # Replace tasks
-            "fill-mask": default_task
+            "fill-mask": default_task,
+            
+            # Fix hyphenated references in file paths
+            "hf_bert_": f"hf_{model_family_valid}_",
+            "hf_vit_": f"hf_{model_family_valid}_"
         }
         
         # Create the test content with replacements
@@ -271,7 +377,10 @@ def generate_test_file(model_family, output_dir="."):
         for old, new in replacements.items():
             content = content.replace(old, new)
         
-        # Apply indentation fixing
+        # Fix syntax errors first
+        content = fix_syntax_errors(content)
+        
+        # Then apply indentation fixing
         content = fix_test_indentation(content)
         
         # Ensure the output directory exists
@@ -281,6 +390,40 @@ def generate_test_file(model_family, output_dir="."):
         output_file = os.path.join(output_dir, f"{module_name}.py")
         with open(output_file, "w") as f:
             f.write(content)
+        
+        # Validate syntax
+        try:
+            compile(content, output_file, 'exec')
+            logger.info(f"✅ Syntax is valid for {output_file}")
+        except SyntaxError as e:
+            logger.error(f"❌ Syntax error in generated file: {e}")
+            # Show the problematic line for debugging
+            if hasattr(e, 'lineno') and e.lineno is not None:
+                lines = content.split('\n')
+                line_no = e.lineno - 1  # 0-based index
+                if 0 <= line_no < len(lines):
+                    logger.error(f"Problematic line {e.lineno}: {lines[line_no].rstrip()}")
+            
+            # Try to fix the syntax error
+            logger.info("Attempting additional syntax fixes...")
+            try:
+                # Apply more aggressive syntax fixing
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if '""""' in line:
+                        lines[i] = line.replace('""""', '"""')
+                        logger.info(f"Fixed extra quotes on line {i+1}")
+                
+                fixed_content = '\n'.join(lines)
+                with open(output_file, 'w') as f:
+                    f.write(fixed_content)
+                
+                # Verify syntax again
+                compile(fixed_content, output_file, 'exec')
+                logger.info(f"✅ Syntax is valid after fixes for {output_file}")
+            except Exception as fix_error:
+                logger.error(f"Failed to fix syntax errors: {fix_error}")
+                return False
         
         logger.info(f"Generated test file: {output_file}")
         return True
@@ -348,6 +491,7 @@ def main():
     group.add_argument("--list-families", action="store_true", help="List available model families")
     group.add_argument("--generate", type=str, help="Generate test for a specific model family")
     group.add_argument("--all", action="store_true", help="Generate tests for all model families")
+    group.add_argument("--hyphenated-only", action="store_true", help="Generate tests only for models with hyphenated names")
     
     parser.add_argument("--output-dir", type=str, default="fixed_tests", help="Output directory for test files")
     parser.add_argument("--verify", action="store_true", help="Verify syntax of generated tests")
@@ -358,8 +502,14 @@ def main():
         list_model_families()
         return 0
     
-    if args.all:
-        families = MODEL_REGISTRY.keys()
+    if args.all or args.hyphenated_only:
+        # Get all families or just hyphenated ones
+        if args.hyphenated_only:
+            families = [f for f in MODEL_REGISTRY.keys() if '-' in f]
+            logger.info(f"Found {len(families)} model families with hyphenated names")
+        else:
+            families = MODEL_REGISTRY.keys()
+            
         success_count = 0
         fail_count = 0
         

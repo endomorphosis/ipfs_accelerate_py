@@ -217,6 +217,82 @@ def test_snapshot_export_import(db_path, output_dir, dashboard_url=None, api_key
         return False
 
 
+def test_regression_detection_integration(db_path, output_dir, dashboard_url=None, api_key=None):
+    """Test the integration of regression detection with the dashboard."""
+    if not HAS_DASHBOARD_VISUALIZATION or not HAS_DB_API:
+        logger.error("Required components not available.")
+        return False
+    
+    # Attempt to import RegressionDetector
+    try:
+        from duckdb_api.distributed_testing.dashboard.regression_detection import RegressionDetector
+        HAS_REGRESSION_DETECTION = True
+    except ImportError as e:
+        logger.error(f"Error importing RegressionDetector: {e}")
+        logger.error("Regression detection test will be skipped.")
+        return False
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Initialize DuckDB API
+    db_api = BenchmarkDBAPI(db_path=db_path)
+    
+    # Initialize visualization system with dashboard integration and regression detection
+    try:
+        vis_system = DashboardEnhancedVisualizationSystem(
+            db_api=db_api,
+            output_dir=output_dir,
+            dashboard_url=dashboard_url,
+            api_key=api_key,
+            enable_regression_detection=True
+        )
+        logger.info("Dashboard-enhanced visualization system with regression detection initialized.")
+    except Exception as e:
+        logger.error(f"Failed to initialize visualization system with regression detection: {e}")
+        return False
+    
+    # Create test visualization with regression detection
+    try:
+        # Create performance visualization with regression detection
+        viz_path = vis_system.create_visualization_with_regression_detection(
+            visualization_type="time_series",
+            metric="latency_ms",
+            filters={"model_name": "bert-base", "hardware_type": "cuda"},
+            title="Latency Regression Analysis",
+            include_statistical_significance=True,
+            confidence_level=0.95
+        )
+        
+        if viz_path:
+            logger.info(f"Successfully created regression detection visualization: {viz_path}")
+            
+            # Synchronize with dashboard
+            if dashboard_url:
+                sync_success = vis_system.synchronize_with_dashboard(
+                    visualization_paths=[viz_path],
+                    dashboard_url=dashboard_url,
+                    api_key=api_key,
+                    create_panel=True,
+                    panel_title="Regression Analysis Panel"
+                )
+                
+                if sync_success > 0:
+                    logger.info(f"Synchronized regression visualization with dashboard.")
+                    return True
+                else:
+                    logger.warning("Failed to synchronize regression visualization with dashboard.")
+                    return False
+            return True
+        else:
+            logger.warning("Failed to create regression detection visualization.")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error in regression detection test: {e}")
+        return False
+
+
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="Test Dashboard-Enhanced Visualization System")
@@ -233,7 +309,7 @@ def main():
                        help="Skip synchronizing with dashboard")
     parser.add_argument("--no-panel", action="store_true",
                        help="Skip creating dashboard panel")
-    parser.add_argument("--test", choices=["basic", "combined", "snapshot", "all"],
+    parser.add_argument("--test", choices=["basic", "combined", "snapshot", "regression", "all"],
                        default="all", help="Test to run")
     
     args = parser.parse_args()
@@ -296,6 +372,21 @@ def main():
             logger.info("✅ Snapshot export/import test passed.")
         else:
             logger.warning("❌ Snapshot export/import test failed.")
+    
+    # Run regression detection integration test
+    if args.test == "regression" or args.test == "all":
+        logger.info("Running regression detection integration test...")
+        success = test_regression_detection_integration(
+            db_path=args.db_path,
+            output_dir=args.output_dir,
+            dashboard_url=args.dashboard_url,
+            api_key=args.api_key
+        )
+        
+        if success:
+            logger.info("✅ Regression detection integration test passed.")
+        else:
+            logger.warning("❌ Regression detection integration test failed.")
     
     logger.info("Testing complete.")
     return 0

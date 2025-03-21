@@ -107,6 +107,8 @@ except ImportError:
 
 # Try to import tokenizers
 try:
+    if MOCK_TOKENIZERS:
+        raise ImportError("Mocked tokenizers import failure")
     import tokenizers
     HAS_TOKENIZERS = True
 except ImportError:
@@ -116,6 +118,8 @@ except ImportError:
 
 # Try to import sentencepiece
 try:
+    if MOCK_SENTENCEPIECE:
+        raise ImportError("Mocked sentencepiece import failure")
     import sentencepiece
     HAS_SENTENCEPIECE = True
 except ImportError:

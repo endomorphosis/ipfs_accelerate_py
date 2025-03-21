@@ -118,6 +118,8 @@ except ImportError:
 
 # Try to import sentencepiece
 try:
+    if MOCK_SENTENCEPIECE:
+        raise ImportError("Mocked sentencepiece import failure")
     import sentencepiece
     HAS_SENTENCEPIECE = True
 except ImportError:
