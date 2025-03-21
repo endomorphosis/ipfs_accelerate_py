@@ -95,27 +95,48 @@ python test_hf_bert.py --list-models
 
 ## Recent Improvements (March 20, 2025)
 
-### Hyphenated Model Name Fixes (March 20, 2025, 20:31)
+### Hyphenated Model Name Fixes & Integration (March 20, 2025, 23:05)
 
-The following improvements have been made to address issues with hyphenated model names:
+The following improvements have been made to address issues with hyphenated model names and integrate the solution into the testing framework:
 
 1. **Hyphenated Model Name Detection and Fixing**:
    - Created tools to detect and fix files with hyphenated model names (gpt-j, gpt-neo, xlm-roberta, etc.)
    - Replaced hyphens with underscores in variable names, class names, and identifiers
    - Fixed registry key consistency across all test files
    - Ensured proper Python syntax validation for all fixed files
+   - Added HuggingFace Hub API integration to automatically detect new hyphenated models
 
-2. **Comprehensive Fixing Tools**:
-   - `fix_hyphenated_model_names.py`: Fixes hyphenated model names in variable names, class names, and identifiers
-   - `fix_syntax.py`: Fixes common syntax errors like unterminated strings
-   - `fix_single_file.py`: Single-file direct fix approach for problematic files
-   - `comprehensive_test_fix.py`: Comprehensive tool to fix all test files with hyphenated model names
+2. **Integrated Solution with Comprehensive Components**:
+   - `to_valid_identifier()`: Converts hyphenated names to valid Python identifiers
+   - `get_class_name()`: Implements special case capitalization rules (gpt-j → GPTJ)
+   - `get_upper_case_name()`: Generates uppercase constants for registry variables
+   - `get_architecture_type()`: Determines architecture type for template selection
+   - `get_template_path()`: Selects the appropriate template based on architecture
+   - `fix_model_class_names()`: Fixes model class names for consistent capitalization
+   - `fix_registry_variables()`: Ensures registry variable names are consistent
+   - `fix_test_class_name()`: Updates test class names with proper capitalization
+   - `create_test_file()`: Creates a test file for a hyphenated model from templates
 
-3. **Fixed Test Files**:
-   - Successfully fixed all hyphenated model test files
-   - Created clean versions in `fixed_files_manual/` directory
-   - All fixed files pass Python syntax validation
-   - Model registries now use consistent naming conventions
+3. **Automated Model Detection System**:
+   - Added `detect_hyphenated_models_from_huggingface()` to scan the HF Hub API
+   - Added `process_model()` for parallel model test generation
+   - Implemented ThreadPoolExecutor for parallel processing of models
+   - Created integration report generation for CI/CD automation
+
+4. **CI/CD Integration**:
+   - Added command-line interface for automation in CI/CD pipelines
+   - Implemented `--scan-models` flag to detect hyphenated models from HF Hub
+   - Added `--generate-all` flag to generate tests for all detected models
+   - Added `--verify` flag to verify syntax of generated test files
+   - Created log file output with timestamp for integration with CI/CD artifacts
+   - Generated standardized JSON reports for integration with dashboards
+
+5. **Fixed Test Files**:
+   - Successfully fixed all hyphenated model test files (14 known hyphenated models)
+   - Added proper syntax validation with Python's built-in compiler
+   - Integrated mock detection for transparent CI/CD testing
+   - Created template-based generation system for all architecture types
+   - Generated standardized files with consistent naming patterns
 
 1. **Integration of Indentation Fixing**: Directly integrated into the test generator:
    - No longer need separate indentation fixing step
@@ -138,16 +159,40 @@ The following improvements have been made to address issues with hyphenated mode
    - Fixed class naming conventions for proper API compatibility
    - Implemented proper Python syntax validation with compiler check
 
-4. **Mock vs. Real Inference Detection**:
+4. **Mock vs. Real Inference Detection System** (March 21, 2025):
    - Added comprehensive dependency detection to identify when mock objects are used
    - Implemented visual indicators (🚀 for real inference, 🔷 for mocks) with detailed dependency status reporting
    - Added extensive metadata enrichment to track test environment in results
       - `has_transformers`, `has_torch`, `has_tokenizers`, `has_sentencepiece` flags
       - `using_real_inference` and `using_mocks` summary flags
       - `test_type` indicator (`REAL INFERENCE` vs. `MOCK OBJECTS (CI/CD)`)
-   - Ensured transparency between CI/CD pipeline tests and actual model tests
+   - Created colorized terminal output for clear visual distinction between modes
+   - Added environment variable control for forcing mocked dependencies:
+      - `MOCK_TORCH=true` forces PyTorch to be mocked
+      - `MOCK_TRANSFORMERS=true` forces Transformers to be mocked
+      - `MOCK_TOKENIZERS=true` forces Tokenizers to be mocked
+      - `MOCK_SENTENCEPIECE=true` forces SentencePiece to be mocked
+   - Developed comprehensive verification and fixing tools:
+      - `verify_all_mock_detection.py`: Validates mock detection in all test files
+      - `verify_mock_detection.py`: Tests files with different environment configurations
+      - `fix_single_file.py`: Lightweight script for essential fixes
+      - `verify_all_mock_tests.sh`: Complete verification script with reporting
+      - `add_colorized_output.py`: Adds colorized terminal output
+      - `add_env_mock_support.py`: Adds environment variable control
+      - `add_mock_detection_to_templates.py`: Updates templates with mock detection
+      - `check_template_mock_status.py`: Checks template files for proper implementation
+      - `finalize_mock_detection.sh`: One-click implementation finalization
+   - Created CI/CD workflow templates:
+      - `ci_templates/mock_detection_ci.yml`: GitHub Actions workflow
+      - `ci_templates/gitlab-ci.yml`: GitLab CI workflow
+   - Added comprehensive documentation in `MOCK_DETECTION_IMPLEMENTATION_SUMMARY.md`
+   - Implemented mock detection across all templates and verified functionality
+   - Ensured transparency between CI/CD pipeline tests and actual model inference
    - Added granular dependency reporting for identifying specific missing modules
-   - Added helper scripts to verify mock detection in various dependency scenarios
+   - Integrated verification into CI/CD workflow for automatic environment detection
+   - Created standardized patterns for mock detection in all template types
+   - Added support for different architecture requirements (e.g., vision vs. text models)
+   - Implemented a solution that works even without any HuggingFace dependencies
 
 5. **Infrastructure Updates**:
    - Added GitHub Actions workflow for CI/CD integration
@@ -172,7 +217,13 @@ See `NEXT_STEPS.md` for the detailed roadmap. Current status:
    - Hardware-aware task distribution mechanism implemented
    - Result aggregation and visualization completed
    - Fault tolerance with automatic retries implemented
-5. ✅ Dashboard Development for Visualization - COMPLETED
+5. ✅ Mock Detection System for CI/CD - COMPLETED
+   - Environment variable control for dependency mocking
+   - Clear visual indicators for test modes (real vs. mock)
+   - Detailed metadata for test environment transparency
+   - Comprehensive verification tools for all test files
+   - CI/CD workflow templates for GitHub Actions and GitLab
+6. ✅ Dashboard Development for Visualization - COMPLETED
    - Coverage reports implemented with interactive charts
    - Real-time test monitoring implemented with Dash integration
    - Performance visualization completed with comprehensive metrics
@@ -210,19 +261,17 @@ See `NEXT_STEPS.md` for the detailed roadmap. Current status:
    - Supports local report generation for review before publishing
    - Integrates with CI/CD for automated updates
    
-5. **Enhanced Documentation and Reporting**:
-   - Comprehensive compatibility reports
-   - Performance analysis with bottleneck identification
-   - Test coverage visualization
-   - Model architecture categorization
-   - Interactive charts for data exploration
-   - Benchmark publishing documentation
-   - Quick start guide for all components
+5. **Mock Detection System** (`mock_detection/` directory):
+   - Comprehensive tools for detecting mock objects vs. real inference
+   - Environment variable control for testing with specific mock configurations
+   - Visual indicators and detailed metadata about test environment
+   - CI/CD workflow templates for various platforms
+   - Verification tools for ensuring proper implementation
 
 ## Related Documentation
 
-- `MOCK_DETECTION_README.md`: Comprehensive documentation for the mock detection system
 - `MOCK_DETECTION_IMPLEMENTATION_SUMMARY.md`: Summary of mock detection implementation
+- `HF_TEST_CICD_INTEGRATION.md`: Guide for CI/CD integration with mock detection
 - `INTEGRATION_SUMMARY.md`: Details on test generator integration
 - `HF_MODEL_COVERAGE_ROADMAP.md`: Plan for comprehensive model coverage
 - `HF_TEST_TOOLKIT_README.md`: Guide to using the testing toolkit
