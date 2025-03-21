@@ -38,7 +38,7 @@ import numpy as np
 HAS_WEBGPU = False
 try:
     # Attempt to check for WebGPU availability
-    import ctypes
+    import ctypes.util
     HAS_WEBGPU = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webgpu') is not None
 except ImportError:
     HAS_WEBGPU = False
@@ -99,7 +99,6 @@ except ImportError:
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
 
-
 # Try to import sentencepiece
 try:
     import sentencepiece
@@ -109,772 +108,620 @@ except ImportError:
     HAS_SENTENCEPIECE = False
     logger.warning("sentencepiece not available, using mock")
 
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    if HAS_CUDA:
+        cuda_version = torch.version.cuda
+        logger.info(f"CUDA available: version {cuda_version}")
+        num_devices = torch.cuda.device_count()
+        logger.info(f"Number of CUDA devices: {num_devices}")
+        
+        # Log CUDA device properties
+        for i in range(num_devices):
+            device_props = torch.cuda.get_device_properties(i)
+            logger.info(f"CUDA Device {i}: {device_props.name} with {device_props.total_memory / 1024**3:.2f} GB memory")
+    else:
+        logger.info("CUDA not available")
+else:
+    HAS_CUDA = False
+    logger.info("CUDA detection skipped (torch not available)")
 
-# Mock implementations for missing dependencies
-if not HAS_TOKENIZERS:
-    class MockTokenizer:
-        def __init__(self, *args, **kwargs):
-            self.vocab_size = 32000
-            
-        def encode(self, text, **kwargs):
-            return {"ids": [1, 2, 3, 4, 5], "attention_mask": [1, 1, 1, 1, 1]}
-            
-        def decode(self, ids, **kwargs):
-            return "Decoded text from mock"
-            
-        @staticmethod
-        def from_file(vocab_filename):
-            return MockTokenizer()
+# MPS (Apple Silicon) detection
+if HAS_TORCH:
+    HAS_MPS = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+    if HAS_MPS:
+        logger.info("MPS available for Apple Silicon acceleration")
+    else:
+        logger.info("MPS not available")
+else:
+    HAS_MPS = False
+    logger.info("MPS detection skipped (torch not available)")
 
-    tokenizers.Tokenizer = MockTokenizer
-
-
-if not HAS_SENTENCEPIECE:
-    class MockSentencePieceProcessor:
-        def __init__(self, *args, **kwargs):
-            self.vocab_size = 32000
-            
-        def encode(self, text, out_type=str):
-            return [1, 2, 3, 4, 5]
-            
-        def decode(self, ids):
-            return "Decoded text from mock"
-            
-        def get_piece_size(self):
-            return 32000
-            
-        @staticmethod
-        def load(model_file):
-            return MockSentencePieceProcessor()
-
-    sentencepiece.SentencePieceProcessor = MockSentencePieceProcessor
-
-
-# Hardware detection
-def check_hardware():
-    """Check available hardware and return capabilities."""
-    capabilities = {
-        "cpu": True,
-        "cuda": False,
-        "cuda_version": None,
-        "cuda_devices": 0,
-        "mps": False,
-        "openvino": False
-    }
-    
-    # Check CUDA
-    if HAS_TORCH:
-        capabilities["cuda"] = torch.cuda.is_available()
-        if capabilities["cuda"]:
-            capabilities["cuda_devices"] = torch.cuda.device_count()
-            capabilities["cuda_version"] = torch.version.cuda
-    
-    # Check MPS (Apple Silicon)
-    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
-        capabilities["mps"] = torch.mps.is_available()
-    
-    # Check OpenVINO
-    try:
-        import openvino
-        capabilities["openvino"] = True
-    except ImportError:
-        pass
-    
-    return capabilities
-
-# Get hardware capabilities
-HW_CAPABILITIES = check_hardware()
-
-# Models registry - Maps model IDs to their specific configurations
+# Main BERT model registry
 BERT_MODELS_REGISTRY = {
     "bert-base-uncased": {
-        "description": "BERT base model (uncased)",
-        "class": "BertForMaskedLM",
-        "vocab_size": 30522,
+        "full_name": "BERT Base Uncased",
+        "architecture": "encoder-only",
+        "description": "BERT Base model with uncased vocabulary",
+        "model_type": "bert",
+        "parameters": "110M",
+        "context_length": 512,
+        "embedding_dim": 768,
+        "attention_heads": 12,
+        "layers": 12,
+        "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     },
-    "distilbert-base-uncased": {
-        "description": "DistilBERT base model (uncased)",
-        "class": "DistilBertForMaskedLM",
-        "vocab_size": 30522,
+    "bert-large-uncased": {
+        "full_name": "BERT Large Uncased",
+        "architecture": "encoder-only",
+        "description": "BERT Large model with uncased vocabulary",
+        "model_type": "bert",
+        "parameters": "336M",
+        "context_length": 512,
+        "embedding_dim": 1024,
+        "attention_heads": 16,
+        "layers": 24,
+        "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     },
-    "roberta-base": {
-        "description": "RoBERTa base model",
-        "class": "RobertaForMaskedLM",
-        "vocab_size": 50265,
+    "bert-base-cased": {
+        "full_name": "BERT Base Cased",
+        "architecture": "encoder-only",
+        "description": "BERT Base model with cased vocabulary",
+        "model_type": "bert",
+        "parameters": "110M",
+        "context_length": 512,
+        "embedding_dim": 768,
+        "attention_heads": 12,
+        "layers": 12,
+        "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     }
 }
 
+def select_device():
+    """Select the best available device for inference."""
+    if HAS_CUDA:
+        return "cuda:0"
+    elif HAS_ROCM:
+        return "cuda:0"  # ROCm uses CUDA API
+    elif HAS_MPS:
+        return "mps"
+    else:
+        return "cpu"
+
+# Create mock classes for testing without dependencies
+class MockTokenizer:
+    def __init__(self, *args, **kwargs):
+        self.vocab_size = 30522
+        self.mask_token = "[MASK]"
+        self.pad_token = "[PAD]"
+        self.cls_token = "[CLS]"
+        self.sep_token = "[SEP]"
+        self.unk_token = "[UNK]"
+        self.all_special_tokens = [self.mask_token, self.pad_token, self.cls_token, self.sep_token, self.unk_token]
+        self.mask_token_id = 103
+        self.pad_token_id = 0
+        self.cls_token_id = 101
+        self.sep_token_id = 102
+        self.unk_token_id = 100
+        
+    def __call__(self, text, return_tensors=None, padding=False, truncation=False, max_length=None):
+        # Create a simple mock encoding with appropriate shape
+        if isinstance(text, list):
+            batch_size = len(text)
+        else:
+            batch_size = 1
+        
+        # Generate token ids for input
+        input_ids = [[self.cls_token_id] + [i % 100 + 999 for i in range(10)] + [self.sep_token_id] for _ in range(batch_size)]
+        
+        # Find the mask token and replace with mask_token_id
+        for i in range(batch_size):
+            if "[MASK]" in (text[i] if isinstance(text, list) else text):
+                # Replace a token with [MASK] token
+                pos = 5  # Arbitrary position for mask token
+                input_ids[i][pos] = self.mask_token_id
+        
+        attention_mask = [[1] * len(ids) for ids in input_ids]
+        
+        # Convert to tensors if requested
+        if return_tensors == "pt" and HAS_TORCH:
+            return {
+                "input_ids": torch.tensor(input_ids),
+                "attention_mask": torch.tensor(attention_mask)
+            }
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask
+        }
+        
+    def decode(self, token_ids, skip_special_tokens=True):
+        # Simple mock decode
+        tokens = [f"token_{id}" for id in token_ids if id not in [self.cls_token_id, self.sep_token_id, self.pad_token_id]]
+        return " ".join(tokens)
+    
+    @classmethod
+    def from_pretrained(cls, model_name, *args, **kwargs):
+        return cls()
+
+class MockSentencePieceProcessor:
+    def __init__(self, *args, **kwargs):
+        self.vocab_size = 32000
+        self.mask_token = "[MASK]"
+        
+    def encode(self, text, *args, **kwargs):
+        # Return a list of "token ids"
+        return [i for i in range(min(len(text.split()), 15))]
+        
+    def decode(self, token_ids):
+        # Return a simple mock decoded string
+        return " ".join([f"token_{id}" for id in token_ids])
+        
+    def get_piece(self, id):
+        # Return a fake token
+        return f"token_{id}"
+        
+    def id_to_piece(self, id):
+        # Return a fake token
+        return f"token_{id}"
+        
+    def piece_to_id(self, piece):
+        # Return a fake id
+        return hash(piece) % 32000
+        
+    @classmethod
+    def load(cls, model_path):
+        return cls()
+
 class TestBertModels:
-    """Base test class for all BERT-family models."""
-    
-    def __init__(self, model_id=None):
-        """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "bert-base-uncased"
-        
-        # Verify model exists in registry
-        if self.model_id not in BERT_MODELS_REGISTRY:
-            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = BERT_MODELS_REGISTRY["bert-base-uncased"]
-        else:
-            self.model_info = BERT_MODELS_REGISTRY[self.model_id]
-        
-        # Define model parameters
-        self.task = "fill-mask"
-        self.class_name = self.model_info["class"]
-        self.description = self.model_info["description"]
-        
-        # Define test inputs
-        self.test_text = "The quick brown fox jumps over the [MASK] dog."
-        self.test_texts = [
-            "The quick brown fox jumps over the [MASK] dog.",
-            "The quick brown fox jumps over the [MASK] dog. (alternative)"
-        ]
-        
-        # Configure hardware preference
-        if HW_CAPABILITIES["cuda"]:
-            self.preferred_device = "cuda"
-        elif HW_CAPABILITIES["mps"]:
-            self.preferred_device = "mps"
-        else:
-            self.preferred_device = "cpu"
-        
-        logger.info(f"Using {self.preferred_device} as preferred device")
-        
-        # Results storage
-        self.results = {}
-        self.examples = []
-        self.performance_stats = {}
-    
-    def test_pipeline(self, device="auto"):
-        """Test the model using transformers pipeline API."""
-        if device == "auto":
-            device = self.preferred_device
-        
-        results = {
-            "model": self.model_id,
-            "device": device,
-            "task": self.task,
-            "class": self.class_name
-        }
-        
-        # Check for dependencies
-        if not HAS_TRANSFORMERS:
-            results["pipeline_error_type"] = "missing_dependency"
-            results["pipeline_missing_core"] = ["transformers"]
-            results["pipeline_success"] = False
-            return results
-            
-        if not HAS_TOKENIZERS:
-            results["pipeline_error_type"] = "missing_dependency"
-            results["pipeline_missing_deps"] = ["tokenizers>=0.11.0"]
-            results["pipeline_success"] = False
-            return results
-            
-        if not HAS_SENTENCEPIECE:
-            results["pipeline_error_type"] = "missing_dependency"
-            results["pipeline_missing_deps"] = ["sentencepiece>=0.1.91"]
-            results["pipeline_success"] = False
-            return results
-        
-        try:
-            logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
-            
-            # Create pipeline with appropriate parameters
-            pipeline_kwargs = {
-                "task": self.task,
-                "model": self.model_id,
-                "device": device
-            }
-            
-            # Time the model loading
-            load_start_time = time.time()
-            pipeline = transformers.pipeline(**pipeline_kwargs)
-            load_time = time.time() - load_start_time
-            
-            # Prepare test input
-            pipeline_input = self.test_text
-            
-            # Run warmup inference if on CUDA
-            if device == "cuda":
-                try:
-                    _ = pipeline(pipeline_input)
-                except Exception:
-                    pass
-            
-            # Run multiple inference passes
-            num_runs = 3
-            times = []
-            outputs = []
-            
-            for _ in range(num_runs):
-                start_time = time.time()
-                output = pipeline(pipeline_input)
-                end_time = time.time()
-                times.append(end_time - start_time)
-                outputs.append(output)
-            
-            # Calculate statistics
-            avg_time = sum(times) / len(times)
-            min_time = min(times)
-            max_time = max(times)
-            
-            # Store results
-            results["pipeline_success"] = True
-            results["pipeline_avg_time"] = avg_time
-            results["pipeline_min_time"] = min_time
-            results["pipeline_max_time"] = max_time
-            results["pipeline_load_time"] = load_time
-            results["pipeline_error_type"] = "none"
-            
-            # Add to examples
-            self.examples.append({
-                "method": f"pipeline() on {device}",
-                "input": str(pipeline_input),
-                "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
-            })
-            
-            # Store in performance stats
-            self.performance_stats[f"pipeline_{device}"] = {
-                "avg_time": avg_time,
-                "min_time": min_time,
-                "max_time": max_time,
-                "load_time": load_time,
-                "num_runs": num_runs
-            }
-            
-        except Exception as e:
-            # Store error information
-            results["pipeline_success"] = False
-            results["pipeline_error"] = str(e)
-            results["pipeline_traceback"] = traceback.format_exc()
-            logger.error(f"Error testing pipeline on {device}: {e}")
-            
-            # Classify error type
-            error_str = str(e).lower()
-            traceback_str = traceback.format_exc().lower()
-            
-            if "cuda" in error_str or "cuda" in traceback_str:
-                results["pipeline_error_type"] = "cuda_error"
-            elif "memory" in error_str:
-                results["pipeline_error_type"] = "out_of_memory"
-            elif "no module named" in error_str:
-                results["pipeline_error_type"] = "missing_dependency"
-            else:
-                results["pipeline_error_type"] = "other"
-        
-        # Add to overall results
-        self.results[f"pipeline_{device}"] = results
-        return results
-    
-    def test_from_pretrained(self, device="auto"):
-        """Test the model using direct from_pretrained loading."""
-        if device == "auto":
-            device = self.preferred_device
-        
-        results = {
-            "model": self.model_id,
-            "device": device,
-            "task": self.task,
-            "class": self.class_name
-        }
-        
-        # Check for dependencies
-        if not HAS_TRANSFORMERS:
-            results["from_pretrained_error_type"] = "missing_dependency"
-            results["from_pretrained_missing_core"] = ["transformers"]
-            results["from_pretrained_success"] = False
-            return results
-            
-        if not HAS_TOKENIZERS:
-            results["from_pretrained_error_type"] = "missing_dependency"
-            results["from_pretrained_missing_deps"] = ["tokenizers>=0.11.0"]
-            results["from_pretrained_success"] = False
-            return results
-            
-        if not HAS_SENTENCEPIECE:
-            results["from_pretrained_error_type"] = "missing_dependency"
-            results["from_pretrained_missing_deps"] = ["sentencepiece>=0.1.91"]
-            results["from_pretrained_success"] = False
-            return results
-        
-        try:
-            logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
-            
-            # Common parameters for loading
-            pretrained_kwargs = {
-                "local_files_only": False
-            }
-            
-            # Time tokenizer loading
-            tokenizer_load_start = time.time()
-            tokenizer = transformers.AutoTokenizer.from_pretrained(
-                self.model_id,
-                **pretrained_kwargs
-            )
-            tokenizer_load_time = time.time() - tokenizer_load_start
-            
-            # Use appropriate model class based on model type
-            model_class = None
-            if self.class_name == "BertForMaskedLM":
-                model_class = transformers.BertForMaskedLM
-            else:
-                # Fallback to Auto class
-                model_class = transformers.AutoModelForMaskedLM
-            
-            # Time model loading
-            model_load_start = time.time()
-            model = model_class.from_pretrained(
-                self.model_id,
-                **pretrained_kwargs
-            )
-            model_load_time = time.time() - model_load_start
-            
-            # Move model to device
-            if device != "cpu":
-                model = model.to(device)
-            
-            # Prepare test input
-            test_input = self.test_text
-            
-            # Tokenize input
-            inputs = tokenizer(test_input, return_tensors="pt")
-            
-            # Move inputs to device
-            if device != "cpu":
-                inputs = {key: val.to(device) for key, val in inputs.items()}
-            
-            # Run warmup inference if using CUDA
-            if device == "cuda":
-                try:
-                    with torch.no_grad():
-                        _ = model(**inputs)
-                except Exception:
-                    pass
-            
-            # Run multiple inference passes
-            num_runs = 3
-            times = []
-            outputs = []
-            
-            for _ in range(num_runs):
-                start_time = time.time()
-                with torch.no_grad():
-                    output = model(**inputs)
-                end_time = time.time()
-                times.append(end_time - start_time)
-                outputs.append(output)
-            
-            # Calculate statistics
-            avg_time = sum(times) / len(times)
-            min_time = min(times)
-            max_time = max(times)
-            
-            # Get top predictions for masked position
-            if hasattr(tokenizer, "mask_token_id"):
-                mask_token_id = tokenizer.mask_token_id
-                mask_positions = (inputs["input_ids"] == mask_token_id).nonzero()
-                
-                if len(mask_positions) > 0:
-                    mask_index = mask_positions[0][-1].item()
-                    logits = outputs[0].logits[0, mask_index]
-                    probs = torch.nn.functional.softmax(logits, dim=-1)
-                    top_k = torch.topk(probs, 5)
-                    
-                    predictions = []
-                    for i, (prob, idx) in enumerate(zip(top_k.values, top_k.indices)):
-                        if hasattr(tokenizer, "convert_ids_to_tokens"):
-                            token = tokenizer.convert_ids_to_tokens(idx.item())
-                        else:
-                            token = f"token_{idx.item()}"
-                        predictions.append({
-                            "token": token,
-                            "probability": prob.item()
-                        })
-                else:
-                    predictions = []
-            else:
-                predictions = []
-                
-            # Calculate model size
-            param_count = sum(p.numel() for p in model.parameters())
-            model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
-            
-            # Store results
-            results["from_pretrained_success"] = True
-            results["from_pretrained_avg_time"] = avg_time
-            results["from_pretrained_min_time"] = min_time
-            results["from_pretrained_max_time"] = max_time
-            results["tokenizer_load_time"] = tokenizer_load_time
-            results["model_load_time"] = model_load_time
-            results["model_size_mb"] = model_size_mb
-            results["from_pretrained_error_type"] = "none"
-            
-            # Add predictions if available
-            if 'predictions' in locals():
-                results["predictions"] = predictions
-            
-            # Add to examples
-            example_data = {
-                "method": f"from_pretrained() on {device}",
-                "input": str(test_input)
-            }
-            
-            if 'predictions' in locals():
-                example_data["predictions"] = predictions
-            
-            self.examples.append(example_data)
-            
-            # Store in performance stats
-            self.performance_stats[f"from_pretrained_{device}"] = {
-                "avg_time": avg_time,
-                "min_time": min_time,
-                "max_time": max_time,
-                "tokenizer_load_time": tokenizer_load_time,
-                "model_load_time": model_load_time,
-                "model_size_mb": model_size_mb,
-                "num_runs": num_runs
-            }
-            
-        except Exception as e:
-            # Store error information
-            results["from_pretrained_success"] = False
-            results["from_pretrained_error"] = str(e)
-            results["from_pretrained_traceback"] = traceback.format_exc()
-            logger.error(f"Error testing from_pretrained on {device}: {e}")
-            
-            # Classify error type
-            error_str = str(e).lower()
-            traceback_str = traceback.format_exc().lower()
-            
-            if "cuda" in error_str or "cuda" in traceback_str:
-                results["from_pretrained_error_type"] = "cuda_error"
-            elif "memory" in error_str:
-                results["from_pretrained_error_type"] = "out_of_memory"
-            elif "no module named" in error_str:
-                results["from_pretrained_error_type"] = "missing_dependency"
-            else:
-                results["from_pretrained_error_type"] = "other"
-        
-        # Add to overall results
-        self.results[f"from_pretrained_{device}"] = results
-        return results
-    
-    def test_with_openvino(self):
-        """Test the model using OpenVINO integration."""
-        results = {
-            "model": self.model_id,
-            "task": self.task,
-            "class": self.class_name
-        }
-        
-        # Check for OpenVINO support
-        if not HW_CAPABILITIES["openvino"]:
-            results["openvino_error_type"] = "missing_dependency"
-            results["openvino_missing_core"] = ["openvino"]
-            results["openvino_success"] = False
-            return results
-        
-        # Check for transformers
-        if not HAS_TRANSFORMERS:
-            results["openvino_error_type"] = "missing_dependency"
-            results["openvino_missing_core"] = ["transformers"]
-            results["openvino_success"] = False
-            return results
-        
-        try:
-            from optimum.intel import OVModelForMaskedLM
-            logger.info(f"Testing {self.model_id} with OpenVINO...")
-            
-            # Time tokenizer loading
-            tokenizer_load_start = time.time()
-            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
-            tokenizer_load_time = time.time() - tokenizer_load_start
-            
-            # Time model loading
-            model_load_start = time.time()
-            model = OVModelForMaskedLM.from_pretrained(
-                self.model_id,
-                export=True,
-                provider="CPU"
-            )
-            model_load_time = time.time() - model_load_start
-            
-            # Prepare input
-            if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
-                mask_token = tokenizer.mask_token
-                test_input = self.test_text.replace("[MASK]", mask_token)
-            else:
-                test_input = self.test_text
-                
-            inputs = tokenizer(test_input, return_tensors="pt")
-            
-            # Run inference
-            start_time = time.time()
-            outputs = model(**inputs)
-            inference_time = time.time() - start_time
-            
-            # Get predictions
-            if hasattr(tokenizer, "mask_token_id"):
-                mask_token_id = tokenizer.mask_token_id
-                mask_positions = (inputs["input_ids"] == mask_token_id).nonzero()
-                
-                if len(mask_positions) > 0:
-                    mask_index = mask_positions[0][-1].item()
-                    logits = outputs.logits[0, mask_index]
-                    top_k_indices = torch.topk(logits, 5).indices.tolist()
-                    
-                    predictions = []
-                    for idx in top_k_indices:
-                        if hasattr(tokenizer, "convert_ids_to_tokens"):
-                            token = tokenizer.convert_ids_to_tokens(idx)
-                        else:
-                            token = f"token_{idx}"
-                        predictions.append(token)
-                else:
-                    predictions = []
-            else:
-                predictions = []
-            
-            # Store results
-            results["openvino_success"] = True
-            results["openvino_load_time"] = model_load_time
-            results["openvino_inference_time"] = inference_time
-            results["openvino_tokenizer_load_time"] = tokenizer_load_time
-            
-            # Add predictions if available
-            if 'predictions' in locals():
-                results["openvino_predictions"] = predictions
-            
-            results["openvino_error_type"] = "none"
-            
-            # Add to examples
-            example_data = {
-                "method": "OpenVINO inference",
-                "input": str(test_input)
-            }
-            
-            if 'predictions' in locals():
-                example_data["predictions"] = predictions
-            
-            self.examples.append(example_data)
-            
-            # Store in performance stats
-            self.performance_stats["openvino"] = {
-                "inference_time": inference_time,
-                "load_time": model_load_time,
-                "tokenizer_load_time": tokenizer_load_time
-            }
-            
-        except Exception as e:
-            # Store error information
-            results["openvino_success"] = False
-            results["openvino_error"] = str(e)
-            results["openvino_traceback"] = traceback.format_exc()
-            logger.error(f"Error testing with OpenVINO: {e}")
-            
-            # Classify error
-            error_str = str(e).lower()
-            if "no module named" in error_str:
-                results["openvino_error_type"] = "missing_dependency"
-            else:
-                results["openvino_error_type"] = "other"
-        
-        # Add to overall results
-        self.results["openvino"] = results
-        return results
-    
-    def run_tests(self, all_hardware=False):
-        """
-        Run all tests for this model.
+    def __init__(self, model_id="bert-base-uncased", device=None):
+        """Initialize the test class for BERT models.
         
         Args:
-            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
-        
-        Returns:
-            Dict containing test results
+            model_id: The model ID to test (default: "bert-base-uncased")
+            device: The device to run tests on (default: None = auto-select)
         """
-        # Always test on default device
-        self.test_pipeline()
-        self.test_from_pretrained()
+        self.model_id = model_id
+        self.device = device if device else select_device()
+        self.performance_stats = {}
         
-        # Test on all available hardware if requested
-        if all_hardware:
-            # Always test on CPU
-            if self.preferred_device != "cpu":
-                self.test_pipeline(device="cpu")
-                self.test_from_pretrained(device="cpu")
+    def test_pipeline(self):
+        """Test the model using the pipeline API."""
+        try:
+            if not HAS_TRANSFORMERS:
+                logger.warning("Transformers library not available, skipping pipeline test")
+                return {"success": False, "error": "Transformers library not available"}
+                
+            logger.info(f"Testing BERT model {self.model_id} with pipeline API on {self.device}")
             
-            # Test on CUDA if available
-            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
-                self.test_pipeline(device="cuda")
-                self.test_from_pretrained(device="cuda")
+            # Record start time
+            start_time = time.time()
             
-            # Test on OpenVINO if available
-            if HW_CAPABILITIES["openvino"]:
-                self.test_with_openvino()
-        
-        # Build final results
-        return {
-            "results": self.results,
-            "examples": self.examples,
-            "performance": self.performance_stats,
-            "hardware": HW_CAPABILITIES,
-            "metadata": {
-                "model": self.model_id,
-                "task": self.task,
-                "class": self.class_name,
-                "description": self.description,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "has_transformers": HAS_TRANSFORMERS,
-                "has_torch": HAS_TORCH,
-                "has_tokenizers": HAS_TOKENIZERS,
-                "has_sentencepiece": HAS_SENTENCEPIECE
+            # Initialize the pipeline
+            pipe = transformers.pipeline(
+                "fill-mask", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
+            )
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a simple input
+            test_input = "The quick brown fox jumps over the [MASK] dog."
+            
+            # Record inference start time
+            inference_start = time.time()
+            
+            # Run inference
+            outputs = pipe(test_input)
+            
+            # Record inference time
+            inference_time = time.time() - inference_start
+            
+            # Log results
+            if isinstance(outputs, list) and len(outputs) > 0:
+                top_prediction = outputs[0]['token_str'] if isinstance(outputs[0], dict) and 'token_str' in outputs[0] else "N/A"
+                logger.info(f"Top prediction: {top_prediction}")
+                logger.info(f"Inference time: {inference_time:.2f} seconds")
+                
+                # Store performance stats
+                self.performance_stats["pipeline"] = {
+                    "load_time": load_time,
+                    "inference_time": inference_time,
+                    "top_prediction": top_prediction
+                }
+                
+                return {
+                    "success": True,
+                    "model_id": self.model_id,
+                    "device": self.device,
+                    "input": test_input,
+                    "top_prediction": top_prediction,
+                    "performance": {
+                        "load_time": load_time,
+                        "inference_time": inference_time
+                    }
+                }
+            else:
+                logger.error(f"Pipeline returned unexpected output: {outputs}")
+                return {"success": False, "error": "Unexpected output format"}
+                
+        except Exception as e:
+            logger.error(f"Error testing pipeline: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+
+    def test_from_pretrained(self):
+        """Test the model using the from_pretrained API."""
+        try:
+            if not HAS_TRANSFORMERS or not HAS_TORCH:
+                logger.warning("Transformers or torch library not available, skipping from_pretrained test")
+                return {"success": False, "error": "Required libraries not available"}
+                
+            logger.info(f"Testing BERT model {self.model_id} with from_pretrained API on {self.device}")
+            
+            # Record start time
+            start_time = time.time()
+            
+            # Load the model and tokenizer
+            model = transformers.BertForMaskedLM.from_pretrained(self.model_id)
+            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+            
+            # Move the model to the appropriate device
+            model = model.to(self.device)
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a simple input
+            test_input = "The quick brown fox jumps over the [MASK] dog."
+            
+            # Tokenize the input
+            inputs = tokenizer(test_input, return_tensors="pt")
+            
+            # Move inputs to the same device as the model
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            # Record inference start time
+            inference_start = time.time()
+            
+            # Get the position of the [MASK] token
+            mask_token_index = (inputs["input_ids"] == tokenizer.mask_token_id)[0].nonzero(as_tuple=True)[0]
+            
+            # Forward pass
+            with torch.no_grad():
+                outputs = model(**inputs)
+                
+            # Record inference time
+            inference_time = time.time() - inference_start
+            
+            # Get the top prediction
+            logits = outputs.logits
+            mask_token_logits = logits[0, mask_token_index, :]
+            top_tokens = torch.topk(mask_token_logits, 5, dim=1).indices[0].tolist()
+            top_tokens_words = [tokenizer.decode([token]).strip() for token in top_tokens]
+            
+            # Log results
+            logger.info(f"Top predictions: {', '.join(top_tokens_words)}")
+            logger.info(f"Inference time: {inference_time:.2f} seconds")
+            
+            # Store performance stats
+            self.performance_stats["from_pretrained"] = {
+                "load_time": load_time,
+                "inference_time": inference_time,
+                "top_predictions": top_tokens_words
             }
-        }
+            
+            return {
+                "success": True,
+                "model_id": self.model_id,
+                "device": self.device,
+                "input": test_input,
+                "top_predictions": top_tokens_words,
+                "performance": {
+                    "load_time": load_time,
+                    "inference_time": inference_time
+                }
+            }
+                
+        except Exception as e:
+            logger.error(f"Error testing from_pretrained: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+            
+    def test_openvino(self):
+        """Test the model using OpenVINO."""
+        try:
+            if not HAS_OPENVINO:
+                logger.warning("OpenVINO not available, skipping OpenVINO test")
+                return {"success": False, "error": "OpenVINO not available"}
+                
+            if not HAS_TRANSFORMERS:
+                logger.warning("Transformers library not available, skipping OpenVINO test")
+                return {"success": False, "error": "Transformers library not available"}
+                
+            logger.info(f"Testing BERT model {self.model_id} with OpenVINO")
+            
+            # Record start time
+            start_time = time.time()
+            
+            # Load tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+            
+            # Initialize OpenVINO Core and load the model
+            core = Core()
+            model_path = os.path.join("openvino_model", f"{self.model_id.replace('/', '_')}.xml")
+            
+            # Check if optimized model exists, otherwise try to convert
+            if not os.path.exists(model_path):
+                logger.info(f"OpenVINO model not found at {model_path}, attempting to convert")
+                
+                # Create the directory if it doesn't exist
+                os.makedirs(os.path.dirname(model_path), exist_ok=True)
+                
+                # Load the PyTorch model
+                pt_model = transformers.BertForMaskedLM.from_pretrained(self.model_id)
+                
+                # Get example inputs
+                example_input = "The quick brown fox jumps over the [MASK] dog."
+                inputs = tokenizer(example_input, return_tensors="pt")
+                
+                # Convert model to ONNX
+                onnx_path = model_path.replace(".xml", ".onnx")
+                try:
+                    import torch.onnx
+                    torch.onnx.export(
+                        pt_model,
+                        tuple(inputs.values()),
+                        onnx_path,
+                        input_names=list(inputs.keys()),
+                        output_names=["logits"],
+                        dynamic_axes={
+                            key: {0: "batch_size", 1: "sequence_length"} 
+                            for key in inputs.keys()
+                        }
+                    )
+                    logger.info(f"Converted model to ONNX format at {onnx_path}")
+                    
+                    # Convert ONNX to OpenVINO IR
+                    from openvino.tools import mo
+                    model_xml = mo.convert_model(onnx_path)
+                    from openvino.runtime import serialize
+                    serialize(model_xml, model_path)
+                    logger.info(f"Converted ONNX to OpenVINO IR format at {model_path}")
+                except Exception as e:
+                    logger.error(f"Error converting model to OpenVINO format: {e}")
+                    return {"success": False, "error": f"Model conversion failed: {str(e)}"}
+            
+            # Load the optimized model
+            ov_model = core.read_model(model_path)
+            compiled_model = core.compile_model(ov_model, "CPU")
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"OpenVINO model loading time: {load_time:.2f} seconds")
+            
+            # Test with a simple input
+            test_input = "The quick brown fox jumps over the [MASK] dog."
+            
+            # Tokenize the input
+            inputs = tokenizer(test_input, return_tensors="pt")
+            
+            # Convert to numpy arrays
+            inputs_np = {k: v.numpy() for k, v in inputs.items()}
+            
+            # Record inference start time
+            inference_start = time.time()
+            
+            # Get the position of the [MASK] token
+            mask_token_index = np.where(inputs_np["input_ids"][0] == tokenizer.mask_token_id)[0][0]
+            
+            # Forward pass
+            logits = compiled_model(inputs_np)[0]
+            
+            # Record inference time
+            inference_time = time.time() - inference_start
+            
+            # Get the top prediction
+            mask_token_logits = logits[0, mask_token_index, :]
+            top_indices = np.argsort(mask_token_logits)[-5:][::-1]
+            top_tokens_words = [tokenizer.decode([token]) for token in top_indices]
+            
+            # Log results
+            logger.info(f"OpenVINO top predictions: {', '.join(top_tokens_words)}")
+            logger.info(f"OpenVINO inference time: {inference_time:.2f} seconds")
+            
+            # Store performance stats
+            self.performance_stats["openvino"] = {
+                "load_time": load_time,
+                "inference_time": inference_time,
+                "top_predictions": top_tokens_words
+            }
+            
+            return {
+                "success": True,
+                "model_id": self.model_id,
+                "device": "CPU (OpenVINO)",
+                "input": test_input,
+                "top_predictions": top_tokens_words,
+                "performance": {
+                    "load_time": load_time,
+                    "inference_time": inference_time
+                }
+            }
+                
+        except Exception as e:
+            logger.error(f"Error testing with OpenVINO: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
 
-def save_results(model_id, results, output_dir="collected_results"):
-    """Save test results to a file."""
-    # Ensure output directory exists
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Create filename from model ID
-    safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_bert_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    output_path = os.path.join(output_dir, filename)
-    
-    # Save results
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
-    
-    logger.info(f"Saved results to {output_path}")
-    return output_path
-
-def get_available_models():
-    """Get a list of all available BERT models in the registry."""
-    return list(BERT_MODELS_REGISTRY.keys())
-
-def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered BERT models."""
-    models = get_available_models()
-    results = {}
-    
-    for model_id in models:
-        logger.info(f"Testing model: {model_id}")
-        tester = TestBertModels(model_id)
-        model_results = tester.run_tests(all_hardware=all_hardware)
+    def run_tests(self, all_hardware=False):
+        """Run all tests for this model."""
+        results = {}
         
-        # Save individual results
-        save_results(model_id, model_results, output_dir=output_dir)
+        # Run pipeline test
+        pipeline_result = self.test_pipeline()
+        results["pipeline"] = pipeline_result
         
-        # Add to summary
-        results[model_id] = {
-            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values()
-                if r.get("pipeline_success") is not False)
+        # Run from_pretrained test
+        from_pretrained_result = self.test_from_pretrained()
+        results["from_pretrained"] = from_pretrained_result
+        
+        # Run OpenVINO test if requested and available
+        if all_hardware and HAS_OPENVINO:
+            openvino_result = self.test_openvino()
+            results["openvino"] = openvino_result
+        
+        # Determine if real inference or mock objects were used
+        using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+        using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+        
+        # Add metadata
+        results["metadata"] = {
+            "model_id": self.model_id,
+            "device": self.device,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "hardware": {
+                "cuda": HAS_CUDA,
+                "rocm": HAS_ROCM,
+                "openvino": HAS_OPENVINO,
+                "mps": HAS_MPS,
+                "webgpu": HAS_WEBGPU,
+                "webnn": HAS_WEBNN
+            },
+            "dependencies": {
+                "transformers": transformers.__version__ if HAS_TRANSFORMERS else None,
+                "torch": torch.__version__ if HAS_TORCH else None,
+                "numpy": np.__version__
+            },
+            "success": pipeline_result.get("success", False) or from_pretrained_result.get("success", False),
+            "performance": self.performance_stats,
+            "has_transformers": HAS_TRANSFORMERS,
+            "has_torch": HAS_TORCH, 
+            "has_tokenizers": HAS_TOKENIZERS,
+            "has_sentencepiece": HAS_SENTENCEPIECE,
+            "using_real_inference": using_real_inference,
+            "using_mocks": using_mocks,
+            "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
         }
-    
-    # Save summary
-    summary_path = os.path.join(output_dir, f"hf_bert_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-    with open(summary_path, "w") as f:
-        json.dump(results, f, indent=2)
-    
-    logger.info(f"Saved summary to {summary_path}")
-    return results
+        
+        return results
+
+def save_results(results, model_id=None, output_dir="collected_results"):
+    """Save test results to a JSON file."""
+    try:
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate a filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_id = model_id or results.get("metadata", {}).get("model_id", "unknown_model")
+        model_id_safe = model_id.replace("/", "__")
+        filename = f"hf_bert_{model_id_safe}_{timestamp}.json"
+        file_path = os.path.join(output_dir, filename)
+        
+        # Save results to file
+        with open(file_path, "w") as f:
+            json.dump(results, f, indent=2)
+            
+        logger.info(f"Results saved to {file_path}")
+        return file_path
+    except Exception as e:
+        logger.error(f"Error saving results: {e}")
+        return None
 
 def main():
-    """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test BERT-family models")
-    
-    # Model selection
-    model_group = parser.add_mutually_exclusive_group()
-    model_group.add_argument("--model", type=str, help="Specific model to test")
-    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
-    
-    # Hardware options
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Test BERT HuggingFace models")
+    parser.add_argument("--model", type=str, default="bert-base-uncased", help="Model ID to test")
+    parser.add_argument("--device", type=str, help="Device to run tests on (cuda, cpu, mps)")
     parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
-    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
-    
-    # Output options
-    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
-    parser.add_argument("--save", action="store_true", help="Save results to file")
-    
-    # List options
-    parser.add_argument("--list-models", action="store_true", help="List all available models")
+    parser.add_argument("--save", action="store_true", help="Save results to JSON file")
+    parser.add_argument("--list-models", action="store_true", help="List available BERT models")
     
     args = parser.parse_args()
     
     # List models if requested
     if args.list_models:
-        models = get_available_models()
-        print("\nAvailable BERT-family models:")
-        for model in models:
-            info = BERT_MODELS_REGISTRY[model]
-            print(f"  - {model} ({info['class']}): {info['description']}")
+        print("\nAvailable BERT models:")
+        for model_id, info in BERT_MODELS_REGISTRY.items():
+            print(f"  - {model_id} ({info['full_name']})")
+            print(f"      Parameters: {info['parameters']}, Embedding: {info['embedding_dim']}, Context: {info['context_length']}")
+            print(f"      Description: {info['description']}")
+            print()
         return
     
-    # Create output directory if needed
-    if args.save and not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir, exist_ok=True)
+    # Initialize the test class
+    bert_tester = TestBertModels(model_id=args.model, device=args.device)
     
-    # Test all models if requested
-    if args.all_models:
-        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
-        
-        # Print summary
-        print("\nBERT Models Testing Summary:")
-        total = len(results)
-        successful = sum(1 for r in results.values() if r["success"])
-        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
-        return
+    # Run the tests
+    results = bert_tester.run_tests(all_hardware=args.all_hardware)
     
-    # Test single model (default or specified)
-    model_id = args.model or "bert-base-uncased"
-    logger.info(f"Testing model: {model_id}")
+    # Print a summary
+    print("\n" + "="*50)
+    print("TEST RESULTS SUMMARY")
+    print("="*50)
     
-    # Override preferred device if CPU only
-    if args.cpu_only:
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    # Indicate real vs mock inference clearly
+    using_real_inference = results["metadata"]["using_real_inference"]
+    using_mocks = results["metadata"]["using_mocks"]
     
-    # Run test
-    tester = TestBertModels(model_id)
-    results = tester.run_tests(all_hardware=args.all_hardware)
+    if using_real_inference and not using_mocks:
+        print(f"🚀 Using REAL INFERENCE with actual models")
+    else:
+        print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
+        print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+    
+    print(f"\nModel: {args.model}")
+    print(f"Device: {bert_tester.device}")
+    
+    # Pipeline results
+    pipeline_success = results["pipeline"].get("success", False)
+    print(f"\nPipeline Test: {'✅ Success' if pipeline_success else '❌ Failed'}")
+    if pipeline_success:
+        top_prediction = results["pipeline"].get("top_prediction", "N/A")
+        inference_time = results["pipeline"].get("performance", {}).get("inference_time", "N/A")
+        print(f"  - Top prediction: {top_prediction}")
+        print(f"  - Inference time: {inference_time:.2f} seconds" if isinstance(inference_time, (int, float)) else f"  - Inference time: {inference_time}")
+    else:
+        error = results["pipeline"].get("error", "Unknown error")
+        print(f"  - Error: {error}")
+    
+    # from_pretrained results
+    from_pretrained_success = results["from_pretrained"].get("success", False)
+    print(f"\nFrom Pretrained Test: {'✅ Success' if from_pretrained_success else '❌ Failed'}")
+    if from_pretrained_success:
+        top_predictions = results["from_pretrained"].get("top_predictions", ["N/A"])
+        inference_time = results["from_pretrained"].get("performance", {}).get("inference_time", "N/A")
+        print(f"  - Top predictions: {', '.join(top_predictions[:3])}")
+        print(f"  - Inference time: {inference_time:.2f} seconds" if isinstance(inference_time, (int, float)) else f"  - Inference time: {inference_time}")
+    else:
+        error = results["from_pretrained"].get("error", "Unknown error")
+        print(f"  - Error: {error}")
+    
+    # OpenVINO results if available
+    if "openvino" in results:
+        openvino_success = results["openvino"].get("success", False)
+        print(f"\nOpenVINO Test: {'✅ Success' if openvino_success else '❌ Failed'}")
+        if openvino_success:
+            top_predictions = results["openvino"].get("top_predictions", ["N/A"])
+            inference_time = results["openvino"].get("performance", {}).get("inference_time", "N/A")
+            print(f"  - Top predictions: {', '.join(top_predictions[:3])}")
+            print(f"  - Inference time: {inference_time:.2f} seconds" if isinstance(inference_time, (int, float)) else f"  - Inference time: {inference_time}")
+        else:
+            error = results["openvino"].get("error", "Unknown error")
+            print(f"  - Error: {error}")
     
     # Save results if requested
     if args.save:
-        save_results(model_id, results, output_dir=args.output_dir)
+        file_path = save_results(results, args.model)
+        if file_path:
+            print(f"\nResults saved to {file_path}")
     
-    # Print summary
-    success = any(r.get("pipeline_success", False) for r in results["results"].values()
-        if r.get("pipeline_success") is not False)
-    
-    print("\nTEST RESULTS SUMMARY:")
-    if success:
-        print(f"✅ Successfully tested {model_id}")
-        
-        # Print performance highlights
-        for device, stats in results["performance"].items():
-            if "avg_time" in stats:
-                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
-        
-        # Print example outputs if available
-        if results.get("examples") and len(results["examples"]) > 0:
-            print("\nExample output:")
-            example = results["examples"][0]
-            if "predictions" in example:
-                print(f"  Input: {example['input']}")
-                print(f"  Predictions: {example['predictions']}")
-            elif "output_preview" in example:
-                print(f"  Input: {example['input']}")
-                print(f"  Output: {example['output_preview']}")
-    else:
-        print(f"❌ Failed to test {model_id}")
-        
-        # Print error information
-        for test_name, result in results["results"].items():
-            if "pipeline_error" in result:
-                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
-                print(f"    {result.get('pipeline_error', 'Unknown error')}")
-    
-    print("\nFor detailed results, use --save flag and check the JSON output file.")
+    print(f"\nSuccessfully tested BERT model: {args.model}")
 
 if __name__ == "__main__":
     main()

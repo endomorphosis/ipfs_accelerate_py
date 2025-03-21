@@ -1,0 +1,630 @@
+#\!/usr/bin/env python3
+
+# Import hardware detection capabilities if available
+try:
+    from generators.hardware.hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
+
+import os
+import sys
+import json
+import time
+import datetime
+import traceback
+import logging
+import argparse
+import re
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
+
+# Define architecture types for model mapping
+ARCHITECTURE_TYPES = {
+    "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta"],
+    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt"],
+    "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
+    "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2"],
+    "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip"],
+    "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5"],
+    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava"]
+}
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Forward declarations for indentation fixing functions
+def fix_class_method_indentation(content):
+    """Fix indentation issues in class methods."""
+    return content
+
+def fix_test_indentation(template_content):
+    """Fix indentation issues in generated test files."""
+    try:
+        # Apply all indentation fixes
+        fixed_content = fix_class_method_indentation(template_content)
+        
+        # Normalize excessive spacing
+        fixed_content = re.sub(r'\n\s*\n\s*\n', '\n\n', fixed_content)
+        
+        return fixed_content
+    except Exception as e:
+        logger.error(f"Error applying indentation fixes: {e}")
+        # Return original content if fixing fails
+        return template_content
+
+# Constants
+CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+PARENT_DIR = CURRENT_DIR.parent
+RESULTS_DIR = CURRENT_DIR / "collected_results"
+EXPECTED_DIR = CURRENT_DIR / "expected_results"
+TEMPLATES_DIR = CURRENT_DIR / "templates"
+
+# Model Registry - Maps model families to their configurations
+MODEL_REGISTRY = {
+    "bert": {
+        "family_name": "BERT",
+        "description": "BERT-family masked language models",
+        "default_model": "bert-base-uncased",
+        "class": "BertForMaskedLM",
+        "test_class": "TestBertModels",
+        "module_name": "test_hf_bert",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "The quick brown fox jumps over the [MASK] dog."
+        }
+    },
+    "gpt2": {
+        "family_name": "GPT-2",
+        "description": "GPT-2 autoregressive language models",
+        "default_model": "gpt2",
+        "class": "GPT2LMHeadModel",
+        "test_class": "TestGPT2Models",
+        "module_name": "test_hf_gpt2",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "GPT-2 is a transformer model that"
+        },
+        "task_specific_args": {
+            "text-generation": {
+                "max_length": 50,
+                "min_length": 20
+            }
+        }
+    },
+    "t5": {
+        "family_name": "T5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "T5ForConditionalGeneration",
+        "test_class": "TestT5Models",
+        "module_name": "test_hf_t5",
+        "tasks": ["text2text-generation"],
+        "inputs": {
+            "text": "translate English to German: The house is wonderful."
+        },
+        "task_specific_args": {
+            "text2text-generation": {
+                "max_length": 50
+            }
+        }
+    },
+    "vit": {
+        "family_name": "ViT",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "ViTForImageClassification",
+        "test_class": "TestVitModels",
+        "module_name": "test_hf_vit",
+        "tasks": ["image-classification"],
+        "inputs": {}
+    }
+}
+
+# Class name capitalization fixes
+CLASS_NAME_FIXES = {
+    "VitForImageClassification": "ViTForImageClassification",
+    "SwinForImageClassification": "SwinForImageClassification",
+    "DeitForImageClassification": "DeiTForImageClassification",
+    "BeitForImageClassification": "BEiTForImageClassification",
+    "ConvnextForImageClassification": "ConvNextForImageClassification",
+    "Gpt2LMHeadModel": "GPT2LMHeadModel",
+    "GptjForCausalLM": "GPTJForCausalLM",
+    "GptneoForCausalLM": "GPTNeoForCausalLM"
+}
+
+def get_architecture_type(model_type):
+    """Determine architecture type based on model type."""
+    model_type_lower = model_type.lower()
+    for arch_type, models in ARCHITECTURE_TYPES.items():
+        if any(model in model_type_lower for model in models):
+            return arch_type
+    return "encoder-only"  # Default to encoder-only if unknown
+
+def get_template_for_architecture(model_type, templates_dir="templates"):
+    """Get the template path for a specific model type's architecture."""
+    arch_type = get_architecture_type(model_type)
+    
+    template_map = {
+        "encoder-only": os.path.join(templates_dir, "encoder_only_template.py"),
+        "decoder-only": os.path.join(templates_dir, "decoder_only_template.py"),
+        "encoder-decoder": os.path.join(templates_dir, "encoder_decoder_template.py"),
+        "vision": os.path.join(templates_dir, "vision_template.py"),
+        "vision-text": os.path.join(templates_dir, "vision_text_template.py"),
+        "speech": os.path.join(templates_dir, "speech_template.py"),
+        "multimodal": os.path.join(templates_dir, "multimodal_template.py")
+    }
+    
+    template_path = template_map.get(arch_type)
+    if not template_path or not os.path.exists(template_path):
+        logger.warning(f"Template not found for {arch_type}, using encoder-only template")
+        fallback_template = os.path.join(templates_dir, "encoder_only_template.py")
+        if not os.path.exists(fallback_template):
+            logger.error(f"Fallback template not found: {fallback_template}")
+            return None
+        return fallback_template
+        
+    return template_path
+
+def generate_test_file(model_family, output_dir="."):
+    """Generate a test file for a model family."""
+    # Check if the model family exists in the registry
+    if model_family not in MODEL_REGISTRY:
+        logger.error(f"Model family '{model_family}' not found in registry")
+        return False
+    
+    # Get model configuration from registry
+    model_config = MODEL_REGISTRY[model_family]
+    module_name = model_config.get("module_name", f"test_hf_{model_family}")
+    test_class = model_config.get("test_class", f"Test{model_family.upper()}Models")
+    default_model = model_config.get("default_model", f"{model_family}-base")
+    tasks = model_config.get("tasks", ["text-generation"])
+    inputs = model_config.get("inputs", {})
+    
+    # Get architecture-specific template
+    template_path = get_template_for_architecture(model_family)
+    if not template_path:
+        logger.error(f"Could not find template for {model_family}")
+        return False
+        
+    logger.info(f"Using template: {os.path.basename(template_path)} for {model_family}")
+    
+    try:
+        with open(template_path, "r") as f:
+            template = f.read()
+        
+        # Prepare replacements
+        model_capitalized = model_family.capitalize()
+        model_upper = model_family.upper()
+        default_task = tasks[0] if tasks else "fill-mask"
+        
+        # Make replacements based on model type
+        replacements = {
+            # Replace registry name
+            "BERT_MODELS_REGISTRY": f"{model_upper}_MODELS_REGISTRY",
+            "VIT_MODELS_REGISTRY": f"{model_upper}_MODELS_REGISTRY",
+            
+            # Replace class names
+            "TestBertModels": test_class,
+            "TestVitModels": test_class,
+            
+            # Replace model types
+            "bert-base-uncased": default_model,
+            "google/vit-base-patch16-224": default_model,
+            
+            # Replace class identifiers
+            "BERT": model_upper,
+            "ViT": model_capitalized,
+            
+            # Replace lowercase identifiers
+            "bert": model_family,
+            "vit": model_family,
+            
+            # Replace tasks
+            "fill-mask": default_task
+        }
+        
+        # Create the test content with replacements
+        content = template
+        for old, new in replacements.items():
+            content = content.replace(old, new)
+        
+        # Apply indentation fixing
+        content = fix_test_indentation(content)
+        
+        # Ensure the output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Write the test file
+        output_file = os.path.join(output_dir, f"{module_name}.py")
+        with open(output_file, "w") as f:
+            f.write(content)
+        
+        logger.info(f"Generated test file: {output_file}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error generating test file for {model_family}: {e}")
+        traceback.print_exc()
+        return False
+
+def list_model_families():
+    """List all available model families in the registry."""
+    families = sorted(MODEL_REGISTRY.keys())
+    print("\nAvailable model families:")
+    for family in families:
+        config = MODEL_REGISTRY[family]
+        arch_type = get_architecture_type(family)
+        print(f"  - {family} ({config['family_name']}): {config['description']} [Architecture: {arch_type}]")
+    print()
+    return families
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Generate HuggingFace model test files")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--list-families", action="store_true", help="List available model families")
+    group.add_argument("--generate", type=str, help="Generate test for a specific model family")
+    group.add_argument("--all", action="store_true", help="Generate tests for all model families")
+    
+    parser.add_argument("--output-dir", type=str, default="fixed_tests", help="Output directory for test files")
+    parser.add_argument("--verify", action="store_true", help="Verify syntax of generated tests")
+    
+    args = parser.parse_args()
+    
+    if args.list_families:
+        list_model_families()
+        return 0
+    
+    if args.all:
+        families = MODEL_REGISTRY.keys()
+        success_count = 0
+        fail_count = 0
+        
+        for family in families:
+            logger.info(f"Generating test for {family}...")
+            success = generate_test_file(family, args.output_dir)
+            
+            if success:
+                success_count += 1
+            else:
+                fail_count += 1
+        
+        logger.info(f"Generated {success_count} test files successfully, {fail_count} failed")
+        return 0 if fail_count == 0 else 1
+    
+    if args.generate:
+        family = args.generate
+        success = generate_test_file(family, args.output_dir)
+        
+        if args.verify and success:
+            output_file = os.path.join(args.output_dir, f"test_hf_{family}.py")
+            try:
+                with open(output_file, "r") as f:
+                    code = f.read()
+                compile(code, output_file, "exec")
+                logger.info(f"✅ {output_file}: Syntax is valid")
+            except SyntaxError as e:
+                logger.error(f"❌ {output_file}: Syntax error: {e}")
+                return 1
+        
+        return 0 if success else 1
+
+# Indentation fixing utilities - full implementation
+def apply_indentation(code, base_indent=0):
+    """Apply consistent indentation to code blocks."""
+    # Split the code into lines
+    lines = code.strip().split('\n')
+    
+    # Determine the minimum indentation of non-empty lines
+    min_indent = float('inf')
+    for line in lines:
+        if line.strip():  # Skip empty lines
+            leading_spaces = len(line) - len(line.lstrip())
+            min_indent = min(min_indent, leading_spaces)
+    
+    # If no indentation found, set to 0
+    if min_indent == float('inf'):
+        min_indent = 0
+    
+    # Remove the minimum indentation from all lines and add the base indentation
+    indented_lines = []
+    indent_spaces = ' ' * base_indent
+    
+    for line in lines:
+        if line.strip():  # If not an empty line
+            # Remove original indentation and add new base indentation
+            indented_line = indent_spaces + line[min_indent:]
+            indented_lines.append(indented_line)
+        else:
+            # For empty lines, just add base indentation
+            indented_lines.append(indent_spaces)
+    
+    # Join the lines back into a single string
+    return '\n'.join(indented_lines)
+
+def fix_method_boundaries(content):
+    """Fix method boundaries to ensure proper spacing and indentation."""
+    # First add proper spacing between methods
+    content = content.replace("        return results\n    def ", "        return results\n\n    def ")
+    
+    # Make sure __init__ has correct spacing after it
+    content = content.replace("        self.performance_stats = {}\n    def ", "        self.performance_stats = {}\n\n    def ")
+        
+    # Place all method declarations at the right indentation level
+    content = re.sub(r'(\s+)def test_pipeline\(', r'    def test_pipeline(', content)
+    content = re.sub(r'(\s+)def test_from_pretrained\(', r'    def test_from_pretrained(', content)
+    content = re.sub(r'(\s+)def run_tests\(', r'    def run_tests(', content)
+    
+    # Fix any other methods (save_results, main, etc.)
+    content = re.sub(r'^(\s*)def ([^(]+)\(', r'def \2(', content, flags=re.MULTILINE)
+    
+    return content
+
+def extract_method(content, method_name):
+    """Extract a method from the class content."""
+    # Find the method definition
+    pattern = re.compile(rf'(\s+)def {method_name}\([^)]*\):(.*?)(?=\s+def|\Z)', re.DOTALL)
+    match = pattern.search(content)
+    
+    if match:
+        return match.group(0)
+    return None
+
+def fix_method_content(method_text, method_name):
+    """Fix the indentation of a method's content."""
+    # Normalize method indentation first
+    lines = method_text.split('\n')
+    method_lines = []
+    
+    # First line should be the method definition with exactly 4 spaces
+    if lines and lines[0].strip().startswith(f"def {method_name}"):
+        method_lines.append(f"    def {method_name}" + lines[0].strip()[4 + len(method_name):])
+    else:
+        # If we can't find the method definition, return unchanged
+        return method_text
+    
+    # Process the remaining lines with proper indentation for method body
+    i = 1
+    in_docstring = False
+    
+    while i < len(lines):
+        line = lines[i].rstrip()
+        stripped = line.strip()
+        
+        # Skip empty lines
+        if not stripped:
+            method_lines.append("")
+            i += 1
+            continue
+        
+        # Handle docstrings
+        if stripped.startswith('"""') and stripped.endswith('"""') and len(stripped) > 3:
+            # Single line docstring
+            method_lines.append("        " + stripped)
+            i += 1
+            continue
+        elif stripped.startswith('"""'):
+            # Start of multi-line docstring
+            method_lines.append("        " + stripped)
+            in_docstring = True
+            i += 1
+            continue
+        elif stripped.endswith('"""') and in_docstring:
+            # End of multi-line docstring
+            method_lines.append("        " + stripped)
+            in_docstring = False
+            i += 1
+            continue
+        elif in_docstring:
+            # Inside multi-line docstring
+            method_lines.append("        " + stripped)
+            i += 1
+            continue
+        
+        # Handle method body with 8 spaces base indentation
+        if stripped.startswith("if ") or stripped.startswith("for ") or stripped.startswith("while ") or \
+           stripped.startswith("try:") or stripped.startswith("except ") or stripped.startswith("else:") or \
+           stripped.startswith("elif ") or stripped.startswith("with ") or stripped.startswith("class "):
+            # Control flow statements at 8 spaces
+            method_lines.append("        " + stripped)
+        elif stripped.startswith("return "):
+            # Return statements at 8 spaces
+            method_lines.append("        " + stripped)
+        elif stripped.startswith(("self.", "results[", "logger.")):
+            # Method level variable access at 8 spaces
+            method_lines.append("        " + stripped)
+        elif stripped.startswith("#"):
+            # Comments at same level as surrounding code
+            method_lines.append("        " + stripped)
+        elif stripped in ["pass", "continue", "break"]:
+            # Simple statements at 8 spaces
+            method_lines.append("        " + stripped)
+        elif "=" in stripped and not stripped.startswith(" "):
+            # Variable assignments at 8 spaces
+            method_lines.append("        " + stripped)
+        elif stripped.startswith(("(", "[", "{")) or stripped.endswith((")", "]", "}")):
+            # Collection literals or continuations at 8 spaces
+            method_lines.append("        " + stripped)
+        else:
+            # Most nested blocks at 12 spaces
+            # This is a heuristic that can be improved
+            method_lines.append("            " + stripped)
+        
+        i += 1
+    
+    return "\n".join(method_lines)
+
+def fix_dependency_checks(content):
+    """Fix indentation in dependency check blocks."""
+    # Fix dependency checks indentation to 8 spaces inside methods
+    content = re.sub(r'(\s+)if not HAS_(\w+):', r'        if not HAS_\2:', content)
+    
+    # Fix returns in dependency checks
+    content = re.sub(r'(\s+)return results', r'        return results', content)
+    
+    return content
+
+def fix_imports(content):
+    """Fix import section indentation."""
+    # Make all top-level imports properly unindented
+    lines = content.split('\n')
+    fixed_lines = []
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(('import ', 'from ')):
+            # Top-level imports should have no indentation
+            fixed_lines.append(stripped)
+        elif stripped.startswith(('try:', 'except ')):
+            # Try/except blocks around imports should have no indentation
+            fixed_lines.append(stripped)
+        else:
+            fixed_lines.append(line)
+    
+    return '\n'.join(fixed_lines)
+
+def fix_mock_definitions(content):
+    """Fix mock class definitions indentation."""
+    # Fix indentation of mock classes
+    mock_classes = re.findall(r'(\s+)class Mock(\w+):', content)
+    for indent, class_name in mock_classes:
+        # Replace with proper indentation (4 spaces for class inside a conditional block)
+        content = content.replace(f"{indent}class Mock{class_name}:", f"    class Mock{class_name}:")
+    
+    return content
+
+def fix_try_except_blocks(content):
+    """Fix try/except block indentation."""
+    # Find all try blocks and properly indent their content
+    try_pattern = re.compile(r'(\s+)try:(.*?)(\s+)except', re.DOTALL)
+    
+    def fix_try_block(match):
+        indent = match.group(1)
+        block_content = match.group(2)
+        except_indent = match.group(3)
+        
+        # Normalize the block content indentation
+        fixed_block = apply_indentation(block_content, len(indent) + 4)
+        
+        return f"{indent}try:{fixed_block}\n{except_indent}except"
+    
+    content = try_pattern.sub(fix_try_block, content)
+    
+    # Fix except blocks with similar approach
+    except_pattern = re.compile(r'(\s+)except.*?:(.*?)(?=\s+(?:try:|except|else:|finally:|def|$))', re.DOTALL)
+    
+    def fix_except_block(match):
+        indent = match.group(1)
+        block_content = match.group(2)
+        
+        # Normalize the block content indentation
+        fixed_block = apply_indentation(block_content, len(indent) + 4)
+        
+        return f"{indent}except Exception:{fixed_block}"
+    
+    content = except_pattern.sub(fix_except_block, content)
+    
+    return content
+
+def fix_if_blocks(content):
+    """Fix if/else block indentation."""
+    # Find all if blocks and properly indent their content
+    if_pattern = re.compile(r'(\s+)if\s+.*?:(.*?)(?=\s+(?:elif|else:|try:|except|def|$))', re.DOTALL)
+    
+    def fix_if_block(match):
+        indent = match.group(1)
+        block_content = match.group(2)
+        
+        # Normalize the block content indentation
+        fixed_block = apply_indentation(block_content, len(indent) + 4)
+        
+        return f"{indent}if{fixed_block}"
+    
+    content = if_pattern.sub(fix_if_block, content)
+    
+    # Fix else blocks with similar approach
+    else_pattern = re.compile(r'(\s+)else:(.*?)(?=\s+(?:try:|except|def|if|$))', re.DOTALL)
+    
+    def fix_else_block(match):
+        indent = match.group(1)
+        block_content = match.group(2)
+        
+        # Normalize the block content indentation
+        fixed_block = apply_indentation(block_content, len(indent) + 4)
+        
+        return f"{indent}else:{fixed_block}"
+    
+    content = else_pattern.sub(fix_else_block, content)
+    
+    return content
+
+def fix_class_method_indentation(content):
+    """Fix indentation issues in class methods."""
+    # Fix top-level imports and class definitions
+    content = fix_imports(content)
+    
+    # Find the class definition(s)
+    class_matches = re.finditer(r'class\s+(\w+):', content)
+    
+    for class_match in class_matches:
+        class_name = class_match.group(1)
+        class_start_pos = class_match.start()
+        
+        # Find all methods of this class 
+        # This looks for methods until another class definition or EOF
+        class_content_pattern = re.compile(r'class\s+' + class_name + r':(.*?)(?=class\s+\w+:|$)', re.DOTALL)
+        class_content_match = class_content_pattern.search(content, class_start_pos)
+        
+        if not class_content_match:
+            logger.warning(f"Could not extract content for class {class_name}")
+            continue
+        
+        class_content = class_content_match.group(1)
+        
+        # Fix method indentation for common methods
+        for method_name in ['__init__', 'test_pipeline', 'test_from_pretrained', 'run_tests']:
+            method_text = extract_method(class_content, method_name)
+            if method_text:
+                fixed_method = fix_method_content(method_text, method_name)
+                class_content = class_content.replace(method_text, fixed_method)
+        
+        # Fix dependency checks in methods
+        class_content = fix_dependency_checks(class_content)
+        
+        # Fix mock class definitions inside the class
+        class_content = fix_mock_definitions(class_content)
+        
+        # Fix try/except blocks
+        class_content = fix_try_except_blocks(class_content)
+        
+        # Fix if/else blocks
+        class_content = fix_if_blocks(class_content)
+        
+        # Fix spacing between methods
+        class_content = fix_method_boundaries(class_content)
+        
+        # Replace the original class content with fixed content
+        content = content[:class_start_pos] + "class " + class_name + ":" + class_content + content[class_content_match.end():]
+    
+    # Fix indentation of utility functions and main function
+    for func_match in re.finditer(r'def\s+(\w+)\s*\(', content):
+        func_name = func_match.group(1)
+        if func_name not in ['__init__', 'test_pipeline', 'test_from_pretrained', 'run_tests']:
+            func_pattern = re.compile(r'def\s+' + func_name + r'\s*\(.*?\):(.*?)(?=def\s+\w+\s*\(|$)', re.DOTALL)
+            func_match = func_pattern.search(content, func_match.start())
+            if func_match:
+                func_text = func_match.group(0)
+                fixed_func = apply_indentation(func_text, 0)  # Top-level functions have 0 indentation
+                content = content.replace(func_text, fixed_func)
+    
+    return content
+
+if __name__ == "__main__":
+    sys.exit(main())
