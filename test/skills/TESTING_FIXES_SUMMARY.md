@@ -178,13 +178,24 @@ See `NEXT_STEPS.md` for the detailed roadmap. Current status:
    - Visualizes model coverage, hardware compatibility, and performance metrics
    - Integrates with DuckDB for historical data analysis
    - Includes real-time monitoring capabilities and trend analysis
+
+4. **Model Hub Benchmark Publisher** (`publish_model_benchmarks.py`):
+   - Extracts benchmark data from DuckDB database
+   - Formats metrics according to HuggingFace Hub requirements
+   - Publishes benchmarks to model cards using the HuggingFace Hub API
+   - Generates standardized performance badges for models
+   - Creates detailed benchmark tables with comparative metrics
+   - Supports local report generation for review before publishing
+   - Integrates with CI/CD for automated updates
    
-4. **Enhanced Documentation and Reporting**:
+5. **Enhanced Documentation and Reporting**:
    - Comprehensive compatibility reports
    - Performance analysis with bottleneck identification
    - Test coverage visualization
    - Model architecture categorization
    - Interactive charts for data exploration
+   - Benchmark publishing documentation
+   - Quick start guide for all components
 
 ## Related Documentation
 

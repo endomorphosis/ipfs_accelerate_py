@@ -1,0 +1,92 @@
+name: HuggingFace Benchmark Publisher
+
+on:
+  # Run on schedule (weekly)
+  schedule:
+    - cron: '0 0 * * 0'  # Run at midnight UTC every Sunday
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Specific model to benchmark (leave empty for all)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run (no publishing)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  publish-benchmarks:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install duckdb pandas huggingface_hub
+        # Install other dependencies for hardware testing
+        pip install torch transformers tokenizers
+        # Additional dependencies for dashboard and metrics
+        pip install plotly dash
+      
+    - name: Generate hardware compatibility matrix
+      run: |
+        cd test/skills
+        python create_hardware_compatibility_matrix.py --all
+        
+    - name: Run benchmark publisher
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        cd test/skills
+        
+        # Handle model parameter
+        if [ -n "${{ github.event.inputs.model }}" ]; then
+          MODEL_PARAM="--model ${{ github.event.inputs.model }}"
+        else
+          MODEL_PARAM=""
+        fi
+        
+        # Handle dry run parameter
+        if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+          DRY_RUN_PARAM="--dry-run"
+        else
+          DRY_RUN_PARAM=""
+        fi
+        
+        # Run benchmark publisher
+        python publish_model_benchmarks.py $MODEL_PARAM $DRY_RUN_PARAM
+        
+    - name: Archive results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-reports
+        path: |
+          test/skills/benchmark_reports
+          test/skills/*.log
+          test/skills/hardware_compatibility_matrix.duckdb
+        retention-days: 14
+        
+    - name: Generate dashboard
+      run: |
+        cd test/skills
+        python create_test_dashboard.py --static --output-dir dashboard
+        
+    - name: Deploy dashboard
+      uses: peaceiris/actions-gh-pages@v3
+      if: github.ref == 'refs/heads/main'
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./test/skills/dashboard
+        destination_dir: benchmark-dashboard
