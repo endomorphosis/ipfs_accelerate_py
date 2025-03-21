@@ -5,21 +5,20 @@ import json
 import tempfile
 from unittest.mock import MagicMock, patch, patch
 
-sys.path.append())))))))))))))))))))))))))))))os.path.join())))))))))))))))))))))))))))))os.path.dirname())))))))))))))))))))))))))))))os.path.dirname())))))))))))))))))))))))))))))os.path.dirname())))))))))))))))))))))))))))))__file__))), 'ipfs_accelerate_py'))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
 from ipfs_accelerate_py.api_backends import apis, openai_api
 
 class test_openai_api:
-    def __init__())))))))))))))))))))))))))))))self, resources=None, metadata=None):
-        self.resources = resources if resources else {}}}}}}}
-        self.metadata = metadata if metadata else {}}}}}}:
+    def __init__(self, resources=None, metadata=None):
+        self.resources = resources if resources else {}
+        self.metadata = metadata if metadata else {
             "tokens_per_word": 4,
             "max_tokens": 2048,
-            "openai_api_key": os.environ.get())))))))))))))))))))))))))))))'OPENAI_API_KEY', '')
+            "openai_api_key": os.environ.get('OPENAI_API_KEY', '')
             }
-            self.openai_api = openai_api())))))))))))))))))))))))))))))resources=self.resources, metadata=self.metadata)
-        return None
+        self.openai_api = openai_api(resources=self.resources, metadata=self.metadata)
     
-    def test())))))))))))))))))))))))))))))self):
+    def test(self):
         """Run comprehensive tests for the OpenAI API backend"""
         results = {}}}}}}}
         

@@ -1,0 +1,34 @@
+<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
+2025-03-20 20:07:35,192 - WARNING - torch not available, using mock
+2025-03-20 20:07:37,225 - INFO - CUDA detection skipped (torch not available)
+2025-03-20 20:07:37,225 - INFO - MPS detection skipped (torch not available)
+2025-03-20 20:07:37,226 - INFO - Testing BERT model bert-base-uncased with pipeline API on cpu
+BertForMaskedLM has generative capabilities, as `prepare_inputs_for_generation` is explicitly overwritten. However, it doesn't directly inherit from `GenerationMixin`. From 👉v4.50👈 onwards, `PreTrainedModel` will NOT inherit from `GenerationMixin`, and this model will lose the ability to call `generate` and other related functions.
+  - If you're using `trust_remote_code=True`, you can get rid of this warning by loading the model with an auto class. See https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes
+  - If you are the owner of the model architecture code, please modify your model class such that it inherits from `GenerationMixin` (after `PreTrainedModel`, otherwise you'll get an exception).
+  - If you are not the owner of the model architecture class, please contact the model code owner to update it.
+Some weights of the model checkpoint at bert-base-uncased were not used when initializing BertForMaskedLM: ['bert.pooler.dense.bias', 'bert.pooler.dense.weight', 'cls.seq_relationship.bias', 'cls.seq_relationship.weight']
+- This IS expected if you are initializing BertForMaskedLM from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing BertForMaskedLM from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+2025-03-20 20:07:40,494 - INFO - Model loading time: 3.27 seconds
+2025-03-20 20:07:40,565 - INFO - Top prediction: little
+2025-03-20 20:07:40,565 - INFO - Inference time: 0.07 seconds
+2025-03-20 20:07:40,588 - WARNING - Transformers or torch library not available, skipping from_pretrained test
+
+==================================================
+TEST RESULTS SUMMARY
+==================================================
+[34m🔷 Using MOCK OBJECTS for CI/CD testing only[0m
+   Dependencies: transformers=True, torch=False, tokenizers=True, sentencepiece=True
+
+Model: bert-base-uncased
+Device: cpu
+
+Pipeline Test: ✅ Success
+  - Top prediction: little
+  - Inference time: 0.07 seconds
+
+From Pretrained Test: ❌ Failed
+  - Error: Required libraries not available
+
+Successfully tested BERT model: bert-base-uncased

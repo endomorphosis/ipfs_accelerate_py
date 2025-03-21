@@ -397,12 +397,52 @@ def generate_report(results_file: str = None) -> str:
             data = json.load(f)
             results = data["results"]
     
+    # Try to determine if tests used real inference or mocks
+    mock_indicator = False
+    real_indicator = False
+    
+    # Look for any indicators in stdout
+    for result in results:
+        stdout = result.get("stdout", "")
+        if "USING MOCK OBJECTS" in stdout or "🔷 Using MOCK OBJECTS" in stdout:
+            mock_indicator = True
+        if "REAL INFERENCE" in stdout or "🚀 Using REAL INFERENCE" in stdout:
+            real_indicator = True
+    
     # Generate report
     report_lines = [
         f"# Comprehensive HuggingFace Model Testing Report",
         f"",
         f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"",
+    ]
+    
+    # Add test environment information
+    if mock_indicator:
+        report_lines.extend([
+            f"## ⚠️ Test Environment",
+            f"",
+            f"**WARNING: Some or all tests used MOCK OBJECTS instead of real inference!**",
+            f"",
+            f"- This is typically seen in CI/CD environments without all dependencies",
+            f"- Results may not reflect actual model performance or accuracy",
+            f"- Mock objects return predefined values and do not perform real computation",
+            f"- Consider running tests in an environment with all required dependencies installed",
+            f""
+        ])
+    elif real_indicator:
+        report_lines.extend([
+            f"## ✅ Test Environment",
+            f"",
+            f"**All tests used REAL INFERENCE with actual models**",
+            f"",
+            f"- Tests performed actual inference with real models and dependencies",
+            f"- Results reflect true performance characteristics",
+            f"- Performance measurements are valid indicators of actual performance",
+            f""
+        ])
+    
+    report_lines.extend([
         f"## Summary",
         f"",
         f"- Total tests: {len(results)}",
@@ -412,7 +452,7 @@ def generate_report(results_file: str = None) -> str:
         f"",
         f"## Results by Hardware",
         f"",
-    ]
+    ])
     
     # Group results by hardware
     results_by_hardware = {}
@@ -642,11 +682,32 @@ def main():
     successful_tests = sum(1 for r in results if r.get("success", False))
     failed_tests = total_tests - successful_tests
     
+    # Try to determine if tests used real inference or mocks
+    mock_indicator = False
+    real_indicator = False
+    
+    # Look for any indicators in stdout
+    for result in results:
+        stdout = result.get("stdout", "")
+        if "USING MOCK OBJECTS" in stdout or "🔷 Using MOCK OBJECTS" in stdout:
+            mock_indicator = True
+        if "REAL INFERENCE" in stdout or "🚀 Using REAL INFERENCE" in stdout:
+            real_indicator = True
+    
     print("\nTest Execution Summary:")
     print(f"- Total tests: {total_tests}")
     print(f"- Successful tests: {successful_tests}")
     print(f"- Failed tests: {failed_tests}")
     print(f"- Success rate: {successful_tests / total_tests * 100:.1f}%")
+    
+    # Display inference type warning if needed
+    if mock_indicator:
+        print("\n⚠️  WARNING: Some tests used MOCK OBJECTS instead of real inference!")
+        print("   This is typical for CI/CD environments without real dependencies.")
+        print("   Results may not reflect actual model performance.")
+    elif real_indicator:
+        print("\n✅ All tests used REAL INFERENCE with actual models.")
+    
     print(f"\nResults saved to: {results_file}")
     print(f"Report saved to: {report_path}")
     

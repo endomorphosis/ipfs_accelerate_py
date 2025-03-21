@@ -1,0 +1,19 @@
+2025-03-20 20:07:56,646 - WARNING - torch not available, using mock
+2025-03-20 20:07:59,320 - INFO - Testing model: gpt2
+2025-03-20 20:07:59,320 - INFO - Using cpu as preferred device
+2025-03-20 20:07:59,320 - INFO - Testing gpt2 with pipeline() on cpu...
+2025-03-20 20:08:00,005 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
+<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
+2025-03-20 20:08:11,265 - INFO - Testing gpt2 with from_pretrained() on cpu...
+2025-03-20 20:08:11,534 - INFO - Set pad_token to eos_token for GPT-2 tokenizer
+2025-03-20 20:08:11,610 - ERROR - Error testing from_pretrained on cpu: module transformers has no attribute Gpt2LMHeadModel
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 823, in <module>
+    main()
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 770, in main
+    results = tester.run_tests(all_hardware=args.all_hardware)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 659, in run_tests
+    "has_sentencepiece": HAS_SENTENCEPIECE,
+                         ^^^^^^^^^^^^^^^^^
+NameError: name 'HAS_SENTENCEPIECE' is not defined. Did you mean: 'MOCK_SENTENCEPIECE'?

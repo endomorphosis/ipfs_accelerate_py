@@ -1,4 +1,4 @@
-#\!/usr/bin/env python3
+#!/usr/bin/env python3
 
 # Import hardware detection capabilities if available
 try:
@@ -65,6 +65,42 @@ PARENT_DIR = CURRENT_DIR.parent
 RESULTS_DIR = CURRENT_DIR / "collected_results"
 EXPECTED_DIR = CURRENT_DIR / "expected_results"
 TEMPLATES_DIR = CURRENT_DIR / "templates"
+
+# Try to import torch
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Try to import transformers
+try:
+    import transformers
+    HAS_TRANSFORMERS = True
+except ImportError:
+    transformers = MagicMock()
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
+
+# Try to import tokenizers
+try:
+    import tokenizers
+    HAS_TOKENIZERS = True
+except ImportError:
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
+
+# Try to import sentencepiece
+try:
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
 
 # Model Registry - Maps model families to their configurations
 MODEL_REGISTRY = {
@@ -265,6 +301,46 @@ def list_model_families():
     print()
     return families
 
+def run_tests(all_models=False):
+    """
+    Run tests for model families.
+    
+    Args:
+        all_models: If True, tests all models in registry
+        
+    Returns:
+        Dict containing test results
+    """
+    # Determine if real inference or mock objects were used
+    using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+    using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+    
+    results = {}
+    
+    if all_models:
+        for model_family in MODEL_REGISTRY.keys():
+            try:
+                # Generate and run test for this family
+                success = generate_test_file(model_family, "fixed_tests")
+                results[model_family] = {"success": success}
+            except Exception as e:
+                logger.error(f"Error testing {model_family}: {e}")
+                results[model_family] = {"success": False, "error": str(e)}
+    
+    return {
+        "results": results,
+        "metadata": {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "has_transformers": HAS_TRANSFORMERS,
+            "has_torch": HAS_TORCH,
+            "has_tokenizers": HAS_TOKENIZERS,
+            "has_sentencepiece": HAS_SENTENCEPIECE,
+            "using_real_inference": using_real_inference,
+            "using_mocks": using_mocks,
+            "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
+        }
+    }
+
 def main():
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description="Generate HuggingFace model test files")
@@ -296,6 +372,19 @@ def main():
             else:
                 fail_count += 1
         
+        # Determine if real inference or mock objects were used
+        using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+        using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+        
+        print("\nTEST RESULTS SUMMARY:")
+        
+        # Indicate real vs mock inference clearly
+        if using_real_inference and not using_mocks:
+            print(f"🚀 Using REAL INFERENCE with actual models")
+        else:
+            print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
+            print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+        
         logger.info(f"Generated {success_count} test files successfully, {fail_count} failed")
         return 0 if fail_count == 0 else 1
     
@@ -313,6 +402,19 @@ def main():
             except SyntaxError as e:
                 logger.error(f"❌ {output_file}: Syntax error: {e}")
                 return 1
+        
+        # Determine if real inference or mock objects were used
+        using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+        using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+        
+        print("\nTEST RESULTS SUMMARY:")
+        
+        # Indicate real vs mock inference clearly
+        if using_real_inference and not using_mocks:
+            print(f"🚀 Using REAL INFERENCE with actual models")
+        else:
+            print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
+            print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
         
         return 0 if success else 1
 

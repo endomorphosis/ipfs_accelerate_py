@@ -139,12 +139,46 @@ export interface OpenAIImageResponse {
   }>;
 }
 
+/**
+ * Voice type options for TTS
+ */
+export enum OpenAIVoiceType {
+  ALLOY = 'alloy',
+  ECHO = 'echo',
+  FABLE = 'fable',
+  ONYX = 'onyx',
+  NOVA = 'nova',
+  SHIMMER = 'shimmer'
+}
+
+/**
+ * Audio format options for TTS
+ */
+export enum OpenAIAudioFormat {
+  MP3 = 'mp3',
+  OPUS = 'opus',
+  AAC = 'aac',
+  FLAC = 'flac',
+  WAV = 'wav',
+}
+
 export interface OpenAISpeechRequest {
   model: string;
   input: string;
-  voice: string;
-  response_format?: string;
+  voice: string | OpenAIVoiceType;
+  response_format?: string | OpenAIAudioFormat;
   speed?: number;
+}
+
+/**
+ * Transcription response formats
+ */
+export enum OpenAITranscriptionFormat {
+  JSON = 'json',
+  TEXT = 'text',
+  SRT = 'srt',
+  VERBOSE_JSON = 'verbose_json',
+  VTT = 'vtt'
 }
 
 export interface OpenAITranscriptionRequest {
@@ -152,10 +186,38 @@ export interface OpenAITranscriptionRequest {
   file: any;
   language?: string;
   prompt?: string;
-  response_format?: string;
+  response_format?: string | OpenAITranscriptionFormat;
   temperature?: number;
+  timestamp_granularities?: ('word' | 'segment')[];
 }
 
 export interface OpenAITranscriptionResponse {
   text: string;
+  task?: string;
+  language?: string;
+  duration?: number;
+  segments?: Array<{
+    id: number;
+    seek: number;
+    start: number;
+    end: number;
+    text: string;
+    tokens: number[];
+    temperature: number;
+    avg_logprob: number;
+    compression_ratio: number;
+    no_speech_prob: number;
+    words?: Array<{
+      word: string;
+      start: number;
+      end: number;
+      probability: number;
+    }>;
+  }>;
+  words?: Array<{
+    word: string;
+    start: number;
+    end: number;
+    probability: number;
+  }>;
 }

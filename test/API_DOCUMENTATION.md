@@ -621,8 +621,11 @@ For more detailed information, please refer to the following resources:
 
 - [IPFS Accelerate TypeScript Implementation Summary](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md) - Detailed overview of the TypeScript implementation
 - [SDK Documentation](SDK_DOCUMENTATION.md) - Comprehensive guide to using both Python and TypeScript SDKs
+- [OpenAI API Enhancements (July 2025)](OPENAI_API_ENHANCEMENTS.md) - Comprehensive guide to the enhanced OpenAI API implementations in Python and TypeScript
 - [IPFS WebNN/WebGPU SDK Guide](IPFS_WEBNN_WEBGPU_SDK_GUIDE.md) - Complete guide to using WebNN and WebGPU acceleration
 - [Web Resource Pool Integration](WEB_RESOURCE_POOL_INTEGRATION.md) - Resource pool integration with browser-based WebNN/WebGPU acceleration
 - [Real WebNN/WebGPU Benchmarking Guide](REAL_WEBNN_WEBGPU_BENCHMARKING_GUIDE.md) - Comprehensive guide for running real WebNN/WebGPU benchmarks
 - [Simulation Validation Framework Documentation](SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md) - Complete guide to the Simulation Accuracy and Validation Framework
 - [Database Integration Summary](duckdb_api/simulation_validation/db_integration_summary.md) - Detailed documentation on the database integration implementation
+- [OpenAI Backend Usage](ipfs_accelerate_js/docs/api_backends/OPENAI_BACKEND_USAGE.md) - Detailed usage guide for the JavaScript OpenAI API implementation
+- [OpenAI Mini Backend Usage](ipfs_accelerate_js/docs/api_backends/OPENAI_MINI_BACKEND_USAGE.md) - Usage guide for the lightweight JavaScript OpenAI API implementation

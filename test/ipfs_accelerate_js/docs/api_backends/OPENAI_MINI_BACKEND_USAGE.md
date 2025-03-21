@@ -241,10 +241,23 @@ try {
 
 The OpenAI Mini backend is compatible with the following OpenAI models:
 
-- Chat models: gpt-3.5-turbo, gpt-4, gpt-4-turbo
-- Embedding models: text-embedding-ada-002
-- Image models: dall-e-2, dall-e-3
-- Audio models: tts-1, tts-1-hd, whisper-1
+### Chat Models
+- gpt-4o-mini (newest efficient model)
+- gpt-4o (full capabilities model with vision)
+- gpt-3.5-turbo, gpt-4, gpt-4-turbo
+
+### Embedding Models
+- text-embedding-3-small (1536 dimensions)
+- text-embedding-3-large (3072 dimensions, higher quality)
+- text-embedding-ada-002 (legacy)
+
+### Image Models
+- dall-e-3, dall-e-2
+
+### Audio Models
+- tts-1 (standard quality text-to-speech)
+- tts-1-hd (high definition text-to-speech)
+- whisper-1 (audio transcription and translation)
 
 ## Performance Optimizations
 

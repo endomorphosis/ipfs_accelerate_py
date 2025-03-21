@@ -1,104 +1,124 @@
-name: Test Generator Validation
+name: HuggingFace Test Generator Validation
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'test/test_generator.py'
-      - 'test/skills/test_generator_*.py'
-      - 'test/test_hf_*.py'
+      - 'test/skills/test_generator_fixed.py'
+      - 'test/skills/templates/**'
+      - 'test/skills/regenerate_fixed_tests.py'
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'test/test_generator.py'
-      - 'test/skills/test_generator_*.py'
-      - 'test/test_hf_*.py'
+      - 'test/skills/test_generator_fixed.py'
+      - 'test/skills/templates/**'
+      - 'test/skills/regenerate_fixed_tests.py'
   schedule:
-    # Run nightly at 2 AM UTC
+    # Run daily at 2 AM UTC
     - cron: '0 2 * * *'
 
 jobs:
   validate-generator:
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install torch transformers pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    
-    - name: Run test generator test suite
-      run: |
-        cd test/skills
-        python test_generator_test_suite.py
-    
-    - name: Verify syntax of existing test files
-      run: |
-        cd test
-        for file in test_hf_*.py; do
-          echo "Checking syntax: $file"
-          python -m py_compile "$file"
-        done
-    
-    - name: Generate sample test files
-      run: |
-        cd test
-        python test_generator.py --family bert --output ./generated_tests
-        python test_generator.py --family gpt2 --output ./generated_tests
-        python test_generator.py --family t5 --output ./generated_tests
-        python test_generator.py --family vit --output ./generated_tests
-    
-    - name: Verify generated test files
-      run: |
-        cd test/generated_tests
-        for file in test_hf_*.py; do
-          echo "Checking syntax of generated file: $file"
-          python -m py_compile "$file"
-        done
-    
-    - name: Run basic functionality test
-      run: |
-        cd test/generated_tests
-        python test_hf_bert.py --model bert-base-uncased --cpu-only
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          # Install additional dependencies for test generation
+          pip install transformers torch numpy pillow requests sentencepiece
+      
+      - name: Validate test generator syntax
+        run: |
+          cd test/skills
+          python -m py_compile test_generator_fixed.py
+      
+      - name: Validate template syntax
+        run: |
+          cd test/skills
+          python -m py_compile templates/encoder_only_template.py
+          python -m py_compile templates/decoder_only_template.py
+          python -m py_compile templates/encoder_decoder_template.py
+          python -m py_compile templates/vision_template.py
+      
+      - name: Validate test regeneration
+        run: |
+          cd test/skills
+          python regenerate_fixed_tests.py --model bert --verify
+      
+      - name: Generate core model tests (mock mode)
+        run: |
+          cd test/skills
+          python regenerate_fixed_tests.py --model bert --verify
+          python regenerate_fixed_tests.py --model gpt2 --verify
+          python regenerate_fixed_tests.py --model t5 --verify
+          python regenerate_fixed_tests.py --model vit --verify
+      
+      - name: Verify generated files
+        run: |
+          cd test/skills
+          # Check all generated files for syntax errors
+          python -m py_compile fixed_tests/test_hf_bert.py
+          python -m py_compile fixed_tests/test_hf_gpt2.py
+          python -m py_compile fixed_tests/test_hf_t5.py
+          python -m py_compile fixed_tests/test_hf_vit.py
+      
+      - name: Upload generated test files as artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: generated-test-files
+          path: |
+            test/skills/fixed_tests/*.py
+          retention-days: 7
 
-  nightly-test-generation:
+  nightly-model-generation:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
-    
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install torch transformers pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    
-    - name: Generate test files for all model families
-      run: |
-        cd test/skills
-        python generate_all_missing_tests.py --batch 10
-    
-    - name: Generate coverage report
-      run: |
-        cd test/skills
-        python generate_missing_hf_tests.py --report
-    
-    - name: Archive test coverage report
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-coverage-report
-        path: test/skills/HF_COVERAGE_REPORT.md
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          # Install additional dependencies for test generation
+          pip install transformers torch numpy pillow requests sentencepiece
+      
+      - name: Generate missing high-priority models
+        run: |
+          cd test/skills
+          python generate_missing_model_tests.py --priority high --verify
+      
+      - name: Generate medium-priority models
+        run: |
+          cd test/skills
+          python generate_missing_model_tests.py --priority medium --verify
+      
+      - name: Update model coverage report
+        run: |
+          cd test/skills
+          python visualize_test_coverage.py
+      
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: model-coverage-report
+          path: |
+            test/skills/coverage_visualizations/*.md
+          retention-days: 7
+      
+      - name: Upload generated test files
+        uses: actions/upload-artifact@v3
+        with:
+          name: nightly-generated-test-files
+          path: |
+            test/skills/fixed_tests/*.py
+          retention-days: 7

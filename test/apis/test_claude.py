@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch, Mock
 import requests
 import unittest
 import threading
-sys.path.append()))os.path.join()))os.path.dirname()))os.path.dirname()))os.path.dirname()))__file__))), 'ipfs_accelerate_py'))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
 
 # Mock the claude module
 class MockClaude:

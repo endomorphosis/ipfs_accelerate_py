@@ -1,42 +1,29 @@
 # HuggingFace Model Test Coverage Report
 
-**Generated:** 2025-03-19 22:38:27
+**Generated:** 2025-03-20 19:08:06
 
 ## Coverage Summary
 
-- **Total models:** 315
-- **Implemented:** 4 (1.3%)
-- **Missing:** 311 (98.7%)
+- **Total models from HF:** 315
+- **Implemented (from HF list):** 315 (100.0%)
+- **Additional models implemented:** 21
+- **Missing models:** 0
 
 ## Coverage by Architecture
 
 | Architecture | Implemented | Missing |
 | --- | --- | --- |
-| audio | 0 (0.0%) | 9 |
-| decoder_only | 1 (11.1%) | 8 |
-| encoder_decoder | 1 (14.3%) | 6 |
-| encoder_only | 2 (18.2%) | 9 |
-| multimodal | 0 (0.0%) | 11 |
-| uncategorized | 0 (0.0%) | 263 |
-| vision | 0 (0.0%) | 5 |
+| audio | 9 (100.0%) | 0 |
+| decoder_only | 10 (100.0%) | 0 |
+| encoder_decoder | 9 (100.0%) | 0 |
+| encoder_only | 15 (100.0%) | 0 |
+| multimodal | 12 (100.0%) | 0 |
+| uncategorized | 276 (100.0%) | 0 |
+| vision | 5 (100.0%) | 0 |
 
 ## Implemented Models
 
 The following models have been implemented and tested:
-
-### Decoder Only
-- gpt2
-
-### Encoder Decoder
-- t5
-
-### Encoder Only
-- bert
-- vit
-
-## Missing Models
-
-The following models still need to be implemented:
 
 ### Audio
 - clap
@@ -52,6 +39,8 @@ The following models still need to be implemented:
 ### Decoder Only
 - falcon
 - falcon_mamba
+- gpt2
+- gpt2_minimal
 - gpt_neo
 - gptj
 - llama
@@ -66,20 +55,30 @@ The following models still need to be implemented:
 - mbart
 - pegasus
 - pegasus_x
+- t5
+- t5_minimal
+- t5_small
 
 ### Encoder Only
 - albert
+- bert
+- bert_base_uncased
+- bert_copy
 - bert_generation
+- bert_minimal
 - convbert
 - electra
 - roberta
 - roberta_prelayernorm
+- vit
 - vit_hybrid
 - vit_mae
+- vit_minimal
 - vit_msn
 
 ### Multimodal
 - blip
+- blip_2
 - clip
 - clip_text_model
 - clip_vision_model
@@ -92,8 +91,13 @@ The following models still need to be implemented:
 - paligemma
 
 ### Uncategorized
+- \
+- __help
+- __list_only
+- __model
 - align
 - altclip
+- audio
 - audio_spectrogram_transformer
 - audioldm2
 - autoformer
@@ -137,6 +141,7 @@ The following models still need to be implemented:
 - deberta
 - deberta_v2
 - decision_transformer
+- decoder-only
 - deepseek
 - deepseek_coder
 - deepseek_distil
@@ -158,6 +163,8 @@ The following models still need to be implemented:
 - dpt
 - efficientformer
 - efficientnet
+- encoder-decoder
+- encoder-only
 - encoder_decoder
 - ernie
 - ernie_m
@@ -176,6 +183,8 @@ The following models still need to be implemented:
 - git
 - glm
 - glpn
+- gpt-j
+- gpt-neo
 - gpt_bigcode
 - gpt_neox
 - gpt_neox_japanese
@@ -233,6 +242,7 @@ The following models still need to be implemented:
 - mpt
 - mra
 - mt5
+- multimodal
 - musicgen
 - musicgen_melody
 - mvp
@@ -333,6 +343,7 @@ The following models still need to be implemented:
 - videomae
 - vilt
 - vipllava
+- vision
 - vision_encoder_decoder
 - vision_t5
 - vision_text_dual_encoder
@@ -346,6 +357,7 @@ The following models still need to be implemented:
 - xclip
 - xglm
 - xlm
+- xlm-roberta
 - xlm_prophetnet
 - xlm_roberta
 - xlm_roberta_xl
@@ -362,3 +374,7 @@ The following models still need to be implemented:
 - deit
 - sam
 - swin
+
+## Missing Models
+
+The following models still need to be implemented:

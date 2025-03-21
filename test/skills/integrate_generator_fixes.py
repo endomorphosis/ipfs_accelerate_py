@@ -1,23 +1,22 @@
-#!/usr/bin/env python3
+#\!/usr/bin/env python3
 """
-Integrate mock detection and other enhancements into HuggingFace test files.
+Integrate fixes to ensure consistent mock detection in test generator files.
 
 This script:
-1. Adds the mock detection system to all HuggingFace test files
-2. Implements architecture-specific template selection
-3. Fixes indentation and code formatting issues
-4. Ensures consistent dependency checking
+1. Adds missing HAS_TOKENIZERS and HAS_SENTENCEPIECE imports in test files
+2. Ensures the imports for non-BERT models are handled properly
+3. Fixes model class names for GPT2, T5, ViT, etc.
+4. Updates variables and class names for consistency
 
 Usage:
-    python integrate_generator_fixes.py [--check-only] [--all] [--test TEST_FILE]
+    python integrate_generator_fixes.py [--file FILE_PATH]
 """
 
 import os
 import sys
+import re
 import argparse
 import logging
-import subprocess
-import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -25,501 +24,321 @@ from pathlib import Path
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(f"generator_integration_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ]
 )
 logger = logging.getLogger(__name__)
 
-# Define architecture types for model mapping
-ARCHITECTURE_TYPES = {
-    "encoder-only": ["bert", "distilbert", "roberta", "electra", "albert", "camembert", "xlm-roberta", "deberta"],
-    "decoder-only": ["gpt2", "gpt-j", "gptj", "gpt-neo", "gpt_neo", "gpt_neox", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt", "opt"],
-    "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "mt5", "longt5", "led", "marian"],
-    "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2"],
-    "vision-text": ["clip", "blip"],
-    "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5"],
-    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava"]
-}
-
-def get_architecture_type(model_type):
-    """Determine architecture type based on model type."""
-    model_type_lower = model_type.lower()
-    for arch_type, models in ARCHITECTURE_TYPES.items():
-        if any(model in model_type_lower for model in models):
-            return arch_type
-    return "encoder-only"  # Default to encoder-only if unknown
-
-def check_mock_detection(file_path):
-    """
-    Check if a file has the mock detection system implemented.
+def fix_missing_imports(content, file_path):
+    """Fix missing import variables like HAS_TOKENIZERS and HAS_SENTENCEPIECE."""
+    model_type = os.path.basename(file_path)[8:-3]  # Extract model type from test_hf_MODEL.py
     
-    Args:
-        file_path: Path to the test file
-        
-    Returns:
-        bool: True if mock detection is implemented, False otherwise
-    """
-    try:
-        with open(file_path, 'r') as f:
-            content = f.read()
-            
-        # Check for key mock detection patterns
-        has_using_real_inference = "using_real_inference = HAS_TRANSFORMERS and HAS_TORCH" in content
-        has_using_mocks = "using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE" in content
-        has_visual_indicators = "🚀 Using REAL INFERENCE with actual models" in content and "🔷 Using MOCK OBJECTS for CI/CD testing only" in content
-        has_metadata = '"using_real_inference": using_real_inference,' in content and '"using_mocks": using_mocks,' in content
-        
-        if has_using_real_inference and has_using_mocks and has_visual_indicators and has_metadata:
-            return True
-        else:
-            missing = []
-            if not has_using_real_inference: missing.append("using_real_inference definition")
-            if not has_using_mocks: missing.append("using_mocks definition")
-            if not has_visual_indicators: missing.append("visual indicators")
-            if not has_metadata: missing.append("metadata enrichment")
-            
-            logger.warning(f"❌ {file_path}: Mock detection is missing: {', '.join(missing)}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Error checking mock detection in {file_path}: {e}")
-        return False
-
-def fix_indentation(file_path):
-    """
-    Fix indentation issues in a file using complete_indentation_fix.py.
+    # First check if the imports are missing
+    has_tokenizers_var = "HAS_TOKENIZERS" in content
+    has_sentencepiece_var = "HAS_SENTENCEPIECE" in content
     
-    Args:
-        file_path: Path to the file to fix
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        script_path = os.path.join(os.path.dirname(__file__), "complete_indentation_fix.py")
-        if not os.path.exists(script_path):
-            logger.error(f"Indentation fix script not found: {script_path}")
-            return False
-            
-        cmd = [sys.executable, script_path, file_path, "--verify"]
-        
-        logger.info(f"Running indentation fix on {file_path}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            logger.error(f"Error fixing indentation: {result.stderr}")
-            return False
-            
-        logger.info(f"Successfully fixed indentation in {file_path}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error running indentation fix: {e}")
-        return False
-
-def regenerate_test(model_type):
-    """
-    Regenerate a test file using regenerate_fixed_tests.py.
+    if has_tokenizers_var and has_sentencepiece_var:
+        logger.info(f"✅ {file_path}: All necessary import variables present")
+        return content
     
-    Args:
-        model_type: The model type to regenerate (e.g., bert, gpt2)
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        script_path = os.path.join(os.path.dirname(__file__), "regenerate_fixed_tests.py")
-        cmd = [sys.executable, script_path, "--model", model_type, "--verify"]
-        
-        logger.info(f"Regenerating test for {model_type}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            logger.error(f"Error regenerating test: {result.stderr or result.stdout}")
-            return False
-            
-        logger.info(f"Successfully regenerated test for {model_type}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error regenerating test: {e}")
-        return False
+    # Add missing import sections
+    if not has_tokenizers_var:
+        logger.info(f"❌ {file_path}: Missing HAS_TOKENIZERS variable, adding it")
+        # Find where to add the tokenizers import section
+        if "Try to import tokenizers" not in content:
+            # Add after transformers import
+            transformers_import_match = re.search(r'(# Try to import transformers.*?HAS_TRANSFORMERS = False.*?logger\.warning\("transformers not available, using mock"\))', content, re.DOTALL)
+            if transformers_import_match:
+                tokenizers_section = """
+# Try to import tokenizers
+try:
+    import tokenizers
+    HAS_TOKENIZERS = True
+except ImportError:
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
+"""
+                insert_pos = transformers_import_match.end()
+                content = content[:insert_pos] + tokenizers_section + content[insert_pos:]
+                
+    if not has_sentencepiece_var:
+        logger.info(f"❌ {file_path}: Missing HAS_SENTENCEPIECE variable, adding it")
+        # Find where to add the sentencepiece import section
+        if "Try to import sentencepiece" not in content:
+            # Add after tokenizers import (or transformers import if we just added tokenizers)
+            tokenizers_import_match = re.search(r'(# Try to import tokenizers.*?HAS_TOKENIZERS = False.*?logger\.warning\("tokenizers not available, using mock"\))', content, re.DOTALL)
+            if tokenizers_import_match:
+                sentencepiece_section = """
+# Try to import sentencepiece
+try:
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
+"""
+                insert_pos = tokenizers_import_match.end()
+                content = content[:insert_pos] + sentencepiece_section + content[insert_pos:]
+            else:
+                # If tokenizers section wasn't found and we're adding both, check if we can add after transformers
+                transformers_import_match = re.search(r'(# Try to import transformers.*?HAS_TRANSFORMERS = False.*?logger\.warning\("transformers not available, using mock"\))', content, re.DOTALL)
+                if transformers_import_match:
+                    both_sections = """
+# Try to import tokenizers
+try:
+    import tokenizers
+    HAS_TOKENIZERS = True
+except ImportError:
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
 
-def add_mock_detection_to_generator(generator_path):
-    """
-    Add mock detection system to the test generator.
+# Try to import sentencepiece
+try:
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
+"""
+                    insert_pos = transformers_import_match.end()
+                    content = content[:insert_pos] + both_sections + content[insert_pos:]
     
-    Args:
-        generator_path: Path to the test generator file
+    return content
+
+def fix_model_class_names(content, file_path):
+    """Fix model class names (e.g., Gpt2LMHeadModel -> GPT2LMHeadModel)."""
+    model_type = os.path.basename(file_path)[8:-3]  # Extract model type from test_hf_MODEL.py
+    
+    # Define the correct class names for common model types
+    model_class_corrections = {
+        "gpt2": ("Gpt2LMHeadModel", "GPT2LMHeadModel"),
+        "t5": ("T5ForConditionalGeneration", "T5ForConditionalGeneration"),
+        "vit": ("VitForImageClassification", "ViTForImageClassification"),
+        "swin": ("SwinForImageClassification", "SwinForImageClassification"),
+        "clip": ("ClipModel", "CLIPModel"),
+        "bart": ("BartForConditionalGeneration", "BartForConditionalGeneration"),
+        "whisper": ("WhisperForConditionalGeneration", "WhisperForConditionalGeneration"),
+    }
+    
+    # Apply corrections specific to this model type
+    for model_prefix, (incorrect, correct) in model_class_corrections.items():
+        if model_type.startswith(model_prefix):
+            old_line = f"model = transformers.{incorrect}.from_pretrained"
+            new_line = f"model = transformers.{correct}.from_pretrained"
+            if old_line in content:
+                logger.info(f"❌ {file_path}: Incorrect model class name '{incorrect}', fixing to '{correct}'")
+                content = content.replace(old_line, new_line)
+    
+    return content
+
+def fix_run_tests_function(content, file_path):
+    """Fix the run_tests function to correctly handle mock detection."""
+    # Check if the run_tests function already has proper mock detection
+    mock_detection_pattern = r"using_real_inference\s*=\s*HAS_TRANSFORMERS\s+and\s+HAS_TORCH"
+    mocks_pattern = r"using_mocks\s*=\s*not\s+using_real_inference\s+or\s+not\s+HAS_TOKENIZERS\s+or\s+not\s+HAS_SENTENCEPIECE"
+    
+    has_detection = re.search(mock_detection_pattern, content) is not None
+    has_mocks = re.search(mocks_pattern, content) is not None
+    
+    if has_detection and has_mocks:
+        return content  # Already fixed
         
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        with open(generator_path, 'r') as f:
-            content = f.read()
+    # Find the run_tests function
+    run_tests_match = re.search(r'(def run_tests\(self, all_hardware=False\):.*?return results\s*$)', content, re.DOTALL | re.MULTILINE)
+    if not run_tests_match:
+        logger.warning(f"❗ {file_path}: Could not find run_tests function, skipping mock detection fix")
+        return content
         
-        # Check if mock detection is already added
-        if "using_real_inference = HAS_TRANSFORMERS and HAS_TORCH" in content and \
-           "using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE" in content:
-            logger.info(f"Mock detection already implemented in {generator_path}")
-            return True
-        
-        # Find the run_tests method
-        run_tests_start = content.find("def run_tests(")
-        if run_tests_start == -1:
-            logger.error("Could not find run_tests method in generator")
-            return False
-        
-        # Find the return statement in run_tests
-        return_start = content.find("return {", run_tests_start)
-        if return_start == -1:
-            logger.error("Could not find return statement in run_tests method")
-            return False
-        
-        # Add mock detection code before return
-        mock_detection_code = """
+    # Get the function content
+    run_tests_content = run_tests_match.group(1)
+    
+    # Check for missing mock detection code
+    if not has_detection or not has_mocks:
+        # Find where to add the mock detection logic (before the metadata dict)
+        metadata_match = re.search(r'(\s+# Add metadata\s+results\["metadata"\] = {)', run_tests_content)
+        if metadata_match:
+            # Add the missing mock detection logic
+            mock_detection_logic = """
         # Determine if real inference or mock objects were used
         using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
         using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
         
 """
-        content = content[:return_start] + mock_detection_code + content[return_start:]
+            prefix = run_tests_content[:metadata_match.start()]
+            suffix = run_tests_content[metadata_match.start():]
+            updated_function = prefix + mock_detection_logic + suffix
+            
+            # Replace the function in the full content
+            content = content.replace(run_tests_content, updated_function)
+            logger.info(f"✅ {file_path}: Added mock detection logic in run_tests function")
+    
+    # Now check if the metadata section includes mock detection keys
+    metadata_keys = [
+        '"has_transformers": HAS_TRANSFORMERS', 
+        '"has_torch": HAS_TORCH',
+        '"has_tokenizers": HAS_TOKENIZERS',
+        '"has_sentencepiece": HAS_SENTENCEPIECE',
+        '"using_real_inference": using_real_inference',
+        '"using_mocks": using_mocks',
+        '"test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"'
+    ]
+    
+    # Check for each key
+    missing_keys = []
+    for key in metadata_keys:
+        if key not in content:
+            missing_keys.append(key)
+    
+    if missing_keys:
+        # Find the metadata dictionary
+        metadata_dict_match = re.search(r'(\s+results\["metadata"\] = {.*?\n\s+})', content, re.DOTALL)
+        if metadata_dict_match:
+            metadata_dict = metadata_dict_match.group(1)
+            # Find the end of the dictionary (last }, before first return)
+            dict_closing_match = re.search(r'\n(\s+})(?=\s*\n\s+return)', metadata_dict)
+            if dict_closing_match:
+                # Add missing keys before the closing brace
+                indent = dict_closing_match.group(1).replace('}', '')
+                missing_keys_str = ',\n'.join(f"{indent}{key}" for key in missing_keys)
+                new_dict = metadata_dict[:dict_closing_match.start()] + ",\n" + missing_keys_str + metadata_dict[dict_closing_match.start():]
+                content = content.replace(metadata_dict, new_dict)
+                logger.info(f"✅ {file_path}: Added missing mock detection keys to metadata dict")
+    
+    return content
+
+def fix_main_function(content, file_path):
+    """Fix the main function to correctly display mock detection status."""
+    # Check if the main function already has proper status display
+    status_pattern = r'using_real_inference = results\["metadata"\]\["using_real_inference"\].*?using_mocks = results\["metadata"\]\["using_mocks"\]'
+    indicator_pattern = r'if using_real_inference and not using_mocks:.*?print\(f"\{GREEN\}🚀 Using REAL INFERENCE with actual models\{RESET\}"\)'
+    
+    has_status = re.search(status_pattern, content, re.DOTALL) is not None
+    has_indicator = re.search(indicator_pattern, content, re.DOTALL) is not None
+    
+    if has_status and has_indicator:
+        return content  # Already fixed
         
-        # Find metadata in return dictionary
-        metadata_start = content.find('"metadata":', return_start)
-        if metadata_start == -1:
-            logger.error("Could not find metadata in return dictionary")
-            return False
+    # Find the main function
+    main_match = re.search(r'(def main\(\):.*?)(\n\s*if __name__ == "__main__")', content, re.DOTALL)
+    if not main_match:
+        logger.warning(f"❗ {file_path}: Could not find main function, skipping status display fix")
+        return content
         
-        # Find closing brace of metadata
-        closing_brace = content.find("}", metadata_start)
-        if closing_brace == -1:
-            logger.error("Could not find closing brace of metadata dictionary")
-            return False
-        
-        # Add mock detection metadata
-        mock_metadata = """
-                "has_transformers": HAS_TRANSFORMERS,
-                "has_torch": HAS_TORCH,
-                "has_tokenizers": HAS_TOKENIZERS,
-                "has_sentencepiece": HAS_SENTENCEPIECE,
-                "using_real_inference": using_real_inference,
-                "using_mocks": using_mocks,
-                "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
-"""
-        content = content[:closing_brace] + mock_metadata + content[closing_brace:]
-        
-        # Find the main function
-        main_start = content.find("def main(")
-        if main_start == -1:
-            logger.error("Could not find main function in generator")
-            return False
-        
-        # Find TEST RESULTS SUMMARY
-        summary_section = content.find("TEST RESULTS SUMMARY", main_start)
-        if summary_section == -1:
-            logger.warning("Could not find TEST RESULTS SUMMARY section in main function")
-            # Find the success print statement
-            success_print = content.find('print(f"✅ Successfully tested', main_start)
-            if success_print != -1:
-                # Find the newline after SUCCESS_TEST
-                next_line = content.find("\n", success_print)
-                if next_line != -1:
-                    summary_section = next_line
-        
-        if summary_section != -1:
-            # Add visual indicators
-            visual_indicators_code = """
+    # Fix the main function to add mock detection display
+    main_function = main_match.group(1)
+    
+    # Find the summary section
+    summary_section_match = re.search(r'(\s+# Print a summary\s+print\("\n" \+ "="\*50\)\s+print\("TEST RESULTS SUMMARY"\)\s+print\("="\*50\)\s+)', main_function)
+    if summary_section_match:
+        # Add the mock status display right after the summary header
+        mock_status_code = """
     # Indicate real vs mock inference clearly
+    using_real_inference = results["metadata"]["using_real_inference"]
+    using_mocks = results["metadata"]["using_mocks"]
+    
     if using_real_inference and not using_mocks:
-        print(f"🚀 Using REAL INFERENCE with actual models")
+        print(f"{GREEN}🚀 Using REAL INFERENCE with actual models{RESET}")
     else:
-        print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
+        print(f"{BLUE}🔷 Using MOCK OBJECTS for CI/CD testing only{RESET}")
         print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
 """
-            content = content[:summary_section] + visual_indicators_code + content[summary_section:]
+        prefix = main_function[:summary_section_match.end()]
+        suffix = main_function[summary_section_match.end():]
+        updated_main = prefix + mock_status_code + suffix
+        
+        # Replace the main function in the full content
+        content = content.replace(main_function, updated_main)
+        logger.info(f"✅ {file_path}: Added mock status display in main function")
+    
+    return content
+
+def fix_file(file_path):
+    """Apply all fixes to a file."""
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+            
+        # Create backup
+        backup_path = f"{file_path}.bak"
+        with open(backup_path, 'w') as f:
+            f.write(content)
+        logger.info(f"Created backup at {backup_path}")
+        
+        # Apply fixes
+        content = fix_missing_imports(content, file_path)
+        content = fix_model_class_names(content, file_path)
+        content = fix_run_tests_function(content, file_path)
+        content = fix_main_function(content, file_path)
         
         # Write updated content
-        with open(generator_path, 'w') as f:
+        with open(file_path, 'w') as f:
             f.write(content)
         
-        logger.info(f"✅ Added mock detection to {generator_path}")
-        return True
-    
+        # Verify the fix works
+        try:
+            # Basic syntax check
+            compile(content, file_path, 'exec')
+            logger.info(f"✅ {file_path}: Syntax check passed")
+            return True
+        except SyntaxError as e:
+            logger.error(f"❌ {file_path}: Syntax error after fixes: {e}")
+            # Restore from backup
+            with open(backup_path, 'r') as f:
+                original = f.read()
+            with open(file_path, 'w') as f:
+                f.write(original)
+            logger.info(f"Restored from backup due to syntax error")
+            return False
+            
     except Exception as e:
-        logger.error(f"Error adding mock detection to generator: {e}")
-        traceback.print_exc()
-        return False
-
-def fix_all_tests(test_dir="fixed_tests"):
-    """
-    Fix all test files in the specified directory.
-    
-    Args:
-        test_dir: Path to the directory containing test files
-        
-    Returns:
-        Tuple of (success_count, failure_count, total_count)
-    """
-    success_count = 0
-    failure_count = 0
-    
-    # Get all test files
-    test_files = []
-    
-    try:
-        test_dir_path = os.path.join(os.path.dirname(__file__), test_dir)
-        for file in os.listdir(test_dir_path):
-            if file.startswith("test_hf_") and file.endswith(".py") and not file.endswith(".bak.py"):
-                test_files.append(os.path.join(test_dir_path, file))
-    except Exception as e:
-        logger.error(f"Error listing test files: {e}")
-        return 0, 0, 0
-    
-    logger.info(f"Found {len(test_files)} test files to process")
-    
-    # Process each file
-    for file_path in test_files:
-        file_name = os.path.basename(file_path)
-        model_type = file_name[8:-3]  # Extract model type from test_hf_MODEL.py
-        
-        logger.info(f"Processing {file_name} (model: {model_type})...")
-        
-        # Check if mock detection is implemented
-        has_mock_detection = check_mock_detection(file_path)
-        
-        if not has_mock_detection:
-            # Regenerate the test from template
-            if regenerate_test(model_type):
-                # Fix indentation
-                if fix_indentation(file_path):
-                    # Check mock detection again
-                    if check_mock_detection(file_path):
-                        success_count += 1
-                    else:
-                        failure_count += 1
-                else:
-                    failure_count += 1
-            else:
-                failure_count += 1
-        else:
-            # Just fix indentation if needed
-            if fix_indentation(file_path):
-                success_count += 1
-            else:
-                failure_count += 1
-    
-    return success_count, failure_count, len(test_files)
-
-def fix_specific_test(test_file):
-    """
-    Fix a specific test file.
-    
-    Args:
-        test_file: Name of the test file (e.g., test_hf_bert.py)
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    if not test_file.startswith("test_hf_"):
-        test_file = f"test_hf_{test_file}.py"
-    elif not test_file.endswith(".py"):
-        test_file = f"{test_file}.py"
-    
-    test_dir_path = os.path.join(os.path.dirname(__file__), "fixed_tests")
-    file_path = os.path.join(test_dir_path, test_file)
-    
-    if not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
-        return False
-    
-    model_type = test_file[8:-3]  # Extract model type from test_hf_MODEL.py
-    
-    # Check if mock detection is implemented
-    has_mock_detection = check_mock_detection(file_path)
-    
-    if not has_mock_detection:
-        # Regenerate the test from template
-        if regenerate_test(model_type):
-            # Fix indentation
-            if fix_indentation(file_path):
-                # Check mock detection again
-                return check_mock_detection(file_path)
-            return False
-        return False
-    else:
-        # Just fix indentation if needed
-        return fix_indentation(file_path)
-
-def integrate_all_fixes(create_backup_file=True):
-    """
-    Integrate all fixes to test files and generator.
-    
-    Args:
-        create_backup_file: Whether to create backup files
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        # First, add mock detection to generator
-        generator_path = os.path.join(os.path.dirname(__file__), "test_generator_fixed.py")
-        if not os.path.exists(generator_path):
-            logger.warning(f"Test generator not found at {generator_path}")
-            generator_path = os.path.join(os.path.dirname(__file__), "test_generator.py")
-            if not os.path.exists(generator_path):
-                logger.error("Could not find test generator file")
-                return False
-        
-        # Create backup if requested
-        if create_backup_file:
-            backup_file = f"{generator_path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            try:
-                with open(generator_path, 'r') as src, open(backup_file, 'w') as dst:
-                    dst.write(src.read())
-                logger.info(f"Created backup of generator at {backup_file}")
-            except Exception as e:
-                logger.error(f"Failed to create backup of generator: {e}")
-        
-        # Add mock detection to generator
-        if not add_mock_detection_to_generator(generator_path):
-            logger.error("Failed to add mock detection to generator")
-            return False
-        
-        # Fix indentation in generator
-        if not fix_indentation(generator_path):
-            logger.error("Failed to fix indentation in generator")
-            return False
-        
-        # Fix all test files
-        success_count, failure_count, total_count = fix_all_tests()
-        
-        if failure_count > 0:
-            logger.warning(f"Failed to fix {failure_count} of {total_count} test files")
-            return False
-        
-        logger.info(f"Successfully fixed all {total_count} test files")
-        return True
-    
-    except Exception as e:
-        logger.error(f"Error integrating all fixes: {e}")
-        traceback.print_exc()
+        logger.error(f"Error fixing {file_path}: {e}")
         return False
 
 def main():
-    """Main entry point."""
-    parser = argparse.ArgumentParser(description="Integrate mock detection and other fixes")
-    parser.add_argument("--check-only", action="store_true", help="Only check files, don't apply fixes")
-    parser.add_argument("--all", action="store_true", help="Fix all test files and generator")
-    parser.add_argument("--test", type=str, help="Specific test file to fix (e.g., bert or test_hf_bert.py)")
-    parser.add_argument("--generator", action="store_true", help="Only fix the test generator")
-    parser.add_argument("--no-backup", action="store_true", help="Don't create backup files")
+    parser = argparse.ArgumentParser(description="Fix mock detection issues in test files")
+    parser.add_argument("--file", type=str, help="Path to specific file to fix")
+    parser.add_argument("--dir", type=str, default="fixed_tests", help="Directory containing test files to fix")
     
     args = parser.parse_args()
     
-    create_backup_file = not args.no_backup
-    
-    if args.test:
-        success = fix_specific_test(args.test)
-        
-        if success:
-            logger.info(f"Successfully fixed test file: {args.test}")
-            print(f"\n✅ Successfully fixed test file: {args.test}")
-            return 0
+    if args.file:
+        if os.path.exists(args.file):
+            success = fix_file(args.file)
+            if success:
+                print(f"Successfully fixed {args.file}")
+            else:
+                print(f"Failed to fix {args.file}")
         else:
-            logger.error(f"Failed to fix test file: {args.test}")
-            print(f"\n❌ Failed to fix test file: {args.test}")
-            return 1
-    
-    elif args.generator:
-        generator_path = os.path.join(os.path.dirname(__file__), "test_generator_fixed.py")
-        if not os.path.exists(generator_path):
-            generator_path = os.path.join(os.path.dirname(__file__), "test_generator.py")
-        
-        # Create backup if requested
-        if create_backup_file:
-            backup_file = f"{generator_path}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            try:
-                with open(generator_path, 'r') as src, open(backup_file, 'w') as dst:
-                    dst.write(src.read())
-                logger.info(f"Created backup of generator at {backup_file}")
-            except Exception as e:
-                logger.error(f"Failed to create backup of generator: {e}")
-        
-        success = add_mock_detection_to_generator(generator_path) and fix_indentation(generator_path)
-        
-        if success:
-            logger.info("Successfully fixed test generator")
-            print("\n✅ Successfully fixed test generator")
-            return 0
-        else:
-            logger.error("Failed to fix test generator")
-            print("\n❌ Failed to fix test generator")
-            return 1
-    
-    elif args.check_only:
-        # Check test files and generator without fixing
-        logger.info("Checking all test files for mock detection")
-        
-        # Check generator
-        generator_path = os.path.join(os.path.dirname(__file__), "test_generator_fixed.py")
-        if not os.path.exists(generator_path):
-            generator_path = os.path.join(os.path.dirname(__file__), "test_generator.py")
-        
-        generator_has_mock = check_mock_detection(generator_path)
-        if generator_has_mock:
-            logger.info(f"✅ Generator {generator_path} has mock detection")
-        else:
-            logger.warning(f"❌ Generator {generator_path} is missing mock detection")
-        
-        # Check all test files
-        test_files_missing = 0
-        test_files_total = 0
-        test_dir_path = os.path.join(os.path.dirname(__file__), "fixed_tests")
-        
-        try:
-            for file in os.listdir(test_dir_path):
-                if file.startswith("test_hf_") and file.endswith(".py") and not file.endswith(".bak.py"):
-                    test_files_total += 1
-                    file_path = os.path.join(test_dir_path, file)
-                    if not check_mock_detection(file_path):
-                        test_files_missing += 1
-        except Exception as e:
-            logger.error(f"Error checking test files: {e}")
-        
-        # Print summary
-        print("\nMock Detection Check Summary:")
-        print(f"- Generator: {'✅ Implemented' if generator_has_mock else '❌ Missing'}")
-        print(f"- Test Files: {test_files_total - test_files_missing}/{test_files_total} implemented")
-        
-        # Return success only if all have mock detection
-        if generator_has_mock and test_files_missing == 0:
-            print("\n✅ All files have mock detection implemented")
-            return 0
-        else:
-            print("\n❌ Some files are missing mock detection")
-            return 1
-    
-    elif args.all:
-        # Apply all fixes
-        success = integrate_all_fixes(create_backup_file)
-        
-        if success:
-            logger.info("Successfully integrated all fixes")
-            print("\n✅ Successfully integrated all fixes")
-            return 0
-        else:
-            logger.error("Failed to integrate all fixes")
-            print("\n❌ Failed to integrate all fixes")
-            return 1
-    
+            print(f"File not found: {args.file}")
     else:
-        # No option specified, show help
-        parser.print_help()
-        return 1
+        if not os.path.exists(args.dir):
+            print(f"Directory not found: {args.dir}")
+            return 1
+            
+        # Process all test files in the directory
+        files = [os.path.join(args.dir, f) for f in os.listdir(args.dir) if f.startswith("test_hf_") and f.endswith(".py")]
+        
+        success_count = 0
+        failure_count = 0
+        
+        for file_path in files:
+            print(f"Processing {file_path}...")
+            if fix_file(file_path):
+                success_count += 1
+            else:
+                failure_count += 1
+                
+        print(f"\nSummary:")
+        print(f"- Successfully fixed: {success_count} files")
+        print(f"- Failed to fix: {failure_count} files")
+        print(f"- Total: {len(files)} files")
+        
+        if failure_count > 0:
+            return 1
+    
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

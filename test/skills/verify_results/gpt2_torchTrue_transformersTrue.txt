@@ -1,0 +1,14 @@
+2025-03-20 20:08:16,261 - WARNING - torch not available, using mock
+2025-03-20 20:08:16,262 - WARNING - transformers not available, using mock
+2025-03-20 20:08:16,447 - INFO - Testing model: gpt2
+2025-03-20 20:08:16,447 - INFO - Using cpu as preferred device
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 823, in <module>
+    main()
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 770, in main
+    results = tester.run_tests(all_hardware=args.all_hardware)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py", line 659, in run_tests
+    "has_sentencepiece": HAS_SENTENCEPIECE,
+                         ^^^^^^^^^^^^^^^^^
+NameError: name 'HAS_SENTENCEPIECE' is not defined. Did you mean: 'MOCK_SENTENCEPIECE'?

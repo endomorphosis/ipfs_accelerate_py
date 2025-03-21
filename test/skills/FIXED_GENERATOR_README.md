@@ -8,11 +8,23 @@ The test generator creates test files for HuggingFace transformers models with p
 
 ## Key Components
 
-1. **regenerate_tests_with_fixes.py**: Main script for generating test files with fixes
-2. **complete_indentation_fix.py**: Tool for fixing indentation issues
-3. **test_integration.py**: End-to-end integration framework
-4. **cleanup_integration.py**: Environment preparation script
+1. **test_generator_fixed.py**: Fixed generator with architecture awareness and proper indentation
+2. **regenerate_tests_with_fixes.py**: Main script for generating test files with fixes
+3. **fix_indentation_and_apply_template.py**: Direct script for applying templates to specific model types
+4. **integrate_generator_fixes.py**: Script to apply fixes to the original generator
 5. **templates/**: Directory containing architecture-specific templates
+
+## New Direct Fixing Approach (March 2025)
+
+We've developed a faster and more reliable approach to fixing test files:
+
+1. **Direct Template Application**: The `fix_indentation_and_apply_template.py` script can directly fix model-specific tests without complex regeneration logic.
+2. **Generator Integration**: The fixes have been integrated into the generator itself (`test_generator_fixed.py`).
+3. **Architecture Detection**: Automatic architecture type detection based on model name.
+4. **Fixed Class References**: Corrected class references for different architectures:
+   - `AutoModelForCausalLM` for decoder-only models (was incorrectly using `AutoModelLMHeadModel`)
+   - Fixed capitalization for vision model classes (e.g., `ViTForImageClassification`)
+5. **Architecture-Specific Processing**: Added specialized processing for each architecture type.
 
 ## Architecture Support
 
@@ -25,30 +37,43 @@ The generator supports the following architectures:
 - **Speech** (Whisper, Wav2Vec2, HuBERT, etc.)
 - **Multimodal** (LLaVA, CLIP, BLIP, etc.)
 
-## Usage
+## Using the Fixed Approach
 
-### Generate a Test File
+### Direct Template Application (Recommended)
+
+This approach is fastest and most reliable:
 
 ```bash
+# Fix a specific model test
+python fix_indentation_and_apply_template.py bert --output-dir fixed_tests --verify
+
+# Fix multiple model tests
+python fix_indentation_and_apply_template.py gpt2 --output-dir fixed_tests --verify
+python fix_indentation_and_apply_template.py t5 --output-dir fixed_tests --verify
+python fix_indentation_and_apply_template.py vit --output-dir fixed_tests --verify
+```
+
+### Use the Fixed Generator
+
+Generate tests using the fixed generator:
+
+```bash
+python test_generator_fixed.py --model bert
+python test_generator_fixed.py --model gpt2
+```
+
+### Apply Fixes to Original Generator
+
+```bash
+python integrate_generator_fixes.py --generator test_generator.py
+```
+
+### Legacy Approach
+
+```bash
+# Still available but not recommended
 python regenerate_tests_with_fixes.py --single bert
-```
-
-### Fix Indentation in a Test File
-
-```bash
 python complete_indentation_fix.py test_hf_bert.py
-```
-
-### Run the Integration Framework
-
-```bash
-python test_integration.py --all --core
-```
-
-### Prepare Environment
-
-```bash
-python cleanup_integration.py --templates
 ```
 
 ## Architecture-Specific Templates
@@ -125,12 +150,42 @@ For more information, see:
 - **INTEGRATION_PLAN.md**: Phased implementation plan
 - **TESTING_FIXES_SUMMARY.md**: Summary of fixes and improvements
 
+## Recent Updates (March 2025)
+
+We've successfully:
+
+1. **Fixed Core Model Tests**:
+   - `test_hf_bert.py` - Encoder-only architecture (verified and working)
+   - `test_hf_gpt2.py` - Decoder-only architecture (verified and working)
+   - `test_hf_t5.py` - Encoder-decoder architecture (verified and working)
+   - `test_hf_vit.py` - Vision architecture (verified and working)
+
+2. **Key Bug Fixes**:
+   - Fixed GPT-2 model class (`AutoModelLMHeadModel` → `AutoModelForCausalLM`)
+   - Fixed ViT capitalization (`VitForImageClassification` → `ViTForImageClassification`)
+   - Added padding token handling for decoder-only models
+   - Added decoder input initialization for encoder-decoder models
+   - Added architecture detection for proper model class selection
+
+3. **Enhanced Test Result Clarity**:
+   - Added comprehensive mock detection system to clearly indicate when tests are using mock objects vs. real inference
+   - Implemented visual indicators (🚀 for real inference, 🔷 for mock objects) with detailed dependency reporting
+   - Added granular dependency tracking in test metadata to improve transparency (`has_transformers`, `has_torch`, `has_tokenizers`, `has_sentencepiece`)
+   - Enhanced test output to show complete environment information and dependency status
+   - Added test type indicator in metadata (`REAL INFERENCE` vs. `MOCK OBJECTS (CI/CD)`)
+
+4. **Reduced Code Debt**:
+   - Integrated fixes directly into the generator
+   - Created a direct template application approach
+   - Added architecture-aware processing at the source
+
 ## Next Steps
 
 1. Generate tests for all 300+ HuggingFace model architectures
-2. Integrate with CI/CD pipelines
-3. Create comprehensive test coverage report
-4. Implement nightly test runs
+2. Add specialized templates for speech and multimodal models
+3. Integrate with CI/CD pipelines
+4. Create comprehensive test coverage report
+5. Implement nightly test runs
 
 ## License
 

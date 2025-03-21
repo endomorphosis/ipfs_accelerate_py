@@ -1,0 +1,41 @@
+<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
+2025-03-20 20:07:28,956 - INFO - CUDA available: version 12.4
+2025-03-20 20:07:28,971 - INFO - Number of CUDA devices: 1
+2025-03-20 20:07:28,972 - INFO - CUDA Device 0: Quadro P4000 with 7.92 GB memory
+2025-03-20 20:07:28,972 - INFO - MPS not available
+2025-03-20 20:07:28,973 - INFO - Testing BERT model bert-base-uncased with pipeline API on cuda:0
+BertForMaskedLM has generative capabilities, as `prepare_inputs_for_generation` is explicitly overwritten. However, it doesn't directly inherit from `GenerationMixin`. From 👉v4.50👈 onwards, `PreTrainedModel` will NOT inherit from `GenerationMixin`, and this model will lose the ability to call `generate` and other related functions.
+  - If you're using `trust_remote_code=True`, you can get rid of this warning by loading the model with an auto class. See https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes
+  - If you are the owner of the model architecture code, please modify your model class such that it inherits from `GenerationMixin` (after `PreTrainedModel`, otherwise you'll get an exception).
+  - If you are not the owner of the model architecture class, please contact the model code owner to update it.
+Some weights of the model checkpoint at bert-base-uncased were not used when initializing BertForMaskedLM: ['bert.pooler.dense.bias', 'bert.pooler.dense.weight', 'cls.seq_relationship.bias', 'cls.seq_relationship.weight']
+- This IS expected if you are initializing BertForMaskedLM from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing BertForMaskedLM from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+2025-03-20 20:07:32,459 - INFO - Model loading time: 3.49 seconds
+2025-03-20 20:07:32,866 - INFO - Top prediction: little
+2025-03-20 20:07:32,866 - INFO - Inference time: 0.41 seconds
+2025-03-20 20:07:32,875 - INFO - Testing BERT model bert-base-uncased with from_pretrained API on cuda:0
+Some weights of the model checkpoint at bert-base-uncased were not used when initializing BertForMaskedLM: ['bert.pooler.dense.bias', 'bert.pooler.dense.weight', 'cls.seq_relationship.bias', 'cls.seq_relationship.weight']
+- This IS expected if you are initializing BertForMaskedLM from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing BertForMaskedLM from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+2025-03-20 20:07:33,764 - INFO - Model loading time: 0.89 seconds
+2025-03-20 20:07:33,840 - INFO - Top predictions: little, big, small, startled, sleeping
+2025-03-20 20:07:33,840 - INFO - Inference time: 0.01 seconds
+
+==================================================
+TEST RESULTS SUMMARY
+==================================================
+[32m🚀 Using REAL INFERENCE with actual models[0m
+
+Model: bert-base-uncased
+Device: cuda:0
+
+Pipeline Test: ✅ Success
+  - Top prediction: little
+  - Inference time: 0.41 seconds
+
+From Pretrained Test: ✅ Success
+  - Top predictions: little, big, small
+  - Inference time: 0.01 seconds
+
+Successfully tested BERT model: bert-base-uncased

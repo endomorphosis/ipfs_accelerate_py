@@ -1,0 +1,15 @@
+<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
+2025-03-20 20:05:17,232 - WARNING - torch not available, using mock
+2025-03-20 20:05:17,233 - WARNING - transformers not available, using mock
+2025-03-20 20:05:17,237 - INFO - Testing model: t5-small
+2025-03-20 20:05:17,237 - INFO - Using cpu as preferred device
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 957, in <module>
+    main()
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 904, in main
+    results = tester.run_tests(all_hardware=args.all_hardware)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py", line 792, in run_tests
+    "has_tokenizers": HAS_TOKENIZERS,
+                      ^^^^^^^^^^^^^^
+NameError: name 'HAS_TOKENIZERS' is not defined. Did you mean: 'MOCK_TOKENIZERS'?

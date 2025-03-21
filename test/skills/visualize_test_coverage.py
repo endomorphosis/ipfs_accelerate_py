@@ -35,7 +35,8 @@ def load_model_types():
     # If model types file doesn't exist, create a simulated list
     # based on existing test files
     model_types = []
-    test_files = glob.glob("../test_hf_*.py")
+    # Check both main directory and fixed_tests directory
+    test_files = glob.glob("test_hf_*.py") + glob.glob("fixed_tests/test_hf_*.py")
     for test_file in test_files:
         model_name = os.path.basename(test_file).replace('test_hf_', '').replace('.py', '')
         if model_name not in model_types:
@@ -54,12 +55,14 @@ def load_model_types():
 
 def get_implemented_models():
     """Get list of implemented models from test files."""
-    test_files = glob.glob("../test_hf_*.py")
+    # Check both main directory and fixed_tests directory
+    test_files = glob.glob("test_hf_*.py") + glob.glob("fixed_tests/test_hf_*.py")
     implemented = []
     
     for test_file in test_files:
         model_name = os.path.basename(test_file).replace('test_hf_', '').replace('.py', '')
-        implemented.append(model_name)
+        if model_name not in implemented:
+            implemented.append(model_name)
     
     return implemented
 
@@ -199,17 +202,22 @@ def generate_coverage_report(model_types, implemented, output_dir):
     """Generate a detailed coverage report in markdown format."""
     os.makedirs(output_dir, exist_ok=True)
     
+    # Ensure we don't have duplicate models
+    unique_model_types = list(set(model_types))
+    unique_implemented = list(set(implemented))
+    
     # Calculate coverage statistics
-    total = len(model_types)
-    implemented_count = len(implemented)
+    total = len(unique_model_types)
+    implemented_count = len([m for m in unique_implemented if m in unique_model_types])
+    additional_models = len([m for m in unique_implemented if m not in unique_model_types])
     missing_count = total - implemented_count
-    coverage_percentage = 100 * implemented_count / total
+    coverage_percentage = 100 * implemented_count / total if total > 0 else 0
     
     # Get missing models
-    missing = [model for model in model_types if model not in implemented]
+    missing = [model for model in unique_model_types if model not in unique_implemented]
     
     # Categorize implemented models
-    categorized_implemented = categorize_models(implemented)
+    categorized_implemented = categorize_models(unique_implemented)
     
     # Categorize missing models
     categorized_missing = categorize_models(missing)
@@ -219,9 +227,10 @@ def generate_coverage_report(model_types, implemented, output_dir):
         "# HuggingFace Model Test Coverage Report",
         f"\n**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"\n## Coverage Summary",
-        f"\n- **Total models:** {total}",
-        f"- **Implemented:** {implemented_count} ({coverage_percentage:.1f}%)",
-        f"- **Missing:** {missing_count} ({100-coverage_percentage:.1f}%)",
+        f"\n- **Total models from HF:** {total}",
+        f"- **Implemented (from HF list):** {implemented_count} ({coverage_percentage:.1f}%)",
+        f"- **Additional models implemented:** {additional_models}",
+        f"- **Missing models:** {missing_count}",
         
         f"\n## Coverage by Architecture",
         "\n| Architecture | Implemented | Missing |",

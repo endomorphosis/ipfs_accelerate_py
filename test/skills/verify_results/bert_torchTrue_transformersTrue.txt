@@ -1,0 +1,24 @@
+<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
+2025-03-20 20:07:44,544 - WARNING - torch not available, using mock
+2025-03-20 20:07:44,544 - WARNING - transformers not available, using mock
+2025-03-20 20:07:44,553 - INFO - CUDA detection skipped (torch not available)
+2025-03-20 20:07:44,553 - INFO - MPS detection skipped (torch not available)
+2025-03-20 20:07:44,555 - WARNING - Transformers library not available, skipping pipeline test
+2025-03-20 20:07:44,555 - WARNING - Transformers or torch library not available, skipping from_pretrained test
+
+==================================================
+TEST RESULTS SUMMARY
+==================================================
+[34m🔷 Using MOCK OBJECTS for CI/CD testing only[0m
+   Dependencies: transformers=False, torch=False, tokenizers=True, sentencepiece=True
+
+Model: bert-base-uncased
+Device: cpu
+
+Pipeline Test: ❌ Failed
+  - Error: Transformers library not available
+
+From Pretrained Test: ❌ Failed
+  - Error: Required libraries not available
+
+Successfully tested BERT model: bert-base-uncased
