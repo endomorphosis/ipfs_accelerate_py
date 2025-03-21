@@ -24,7 +24,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -69,7 +69,7 @@ jobs:
         python publish_model_benchmarks.py $MODEL_PARAM $DRY_RUN_PARAM
         
     - name: Archive results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: benchmark-reports
         path: |
@@ -84,7 +84,7 @@ jobs:
         python create_test_dashboard.py --static --output-dir dashboard
         
     - name: Deploy dashboard
-      uses: peaceiris/actions-gh-pages@v3
+      uses: peaceiris/actions-gh-pages@v4
       if: github.ref == 'refs/heads/main'
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}

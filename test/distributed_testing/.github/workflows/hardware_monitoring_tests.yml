@@ -36,7 +36,7 @@ jobs:
         python-version: [3.8, 3.9]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
@@ -68,14 +68,14 @@ jobs:
     
     - name: Upload test report
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: hardware-monitoring-test-report-${{ matrix.python-version }}
         path: test_data/test_report.html
     
     - name: Upload test database
       if: always() && github.event.inputs.test_mode != 'standard'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: hardware-monitoring-test-db-${{ matrix.python-version }}
         path: test_data/test_metrics.duckdb
@@ -97,7 +97,7 @@ jobs:
     if: ${{ github.event.inputs.test_mode == 'full' || github.event.inputs.test_mode == 'long' }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -125,7 +125,7 @@ jobs:
     
     - name: Upload macOS test report
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: hardware-monitoring-test-report-macos
         path: test_data/test_report_macos.html
@@ -136,7 +136,7 @@ jobs:
     if: ${{ github.event.inputs.test_mode == 'full' || github.event.inputs.test_mode == 'long' }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -206,7 +206,7 @@ jobs:
     
     - name: Upload CI integration test report
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: hardware-monitoring-ci-integration-report
         path: test_data/ci_integration_report.html

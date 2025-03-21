@@ -34,7 +34,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up test matrix
         id: set-matrix
@@ -64,7 +64,7 @@ jobs:
       TIMEOUT: ${{ github.event.inputs.timeout || '3600' }}
       
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -152,7 +152,7 @@ jobs:
       # Upload test artifacts
       - name: Upload test artifacts
         if: ${{ always() && steps.run-tests.outputs.status != '' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.test_type }}
           path: test/duckdb_api/distributed_testing/test_output/${{ matrix.test_type }}
@@ -201,7 +201,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ always() }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4

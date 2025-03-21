@@ -93,7 +93,7 @@ jobs:
         
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       
@@ -189,7 +189,7 @@ jobs:
           fi
       
       - name: Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: e2e-test-results-${{ matrix.test-scope.name }}
           path: |
@@ -199,7 +199,7 @@ jobs:
           retention-days: 30
       
       - name: Upload benchmark database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark_db
           path: benchmark_db.duckdb
@@ -212,7 +212,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -254,7 +254,7 @@ jobs:
             --badge-only
       
       - name: Upload reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: e2e-test-enhanced-reports
           path: reports
@@ -277,7 +277,7 @@ jobs:
       
       - name: Update status badges
         if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: status-badges
           path: reports/badges

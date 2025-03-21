@@ -57,7 +57,7 @@ jobs:
         
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       
@@ -124,14 +124,14 @@ jobs:
           python generators/models/test_ipfs_accelerate.py --report --format $REPORT_FORMAT --output test_report.$REPORT_FORMAT
       
       - name: Upload benchmark database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark_db
           path: benchmark_db.duckdb
           retention-days: 90
       
       - name: Upload test report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-report
           path: |
@@ -148,7 +148,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Download test reports
         uses: actions/download-artifact@v3

@@ -50,7 +50,7 @@ jobs:
       validation_run_id: ${{ steps.runid.outputs.run_id }}
     
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -472,7 +472,7 @@ EOF
           echo "test_results_path=browser_test_results" >> $GITHUB_OUTPUT
       
       - name: Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: browser-test-results
           path: browser_test_results/
@@ -494,7 +494,7 @@ EOF
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4

@@ -43,7 +43,7 @@ jobs:
       validation_timestamp: ${{ steps.timestamp.outputs.timestamp }}
       validation_run_id: ${{ steps.runid.outputs.run_id }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -109,13 +109,13 @@ jobs:
             --run-id ${{ steps.runid.outputs.run_id }}
       
       - name: Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: test_results/
           
       - name: Upload validation output
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: validation-output
           path: validation_output/
@@ -124,7 +124,7 @@ jobs:
     needs: validate-simulation-framework
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -206,7 +206,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4

@@ -55,7 +55,7 @@ jobs:
       run_id: ${{ steps.runid.outputs.run_id }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -101,13 +101,13 @@ jobs:
           EOF
 
       - name: Upload database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-db
           path: ${{ env.BENCHMARK_DB_PATH }}
 
       - name: Upload CI metadata
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ci-metadata
           path: ci_metadata.json
@@ -125,7 +125,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -179,13 +179,13 @@ jobs:
             --run-id ${{ needs.setup_database.outputs.run_id }}
 
       - name: Upload updated database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-db-${{ matrix.model }}-${{ matrix.hardware }}
           path: ${{ env.BENCHMARK_DB_PATH }}
 
       - name: Upload test reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-reports-${{ matrix.model }}-${{ matrix.hardware }}
           path: test_report_*.md
@@ -196,7 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -241,7 +241,7 @@ jobs:
             --ci-mode
 
       - name: Upload updated database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-db-web
           path: ${{ env.BENCHMARK_DB_PATH }}
@@ -251,7 +251,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -339,13 +339,13 @@ jobs:
             --github-repo ${{ github.repository }}
 
       - name: Upload consolidated database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: consolidated-benchmark-db
           path: consolidated_db.duckdb
 
       - name: Upload reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-reports
           path: |
@@ -367,7 +367,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -449,7 +449,7 @@ jobs:
           cp db/consolidated_db.duckdb historical_db/benchmark_${{ needs.setup_database.outputs.today_date }}.duckdb
 
       - name: Upload historical database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: historical-benchmark-db
           path: historical_db/
