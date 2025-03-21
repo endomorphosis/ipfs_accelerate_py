@@ -1,3 +1,4 @@
+# BENCHMARK_PUBLISHING_README.md
 # HuggingFace Model Hub Benchmark Publisher
 
 This tool automatically publishes hardware compatibility and performance benchmarks to HuggingFace Model Hub model cards, enhancing model discoverability and providing valuable information to users.
