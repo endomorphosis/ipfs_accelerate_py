@@ -40,7 +40,7 @@ jobs:
       today_date: ${{ steps.date.outputs.date }}
       run_id: ${{ steps.runid.outputs.run_id }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -82,13 +82,13 @@ jobs:
           EOF
           
       - name: Upload database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-db
           path: benchmark_db/ci_benchmark_${{ steps.runid.outputs.run_id }}.duckdb
           
       - name: Upload CI metadata
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ci-metadata
           path: ci_metadata.json
@@ -112,7 +112,7 @@ jobs:
           - hardware: ""
         
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -126,13 +126,13 @@ jobs:
           pip install -r requirements.txt
           
       - name: Download database
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: benchmark-db
           path: benchmark_db
           
       - name: Download CI metadata
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: ci-metadata
           path: .
@@ -174,13 +174,13 @@ jobs:
           EOF
             
       - name: Upload updated database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-db-updated-${{ matrix.model }}-${{ matrix.hardware }}
           path: benchmark_db
           
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-results-${{ matrix.model }}-${{ matrix.hardware }}
           path: benchmark_results
@@ -189,7 +189,7 @@ jobs:
     needs: [setup_database, run_benchmarks]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -203,7 +203,7 @@ jobs:
           pip install requests pandas numpy
           
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
           
@@ -314,13 +314,13 @@ jobs:
             --output-dir ./prediction_models
       
       - name: Upload consolidated database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: consolidated-benchmark-db
           path: consolidated_db.duckdb
           
       - name: Upload reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-reports
           path: |
@@ -337,7 +337,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -350,13 +350,13 @@ jobs:
           pip install -r duckdb_api/scripts/requirements_db.txt
           
       - name: Download reports
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: benchmark-reports
           path: reports
           
       - name: Download consolidated database
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: consolidated-benchmark-db
           path: db
@@ -422,7 +422,7 @@ jobs:
           cp db/consolidated_db.duckdb historical_db/benchmark_${{ needs.setup_database.outputs.today_date }}.duckdb
           
       - name: Upload historical database
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: historical-benchmark-db
           path: historical_db/

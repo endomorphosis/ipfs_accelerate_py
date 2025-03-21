@@ -54,7 +54,7 @@ jobs:
     
     - name: Upload test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: integration-test-results-${{ matrix.python-version }}
         path: integration_test_results_ci.json
@@ -65,10 +65,10 @@ jobs:
     if: ${{ github.event.inputs.test_mode == 'web-only' || github.event.inputs.test_mode == 'all' }}
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
     
@@ -91,7 +91,7 @@ jobs:
     
     - name: Upload web test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: web-platform-test-results
         path: integration_test_results_ci.json
@@ -101,7 +101,7 @@ jobs:
     if: ${{ github.event.inputs.test_mode == 'all' }}
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -121,7 +121,7 @@ jobs:
     
     - name: Upload macOS test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: macos-test-results
         path: integration_test_results_macos.json
