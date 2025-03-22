@@ -25,12 +25,12 @@ logger = logging.getLogger(__name__)
 # Define architecture types for model mapping
 ARCHITECTURE_TYPES = {
     "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta", "albert"],
-    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "gpt-neox", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt"],
-    "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
+    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "gpt-neox", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt", "gpt_j"],
+    "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan", "speecht5"],
     "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2", "resnet"],
     "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip"],
     "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5"],
-    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava"]
+    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava", "vision_text_dual_encoder"]
 }
 
 # Define appropriate tasks for each architecture type
@@ -49,16 +49,20 @@ SPECIAL_TASK_OVERRIDES = {
     "clip": "zero-shot-image-classification",
     "chinese-clip": "zero-shot-image-classification",
     "vision-text-dual-encoder": "zero-shot-image-classification",
+    "vision_text_dual_encoder": "zero-shot-image-classification",
     "wav2vec2-bert": "automatic-speech-recognition",
     "speech-to-text": "automatic-speech-recognition",
     "speech-to-text-2": "translation",
+    "speecht5": "automatic-speech-recognition",
     "blip-2": "image-to-text",
     "video-llava": "image-to-text",  # Changed from video-to-text which isn't supported
     "conditional-detr": "object-detection",
     "detr": "object-detection",
     "mask2former": "image-segmentation",
     "segformer": "image-segmentation",
-    "sam": "image-segmentation"
+    "sam": "image-segmentation",
+    "gpt_j": "text-generation",
+    "pix2struct": "image-to-text"
 }
 
 # Define test_input patterns for each task

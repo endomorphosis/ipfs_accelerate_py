@@ -1,680 +1,744 @@
-# Standard library imports first
-import os
-import sys
-import json
-import time
-import datetime
-import traceback
-from unittest.mock import patch, MagicMock
+#!/usr/bin/env python3
 
-# Third-party imports next
-import numpy as np
-
-# Use absolute path setup
-
-# Import hardware detection capabilities if available:
+# Import hardware detection capabilities if available
 try:
-    from generators.hardware.hardware_detection import ())))))
-    HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
-    detect_all_hardware
+    from generators.hardware.hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
     )
     HAS_HARDWARE_DETECTION = True
 except ImportError:
     HAS_HARDWARE_DETECTION = False
     # We'll detect hardware manually as fallback
-    sys.path.insert())))))0, "/home/barberb/ipfs_accelerate_py")
 
-# Try/except pattern for importing optional dependencies:
+import os
+import sys
+import json
+import time
+import datetime
+
+# ANSI color codes for terminal output
+GREEN = "\033[32m"
+BLUE = "\033[34m"
+RESET = "\033[0m"
+import traceback
+import logging
+import argparse
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
+
+import asyncio
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Third-party imports
+import numpy as np
+
+# WebGPU imports and mock setup
+HAS_WEBGPU = False
 try:
+    # Attempt to check for WebGPU availability
+    import ctypes.util
+    HAS_WEBGPU = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webgpu') is not None
+except ImportError:
+    HAS_WEBGPU = False
+
+# WebNN imports and mock setup
+HAS_WEBNN = False
+try:
+    # Attempt to check for WebNN availability
+    import ctypes
+    HAS_WEBNN = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webnn') is not None
+except ImportError:
+    HAS_WEBNN = False
+
+# ROCm imports and detection
+HAS_ROCM = False
+
+# Check if we should mock specific dependencies
+MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
+MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
+MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
+MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+
+# Try to import torch
+try:
+    if MOCK_TORCH:
+        raise ImportError("Mocked torch import failure")
     import torch
+    HAS_TORCH = True
+
+    # Try ROCm detection with torch
+    if torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+        ROCM_VERSION = torch._C._rocm_version()
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
 except ImportError:
-    torch = MagicMock()))))))
-    print())))))"Warning: torch not available, using mock implementation")
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
 
 try:
+    import openvino
+    from openvino.runtime import Core
+    HAS_OPENVINO = True
+except ImportError:
+    HAS_OPENVINO = False
+    logger.warning("OpenVINO not available")
+
+# Try to import transformers
+try:
+    if MOCK_TRANSFORMERS:
+        raise ImportError("Mocked transformers import failure")
     import transformers
+    HAS_TRANSFORMERS = True
 except ImportError:
-    transformers = MagicMock()))))))
-    print())))))"Warning: transformers not available, using mock implementation")
+    transformers = MagicMock()
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
 
-# Try to import specific dependencies based on model type
-# Model supports: visual-question-answering, image-to-text
-    if "visual-question-answering" in ["image-classification", "object-detection", "image-segmentation", "image-to-text", "visual-question-answering"]:,
-    try:
-        from PIL import Image
-    except ImportError:
-        Image = MagicMock()))))))
-        print())))))"Warning: PIL not available, using mock implementation")
-
-        if "visual-question-answering" in ["automatic-speech-recognition", "audio-classification", "text-to-audio"]:,
-    try:
-        import librosa
-    except ImportError:
-        librosa = MagicMock()))))))
-        print())))))"Warning: librosa not available, using mock implementation")
-
-# Import the module to test ())))))create a mock if not available:):
+# Try to import tokenizers
 try:
-    from ipfs_accelerate_py.worker.skillset.hf_fuyu import hf_fuyu
+    if MOCK_TOKENIZERS:
+        raise ImportError("Mocked tokenizers import failure")
+    import tokenizers
+    HAS_TOKENIZERS = True
 except ImportError:
-    # If the module doesn't exist yet, create a mock class
-    class hf_fuyu:
-        def __init__())))))self, resources=None, metadata=None):
-            self.resources = resources or {}}}}}}}}}}}}}}}}}}
-            self.metadata = metadata or {}}}}}}}}}}}}}}}}}}
-            
-        def init_cpu())))))self, model_name, model_type, device="cpu", **kwargs):
-            # Mock implementation
-            return MagicMock())))))), MagicMock())))))), lambda x: torch.zeros())))))())))))1, 768)), None, 1
-            
-        def init_cuda())))))self, model_name, model_type, device_label="cuda:0", **kwargs):
-            # Mock implementation
-            return MagicMock())))))), MagicMock())))))), lambda x: torch.zeros())))))())))))1, 768)), None, 1
-            
-        def init_openvino())))))self, model_name, model_type, device="CPU", **kwargs):
-            # Mock implementation
-            return MagicMock())))))), MagicMock())))))), lambda x: torch.zeros())))))())))))1, 768)), None, 1
-    
-            print())))))f"Warning: hf_fuyu module not found, using mock implementation")
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
 
-# Define required methods to add to hf_fuyu
-def init_cuda())))))self, model_name, model_type, device_label="cuda:0", **kwargs):
-    """
-    Initialize model with CUDA support.
-    
-    Args:
-        model_name: Name or path of the model
-        model_type: Type of model ())))))e.g., "visual-question-answering")
-        device_label: CUDA device label ())))))e.g., "cuda:0")
+# Try to import sentencepiece
+try:
+    if MOCK_SENTENCEPIECE:
+        raise ImportError("Mocked sentencepiece import failure")
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    if HAS_CUDA:
+        cuda_version = torch.version.cuda
+        logger.info(f"CUDA available: version {cuda_version}")
+        num_devices = torch.cuda.device_count()
+        logger.info(f"Number of CUDA devices: {num_devices}")
         
-    Returns:
-        tuple: ())))))endpoint, tokenizer, handler, queue, batch_size)
-        """
-        import traceback
-        import sys
-        import unittest.mock
-        import time
-    
-    # Try to import the necessary utility functions
-    try:
-        sys.path.insert())))))0, "/home/barberb/ipfs_accelerate_py/test")
-        import utils as test_utils
+        # Log CUDA device properties
+        for i in range(num_devices):
+            device_props = torch.cuda.get_device_properties(i)
+            logger.info(f"CUDA Device {i}: {device_props.name} with {device_props.total_memory / 1024**3:.2f} GB memory")
+    else:
+        logger.info("CUDA not available")
+else:
+    HAS_CUDA = False
+    logger.info("CUDA detection skipped (torch not available)")
+
+# MPS (Apple Silicon) detection
+if HAS_TORCH:
+    HAS_MPS = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+    if HAS_MPS:
+        logger.info("MPS available for Apple Silicon acceleration")
+    else:
+        logger.info("MPS not available")
+else:
+    HAS_MPS = False
+    logger.info("MPS detection skipped (torch not available)")
+
+# Main BERT model registry
+FUYU_MODELS_REGISTRY = {
+    "fuyu-base-uncased": {
+        "full_name": "FUYU Base Uncased",
+        "architecture": "encoder-only",
+        "description": "FUYU Base model with uncased vocabulary",
+        "fuyu": "fuyu",
+        "parameters": "110M",
+        "context_length": 512,
+        "embedding_dim": 768,
+        "attention_heads": 12,
+        "layers": 12,
+        "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
+    },
+    "fuyu-large-uncased": {
+        "full_name": "FUYU Large Uncased",
+        "architecture": "encoder-only",
+        "description": "FUYU Large model with uncased vocabulary",
+        "fuyu": "fuyu",
+        "parameters": "336M",
+        "context_length": 512,
+        "embedding_dim": 1024,
+        "attention_heads": 16,
+        "layers": 24,
+        "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
+    },
+    "fuyu-base-cased": {
+        "full_name": "FUYU Base Cased",
+        "architecture": "encoder-only",
+        "description": "FUYU Base model with cased vocabulary",
+        "fuyu": "fuyu",
+        "parameters": "110M",
+        "context_length": 512,
+        "embedding_dim": 768,
+        "attention_heads": 12,
+        "layers": 12,
+        "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
+    }
+}
+
+def select_device():
+    """Select the best available device for inference."""
+    if HAS_CUDA:
+        return "cuda:0"
+    elif HAS_ROCM:
+        return "cuda:0"  # ROCm uses CUDA API
+    elif HAS_MPS:
+        return "mps"
+    else:
+        return "cpu"
+
+# Create mock classes for testing without dependencies
+class MockTokenizer:
+    def __init__(self, *args, **kwargs):
+        self.vocab_size = 30522
+        self.mask_token = "[MASK]"
+        self.pad_token = "[PAD]"
+        self.cls_token = "[CLS]"
+        self.sep_token = "[SEP]"
+        self.unk_token = "[UNK]"
+        self.all_special_tokens = [self.mask_token, self.pad_token, self.cls_token, self.sep_token, self.unk_token]
+        self.mask_token_id = 103
+        self.pad_token_id = 0
+        self.cls_token_id = 101
+        self.sep_token_id = 102
+        self.unk_token_id = 100
         
-        # Check if CUDA is really available
-        import torch:
-        if not torch.cuda.is_available())))))):
-            print())))))"CUDA not available, falling back to mock implementation")
-            processor = unittest.mock.MagicMock()))))))
-            endpoint = unittest.mock.MagicMock()))))))
-            handler = lambda x: {}}}}}}}}}}}}}}}}}"output": None, "implementation_type": "MOCK"}
-            return endpoint, processor, handler, None, 0
-            
-        # Get the CUDA device
-            device = test_utils.get_cuda_device())))))device_label)
-        if device is None:
-            print())))))"Failed to get valid CUDA device, falling back to mock implementation")
-            processor = unittest.mock.MagicMock()))))))
-            endpoint = unittest.mock.MagicMock()))))))
-            handler = lambda x: {}}}}}}}}}}}}}}}}}"output": None, "implementation_type": "MOCK"}
-            return endpoint, processor, handler, None, 0
-            
-        # Try to import and initialize HuggingFace components
-        try:
-            # Different imports based on model type
-            if "visual-question-answering" == "text-generation":
-                from transformers import AutoModelForCausalLM, AutoTokenizer
-                print())))))f"Attempting to load text generation model {}}}}}}}}}}}}}}}}}model_name} with CUDA support")
-                processor = AutoTokenizer.from_pretrained())))))model_name)
-                model = AutoModelForCausalLM.from_pretrained())))))model_name)
-            elif "visual-question-answering" == "image-classification":
-                from transformers import AutoFeatureExtractor, AutoModelForImageClassification
-                print())))))f"Attempting to load image classification model {}}}}}}}}}}}}}}}}}model_name} with CUDA support")
-                processor = AutoFeatureExtractor.from_pretrained())))))model_name)
-                model = AutoModelForImageClassification.from_pretrained())))))model_name)
-            elif "visual-question-answering" == "automatic-speech-recognition":
-                from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
-                print())))))f"Attempting to load speech recognition model {}}}}}}}}}}}}}}}}}model_name} with CUDA support")
-                processor = AutoProcessor.from_pretrained())))))model_name)
-                model = AutoModelForSpeechSeq2Seq.from_pretrained())))))model_name)
-            else:
-                # Default handling for other model types
-                from transformers import AutoProcessor, AutoModel
-                print())))))f"Attempting to load model {}}}}}}}}}}}}}}}}}model_name} with CUDA support")
-                try:
-                    processor = AutoProcessor.from_pretrained())))))model_name)
-                except:
-                    from transformers import AutoTokenizer
-                    processor = AutoTokenizer.from_pretrained())))))model_name)
-                    model = AutoModel.from_pretrained())))))model_name)
-                
-            # Move to device and optimize
-                    model = test_utils.optimize_cuda_memory())))))model, device, use_half_precision=True)
-                    model.eval()))))))
-                    print())))))f"Model loaded to {}}}}}}}}}}}}}}}}}device} and optimized for inference")
-            
-            # Create a real handler function - implementation depends on model type
-            def real_handler())))))input_data):
-                try:
-                    start_time = time.time()))))))
-                    
-                    # Process input based on model type
-                    with torch.no_grad())))))):
-                        if hasattr())))))torch.cuda, "synchronize"):
-                            torch.cuda.synchronize()))))))
-                            
-                        # Implementation depends on the model type and task
-                        # This is a template that needs to be customized
-                            outputs = model())))))**inputs)
-                        
-                        if hasattr())))))torch.cuda, "synchronize"):
-                            torch.cuda.synchronize()))))))
-                    
-                            return {}}}}}}}}}}}}}}}}}
-                            "output": outputs,
-                            "implementation_type": "REAL",
-                            "inference_time_seconds": time.time())))))) - start_time,
-                            "device": str())))))device)
-                            }
-                except Exception as e:
-                    print())))))f"Error in real CUDA handler: {}}}}}}}}}}}}}}}}}e}")
-                    print())))))f"Traceback: {}}}}}}}}}}}}}}}}}traceback.format_exc()))))))}")
-                            return {}}}}}}}}}}}}}}}}}
-                            "output": None,
-                            "implementation_type": "REAL",
-                            "error": str())))))e),
-                            "is_error": True
-                            }
-            
-                        return model, processor, real_handler, None, 8
-            
-        except Exception as model_err:
-            print())))))f"Failed to load model with CUDA, will use simulation: {}}}}}}}}}}}}}}}}}model_err}")
-    except Exception as e:
-        print())))))f"Error in init_cuda: {}}}}}}}}}}}}}}}}}e}")
-        print())))))f"Traceback: {}}}}}}}}}}}}}}}}}traceback.format_exc()))))))}")
+    def __call__(self, text, return_tensors=None, padding=False, truncation=False, max_length=None):
+        # Create a simple mock encoding with appropriate shape
+        if isinstance(text, list):
+            batch_size = len(text)
+        else:
+            batch_size = 1
+        
+        # Generate token ids for input
+        input_ids = [[self.cls_token_id] + [i % 100 + 999 for i in range(10)] + [self.sep_token_id] for _ in range(batch_size)]
+        
+        # Find the mask token and replace with mask_token_id
+        for i in range(batch_size):
+            if "[MASK]" in (text[i] if isinstance(text, list) else text):
+                # Replace a token with [MASK] token
+                pos = 5  # Arbitrary position for mask token
+                input_ids[i][pos] = self.mask_token_id
+        
+        attention_mask = [[1] * len(ids) for ids in input_ids]
+        
+        # Convert to tensors if requested
+        if return_tensors == "pt" and HAS_TORCH:
+            return {
+                "input_ids": torch.tensor(input_ids),
+                "attention_mask": torch.tensor(attention_mask)
+            }
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask
+        }
+        
+    def decode(self, token_ids, skip_special_tokens=True):
+        # Simple mock decode
+        tokens = [f"token_{id}" for id in token_ids if id not in [self.cls_token_id, self.sep_token_id, self.pad_token_id]]
+        return " ".join(tokens)
     
-    # Fallback to mock implementation
-        processor = unittest.mock.MagicMock()))))))
-        endpoint = unittest.mock.MagicMock()))))))
-        handler = lambda x: {}}}}}}}}}}}}}}}}}"output": None, "implementation_type": "MOCK"}
-            return endpoint, processor, handler, None, 0
+    @classmethod
+    def from_pretrained(cls, model_name, *args, **kwargs):
+        return cls()
 
-# Add the method to the class
-            hf_fuyu.init_cuda = init_cuda
+class MockSentencePieceProcessor:
+    def __init__(self, *args, **kwargs):
+        self.vocab_size = 32000
+        self.mask_token = "[MASK]"
+        
+    def encode(self, text, *args, **kwargs):
+        # Return a list of "token ids"
+        return [i for i in range(min(len(text.split()), 15))]
 
-class test_hf_fuyu:
-    def __init__())))))self, resources=None, metadata=None):
-        """
-        Initialize the test class.
+    def decode(self, token_ids):
+        # Return a simple mock decoded string
+        return " ".join([f"token_{id}" for id in token_ids])
+        
+    def get_piece(self, id):
+        # Return a fake token
+        return f"token_{id}"
+        
+    def id_to_piece(self, id):
+        # Return a fake token
+        return f"token_{id}"
+        
+    def piece_to_id(self, piece):
+        # Return a fake id
+        return hash(piece) % 32000
+    
+    @classmethod
+    def load(cls, model_path):
+        return cls()
+
+class TestModelTypeModels:
+    def __init__(self, model_id="fuyu-base-uncased", device=None):
+        """Initialize the test class for FUYU models.
         
         Args:
-            resources ())))))dict, optional): Resources dictionary
-            metadata ())))))dict, optional): Metadata dictionary
-            """
-        self.resources = resources if resources else {}}}}}}}}}}}}}}}}}:
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers
-            }
-            self.metadata = metadata if metadata else {}}}}}}}}}}}}}}}}}}
-            self.model = hf_fuyu())))))resources=self.resources, metadata=self.metadata)
-        
-        # Use a small model for testing
-            self.model_name = "Salesforce/blip-image-captioning-base"  # Image captioning model
-        
-        # Test inputs appropriate for this model type
-            self.test_image = "test.jpg"  # Path to a test image file
-        
-        # Initialize collection arrays for examples and status
-            self.examples = [],
-            self.status_messages = {}}}}}}}}}}}}}}}}}}
-            return None
-        :
-    def test())))))self):
+            model_id: The model ID to test (default: "fuyu-base-uncased")
+            device: The device to run tests on (default: None = auto-select)
         """
-        Run all tests for the model, organized by hardware platform.
-        Tests CPU, CUDA, OpenVINO implementations.
+        self.model_id = model_id
+        self.device = device if device else select_device()
+        self.performance_stats = {}
         
-        Returns:
-            dict: Structured test results with status, examples and metadata
-            """
-            results = {}}}}}}}}}}}}}}}}}}
-        
-        # Test basic initialization
+    def test_pipeline(self):
+        """Test the model using the pipeline API."""
         try:
-            results["init"] = "Success" if self.model is not None else "Failed initialization":,
-        except Exception as e:
-            results["init"] = f"Error: {}}}}}}}}}}}}}}}}}str())))))e)}"
-            ,
-        # ====== CPU TESTS ======
-        try:
-            print())))))"Testing fuyu on CPU...")
-            # Initialize for CPU
-            endpoint, processor, handler, queue, batch_size = self.model.init_cpu())))))
-            self.model_name,
-            "visual-question-answering",
-            "cpu"
+            if not HAS_TRANSFORMERS:
+                logger.warning("Transformers library not available, skipping pipeline test")
+                return {"success": False, "error": "Transformers library not available"}
+                
+            logger.info(f"Testing FUYU model {self.model_id} with pipeline API on {self.device}")
+            
+            # Record start time
+            start_time = time.time()
+            
+            # Initialize the pipeline
+            pipe = transformers.pipeline(
+                "fill-mask", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
             )
             
-            valid_init = endpoint is not None and processor is not None and handler is not None
-            results["cpu_init"] = "Success ())))))REAL)" if valid_init else "Failed CPU initialization"
-            ,
-            # Run actual inference
-            start_time = time.time()))))))
-            output = handler())))))self.test_input if hasattr())))))self, 'test_input') else 
-            self.test_text if hasattr())))))self, 'test_text') else
-            self.test_image if hasattr())))))self, 'test_image') else
-            self.test_audio if hasattr())))))self, 'test_audio') else
-            "Default test input")
-            elapsed_time = time.time())))))) - start_time
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
             
-            # Verify the output
-            is_valid_output = output is not None
+            # Test with a simple input
+            test_input = "The quick brown fox jumps over the [MASK] dog."
             
-            results["cpu_handler"] = "Success ())))))REAL)" if is_valid_output else "Failed CPU handler"
-            ,
-            # Record example
-            self.examples.append()))))){}}}}}}}}}}}}}}}}}:
-                "input": str())))))self.test_input if hasattr())))))self, 'test_input') else 
-                self.test_text if hasattr())))))self, 'test_text') else
-                self.test_image if hasattr())))))self, 'test_image') else
-                self.test_audio if hasattr())))))self, 'test_audio') else
-                           "Default test input"),:
-                               "output": {}}}}}}}}}}}}}}}}}
-                               "output_type": str())))))type())))))output)),
-                               "implementation_type": "REAL" if not isinstance())))))output, dict) or "implementation_type" not in output else output["implementation_type"],,,,
-                },:
-                    "timestamp": datetime.datetime.now())))))).isoformat())))))),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": "REAL",
-                    "platform": "CPU"
-                    })
+            # Record inference start time
+            inference_start = time.time()
+            
+            # Run inference
+            outputs = pipe(test_input)
+            
+            # Record inference time
+            inference_time = time.time() - inference_start
+            
+            # Log results
+            if isinstance(outputs, list) and len(outputs) > 0:
+                top_prediction = outputs[0]['token_str'] if isinstance(outputs[0], dict) and 'token_str' in outputs[0] else "N/A"
+                logger.info(f"Top prediction: {top_prediction}")
+                logger.info(f"Inference time: {inference_time:.2f} seconds")
+                
+                # Store performance stats
+                self.performance_stats["pipeline"] = {
+                    "load_time": load_time,
+                    "inference_time": inference_time,
+                    "top_prediction": top_prediction
+                }
+                
+                return {
+                    "success": True,
+                    "model_id": self.model_id,
+                    "device": self.device,
+                    "input": test_input,
+                    "top_prediction": top_prediction,
+                    "performance": {
+                        "load_time": load_time,
+                        "inference_time": inference_time
+                    }
+                }
+            else:
+                logger.error(f"Pipeline returned unexpected output: {outputs}")
+                return {"success": False, "error": "Unexpected output format"}
                 
         except Exception as e:
-            print())))))f"Error in CPU tests: {}}}}}}}}}}}}}}}}}e}")
-            traceback.print_exc()))))))
-            results["cpu_tests"] = f"Error: {}}}}}}}}}}}}}}}}}str())))))e)}",
-            self.status_messages["cpu"] = f"Failed: {}}}}}}}}}}}}}}}}}str())))))e)}"
-            ,
-        # ====== CUDA TESTS ======
-        if torch.cuda.is_available())))))):
-            try:
-                print())))))"Testing fuyu on CUDA...")
-                # Initialize for CUDA
-                endpoint, processor, handler, queue, batch_size = self.model.init_cuda())))))
-                self.model_name,
-                "visual-question-answering",
-                "cuda:0"
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                results["cuda_init"] = "Success ())))))REAL)" if valid_init else "Failed CUDA initialization"
-                ,
-                # Run actual inference
-                start_time = time.time()))))))
-                output = handler())))))self.test_input if hasattr())))))self, 'test_input') else 
-                self.test_text if hasattr())))))self, 'test_text') else
-                self.test_image if hasattr())))))self, 'test_image') else
-                self.test_audio if hasattr())))))self, 'test_audio') else
-                "Default test input")
-                elapsed_time = time.time())))))) - start_time
-                
-                # Verify the output
-                is_valid_output = output is not None
-                
-                results["cuda_handler"] = "Success ())))))REAL)" if is_valid_output else "Failed CUDA handler"
-                ,
-                # Record example
-                self.examples.append()))))){}}}}}}}}}}}}}}}}}:
-                    "input": str())))))self.test_input if hasattr())))))self, 'test_input') else 
-                    self.test_text if hasattr())))))self, 'test_text') else
-                    self.test_image if hasattr())))))self, 'test_image') else
-                    self.test_audio if hasattr())))))self, 'test_audio') else
-                              "Default test input"),:
-                                  "output": {}}}}}}}}}}}}}}}}}
-                                  "output_type": str())))))type())))))output)),
-                                  "implementation_type": "REAL" if not isinstance())))))output, dict) or "implementation_type" not in output else output["implementation_type"],,,,
-                    },:
-                        "timestamp": datetime.datetime.now())))))).isoformat())))))),
-                        "elapsed_time": elapsed_time,
-                        "implementation_type": "REAL",
-                        "platform": "CUDA"
-                        })
-                    
-            except Exception as e:
-                print())))))f"Error in CUDA tests: {}}}}}}}}}}}}}}}}}e}")
-                traceback.print_exc()))))))
-                results["cuda_tests"] = f"Error: {}}}}}}}}}}}}}}}}}str())))))e)}",
-                self.status_messages["cuda"] = f"Failed: {}}}}}}}}}}}}}}}}}str())))))e)}",
-        else:
-            results["cuda_tests"] = "CUDA not available",
-            self.status_messages["cuda"] = "CUDA not available"
-            ,
-        # ====== OPENVINO TESTS ======
+            logger.error(f"Error testing pipeline: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+            
+    def test_from_pretrained(self):
+        """Test the model using the from_pretrained API."""
         try:
-            # First check if OpenVINO is installed:
-            try:
-                import openvino
-                has_openvino = True
-                print())))))"OpenVINO is installed")
-            except ImportError:
-                has_openvino = False
-                results["openvino_tests"] = "OpenVINO not installed",,
-                self.status_messages["openvino"] = "OpenVINO not installed",
-                ,
-            if has_openvino:
-                print())))))"Testing fuyu on OpenVINO...")
-                # Initialize mock OpenVINO utils if not available:
+            if not HAS_TRANSFORMERS or not HAS_TORCH:
+                logger.warning("Transformers or torch library not available, skipping from_pretrained test")
+                return {"success": False, "error": "Required libraries not available"}
+                
+            logger.info(f"Testing FUYU model {self.model_id} with from_pretrained API on {self.device}")
+            
+            # Record start time
+            start_time = time.time()
+            
+            # Load the model and tokenizer
+            model = transformers.ModelTypeForMaskedLM.from_pretrained(self.model_id)
+            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+            
+            # Move the model to the appropriate device
+            model = model.to(self.device)
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a simple input
+            test_input = "The quick brown fox jumps over the [MASK] dog."
+            
+            # Tokenize the input
+            inputs = tokenizer(test_input, return_tensors="pt")
+            
+            # Move inputs to the same device as the model
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            # Record inference start time
+            inference_start = time.time()
+            
+            # Get the position of the [MASK] token
+            mask_token_index = (inputs["input_ids"] == tokenizer.mask_token_id)[0].nonzero(as_tuple=True)[0]
+            
+            # Forward pass
+            with torch.no_grad():
+                outputs = model(**inputs)
+                
+            # Record inference time
+            inference_time = time.time() - inference_start
+            
+            # Get the top prediction
+            logits = outputs.logits
+            mask_token_logits = logits[0, mask_token_index, :]
+            top_tokens = torch.topk(mask_token_logits, 5, dim=1).indices[0].tolist()
+            top_tokens_words = [tokenizer.decode([token]).strip() for token in top_tokens]
+            
+            # Log results
+            logger.info(f"Top predictions: {', '.join(top_tokens_words)}")
+            logger.info(f"Inference time: {inference_time:.2f} seconds")
+            
+            # Store performance stats
+            self.performance_stats["from_pretrained"] = {
+                "load_time": load_time,
+                "inference_time": inference_time,
+                "top_predictions": top_tokens_words
+            }
+            
+            return {
+                "success": True,
+                "model_id": self.model_id,
+                "device": self.device,
+                "input": test_input,
+                "top_predictions": top_tokens_words,
+                "performance": {
+                    "load_time": load_time,
+                    "inference_time": inference_time
+                }
+            }
+                
+        except Exception as e:
+            logger.error(f"Error testing from_pretrained: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+            
+    def test_openvino(self):
+        """Test the model using OpenVINO."""
+        try:
+            if not HAS_OPENVINO:
+                logger.warning("OpenVINO not available, skipping OpenVINO test")
+                return {"success": False, "error": "OpenVINO not available"}
+                
+            if not HAS_TRANSFORMERS:
+                logger.warning("Transformers library not available, skipping OpenVINO test")
+                return {"success": False, "error": "Transformers library not available"}
+                
+            logger.info(f"Testing FUYU model {self.model_id} with OpenVINO")
+            
+            # Record start time
+            start_time = time.time()
+            
+            # Load tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+            
+            # Initialize OpenVINO Core and load the model
+            core = Core()
+            model_path = os.path.join("openvino_model", f"{self.model_id.replace('/', '_')}.xml")
+            
+            # Check if optimized model exists, otherwise try to convert
+            if not os.path.exists(model_path):
+                logger.info(f"OpenVINO model not found at {model_path}, attempting to convert")
+                
+                # Create the directory if it doesn't exist
+                os.makedirs(os.path.dirname(model_path), exist_ok=True)
+                
+                # Load the PyTorch model
+                pt_model = transformers.ModelTypeForMaskedLM.from_pretrained(self.model_id)
+                
+                # Get example inputs
+                example_input = "The quick brown fox jumps over the [MASK] dog."
+                inputs = tokenizer(example_input, return_tensors="pt")
+                
+                # Convert model to ONNX
+                onnx_path = model_path.replace(".xml", ".onnx")
                 try:
-                    from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
-                    ov_utils = openvino_utils())))))resources=self.resources, metadata=self.metadata)
-                    
-                    # Initialize for OpenVINO
-                    endpoint, processor, handler, queue, batch_size = self.model.init_openvino())))))
-                    self.model_name,
-                    "visual-question-answering",
-                    "CPU",
-                    get_optimum_openvino_model=ov_utils.get_optimum_openvino_model,
-                    get_openvino_model=ov_utils.get_openvino_model,
-                    get_openvino_pipeline_type=ov_utils.get_openvino_pipeline_type,
-                    openvino_cli_convert=ov_utils.openvino_cli_convert
+                    import torch.onnx
+                    torch.onnx.export(
+                        pt_model,
+                        tuple(inputs.values()),
+                        onnx_path,
+                        input_names=list(inputs.keys()),
+                        output_names=["logits"],
+                        dynamic_axes={
+                            key: {0: "batch_size", 1: "sequence_length"} 
+                            for key in inputs.keys()
+                        }
                     )
+                    logger.info(f"Converted model to ONNX format at {onnx_path}")
                     
-                    valid_init = endpoint is not None and processor is not None and handler is not None
-                    results["openvino_init"] = "Success ())))))REAL)" if valid_init else "Failed OpenVINO initialization"
-                    ,
-                    # Run actual inference
-                    start_time = time.time()))))))
-                    output = handler())))))self.test_input if hasattr())))))self, 'test_input') else 
-                    self.test_text if hasattr())))))self, 'test_text') else
-                    self.test_image if hasattr())))))self, 'test_image') else
-                    self.test_audio if hasattr())))))self, 'test_audio') else
-                    "Default test input")
-                    elapsed_time = time.time())))))) - start_time
-                    
-                    # Verify the output
-                    is_valid_output = output is not None
-                    
-                    results["openvino_handler"] = "Success ())))))REAL)" if is_valid_output else "Failed OpenVINO handler"
-                    ,
-                    # Record example
-                    self.examples.append()))))){}}}}}}}}}}}}}}}}}:
-                        "input": str())))))self.test_input if hasattr())))))self, 'test_input') else 
-                        self.test_text if hasattr())))))self, 'test_text') else
-                        self.test_image if hasattr())))))self, 'test_image') else
-                        self.test_audio if hasattr())))))self, 'test_audio') else
-                                  "Default test input"),::
-                                      "output": {}}}}}}}}}}}}}}}}}
-                                      "output_type": str())))))type())))))output)),
-                                      "implementation_type": "REAL" if not isinstance())))))output, dict) or "implementation_type" not in output else output["implementation_type"],,,,
-                        },::
-                            "timestamp": datetime.datetime.now())))))).isoformat())))))),
-                            "elapsed_time": elapsed_time,
-                            "implementation_type": "REAL",
-                            "platform": "OpenVINO"
-                            })
-                        
+                    # Convert ONNX to OpenVINO IR
+                    from openvino.tools import mo
+                    model_xml = mo.convert_model(onnx_path)
+                    from openvino.runtime import serialize
+                    serialize(model_xml, model_path)
+                    logger.info(f"Converted ONNX to OpenVINO IR format at {model_path}")
                 except Exception as e:
-                    print())))))f"Error in OpenVINO implementation: {}}}}}}}}}}}}}}}}}e}")
-                    traceback.print_exc()))))))
-                    
-                    # Try with mock implementations
-                    print())))))"Falling back to mock OpenVINO implementation...")
-                    mock_get_openvino_model = lambda model_name, model_type=None: MagicMock()))))))
-                    mock_get_optimum_openvino_model = lambda model_name, model_type=None: MagicMock()))))))
-                    mock_get_openvino_pipeline_type = lambda model_name, model_type=None: "visual-question-answering"
-                    mock_openvino_cli_convert = lambda model_name, model_dst_path=None, task=None, weight_format=None, ratio=None, group_size=None, sym=None: True
-                    
-                    endpoint, processor, handler, queue, batch_size = self.model.init_openvino())))))
-                    self.model_name,
-                    "visual-question-answering",
-                    "CPU",
-                    get_optimum_openvino_model=mock_get_optimum_openvino_model,
-                    get_openvino_model=mock_get_openvino_model,
-                    get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
-                    openvino_cli_convert=mock_openvino_cli_convert
-                    )
-                    
-                    valid_init = endpoint is not None and processor is not None and handler is not None
-                    results["openvino_init"] = "Success ())))))MOCK)" if valid_init else "Failed OpenVINO initialization"
-                    ,
-                    # Run actual inference
-                    start_time = time.time()))))))
-                    output = handler())))))self.test_input if hasattr())))))self, 'test_input') else 
-                    self.test_text if hasattr())))))self, 'test_text') else
-                    self.test_image if hasattr())))))self, 'test_image') else
-                    self.test_audio if hasattr())))))self, 'test_audio') else
-                    "Default test input")
-                    elapsed_time = time.time())))))) - start_time
-                    
-                    # Verify the output
-                    is_valid_output = output is not None
-                    
-                    results["openvino_handler"] = "Success ())))))MOCK)" if is_valid_output else "Failed OpenVINO handler"
-                    ,
-                    # Record example
-                    self.examples.append()))))){}}}}}}}}}}}}}}}}}:
-                        "input": str())))))self.test_input if hasattr())))))self, 'test_input') else 
-                        self.test_text if hasattr())))))self, 'test_text') else
-                        self.test_image if hasattr())))))self, 'test_image') else
-                        self.test_audio if hasattr())))))self, 'test_audio') else
-                                  "Default test input"),::
-                                      "output": {}}}}}}}}}}}}}}}}}
-                                      "output_type": str())))))type())))))output)),
-                                      "implementation_type": "MOCK" if not isinstance())))))output, dict) or "implementation_type" not in output else output["implementation_type"],,,,
-                        },::
-                            "timestamp": datetime.datetime.now())))))).isoformat())))))),
-                            "elapsed_time": elapsed_time,
-                            "implementation_type": "MOCK",
-                            "platform": "OpenVINO"
-                            })
-                
-        except ImportError:
-            results["openvino_tests"] = "OpenVINO not installed",,
-            self.status_messages["openvino"] = "OpenVINO not installed",
-        except Exception as e:
-            print())))))f"Error in OpenVINO tests: {}}}}}}}}}}}}}}}}}e}")
-            traceback.print_exc()))))))
-            results["openvino_tests"] = f"Error: {}}}}}}}}}}}}}}}}}str())))))e)}",
-            self.status_messages["openvino"] = f"Failed: {}}}}}}}}}}}}}}}}}str())))))e)}"
-            ,
-        # Create structured results with status, examples and metadata
-            structured_results = {}}}}}}}}}}}}}}}}}
-            "status": results,
-            "examples": self.examples,
-            "metadata": {}}}}}}}}}}}}}}}}}
-            "model_name": self.model_name,
-            "test_timestamp": datetime.datetime.now())))))).isoformat())))))),
-            "python_version": sys.version,
-                "torch_version": torch.__version__ if hasattr())))))torch, "__version__") else "Unknown",:
-                "transformers_version": transformers.__version__ if hasattr())))))transformers, "__version__") else "Unknown",:
-                    "platform_status": self.status_messages
-                    }
-                    }
-
-                    return structured_results
-
-    def __test__())))))self):
-        """
-        Run tests and compare/save results.
-        Handles result collection, comparison with expected results, and storage.
-        
-        Returns:
-            dict: Test results
-            """
-            test_results = {}}}}}}}}}}}}}}}}}}
-        try:
-            test_results = self.test()))))))
-        except Exception as e:
-            test_results = {}}}}}}}}}}}}}}}}}
-            "status": {}}}}}}}}}}}}}}}}}"test_error": str())))))e)},
-            "examples": [],,
-            "metadata": {}}}}}}}}}}}}}}}}}
-            "error": str())))))e),
-            "traceback": traceback.format_exc()))))))
-            }
-            }
-        
-        # Create directories if they don't exist
-            base_dir = os.path.dirname())))))os.path.abspath())))))__file__))
-            expected_dir = os.path.join())))))base_dir, 'expected_results')
-            collected_dir = os.path.join())))))base_dir, 'collected_results')
-        
-        # Create directories with appropriate permissions:
-            for directory in [expected_dir, collected_dir]:,
-            if not os.path.exists())))))directory):
-                os.makedirs())))))directory, mode=0o755, exist_ok=True)
-        
-        # Save collected results
-                results_file = os.path.join())))))collected_dir, 'hf_fuyu_test_results.json')
-        try:
-            with open())))))results_file, 'w') as f:
-                json.dump())))))test_results, f, indent=2)
-                print())))))f"Saved collected results to {}}}}}}}}}}}}}}}}}results_file}")
-        except Exception as e:
-            print())))))f"Error saving results to {}}}}}}}}}}}}}}}}}results_file}: {}}}}}}}}}}}}}}}}}str())))))e)}")
+                    logger.error(f"Error converting model to OpenVINO format: {e}")
+                    return {"success": False, "error": f"Model conversion failed: {str(e)}"}
             
-        # Compare with expected results if they exist
-        expected_file = os.path.join())))))expected_dir, 'hf_fuyu_test_results.json'):
-        if os.path.exists())))))expected_file):
-            try:
-                with open())))))expected_file, 'r') as f:
-                    expected_results = json.load())))))f)
+            # Load the optimized model
+            ov_model = core.read_model(model_path)
+            compiled_model = core.compile_model(ov_model, "CPU")
+    
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"OpenVINO model loading time: {load_time:.2f} seconds")
+    
+            # Test with a simple input
+            test_input = "The quick brown fox jumps over the [MASK] dog."
+    
+            # Tokenize the input
+            inputs = tokenizer(test_input, return_tensors="pt")
+    
+            # Convert to numpy arrays
+            inputs_np = {k: v.numpy() for k, v in inputs.items()}
+    
+            # Record inference start time
+            inference_start = time.time()
+    
+            # Get the position of the [MASK] token
+            mask_token_index = np.where(inputs_np["input_ids"][0] == tokenizer.mask_token_id)[0][0]
+    
+            # Forward pass
+            logits = compiled_model(inputs_np)[0]
+    
+            # Record inference time
+            inference_time = time.time() - inference_start
+    
+            # Get the top prediction
+            mask_token_logits = logits[0, mask_token_index, :]
+            top_indices = np.argsort(mask_token_logits)[-5:][::-1]
+            top_tokens_words = [tokenizer.decode([token]) for token in top_indices]
+    
+            # Log results
+            logger.info(f"OpenVINO top predictions: {', '.join(top_tokens_words)}")
+            logger.info(f"OpenVINO inference time: {inference_time:.2f} seconds")
+    
+            # Store performance stats
+            self.performance_stats["openvino"] = {
+                "load_time": load_time,
+                "inference_time": inference_time,
+                "top_predictions": top_tokens_words
+            }
+    
+            return {
+                "success": True,
+                "model_id": self.model_id,
+                "device": "CPU (OpenVINO)",
+                "input": test_input,
+                "top_predictions": top_tokens_words,
+                "performance": {
+                    "load_time": load_time,
+                    "inference_time": inference_time
+                }
+            }
                 
-                # Compare only status keys for backward compatibility
-                    status_expected = expected_results.get())))))"status", expected_results)
-                    status_actual = test_results.get())))))"status", test_results)
-                
-                # More detailed comparison of results
-                    all_match = True
-                    mismatches = [],
-                
-                for key in set())))))status_expected.keys()))))))) | set())))))status_actual.keys()))))))):
-                    if key not in status_expected:
-                        mismatches.append())))))f"Missing expected key: {}}}}}}}}}}}}}}}}}key}")
-                        all_match = False
-                    elif key not in status_actual:
-                        mismatches.append())))))f"Missing actual key: {}}}}}}}}}}}}}}}}}key}")
-                        all_match = False
-                    elif status_expected[key] != status_actual[key]:,
-                        # If the only difference is the implementation_type suffix, that's acceptable
-                        if ())))))
-                        isinstance())))))status_expected[key], str) and, ,
-                        isinstance())))))status_actual[key], str) and,
-                        status_expected[key].split())))))" ())))))")[0] == status_actual[key].split())))))" ())))))")[0] and,
-                        "Success" in status_expected[key] and "Success" in status_actual[key]:,
-                        ):
-                        continue
-                        
-                        mismatches.append())))))f"Key '{}}}}}}}}}}}}}}}}}key}' differs: Expected '{}}}}}}}}}}}}}}}}}status_expected[key]}', got '{}}}}}}}}}}}}}}}}}status_actual[key]}'"),
-                        all_match = False
-                
-                if not all_match:
-                    print())))))"Test results differ from expected results!")
-                    for mismatch in mismatches:
-                        print())))))f"- {}}}}}}}}}}}}}}}}}mismatch}")
-                        print())))))"Would you like to update the expected results? ())))))y/n)")
-                        user_input = input())))))).strip())))))).lower()))))))
-                    if user_input == 'y':
-                        with open())))))expected_file, 'w') as ef:
-                            json.dump())))))test_results, ef, indent=2)
-                            print())))))f"Updated expected results file: {}}}}}}}}}}}}}}}}}expected_file}")
-                    else:
-                        print())))))"Expected results not updated.")
-                else:
-                    print())))))"All test results match expected results.")
-            except Exception as e:
-                print())))))f"Error comparing results with {}}}}}}}}}}}}}}}}}expected_file}: {}}}}}}}}}}}}}}}}}str())))))e)}")
-                print())))))"Creating new expected results file.")
-                with open())))))expected_file, 'w') as ef:
-                    json.dump())))))test_results, ef, indent=2)
-        else:
-            # Create expected results file if it doesn't exist:
-            try:
-                with open())))))expected_file, 'w') as f:
-                    json.dump())))))test_results, f, indent=2)
-                    print())))))f"Created new expected results file: {}}}}}}}}}}}}}}}}}expected_file}")
-            except Exception as e:
-                print())))))f"Error creating {}}}}}}}}}}}}}}}}}expected_file}: {}}}}}}}}}}}}}}}}}str())))))e)}")
+        except Exception as e:
+            logger.error(f"Error testing with OpenVINO: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+            
+    def run_tests(self, all_hardware=False):
+        """Run all tests for this model."""
+        results = {}
+    
+        # Run pipeline test
+        pipeline_result = self.test_pipeline()
+        results["pipeline"] = pipeline_result
+    
+        # Run from_pretrained test
+        from_pretrained_result = self.test_from_pretrained()
+        results["from_pretrained"] = from_pretrained_result
+    
+        # Run OpenVINO test if requested and available
+        if all_hardware and HAS_OPENVINO:
+            openvino_result = self.test_openvino()
+            results["openvino"] = openvino_result
+    
+        # Determine if real inference or mock objects were used
+        using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+        using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+    
+        # Add metadata
+        results["metadata"] = {
+            "model_id": self.model_id,
+            "device": self.device,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "hardware": {
+                "cuda": HAS_CUDA,
+                "rocm": HAS_ROCM,
+                "openvino": HAS_OPENVINO,
+                "mps": HAS_MPS,
+                "webgpu": HAS_WEBGPU,
+                "webnn": HAS_WEBNN
+            },
+            "dependencies": {
+                "transformers": transformers.__version__ if HAS_TRANSFORMERS else None,
+                "torch": torch.__version__ if HAS_TORCH else None,
+                "numpy": np.__version__
+            },
+            "success": pipeline_result.get("success", False) or from_pretrained_result.get("success", False),
+            "performance": self.performance_stats,
+            "has_transformers": HAS_TRANSFORMERS,
+            "has_torch": HAS_TORCH, 
+            "has_tokenizers": HAS_TOKENIZERS,
+            "has_sentencepiece": HAS_SENTENCEPIECE,
+            "using_real_inference": using_real_inference,
+            "using_mocks": using_mocks,
+            "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
+        }
+    
+        return results
 
-                    return test_results
+def save_results(results, model_id=None, output_dir="collected_results"):
+    """Save test results to a JSON file."""
+    try:
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate a filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_id = model_id or results.get("metadata", {}).get("model_id", "unknown_model")
+        model_id_safe = model_id.replace("/", "__")
+        filename = f"hf_fuyu_{model_id_safe}_{timestamp}.json"
+        file_path = os.path.join(output_dir, filename)
+        
+        # Save results to file
+        with open(file_path, "w") as f:
+            json.dump(results, f, indent=2)
+            
+        logger.info(f"Results saved to {file_path}")
+        return file_path
+    except Exception as e:
+        logger.error(f"Error saving results: {e}")
+        return None
+
+def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Test FUYU HuggingFace models")
+    parser.add_argument("--model", type=str, default="fuyu-base-uncased", help="Model ID to test")
+    parser.add_argument("--device", type=str, help="Device to run tests on (cuda, cpu, mps)")
+    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument("--save", action="store_true", help="Save results to JSON file")
+    parser.add_argument("--list-models", action="store_true", help="List available FUYU models")
+
+    args = parser.parse_args()
+
+    # List models if requested
+    if args.list_models:
+        print(f"\nAvailable FUYU models:")
+        for model_id, info in FUYU_MODELS_REGISTRY.items():
+            print(f"  - {model_id} ({info['full_name']})")
+            print(f"      Parameters: {info['parameters']}, Embedding: {info['embedding_dim']}, Context: {info['context_length']}")
+            print(f"      Description: {info['description']}")
+            print()
+        return
+
+    # Initialize the test class
+    bert_tester = TestModelTypeModels(model_id=args.model, device=args.device)
+
+    # Run the tests
+    results = bert_tester.run_tests(all_hardware=args.all_hardware)
+
+    # Print a summary
+    print("\n" + "="*50)
+    print(f"TEST RESULTS SUMMARY")
+    print("="*50)
+
+    # Indicate real vs mock inference clearly
+    using_real_inference = results["metadata"]["using_real_inference"]
+    using_mocks = results["metadata"]["using_mocks"]
+
+    if using_real_inference and not using_mocks:
+        print(f"{GREEN}🚀 Using REAL INFERENCE with actual models{RESET}")
+    else:
+        print(f"{BLUE}🔷 Using MOCK OBJECTS for CI/CD testing only{RESET}")
+        print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+
+    print(f"\nModel: {args.model}")
+    print(f"Device: {bert_tester.device}")
+    
+    # Pipeline results
+    pipeline_success = results["pipeline"].get("success", False)
+    print(f"\nPipeline Test: {'✅ Success' if pipeline_success else '❌ Failed'}")
+    if pipeline_success:
+        top_prediction = results["pipeline"].get("top_prediction", "N/A")
+        inference_time = results["pipeline"].get("performance", {}).get("inference_time", "N/A")
+        print(f"  - Top prediction: {top_prediction}")
+        print(f"  - Inference time: {inference_time:.2f} seconds" if isinstance(inference_time, (int, float)) else f"  - Inference time: {inference_time}")
+    else:
+        error = results["pipeline"].get("error", "Unknown error")
+        print(f"  - Error: {error}")
+    
+    # from_pretrained results
+    from_pretrained_success = results["from_pretrained"].get("success", False)
+    print(f"\nFrom Pretrained Test: {'✅ Success' if from_pretrained_success else '❌ Failed'}")
+    if from_pretrained_success:
+        top_predictions = results["from_pretrained"].get("top_predictions", ["N/A"])
+        inference_time = results["from_pretrained"].get("performance", {}).get("inference_time", "N/A")
+        print(f"  - Top predictions: {', '.join(top_predictions[:3])}")
+        print(f"  - Inference time: {inference_time:.2f} seconds" if isinstance(inference_time, (int, float)) else f"  - Inference time: {inference_time}")
+    else:
+        error = results["from_pretrained"].get("error", "Unknown error")
+        print(f"  - Error: {error}")
+    
+    # OpenVINO results if available
+    if "openvino" in results:
+        openvino_success = results["openvino"].get("success", False)
+        print(f"\nOpenVINO Test: {'✅ Success' if openvino_success else '❌ Failed'}")
+        if openvino_success:
+            top_predictions = results["openvino"].get("top_predictions", ["N/A"])
+            inference_time = results["openvino"].get("performance", {}).get("inference_time", "N/A")
+            print(f"  - Top predictions: {', '.join(top_predictions[:3])}")
+            print(f"  - Inference time: {inference_time:.2f} seconds" if isinstance(inference_time, (int, float)) else f"  - Inference time: {inference_time}")
+        else:
+            error = results["openvino"].get("error", "Unknown error")
+            print(f"  - Error: {error}")
+    
+    # Save results if requested
+    if args.save:
+        file_path = save_results(results, args.model)
+        if file_path:
+            print(f"\nResults saved to {file_path}")
+    
+    print(f"\nSuccessfully tested FUYU model: {args.model}")
 
 if __name__ == "__main__":
-    try:
-        print())))))"Starting fuyu test...")
-        test_instance = test_hf_fuyu()))))))
-        results = test_instance.__test__()))))))
-        print())))))"fuyu test completed")
-        
-        # Print test results in detailed format for better parsing
-        status_dict = results.get())))))"status", {}}}}}}}}}}}}}}}}}})
-        examples = results.get())))))"examples", [],)
-        metadata = results.get())))))"metadata", {}}}}}}}}}}}}}}}}}})
-        
-        # Extract implementation status
-        cpu_status = "UNKNOWN"
-        cuda_status = "UNKNOWN"
-        openvino_status = "UNKNOWN"
-        
-        for key, value in status_dict.items())))))):
-            if "cpu_" in key and "REAL" in value:
-                cpu_status = "REAL"
-            elif "cpu_" in key and "MOCK" in value:
-                cpu_status = "MOCK"
-                
-            if "cuda_" in key and "REAL" in value:
-                cuda_status = "REAL"
-            elif "cuda_" in key and "MOCK" in value:
-                cuda_status = "MOCK"
-                
-            if "openvino_" in key and "REAL" in value:
-                openvino_status = "REAL"
-            elif "openvino_" in key and "MOCK" in value:
-                openvino_status = "MOCK"
-                
-        # Also look in examples
-        for example in examples:
-            platform = example.get())))))"platform", "")
-            impl_type = example.get())))))"implementation_type", "")
-            
-            if platform == "CPU" and "REAL" in impl_type:
-                cpu_status = "REAL"
-            elif platform == "CPU" and "MOCK" in impl_type:
-                cpu_status = "MOCK"
-                
-            if platform == "CUDA" and "REAL" in impl_type:
-                cuda_status = "REAL"
-            elif platform == "CUDA" and "MOCK" in impl_type:
-                cuda_status = "MOCK"
-                
-            if platform == "OpenVINO" and "REAL" in impl_type:
-                openvino_status = "REAL"
-            elif platform == "OpenVINO" and "MOCK" in impl_type:
-                openvino_status = "MOCK"
-        
-        # Print summary in a parser-friendly format
-                print())))))"\nFUYU TEST RESULTS SUMMARY")
-                print())))))f"MODEL: {}}}}}}}}}}}}}}}}}metadata.get())))))'model_name', 'Unknown')}")
-                print())))))f"CPU_STATUS: {}}}}}}}}}}}}}}}}}cpu_status}")
-                print())))))f"CUDA_STATUS: {}}}}}}}}}}}}}}}}}cuda_status}")
-                print())))))f"OPENVINO_STATUS: {}}}}}}}}}}}}}}}}}openvino_status}")
-        
-        # Print a JSON representation to make it easier to parse
-                print())))))"\nstructured_results")
-                print())))))json.dumps()))))){}}}}}}}}}}}}}}}}}
-                "status": {}}}}}}}}}}}}}}}}}
-                "cpu": cpu_status,
-                "cuda": cuda_status,
-                "openvino": openvino_status
-                },
-                "model_name": metadata.get())))))"model_name", "Unknown"),
-                "examples": examples
-                }))
-        
-    except KeyboardInterrupt:
-        print())))))"Tests stopped by user.")
-        sys.exit())))))1)
-    except Exception as e:
-        print())))))f"Unexpected error during testing: {}}}}}}}}}}}}}}}}}str())))))e)}")
-        traceback.print_exc()))))))
-        sys.exit())))))1)
+    main()

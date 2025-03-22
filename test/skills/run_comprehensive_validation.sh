@@ -1,177 +1,212 @@
 #!/bin/bash
+#
+# Comprehensive HuggingFace Model Test Validation Script
+#
+# This script runs a complete validation and analysis of HuggingFace model test files,
+# checking for syntax correctness, pipeline configurations, and model coverage.
+#
+# It generates the following reports:
+# 1. Validation report - Details about test file quality
+# 2. Missing models report - Analysis of test coverage
+# 3. Combined summary report - Overall assessment and next steps
+#
 
-# Comprehensive Model Test Validation Suite
-# This script runs all validation tools to ensure model tests are working correctly.
+set -e  # Exit on error
 
-# Set up logging and output directory
-TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
-LOG_DIR="validation_logs"
-REPORTS_DIR="reports"
-mkdir -p "$LOG_DIR"
+# Define directories and report paths
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+TESTS_DIR="${1:-$SCRIPT_DIR/fixed_tests}"
+REPORTS_DIR="$SCRIPT_DIR/reports"
+VALIDATION_REPORT="$REPORTS_DIR/validation_report.md"
+MISSING_MODELS_REPORT="$REPORTS_DIR/missing_models_$(date +%Y%m%d_%H%M%S).md"
+SUMMARY_REPORT="$REPORTS_DIR/test_validation_summary.md"
+
+# Create reports directory if it doesn't exist
 mkdir -p "$REPORTS_DIR"
 
-LOG_FILE="${LOG_DIR}/validation_${TIMESTAMP}.log"
-SUMMARY_FILE="${REPORTS_DIR}/validation_summary_${TIMESTAMP}.md"
-
-# Initialize log file
-echo "# HuggingFace Model Test Validation" > "$LOG_FILE"
-echo "Started at: $(date)" >> "$LOG_FILE"
-echo "" >> "$LOG_FILE"
-
-# Color codes for output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
-
-# Log function that prints to console and log file
-log() {
-    echo -e "$1"
-    echo "$1" | sed -r "s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g" >> "$LOG_FILE"
-}
-
-# Create summary header
-echo "# HuggingFace Model Test Validation Summary" > "$SUMMARY_FILE"
-echo "Generated: $(date)" >> "$SUMMARY_FILE"
-echo "" >> "$SUMMARY_FILE"
+echo "================================================"
+echo "HuggingFace Model Test Validation and Analysis"
+echo "================================================"
+echo "Tests directory: $TESTS_DIR"
+echo "Reports directory: $REPORTS_DIR"
+echo
 
 # Step 1: Run syntax and structure validation
-log "${YELLOW}Step 1: Running syntax and structure validation...${NC}"
-python validate_model_tests.py --directory fixed_tests --report "${REPORTS_DIR}/validation_report_${TIMESTAMP}.md" --verbose
+echo "[1/3] Running test file validation..."
+python "$SCRIPT_DIR/validate_model_tests.py" --directory "$TESTS_DIR" --report "$VALIDATION_REPORT"
 VALIDATION_STATUS=$?
 
-if [ $VALIDATION_STATUS -eq 0 ]; then
-    log "${GREEN}Syntax validation passed!${NC}"
-    echo "## Syntax and Structure Validation" >> "$SUMMARY_FILE"
-    echo "✅ All tests passed syntax and structure validation" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
+# Step 2: Analyze model coverage
+echo "[2/3] Analyzing model coverage..."
+python "$SCRIPT_DIR/generate_missing_model_report.py" --directory "$TESTS_DIR" --report "$MISSING_MODELS_REPORT"
+COVERAGE_STATUS=$?
+
+# Step 3: Generate combined summary report
+echo "[3/3] Generating combined summary report..."
+
+cat > "$SUMMARY_REPORT" << EOL
+# HuggingFace Model Testing Framework - Validation Summary
+
+**Date:** $(date +"%Y-%m-%d %H:%M:%S")
+
+This report summarizes the validation results and model coverage analysis for the HuggingFace model testing framework.
+
+## Overview
+
+The validation process checks test files for:
+- Syntax correctness (using AST parsing)
+- Structure validity (required classes and methods)
+- Pipeline configuration (appropriate tasks for each model)
+- Task input validation (appropriate inputs for tasks)
+
+The coverage analysis tracks:
+- Implemented models vs. missing models
+- Model implementations by architecture type
+- Priority-based implementation roadmap
+
+## Validation Summary
+
+EOL
+
+# Extract summary data from validation report
+if [ -f "$VALIDATION_REPORT" ]; then
+    # Extract summary section with sed
+    sed -n '/^## Summary$/,/^## /p' "$VALIDATION_REPORT" | sed '$d' >> "$SUMMARY_REPORT"
+    
+    # Add pass/fail status
+    if [ $VALIDATION_STATUS -eq 0 ]; then
+        echo -e "\n✅ **Validation PASSED** - All files are syntactically correct, properly structured, and have appropriate pipeline configurations." >> "$SUMMARY_REPORT"
+    else
+        echo -e "\n⚠️ **Validation FAILED** - Some files have issues that need to be addressed. See details in the validation report." >> "$SUMMARY_REPORT"
+    fi
 else
-    log "${RED}Syntax validation failed. See report for details.${NC}"
-    echo "## Syntax and Structure Validation" >> "$SUMMARY_FILE"
-    echo "❌ Some tests failed syntax validation. See detailed report: [Validation Report](validation_report_${TIMESTAMP}.md)" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
+    echo "❌ Validation report not found! Could not extract summary data." >> "$SUMMARY_REPORT"
 fi
 
-# Step 2: Generate missing models report
-log "${YELLOW}Step 2: Analyzing missing model implementations...${NC}"
-python generate_missing_model_report.py --test-directory fixed_tests --output-report "${REPORTS_DIR}/missing_models_${TIMESTAMP}.md"
-MISSING_STATUS=$?
+# Add coverage summary
+cat >> "$SUMMARY_REPORT" << EOL
 
-log "${GREEN}Missing models analysis complete!${NC}"
-echo "## Missing Models Analysis" >> "$SUMMARY_FILE"
-echo "📊 Missing models report generated: [Missing Models Report](missing_models_${TIMESTAMP}.md)" >> "$SUMMARY_FILE"
-echo "" >> "$SUMMARY_FILE"
+## Coverage Summary
 
-# Step 3: Run sample of tests to validate functionality
-log "${YELLOW}Step 3: Running functional test validation (sample)...${NC}"
-python run_test_validation.py --directory fixed_tests --max-tests 10 --report "${REPORTS_DIR}/test_execution_${TIMESTAMP}.md" --verbose
-EXECUTION_STATUS=$?
+EOL
 
-if [ $EXECUTION_STATUS -eq 0 ]; then
-    log "${GREEN}Functional test validation passed!${NC}"
-    echo "## Functional Test Validation" >> "$SUMMARY_FILE"
-    echo "✅ All sampled tests executed successfully" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
+if [ -f "$MISSING_MODELS_REPORT" ]; then
+    # Extract summary section with sed
+    sed -n '/^## Summary$/,/^## /p' "$MISSING_MODELS_REPORT" | sed '$d' >> "$SUMMARY_REPORT"
+    
+    # Add implementation status
+    if [ $COVERAGE_STATUS -eq 0 ]; then
+        # Extract critical models missing count
+        CRITICAL_MISSING=$(grep -oP "Critical models missing: \K\d+" <<< "$(python "$SCRIPT_DIR/generate_missing_model_report.py" --directory "$TESTS_DIR" 2>/dev/null)")
+        
+        if [ "$CRITICAL_MISSING" = "0" ]; then
+            echo -e "\n✅ **All critical models implemented** - No critical models are missing from the test suite." >> "$SUMMARY_REPORT"
+        else
+            echo -e "\n⚠️ **Missing critical models** - $CRITICAL_MISSING critical models need to be implemented." >> "$SUMMARY_REPORT"
+        fi
+    else
+        echo -e "\n❌ **Coverage analysis failed** - Could not analyze model coverage properly." >> "$SUMMARY_REPORT"
+    fi
 else
-    log "${RED}Functional test validation failed. See report for details.${NC}"
-    echo "## Functional Test Validation" >> "$SUMMARY_FILE"
-    echo "❌ Some tests failed during execution. See detailed report: [Execution Report](test_execution_${TIMESTAMP}.md)" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
+    echo "❌ Missing models report not found! Could not extract coverage data." >> "$SUMMARY_REPORT"
 fi
 
-# Step 4: Check for template consistency
-log "${YELLOW}Step 4: Checking template consistency...${NC}"
+# Add next steps and recommendations
+cat >> "$SUMMARY_REPORT" << EOL
 
-# Count models by template type
-ENCODER_ONLY_COUNT=$(grep -l "encoder-only" fixed_tests/*.py | wc -l)
-DECODER_ONLY_COUNT=$(grep -l "decoder-only" fixed_tests/*.py | wc -l)
-ENCODER_DECODER_COUNT=$(grep -l "encoder-decoder" fixed_tests/*.py | wc -l)
-VISION_COUNT=$(grep -l "\"vision\"" fixed_tests/*.py | wc -l)
-VISION_TEXT_COUNT=$(grep -l "vision-text" fixed_tests/*.py | wc -l)
-SPEECH_COUNT=$(grep -l "\"speech\"" fixed_tests/*.py | wc -l)
-MULTIMODAL_COUNT=$(grep -l "multimodal" fixed_tests/*.py | wc -l)
+## Next Steps
 
-# Log template counts
-log "${GREEN}Template consistency analysis:${NC}"
-log "  Encoder-only models: $ENCODER_ONLY_COUNT"
-log "  Decoder-only models: $DECODER_ONLY_COUNT"
-log "  Encoder-decoder models: $ENCODER_DECODER_COUNT"
-log "  Vision models: $VISION_COUNT"
-log "  Vision-text models: $VISION_TEXT_COUNT"
-log "  Speech models: $SPEECH_COUNT"
-log "  Multimodal models: $MULTIMODAL_COUNT"
+Based on the validation and coverage analysis, the following actions are recommended:
 
-# Add to summary
-echo "## Template Consistency" >> "$SUMMARY_FILE"
-echo "Template consistency analysis:" >> "$SUMMARY_FILE"
-echo "- Encoder-only models: $ENCODER_ONLY_COUNT" >> "$SUMMARY_FILE"
-echo "- Decoder-only models: $DECODER_ONLY_COUNT" >> "$SUMMARY_FILE"
-echo "- Encoder-decoder models: $ENCODER_DECODER_COUNT" >> "$SUMMARY_FILE"
-echo "- Vision models: $VISION_COUNT" >> "$SUMMARY_FILE"
-echo "- Vision-text models: $VISION_TEXT_COUNT" >> "$SUMMARY_FILE"
-echo "- Speech models: $SPEECH_COUNT" >> "$SUMMARY_FILE"
-echo "- Multimodal models: $MULTIMODAL_COUNT" >> "$SUMMARY_FILE"
-echo "" >> "$SUMMARY_FILE"
+EOL
 
-# Step 5: Check for test generator issues
-log "${YELLOW}Step 5: Validating test generator...${NC}"
+# Add different recommendations based on validation and coverage status
+if [ $VALIDATION_STATUS -ne 0 ]; then
+    cat >> "$SUMMARY_REPORT" << EOL
+1. **Fix syntax errors** - Address syntax issues in test files first
+   - Use the \`fix_syntax.py\` script or manually correct errors
+   - Run validation again to verify fixes
 
-# Attempt to generate a test file for validation
-TEST_GEN_OUTPUT="${LOG_DIR}/test_generator_validation_${TIMESTAMP}.log"
-python test_generator_fixed.py bert "${LOG_DIR}/test_gen_output" > "$TEST_GEN_OUTPUT" 2>&1
-GEN_STATUS=$?
+2. **Fix structure issues** - Ensure all test files have the required classes and methods
+   - Add missing \`test_pipeline\` methods where needed
+   - Ensure proper class naming conventions are followed
 
-if [ $GEN_STATUS -eq 0 ]; then
-    log "${GREEN}Test generator validation passed!${NC}"
-    echo "## Test Generator Validation" >> "$SUMMARY_FILE"
-    echo "✅ Test generator successfully created test files" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
-else
-    log "${RED}Test generator validation failed. See log for details.${NC}"
-    echo "## Test Generator Validation" >> "$SUMMARY_FILE"
-    echo "❌ Test generator encountered errors. See log: [Generator Log](../validation_logs/test_generator_validation_${TIMESTAMP}.log)" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
+3. **Fix pipeline configurations** - Update pipeline configurations for appropriate tasks
+   - Run \`add_pipeline_configuration.py\` to add missing configurations
+   - Run \`standardize_task_configurations.py\` to fix incorrect tasks
+
+EOL
 fi
 
-# Generate final report summary
-TOTAL_TESTS=$(find fixed_tests -name "test_hf_*.py" | wc -l)
+# Add coverage-based recommendations
+if [ -f "$MISSING_MODELS_REPORT" ]; then
+    CRITICAL_MISSING=$(grep -oP "Critical models missing: \K\d+" <<< "$(python "$SCRIPT_DIR/generate_missing_model_report.py" --directory "$TESTS_DIR" 2>/dev/null)")
+    
+    if [ "$CRITICAL_MISSING" -gt 0 ]; then
+        cat >> "$SUMMARY_REPORT" << EOL
+4. **Implement critical models** - Focus on implementing the missing critical models first
+   - Use the implementation roadmap in the missing models report
+   - Use the \`simplified_fix_hyphenated.py\` script for hyphenated model names
 
-if [ $VALIDATION_STATUS -eq 0 ] && [ $EXECUTION_STATUS -eq 0 ] && [ $GEN_STATUS -eq 0 ]; then
-    log "${GREEN}All validation steps completed successfully!${NC}"
-    log "${GREEN}Total test files: $TOTAL_TESTS${NC}"
-    echo "## Summary" >> "$SUMMARY_FILE"
-    echo "✅ **All validation steps completed successfully!**" >> "$SUMMARY_FILE"
-    echo "- Total test files: $TOTAL_TESTS" >> "$SUMMARY_FILE"
-    echo "- Log file: [Validation Log](../validation_logs/validation_${TIMESTAMP}.log)" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
-    echo "## Next Steps" >> "$SUMMARY_FILE"
-    echo "1. Implement missing high-priority models identified in the missing models report" >> "$SUMMARY_FILE"
-    echo "2. Continue integration with the distributed testing framework" >> "$SUMMARY_FILE"
-    echo "3. Expand test coverage for multimodal models" >> "$SUMMARY_FILE"
-    echo "4. Run comprehensive hardware compatibility tests" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
-    FINAL_STATUS=0
-else
-    log "${RED}Validation completed with errors!${NC}"
-    log "${YELLOW}Total test files: $TOTAL_TESTS${NC}"
-    log "${YELLOW}Please check the reports for details.${NC}"
-    echo "## Summary" >> "$SUMMARY_FILE"
-    echo "❌ **Validation completed with errors!**" >> "$SUMMARY_FILE"
-    echo "- Total test files: $TOTAL_TESTS" >> "$SUMMARY_FILE"
-    echo "- Log file: [Validation Log](../validation_logs/validation_${TIMESTAMP}.log)" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
-    echo "## Action Items" >> "$SUMMARY_FILE"
-    echo "1. Fix syntax and structure issues in failing tests" >> "$SUMMARY_FILE"
-    echo "2. Resolve runtime errors in failing functional tests" >> "$SUMMARY_FILE"
-    echo "3. Address any issues with the test generator" >> "$SUMMARY_FILE"
-    echo "4. Implement missing high-priority models" >> "$SUMMARY_FILE"
-    echo "" >> "$SUMMARY_FILE"
-    FINAL_STATUS=1
+5. **Implement high priority models** - After critical models are implemented, focus on high priority models
+   - These include models with significant usage but not as widespread as critical models
+
+EOL
+    else
+        cat >> "$SUMMARY_REPORT" << EOL
+4. **Implement high priority models** - Focus on implementing high priority models
+   - Use the implementation roadmap in the missing models report
+   - Use the \`simplified_fix_hyphenated.py\` script for hyphenated model names
+
+5. **Expand test coverage** - Consider implementing medium priority models to improve coverage
+   - These include specialized models that have more specific use cases
+
+EOL
+    fi
 fi
 
-# Log completion
-log "Validation completed at: $(date)"
-log "Summary report: $SUMMARY_FILE"
-log "Log file: $LOG_FILE"
+# Add final recommendations for validation and execution
+cat >> "$SUMMARY_REPORT" << EOL
+6. **Run functional tests** - Verify that test files execute correctly
+   - Run a sample of test files with small models to verify functionality
+   - Focus on files that have been modified to ensure they work
 
-exit $FINAL_STATUS
+7. **Integrate with distributed testing** - Connect with the distributed testing framework
+   - Add support for hardware-specific configurations
+   - Implement results collection and visualization
+
+## Report Links
+
+- [Detailed Validation Report]($(basename "$VALIDATION_REPORT"))
+- [Model Coverage Report]($(basename "$MISSING_MODELS_REPORT"))
+
+## Summary
+
+$(if [ $VALIDATION_STATUS -eq 0 ] && [ "$CRITICAL_MISSING" = "0" ]; then
+    echo "✅ **EXCELLENT STATUS** - All tests are valid and all critical models are implemented."
+elif [ $VALIDATION_STATUS -eq 0 ]; then
+    echo "⚠️ **GOOD STATUS** - All tests are valid, but some critical models are missing."
+elif [ "$CRITICAL_MISSING" = "0" ]; then
+    echo "⚠️ **MODERATE STATUS** - All critical models are implemented, but some tests have validation issues."
+else
+    echo "⚠️ **NEEDS IMPROVEMENT** - Some tests have validation issues and some critical models are missing."
+fi)
+
+EOL
+
+echo "Validation and analysis complete!"
+echo
+echo "Reports generated:"
+echo "- Validation Report: $VALIDATION_REPORT"
+echo "- Missing Models Report: $MISSING_MODELS_REPORT"
+echo "- Summary Report: $SUMMARY_REPORT"
+echo
+
+# Determine overall status
+if [ $VALIDATION_STATUS -eq 0 ] && [ "$CRITICAL_MISSING" = "0" ]; then
+    echo "✅ EXCELLENT STATUS - All tests are valid and all critical models are implemented."
+    exit 0
+else
+    echo "⚠️ NEEDS IMPROVEMENT - See reports for details and recommendations."
+    exit 1
+fi

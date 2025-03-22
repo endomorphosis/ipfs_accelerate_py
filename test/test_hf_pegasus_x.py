@@ -1,4 +1,3 @@
-# Original model name: pegasus-x
 #!/usr/bin/env python3
 
 import os

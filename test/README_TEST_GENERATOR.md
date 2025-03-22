@@ -12,12 +12,34 @@ This test generator system automatically creates test files for HuggingFace mode
 - **Vision models**: ViT, ResNet, etc.
 - **Vision-text models**: CLIP, BLIP, etc.
 - **Speech models**: Whisper, Wav2Vec2, etc.
+- **Multimodal models**: LLaVA, Video-LLaVA, FUYU, etc.
 
-The system includes two implementations:
-1. A component-based architectural implementation in `refactored_generator_suite/`
-2. A simplified template-based implementation in `simple_generator.py`
+The system includes three implementations:
+1. **Enhanced Generator** - Direct string template approach with comprehensive model registry (`enhanced_generator.py`)
+2. Component-based architectural implementation in `refactored_generator_suite/`
+3. Simplified template-based implementation in `simple_generator.py`
 
 ## Quick Start
+
+### Using the Enhanced Generator (Recommended)
+
+To generate tests for all high-priority models:
+
+```bash
+python -m generate_priority_models --output-dir ./priority_model_tests --priority high
+```
+
+To generate a test for a specific model:
+
+```bash
+python -c "from enhanced_generator import generate_test; generate_test('bert', './output_dir')"
+```
+
+To check for missing model implementations:
+
+```bash
+python -c "from generate_priority_models import generate_missing_model_report; generate_missing_model_report('./reports')"
+```
 
 ### Using the Simplified Generator
 
@@ -47,12 +69,21 @@ python refactored_generator_suite/run_generator.py --model gpt2 --output-dir ./g
 
 ## Features
 
+### Enhanced Generator Features
+- **Comprehensive Model Registry**: Support for 52+ HuggingFace model types with model-specific configurations
+- **Direct String Templates**: Uses f-strings to avoid indentation and syntax issues from template rendering
+- **Hyphenated Name Support**: Properly handles model types with hyphens and special naming conventions
+- **Intelligent Architecture Detection**: Identifies model architecture even with partial or variant names
+- **Consistent Test Structure**: All tests follow a standardized pattern for ease of maintenance
+- **Complete Validation**: Validates all generated files using Python's compile() function
+
+### Common Features
 - **Architecture Mapping**: Maps model types to their architectures for appropriate template selection
-- **Template Rendering**: Handles Jinja syntax for variable replacement and conditional blocks
 - **Syntax Validation**: Validates and attempts to fix syntax in generated files
 - **Batch Generation**: Supports generating tests for multiple models in one run
 - **Reporting**: Generates summary reports of the generation process
 - **Hardware Awareness**: Detects available hardware (CUDA, MPS, etc.) for inclusion in test files
+- **Mock Support**: Includes mock implementations for CI/CD environments
 
 ## Templates
 

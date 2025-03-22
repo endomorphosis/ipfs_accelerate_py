@@ -267,6 +267,20 @@ class TestT5Models:
             return results
         
         try:
+            # Initialize the pipeline with the appropriate task
+            pipe = transformers.pipeline(
+                "text2text-generation", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
+            )
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a task-appropriate input
+            test_input = "translate English to French: Hello, how are you?"
+
             logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
             
             # Create pipeline with appropriate parameters

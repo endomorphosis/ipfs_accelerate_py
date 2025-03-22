@@ -48,6 +48,7 @@ def run_tests(test_pattern=None, verbose=False):
         suite.addTest(loader.discover(script_dir, pattern="test_resource_performance_predictor.py"))
         suite.addTest(loader.discover(script_dir, pattern="test_cloud_provider_manager.py"))
         suite.addTest(loader.discover(script_dir, pattern="test_drm_integration.py"))
+        suite.addTest(loader.discover(script_dir, pattern="test_resource_optimization.py"))
     
     # Run tests
     verbosity = 2 if verbose else 1

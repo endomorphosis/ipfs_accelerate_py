@@ -11,6 +11,14 @@ except ImportError:
     HAS_HARDWARE_DETECTION = False
     # We'll detect hardware manually as fallback
 
+"""
+Class-based test file for all Paligemma-family models.
+This file provides a unified testing interface for:
+    - PaligemmaModel
+    - PaligemmaForConditionalGeneration
+    - Other paligemma model variants
+"""
+
 import os
 import sys
 import json
@@ -37,22 +45,53 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Third-party imports
 import numpy as np
-from PIL import Image
 
+# WebGPU imports and mock setup
+HAS_WEBGPU = False
+try:
+    # Attempt to check for WebGPU availability
+    import ctypes.util
+    HAS_WEBGPU = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webgpu') is not None
+except ImportError:
+    HAS_WEBGPU = False
+
+# WebNN imports and mock setup
+HAS_WEBNN = False
+try:
+    # Attempt to check for WebNN availability
+    import ctypes
+    HAS_WEBNN = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webnn') is not None
+except ImportError:
+    HAS_WEBNN = False
+
+# ROCm imports and detection
+HAS_ROCM = False
+try:
+    # First try to import torch to check for ROCM
+    import torch
+    if torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+        ROCM_VERSION = torch._C._rocm_version()
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+except:
+    HAS_ROCM = False
+
+# Try to import openvino
+try:
+    import openvino
+    from openvino.runtime import Core
+    HAS_OPENVINO = True
+except ImportError:
+    HAS_OPENVINO = False
+    logger.warning("OpenVINO not available")
 
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
 MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
-
-try:
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
-except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
 MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
 MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+
 # Try to import torch
 try:
     if MOCK_TORCH:
@@ -75,25 +114,51 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-# Try to import tokenizers
-try:
-    import tokenizers
-    HAS_TOKENIZERS = True
-except ImportError:
-    tokenizers = MagicMock()
-    HAS_TOKENIZERS = False
-    logger.warning("tokenizers not available, using mock")
-
 # Try to import PIL
 try:
     from PIL import Image
+    import requests
+    from io import BytesIO
     HAS_PIL = True
 except ImportError:
     Image = MagicMock()
+    requests = MagicMock()
+    BytesIO = MagicMock()
     HAS_PIL = False
-    logger.warning("PIL not available, using mock")
+    logger.warning("PIL or requests not available, using mock")
 
-# Hardware detection
+# Create mock implementations if PIL is missing
+if not HAS_PIL:
+    class MockImage:
+        @staticmethod
+        def open(file):
+            class MockImg:
+                def __init__(self):
+                    self.size = (224, 224)
+                
+                def convert(self, mode):
+                    return self
+                
+                def resize(self, size):
+                    return self
+            return MockImg()
+            
+    class MockRequests:
+        @staticmethod
+        def get(url):
+            class MockResponse:
+                def __init__(self):
+                    self.content = b"mock image data"
+                
+                def raise_for_status(self):
+                    pass
+            return MockResponse()
+
+    Image.open = MockImage.open
+    requests.get = MockRequests.get
+
+
+# Hardware detection    
 def check_hardware():
     """Check available hardware and return capabilities."""
     capabilities = {
@@ -129,47 +194,39 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 
 # Models registry - Maps model IDs to their specific configurations
-CLIP_MODELS_REGISTRY = {
-    "openai/clip-vit-base-patch32": {
-        "description": "CLIP model with ViT base patch32 encoder",
-        "class": "CLIPModel",
-        "image_size": 224,
+PALIGEMMA_MODELS_REGISTRY = {
+    "google/paligemma-3b-pt-224": {
+        "description": "Paligemma 3B model (pretraining, image size 224)",
+        "class": "PaligemmaModel",
     },
-    "openai/clip-vit-base-patch16": {
-        "description": "CLIP model with ViT base patch16 encoder",
-        "class": "CLIPModel",
-        "image_size": 224,
+    "google/paligemma-3b-mix-224": {
+        "description": "Paligemma 3B model (mixed, image size 224)",
+        "class": "PaligemmaForConditionalGeneration",
     },
-    "openai/clip-vit-large-patch14": {
-        "description": "CLIP model with ViT large patch14 encoder",
-        "class": "CLIPModel",
-        "image_size": 224,
-    }
 }
 
-class TestClipModels:
-    """Base test class for all CLIP-family models."""
+class TestPaligemmaModels:
+    """Base test class for all Paligemma-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "openai/clip-vit-base-patch32"
+        self.model_id = model_id or "google/paligemma-3b-pt-224"
         
         # Verify model exists in registry
-        if self.model_id not in CLIP_MODELS_REGISTRY:
+        if self.model_id not in PALIGEMMA_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = CLIP_MODELS_REGISTRY["openai/clip-vit-base-patch32"]
+            self.model_info = PALIGEMMA_MODELS_REGISTRY["google/paligemma-3b-pt-224"]
         else:
-            self.model_info = CLIP_MODELS_REGISTRY[self.model_id]
+            self.model_info = PALIGEMMA_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
-        self.task = "zero-shot-image-classification"
+        self.task = "image-to-text"
         self.class_name = self.model_info["class"]
         self.description = self.model_info["description"]
-        self.image_size = self.model_info["image_size"]
         
         # Define test inputs
-        self.test_text = ["a photo of a cat", "a photo of a dog"]
-        self.test_image_path = self._find_test_image()
+        self.test_image_url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+        self.test_image_path = None
         
         # Configure hardware preference
         if HW_CAPABILITIES["cuda"]:
@@ -185,29 +242,7 @@ class TestClipModels:
         self.results = {}
         self.examples = []
         self.performance_stats = {}
-    
-    def _find_test_image(self):
-        """Find a test image or create a dummy one if none exists."""
-        test_image_candidates = [
-            "test.jpg", 
-            "test.png", 
-            "test_image.jpg", 
-            "test_image.png"
-        ]
         
-        for path in test_image_candidates:
-            if os.path.exists(path):
-                return path
-        
-        # Create a dummy image if no test image is found
-        if HAS_PIL:
-            dummy_path = "test_dummy.jpg"
-            img = Image.new('RGB', (self.image_size, self.image_size), color = (73, 109, 137))
-            img.save(dummy_path)
-            return dummy_path
-        
-        return None
-    
     def test_pipeline(self, device="auto"):
         """Test the model using transformers pipeline API."""
         if device == "auto":
@@ -229,11 +264,25 @@ class TestClipModels:
             
         if not HAS_PIL:
             results["pipeline_error_type"] = "missing_dependency"
-            results["pipeline_missing_deps"] = ["Pillow"]
+            results["pipeline_missing_deps"] = ["pillow>=8.0.0", "requests>=2.25.0"]
             results["pipeline_success"] = False
             return results
         
         try:
+            # Initialize the pipeline with the appropriate task
+            pipe = transformers.pipeline(
+                "image-to-text", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
+            )
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a task-appropriate input
+            test_input = "An image of a landscape."
+
             logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
             
             # Create pipeline with appropriate parameters
@@ -248,20 +297,25 @@ class TestClipModels:
             pipeline = transformers.pipeline(**pipeline_kwargs)
             load_time = time.time() - load_start_time
             
-            # Prepare test inputs
+            # Download image if needed, otherwise use mock image
             if self.test_image_path and os.path.exists(self.test_image_path):
-                test_image = self.test_image_path
+                pipeline_input = Image.open(self.test_image_path)
+                logger.info(f"Using local image: {self.test_image_path}")
             else:
-                # Create a random dummy image
-                dummy_path = "test_dummy_temp.jpg"
-                img = Image.new('RGB', (self.image_size, self.image_size), color = (73, 109, 137))
-                img.save(dummy_path)
-                test_image = dummy_path
+                try:
+                    response = requests.get(self.test_image_url)
+                    response.raise_for_status()
+                    pipeline_input = Image.open(BytesIO(response.content))
+                    logger.info(f"Using image from URL: {self.test_image_url}")
+                except Exception as e:
+                    logger.warning(f"Failed to download image: {e}, using mock image")
+                    # Create a mock image for testing
+                    pipeline_input = Image.new('RGB', (224, 224), color='white')
             
             # Run warmup inference if on CUDA
             if device == "cuda":
                 try:
-                    _ = pipeline(test_image, candidate_labels=self.test_text)
+                    _ = pipeline(pipeline_input)
                 except Exception:
                     pass
             
@@ -272,14 +326,10 @@ class TestClipModels:
             
             for _ in range(num_runs):
                 start_time = time.time()
-                output = pipeline(test_image, candidate_labels=self.test_text)
+                output = pipeline(pipeline_input)
                 end_time = time.time()
                 times.append(end_time - start_time)
                 outputs.append(output)
-            
-            # Clean up temporary dummy image if created
-            if "dummy_path" in locals() and os.path.exists(dummy_path):
-                os.remove(dummy_path)
             
             # Calculate statistics
             avg_time = sum(times) / len(times)
@@ -297,10 +347,7 @@ class TestClipModels:
             # Add to examples
             self.examples.append({
                 "method": f"pipeline() on {device}",
-                "input": {
-                    "image": str(test_image),
-                    "labels": self.test_text
-                },
+                "input": "Image of a cat",
                 "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
             })
             
@@ -314,10 +361,6 @@ class TestClipModels:
             }
             
         except Exception as e:
-            # Clean up temporary dummy image if created
-            if "dummy_path" in locals() and os.path.exists(dummy_path):
-                os.remove(dummy_path)
-                
             # Store error information
             results["pipeline_success"] = False
             results["pipeline_error"] = str(e)
@@ -336,11 +379,11 @@ class TestClipModels:
                 results["pipeline_error_type"] = "missing_dependency"
             else:
                 results["pipeline_error_type"] = "other"
-        
+                
         # Add to overall results
         self.results[f"pipeline_{device}"] = results
         return results
-    
+        
     def test_from_pretrained(self, device="auto"):
         """Test the model using direct from_pretrained loading."""
         if device == "auto":
@@ -365,7 +408,7 @@ class TestClipModels:
             results["from_pretrained_missing_deps"] = ["Pillow"]
             results["from_pretrained_success"] = False
             return results
-        
+            
         try:
             logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
             
@@ -384,8 +427,8 @@ class TestClipModels:
             
             # Time model loading
             model_load_start = time.time()
-            model = transformers.CLIPModel.from_pretrained(
-                self.model_id, 
+            model = transformers.PaligemmaModel.from_pretrained(
+                self.model_id,
                 **pretrained_kwargs
             )
             model_load_time = time.time() - model_load_start
@@ -394,19 +437,33 @@ class TestClipModels:
             if device != "cpu":
                 model = model.to(device)
             
-            # Prepare test inputs
+            # Download image if needed, otherwise use mock image
             if self.test_image_path and os.path.exists(self.test_image_path):
                 image = Image.open(self.test_image_path)
+                logger.info(f"Using local image: {self.test_image_path}")
             else:
-                # Create a random dummy image
-                image = Image.new('RGB', (self.image_size, self.image_size), color = (73, 109, 137))
+                try:
+                    response = requests.get(self.test_image_url)
+                    response.raise_for_status()
+                    image = Image.open(BytesIO(response.content))
+                    logger.info(f"Using image from URL: {self.test_image_url}")
+                except Exception as e:
+                    logger.warning(f"Failed to download image: {e}, using mock image")
+                    # Create a mock image for testing
+                    image = Image.new('RGB', (224, 224), color='white')
             
-            # Process inputs
-            inputs = processor(text=self.test_text, images=image, return_tensors="pt", padding=True)
+            # Process the image
+            inputs = processor(
+                images=image,
+                return_tensors="pt"
+            )
             
             # Move inputs to device
             if device != "cpu":
                 inputs = {key: val.to(device) for key, val in inputs.items()}
+            
+            # Record input for examples
+            test_input = "Image of a cat with processed outputs"
             
             # Run warmup inference if using CUDA
             if device == "cuda":
@@ -434,19 +491,13 @@ class TestClipModels:
             min_time = min(times)
             max_time = max(times)
             
-            # Process output - CLIP computes similarity between text and image
-            if hasattr(outputs[0], "logits_per_image"):
-                logits_per_image = outputs[0].logits_per_image
-                probs = torch.softmax(logits_per_image, dim=1)
-                
-                # Convert to Python list
-                probs_list = probs.cpu().numpy().tolist()[0]
-                predictions = [
-                    {"label": self.test_text[i], "score": probs_list[i]}
-                    for i in range(len(self.test_text))
-                ]
-            else:
-                predictions = [{"label": label, "score": 0.5} for label in self.test_text]
+            # Process results for display
+            last_hidden_state = outputs[0].last_hidden_state
+            output_preview = {
+                "shape": list(last_hidden_state.shape),
+                "mean": float(last_hidden_state.mean().item()),
+                "std": float(last_hidden_state.std().item())
+            }
             
             # Calculate model size
             param_count = sum(p.numel() for p in model.parameters())
@@ -460,25 +511,15 @@ class TestClipModels:
             results["processor_load_time"] = processor_load_time
             results["model_load_time"] = model_load_time
             results["model_size_mb"] = model_size_mb
+            results["output_shape"] = list(last_hidden_state.shape)
             results["from_pretrained_error_type"] = "none"
             
-            # Add predictions if available
-            if 'predictions' in locals():
-                results["predictions"] = predictions
-            
             # Add to examples
-            example_data = {
+            self.examples.append({
                 "method": f"from_pretrained() on {device}",
-                "input": {
-                    "image": self.test_image_path if self.test_image_path else "Generated image",
-                    "text": self.test_text
-                }
-            }
-            
-            if 'predictions' in locals():
-                example_data["predictions"] = predictions
-            
-            self.examples.append(example_data)
+                "input": test_input,
+                "output_preview": output_preview
+            })
             
             # Store in performance stats
             self.performance_stats[f"from_pretrained_{device}"] = {
@@ -514,7 +555,7 @@ class TestClipModels:
         # Add to overall results
         self.results[f"from_pretrained_{device}"] = results
         return results
-    
+        
     def test_with_openvino(self):
         """Test the model using OpenVINO integration."""
         results = {
@@ -558,37 +599,39 @@ class TestClipModels:
             # Prepare image input
             if self.test_image_path and os.path.exists(self.test_image_path):
                 image = Image.open(self.test_image_path)
+                logger.info(f"Using local image: {self.test_image_path}")
             else:
-                # Create a random dummy image
-                image = Image.new('RGB', (self.image_size, self.image_size), color = (73, 109, 137))
+                try:
+                    response = requests.get(self.test_image_url)
+                    response.raise_for_status()
+                    image = Image.open(BytesIO(response.content))
+                    logger.info(f"Using image from URL: {self.test_image_url}")
+                except Exception as e:
+                    logger.warning(f"Failed to download image: {e}, using mock image")
+                    # Create a mock image for testing
+                    image = Image.new('RGB', (224, 224), color='white')
             
-            # Process inputs
-            inputs = processor(images=image, return_tensors="pt")
+            # Process the image
+            inputs = processor(
+                images=image,
+                return_tensors="pt"
+            )
             
             # Run inference
             start_time = time.time()
             outputs = model(**inputs)
             inference_time = time.time() - start_time
             
-            # Process outputs
-            if hasattr(outputs, "logits"):
-                logits = outputs.logits
-                probabilities = torch.softmax(logits, dim=-1)
-                top_indices = torch.topk(probabilities, 3).indices.cpu().numpy()[0]
-                
-                # Get label map if available
-                labels = []
-                if hasattr(model, "config") and hasattr(model.config, "id2label"):
-                    labels = [model.config.id2label[idx] for idx in top_indices]
-                else:
-                    labels = [f"LABEL_{idx}" for idx in top_indices]
-                
-                predictions = [
-                    {"label": labels[i], "score": float(probabilities[0, top_indices[i]])}
-                    for i in range(len(labels))
-                ]
+            # Process results
+            if hasattr(outputs, "last_hidden_state"):
+                last_hidden_state = outputs.last_hidden_state
+                output_preview = {
+                    "shape": list(last_hidden_state.shape),
+                    "mean": float(last_hidden_state.mean().item()),
+                    "std": float(last_hidden_state.std().item())
+                }
             else:
-                predictions = [{"label": "Unknown", "score": 1.0}]
+                output_preview = {"output": "Processed OpenVINO output"}
             
             # Store results
             results["openvino_success"] = True
@@ -596,21 +639,17 @@ class TestClipModels:
             results["openvino_inference_time"] = inference_time
             results["openvino_processor_load_time"] = processor_load_time
             
-            # Add predictions
-            results["openvino_predictions"] = predictions
+            if "shape" in output_preview:
+                results["output_shape"] = output_preview["shape"]
             
             results["openvino_error_type"] = "none"
             
             # Add to examples
-            example_data = {
+            self.examples.append({
                 "method": "OpenVINO inference",
-                "input": {
-                    "image": self.test_image_path if self.test_image_path else "Generated image"
-                },
-                "predictions": predictions
-            }
-            
-            self.examples.append(example_data)
+                "input": "Image of a cat",
+                "output_preview": output_preview
+            })
             
             # Store in performance stats
             self.performance_stats["openvino"] = {
@@ -636,7 +675,7 @@ class TestClipModels:
         # Add to overall results
         self.results["openvino"] = results
         return results
-    
+        
     def run_tests(self, all_hardware=False):
         """
         Run all tests for this model.
@@ -693,6 +732,7 @@ class TestClipModels:
             }
         }
 
+
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists
@@ -700,7 +740,7 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_clip_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"hf_paligemma_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -710,18 +750,20 @@ def save_results(model_id, results, output_dir="collected_results"):
     logger.info(f"Saved results to {output_path}")
     return output_path
 
+
 def get_available_models():
-    """Get a list of all available CLIP models in the registry."""
-    return list(CLIP_MODELS_REGISTRY.keys())
+    """Get a list of all available Paligemma models in the registry."""
+    return list(PALIGEMMA_MODELS_REGISTRY.keys())
+
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered CLIP models."""
+    """Test all registered Paligemma models."""
     models = get_available_models()
     results = {}
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestClipModels(model_id)
+        tester = TestPaligemmaModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -729,21 +771,23 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         
         # Add to summary
         results[model_id] = {
-            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values()
-                if r.get("pipeline_success") is not False)
+            "success": any(r.get("pipeline_success", False) 
+                          for r in model_results["results"].values() 
+                          if r.get("pipeline_success") is not False)
         }
     
     # Save summary
-    summary_path = os.path.join(output_dir, f"hf_clip_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    summary_path = os.path.join(output_dir, f"hf_paligemma_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
     logger.info(f"Saved summary to {summary_path}")
     return results
 
+
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test CLIP-family models")
+    parser = argparse.ArgumentParser(description="Test Paligemma-family models")
     
     # Model selection
     model_group = parser.add_mutually_exclusive_group()
@@ -766,9 +810,9 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable CLIP-family models:")
+        print(f"\nAvailable Paligemma-family models:")
         for model in models:
-            info = CLIP_MODELS_REGISTRY[model]
+            info = PALIGEMMA_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
         return
     
@@ -781,14 +825,14 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("BERT Models Testing Summary:")
+        print(f"\nPaligemma Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "paligemma-base-uncased"
+    model_id = args.model or "google/paligemma-3b-pt-224"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -811,8 +855,7 @@ def main():
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
     using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
     
-    print("
-TEST RESULTS SUMMARY:")
+    print(f"\nTEST RESULTS SUMMARY:")
     
     # Indicate real vs mock inference clearly
     if using_real_inference and not using_mocks:
@@ -831,26 +874,21 @@ TEST RESULTS SUMMARY:")
         
         # Print example outputs if available
         if results.get("examples") and len(results["examples"]) > 0:
-            print("
-Example output:")
+            print(f"\nExample output:")
             example = results["examples"][0]
-            if "predictions" in example:
-                print(f"  Input: {example['input']}")
-                print(f"  Predictions: {example['predictions']}")
-            elif "output_preview" in example:
-                print(f"  Input: {example['input']}")
+            print(f"  Input: {example['input']}")
+            if "output_preview" in example:
                 print(f"  Output: {example['output_preview']}")
     else:
         print(f"❌ Failed to test {model_id}")
         
         # Print error information
         for test_name, result in results["results"].items():
-            if "pipeline_error" in result:
+            if test_name.startswith("pipeline_") and not result.get("pipeline_success", True):
                 print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
                 print(f"    {result.get('pipeline_error', 'Unknown error')}")
     
-    print("
-For detailed results, use --save flag and check the JSON output file.")
+    print(f"\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
     main()

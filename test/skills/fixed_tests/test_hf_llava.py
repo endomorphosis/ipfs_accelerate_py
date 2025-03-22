@@ -11,48 +11,40 @@ except ImportError:
     HAS_HARDWARE_DETECTION = False
     # We'll detect hardware manually as fallback
 
-import os
-import sys
-import json
-import time
-import datetime
+    import os
+    import sys
+    import json
+    import time
+    import datetime
 
-# ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
-import traceback
-import logging
-import argparse
-from unittest.mock import patch, MagicMock, Mock
-from typing import Dict, List, Any, Optional, Union
-from pathlib import Path
+    # ANSI color codes for terminal output
+    GREEN = "\033[32m"
+    BLUE = "\033[34m"
+    RESET = "\033[0m"
+    import traceback
+    import logging
+    import argparse
+    from unittest.mock import patch, MagicMock, Mock
+    from typing import Dict, List, Any, Optional, Union
+    from pathlib import Path
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+    # Configure logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # Add parent directory to path for imports
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Third-party imports
-import numpy as np
-from PIL import Image
+    # Third-party imports
+    import numpy as np
+    from PIL import Image
 
+    # Check if we should mock specific dependencies
+    MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
+    MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
+    MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
+    MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
 
-# Check if we should mock specific dependencies
-MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
-MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
-
-try:
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
-except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
-MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
-MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
 # Try to import torch
 try:
     if MOCK_TORCH:
@@ -77,6 +69,8 @@ except ImportError:
 
 # Try to import tokenizers
 try:
+    if MOCK_TOKENIZERS:
+        raise ImportError("Mocked tokenizers import failure")
     import tokenizers
     HAS_TOKENIZERS = True
 except ImportError:
@@ -93,7 +87,7 @@ except ImportError:
     HAS_PIL = False
     logger.warning("PIL not available, using mock")
 
-# Hardware detection
+# Hardware detection    
 def check_hardware():
     """Check available hardware and return capabilities."""
     capabilities = {
@@ -234,6 +228,20 @@ class TestClipModels:
             return results
         
         try:
+            # Initialize the pipeline with the appropriate task
+            pipe = transformers.pipeline(
+                "image-to-text", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
+            )
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a task-appropriate input
+            test_input = "An image of a landscape."
+
             logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
             
             # Create pipeline with appropriate parameters
@@ -693,6 +701,7 @@ class TestClipModels:
             }
         }
 
+
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists
@@ -710,9 +719,11 @@ def save_results(model_id, results, output_dir="collected_results"):
     logger.info(f"Saved results to {output_path}")
     return output_path
 
+
 def get_available_models():
     """Get a list of all available CLIP models in the registry."""
     return list(CLIP_MODELS_REGISTRY.keys())
+
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
     """Test all registered CLIP models."""
@@ -741,6 +752,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
     logger.info(f"Saved summary to {summary_path}")
     return results
 
+
 def main():
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description="Test CLIP-family models")
@@ -766,38 +778,20 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable CLIP-family models:")
+        print(f"\nAvailable MULTIMODAL-family models:")
         for model in models:
-            info = CLIP_MODELS_REGISTRY[model]
-            print(f"  - {model} ({info['class']}): {info['description']}")
-        return
-    
-    # Create output directory if needed
-    if args.save and not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Test all models if requested
-    if args.all_models:
-        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
-        
-        # Print summary
-        print("
-BERT Models Testing Summary:")
-        total = len(results)
-        successful = sum(1 for r in results.values() if r["success"])
-        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+            print(f"  - {model}")
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "llava-base-uncased"
+    model_id = args.model or "openai/clip-vit-base-patch32"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
     if args.cpu_only:
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     
-    # Run test
-    tester = TestLlavaModels(model_id)
+    tester = TestClipModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested
@@ -812,8 +806,7 @@ BERT Models Testing Summary:")
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
     using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
     
-    print("
-TEST RESULTS SUMMARY:")
+    print("\nTEST RESULTS SUMMARY:")
     
     # Indicate real vs mock inference clearly
     if using_real_inference and not using_mocks:
@@ -832,8 +825,7 @@ TEST RESULTS SUMMARY:")
         
         # Print example outputs if available
         if results.get("examples") and len(results["examples"]) > 0:
-            print("
-Example output:")
+            print("\nExample output:")
             example = results["examples"][0]
             if "predictions" in example:
                 print(f"  Input: {example['input']}")
@@ -850,8 +842,8 @@ Example output:")
                 print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
                 print(f"    {result.get('pipeline_error', 'Unknown error')}")
     
-    print("
-For detailed results, use --save flag and check the JSON output file.")
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
+
 
 if __name__ == "__main__":
     main()

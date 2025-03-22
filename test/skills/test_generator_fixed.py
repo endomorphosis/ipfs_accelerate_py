@@ -26,13 +26,13 @@ from pathlib import Path
 
 # Define architecture types for model mapping
 ARCHITECTURE_TYPES = {
-    "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta"],
-    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt"],
+    "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta", "layoutlm", "canine", "roformer"],
+    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt", "codellama", "qwen2", "qwen3"],
     "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
-    "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2"],
-    "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip"],
+    "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2", "mobilenet-v2"],
+    "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip", "blip-2", "chinese-clip", "clipseg"],
     "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5"],
-    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava"]
+    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava", "fuyu", "kosmos-2", "llava-next"]
 }
 
 # Configure logging
@@ -1168,6 +1168,43 @@ MODEL_REGISTRY = {
             "text": "ELECTRA is a <mask> language model.",
         },
     },
+    "layoutlm": {
+        "family_name": "LayoutLM",
+        "description": "LayoutLM models for document understanding",
+        "default_model": "microsoft/layoutlm-base-uncased",
+        "class": "LayoutLMForMaskedLM",
+        "test_class": "TestLayoutLMModels", 
+        "module_name": "test_hf_layoutlm",
+        "tasks": ['fill-mask', 'token-classification'],
+        "inputs": {
+            "text": "LayoutLM is a [MASK] language model for document understanding.",
+            "bbox": [[0, 0, 100, 20], [120, 0, 220, 20], [240, 0, 340, 20], [360, 0, 460, 20], [480, 0, 580, 20], [0, 25, 100, 45], [120, 25, 220, 45], [240, 25, 340, 45], [360, 25, 460, 45]]
+        },
+    },
+    "canine": {
+        "family_name": "CANINE",
+        "description": "CANINE character-level transformer for multilingual NLP",
+        "default_model": "google/canine-s",
+        "class": "CanineForMaskedLM",
+        "test_class": "TestCanineModels", 
+        "module_name": "test_hf_canine",
+        "tasks": ['fill-mask', 'token-classification', 'text-classification'],
+        "inputs": {
+            "text": "CANINE is a [MASK] language model for character-level understanding."
+        },
+    },
+    "roformer": {
+        "family_name": "RoFormer",
+        "description": "RoFormer rotary position embedding transformer for NLP",
+        "default_model": "junnyu/roformer_chinese_base",
+        "class": "RoformerForMaskedLM",
+        "test_class": "TestRoformerModels",
+        "module_name": "test_hf_roformer",
+        "tasks": ['fill-mask', 'token-classification', 'text-classification'],
+        "inputs": {
+            "text": "RoFormer is a [MASK] language model with rotary position embeddings."
+        },
+    },
     "bart": {
         "family_name": "BART",
         "description": "BART sequence-to-sequence models",
@@ -1318,6 +1355,156 @@ MODEL_REGISTRY = {
             "text": "BLOOM is a multilingual language model that",
         },
     },
+    "codellama": {
+        "family_name": "CodeLLama",
+        "description": "LLaMA model specialized for code generation and understanding",
+        "default_model": "codellama/CodeLlama-7b-hf",
+        "class": "LlamaForCausalLM",
+        "test_class": "TestCodeLlamaModels",
+        "module_name": "test_hf_codellama",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "def fibonacci(n):",
+        },
+        "task_specific_args": {
+            "text-generation": {
+                "max_length": 100,
+                "min_length": 20,
+            },
+        },
+    },
+
+    "qwen2": {
+        "family_name": "Qwen2",
+        "description": "Qwen2 large language model developed by Alibaba",
+        "default_model": "Qwen/Qwen2-7B",
+        "class": "Qwen2ForCausalLM",
+        "test_class": "TestQwen2Models",
+        "module_name": "test_hf_qwen2",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "Qwen2 is a large language model that",
+        },
+    },
+    "qwen3": {
+        "family_name": "Qwen3",
+        "description": "Qwen3 large language model developed by Alibaba",
+        "default_model": "Qwen/Qwen3-7B",
+        "class": "Qwen3ForCausalLM",
+        "test_class": "TestQwen3Models",
+        "module_name": "test_hf_qwen3",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "Qwen3 is a large language model that",
+        },
+    },
+    "fuyu": {
+        "family_name": "Fuyu",
+        "description": "Fuyu multimodal model by Adept",
+        "default_model": "adept/fuyu-8b",
+        "class": "FuyuForCausalLM",
+        "test_class": "TestFuyuModels",
+        "module_name": "test_hf_fuyu",
+        "tasks": ['visual-question-answering'],
+        "inputs": {
+            "text": "What is shown in this image?",
+        },
+    },
+    "kosmos-2": {
+        "family_name": "Kosmos-2",
+        "description": "Kosmos-2 multimodal model with grounding capabilities",
+        "default_model": "microsoft/kosmos-2-patch14-224",
+        "class": "Kosmos2ForConditionalGeneration",
+        "test_class": "TestKosmos2Models",
+        "module_name": "test_hf_kosmos2",
+        "tasks": ['visual-question-answering', 'image-to-text', 'image-grounding'],
+        "inputs": {
+            "text": "What is shown in this image?",
+        },
+    },
+    "llava-next": {
+        "family_name": "LLaVA-Next",
+        "description": "Next generation of LLaVA with improved capabilities",
+        "default_model": "llava-hf/llava-v1.6-mistral-7b-hf",
+        "class": "LlavaNextForConditionalGeneration",
+        "test_class": "TestLlavaNextModels",
+        "module_name": "test_hf_llava_next",
+        "tasks": ['visual-question-answering'],
+        "inputs": {
+            "text": "What is shown in this image?",
+        },
+    },
+    "video-llava": {
+        "family_name": "Video-LLaVA",
+        "description": "LLaVA model adapted for video understanding",
+        "default_model": "videollava/videollava-7b-hf",
+        "class": "VideoLlavaForConditionalGeneration",
+        "test_class": "TestVideoLlavaModels",
+        "module_name": "test_hf_video_llava",
+        "tasks": ['video-question-answering'],
+        "inputs": {
+            "text": "What is happening in this video?",
+        },
+        "alternate_models": ["LanguageBind/Video-LLaVA-7B-hf"],
+    },
+    "bark": {
+        "family_name": "Bark",
+        "description": "Text-to-audio model by Suno",
+        "default_model": "suno/bark-small",
+        "class": "BarkModel",
+        "test_class": "TestBarkModels",
+        "module_name": "test_hf_bark",
+        "tasks": ['text-to-audio'],
+        "inputs": {
+            "text": "Hello, my name is Suno. And, I like to sing.",
+        },
+    },
+    "mobilenet-v2": {
+        "family_name": "MobileNetV2",
+        "description": "Lightweight vision model optimized for mobile and edge devices",
+        "default_model": "google/mobilenet_v2_1.0_224",
+        "class": "MobileNetV2ForImageClassification",
+        "test_class": "TestMobileNetV2Models",
+        "module_name": "test_hf_mobilenet_v2",
+        "tasks": ['image-classification'],
+        "inputs": {
+        },
+    },
+    "blip-2": {
+        "family_name": "BLIP-2",
+        "description": "BLIP-2 vision-language model with improved architecture",
+        "default_model": "Salesforce/blip2-opt-2.7b",
+        "class": "Blip2ForConditionalGeneration",
+        "test_class": "TestBlip2Models",
+        "module_name": "test_hf_blip_2",
+        "tasks": ['image-to-text', 'visual-question-answering'],
+        "inputs": {
+            "text": "What is shown in this image?",
+        },
+    },
+    "chinese-clip": {
+        "family_name": "ChineseCLIP",
+        "description": "Chinese CLIP model for vision-text understanding",
+        "default_model": "OFA-Sys/chinese-clip-vit-base-patch16",
+        "class": "ChineseCLIPModel",
+        "test_class": "TestChineseCLIPModels",
+        "module_name": "test_hf_chinese_clip",
+        "tasks": ['zero-shot-image-classification'],
+        "inputs": {
+        },
+    },
+    "clipseg": {
+        "family_name": "CLIPSeg",
+        "description": "CLIP with segmentation capabilities",
+        "default_model": "CIDAS/clipseg-rd64-refined",
+        "class": "CLIPSegForImageSegmentation",
+        "test_class": "TestCLIPSegModels",
+        "module_name": "test_hf_clipseg",
+        "tasks": ['image-segmentation'],
+        "inputs": {
+            "text": "person",
+        },
+    },
 }
 
 # Class name capitalization fixes
@@ -1348,7 +1535,8 @@ CLASS_NAME_FIXES = {
     "HubertForCTC": "HubertForCTC",
     "LlamaForCausalLM": "LlamaForCausalLM",
     "OptForCausalLM": "OPTForCausalLM",
-    "BloomForCausalLM": "BloomForCausalLM"
+    "BloomForCausalLM": "BloomForCausalLM",
+    "CodeLlamaForCausalLM": "LlamaForCausalLM"  # CodeLLama uses LlaMa architecture
 }
 
 def to_valid_identifier(text):

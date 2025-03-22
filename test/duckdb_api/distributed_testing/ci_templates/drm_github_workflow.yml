@@ -1,0 +1,242 @@
+name: Dynamic Resource Management Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'duckdb_api/distributed_testing/dynamic_resource_manager.py'
+      - 'duckdb_api/distributed_testing/resource_performance_predictor.py'
+      - 'duckdb_api/distributed_testing/cloud_provider_manager.py'
+      - 'duckdb_api/distributed_testing/resource_optimization.py'
+      - 'duckdb_api/distributed_testing/tests/test_*.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'duckdb_api/distributed_testing/dynamic_resource_manager.py'
+      - 'duckdb_api/distributed_testing/resource_performance_predictor.py'
+      - 'duckdb_api/distributed_testing/cloud_provider_manager.py'
+      - 'duckdb_api/distributed_testing/resource_optimization.py'
+      - 'duckdb_api/distributed_testing/tests/test_*.py'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'DRM component to test'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'dynamic_resource_manager'
+          - 'resource_performance_predictor'
+          - 'cloud_provider_manager'
+          - 'resource_optimizer'
+          - 'drm_integration'
+      run_e2e:
+        description: 'Run end-to-end tests'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        component: 
+          - dynamic_resource_manager
+          - resource_performance_predictor
+          - cloud_provider_manager
+          - resource_optimizer
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock
+          pip install -r test/duckdb_api/distributed_testing/requirements.txt
+      
+      - name: Run tests
+        run: |
+          cd test
+          python -m pytest duckdb_api/distributed_testing/tests/test_${{ matrix.component }}.py -v
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results-${{ matrix.component }}
+          path: test/test_results
+          if-no-files-found: ignore
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock
+          pip install -r test/duckdb_api/distributed_testing/requirements.txt
+      
+      - name: Run integration tests
+        run: |
+          cd test
+          python -m pytest duckdb_api/distributed_testing/tests/test_drm_integration.py -v
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test/test_results
+          if-no-files-found: ignore
+
+  resource-optimizer-performance:
+    name: Resource Optimizer Performance Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock
+          pip install -r test/duckdb_api/distributed_testing/requirements.txt
+      
+      - name: Run resource optimizer performance tests
+        run: |
+          cd test
+          python duckdb_api/distributed_testing/tests/run_resource_optimization_tests.py --verbose
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-optimizer-performance-results
+          path: test/test_results
+          if-no-files-found: ignore
+
+  end-to-end:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: [integration-tests, resource-optimizer-performance]
+    if: ${{ github.event.inputs.run_e2e == 'true' || github.event_name != 'workflow_dispatch' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock
+          pip install -r test/duckdb_api/distributed_testing/requirements.txt
+      
+      - name: Run E2E tests
+        run: |
+          cd test
+          python duckdb_api/distributed_testing/tests/run_e2e_drm_test.py --quick --output-dir=./e2e_reports
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: test/e2e_reports
+          if-no-files-found: ignore
+
+  distributed-testing:
+    name: Distributed Testing Framework
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    if: ${{ always() && !contains(needs.*.result, 'failure') }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/duckdb_api/distributed_testing/requirements.txt
+      
+      - name: Start coordinator (background)
+        run: |
+          cd test
+          python -m duckdb_api.distributed_testing.coordinator --port 8080 --api-key test-key &
+          sleep 5  # Give the coordinator time to start
+      
+      - name: Start test workers (background)
+        run: |
+          cd test
+          python -m duckdb_api.distributed_testing.worker --coordinator http://localhost:8080 --api-key test-key --worker-id worker-1 &
+          python -m duckdb_api.distributed_testing.worker --coordinator http://localhost:8080 --api-key test-key --worker-id worker-2 &
+          sleep 5  # Give workers time to register
+      
+      - name: Run DRM CI/CD integration
+        run: |
+          cd test
+          python -m duckdb_api.distributed_testing.drm_cicd_integration \
+            --provider github \
+            --coordinator http://localhost:8080 \
+            --api-key test-key \
+            --component ${{ github.event.inputs.component || 'all' }} \
+            --output-dir ./drm_reports \
+            --verbose
+      
+      - name: Upload DRM reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: drm-reports
+          path: test/drm_reports
+          if-no-files-found: ignore
+      
+      - name: Generate badge
+        run: |
+          cd test
+          python -m duckdb_api.distributed_testing.github_badge_generator \
+            --input ./drm_reports/test_report_*.json \
+            --output ./.github/badges/drm_status.json
+      
+      - name: Commit badge (if main branch)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add test/.github/badges/drm_status.json || true
+          git diff --staged --quiet || git commit -m "Update DRM status badge"
+          git push

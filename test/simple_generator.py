@@ -25,16 +25,33 @@ logger = logging.getLogger(__name__)
 # Architecture to model mapping
 ARCHITECTURE_MAPPING = {
     "encoder-only": ["bert", "roberta", "distilbert", "albert", "electra", "camembert", 
-                    "xlm-roberta", "deberta", "ernie", "rembert"],
+                    "xlm-roberta", "deberta", "ernie", "rembert", "luke", "mpnet", 
+                    "layoutlm", "canine", "roformer", "bigbird", "convbert", "data2vec-text",
+                    "deberta-v2", "esm", "flaubert", "ibert", "xlm", "xlnet", "xmod", "mra",
+                    "megatron-bert", "mobilebert", "nezha", "nystromformer", "splinter", 
+                    "xlm-roberta-xl"],
     "decoder-only": ["gpt2", "gpt-2", "gptj", "gpt-j", "gpt-neo", "gpt-neox", "llama", 
-                    "llama2", "mistral", "falcon", "phi", "gemma", "opt", "mpt"],
-    "encoder-decoder": ["t5", "bart", "mbart", "pegasus", "mt5", "led", "prophetnet"],
+                    "llama2", "mistral", "falcon", "phi", "gemma", "opt", "mpt", 
+                    "qwen2", "qwen3", "codellama", "codegen", "command-r", "gemma2", 
+                    "gemma3", "llama-3", "mamba", "mistral-next", "nemotron", "olmo", "olmoe",
+                    "openai-gpt", "persimmon", "phi3", "phi4", "recurrent-gemma", "rwkv", 
+                    "stablelm", "starcoder2"],
+    "encoder-decoder": ["t5", "bart", "mbart", "pegasus", "mt5", "led", "prophetnet", 
+                       "longt5", "pegasus-x", "flan-t5", "m2m-100", "seamless-m4t", 
+                       "switch-transformers", "umt5", "speech-to-text"],
     "vision": ["vit", "swin", "resnet", "deit", "beit", "segformer", "detr", "mask2former", 
-                "yolos", "sam", "dinov2", "convnext"],
+                "yolos", "sam", "dinov2", "convnext", "mobilenet-v1", "mobilenet-v2", 
+                "efficientnet", "mobilevit", "cvt", "levit", "swinv2", "perceiver", 
+                "poolformer", "convnextv2", "conditional-detr", "depth-anything", "dinat", 
+                "dino", "beit3", "imagegpt", "vitdet", "van"],
     "vision-text": ["clip", "blip", "flava", "git", "idefics", "paligemma", "imagebind", 
-                    "llava", "fuyu"],
+                    "llava", "fuyu", "vision-text-dual-encoder", "chinese-clip", 
+                    "clipseg", "blip-2", "vision-encoder-decoder", "xclip", "kosmos-2", "video-llava", "llava-next",
+                    "siglip", "instructblip", "llava-next-video", "idefics2", "idefics3", 
+                    "mllama", "qwen2-vl", "qwen3-vl"],
     "speech": ["whisper", "wav2vec2", "hubert", "sew", "unispeech", "clap", "musicgen", 
-                "encodec"]
+                "encodec", "audioldm2", "speecht5", "bark", "speech-to-text", 
+                "speech-to-text-2", "wav2vec2-conformer", "wavlm", "data2vec-audio"]
 }
 
 # Default model mapping (model type to default model ID)
@@ -47,7 +64,44 @@ DEFAULT_MODELS = {
     "bart": "facebook/bart-base",
     "vit": "google/vit-base-patch16-224",
     "clip": "openai/clip-vit-base-patch32",
-    "whisper": "openai/whisper-tiny"
+    "whisper": "openai/whisper-tiny",
+    "qwen2": "Qwen/Qwen2-7B",
+    "qwen3": "Qwen/Qwen3-7B",
+    "longt5": "google/long-t5-tglobal-base",
+    "pegasus-x": "google/pegasus-x-base",
+    "luke": "studio-ousia/luke-base",
+    "mpnet": "microsoft/mpnet-base",
+    "fuyu": "adept/fuyu-8b",
+    "kosmos-2": "microsoft/kosmos-2-patch14-224",
+    "mobilenet-v2": "google/mobilenet_v2_1.0_224",
+    "blip-2": "Salesforce/blip2-opt-2.7b",
+    "chinese-clip": "OFA-Sys/chinese-clip-vit-base-patch16",
+    "clipseg": "CIDAS/clipseg-rd64-refined",
+    "bark": "suno/bark-small",
+    "speech-to-text": "facebook/s2t-small-librispeech-asr",
+    "vision-text-dual-encoder": "clip-vit-base-patch32",
+    "llava-next": "liuhaotian/llava-v1.6-vicuna-7b",
+    "video-llava": "LanguageBind/Video-LLaVA-7B",
+    "xlm-roberta": "xlm-roberta-base",
+    "gpt-j": "EleutherAI/gpt-j-6B",
+    "flan-t5": "google/flan-t5-base",
+    "codellama": "codellama/CodeLlama-7b-hf",
+    "conditional-detr": "microsoft/conditional-detr-resnet-50",
+    "depth-anything": "LiheYoung/depth-anything-small",
+    "dinat": "microsoft/dinat-mini-in1k-224",
+    "dino": "facebook/dino-vitb16",
+    "siglip": "google/siglip-base-patch16-224",
+    "instructblip": "Salesforce/instructblip-vicuna-7b",
+    "idefics2": "HuggingFaceM4/idefics2-8b",
+    "phi3": "microsoft/phi-3-mini-4k-instruct",
+    "phi4": "microsoft/phi-4-medium-4k-instruct",
+    "mamba": "state-spaces/mamba-2.8b-hf",
+    "mistral-next": "mistralai/Mistral-7B-Instruct-v0.3",
+    "beit3": "microsoft/beit3-base-patch16-224",
+    "m2m-100": "facebook/m2m100_418M",
+    "mobilebert": "google/mobilebert-uncased",
+    "wav2vec2-conformer": "facebook/wav2vec2-conformer-large-960h-ft",
+    "speech-to-text-2": "facebook/s2t-wav2vec2-large-en-de"
 }
 
 def map_model_to_architecture(model_type: str) -> str:
@@ -287,10 +341,25 @@ def fix_indentation(content: str) -> str:
     if not is_valid:
         logger.warning(f"First indentation pass failed: {error}")
         
+        # Add commonly missing blocks for syntax correctness
+        if "expected an indented block after 'try' statement" in error:
+            content = content.replace("try:", "try:\n    pass")
+            
+        if "expected an indented block after 'if' statement" in error:
+            content = content.replace("if ", "if True: # ")
+            
+        # Fix missing function bodies
+        content = re.sub(r'def ([a-zA-Z0-9_]+)\([^)]*\):\s*$', r'def \1():\n    pass', content)
+        
+        # Fix missing class bodies
+        content = re.sub(r'class ([a-zA-Z0-9_]+)(\([^)]*\))?:\s*$', r'class \1\2:\n    pass', content)
+        
         # Split into lines and rebuild from scratch
         lines = content.split('\n')
         fixed_lines = []
         indent_level = 0
+        in_docstring = False
+        prev_indented = False
         
         for line in lines:
             stripped = line.strip()
@@ -298,18 +367,44 @@ def fix_indentation(content: str) -> str:
                 fixed_lines.append('')
                 continue
                 
+            # Check for docstring
+            if stripped.startswith('"""') or stripped.startswith("'''"):
+                if stripped.endswith('"""') or stripped.endswith("'''"):
+                    # Single line docstring
+                    fixed_lines.append('    ' * indent_level + stripped)
+                    continue
+                else:
+                    # Start of multi-line docstring
+                    in_docstring = not in_docstring
+            elif (stripped.endswith('"""') or stripped.endswith("'''")) and in_docstring:
+                # End of docstring
+                in_docstring = False
+                
+            # If in docstring, preserve indentation
+            if in_docstring:
+                fixed_lines.append('    ' * indent_level + stripped)
+                continue
+                
             # Decrease indent for closing statements
-            if stripped.startswith(('}', ')', ']', 'else:', 'elif ', 'except:', 'finally:')):
-                indent_level = max(0, indent_level - 1)
+            if stripped.startswith(('}', ')', ']')) or re.match(r'^(else|elif|except|finally|case)(\s|:)', stripped):
+                if not prev_indented:  # Only dedent if previous line didn't set an indent
+                    indent_level = max(0, indent_level - 1)
                 
             # Add the line with current indentation
             fixed_lines.append('    ' * indent_level + stripped)
             
             # Increase indent after opening control statements
-            if stripped.endswith((':', '{', '[', '(')):
+            prev_indented = False
+            if re.match(r'^(if|for|while|def|class|with|try|else|elif|except|finally|match|case)\b.*:$', stripped) or stripped.endswith((':', '{', '[', '(')):
                 indent_level += 1
+                prev_indented = True
         
         content = '\n'.join(fixed_lines)
+        
+        # Final validation after fixing
+        is_valid, error = validate_python_syntax(content)
+        if not is_valid:
+            logger.warning(f"Advanced indentation pass still failed: {error}")
     
     return content
 

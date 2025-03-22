@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
+
 """
-Minimal test file for HuggingFace model.
+Minimal template for basic model testing.
+This template is a simplified version with minimal dependencies
+for easy testing.
 """
 
 import os
@@ -16,231 +19,142 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Try to import torch
+# Check if dependencies are available
 try:
-    import torch
+import torch
     HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
     HAS_TORCH = False
     logger.warning("torch not available, using mock")
 
-# Try to import transformers
 try:
-    import transformers
+import transformers
     HAS_TRANSFORMERS = True
 except ImportError:
     transformers = MagicMock()
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-# Hardware detection
-def check_hardware():
-    """Check available hardware and return capabilities."""
-    capabilities = {
-        "cpu": True,
-        "cuda": False,
-        "mps": False
-    }
-    
-    # Check CUDA
-    if HAS_TORCH:
-        capabilities["cuda"] = torch.cuda.is_available()
-        
-    # Check MPS (Apple Silicon)
-    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
-        capabilities["mps"] = torch.mps.is_available()
-        
-    return capabilities
-
-HW_CAPABILITIES = check_hardware()
-
-# Model registry
+# Simple registry for BERT models
 BERT_MODELS_REGISTRY = {
-    "bert-base-uncased": {
-        "description": "bert base model",
-        "class": "BertModel",
-    },
+    "google-bert/bert-base-uncased": {
+        "full_name": "BERT Base Uncased",
+        "architecture": "encoder-only",
+        "description": "BERT Base model with uncased vocabulary",
+        "model_type": "bert",
+        "parameters": "110M",
+        "context_length": 512,
+        "embedding_dim": 768,
+        "attention_heads": 12,
+        "layers": 12,
+        "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
+    }
 }
 
+def select_device():
+    """Select the best available device for inference."""
+    if HAS_TORCH and torch.cuda.is_available():
+        return "cuda:0"
+    else:
+        return "cpu"
+
 class TestBertModels:
-    """Test class for bert-family models."""
-    
-    def __init__(self, model_id=None):
-        """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "bert-base-uncased"
+    """Test class for BERT models."""def __init__(self, model_id="google-bert/bert-base-uncased", device=None):
+        """Initialize the test class for BERT models.
         
-        # Verify model exists in registry
-        if self.model_id not in BERT_MODELS_REGISTRY:
-            logger.warning(f"Model {self.model_id} not in registry, using default")
-            self.model_info = BERT_MODELS_REGISTRY["bert-base-uncased"]
-        else:
-            self.model_info = BERT_MODELS_REGISTRY[self.model_id]
-            
-        # Define model parameters
-        self.task = "fill-mask"
-        self.class_name = self.model_info["class"]
-        self.description = self.model_info["description"]
-        
-        # Text input
-        self.test_text = "The man worked as a [MASK]."
+        Args:
+            model_id: The model ID to test (default: "google-bert/bert-base-uncased")
+            device: The device to run tests on (default: None = auto-select)
+        """
+        self.model_id = model_id
+        self.device = device if     """Test the model using the pipeline API."""
+try:     if         logger.warning("Transformers library not available, skipping pipeline test")
+                              return {"success": False, "error": "Transformers library not available"}
+         
+                          logger.info(f"Testing BERT model {self.model_id} with pipeline API on {self.device}")
+         
+                          # Record start time
+                          start_time = time.time()
+         
+                          # Initialize the pipeline
+                          pipe = transformers.pipeline(
+                              "fill-mask", 
+                              model=self.model_id,
+                              device=self.device if self.device != "cpu" else -1
+                          )
+         
+                          # Record model loading time
+                          load_time = time.time() - start_time
+                          logger.info(f"Model loading time: {load_time:.2f} seconds")
+         
+                          # Test with a simple input
+                          test_input = "The quick brown fox jumps over the [MASK] dog."
+         
+                          # Record inference start time
+                          inference_start = time.time()
+         
+                          # Run inference
+                          outputs = pipe(test_input)
+         
+                          # Record inference time
+                          inference_time = time.time() - inference_start
+         
+                          # Store performance stats
+                          self.performance_stats["pipeline"] = {
+                              "load_time": load_time,
+                              "inference_time": inference_time
+                          }
+         
+                          return {
+                              "success": True,
+                              "model_id": self.model_id,
+                              "device": self.device,
+                              "inference_time": inference_time
+                          }
 
-        # Configure hardware preference
-        if HW_CAPABILITIES["cuda"]:
-            self.preferred_device = "cuda"
-        elif HW_CAPABILITIES["mps"]:
-            self.preferred_device = "mps"
-        else:
-            self.preferred_device = "cpu"
-        
-        logger.info(f"Using {self.preferred_device} as preferred device")
-        
-        # Results storage
-        self.results = {}
-        self.examples = []
-        self.performance_stats = {}
-    
-    def test_pipeline(self, device="auto"):
-        """Test the model using transformers pipeline API."""
-        if device == "auto":
-            device = self.preferred_device
-        
-        results = {
-            "model": self.model_id,
-            "device": device,
-            "task": self.task,
-            "class": self.class_name
-        }
-        
-        # Check for dependencies
-        if not HAS_TRANSFORMERS:
-            results["pipeline_error_type"] = "missing_dependency"
-            results["pipeline_missing_core"] = ["transformers"]
-            results["pipeline_success"] = False
-            return results
-        
-        try:
-            logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
-            
-            # Create pipeline with appropriate parameters
-            pipeline_kwargs = {
-                "task": self.task,
-                "model": self.model_id,
-                "device": device
-            }
-            
-            # Time the model loading
-            load_start_time = time.time()
-            pipeline = transformers.pipeline(**pipeline_kwargs)
-            load_time = time.time() - load_start_time
-            
-            # Prepare test input
-            pipeline_input = self.test_text
-            
-            # Run inference passes
-            num_runs = 1
-            times = []
-            outputs = []
-            
-            for _ in range(num_runs):
-                start_time = time.time()
-                output = pipeline(pipeline_input)
-                end_time = time.time()
-                times.append(end_time - start_time)
-                outputs.append(output)
-            
-            # Calculate statistics
-            avg_time = sum(times) / len(times)
-            
-            # Store results
-            results["pipeline_success"] = True
-            results["pipeline_avg_time"] = avg_time
-            results["pipeline_load_time"] = load_time
-            
-            # Add to examples
-            self.examples.append({
-                "method": f"pipeline() on {device}",
-                "input": str(pipeline_input),
-                "output_preview": str(outputs[0])[:200] if len(str(outputs[0])) > 200 else str(outputs[0])
-            })
-            
-        except Exception as e:
-            # Store error information
-            results["pipeline_success"] = False
-            results["pipeline_error"] = str(e)
-            logger.error(f"Error testing pipeline on {device}: {e}")
-        
-        # Add to overall results
-        self.results[f"pipeline_{device}"] = results
-        return results
-    
-    def run_tests(self):
+except Exception:                       logger.error(f"Error testing pipeline: {e}")
+                                   return {"success": False, "error": str(e)}    def run_tests(self, all_hardware=False):
         """Run all tests for this model."""
-        # Run test
-        self.test_pipeline()
+        results = {}
         
-        # Return results
-        return {
-            "results": self.results,
-            "examples": self.examples,
-            "metadata": {
-                "model": self.model_id,
-                "task": self.task,
-                "class": self.class_name
-            }
-        }
-
-
-def save_results(model_id, results, output_dir="results"):
-    """Save test results to a file."""
-    # Ensure output directory exists
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Create filename from model ID
-    safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_bert_{safe_model_id}.json"
-    output_path = os.path.join(output_dir, filename)
-    
-    # Save results
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
-    
-    logger.info(f"Saved results to {output_path}")
-    return output_path
-
-
+        # Run pipeline test
+        pipeline_result = self.test_pipeline()
+        results["pipeline"] = pipeline_result
+        
+        # Add metadata
+        results["metadata"] = {
+            "model_id": self.model_id,
+            "device": self.device,
+            "has_transformers": HAS_TRANSFORMERS,
+            "has_torch": HAS_TORCH
+        }        return results
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test bert-family models")
-    parser.add_argument("--model", type=str, help="Specific model to test")
-    parser.add_argument("--output-dir", type=str, default="results", help="Directory for output files")
-    parser.add_argument("--save", action="store_true", help="Save results to file")
+    parser = argparse.ArgumentParser(description="Test BERT HuggingFace models")
+    parser.add_argument("--model", type=str, default="google-bert/bert-base-uncased", help="Model ID to test")
+    parser.add_argument("--device", type=str, help="Device to run tests on (cuda, cpu)")
     
     args = parser.parse_args()
     
-    # Test single model (default or specified)
-    model_id = args.model or "bert-base-uncased"
-    logger.info(f"Testing model: {model_id}")
+    # Initialize the test class
+    bert_tester = TestBertModels(model_id=args.model, device=args.device)
     
-    # Run test
-    tester = TestBertModels(model_id)
-    results = tester.run_tests()
+    # Run the tests
+    results = bert_tester.run_tests()
     
-    # Save results if requested
-    if args.save:
-        save_results(model_id, results, output_dir=args.output_dir)
+    # Print a summary
+    success = results["pipeline"].get("success", False)
     
-    # Print summary
-    success = any(r.get("pipeline_success", False) for r in results["results"].values())
+    print(f"\nTEST RESULTS SUMMARY:")
     
-    print("\nTEST RESULTS SUMMARY:")
-    if success:
-        print(f"✅ Successfully tested {model_id}")
-    else:
-        print(f"❌ Failed to test {model_id}")
-    
-    return 0
-
+    if              print(f" Successfully tested {args.model}")
+                      print(f"  - Device: {bert_tester.device}")
+                      print(f"  - Inference time: {results['pipeline'].get('inference_time', 'N/A'):.4f}s")
+    else:         print(f"L Failed to test {args.model}")
+                 print(f"  - Error: {results['pipeline'].get('error', 'Unknown error')}")
+         
+             return 0 if success else 1
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -317,6 +317,7 @@ def main():
     output_group = parser.add_argument_group("Output Options")
     output_group.add_argument("--output-dir", type=str, default=str(RESULTS_DIR), help="Directory for output files")
     output_group.add_argument("--summary-file", type=str, help="Path to write summary JSON file")
+    output_group.add_argument("--store-results", action="store_true", help="Store results in DuckDB database")
     
     args = parser.parse_args()
     
@@ -400,6 +401,37 @@ def main():
         json.dump(results_summary, f, indent=2)
     
     logger.info(f"Summary written to {summary_path}")
+    
+    # Store results in DuckDB if requested
+    if args.store_results:
+        try:
+            # Import the DuckDB integration script
+            import sys
+            sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+            
+            if any(arch == "vision-text" for arch in selected_archs):
+                logger.info("Storing vision-text results in DuckDB...")
+                from vision_text_duckdb_integration import connect_to_db, create_tables, import_results
+                
+                # Connect to database
+                conn = connect_to_db()
+                if conn:
+                    # Create tables if needed
+                    create_tables(conn)
+                    
+                    # Import results
+                    result = import_results(conn, args.output_dir)
+                    logger.info(f"Imported {result['imported']} vision-text files, {result['failed']} failed")
+                    
+                    # Close connection
+                    conn.close()
+                else:
+                    logger.warning("Failed to connect to DuckDB for storing vision-text results")
+            
+            # Add other model types as needed here
+            
+        except Exception as e:
+            logger.error(f"Error storing results in DuckDB: {e}")
     
     # Print final summary
     print("\nCOMPREHENSIVE TEST SUMMARY:")

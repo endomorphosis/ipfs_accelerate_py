@@ -1,6 +1,39 @@
 # Architecture-Specific Templates for HuggingFace Tests
 
-This directory contains architecture-specific templates used by the test generator to create properly formatted test files for different model families.
+> **HIGH PRIORITY OBJECTIVE:** Achieving 100% test coverage for all 300+ HuggingFace model classes with validated end-to-end testing is a critical priority. Current coverage is only 57.6% (114/198 tracked models).
+
+This directory contains architecture-specific templates used by the test generator to create properly formatted test files for different model families. These templates have been enhanced with proper indentation, robust error handling, and comprehensive mock detection capabilities.
+
+## CRITICAL: MODIFY TEMPLATES, NOT GENERATED FILES
+
+> **CRITICAL RULE:** Always modify these templates and the generator, NEVER edit the generated test files directly.
+
+Editing the templates in this directory ensures changes are properly propagated to all generated files. Directly editing generated test files will result in lost changes when tests are regenerated and create inconsistencies across the test suite.
+
+## Latest Improvements (March 21, 2025)
+
+Recent enhancements to the templates include:
+
+1. **Proper Indentation**: All templates have been fixed to ensure consistent and correct indentation, with particular focus on:
+   - Class method indentation with proper spacing
+   - Consistent indentation in nested blocks (try/except, if/else, for loops)
+   - Proper alignment of multi-line statements
+   - Correct spacing between class and function definitions
+   - Fixed OVT5Wrapper class indentation in encoder_decoder_template.py
+   - Properly aligned MockSentencePieceProcessor class in all relevant templates
+   - Fixed vision_template.py with corrected indentation throughout the file
+   - Improved MockImage and MockRequests class indentation in vision_template.py
+   - Fixed speech_template.py with proper spacing and indentation for all methods
+   - Fixed multimodal_template.py with corrected indentation and proper method nesting
+
+2. **Enhanced Error Reporting**: Better error classification and detailed error reporting.
+3. **Robust Hardware Detection**: Improved detection of CUDA, ROCm, MPS, WebGPU, and WebNN.
+4. **Comprehensive Mock Detection**: Advanced detection of mock objects vs real inference.
+5. **Environment Variable Controls**: Added environment variable control for mocking dependencies.
+6. **Hardware-Aware Testing**: Improved testing on different hardware configurations.
+7. **Expanded Model Registries**: More comprehensive model registries for each architecture type.
+8. **Task-Specific Input Handling**: Better generation of appropriate test inputs for each task type.
+9. **Unified Result Reporting**: Standardized result collection across all architecture types.
 
 ## Available Templates
 
@@ -13,6 +46,8 @@ The following templates are available:
 5. **vision_text_template.py** - For vision-text models (CLIP, BLIP, etc.)
 6. **speech_template.py** - For speech models (Whisper, Wav2Vec2, etc.)
 7. **multimodal_template.py** - For multimodal models (LLaVA, etc.)
+8. **minimal_bert_template.py** - Simplified template for quick BERT model testing
+9. **minimal_vision_template.py** - Simplified template for quick vision model testing
 
 ## Architecture-Specific Features
 
@@ -82,7 +117,11 @@ Special handling for:
 - Mel spectrogram conversion
 - Automatic speech recognition task handling
 - Audio processor configuration
-- Compatible with Whisper, Wav2Vec2, HuBERT, etc.
+- Synthetic audio generation for testing without audio files
+- Sampling rate handling for different audio models
+- Audio file detection with multiple format support
+- Hardware-specific audio processing
+- Compatible with Whisper, Wav2Vec2, HuBERT, EnCodec, MusicGen, SEW, etc.
 
 ### Multimodal Models
 
@@ -139,7 +178,9 @@ For more details on the mock detection system, see [MOCK_DETECTION_README.md](..
 
 ## Usage
 
-These templates are used by the test generator to create test files:
+These templates are used by the test generator to create test files. Several scripts can leverage these templates:
+
+### Using regenerate_fixed_tests.py
 
 ```bash
 python regenerate_fixed_tests.py --model bert --verify  # Uses encoder_only_template.py
@@ -148,21 +189,174 @@ python regenerate_fixed_tests.py --model t5 --verify    # Uses encoder_decoder_t
 python regenerate_fixed_tests.py --model vit --verify   # Uses vision_template.py
 ```
 
+### Using generate_simple_test.py with Advanced Options
+
+```bash
+# Basic usage
+python generate_simple_test.py --model-type bert
+
+# With hardware constraints
+python generate_simple_test.py --model-type gpt2 --hardware-profile gpu-small
+
+# With task specification
+python generate_simple_test.py --model-type t5 --task translation
+
+# With size constraints
+python generate_simple_test.py --model-type vit --max-size-mb 500
+
+# With framework constraints
+python generate_simple_test.py --model-type bert --framework pytorch
+
+# Combining multiple constraints
+python generate_simple_test.py --model-type bert --hardware-profile cpu-small --task fill-mask
+```
+
+### Architecture-Specific Usage Examples
+
+#### For Encoder-Only Models
+```bash
+python generate_simple_test.py --model-type roberta --template encoder_only_template.py
+```
+
+#### For Decoder-Only Models
+```bash
+python generate_simple_test.py --model-type gpt-j --template decoder_only_template.py
+```
+
+#### For Vision Models
+```bash
+python generate_simple_test.py --model-type vit --template vision_template.py
+```
+
+#### For Speech Models
+```bash
+python generate_simple_test.py --model-type whisper --template speech_template.py
+```
+
 ## Extending the Templates
 
-To add a new architecture type:
+To add a new architecture type or enhance existing templates:
 
-1. Create a new template file (e.g., `new_architecture_template.py`)
+### Adding a New Architecture Type
+
+1. Create a new template file (e.g., `new_architecture_template.py`) based on the closest existing architecture
 2. Update `ARCHITECTURE_TYPES` in `test_generator_fixed.py` to include the new architecture
-3. Update `get_template_for_architecture()` to map to the new template
-4. Add any architecture-specific methods and configurations to the template
+3. Update `get_template_for_architecture()` to map model types to the new template
+4. Add an architecture-specific model registry with default configurations
+5. Implement architecture-specific test methods and input processing
+6. Add a class-based testing framework with appropriate methods
+7. Ensure all indentation is consistent throughout the file
+8. Add comprehensive error handling and mock detection
+9. Verify the template with the Python compiler
 
-## Template Verification
+### Enhancing Existing Templates
 
-All templates are verified using the Python compiler to ensure they have valid syntax:
+When enhancing templates, follow these guidelines:
+
+1. **Keep Indentation Consistent**: Ensure all indentation is well-formed and consistent
+2. **Augment Mock Detection**: Enhance the mock detection system with new dependencies
+3. **Extend Hardware Support**: Add support for new hardware types as they become available
+4. **Expand Model Registries**: Add more models to the architecture-specific registries
+5. **Add Task-Specific Handlers**: Implement specialized handling for specific tasks
+6. **Maintain Backward Compatibility**: Ensure existing test scripts continue to work
+7. **Document Changes**: Update this README with new features and capabilities
+
+### Required Components for Each Template
+
+All templates must include:
+
+1. Hardware detection with fallbacks
+2. Mock detection for all required dependencies
+3. Environment variable controls for mocking
+4. Architecture-specific model registry
+5. Class-based test implementation
+6. Pipeline and from_pretrained test methods
+7. Command-line interface
+8. Unified result collection
+9. Consistent error handling and reporting
+
+### Indentation and Formatting Guidelines
+
+To maintain consistent and correct indentation across all templates, follow these rules:
+
+1. **Class Definitions**:
+   - Use 4-space indentation for class methods 
+   - Add a blank line between method definitions
+   - Ensure proper docstrings for each class and method
+
+2. **Function Definitions**:
+   - Outside of classes, functions should not be indented
+   - Add a blank line between function definitions
+   - Include proper docstrings
+
+3. **Nested Blocks**:
+   - Consistently use 4-space indentation for nested blocks
+   - Ensure proper alignment of multi-line statements
+   - Keep consistent indentation in try/except blocks
+
+4. **Special Python Constructs**:
+   - Ensure proper indentation for nested class definitions
+   - Be careful with indentation in complex try/except blocks
+   - Pay attention to list comprehensions and multi-line expressions
+
+5. **Mock Object Definitions**:
+   - Keep consistent indentation in mock class implementations
+   - Ensure proper method indentation within mock classes
+
+All templates should pass a syntax check using Python's built-in compiler:
+```bash
+python -m py_compile templates/encoder_only_template.py
+```
+
+## Template Verification and Testing
+
+### Syntax Verification
+
+All templates should be verified using the Python compiler to ensure they have valid syntax:
 
 ```bash
 python -m py_compile templates/encoder_only_template.py
 ```
 
-The test generator also includes a verification step to ensure that generated files have valid syntax.
+### Generated File Verification
+
+The test generator includes a verification step to ensure that generated files have valid syntax:
+
+```bash
+python generate_simple_test.py --model-type bert --verify
+```
+
+### Manual Testing
+
+To thoroughly test a template, run it with various models within its architecture type:
+
+```bash
+# For encoder-only template
+python -m templates.encoder_only_template --model bert-base-uncased
+python -m templates.encoder_only_template --model roberta-base
+
+# For decoder-only template
+python -m templates.decoder_only_template --model gpt2
+python -m templates.decoder_only_template --model gpt2-medium
+
+# For vision template
+python -m templates.vision_template --model google/vit-base-patch16-224
+```
+
+### Dependency Testing
+
+Test templates with various dependency configurations:
+
+```bash
+# With all dependencies
+python -m templates.encoder_only_template --model bert-base-uncased
+
+# Without transformers
+MOCK_TRANSFORMERS=True python -m templates.encoder_only_template --model bert-base-uncased
+
+# Without torch
+MOCK_TORCH=True python -m templates.encoder_only_template --model bert-base-uncased
+
+# Without any dependencies
+MOCK_TRANSFORMERS=True MOCK_TORCH=True python -m templates.encoder_only_template --model bert-base-uncased
+```

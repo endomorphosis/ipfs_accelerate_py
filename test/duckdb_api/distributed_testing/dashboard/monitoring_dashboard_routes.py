@@ -1120,6 +1120,189 @@ async def handle_api_circuit_breakers(request: web.Request) -> web.Response:
             "error": f"Error getting circuit breaker metrics: {e}"
         }, status=500)
 
+async def handle_drm_dashboard(request: web.Request) -> web.Response:
+    """Handle requests to the Dynamic Resource Management dashboard."""
+    dashboard = request.app['dashboard']
+    theme = request.query.get('theme', dashboard.theme)
+    refresh = request.query.get('refresh', 'false').lower() == 'true'
+    action = request.query.get('action', None)
+    
+    # Import DRMVisualizationIntegration
+    try:
+        from duckdb_api.distributed_testing.dashboard.drm_visualization_integration import DRMVisualizationIntegration
+    except ImportError:
+        # If import fails, return error page
+        return web.Response(
+            text=f"""
+            <html>
+                <head>
+                    <title>DRM Dashboard Error</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; padding: 20px; background-color: {theme == 'dark' and '#1a1a1a' or '#f5f5f5'}; color: {theme == 'dark' and '#f5f5f5' or '#333'}; }}
+                        .message {{ padding: 20px; background-color: {theme == 'dark' and '#333' or '#fff'}; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                        h1 {{ color: {theme == 'dark' and '#f5f5f5' or '#333'}; }}
+                        .error {{ color: #dc3545; }}
+                        a {{ color: {theme == 'dark' and '#4dabf7' or '#007bff'}; text-decoration: none; }}
+                        a:hover {{ text-decoration: underline; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="message">
+                        <h1>DRM Dashboard Error</h1>
+                        <p class="error">DRM Visualization Integration is not available.</p>
+                        <p>Make sure you have the Dynamic Resource Management Visualization module installed.</p>
+                        <p><a href="/">Back to Dashboard</a></p>
+                    </div>
+                </body>
+            </html>
+            """,
+            content_type='text/html'
+        )
+    
+    # Initialize DRM visualization integration if not already available
+    drm_integration = getattr(dashboard, 'drm_visualization_integration', None)
+    
+    if drm_integration is None:
+        try:
+            # Create output directory in dashboard's dashboard_dir
+            import os
+            output_dir = os.path.join(dashboard.dashboard_dir, "drm_visualizations")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Create a symbolic link to the output directory in static dir if it doesn't exist
+            drm_static_dir = os.path.join(dashboard.static_dir, "drm_visualizations")
+            if not os.path.exists(drm_static_dir):
+                try:
+                    # Use relative path for the link target if possible
+                    target_path = os.path.relpath(output_dir, os.path.dirname(drm_static_dir))
+                    os.symlink(target_path, drm_static_dir, target_is_directory=True)
+                except Exception as e:
+                    logger.error(f"Error creating symbolic link to DRM visualizations: {e}")
+                    # Fall back to copy if symlink fails
+                    os.makedirs(drm_static_dir, exist_ok=True)
+            
+            # Initialize integration
+            drm_integration = DRMVisualizationIntegration(
+                output_dir=output_dir,
+                update_interval=60,  # 1 minute between updates
+                resource_manager=getattr(dashboard, 'resource_manager', None)
+            )
+            
+            # Store in dashboard
+            dashboard.drm_visualization_integration = drm_integration
+            logger.info("DRM Visualization Integration initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing DRM Visualization Integration: {e}")
+            return web.Response(
+                text=f"""
+                <html>
+                    <head>
+                        <title>DRM Dashboard Error</title>
+                        <style>
+                            body {{ font-family: Arial, sans-serif; padding: 20px; background-color: {theme == 'dark' and '#1a1a1a' or '#f5f5f5'}; color: {theme == 'dark' and '#f5f5f5' or '#333'}; }}
+                            .message {{ padding: 20px; background-color: {theme == 'dark' and '#333' or '#fff'}; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                            h1 {{ color: {theme == 'dark' and '#f5f5f5' or '#333'}; }}
+                            .error {{ color: #dc3545; }}
+                            a {{ color: {theme == 'dark' and '#4dabf7' or '#007bff'}; text-decoration: none; }}
+                            a:hover {{ text-decoration: underline; }}
+                        </style>
+                    </head>
+                    <body>
+                        <div class="message">
+                            <h1>DRM Dashboard Error</h1>
+                            <p class="error">Error initializing DRM Visualization Integration: {str(e)}</p>
+                            <p><a href="/">Back to Dashboard</a></p>
+                        </div>
+                    </body>
+                </html>
+                """,
+                content_type='text/html'
+            )
+    
+    # Handle dashboard server actions
+    dashboard_server_running = False
+    dashboard_server_url = None
+    
+    if action == 'start-server':
+        # Try to start the dashboard server
+        try:
+            dashboard_server_url = drm_integration.start_dashboard_server()
+            if dashboard_server_url:
+                dashboard_server_running = True
+                logger.info(f"DRM dashboard server started at {dashboard_server_url}")
+        except Exception as e:
+            logger.error(f"Error starting DRM dashboard server: {e}")
+    elif action == 'stop-server':
+        # Try to stop the dashboard server
+        try:
+            drm_integration.stop_dashboard_server()
+            logger.info("DRM dashboard server stopped")
+        except Exception as e:
+            logger.error(f"Error stopping DRM dashboard server: {e}")
+    else:
+        # Check if the dashboard server is already running
+        try:
+            if hasattr(drm_integration.drm_visualization, 'dashboard_app') and \
+               drm_integration.drm_visualization.dashboard_app is not None:
+                dashboard_server_running = True
+                dashboard_server_url = drm_integration.drm_visualization.dashboard_url
+        except Exception:
+            pass
+    
+    # Update visualizations if requested or needed
+    if refresh:
+        drm_integration.update_visualizations(force=True)
+    
+    # Get all visualizations
+    all_visualizations = drm_integration.get_all_visualizations()
+    
+    # Prepare visualization HTML for each type
+    dashboard_html = drm_integration.get_iframe_html('dashboard', width="100%", height="600px")
+    resource_heatmap_html = drm_integration.get_iframe_html('resource_heatmap', width="100%", height="450px")
+    scaling_history_html = drm_integration.get_iframe_html('scaling_history', width="100%", height="450px")
+    resource_allocation_html = drm_integration.get_iframe_html('resource_allocation', width="100%", height="450px")
+    resource_efficiency_html = drm_integration.get_iframe_html('resource_efficiency', width="100%", height="450px")
+    cloud_resources_html = drm_integration.get_iframe_html('cloud_resources', width="100%", height="450px")
+    
+    # Check if cloud resources visualization is available
+    has_cloud_resources = 'cloud_resources' in all_visualizations
+    
+    # Get DRM summary (mock for now, in real implementation this would come from the DRM)
+    # This would be implemented in DynamicResourceManager or DRMVisualization
+    drm_summary = {
+        'active_workers': 4,
+        'total_resources': 16,
+        'utilization': 75,
+        'scale_events': 12
+    }
+    
+    # Get last updated time from visualizations
+    last_updated = "Not available"
+    for viz_type, viz_details in all_visualizations.items():
+        if 'updated_at' in viz_details:
+            last_updated = viz_details['updated_at'].replace('T', ' ').split('.')[0]
+            break
+    
+    # Render the template
+    return web.Response(
+        text=dashboard.env.get_template('drm_dashboard.html').render(
+            theme=theme,
+            dashboard_html=dashboard_html,
+            resource_heatmap_html=resource_heatmap_html,
+            scaling_history_html=scaling_history_html,
+            resource_allocation_html=resource_allocation_html,
+            resource_efficiency_html=resource_efficiency_html,
+            cloud_resources_html=cloud_resources_html,
+            has_cloud_resources=has_cloud_resources,
+            drm_summary=drm_summary,
+            last_updated=last_updated,
+            dashboard_server_running=dashboard_server_running,
+            dashboard_server_url=dashboard_server_url,
+            refresh_interval=60  # Default refresh interval in seconds
+        ),
+        content_type='text/html'
+    )
+
 def setup_routes(app: web.Application) -> None:
     """Set up routes for the monitoring dashboard."""
     app.router.add_get('/', handle_index)
@@ -1140,6 +1323,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get('/api/errors', handle_api_errors)
     app.router.add_get('/api/circuit-breakers', handle_api_circuit_breakers)
     app.router.add_post('/api/report-error', handle_api_report_error)
+    app.router.add_get('/drm-dashboard', handle_drm_dashboard)
     
     # Set up static routes
     app.router.add_static('/static/', app['dashboard'].static_dir)

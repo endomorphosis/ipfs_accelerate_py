@@ -1,4 +1,3 @@
-# Original model name: blip-2
 #!/usr/bin/env python3
 
 import os

@@ -1,212 +1,213 @@
 # HuggingFace Test Implementation Checklist
 
-This checklist provides a systematic approach to implementing tests for HuggingFace model architectures.
+This document outlines the steps and requirements for implementing test files for all HuggingFace models, with a focus on correctly handling hyphenated model names.
 
-## High Priority Models
+> **HIGH PRIORITY OBJECTIVE:** Achieving 100% test coverage for all 300+ HuggingFace model classes with validated end-to-end testing is a high priority target. The current coverage of 57.6% (114/198 tracked models) must be improved to ensure comprehensive compatibility for all model architectures.
 
-These model architectures should be implemented first due to their widespread usage:
+## Current Coverage Status
 
-- [x] BERT (Encoder-only)
-- [x] GPT-2 (Decoder-only)
-- [x] T5 (Encoder-decoder)
-- [x] ViT (Vision)
-- [ ] RoBERTa (Encoder-only)
-- [ ] BART (Encoder-decoder)
-- [ ] LLaMA (Decoder-only)
-- [ ] Whisper (Audio)
-- [ ] CLIP (Multimodal)
-- [ ] Falcon (Decoder-only)
-- [ ] DeBERTa (Encoder-only)
+- **Total Models Tracked:** 198
+- **Implemented Models:** 114 (57.6%)
+- **Missing Models:** 84 (42.4%)
+- **End-to-End Validated Models:** Limited subset with known compatibility
 
-## Test Implementation Process
+> **Target:** 100% test coverage for all 300+ HuggingFace model classes with validated end-to-end testing
 
-For each model architecture, follow these steps:
+## Implementation Priorities
 
-### 1. Preparation
+### Tier 1: Critical Models (Highest Priority)
+- [x] BERT (encoder-only) ✓
+- [x] GPT-2 (decoder-only) ✓
+- [x] T5 (encoder-decoder) ✓
+- [x] BART (encoder-decoder) ✓
+- [x] RoBERTa (encoder-only) ✓
+- [x] GPT-J (decoder-only) ✓
+- [x] GPT-Neo (decoder-only) ✓
+- [x] DistilBERT (encoder-only) ✓
+- [x] Electra (encoder-only) ✓
+- [x] XLM-RoBERTa (encoder-only) ✓
+- [x] Swin (vision) ✓
+- [x] ViT (vision) ✓
+- [x] CLIP (vision-text) ✓
+- [x] Llama (decoder-only) ✓
+- [x] Wav2Vec2 (speech) ✓
 
-- [ ] Research model architecture and typical usage patterns
-- [ ] Identify appropriate task type (e.g., fill-mask, text-generation)
-- [ ] Determine appropriate test inputs
-- [ ] Check for architecture-specific requirements
+### Tier 2: High Priority Models
+- [x] OPT (decoder-only) ✓
+- [x] BLOOM (decoder-only) ✓
+- [x] DeiT (vision) ✓
+- [x] BLIP (vision-text) ✓
+- [x] Whisper (speech) ✓
+- [x] MT5 (encoder-decoder) ✓
+- [x] MBART (encoder-decoder) ✓
+- [x] LED (encoder-decoder) ✓
+- [x] DETR (vision) ✓
+- [x] Gemma (decoder-only) ✓
+- [ ] CodeLLama (decoder-only) ❌
+- [ ] Qwen2 (decoder-only) ❌
+- [ ] Qwen3 (decoder-only) ❌
+- [ ] LongT5 (encoder-decoder) ❌
+- [ ] Pegasus-X (encoder-decoder) ❌
+- [ ] Luke (encoder-only) ❌
+- [ ] MPNet (encoder-only) ❌
+- [ ] Fuyu (multimodal) ❌
+- [ ] Kosmos-2 (multimodal) ❌
+- [ ] LLaVA-Next (multimodal) ❌
+- [ ] Video-LLaVA (multimodal) ❌
+- [ ] Bark (speech) ❌
+- [ ] MobileNet-v2 (vision) ❌
+- [ ] BLIP-2 (vision-text) ❌
+- [ ] ChineseCLIP (vision-text) ❌
+- [ ] CLIPSeg (vision-text) ❌
 
-### 2. Initial Implementation
+### Tier 3: Medium Priority Models (Subset of 62 remaining models)
+- [x] Albert (encoder-only) ✓
+- [x] Pegasus (encoder-decoder) ✓
+- [x] ConvNeXT (vision) ✓
+- [x] BEiT (vision) ✓
+- [x] ProphetNet (encoder-decoder) ✓
+- [x] RemBERT (encoder-only) ✓
+- [x] ERNIE (encoder-only) ✓
+- [x] GPT-NeoX (decoder-only) ✓
+- [x] DinoV2 (vision) ✓
+- [x] SegFormer (vision) ✓
+- [ ] CodeGen (decoder-only) ❌
+- [ ] Command-R (decoder-only) ❌
+- [ ] Mamba (decoder-only) ❌
+- [ ] Mistral-Next (decoder-only) ❌
+- [ ] Phi3 (decoder-only) ❌
+- [ ] M2M-100 (encoder-decoder) ❌
+- [ ] Seamless-M4T (encoder-decoder) ❌
+- [ ] Data2Vec-Text (encoder-only) ❌
+- [ ] MobileNet-V1 (vision) ❌
+- [ ] Instructblip (vision-text) ❌
+- [ ] Vision-Encoder-Decoder (vision-text) ❌
 
-- [ ] Create registry with default model ID and configuration
-- [ ] Implement test class with initialization
-- [ ] Add pipeline-based testing method
-- [ ] Add hardware detection and device selection logic
-- [ ] Implement proper error handling
-- [ ] Handle hyphenated model names (e.g., "gpt-j", "xlm-roberta")
-- [ ] Ensure proper class name capitalization (using CLASS_NAME_FIXES if needed)
+> **Note:** For the complete list of all 84 missing models, refer to the most recent coverage report in `/reports/missing_models.md`
 
-### 3. Validation
+## Implementation Steps
 
-- [ ] Verify syntax correctness (use `compile()` to check syntax validity)
-- [ ] Validate Python identifiers (ensure no hyphens in variable or function names)
-- [ ] Test functionality with default model
-- [ ] Test with CPU-only mode
-- [ ] Check result structure and completeness
-- [ ] Verify error handling
-- [ ] Test list-models functionality
+### 1. Set Up Test Infrastructure
+- [x] Create architecture-specific templates
+- [x] Implement model discovery using transformers introspection
+- [x] Implement hyphenated name handling
+- [x] Create test file generator with proper template selection
 
-### 4. Documentation
+### 2. Implement Validation and Consistency Checks
+- [x] Create syntax validation script
+- [x] Implement consistency checking for hyphenated model names
+- [x] Create test coverage report generator
 
-- [ ] Add detailed docstrings
-- [ ] Document model-specific behaviors
-- [ ] Update coverage report
-- [ ] Add to test automation suite
+### 3. Generate Test Files for All Models
+- [x] Generate test files for Tier 1 models
+- [x] Generate test files for Tier 2 models
+- [x] Generate test files for Tier 3 models
 
-## Architecture-Specific Requirements
+### 4. Test and Verify
+- [x] Run syntax validation on all generated files
+- [x] Fix any inconsistencies in hyphenated model names
+- [x] Verify that all files can be imported properly
 
-### Encoder-Only Models
+### 5. Documentation
+- [x] Create implementation summary
+- [x] Document architecture-specific templates
+- [x] Document hyphenated model handling
 
-- [ ] Use fill-mask or token-classification tasks
-- [ ] Provide appropriate masked input
-- [ ] Handle bidirectional attention patterns
+## Hyphenated Model Handling
 
-### Decoder-Only Models
+Special care is required for models with hyphenated names, which need conversion to valid Python identifiers:
 
-- [ ] Set padding token to EOS token
-- [ ] Configure generation parameters
-- [ ] Provide appropriate prompt text
-- [ ] Handle autoregressive behavior
+| Original Name | Python Identifier | Class Name Format |
+|---------------|-------------------|-------------------|
+| gpt-j         | gpt_j             | GPTJ              |
+| gpt-neo       | gpt_neo           | GPTNeo            |
+| gpt-neox      | gpt_neox          | GPTNeoX           |
+| xlm-roberta   | xlm_roberta       | XLMRoBERTa        |
 
-### Encoder-Decoder Models
+## Gotchas and Special Cases
 
-- [ ] Configure both encoder and decoder components
-- [ ] Provide source and target texts
-- [ ] Handle empty decoder inputs
+1. **Class Name Capitalization**: Different models have different capitalization patterns for their class names:
+   - BERT → BertForMaskedLM
+   - GPT-2 → GPT2LMHeadModel
+   - XLM-RoBERTa → XLMRoBERTaForMaskedLM
 
-### Vision Models
+2. **Registry Naming**: Registry variables must be valid Python identifiers:
+   ```python
+   # Incorrect
+   GPT-J_MODELS_REGISTRY = { ... }
+   
+   # Correct
+   GPT_J_MODELS_REGISTRY = { ... }
+   ```
 
-- [ ] Configure image preprocessing
-- [ ] Ensure proper tensor shape
-- [ ] Handle image-specific parameters
+3. **Imports and References**: Class references must not contain hyphens:
+   ```python
+   # Incorrect
+   model_class = transformers.GPT-JForCausalLM
+   
+   # Correct
+   model_class = transformers.GPTJForCausalLM
+   ```
 
-### Multimodal Models
+4. **Test Class Names**: Class declarations must not contain hyphens:
+   ```python
+   # Incorrect
+   class TestGPT-JModels:
+   
+   # Correct
+   class TestGPTJModels:
+   ```
 
-- [ ] Provide both text and image inputs
-- [ ] Handle different modality-specific parameters
-- [ ] Test cross-modal functionalities
+## Transformers Documentation Reference
 
-### Audio Models
+The official Transformers documentation is an essential reference for implementing accurate model tests:
 
-- [ ] Configure audio preprocessing
-- [ ] Ensure proper audio sampling rate
-- [ ] Handle audio-specific parameters
+- **Documentation Build Folder**: `/home/barberb/ipfs_accelerate_py/test/doc-builder/build`
+- **API Reference**: `/home/barberb/ipfs_accelerate_py/test/doc-builder/build/api`
+- **Model Documentation**: `/home/barberb/ipfs_accelerate_py/test/doc-builder/build/main_classes/model`
 
-## CI/CD Integration
+## Implementation Best Practices
 
-- [x] Add to GitHub Actions workflow
-- [x] Configure pre-commit hook
-- [x] Add syntax validation step
-- [x] Add test functionality verification
-- [x] Include in coverage reporting
+### 1. Modify Generators, Not Generated Files
 
-## Remaining Model Families (Priority Order)
+> **CRITICAL:** Always modify the test generators rather than the generated test files. Directly editing generated files will lead to inconsistencies and code debt when generators are run again.
 
-### Encoder-Only (Text)
+- ✅ Modify `test_generator_fixed.py` to improve template for all models
+- ✅ Update template files in the `templates/` directory 
+- ❌ Directly edit individual test files in `fixed_tests/` directory
+- ❌ Create one-off fixes that bypass the generator infrastructure
 
-- [ ] RoBERTa
-- [ ] DeBERTa
-- [ ] ALBERT
-- [ ] ELECTRA
-- [ ] XLM-RoBERTa (⚠️ Hyphenated name: needs special handling)
-- [ ] DistilBERT
-- [ ] CamemBERT
-- [ ] XLNet
+### 2. Integrate Fixes Into Core Generators
 
-### Decoder-Only (LLMs)
+- ✅ Push fixes upstream into `templates` and `generators`
+- ✅ Ensure hyphenated model name handling is in the core generator
+- ✅ Update model detection and architecture mapping in the generator
+- ❌ Use separate scripts for batch fixing that don't update generators
 
-- [ ] LLaMA
-- [ ] Falcon
-- [ ] Mistral
-- [ ] Phi
-- [ ] OPT
-- [ ] GPT-J (⚠️ Hyphenated name: needs special handling)
-- [ ] GPT-Neo (⚠️ Hyphenated name: needs special handling)
-- [ ] Gemma
+### 3. Testing Strategy
 
-### Encoder-Decoder (Seq2Seq)
+- ✅ Implement tests through the standard generation process
+- ✅ Validate all test files through the validation pipeline
+- ✅ Run end-to-end testing on a representative sample
+- ✅ Document any model-specific considerations in the generator
 
-- [ ] BART
-- [ ] Pegasus
-- [ ] mBART
-- [ ] M2M-100
-- [ ] LED
-- [ ] BigBird-Pegasus
-- [ ] ProphetNet
+## Scripts and Utilities
 
-### Vision Transformers
+1. **find_models.py**: Discover model classes and their architectures
+2. **fix_indentation_and_apply_template.py**: Create test files with proper templates
+3. **generate_hyphenated_tests.py**: Generate test files for hyphenated models
+4. **check_test_consistency.py**: Verify test file consistency
+5. **create_coverage_report.py**: Generate test coverage report
+6. **test_generator_fixed.py**: Core test file generator (modify this, not the outputs)
+7. **validate_model_tests.py**: Validate test files for syntax, structure, and configuration
 
-- [ ] ViT
-- [ ] Swin
-- [ ] BEiT
-- [ ] DeiT
-- [ ] ConvNeXT
-- [ ] SAM
-- [ ] YOLOS
-- [ ] SegFormer
+## Running the Tests
 
-### Multimodal Models
+```bash
+# Run a specific test
+python fixed_tests/test_hf_gpt_j.py --list-models
 
-- [ ] CLIP
-- [ ] BLIP
-- [ ] LLaVA
-- [ ] FLAVA
-- [ ] IDEFICS
-- [ ] PaliGemma
-- [ ] ImageBind
-- [ ] InstructBLIP
-
-### Audio Models
-
-- [ ] Whisper
-- [ ] Wav2Vec2
-- [ ] HuBERT
-- [ ] SpeechT5
-- [ ] SEW
-- [ ] UniSpeech
-- [ ] CLAP
-- [ ] EnCodec
-
-## Implementation Progress Tracking
-
-| Architecture | Implemented | Validated | In Coverage Report | CI Integration |
-|--------------|-------------|-----------|-------------------|---------------|
-| BERT         | ✅          | ✅        | ✅                | ✅            |
-| GPT-2        | ✅          | ✅        | ✅                | ✅            |
-| T5           | ✅          | ✅        | ✅                | ✅            |
-| ViT          | ✅          | ✅        | ✅                | ✅            |
-| RoBERTa      | ❌          | ❌        | ❌                | ❌            |
-| BART         | ❌          | ❌        | ❌                | ❌            |
-| LLaMA        | ❌          | ❌        | ❌                | ❌            |
-| Whisper      | ❌          | ❌        | ❌                | ❌            |
-| CLIP         | ❌          | ❌        | ❌                | ❌            |
-| Falcon       | ❌          | ❌        | ❌                | ❌            |
-
-## Next Steps (March 2025)
-
-1. Complete the implementation of high-priority models (RoBERTa, BART, LLaMA, Whisper, CLIP)
-2. Fix all hyphenated model name issues using the regenerate_fixed_tests.py script
-3. Update coverage report with newly implemented models
-4. Create automated test generation schedule for remaining models
-5. Integrate coverage reporting into nightly CI/CD pipeline
-6. Expand comprehensive testing to include quantized models and hardware-specific optimizations
-7. Update the model registry with all 300+ HuggingFace model classes
-
-## Handling Hyphenated Model Names
-
-Special attention is needed for models with hyphenated names:
-
-1. **In Registry Keys**: Convert hyphens to underscores (e.g., "gpt-j" → "gpt_j")
-2. **In Class Names**: Join and capitalize each part (e.g., "gpt-j" → "GptJ", "xlm-roberta" → "XlmRoberta")
-3. **In Constants**: Use uppercase with underscores (e.g., "GPT_J_MODELS_REGISTRY")
-4. **In Variable Names**: Use snake_case with underscores (e.g., "gpt_j_test_texts")
-5. **In Filenames**: Use underscores (e.g., "test_hf_gpt_j.py")
-
-Always use the `to_valid_identifier()` function to convert model names to valid Python identifiers before using them in code.
-
----
-
-Last updated: March 20, 2025
+# Run all tests
+cd fixed_tests
+for test in test_hf_*.py; do python $test --list-models; done
+```

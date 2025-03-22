@@ -62,8 +62,9 @@ import logging
 import threading
 import traceback
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple, Set
+from typing import Dict, List, Any, Optional, Tuple, Set, NamedTuple
 from pathlib import Path
+from dataclasses import dataclass
 
 # Setup logging
 logging.basicConfig(
@@ -86,11 +87,15 @@ except ImportError:
     PREDICTOR_AVAILABLE = False
 
 try:
-    import cloud_provider_integration
+    from cloud_provider_manager import CloudProviderManager
     CLOUD_INTEGRATION_AVAILABLE = True
 except ImportError:
-    logger.warning("Cloud provider integration not available. Cloud scaling features disabled.")
-    CLOUD_INTEGRATION_AVAILABLE = False
+    try:
+        import cloud_provider_integration
+        CLOUD_INTEGRATION_AVAILABLE = True
+    except ImportError:
+        logger.warning("Cloud provider integration not available. Cloud scaling features disabled.")
+        CLOUD_INTEGRATION_AVAILABLE = False
 
 # Resource management constants
 DEFAULT_TARGET_UTILIZATION = 0.7  # 70% target utilization
@@ -101,6 +106,29 @@ DEFAULT_SCALE_UP_COOLDOWN = 300  # 5 minutes (in seconds)
 DEFAULT_SCALE_DOWN_COOLDOWN = 600  # 10 minutes (in seconds)
 DEFAULT_WORKER_REASSESSMENT_INTERVAL = 3600  # 1 hour (in seconds)
 DEFAULT_HISTORY_RETENTION = 86400  # 24 hours (in seconds)
+
+
+@dataclass
+class ScalingDecision:
+    """Class representing a scaling decision."""
+    action: str  # "none", "scale_up", "scale_down", "maintain"
+    reason: str  # Human-readable reason for the decision
+    count: int = 0  # Number of workers to scale up/down
+    worker_ids: List[str] = None  # Specific worker IDs to scale down
+    utilization: float = 0.0  # Current overall utilization
+    worker_type: str = "default"  # Type of worker to create
+    resource_requirements: Dict[str, Any] = None  # Resource requirements for new workers
+    provider: str = None  # Preferred cloud provider
+    timestamp: float = None  # When the decision was made
+    
+    def __post_init__(self):
+        """Initialize default values after creation."""
+        if self.worker_ids is None:
+            self.worker_ids = []
+        if self.resource_requirements is None:
+            self.resource_requirements = {}
+        if self.timestamp is None:
+            self.timestamp = time.time()
 
 
 class DynamicResourceManager:
@@ -462,72 +490,102 @@ class DynamicResourceManager:
         
         return {"workers": result, "overall": overall}
     
-    def evaluate_scaling(self) -> Dict[str, Any]:
+    def evaluate_scaling(self) -> ScalingDecision:
         """
         Evaluate if scaling up or down is needed based on current utilization.
         
         Returns:
-            dict: Scaling decision with details
-                {
-                    "action": "none"|"scale_up"|"scale_down",
-                    "reason": str,
-                    "utilization": float,
-                    "details": dict
-                }
+            ScalingDecision: Scaling decision with details
         """
         with self.scaling_evaluation_lock:
             # Get current utilization
             utilization_data = self.get_worker_utilization()
             overall_utilization = utilization_data["overall"]["overall"]
             
-            # Default response
-            result = {
-                "action": "none",
-                "reason": "Current utilization within target range",
-                "utilization": overall_utilization,
-                "timestamp": time.time(),
-                "details": {
-                    "target_utilization": self.target_utilization,
-                    "scale_up_threshold": self.scale_up_threshold,
-                    "scale_down_threshold": self.scale_down_threshold,
-                    "worker_count": len(self.worker_resources),
-                    "utilization_data": utilization_data["overall"]
-                }
-            }
+            # Default response (no scaling needed)
+            decision = ScalingDecision(
+                action="maintain",
+                reason="Current utilization within target range",
+                utilization=overall_utilization,
+                timestamp=time.time()
+            )
             
             # Check cooldown periods
             current_time = time.time()
             if current_time - self.last_scale_up_time < self.scale_up_cooldown:
-                result["reason"] = f"In scale-up cooldown period ({int(self.scale_up_cooldown - (current_time - self.last_scale_up_time))}s remaining)"
-                return result
+                decision.reason = f"In scale-up cooldown period ({int(self.scale_up_cooldown - (current_time - self.last_scale_up_time))}s remaining)"
+                return decision
             
             if current_time - self.last_scale_down_time < self.scale_down_cooldown:
-                result["reason"] = f"In scale-down cooldown period ({int(self.scale_down_cooldown - (current_time - self.last_scale_down_time))}s remaining)"
-                return result
+                decision.reason = f"In scale-down cooldown period ({int(self.scale_down_cooldown - (current_time - self.last_scale_down_time))}s remaining)"
+                return decision
+            
+            # No workers yet - recommend creating initial worker
+            if len(self.worker_resources) == 0:
+                self.last_scale_up_time = current_time
+                decision.action = "scale_up"
+                decision.reason = "No workers available, creating initial worker"
+                decision.count = 1
+                decision.worker_type = "default"
+                decision.resource_requirements = {
+                    "cpu_cores": 2,
+                    "memory_mb": 4096
+                }
+                logger.info(f"Scale-up recommended: creating initial worker")
+                return decision
             
             # Check if scaling is needed
             if overall_utilization >= self.scale_up_threshold:
                 # Need to scale up
                 self.last_scale_up_time = current_time
-                result["action"] = "scale_up"
-                result["reason"] = f"Utilization ({overall_utilization:.1%}) exceeds scale-up threshold ({self.scale_up_threshold:.1%})"
                 
                 # Determine scale-up size based on utilization
                 scale_factor = min(max(1.0, overall_utilization / self.target_utilization), 2.0)
                 worker_count = len(self.worker_resources)
                 additional_workers = max(1, int(worker_count * (scale_factor - 1.0)))
                 
-                result["details"]["scale_factor"] = scale_factor
-                result["details"]["current_workers"] = worker_count
-                result["details"]["additional_workers"] = additional_workers
+                # Determine worker type based on resource requirements
+                worker_type = "default"
+                if overall_utilization > 0.9:  # Critical utilization, determine bottleneck
+                    cpu_util = utilization_data["overall"]["cpu"]
+                    memory_util = utilization_data["overall"]["memory"]
+                    gpu_util = utilization_data["overall"]["gpu"]
+                    
+                    if gpu_util > 0.9:  # GPU is the bottleneck
+                        worker_type = "gpu"
+                    elif memory_util > 0.9:  # Memory is the bottleneck
+                        worker_type = "memory"
+                    elif cpu_util > 0.9:  # CPU is the bottleneck
+                        worker_type = "cpu"
                 
-                logger.info(f"Scale-up recommended: {additional_workers} additional workers")
+                # Determine resource requirements based on workload
+                resource_requirements = {
+                    "cpu_cores": 4,
+                    "memory_mb": 8192
+                }
+                
+                if worker_type == "gpu":
+                    resource_requirements["gpu_memory_mb"] = 8192
+                elif worker_type == "memory":
+                    resource_requirements["memory_mb"] = 32768
+                elif worker_type == "cpu":
+                    resource_requirements["cpu_cores"] = 8
+                
+                # Create decision
+                decision = ScalingDecision(
+                    action="scale_up",
+                    reason=f"Utilization ({overall_utilization:.1%}) exceeds scale-up threshold ({self.scale_up_threshold:.1%})",
+                    count=additional_workers,
+                    utilization=overall_utilization,
+                    worker_type=worker_type,
+                    resource_requirements=resource_requirements
+                )
+                
+                logger.info(f"Scale-up recommended: {additional_workers} additional {worker_type} workers")
                 
             elif overall_utilization <= self.scale_down_threshold and len(self.worker_resources) > 1:
                 # Need to scale down (but keep at least one worker)
                 self.last_scale_down_time = current_time
-                result["action"] = "scale_down"
-                result["reason"] = f"Utilization ({overall_utilization:.1%}) below scale-down threshold ({self.scale_down_threshold:.1%})"
                 
                 # Determine scale-down size based on utilization
                 scale_factor = max(0.5, overall_utilization / self.target_utilization)
@@ -538,14 +596,18 @@ class DynamicResourceManager:
                 # Find workers to scale down
                 workers_to_remove_ids = self._get_workers_to_scale_down(workers_to_remove)
                 
-                result["details"]["scale_factor"] = scale_factor
-                result["details"]["current_workers"] = worker_count
-                result["details"]["target_count"] = target_count
-                result["details"]["workers_to_remove"] = workers_to_remove_ids
+                # Create decision
+                decision = ScalingDecision(
+                    action="scale_down",
+                    reason=f"Utilization ({overall_utilization:.1%}) below scale-down threshold ({self.scale_down_threshold:.1%})",
+                    count=len(workers_to_remove_ids),
+                    worker_ids=workers_to_remove_ids,
+                    utilization=overall_utilization
+                )
                 
                 logger.info(f"Scale-down recommended: remove {len(workers_to_remove_ids)} workers")
             
-            return result
+            return decision
     
     def predict_resource_needs(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """

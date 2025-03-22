@@ -1,127 +1,358 @@
 #!/usr/bin/env python3
 """
-Model Test Validation Framework
+Validate Model Tests
 
-This script validates the generated test files for HuggingFace models by:
-1. Checking syntax validity
-2. Verifying class structure and required methods
-3. Validating task configuration for each model type
-4. Running basic import test to ensure dependencies are correctly imported
-5. Generating a comprehensive validation report
+This script validates HuggingFace model test files for:
+1. Syntax correctness (using AST parsing)
+2. Structure validation (checking for required components)
+3. Pipeline configuration validation (checking for appropriate tasks)
+4. Task input validation (checking for appropriate inputs)
 
 Usage:
-    python validate_model_tests.py [--directory DIR] [--report REPORT_FILE] [--verbose]
+    python validate_model_tests.py --directory TESTS_DIR [--report REPORT_FILE]
 """
 
 import os
 import sys
+import re
 import ast
-import importlib.util
+import json
 import argparse
 import logging
-import re
-import json
-import time
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Tuple, Set, Optional, Any
-import traceback
+from typing import Dict, List, Set, Tuple, Optional, Any
+import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Define architecture types for task validation
-ARCHITECTURE_TYPES = {
-    "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta"],
-    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt"],
-    "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
-    "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2"],
-    "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip"],
-    "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5"],
-    "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava"]
-}
-
-# Define expected tasks for different architecture types
-EXPECTED_TASKS = {
-    "encoder-only": ["fill-mask", "text-classification", "token-classification", "question-answering"],
-    "decoder-only": ["text-generation", "causal-lm"],
-    "encoder-decoder": ["text2text-generation", "translation", "summarization"],
-    "vision": ["image-classification", "object-detection", "image-segmentation"],
-    "vision-text": ["image-to-text", "zero-shot-image-classification", "visual-question-answering"],
-    "speech": ["automatic-speech-recognition", "audio-classification", "text-to-speech"],
-    "multimodal": ["image-to-text", "video-to-text", "visual-question-answering"]
-}
+# Import architecture and task mappings from the standardization script
+try:
+    from standardize_task_configurations import (
+        ARCHITECTURE_TYPES,
+        RECOMMENDED_TASKS,
+        SPECIAL_TASK_OVERRIDES,
+        TEST_INPUTS
+    )
+except ImportError:
+    # Define them here as fallback
+    ARCHITECTURE_TYPES = {
+        "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta", "albert"],
+        "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "gpt-neox", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt"],
+        "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
+        "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2", "resnet"],
+        "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip"],
+        "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5"],
+        "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava"]
+    }
+    
+    RECOMMENDED_TASKS = {
+        "encoder-only": "fill-mask",
+        "decoder-only": "text-generation",
+        "encoder-decoder": "text2text-generation",
+        "vision": "image-classification",
+        "vision-text": "image-to-text",
+        "speech": "automatic-speech-recognition",
+        "multimodal": "image-to-text"
+    }
+    
+    SPECIAL_TASK_OVERRIDES = {
+        "clip": "zero-shot-image-classification",
+        "chinese-clip": "zero-shot-image-classification",
+        "vision-text-dual-encoder": "zero-shot-image-classification",
+        "wav2vec2-bert": "automatic-speech-recognition",
+        "speech-to-text": "automatic-speech-recognition",
+        "speech-to-text-2": "translation",
+        "blip-2": "image-to-text",
+        "video-llava": "image-to-text",
+        "conditional-detr": "object-detection",
+        "detr": "object-detection",
+        "mask2former": "image-segmentation",
+        "segformer": "image-segmentation",
+        "sam": "image-segmentation"
+    }
+    
+    TEST_INPUTS = {
+        "fill-mask": '"The <mask> is a language model."',
+        "text-generation": '"This model can"',
+        "text2text-generation": '"translate English to French: Hello, how are you?"',
+        "image-classification": '"An image of a cat."',
+        "image-to-text": '"An image of a landscape."',
+        "automatic-speech-recognition": '"A short audio clip."',
+        "zero-shot-image-classification": '"An image with labels: dog, cat, bird."',
+        "translation": '"Hello, how are you?"',
+        "object-detection": '"An image of a street scene."',
+        "image-segmentation": '"An image for segmentation."'
+    }
 
 class ModelTestValidator:
-    """Validator for HuggingFace model test files."""
+    """Validates HuggingFace model test files."""
     
-    def __init__(self, directory: str, report_file: str, verbose: bool = False):
+    def __init__(self, directory: str, report_file: Optional[str] = None):
         """Initialize the validator.
         
         Args:
             directory: Directory containing test files
-            report_file: Path to output report file
-            verbose: Whether to print verbose output
+            report_file: Path to write validation report (optional)
         """
         self.directory = Path(directory)
-        self.report_file = Path(report_file)
-        self.verbose = verbose
-        self.results = {
-            "passed": [],
-            "failed": [],
-            "warnings": [],
-            "stats": {
-                "total": 0,
-                "passed": 0,
-                "failed": 0,
-                "warnings": 0,
-                "by_architecture": {},
-                "by_error_type": {},
-            }
+        self.report_file = report_file
+        self.stats = {
+            "total_files": 0,
+            "syntax_valid": 0,
+            "syntax_invalid": 0,
+            "structure_valid": 0,
+            "structure_invalid": 0,
+            "pipeline_valid": 0,
+            "pipeline_invalid": 0,
+            "pipeline_missing": 0,
+            "task_valid": 0,
+            "task_invalid": 0,
+            "by_architecture": {}
         }
-        
-    def find_test_files(self) -> List[Path]:
-        """Find all test files in the directory."""
-        return list(self.directory.glob("test_hf_*.py"))
+        self.validation_results = {}
     
-    def validate_all(self) -> Dict:
-        """Validate all test files and return results."""
-        test_files = self.find_test_files()
+    def run(self):
+        """Run the validation process."""
+        # Find all test files
+        test_files = list(self.directory.glob("test_hf_*.py"))
+        self.stats["total_files"] = len(test_files)
+        
         logger.info(f"Found {len(test_files)} test files to validate")
         
-        self.results["stats"]["total"] = len(test_files)
+        # Process each file
+        for file_path in test_files:
+            file_result = self._validate_file(file_path)
+            self.validation_results[str(file_path)] = file_result
         
-        # Use ThreadPoolExecutor for parallel validation
-        with ThreadPoolExecutor(max_workers=min(10, os.cpu_count() or 4)) as executor:
-            future_to_file = {executor.submit(self.validate_file, file_path): file_path for file_path in test_files}
+        # Generate validation report
+        self._generate_report()
+        
+        return self.validation_results
+    
+    def _validate_file(self, file_path: Path) -> Dict[str, Any]:
+        """Validate a single test file.
+        
+        Returns:
+            Dict containing validation results
+        """
+        model_name = self._extract_model_name(file_path)
+        architecture = self._get_model_architecture(model_name)
+        
+        # Update architecture stats
+        if architecture not in self.stats["by_architecture"]:
+            self.stats["by_architecture"][architecture] = {
+                "total": 0,
+                "syntax_valid": 0,
+                "syntax_invalid": 0,
+                "structure_valid": 0,
+                "structure_invalid": 0,
+                "pipeline_valid": 0,
+                "pipeline_invalid": 0,
+                "pipeline_missing": 0,
+                "task_valid": 0,
+                "task_invalid": 0
+            }
+        self.stats["by_architecture"][architecture]["total"] += 1
+        
+        # Read file content
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+        except Exception as e:
+            logger.error(f"Error reading file {file_path}: {str(e)}")
+            return {
+                "model_name": model_name,
+                "architecture": architecture,
+                "syntax_valid": False,
+                "structure_valid": False,
+                "pipeline_valid": False,
+                "task_valid": False,
+                "errors": [f"File read error: {str(e)}"]
+            }
+        
+        # Initialize result dict
+        result = {
+            "model_name": model_name,
+            "architecture": architecture,
+            "syntax_valid": False,
+            "structure_valid": False,
+            "pipeline_valid": False,
+            "task_valid": False,
+            "errors": []
+        }
+        
+        # 1. Check syntax validity using AST parsing
+        try:
+            ast.parse(content)
+            result["syntax_valid"] = True
+            self.stats["syntax_valid"] += 1
+            self.stats["by_architecture"][architecture]["syntax_valid"] += 1
+        except SyntaxError as e:
+            result["syntax_valid"] = False
+            error_msg = f"Syntax error on line {e.lineno}: {e.msg}"
+            result["errors"].append(error_msg)
+            self.stats["syntax_invalid"] += 1
+            self.stats["by_architecture"][architecture]["syntax_invalid"] += 1
+            logger.warning(f"Syntax error in {file_path}: {error_msg}")
+        
+        # 2. Check structure (only if syntax is valid)
+        if result["syntax_valid"]:
+            structure_result = self._validate_structure(content, model_name)
+            result.update(structure_result)
+            if structure_result["structure_valid"]:
+                self.stats["structure_valid"] += 1
+                self.stats["by_architecture"][architecture]["structure_valid"] += 1
+            else:
+                self.stats["structure_invalid"] += 1
+                self.stats["by_architecture"][architecture]["structure_invalid"] += 1
+        
+        # 3. Check pipeline configuration (only if syntax and structure are valid)
+        if result["syntax_valid"] and result["structure_valid"]:
+            pipeline_result = self._validate_pipeline(content, model_name, architecture)
+            result.update(pipeline_result)
             
-            for future in as_completed(future_to_file):
-                file_path = future_to_file[future]
-                try:
-                    result = future.result()
-                    # Results processed in validate_file method
-                except Exception as exc:
-                    logger.error(f"Exception validating {file_path}: {exc}")
-                    self.results["failed"].append({
-                        "file": str(file_path),
-                        "errors": [f"Exception during validation: {str(exc)}"],
-                        "model_name": self._extract_model_name(file_path),
-                        "traceback": traceback.format_exc()
-                    })
-                    self.results["stats"]["failed"] += 1
+            if "has_pipeline" in pipeline_result and pipeline_result["has_pipeline"]:
+                if pipeline_result["pipeline_valid"]:
+                    self.stats["pipeline_valid"] += 1
+                    self.stats["by_architecture"][architecture]["pipeline_valid"] += 1
+                else:
+                    self.stats["pipeline_invalid"] += 1
+                    self.stats["by_architecture"][architecture]["pipeline_invalid"] += 1
+            else:
+                self.stats["pipeline_missing"] += 1
+                self.stats["by_architecture"][architecture]["pipeline_missing"] += 1
+            
+            if pipeline_result.get("task_valid", False):
+                self.stats["task_valid"] += 1
+                self.stats["by_architecture"][architecture]["task_valid"] += 1
+            elif "current_task" in pipeline_result:  # Only count if pipeline exists
+                self.stats["task_invalid"] += 1
+                self.stats["by_architecture"][architecture]["task_invalid"] += 1
         
-        # Generate and save report
-        self.generate_report()
+        return result
+    
+    def _validate_structure(self, content: str, model_name: str) -> Dict[str, Any]:
+        """Validate the structure of a test file."""
+        result = {
+            "structure_valid": False,
+            "has_test_class": False,
+            "has_test_pipeline": False,
+            "has_run_tests": False
+        }
         
-        return self.results
+        errors = []
+        
+        # Look for test class using regex (more reliable than AST for potentially invalid files)
+        class_pattern = r'class\s+Test(\w+)Models'
+        class_match = re.search(class_pattern, content)
+        
+        if class_match:
+            result["has_test_class"] = True
+            class_name = class_match.group(1)
+            
+            # Check if class name matches model name
+            expected_class_name = "".join(part.capitalize() for part in model_name.replace("-", "_").split("_"))
+            if expected_class_name.lower() != class_name.lower():
+                errors.append(f"Test class name mismatch: expected Test{expected_class_name}Models, got Test{class_name}Models")
+        else:
+            errors.append("No test class found")
+        
+        # Check for test_pipeline method
+        if result["has_test_class"]:
+            pipeline_pattern = r'def\s+test_pipeline\s*\('
+            pipeline_match = re.search(pipeline_pattern, content)
+            
+            if pipeline_match:
+                result["has_test_pipeline"] = True
+            else:
+                errors.append("No test_pipeline method found")
+        
+        # Check for run_tests method
+        if result["has_test_class"]:
+            run_tests_pattern = r'def\s+run_tests\s*\('
+            run_tests_match = re.search(run_tests_pattern, content)
+            
+            if run_tests_match:
+                result["has_run_tests"] = True
+            else:
+                errors.append("No run_tests method found")
+        
+        # Structure is valid if it has all required components
+        result["structure_valid"] = (
+            result["has_test_class"] and
+            result["has_test_pipeline"] and
+            result["has_run_tests"]
+        )
+        
+        if not result["structure_valid"]:
+            result["errors"] = errors
+        
+        return result
+    
+    def _validate_pipeline(self, content: str, model_name: str, architecture: str) -> Dict[str, Any]:
+        """Validate the pipeline configuration of a test file."""
+        result = {
+            "pipeline_valid": False,
+            "has_pipeline": False,
+            "task_valid": False
+        }
+        
+        errors = []
+        
+        # Check for pipeline configuration
+        pipeline_pattern = r'transformers\.pipeline\(\s*["\']([^"\']+)["\']'
+        pipeline_match = re.search(pipeline_pattern, content)
+        
+        if pipeline_match:
+            result["has_pipeline"] = True
+            current_task = pipeline_match.group(1)
+            result["current_task"] = current_task
+            
+            # Get recommended task for this model
+            recommended_task = self._get_recommended_task(model_name, architecture)
+            result["recommended_task"] = recommended_task
+            
+            # Check if task is valid
+            if current_task == recommended_task:
+                result["task_valid"] = True
+            else:
+                errors.append(f"Task mismatch: using '{current_task}', recommended '{recommended_task}'")
+                
+            # Check for test input
+            test_input_pattern = r'test_input\s*=\s*["\']([^"\']*)["\']'
+            test_input_match = re.search(test_input_pattern, content)
+            
+            if test_input_match:
+                result["has_test_input"] = True
+                current_input = test_input_match.group(1)
+                result["current_input"] = current_input
+                
+                # Check if input is appropriate for task
+                # This is a simple check, just ensuring input isn't empty
+                if current_input.strip():
+                    result["input_valid"] = True
+                else:
+                    result["input_valid"] = False
+                    errors.append("Empty test input")
+            else:
+                result["has_test_input"] = False
+                errors.append("No test input found")
+            
+            # Pipeline is valid if task and input are valid
+            result["pipeline_valid"] = result["task_valid"] and result.get("input_valid", False)
+        else:
+            errors.append("No pipeline configuration found")
+        
+        if errors:
+            result["errors"] = errors
+        
+        return result
     
     def _extract_model_name(self, file_path: Path) -> str:
         """Extract the model name from a test file path."""
-        match = re.match(r'test_hf_(.+)\.py$', file_path.name)
-        if match:
-            return match.group(1)
-        return "unknown"
+        return file_path.stem.replace("test_hf_", "")
     
     def _get_model_architecture(self, model_name: str) -> str:
         """Determine the model architecture from the model name."""
@@ -134,328 +365,132 @@ class ModelTestValidator:
         
         return "unknown"
     
-    def validate_file(self, file_path: Path) -> Dict:
-        """Validate a single test file."""
-        model_name = self._extract_model_name(file_path)
-        architecture = self._get_model_architecture(model_name)
+    def _get_recommended_task(self, model_name: str, architecture: str) -> str:
+        """Get the recommended task for a model."""
+        # Check for special case overrides
+        for special_model, task in SPECIAL_TASK_OVERRIDES.items():
+            if special_model.lower() in model_name.lower():
+                return task
         
-        # Update architecture stats
-        if architecture not in self.results["stats"]["by_architecture"]:
-            self.results["stats"]["by_architecture"][architecture] = {
-                "total": 0, "passed": 0, "failed": 0, "warnings": 0
-            }
-        self.results["stats"]["by_architecture"][architecture]["total"] += 1
-        
-        errors = []
-        warnings = []
-        
-        # 1. Check if file exists
-        if not file_path.exists():
-            errors.append(f"File {file_path} does not exist")
-            self._record_failure(file_path, model_name, architecture, errors)
-            return {"success": False, "errors": errors}
-        
-        # 2. Check syntax validity
-        try:
-            with open(file_path, 'r') as f:
-                file_content = f.read()
-            
-            try:
-                ast.parse(file_content)
-            except SyntaxError as e:
-                errors.append(f"Syntax error on line {e.lineno}: {e.msg}")
-                if hasattr(e, 'text') and e.text:
-                    errors.append(f"  {e.text}")
-                    if hasattr(e, 'offset') and e.offset:
-                        errors.append(f"  {' ' * (e.offset - 1)}^")
-                self._record_error("syntax_error")
-                
-        except Exception as e:
-            errors.append(f"Error reading file: {str(e)}")
-            self._record_failure(file_path, model_name, architecture, errors)
-            return {"success": False, "errors": errors}
-        
-        # 3. Validate file structure
-        if errors:
-            self._record_failure(file_path, model_name, architecture, errors)
-            return {"success": False, "errors": errors}
-        
-        # Parse the AST for structural validation
-        try:
-            tree = ast.parse(file_content)
-            
-            # Check for class definition
-            test_class = None
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
-                    test_class = node
-                    break
-            
-            if test_class is None:
-                errors.append("No test class found (should start with 'Test')")
-                self._record_error("missing_test_class")
-            else:
-                # Check for required methods in the test class
-                methods = {
-                    "test_pipeline": False,
-                    "run_tests": False,
-                    "__init__": False
-                }
-                
-                for node in ast.walk(test_class):
-                    if isinstance(node, ast.FunctionDef):
-                        method_name = node.name
-                        if method_name in methods:
-                            methods[method_name] = True
-                
-                for method_name, found in methods.items():
-                    if not found:
-                        errors.append(f"Missing required method: {method_name}")
-                        self._record_error("missing_method")
-            
-            # Check for main function
-            has_main = False
-            for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef) and node.name == "main":
-                    has_main = True
-                    break
-            
-            if not has_main:
-                errors.append("Missing main function")
-                self._record_error("missing_main")
-                
-            # Check for hardware detection
-            hardware_detection = False
-            device_selection = False
-            
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Name) and node.id in ["HAS_TORCH", "torch.cuda.is_available"]:
-                    hardware_detection = True
-                if isinstance(node, ast.Attribute) and node.attr == "cuda" and isinstance(node.value, ast.Name) and node.value.id == "torch":
-                    hardware_detection = True
-                if isinstance(node, ast.FunctionDef) and node.name == "select_device":
-                    device_selection = True
-            
-            if not hardware_detection:
-                warnings.append("No hardware detection found (torch.cuda.is_available)")
-                self._record_warning("missing_hardware_detection")
-            
-            if not device_selection:
-                warnings.append("No device selection function found")
-                self._record_warning("missing_device_selection")
-            
-            # Check for task configuration
-            task_validation = self._validate_task_configuration(file_content, model_name, architecture)
-            if task_validation["errors"]:
-                errors.extend(task_validation["errors"])
-                for error in task_validation["errors"]:
-                    self._record_error("task_configuration")
-            
-            if task_validation["warnings"]:
-                warnings.extend(task_validation["warnings"])
-                for warning in task_validation["warnings"]:
-                    self._record_warning("task_configuration")
-            
-        except Exception as e:
-            errors.append(f"Error validating file structure: {str(e)}")
-            errors.append(traceback.format_exc())
-            self._record_error("validation_error")
-        
-        if errors:
-            self._record_failure(file_path, model_name, architecture, errors, warnings)
-            return {"success": False, "errors": errors, "warnings": warnings}
-        else:
-            self._record_success(file_path, model_name, architecture, warnings)
-            return {"success": True, "warnings": warnings}
+        # Otherwise use the architecture default
+        return RECOMMENDED_TASKS.get(architecture, "fill-mask")
     
-    def _validate_task_configuration(self, content: str, model_name: str, architecture: str) -> Dict:
-        """Validate the task configuration for a model."""
-        errors = []
-        warnings = []
+    def _generate_report(self):
+        """Generate a validation report."""
+        if not self.report_file:
+            return
         
-        # Get expected tasks for this architecture
-        expected_tasks = EXPECTED_TASKS.get(architecture, [])
-        if not expected_tasks:
-            warnings.append(f"Unknown architecture {architecture} for model {model_name}, can't validate task")
-            return {"errors": errors, "warnings": warnings}
-        
-        # Check for pipeline usage with task configuration
-        pipeline_pattern = r'transformers\.pipeline\(\s*["\']([^"\']+)["\']'
-        pipeline_matches = re.findall(pipeline_pattern, content)
-        
-        if not pipeline_matches:
-            errors.append("No pipeline task configuration found")
-            return {"errors": errors, "warnings": warnings}
-        
-        task = pipeline_matches[0]
-        
-        # Check if the task is valid for this architecture
-        if task not in expected_tasks:
-            valid_tasks_str = ", ".join(expected_tasks)
-            errors.append(f"Task '{task}' may not be appropriate for {architecture} models. Expected one of: {valid_tasks_str}")
-        
-        return {"errors": errors, "warnings": warnings}
-    
-    def _record_success(self, file_path: Path, model_name: str, architecture: str, warnings: List[str]):
-        """Record a successful validation."""
-        self.results["passed"].append({
-            "file": str(file_path),
-            "model_name": model_name,
-            "architecture": architecture,
-            "warnings": warnings
-        })
-        self.results["stats"]["passed"] += 1
-        if warnings:
-            self.results["stats"]["warnings"] += 1
-            
-        # Update architecture stats
-        self.results["stats"]["by_architecture"][architecture]["passed"] += 1
-        if warnings:
-            self.results["stats"]["by_architecture"][architecture]["warnings"] += 1
-        
-        if self.verbose and not warnings:
-            logger.info(f"✅ Passed: {file_path}")
-        elif self.verbose:
-            logger.info(f"⚠️ Passed with warnings: {file_path}")
-    
-    def _record_failure(self, file_path: Path, model_name: str, architecture: str, errors: List[str], warnings: List[str] = None):
-        """Record a failed validation."""
-        warnings = warnings or []
-        self.results["failed"].append({
-            "file": str(file_path),
-            "model_name": model_name,
-            "architecture": architecture,
-            "errors": errors,
-            "warnings": warnings
-        })
-        self.results["stats"]["failed"] += 1
-        if warnings:
-            self.results["stats"]["warnings"] += 1
-            
-        # Update architecture stats
-        self.results["stats"]["by_architecture"][architecture]["failed"] += 1
-        if warnings:
-            self.results["stats"]["by_architecture"][architecture]["warnings"] += 1
-        
-        if self.verbose:
-            logger.error(f"❌ Failed: {file_path}")
-            for error in errors:
-                logger.error(f"  - {error}")
-    
-    def _record_error(self, error_type: str):
-        """Record an error type for statistics."""
-        if error_type not in self.results["stats"]["by_error_type"]:
-            self.results["stats"]["by_error_type"][error_type] = 0
-        self.results["stats"]["by_error_type"][error_type] += 1
-    
-    def _record_warning(self, warning_type: str):
-        """Record a warning type for statistics."""
-        warning_key = f"warning_{warning_type}"
-        if warning_key not in self.results["stats"]["by_error_type"]:
-            self.results["stats"]["by_error_type"][warning_key] = 0
-        self.results["stats"]["by_error_type"][warning_key] += 1
-    
-    def generate_report(self):
-        """Generate and save a validation report."""
-        # Calculate percentages
-        total = self.results["stats"]["total"]
-        if total > 0:
-            self.results["stats"]["passed_percent"] = round(self.results["stats"]["passed"] / total * 100, 2)
-            self.results["stats"]["failed_percent"] = round(self.results["stats"]["failed"] / total * 100, 2)
-        else:
-            self.results["stats"]["passed_percent"] = 0
-            self.results["stats"]["failed_percent"] = 0
-        
-        # Add timestamp
-        self.results["timestamp"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Save JSON report
-        with open(self.report_file.with_suffix('.json'), 'w') as f:
-            json.dump(self.results, f, indent=2)
+        # Create report directory if needed
+        report_dir = os.path.dirname(self.report_file)
+        if report_dir:
+            os.makedirs(report_dir, exist_ok=True)
         
         # Generate markdown report
-        md_report = self._generate_markdown_report()
-        with open(self.report_file, 'w') as f:
-            f.write(md_report)
-        
-        logger.info(f"Validation report saved to {self.report_file}")
-        logger.info(f"JSON report saved to {self.report_file.with_suffix('.json')}")
-        
-        # Print summary
-        logger.info(f"Validation summary: {self.results['stats']['passed']} passed, "
-                   f"{self.results['stats']['failed']} failed, "
-                   f"{self.results['stats']['warnings']} with warnings, "
-                   f"out of {total} test files.")
-    
-    def _generate_markdown_report(self) -> str:
-        """Generate a markdown report."""
-        total = self.results["stats"]["total"]
-        passed = self.results["stats"]["passed"]
-        failed = self.results["stats"]["failed"]
-        warnings = self.results["stats"]["warnings"]
-        passed_percent = self.results["stats"]["passed_percent"]
-        
         report = [
             "# HuggingFace Model Test Validation Report",
-            f"\nGenerated on: {self.results['timestamp']}",
-            
-            "\n## Summary",
-            f"- **Total test files**: {total}",
-            f"- **Passed**: {passed} ({passed_percent}%)",
-            f"- **Failed**: {failed} ({self.results['stats']['failed_percent']}%)",
-            f"- **With warnings**: {warnings}",
-            
-            "\n## Results by Architecture",
-            "| Architecture | Total | Passed | Failed | Warnings |",
-            "|-------------|-------|--------|--------|----------|",
+            "",
+            f"**Date:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+            "## Summary",
+            "",
+            f"- **Total files:** {self.stats['total_files']}",
+            f"- **Syntax valid:** {self.stats['syntax_valid']} ({self.stats['syntax_valid']/self.stats['total_files']*100:.1f}%)",
+            f"- **Structure valid:** {self.stats['structure_valid']} ({self.stats['structure_valid']/self.stats['total_files']*100:.1f}%)",
+            f"- **Pipeline valid:** {self.stats['pipeline_valid']} ({self.stats['pipeline_valid']/self.stats['total_files']*100:.1f}%)",
+            f"- **Task appropriate:** {self.stats['task_valid']} ({self.stats['task_valid']/self.stats['total_files']*100:.1f}%)",
+            f"- **Pipeline missing:** {self.stats['pipeline_missing']} ({self.stats['pipeline_missing']/self.stats['total_files']*100:.1f}%)",
+            "",
+            "## Results by Architecture",
+            ""
         ]
         
-        for arch, stats in sorted(self.results["stats"]["by_architecture"].items()):
+        # Add architecture-specific stats
+        for arch, stats in sorted(self.stats["by_architecture"].items()):
             arch_total = stats["total"]
-            arch_passed = stats["passed"]
-            arch_failed = stats["failed"]
-            arch_warnings = stats["warnings"]
-            report.append(f"| {arch} | {arch_total} | {arch_passed} | {arch_failed} | {arch_warnings} |")
+            report.extend([
+                f"### {arch.capitalize()} ({arch_total} files)",
+                "",
+                f"- **Syntax valid:** {stats['syntax_valid']} ({stats['syntax_valid']/arch_total*100:.1f}%)",
+                f"- **Structure valid:** {stats['structure_valid']} ({stats['structure_valid']/arch_total*100:.1f}%)",
+                f"- **Pipeline valid:** {stats['pipeline_valid']} ({stats['pipeline_valid']/arch_total*100:.1f}%)",
+                f"- **Task appropriate:** {stats['task_valid']} ({stats['task_valid']/arch_total*100:.1f}%)",
+                f"- **Pipeline missing:** {stats['pipeline_missing']} ({stats['pipeline_missing']/arch_total*100:.1f}%)",
+                ""
+            ])
         
-        report.append("\n## Error Types")
-        report.append("| Error Type | Count |")
-        report.append("|------------|-------|")
+        # Add detailed results by file
+        report.extend([
+            "## Detailed Results",
+            ""
+        ])
         
-        for error_type, count in sorted(self.results["stats"]["by_error_type"].items()):
-            # Format the error type for display
-            display_error = error_type.replace("_", " ").capitalize()
-            report.append(f"| {display_error} | {count} |")
+        # Group files by status for better organization
+        files_by_status = {
+            "all_valid": [],
+            "syntax_invalid": [],
+            "structure_invalid": [],
+            "pipeline_invalid": [],
+            "pipeline_missing": []
+        }
         
-        if failed > 0:
-            report.append("\n## Failed Tests")
-            for i, failure in enumerate(self.results["failed"]):
-                if i > 9:  # Limit to 10 failures in the report
-                    report.append(f"\n... and {len(self.results['failed']) - 10} more failures. See JSON report for details.")
-                    break
+        for file_path, result in self.validation_results.items():
+            if result["syntax_valid"] and result.get("structure_valid", False) and result.get("pipeline_valid", False):
+                files_by_status["all_valid"].append((file_path, result))
+            elif not result["syntax_valid"]:
+                files_by_status["syntax_invalid"].append((file_path, result))
+            elif not result.get("structure_valid", False):
+                files_by_status["structure_invalid"].append((file_path, result))
+            elif not result.get("has_pipeline", False):
+                files_by_status["pipeline_missing"].append((file_path, result))
+            else:
+                files_by_status["pipeline_invalid"].append((file_path, result))
+        
+        # Add valid files
+        report.extend([
+            "### Valid Files",
+            "",
+            "These files passed all validation checks:",
+            ""
+        ])
+        
+        for file_path, result in sorted(files_by_status["all_valid"]):
+            report.append(f"- `{os.path.basename(file_path)}` - {result['architecture']} - Task: {result.get('current_task', 'N/A')}")
+        
+        # Add files with issues
+        for status, title, description in [
+            ("syntax_invalid", "Syntax Errors", "These files have syntax errors that need to be fixed:"),
+            ("structure_invalid", "Structure Issues", "These files have structural issues (missing class or methods):"),
+            ("pipeline_missing", "Missing Pipeline", "These files are missing pipeline configuration:"),
+            ("pipeline_invalid", "Incorrect Pipeline", "These files have pipeline configuration issues:")
+        ]:
+            if files_by_status[status]:
+                report.extend([
+                    "",
+                    f"### {title}",
+                    "",
+                    description,
+                    ""
+                ])
                 
-                report.append(f"\n### {i+1}. {failure['model_name']}")
-                report.append(f"- **File**: {failure['file']}")
-                report.append(f"- **Architecture**: {failure['architecture']}")
-                report.append("- **Errors**:")
-                for error in failure["errors"]:
-                    report.append(f"  - {error}")
-                
-                if failure.get("warnings"):
-                    report.append("- **Warnings**:")
-                    for warning in failure["warnings"]:
-                        report.append(f"  - {warning}")
+                for file_path, result in sorted(files_by_status[status]):
+                    report.append(f"- `{os.path.basename(file_path)}` - {result['architecture']}")
+                    if "errors" in result:
+                        for error in result["errors"]:
+                            report.append(f"  - {error}")
         
-        return "\n".join(report)
+        # Write report to file
+        with open(self.report_file, 'w') as f:
+            f.write("\n".join(report))
+        
+        logger.info(f"Validation report written to {self.report_file}")
 
 def main():
-    """Main entry point for the model test validator."""
+    """Main entry point for the validator."""
     parser = argparse.ArgumentParser(description="Validate HuggingFace model test files")
     parser.add_argument("--directory", "-d", type=str, default="fixed_tests",
                         help="Directory containing test files")
-    parser.add_argument("--report", "-r", type=str, default="validation_report.md",
-                        help="Path to output report file")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Enable verbose output")
+    parser.add_argument("--report", "-r", type=str,
+                        help="Path to write validation report")
     
     args = parser.parse_args()
     
@@ -464,15 +499,30 @@ def main():
     if not os.path.isabs(directory):
         directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), directory)
     
-    # Create validator and run validation
-    validator = ModelTestValidator(directory, args.report, args.verbose)
-    results = validator.validate_all()
+    # Create and run the validator
+    validator = ModelTestValidator(directory, args.report)
+    results = validator.run()
     
-    # Set exit code based on validation results
-    if results["stats"]["failed"] > 0:
-        sys.exit(1)
-    else:
-        sys.exit(0)
+    # Print a brief summary
+    total = validator.stats["total_files"]
+    syntax_valid = validator.stats["syntax_valid"]
+    structure_valid = validator.stats["structure_valid"]
+    pipeline_valid = validator.stats["pipeline_valid"]
+    task_valid = validator.stats["task_valid"]
+    
+    print("\nVALIDATION SUMMARY")
+    print("="*50)
+    print(f"Total files processed: {total}")
+    print(f"Syntax valid: {syntax_valid} ({syntax_valid/total*100:.1f}%)")
+    print(f"Structure valid: {structure_valid} ({structure_valid/total*100:.1f}%)")
+    print(f"Pipeline valid: {pipeline_valid} ({pipeline_valid/total*100:.1f}%)")
+    print(f"Task appropriate: {task_valid} ({task_valid/total*100:.1f}%)")
+    
+    if args.report:
+        print(f"\nDetailed report written to: {args.report}")
+    
+    # Return success if all files are valid
+    return 0 if syntax_valid == total and structure_valid == total and pipeline_valid == total else 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -93,7 +93,150 @@ python test_hf_bert.py --list-models
 5. **Graceful Degradation**: Tests continue to work even with missing dependencies
 6. **Comprehensive Reports**: Detailed JSON output for analysis
 
-## Recent Improvements (March 20, 2025)
+## Recent Improvements (March 21, 2025)
+
+### Advanced Model Selection Integration & System Enhancements (March 21, 2025, 03:15)
+
+The test generator has been enhanced with advanced model selection capabilities and architecture-aware template selection:
+
+1. **Advanced Model Selection Integration**:
+   - Integrated with `advanced_model_selection.py` for smart model selection
+   - Added hardware-aware model selection based on device constraints
+   - Implemented task-specific model selection across 15+ task types
+   - Created size-constrained model selection for limited resources
+   - Added framework compatibility filtering (PyTorch, TensorFlow, etc.)
+   - Implemented multi-tier fallback mechanism for robust operation
+   - Enhanced command-line interface with hardware and task constraints
+   - Added detailed logging of selection process and decisions
+
+2. **Architecture-Aware Template System**:
+   - Enhanced template selection based on model architecture types
+   - Implemented 7 architecture categories (encoder-only, decoder-only, etc.)
+   - Added automatic detection of model architecture from model type
+   - Created task-specific input text generation for all task types
+   - Added specialized handling for vision, speech, and multimodal models
+   - Improved error handling for missing template files
+   - Enhanced documentation with comprehensive usage examples
+
+3. **Enhanced Documentation**:
+   - Updated `FIXED_GENERATOR_README.md` with advanced usage instructions
+   - Added examples for all constraint types (task, hardware, size, framework)
+   - Created comprehensive documentation of hardware profiles and constraints
+   - Added task and architecture type documentation for clearer understanding
+   - Updated command-line help with detailed option descriptions
+   - Added implementation details of the tiered fallback mechanism
+   - Created section on testing with hardware constraints for limited environments
+
+4. **System Robustness**:
+   - Added graceful handling when advanced selection module is unavailable
+   - Implemented standalone operation with built-in fallback data
+   - Enhanced error reporting for selection and template issues
+   - Added model size estimation for constrained environments
+   - Created preset model configurations for CPU and GPU environments
+   - Improved validation of generated test files before writing
+
+### Template Indentation Fix & Simplified Test Generator (March 21, 2025, 01:40)
+
+A major issue with template indentation has been fixed, especially for hyphenated model names:
+
+1. **Fixed Template Indentation**:
+   - Created properly indented `minimal_bert_template.py` file with correct spacing
+   - Fixed issues with try/except blocks in previous templates
+   - Corrected class method indentation and variable declarations
+   - Ensured proper spacing between methods and classes
+   - Validated syntax for template files to ensure they're valid Python
+   - Fixed vision_template.py with corrected hardware detection and mock object implementations
+   - Fixed encoder_decoder_template.py with proper spacing between methods and consistent indentation
+   - Fixed speech_template.py with proper spacing, consistent method indentation, and improved audio handling
+   - Fixed multimodal_template.py with corrected indentation and proper method nesting for CLIP models
+   - Corrected spacing and indentation for standalone functions in all templates
+
+2. **Simplified Test Generator**:
+   - Created `generate_simple_test.py` to generate tests from fixed templates
+   - Added model name handling for hyphenated model names
+   - Added task-specific input handling for different model types
+   - Validated syntax for generated files with built-in compiler
+   - Added proper model ID and task selection
+
+3. **Fixed Model-Specific Input**:
+   - Created task-specific inputs for different model types
+   - Added support for FILL-MASK vs TEXT-GENERATION tasks
+   - Fixed GPT-J test generation for proper input formatting
+   - Added proper test inputs for all supported model types
+   - Fixed test text generation for both masked and non-masked models
+
+4. **Generated Tests**:
+   - Successfully generated test files for BERT, GPT-2, T5, and GPT-J models
+   - Ensured proper indentation in all generated files
+   - Verified syntax for all generated test files
+   - Added proper model registry with default models
+   - Added detection of hyphenated model names
+
+### Decoder-Only & Vision Model Template Fixes (March 21, 2025, 01:45)
+
+The decoder-only and vision templates have been fixed and multiple Phase 3 model tests have been generated:
+
+1. **Decoder-Only Model Implementation**:
+   - Generated test for **gpt-neo** decoder-only model for language generation
+   - Fixed model class name capitalization issues (GPTNeo vs GPT-Neo)
+   - Updated registry with actual EleutherAI GPT-Neo models
+   - Added proper model-specific handling (e.g., setting pad_token to eos_token)
+   - Fixed memory usage calculation for large language models
+   - Implemented token generation and next-token prediction functionality
+   - Added comprehensive error handling for large model memory constraints
+
+2. **Vision Template Fixes**:
+   - Created `minimal_vision_template.py` with proper syntax and indentation
+   - Addressed indentation issues in original vision template
+   - Updated the template mapping to use minimal template for vision models
+   - Fixed task selection for model-specific requirements (image-classification vs. semantic-segmentation)
+   - Enhanced error handling for image-specific dependencies
+   - Implemented proper model object usage for vision models (BEiT, SegFormer, DETR, DINOv2)
+
+3. **Vision Model Test Generation**:
+   - Successfully generated test files for additional vision model families from Phase 3:
+     - **beit**: BEiT vision transformer models for image classification
+     - **segformer**: SegFormer semantic segmentation models
+     - **detr**: DETR object detection models
+     - **dinov2**: DINOv2 self-supervised vision models
+   - Validated syntax for all generated test files
+   - Added vision-specific test functionality for different model types
+   - Updated the fixed_tests/README.md to reflect newly added models
+   - Created specific handling for segmentation models (different output processing)
+
+4. **Architecture-Specific Improvements**:
+   - Enhanced the ARCHITECTURE_TYPES mapping with better vision model categorization
+   - Updated default model mappings with actual HuggingFace model IDs
+   - Improved registry model discovery with HuggingFace Hub API integration
+   - Added model-specific size and resolution handling (224×224 for classification, 512×512 for segmentation)
+   - Added segmentation-specific output verification for SegFormer models
+   - Implemented decoder-specific handling for causal language modeling
+
+### Speech Model Template Fixes & Integration (March 21, 2025, 01:07)
+
+The speech template has been fixed to address the following issues:
+
+1. **Speech Template Fixes**:
+   - Fixed syntax errors with unterminated strings and improper indentation
+   - Fixed incorrect indentation in class methods and function definitions
+   - Fixed improper newline characters in print statements
+   - Enhanced error handling for audio-specific dependencies 
+   - Implemented proper model object usage for speech models (Whisper, EnCodec, MusicGen, SEW)
+
+2. **Speech Model Test Generation**:
+   - Successfully generated test files for 3 speech model families from Phase 3:
+     - **encodec**: EnCodec audio codec model
+     - **musicgen**: MusicGen music generation model
+     - **sew**: Squeezed and Efficient Wav2Vec model
+   - Validated syntax for all generated test files
+   - Added audio-specific test functionality for speech models
+   - Updated the fixed_tests/README.md to reflect newly added models
+
+3. **Architecture-Specific Improvements**:
+   - Enhanced the ARCHITECTURE_TYPES mapping with better speech model categorization
+   - Improved speech audio preprocessing for audio model testing
+   - Implemented proper sampling rate handling for different audio models
+   - Added audio file detection and synthetic audio generation fallbacks
 
 ### Hyphenated Model Name Fixes & Integration (March 20, 2025, 23:05)
 
@@ -201,7 +344,7 @@ The following improvements have been made to address issues with hyphenated mode
    - Added enhanced README for fixed tests directory
    - Implemented automatic README update with current model status
 
-## Current Status and Next Steps (March 20, 2025)
+## Current Status and Next Steps (July 2025)
 
 See `NEXT_STEPS.md` for the detailed roadmap. Current status:
 
@@ -229,8 +372,36 @@ See `NEXT_STEPS.md` for the detailed roadmap. Current status:
    - Performance visualization completed with comprehensive metrics
    - Hardware compatibility visualization with detailed matrix
    - Distributed testing dashboard with worker performance analysis
+7. ✅ Comprehensive Validation System for Tests - COMPLETED (July 2025)
+   - Architecture-specific validation rules for all model types
+   - Model inference validation with smaller model variants
+   - Comprehensive validation reports with actionable insights
+   - CI/CD integration for automated validation workflow
+   - Validation results dashboard with architecture breakdown
+8. ✅ HuggingFace Model Lookup System - COMPLETED (March 2025)
+   - Smart API-based model discovery for finding optimal default models
+   - Model registry with download statistics and popularity metrics
+   - Prioritization of smaller, more suitable models for testing (prioritizing "base" and "small" variants)
+   - Automatic detection and verification of model availability
+   - Intelligent fallback mechanisms for unavailable models
+   - Comprehensive JSON registry for model validation and tracking
+   - Seamless integration with test generator for dynamic model selection
+   - Support for environment variables to control API usage in CI/CD environments
 
-## New Tools and Components (March 20, 2025)
+
+### HuggingFace Model Lookup Integration
+
+* ✅ Created a system to dynamically find and use optimal HuggingFace models for testing
+* ✅ Implemented API integration to query HuggingFace for up-to-date model information
+* ✅ Added smart selection logic to prioritize appropriate testing models 
+* ✅ Built persistent registry with download statistics and model recommendations
+* ✅ Developed multiple fallback layers for CI/CD environments without API access
+* ✅ Integrated lookup system with test generator for seamless model selection
+* ✅ Created documentation on model lookup usage and integration
+* ✅ Added verification tools to validate model availability before testing
+
+
+## New Tools and Components (July 2025)
 
 1. **Hardware Compatibility Matrix Generator** (`create_hardware_compatibility_matrix.py`):
    - Detects available hardware on the system
@@ -268,6 +439,19 @@ See `NEXT_STEPS.md` for the detailed roadmap. Current status:
    - CI/CD workflow templates for various platforms
    - Verification tools for ensuring proper implementation
 
+6. **Model Validation System** (New - July 2025):
+   - `validate_hyphenated_model_solution.py`: Validates test files against architecture-specific rules
+   - `validate_model_inference.py`: Tests actual model inference capabilities
+   - `validate_all_hyphenated_models.py`: Complete validation suite combining all components
+   - `test_inference_validation.py`: Test script for specific model inference validation
+   - `ci_templates/github-actions-model-validation.yml`: GitHub Actions workflow for CI/CD integration
+   - Key features:
+     - Architecture-specific validation rules for 7 model architectures
+     - Model inference testing with small model variants
+     - Comprehensive validation reports with actionable recommendations
+     - Parallel validation processing for efficiency
+     - CI/CD integration for automated validation
+
 ## Related Documentation
 
 - `MOCK_DETECTION_IMPLEMENTATION_SUMMARY.md`: Summary of mock detection implementation
@@ -276,3 +460,6 @@ See `NEXT_STEPS.md` for the detailed roadmap. Current status:
 - `HF_MODEL_COVERAGE_ROADMAP.md`: Plan for comprehensive model coverage
 - `HF_TEST_TOOLKIT_README.md`: Guide to using the testing toolkit
 - `templates/README.md`: Guide to architecture-specific templates
+- `VALIDATION_SYSTEM_README.md`: Guide to the comprehensive validation system
+- `fixed_tests/README.md`: Guide to the fixed test files for hyphenated models
+- `hyphenated_validation_report.md`: Validation report for hyphenated models

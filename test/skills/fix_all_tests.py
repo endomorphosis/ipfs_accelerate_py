@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 def ensure_scripts_available():
     """Ensure all required fix scripts are available."""
     required_scripts = [
+        "fix_single_file.py",
         "fix_hyphenated_model_names.py",
         "fix_mock_detection_errors.py",
         "manually_fix_test_file.py"
@@ -87,7 +88,25 @@ def fix_file(file_path, rename=False, verify=True):
     
     success = True
     
-    # Step 1: Apply hyphenated fixes
+    # Step 1: Try the simplified fix_single_file.py first
+    logger.info("Applying essential mock detection fixes...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "fix_single_file.py", "--file", file_path],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            logger.warning(f"Essential fixes failed, trying more comprehensive approaches")
+            success = False
+        else:
+            logger.info("Essential mock detection fixes applied successfully")
+            return True
+    except Exception as e:
+        logger.error(f"Error applying essential fixes: {e}")
+        success = False
+    
+    # Step 2: Apply hyphenated fixes if first step failed
     logger.info("Applying hyphenated model name fixes...")
     try:
         result = subprocess.run(
@@ -104,7 +123,7 @@ def fix_file(file_path, rename=False, verify=True):
         logger.error(f"Error applying hyphenated fixes: {e}")
         success = False
     
-    # Step 2: Apply mock detection fixes
+    # Step 3: Apply mock detection fixes
     if success:
         logger.info("Applying mock detection fixes...")
         try:
@@ -122,7 +141,7 @@ def fix_file(file_path, rename=False, verify=True):
             logger.error(f"Error applying mock detection fixes: {e}")
             success = False
     
-    # Step 3: For stubborn files, try the manual fixer as a last resort
+    # Step 4: For stubborn files, try the manual fixer as a last resort
     if not success:
         logger.warning("Previous fixes failed, attempting manual fix...")
         try:

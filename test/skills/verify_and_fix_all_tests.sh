@@ -1,164 +1,105 @@
 #!/bin/bash
 
-# Verify and fix mock detection in all test files
-#
-# This script:
-# 1. Checks all test files for proper mock detection implementation
-# 2. Fixes any issues found using the enhanced fix script
-# 3. Verifies that the fixes work properly with different environment variables
-# 4. Generates a comprehensive report of the results
+# Verify and fix all HuggingFace test files
+# This script runs the comprehensive_test_fix.py script on all test files in the fixed_tests directory
+# It provides detailed reporting and verification of fixes
 
-# ANSI color codes for terminal output
-GREEN="\033[32m"
-BLUE="\033[34m"
-YELLOW="\033[33m"
-RED="\033[31m"
-RESET="\033[0m"
+set -e
 
-# Default settings
-TEST_DIR="fixed_tests"
-MAX_WORKERS=4
-VERIFY_TIMEOUT=120
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Help message
-show_help() {
-    echo -e "${GREEN}Verify and Fix Mock Detection in Test Files${RESET}"
-    echo
-    echo "Usage: $0 [options]"
-    echo
-    echo "Options:"
-    echo "  -d, --dir DIR      Directory containing test files (default: fixed_tests)"
-    echo "  -w, --workers N    Maximum number of parallel workers (default: 4)"
-    echo "  -t, --timeout N    Verification timeout in seconds (default: 120)"
-    echo "  -c, --check-only   Only check files without fixing"
-    echo "  -h, --help         Show this help message"
-    echo
-}
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+RESET='\033[0m'
 
-# Parse command-line arguments
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -d|--dir)
-            TEST_DIR="$2"
-            shift 2
-            ;;
-        -w|--workers)
-            MAX_WORKERS="$2"
-            shift 2
-            ;;
-        -t|--timeout)
-            VERIFY_TIMEOUT="$2"
-            shift 2
-            ;;
-        -c|--check-only)
-            CHECK_ONLY=true
-            shift
-            ;;
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}Unknown option: $1${RESET}"
-            show_help
-            exit 1
-            ;;
-    esac
-done
+# Log file
+LOG_FILE="verify_and_fix_$(date +%Y%m%d_%H%M%S).log"
+echo "Starting verification and fix process at $(date)" | tee -a "$LOG_FILE"
 
-# Ensure test directory exists
-if [ ! -d "$TEST_DIR" ]; then
-    echo -e "${RED}Error: Directory not found: $TEST_DIR${RESET}"
+# Check if comprehensive_test_fix.py exists
+if [ ! -f "comprehensive_test_fix.py" ]; then
+    echo -e "${RED}Error: comprehensive_test_fix.py not found in current directory${RESET}" | tee -a "$LOG_FILE"
     exit 1
 fi
 
-# Create timestamp for log files
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_FILE="mock_detection_${TIMESTAMP}.log"
-REPORT_FILE="mock_detection_report_${TIMESTAMP}.txt"
+# Ensure the script is executable
+chmod +x comprehensive_test_fix.py
 
-echo -e "${GREEN}=== Mock Detection Verification and Fixing ===${RESET}" | tee -a "$LOG_FILE"
-echo -e "Starting verification at $(date)" | tee -a "$LOG_FILE"
-echo -e "Test directory: $TEST_DIR" | tee -a "$LOG_FILE"
-echo -e "Max workers: $MAX_WORKERS" | tee -a "$LOG_FILE"
-echo -e "Timeout: $VERIFY_TIMEOUT seconds" | tee -a "$LOG_FILE"
-echo | tee -a "$LOG_FILE"
-
-# Step 1: Check all files
-echo -e "${BLUE}Step 1: Checking all files for proper mock detection${RESET}" | tee -a "$LOG_FILE"
-echo -e "Running: python verify_all_mock_detection.py --dir $TEST_DIR --check-only --max-workers $MAX_WORKERS --output $REPORT_FILE" | tee -a "$LOG_FILE"
-
-python verify_all_mock_detection.py --dir "$TEST_DIR" --check-only --max-workers "$MAX_WORKERS" --output "$REPORT_FILE"
-CHECK_STATUS=$?
-
-if [ $CHECK_STATUS -eq 0 ]; then
-    echo -e "${GREEN}✅ All files have proper mock detection${RESET}" | tee -a "$LOG_FILE"
+# Step 1: Check all files to identify issues without fixing
+echo -e "\n${BLUE}=== STEP 1: Checking all test files for issues ===${RESET}" | tee -a "$LOG_FILE"
+python comprehensive_test_fix.py --check-only | tee -a "$LOG_FILE"
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    echo -e "${YELLOW}Issues found in test files, proceeding to fix stage${RESET}" | tee -a "$LOG_FILE"
+else
+    echo -e "${GREEN}All test files have complete mock detection implementations${RESET}" | tee -a "$LOG_FILE"
     exit 0
 fi
 
-# If check-only flag is set, exit now
-if [ "$CHECK_ONLY" = true ]; then
-    echo -e "${YELLOW}Check-only flag set, exiting without fixing${RESET}" | tee -a "$LOG_FILE"
-    exit $CHECK_STATUS
-fi
+# Step 2: Fix all files
+echo -e "\n${BLUE}=== STEP 2: Applying fixes to all test files ===${RESET}" | tee -a "$LOG_FILE"
+python comprehensive_test_fix.py | tee -a "$LOG_FILE"
+FIX_RESULT=$?
 
-# Step 2: Fix issues
-echo -e "\n${BLUE}Step 2: Fixing files with missing or incorrect mock detection${RESET}" | tee -a "$LOG_FILE"
+# Step 3: Verify files with different mock configurations
+echo -e "\n${BLUE}=== STEP 3: Verifying test files with different mock configurations ===${RESET}" | tee -a "$LOG_FILE"
 
-# Extract files needing fixes from the report
-NEEDS_FIX=$(grep -B 1 "CHECK: ⚠️ Needs Fix" "$REPORT_FILE" | grep "---" | sed 's/--- //' | sed 's/ ---//')
-
-if [ -z "$NEEDS_FIX" ]; then
-    echo -e "${YELLOW}No files need fixing${RESET}" | tee -a "$LOG_FILE"
-else
-    echo -e "Found $(echo "$NEEDS_FIX" | wc -l) files needing fixes:" | tee -a "$LOG_FILE"
-    echo "$NEEDS_FIX" | tee -a "$LOG_FILE"
-    echo | tee -a "$LOG_FILE"
-
-    # Fix each file
-    for file in $NEEDS_FIX; do
-        echo -e "${YELLOW}Fixing $file...${RESET}" | tee -a "$LOG_FILE"
-        python fix_all_mock_checks.py --file "$TEST_DIR/$file" 2>&1 | tee -a "$LOG_FILE"
-        FIX_STATUS=$?
-        
-        if [ $FIX_STATUS -eq 0 ]; then
-            echo -e "${GREEN}✅ Fixed $file${RESET}" | tee -a "$LOG_FILE"
-        else
-            echo -e "${RED}❌ Failed to fix $file${RESET}" | tee -a "$LOG_FILE"
-        fi
-    done
-fi
-
-# Step 3: Verify fixes
-echo -e "\n${BLUE}Step 3: Verifying all files with different environment variables${RESET}" | tee -a "$LOG_FILE"
-echo -e "Running: python verify_all_mock_detection.py --dir $TEST_DIR --verify --max-workers $MAX_WORKERS --output $REPORT_FILE" | tee -a "$LOG_FILE"
-
-python verify_all_mock_detection.py --dir "$TEST_DIR" --verify --max-workers "$MAX_WORKERS" --output "$REPORT_FILE"
-VERIFY_STATUS=$?
-
-if [ $VERIFY_STATUS -eq 0 ]; then
-    echo -e "${GREEN}✅ All files passed verification${RESET}" | tee -a "$LOG_FILE"
-else
-    echo -e "${RED}❌ Some files failed verification${RESET}" | tee -a "$LOG_FILE"
-    
-    # Extract failed files from the report
-    FAILED_VERIFY=$(grep -B 1 "VERIFY: ❌" "$REPORT_FILE" | grep "---" | sed 's/--- //' | sed 's/ ---//')
-    
-    if [ -n "$FAILED_VERIFY" ]; then
-        echo -e "Files that failed verification:" | tee -a "$LOG_FILE"
-        echo "$FAILED_VERIFY" | tee -a "$LOG_FILE"
+# Get list of files to verify - focus on previously fixed files if any failures
+if [ $FIX_RESULT -ne 0 ]; then
+    # Find files that were successfully fixed by checking the summary file
+    LATEST_SUMMARY=$(ls -t fix_summary_*.txt | head -1)
+    if [ -n "$LATEST_SUMMARY" ]; then
+        echo -e "${YELLOW}Some files could not be fixed, verifying only successfully fixed files${RESET}" | tee -a "$LOG_FILE"
+        FILES_TO_VERIFY=$(grep "^✅" "$LATEST_SUMMARY" | cut -d ":" -f 1 | sed 's/✅ /fixed_tests\//')
+    else
+        echo -e "${RED}No summary file found, cannot determine which files were fixed${RESET}" | tee -a "$LOG_FILE"
+        FILES_TO_VERIFY=""
     fi
+else
+    # All files were fixed successfully, verify all of them
+    FILES_TO_VERIFY=$(find fixed_tests -name "test_hf_*.py")
 fi
 
-# Final summary
-echo -e "\n${GREEN}=== Verification and Fixing Complete ===${RESET}" | tee -a "$LOG_FILE"
-echo -e "Completed at $(date)" | tee -a "$LOG_FILE"
-echo -e "Log file: $LOG_FILE" | tee -a "$LOG_FILE"
-echo -e "Report file: $REPORT_FILE" | tee -a "$LOG_FILE"
+# Count number of files to verify
+NUM_FILES=$(echo "$FILES_TO_VERIFY" | wc -l)
+echo -e "Verifying $NUM_FILES test files..." | tee -a "$LOG_FILE"
 
-# Exit with appropriate status
-if [ $VERIFY_STATUS -eq 0 ]; then
+# Verify each file
+VERIFY_SUCCESS=0
+VERIFY_FAIL=0
+for file in $FILES_TO_VERIFY; do
+    echo -e "\n${YELLOW}Verifying $file...${RESET}" | tee -a "$LOG_FILE"
+    python comprehensive_test_fix.py --file "$file" --verify | tee -a "$LOG_FILE"
+    if [ ${PIPESTATUS[0]} -eq 0 ]; then
+        VERIFY_SUCCESS=$((VERIFY_SUCCESS + 1))
+    else
+        VERIFY_FAIL=$((VERIFY_FAIL + 1))
+    fi
+done
+
+# Generate final report
+echo -e "\n${BLUE}=== FINAL REPORT ===${RESET}" | tee -a "$LOG_FILE"
+echo -e "Fix results:" | tee -a "$LOG_FILE"
+if [ $FIX_RESULT -eq 0 ]; then
+    echo -e "${GREEN}✅ All files were successfully fixed${RESET}" | tee -a "$LOG_FILE"
+else
+    echo -e "${YELLOW}⚠️ Some files could not be fixed${RESET}" | tee -a "$LOG_FILE"
+fi
+
+echo -e "\nVerification results:" | tee -a "$LOG_FILE"
+echo -e "${GREEN}✅ Files verified successfully: $VERIFY_SUCCESS${RESET}" | tee -a "$LOG_FILE"
+echo -e "${RED}❌ Files with verification issues: $VERIFY_FAIL${RESET}" | tee -a "$LOG_FILE"
+
+echo -e "\nLog file: $LOG_FILE" | tee -a "$LOG_FILE"
+echo -e "Completed at $(date)" | tee -a "$LOG_FILE"
+
+if [ $FIX_RESULT -eq 0 ] && [ $VERIFY_FAIL -eq 0 ]; then
+    echo -e "\n${GREEN}✅ SUCCESS: All files were fixed and verified successfully${RESET}" | tee -a "$LOG_FILE"
     exit 0
 else
+    echo -e "\n${YELLOW}⚠️ PARTIAL SUCCESS: Some issues remain${RESET}" | tee -a "$LOG_FILE"
     exit 1
 fi

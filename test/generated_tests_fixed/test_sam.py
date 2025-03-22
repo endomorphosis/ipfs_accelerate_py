@@ -2,6 +2,7 @@
 
 # Import hardware detection capabilities if available
 try:
+    pass
     from generators.hardware.hardware_detection import (
         HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
         detect_all_hardware
@@ -49,6 +50,7 @@ except ImportError:
         # WebGPU imports and mock setup
         HAS_WEBGPU = False
         try:
+            pass
             # Attempt to check for WebGPU availability
             import ctypes.util
             HAS_WEBGPU = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webgpu') is not None
@@ -58,6 +60,7 @@ except ImportError:
             # WebNN imports and mock setup
             HAS_WEBNN = False
             try:
+                pass
                 # Attempt to check for WebNN availability
                 import ctypes
                 HAS_WEBNN = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webnn') is not None
@@ -67,6 +70,7 @@ except ImportError:
                 # ROCm imports and detection
                 HAS_ROCM = False
                 try:
+                    pass
                     # First try to import torch to check for ROCM
                     import torch
                     if torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
@@ -79,6 +83,7 @@ except ImportError:
 
                         # Try to import openvino
                         try:
+                            pass
                             import openvino
                             from openvino.runtime import Core
                             HAS_OPENVINO = True
@@ -94,6 +99,7 @@ except ImportError:
 
                             # Try to import torch
                             try:
+                                pass
                                 if MOCK_TORCH:
                                     raise ImportError("Mocked torch import failure")
                                     import torch
@@ -105,6 +111,7 @@ except ImportError:
 
                                     # Try to import transformers
                                     try:
+                                        pass
                                         if MOCK_TRANSFORMERS:
                                             raise ImportError("Mocked transformers import failure")
                                             import transformers
@@ -116,6 +123,7 @@ except ImportError:
 
                                             # Try to import PIL
                                             try:
+                                                pass
                                                 from PIL import Image
                                                 import requests
                                                 from io import BytesIO
@@ -183,6 +191,7 @@ except ImportError:
 
                                                                                                                 # Check OpenVINO
                                                                                                                 try:
+                                                                                                                    pass
                                                                                                                     import openvino
                                                                                                                     capabilities["openvino"] = True
                                                                                                                 except ImportError:
@@ -268,6 +277,7 @@ except ImportError:
                                                                                                                                                     return results
 
                                                                                                                                                     try:
+                                                                                                                                                        pass
                                                                                                                                                         logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
 
                                                                                                                                                         # Create pipeline with appropriate parameters
@@ -295,6 +305,7 @@ except ImportError:
                                                                                                                                                         # Run warmup inference if on CUDA
                                                                                                                                                         if device == "cuda":
                                                                                                                                                             try:
+                                                                                                                                                                pass
                                                                                                                                                                 _ = pipeline(pipeline_input)
                                                                                                                                                             except Exception:
                                                                                                                                                                 pass
@@ -390,6 +401,7 @@ except ImportError:
                                                                                                                                                                                         return results
 
                                                                                                                                                                                         try:
+                                                                                                                                                                                            pass
                                                                                                                                                                                             logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
 
                                                                                                                                                                                             # Common parameters for loading
@@ -453,6 +465,7 @@ except ImportError:
                                                                                                                                                                                                         # Run warmup inference if using CUDA
                                                                                                                                                                                                         if device == "cuda":
                                                                                                                                                                                                             try:
+                                                                                                                                                                                                                pass
                                                                                                                                                                                                                 with torch.no_grad():
                                                                                                                                                                                                                     _ = model(**inputs)
                                                                                                                                                                                                                 except Exception:
@@ -573,6 +586,7 @@ except ImportError:
                                                                                                                                                                                                                                                         return results
 
                                                                                                                                                                                                                                                         try:
+                                                                                                                                                                                                                                                            pass
                                                                                                                                                                                                                                                             from optimum.intel import OVModelForImageClassification
                                                                                                                                                                                                                                                             logger.info(f"Testing {self.model_id} with OpenVINO...")
 

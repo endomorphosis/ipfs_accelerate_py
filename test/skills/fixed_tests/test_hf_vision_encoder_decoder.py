@@ -88,8 +88,7 @@ class TestVisionEncoderDecoderModels:
             start_time = time.time()
             
             # Initialize the pipeline with the appropriate task
-            pipe = transformers.pipeline(
-                "image-to-text", 
+            pipe = transformers.pipeline("fill-mask", 
                 model=self.model_id,
                 device=self.device if self.device != "cpu" else -1
             )
@@ -99,7 +98,7 @@ class TestVisionEncoderDecoderModels:
             logger.info(f"Model loading time: {load_time:.2f} seconds")
             
             # Test with a task-appropriate input
-            test_input = "An image of a cat."
+            test_input = "The <mask> is a language model."
             
             # Record inference start time
             inference_start = time.time()

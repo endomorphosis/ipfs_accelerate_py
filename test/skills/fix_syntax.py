@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def fix_unterminated_strings(file_path):
-    """Fix unterminated strings in the file."""
+    """Fix syntax errors in the file."""
     try:
         with open(file_path, 'r') as f:
             lines = f.readlines()
@@ -42,6 +42,42 @@ def fix_unterminated_strings(file_path):
             if "''''" in line:
                 logger.info(f"Fixing extra quotes on line {i+1}")
                 line = line.replace("''''", "'''")
+            
+            # Fix extra parentheses, including in import statements
+            if ')))' in line:
+                logger.info(f"Fixing extra parentheses on line {i+1}")
+                # Fix import statements separately to handle the special case
+                if 'import' in line and '(' in line:
+                    line = re.sub(r'import\s*\([)]+', 'import (', line)
+                else:
+                    line = re.sub(r'\){3,}', ')', line)
+            
+            # Fix extra braces
+            if '}}}}}}' in line:
+                logger.info(f"Fixing extra braces on line {i+1}")
+                line = re.sub(r'\}{3,}', '}', line)
+            
+            # Fix brackets + commas
+            if '[],(' in line:
+                logger.info(f"Fixing bracket+comma syntax on line {i+1}")
+                line = re.sub(r'\[\],\(', '[', line)
+                line = re.sub(r'\[\],([^,\]]+)\]', r'[\1]', line)
+            
+            # Fix commas in dict literals
+            if '{},(' in line:
+                logger.info(f"Fixing curly brace+comma syntax on line {i+1}")
+                line = re.sub(r'\{\},\(', '{', line)
+                line = re.sub(r'\{\},([^,\}]+)\}', r'{\1}', line)
+            
+            # Fix invalid Python identifiers with hyphens
+            if 'KOSMOS-2' in line:
+                logger.info(f"Fixing invalid Python identifier on line {i+1}")
+                line = line.replace('KOSMOS-2', 'KOSMOS_2')
+            
+            # Fix improper try statements
+            if 'try::' in line:
+                logger.info(f"Fixing try statement on line {i+1}")
+                line = line.replace('try::', 'try:')
             
             # Check for odd number of quotes
             if line.count('"""') % 2 == 1:
@@ -70,6 +106,28 @@ def fix_unterminated_strings(file_path):
         # Write fixed content
         with open(file_path, 'w') as f:
             f.writelines(fixed_lines)
+        
+        # Second pass - fix content as a whole
+        with open(file_path, 'r') as f:
+            content = f.read()
+        
+        # Fix import indentation
+        content = re.sub(r'^\s+import', 'import', content, flags=re.MULTILINE)
+        content = re.sub(r'^\s+from', 'from', content, flags=re.MULTILINE)
+        
+        # Fix hardware detection import
+        content = re.sub(r'from generators\.hardware\.hardware_detection import \(+\)+', 'from generators.hardware.hardware_detection import (', content)
+        content = re.sub(r'HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,', 'HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,\n    detect_all_hardware', content)
+        
+        # Fix class declarations with invalid names
+        content = re.sub(r'class TestKOSMOS-2Models', 'class TestKosmos2Models', content)
+        
+        # Fix registry variable names with hyphens
+        content = re.sub(r'KOSMOS-2_MODELS_REGISTRY', 'KOSMOS_2_MODELS_REGISTRY', content)
+        
+        # Write fixed content
+        with open(file_path, 'w') as f:
+            f.write(content)
         
         # Verify syntax
         with open(file_path, 'r') as f:

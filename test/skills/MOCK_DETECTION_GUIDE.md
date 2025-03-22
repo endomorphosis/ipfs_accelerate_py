@@ -1,56 +1,41 @@
-# Mock Detection System Guide
+# Hugging Face Test Mock Detection System
 
-This document provides a comprehensive guide to the mock detection system implemented across HuggingFace model tests in the IPFS Accelerate Python Framework.
+This guide explains the mock detection system implemented in our Hugging Face test files, how to use it, and how to maintain it.
 
 ## Overview
 
-The mock detection system provides clear visibility into whether tests are running with real model inference or mock objects. This is particularly important for CI/CD environments where dependencies might be unavailable or should be mocked for faster testing.
+The mock detection system provides a clear visual indication of whether tests are running with real model inference or mock objects. This is crucial for:
+
+1. CI/CD environments where dependencies may be unavailable
+2. Testing on systems with limited resources
+3. Quickly identifying the test execution mode
+4. Ensuring consistent behavior across different environments
 
 ## Key Features
 
-1. **Environment Variable Control**: Tests can simulate missing dependencies through environment variables
-2. **Visual Indicators**: Colorized output clearly shows whether real inference or mocks are being used
-3. **Metadata Tracking**: Test results include information about which dependencies were available
-4. **Conditional Imports**: Tests automatically fall back to mocks when dependencies are unavailable
-
-## Environment Variables
-
-The following environment variables control the mock detection system:
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `MOCK_TORCH` | Force tests to mock PyTorch | `False` |
-| `MOCK_TRANSFORMERS` | Force tests to mock Transformers | `False` |
-| `MOCK_TOKENIZERS` | Force tests to mock Tokenizers | `False` |
-| `MOCK_SENTENCEPIECE` | Force tests to mock SentencePiece | `False` |
-
-Setting any of these to `True` will cause the corresponding dependency to be mocked, simulating that the dependency is unavailable.
-
-Example:
-```bash
-MOCK_TORCH=True python test_hf_bert.py
-```
-
-## Visual Indicators
-
-The tests display colorized output to clearly indicate which mode they are running in:
-
-- 🚀 **REAL INFERENCE** (green): Tests are using actual models and running real inference
-- 🔷 **MOCK OBJECTS** (blue): Tests are using mock objects for CI/CD testing only
+- **Environment Variable Control**: Force mocking of specific dependencies
+- **Visual Indicators**: Colorized terminal output for clear distinction
+- **Detailed Metadata**: Comprehensive information in test results
+- **Verification Tools**: Scripts to check, fix, and verify implementation
 
 ## Implementation Details
 
+### Environment Variables
+
+The system supports the following environment variables:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `MOCK_TORCH` | Mock PyTorch when set to "true" | "false" |
+| `MOCK_TRANSFORMERS` | Mock Transformers when set to "true" | "false" |
+| `MOCK_TOKENIZERS` | Mock Tokenizers when set to "true" | "false" |
+| `MOCK_SENTENCEPIECE` | Mock SentencePiece when set to "true" | "false" |
+
 ### Import Pattern
 
-Each test file implements the following pattern for importing dependencies:
+Each dependency is imported with environment variable control:
 
 ```python
-# Check if we should mock specific dependencies
-MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
-MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
-MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
-MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
-
 # Try to import torch
 try:
     if MOCK_TORCH:
@@ -65,7 +50,7 @@ except ImportError:
 
 ### Detection Logic
 
-The detection logic determines whether real inference or mocks are being used:
+Tests determine whether they're using real inference or mock objects:
 
 ```python
 # Determine if real inference or mock objects were used
@@ -73,78 +58,151 @@ using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
 using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
 ```
 
-### Visual Output
+### Visual Indicators
 
-Tests display colorized output to indicate the mode they're running in:
+The test output clearly indicates the execution mode:
+
+- **Real Inference**: 🚀 Using REAL INFERENCE with actual models
+- **Mock Objects**: 🔷 Using MOCK OBJECTS for CI/CD testing only
+
+### Metadata
+
+Test results include detailed information about dependency availability:
 
 ```python
-# ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
-
-# Indicate real vs mock inference clearly
-if using_real_inference and not using_mocks:
-    print(f"{GREEN}🚀 Using REAL INFERENCE with actual models{RESET}")
-else:
-    print(f"{BLUE}🔷 Using MOCK OBJECTS for CI/CD testing only{RESET}")
-    print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+"metadata": {
+    "has_transformers": HAS_TRANSFORMERS,
+    "has_torch": HAS_TORCH,
+    "has_tokenizers": HAS_TOKENIZERS,
+    "has_sentencepiece": HAS_SENTENCEPIECE,
+    "using_real_inference": using_real_inference,
+    "using_mocks": using_mocks,
+    "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
+}
 ```
 
-## Verification Tools
+## Tools for Implementation and Maintenance
 
-The following tools are available to verify the mock detection system:
+### Single File Fix (`fix_single_file.py`)
 
-- `verify_mock_detection.py`: Verifies individual files with different environment variable combinations
-- `verify_all_mock_detection.py`: Comprehensive tool for checking, fixing, and verifying all test files
-- `add_mock_detection_to_templates.py`: Adds mock detection to template files
-- `add_env_mock_support.py`: Adds environment variable-based mocking support
-- `add_colorized_output.py`: Adds colorized visual indicators
-- `fix_mock_detection_errors.py`: Fixes common errors in mock detection implementation
+A lightweight Python script that:
+
+1. Adds missing environment variable declarations for mock control
+2. Adds mock checking to imports
+3. Adds missing mock detection logic
+4. Ensures syntax is correct before applying changes
+
+Usage:
+
+```bash
+# Fix a specific file
+python fix_single_file.py --file fixed_tests/test_hf_bert.py
+```
+
+### Comprehensive Fix (`fix_all_tests.py`) 
+
+A more comprehensive script that:
+
+1. Tries the lightweight fix first
+2. Falls back to more complex fixes if needed
+3. Fixes hyphenated model names
+4. Fixes mock detection errors
+5. Applies manual fixes as a last resort
+6. Verifies syntax after all changes
+
+Usage:
+
+```bash
+# Fix a specific file
+python fix_all_tests.py --file fixed_tests/test_hf_bert.py
+
+# Fix all files in a directory
+python fix_all_tests.py --dir fixed_tests
+
+# Fix and rename files (replace hyphens with underscores)
+python fix_all_tests.py --dir fixed_tests --rename-files
+
+# Fix with extra verification
+python fix_all_tests.py --dir fixed_tests --verify
+```
+
+### Verify and Fix Script (`verify_and_fix_all_tests.sh`)
+
+A shell script that:
+
+1. Checks all test files for issues
+2. Applies fixes where needed
+3. Verifies fixed files with different mock configurations
+4. Generates detailed reports
+
+Usage:
+
+```bash
+# Run the full verification and fix process
+./verify_and_fix_all_tests.sh
+```
+
+### Additional Specialized Tools
+
+- `add_colorized_output.py`: Add colorized terminal output for better visibility
+- `add_env_mock_support.py`: Add environment variable control for dependency mocking
+- `add_mock_detection_to_templates.py`: Add mock detection to template files
+- `fix_mock_detection_errors.py`: Fix specific mock detection issues
+
+## Running Tests with Mock Control
+
+Use environment variables to control test behavior:
+
+```bash
+# Run with all real dependencies (if available)
+python fixed_tests/test_hf_bert.py
+
+# Mock PyTorch only
+MOCK_TORCH=true python fixed_tests/test_hf_bert.py
+
+# Mock Transformers only
+MOCK_TRANSFORMERS=true python fixed_tests/test_hf_bert.py
+
+# Mock multiple dependencies
+MOCK_TORCH=true MOCK_TOKENIZERS=true python fixed_tests/test_hf_bert.py
+```
+
+## CI/CD Integration
+
+See the `ci_templates` directory for ready-to-use CI/CD workflow configurations for:
+
+- GitHub Actions
+- GitLab CI
+- Jenkins
+
+These templates include:
+
+1. Syntax Validation: Verify correct mock detection implementation
+2. Configuration Testing: Test with different mock configurations
+3. Real Inference Testing: Optional stage for environments with all dependencies
 
 ## Best Practices
 
-1. **Always check mock detection**: Verify that new test files correctly implement the mock detection system
-2. **Include all dependencies**: Ensure all required dependencies are imported with proper mock fallbacks
-3. **Use environment variables**: Control mock behavior through environment variables, not hard-coded flags
-4. **Maintain visual indicators**: Keep the colorized output to clearly indicate which mode the test is running in
-5. **Verify changes**: After modifying test files, verify that mock detection still works correctly
-
-## Running Mock Detection Verification
-
-To verify the mock detection system across all test files:
-
-```bash
-# Check mock detection in all files without fixing
-python verify_all_mock_detection.py --check-only
-
-# Check and fix mock detection in all files
-python verify_all_mock_detection.py --fix
-
-# Check, fix, and verify mock detection with different environment variables
-python verify_all_mock_detection.py --fix --verify
-
-# Verify mock detection in a specific file
-python verify_all_mock_detection.py --file path/to/test_file.py --fix --verify
-```
-
-A verification report will be generated with details about each file.
+1. **Always include mock detection** in new test files
+2. **Verify changes** with `comprehensive_test_fix.py` after modifying test files
+3. **Document environment variables** in test documentation
+4. **Use visual indicators** consistently for clarity
+5. **Run tests with different configurations** to ensure flexibility
 
 ## Troubleshooting
 
-If mock detection is not working correctly, check the following:
+If mock detection is not working correctly:
 
-1. **Missing imports**: Ensure all necessary dependencies are imported with proper mock fallbacks
-2. **Environment variables**: Check that environment variables are being read correctly
-3. **Detection logic**: Verify that the detection logic correctly determines when mocks are being used
-4. **Visual indicators**: Ensure the colorized output is properly implemented
+1. Check that all required environment variables are defined
+2. Verify that import blocks include the mock control logic
+3. Ensure visual indicators are present in the main function
+4. Run with `--check-only` to identify specific issues
+5. Apply fixes automatically with `comprehensive_test_fix.py`
 
-For automated fixing, use the `fix_mock_detection_errors.py` script:
+## Support and Maintenance
 
-```bash
-python fix_mock_detection_errors.py --file path/to/test_file.py
-```
+This mock detection system is maintained as part of the test framework. For issues or enhancements:
 
-## Summary
-
-The mock detection system provides critical visibility into how tests are running, making it clear when real inference is being performed versus when mock objects are being used. This is especially important for CI/CD environments and developers working with incomplete dependencies.
+1. Check the existing issues in the repository
+2. Run the verification tools to diagnose problems
+3. Contribute improvements that maintain backward compatibility

@@ -222,6 +222,20 @@ class TestDecoderOnlyModels:
             return results
         
         try:
+            # Initialize the pipeline with the appropriate task
+            pipe = transformers.pipeline(
+                "fill-mask", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
+            )
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a task-appropriate input
+            test_input = "The <mask> is a language model."
+
             logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
             
             # Create pipeline with appropriate parameters

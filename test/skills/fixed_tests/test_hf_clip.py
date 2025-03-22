@@ -16,6 +16,11 @@ import sys
 import json
 import time
 import datetime
+
+# ANSI color codes for terminal output
+GREEN = "\033[32m"
+BLUE = "\033[34m"
+RESET = "\033[0m"
 import traceback
 import logging
 import argparse
@@ -32,19 +37,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Third-party imports
 import numpy as np
-from PIL import Image
-
-# ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
 
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
 MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
 MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
 MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
-
 # Try to import torch
 try:
     if MOCK_TORCH:
@@ -56,7 +54,7 @@ except ImportError:
     HAS_TORCH = False
     logger.warning("torch not available, using mock")
 
-# Try to import transformers
+    # Try to import transformers
 try:
     if MOCK_TRANSFORMERS:
         raise ImportError("Mocked transformers import failure")
@@ -77,17 +75,6 @@ except ImportError:
     tokenizers = MagicMock()
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
-
-# Try to import sentencepiece
-try:
-    if MOCK_SENTENCEPIECE:
-        raise ImportError("Mocked sentencepiece import failure")
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
-except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
 
 # Try to import PIL
 try:
@@ -134,7 +121,30 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 
 # Models registry - Maps model IDs to their specific configurations
-CLIP_MODELS_REGISTRY = {
+VISION_TEXT_MODELS_REGISTRY = {
+    # BLIP models
+    "Salesforce/blip-image-captioning-base": {
+        "description": "BLIP image captioning base model",
+        "class": "BlipForConditionalGeneration",
+        "type": "blip",
+        "image_size": 384,
+        "task": "image-to-text"
+    },
+    "Salesforce/blip-image-captioning-large": {
+        "description": "BLIP image captioning large model",
+        "class": "BlipForConditionalGeneration",
+        "type": "blip",
+        "image_size": 384,
+        "task": "image-to-text"
+    },
+    "Salesforce/blip-vqa-base": {
+        "description": "BLIP visual question answering base model",
+        "class": "BlipForQuestionAnswering",
+        "type": "blip",
+        "image_size": 384,
+        "task": "visual-question-answering"
+    },
+    # CLIP models
     "openai/clip-vit-base-patch32": {
         "description": "CLIP vision-language base model",
         "class": "CLIPModel",
@@ -158,29 +168,32 @@ CLIP_MODELS_REGISTRY = {
     }
 }
 
-class TestClipModels:
-    """Base test class for all CLIP-family models."""
+class TestVisionTextModels:
+    """Base test class for all vision-text models (BLIP, CLIP, etc.)."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "openai/clip-vit-base-patch32"
+        self.model_id = model_id or "Salesforce/blip-image-captioning-base"
         
         # Verify model exists in registry
-        if self.model_id not in CLIP_MODELS_REGISTRY:
+        if self.model_id not in VISION_TEXT_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = CLIP_MODELS_REGISTRY["openai/clip-vit-base-patch32"]
+            self.model_info = VISION_TEXT_MODELS_REGISTRY["Salesforce/blip-image-captioning-base"]
         else:
-            self.model_info = CLIP_MODELS_REGISTRY[self.model_id]
+            self.model_info = VISION_TEXT_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
-        self.model_type = self.model_info.get("type", "clip")
-        self.task = self.model_info.get("task", "zero-shot-image-classification")
+        self.clip = self.model_info.get("type", "blip")  # Default to blip if not specified
+        self.task = self.model_info.get("task", "image-to-text")
         self.class_name = self.model_info["class"]
         self.description = self.model_info["description"]
         self.image_size = self.model_info["image_size"]
         
         # Define test inputs
         self.test_image_path = self._find_test_image()
+        if "vqa" in self.model_id:
+            self.test_text = "What is shown in the image?"
+            self.test_texts = ["What is shown in the image?", "What can you see in this picture?"]
         
         # Configure hardware preference
         if HW_CAPABILITIES["cuda"]:
@@ -196,7 +209,7 @@ class TestClipModels:
         self.results = {}
         self.examples = []
         self.performance_stats = {}
-    
+        
     def _find_test_image(self):
         """Find a test image or create a dummy one if none exists."""
         test_image_candidates = [
@@ -218,7 +231,7 @@ class TestClipModels:
             return dummy_path
         
         return None
-    
+        
     def test_pipeline(self, device="auto"):
         """Test the model using transformers pipeline API."""
         if device == "auto":
@@ -228,8 +241,7 @@ class TestClipModels:
             "model": self.model_id,
             "device": device,
             "task": self.task,
-            "class": self.class_name,
-            "model_type": self.model_type
+            "class": self.class_name
         }
         
         # Check for dependencies
@@ -246,6 +258,20 @@ class TestClipModels:
             return results
         
         try:
+            # Initialize the pipeline with the appropriate task
+            pipe = transformers.pipeline(
+                "zero-shot-image-classification", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
+            )
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a task-appropriate input
+            test_input = "An image with labels: dog, cat, bird."
+
             logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
             
             # Create pipeline with appropriate parameters
@@ -270,16 +296,24 @@ class TestClipModels:
                 img.save(dummy_path)
                 test_image = dummy_path
             
-            # Define input for CLIP - pipeline expects image directly
-            pipeline_input = test_image
-            inference_kwargs = {
-                "candidate_labels": ["a photo of a cat", "a photo of a dog", "a photo of a person"]
-            }
+            # Define input based on model type and task
+            if self.clip == "clip":
+                # CLIP models expect candidate labels for classification
+                pipeline_input = test_image
+                pipeline_kwargs = {
+                    "candidate_labels": ["a photo of a cat", "a photo of a dog", "a photo of a person"]
+                }
+            elif self.task == "visual-question-answering":
+                pipeline_input = {"image": test_image, "question": self.test_text}
+                pipeline_kwargs = {}
+            else:
+                pipeline_input = test_image
+                pipeline_kwargs = {}
             
             # Run warmup inference if on CUDA
             if device == "cuda":
                 try:
-                    _ = pipeline(pipeline_input, **inference_kwargs)
+                    _ = pipeline(pipeline_input)
                 except Exception:
                     pass
             
@@ -290,7 +324,7 @@ class TestClipModels:
             
             for _ in range(num_runs):
                 start_time = time.time()
-                output = pipeline(pipeline_input, **inference_kwargs)
+                output = pipeline(pipeline_input)
                 end_time = time.time()
                 times.append(end_time - start_time)
                 outputs.append(output)
@@ -355,7 +389,7 @@ class TestClipModels:
         # Add to overall results
         self.results[f"pipeline_{device}"] = results
         return results
-    
+        
     def test_from_pretrained(self, device="auto"):
         """Test the model using direct from_pretrained loading."""
         if device == "auto":
@@ -366,7 +400,7 @@ class TestClipModels:
             "device": device,
             "task": self.task,
             "class": self.class_name,
-            "model_type": self.model_type
+            "clip": self.clip
         }
         
         # Check for dependencies
@@ -390,20 +424,46 @@ class TestClipModels:
                 "local_files_only": False
             }
             
-            # Time processor loading
+            # Load processor and model based on model type
             processor_load_start = time.time()
-            processor = transformers.CLIPProcessor.from_pretrained(
-                self.model_id,
-                **pretrained_kwargs
-            )
+            
+            if self.clip == "clip":
+                # Load CLIP processor
+                processor = transformers.CLIPProcessor.from_pretrained(
+                    self.model_id,
+                    **pretrained_kwargs
+                )
+            else:
+                # Default to BLIP processor
+                processor = transformers.BlipProcessor.from_pretrained(
+                    self.model_id,
+                    **pretrained_kwargs
+                )
+            
             processor_load_time = time.time() - processor_load_start
             
-            # Time model loading - CLIPModel is used for all CLIP models
+            # Time model loading - select appropriate model class based on model type
             model_load_start = time.time()
-            model = transformers.CLIPModel.from_pretrained(
-                self.model_id, 
-                **pretrained_kwargs
-            )
+            
+            if self.clip == "clip":
+                # Load CLIP model
+                model = transformers.CLIPModel.from_pretrained(
+                    self.model_id, 
+                    **pretrained_kwargs
+                )
+            elif "vqa" in self.model_id:
+                # Load BLIP question answering model
+                model = transformers.BlipForQuestionAnswering.from_pretrained(
+                    self.model_id, 
+                    **pretrained_kwargs
+                )
+            else:
+                # Default to BLIP conditional generation model
+                model = transformers.BlipForConditionalGeneration.from_pretrained(
+                    self.model_id, 
+                    **pretrained_kwargs
+                )
+                
             model_load_time = time.time() - model_load_start
             
             # Move model to device
@@ -417,19 +477,27 @@ class TestClipModels:
                 # Create a random dummy image
                 image = Image.new('RGB', (self.image_size, self.image_size), color = (73, 109, 137))
             
-            # Process inputs for CLIP
-            text_inputs = processor.tokenizer(
-                ["a photo of a cat", "a photo of a dog", "a photo of a person"],
-                padding=True,
-                return_tensors="pt"
-            )
-            image_inputs = processor.image_processor(image, return_tensors="pt")
-            
-            # Combine inputs
-            inputs = {
-                **text_inputs,
-                **image_inputs
-            }
+            # Process inputs based on model type and task
+            if self.clip == "clip":
+                # For CLIP models, we need both images and text
+                text_inputs = processor.tokenizer(
+                    ["a photo of a cat", "a photo of a dog", "a photo of a person"],
+                    padding=True,
+                    return_tensors="pt"
+                )
+                image_inputs = processor.image_processor(image, return_tensors="pt")
+                
+                # Combine inputs
+                inputs = {
+                    **text_inputs,
+                    **image_inputs
+                }
+            elif self.task == "visual-question-answering":
+                # For BLIP VQA
+                inputs = processor(image, self.test_text, return_tensors="pt")
+            else:
+                # Default BLIP image captioning
+                inputs = processor(image, return_tensors="pt")
             
             # Move inputs to device
             if device != "cpu":
@@ -439,7 +507,10 @@ class TestClipModels:
             if device == "cuda":
                 try:
                     with torch.no_grad():
-                        _ = model(**inputs)
+                        if self.clip == "clip":
+                            _ = model(**inputs)
+                        else:
+                            _ = model.generate(**inputs)
                 except Exception:
                     pass
             
@@ -451,7 +522,12 @@ class TestClipModels:
             for _ in range(num_runs):
                 start_time = time.time()
                 with torch.no_grad():
-                    output = model(**inputs)
+                    if self.clip == "clip":
+                        # For CLIP, just forward pass
+                        output = model(**inputs)
+                    else:
+                        # For BLIP, generate text
+                        output = model.generate(**inputs)
                 end_time = time.time()
                 times.append(end_time - start_time)
                 outputs.append(output)
@@ -461,15 +537,24 @@ class TestClipModels:
             min_time = min(times)
             max_time = max(times)
             
-            # Process output - get similarity scores
-            logits_per_image = outputs[0].logits_per_image.cpu()
-            probs = logits_per_image.softmax(dim=1).detach().numpy()
-            
-            # Get top prediction
-            predictions = {
-                "labels": ["a photo of a cat", "a photo of a dog", "a photo of a person"],
-                "scores": probs[0].tolist()
-            }
+            # Process output based on model type
+            if self.clip == "clip":
+                # Process CLIP output (similarity scores)
+                logits_per_image = outputs[0].logits_per_image.cpu()
+                probs = logits_per_image.softmax(dim=1).detach().numpy()
+                
+                # Get top prediction
+                predictions = {
+                    "labels": ["a photo of a cat", "a photo of a dog", "a photo of a person"],
+                    "scores": probs[0].tolist()
+                }
+            else:
+                # Process BLIP output (decode generated text)
+                if hasattr(processor, "decode"):
+                    generated_text = processor.decode(outputs[0][0], skip_special_tokens=True)
+                    predictions = {"generated_text": generated_text}
+                else:
+                    predictions = {"generated_ids": outputs[0][0].cpu().numpy().tolist()}
             
             # Calculate model size
             param_count = sum(p.numel() for p in model.parameters())
@@ -494,7 +579,7 @@ class TestClipModels:
                 "method": f"from_pretrained() on {device}",
                 "input": {
                     "image": self.test_image_path if self.test_image_path else "Generated image",
-                    "text": ["a photo of a cat", "a photo of a dog", "a photo of a person"]
+                    "text": self.test_text if hasattr(self, "test_text") else None
                 }
             }
             
@@ -534,17 +619,17 @@ class TestClipModels:
             else:
                 results["from_pretrained_error_type"] = "other"
         
-        # Add to overall results
-        self.results[f"from_pretrained_{device}"] = results
-        return results
-        
+            # Add to overall results
+            self.results[f"from_pretrained_{device}"] = results
+            return results
+            
     def test_with_openvino(self):
         """Test the model using OpenVINO integration."""
         results = {
             "model": self.model_id,
             "task": self.task,
             "class": self.class_name,
-            "model_type": self.model_type
+            "clip": self.clip
         }
         
         # Check for OpenVINO support
@@ -562,21 +647,40 @@ class TestClipModels:
             return results
         
         try:
-            from optimum.intel import OVModelForImageClassification
-            logger.info(f"Testing {self.model_id} with OpenVINO...")
+            # Import the appropriate OpenVINO model class based on model type
+            if self.clip == "clip":
+                from optimum.intel import OVModelForImageClassification
+                logger.info(f"Testing {self.model_id} (CLIP) with OpenVINO...")
+            else:
+                from optimum.intel import OVModelForVision2Seq
+                logger.info(f"Testing {self.model_id} (BLIP) with OpenVINO...")
             
-            # Time processor loading
+            # Time processor loading - select appropriate processor based on model type
             processor_load_start = time.time()
-            processor = transformers.CLIPProcessor.from_pretrained(self.model_id)
+            
+            if self.clip == "clip":
+                processor = transformers.CLIPProcessor.from_pretrained(self.model_id)
+            else:
+                processor = transformers.BlipProcessor.from_pretrained(self.model_id)
+                
             processor_load_time = time.time() - processor_load_start
             
-            # Time model loading
+            # Time model loading - use appropriate OpenVINO model class based on model type
             model_load_start = time.time()
-            model = OVModelForImageClassification.from_pretrained(
-                self.model_id,
-                export=True,
-                provider="CPU"
-            )
+            
+            if self.clip == "clip":
+                model = OVModelForImageClassification.from_pretrained(
+                    self.model_id,
+                    export=True,
+                    provider="CPU"
+                )
+            else:
+                model = OVModelForVision2Seq.from_pretrained(
+                    self.model_id,
+                    export=True,
+                    provider="CPU"
+                )
+                
             model_load_time = time.time() - model_load_start
             
             # Prepare image input
@@ -586,34 +690,53 @@ class TestClipModels:
                 # Create a random dummy image
                 image = Image.new('RGB', (self.image_size, self.image_size), color = (73, 109, 137))
             
-            # Process inputs for CLIP
-            text_inputs = processor.tokenizer(
-                ["a photo of a cat", "a photo of a dog", "a photo of a person"],
-                padding=True,
-                return_tensors="pt"
-            )
-            image_inputs = processor.image_processor(image, return_tensors="pt")
+            # Process inputs based on model type and task
+            if self.clip == "clip":
+                # For CLIP models, we need both images and text
+                text_inputs = processor.tokenizer(
+                    ["a photo of a cat", "a photo of a dog", "a photo of a person"],
+                    padding=True,
+                    return_tensors="pt"
+                )
+                image_inputs = processor.image_processor(image, return_tensors="pt")
+                
+                # Combine inputs
+                inputs = {
+                    **text_inputs,
+                    **image_inputs
+                }
+            elif self.task == "visual-question-answering":
+                # For BLIP VQA
+                inputs = processor(image, self.test_text, return_tensors="pt")
+            else:
+                # Default BLIP image captioning
+                inputs = processor(image, return_tensors="pt")
             
-            # Combine inputs
-            inputs = {
-                **text_inputs,
-                **image_inputs
-            }
-            
-            # Run inference
+            # Run inference based on model type
             start_time = time.time()
-            outputs = model(**inputs)
-            inference_time = time.time() - start_time
             
-            # Process output
-            logits_per_image = outputs.logits_per_image.cpu()
-            probs = logits_per_image.softmax(dim=1).detach().numpy()
-            
-            # Format result
-            result_text = str({
-                "labels": ["a photo of a cat", "a photo of a dog", "a photo of a person"],
-                "scores": probs[0].tolist()
-            })
+            if self.clip == "clip":
+                outputs = model(**inputs)
+                inference_time = time.time() - start_time
+                
+                # Process CLIP output
+                logits_per_image = outputs.logits_per_image.cpu()
+                probs = logits_per_image.softmax(dim=1).detach().numpy()
+                
+                # Format result
+                result_text = str({"labels": ["a photo of a cat", "a photo of a dog", "a photo of a person"], 
+                                   "scores": probs[0].tolist()})
+            else:
+                # For BLIP models, generate text
+                outputs = model.generate(**inputs)
+                inference_time = time.time() - start_time
+                
+                # Decode BLIP output
+                if hasattr(processor, "decode"):
+                    generated_text = processor.decode(outputs[0], skip_special_tokens=True)
+                    result_text = generated_text
+                else:
+                    result_text = str(outputs[0].cpu().numpy().tolist())
             
             # Store results
             results["openvino_success"] = True
@@ -631,7 +754,7 @@ class TestClipModels:
                 "method": "OpenVINO inference",
                 "input": {
                     "image": self.test_image_path if self.test_image_path else "Generated image",
-                    "text": ["a photo of a cat", "a photo of a dog", "a photo of a person"]
+                    "text": self.test_text if hasattr(self, "test_text") else None
                 },
                 "prediction": result_text
             }
@@ -659,10 +782,10 @@ class TestClipModels:
             else:
                 results["openvino_error_type"] = "other"
         
-        # Add to overall results
-        self.results["openvino"] = results
-        return results
-    
+            # Add to overall results
+            self.results["openvino"] = results
+            return results
+            
     def run_tests(self, all_hardware=False):
         """
         Run all tests for this model.
@@ -707,7 +830,7 @@ class TestClipModels:
                 "model": self.model_id,
                 "task": self.task,
                 "class": self.class_name,
-                "model_type": self.model_type,
+                "clip": self.clip,
                 "description": self.description,
                 "timestamp": datetime.datetime.now().isoformat(),
                 "has_transformers": HAS_TRANSFORMERS,
@@ -719,7 +842,7 @@ class TestClipModels:
                 "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
             }
         }
-
+        
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists
@@ -727,7 +850,10 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_clip_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    
+    # Determine model type (clip or blip) from results metadata
+    clip = results.get("metadata", {}).get("clip", "vision_text")
+    filename = f"hf_{clip}_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -736,19 +862,19 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     logger.info(f"Saved results to {output_path}")
     return output_path
-
+    
 def get_available_models():
-    """Get a list of all available CLIP models in the registry."""
-    return list(CLIP_MODELS_REGISTRY.keys())
-
+    """Get a list of all available vision-text models in the registry."""
+    return list(VISION_TEXT_MODELS_REGISTRY.keys())
+    
 def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered CLIP models."""
+    """Test all registered vision-text models."""
     models = get_available_models()
     results = {}
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestClipModels(model_id)
+        tester = TestVisionTextModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -756,26 +882,28 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         
         # Add to summary
         results[model_id] = {
-            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values()
-                if r.get("pipeline_success") is not False)
+            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
+                       if r.get("pipeline_success") is not False)
         }
     
     # Save summary
-    summary_path = os.path.join(output_dir, f"hf_clip_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    summary_path = os.path.join(output_dir, f"hf_vision_text_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
     logger.info(f"Saved summary to {summary_path}")
     return results
-
+    
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test CLIP-family models")
+    parser = argparse.ArgumentParser(description="Test Vision-Text models (BLIP, CLIP, etc.)")
     
     # Model selection
     model_group = parser.add_mutually_exclusive_group()
     model_group.add_argument("--model", type=str, help="Specific model to test")
     model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    model_group.add_argument("--blip-only", action="store_true", help="Test only BLIP models")
+    model_group.add_argument("--clip-only", action="store_true", help="Test only CLIP models")
     
     # Hardware options
     parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
@@ -793,33 +921,98 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable CLIP-family models:")
-        for model in models:
-            info = CLIP_MODELS_REGISTRY[model]
-            print(f"  - {model} ({info['class']}): {info['description']}")
-        return
-    
-    # Test all models if requested
-    if args.all_models:
-        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
+        print("\nAvailable Vision-Text models:")
         
-        # Print summary
-        print("\nCLIP Models Testing Summary:")
-        total = len(results)
-        successful = sum(1 for r in results.values() if r["success"])
-        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+        # Group by model type
+        blip_models = []
+        clip_models = []
+        other_models = []
+        
+        for model in models:
+            clip = VISION_TEXT_MODELS_REGISTRY[model].get("type", "unknown")
+            if clip == "blip":
+                blip_models.append(model)
+            elif clip == "clip":
+                clip_models.append(model)
+            else:
+                other_models.append(model)
+        
+        if blip_models:
+            print("\nBLIP Models:")
+            for model in blip_models:
+                info = VISION_TEXT_MODELS_REGISTRY[model]
+                print(f"  - {model} ({info['class']}): {info['description']}")
+        
+        if clip_models:
+            print("\nCLIP Models:")
+            for model in clip_models:
+                info = VISION_TEXT_MODELS_REGISTRY[model]
+                print(f"  - {model} ({info['class']}): {info['description']}")
+        
+        if other_models:
+            print("\nOther Vision-Text Models:")
+            for model in other_models:
+                info = VISION_TEXT_MODELS_REGISTRY[model]
+                print(f"  - {model} ({info['class']}): {info['description']}")
+                
         return
     
-    # Test single model (default or specified)
-    model_id = args.model or "openai/clip-vit-base-patch32"
+    # Filter models by type if requested
+    if args.blip_only or args.clip_only:
+        all_models = get_available_models()
+        filtered_models = []
+        
+        if args.blip_only:
+            clip = "blip"
+
+            default_model = "Salesforce/blip-image-captioning-base"
+        elif args.clip_only:
+            clip = "clip"
+            default_model = "openai/clip-vit-base-patch32"
+            
+        for model in all_models:
+            if VISION_TEXT_MODELS_REGISTRY[model].get("type") == clip:
+                filtered_models.append(model)
+                
+        if args.all_models:
+            results = {}
+            for model_id in filtered_models:
+                logger.info(f"Testing model: {model_id}")
+                tester = TestVisionTextModels(model_id)
+                model_results = tester.run_tests(all_hardware=args.all_hardware)
+                
+                # Save individual results if requested
+                if args.save:
+                    save_results(model_id, model_results, output_dir=args.output_dir)
+                
+                # Add to summary
+                results[model_id] = {
+                    "success": any(r.get("pipeline_success", False) for r in model_results["results"].values()
+                        if r.get("pipeline_success") is not False)
+                }
+                
+            # Print summary
+            print(f"\n{clip.upper()} Models Testing Summary:")
+            total = len(results)
+            successful = sum(1 for r in results.values() if r["success"])
+            print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+            return
+            
+        # Test single model from filtered type
+        model_id = args.model or default_model
+            
+    else:
+        # Test single model (default or specified)
+        model_id = args.model or "Salesforce/blip-image-captioning-base"
+    
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
     if args.cpu_only:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
-    # Run test
-    tester = TestClipModels(model_id)
+    # Create tester and run tests
+    tester = TestVisionTextModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested
@@ -843,8 +1036,11 @@ def main():
         print(f"{BLUE}🔷 Using MOCK OBJECTS for CI/CD testing only{RESET}")
         print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
     
+    # Get model type from results
+    clip = results.get("metadata", {}).get("clip", "unknown")
+    
     if success:
-        print(f"✅ Successfully tested {model_id}")
+        print(f"✅ Successfully tested {model_id} ({clip.upper()} model)")
         
         # Print performance highlights
         for device, stats in results["performance"].items():
@@ -862,7 +1058,7 @@ def main():
                 print(f"  Input: {example['input']}")
                 print(f"  Output: {example['output_preview']}")
     else:
-        print(f"❌ Failed to test {model_id}")
+        print(f"❌ Failed to test {model_id} ({clip.upper()} model)")
         
         # Print error information
         for test_name, result in results["results"].items():

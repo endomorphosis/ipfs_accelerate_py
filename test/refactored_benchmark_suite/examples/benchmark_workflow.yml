@@ -1,0 +1,187 @@
+name: Benchmark Performance Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'benchmark_suite/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'benchmark_suite/**'
+  schedule:
+    # Run daily at 2:00 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: 'Baseline result file (leave empty for latest)'
+        required: false
+      threshold:
+        description: 'Regression threshold (e.g. 0.05 for 5%)'
+        default: '0.05'
+        required: false
+
+jobs:
+  cpu-benchmarks:
+    name: CPU Performance Benchmarks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch==2.0.1 transformers==4.30.2
+        pip install -e .
+        
+    - name: Run CPU performance benchmarks
+      run: |
+        python benchmark_suite/examples/ci_benchmark.py \
+          --suite benchmark_suite/examples/performance_suite.json \
+          --output-dir ./benchmark_results
+          
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: cpu-benchmark-results
+        path: ./benchmark_results/
+        
+  cuda-benchmarks:
+    name: CUDA Performance Benchmarks
+    runs-on: gpu
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch==2.0.1 transformers==4.30.2
+        pip install -e .
+        
+    - name: Download baseline (if exists)
+      id: download-baseline
+      uses: dawidd6/action-download-artifact@v2
+      continue-on-error: true
+      with:
+        workflow: benchmark_workflow.yml
+        workflow_conclusion: success
+        name: cuda-benchmark-results
+        path: ./baseline
+        
+    - name: Find latest baseline
+      id: find-baseline
+      shell: bash
+      run: |
+        if [ -d "./baseline" ]; then
+          LATEST_BASELINE=$(find ./baseline -name "benchmark_results_*.json" | sort | tail -n 1)
+          if [ ! -z "$LATEST_BASELINE" ]; then
+            echo "Using baseline: $LATEST_BASELINE"
+            echo "::set-output name=baseline::$LATEST_BASELINE"
+          fi
+        fi
+        
+    - name: Run CUDA performance benchmarks
+      run: |
+        BASELINE_ARG=""
+        if [ ! -z "${{ steps.find-baseline.outputs.baseline }}" ]; then
+          BASELINE_ARG="--baseline ${{ steps.find-baseline.outputs.baseline }}"
+        elif [ ! -z "${{ github.event.inputs.baseline }}" ]; then
+          BASELINE_ARG="--baseline ${{ github.event.inputs.baseline }}"
+        fi
+        
+        THRESHOLD="${{ github.event.inputs.threshold }}"
+        THRESHOLD_ARG=""
+        if [ ! -z "$THRESHOLD" ]; then
+          THRESHOLD_ARG="--threshold $THRESHOLD"
+        fi
+        
+        python benchmark_suite/examples/ci_benchmark.py \
+          --suite benchmark_suite/examples/performance_suite.json \
+          --output-dir ./benchmark_results \
+          $BASELINE_ARG $THRESHOLD_ARG
+          
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: cuda-benchmark-results
+        path: ./benchmark_results/
+        
+  benchmark-summary:
+    name: Summarize Benchmark Results
+    needs: [cpu-benchmarks]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Download CPU benchmark results
+      uses: actions/download-artifact@v3
+      with:
+        name: cpu-benchmark-results
+        path: ./cpu-benchmark-results
+        
+    - name: Download CUDA benchmark results (if available)
+      uses: actions/download-artifact@v3
+      continue-on-error: true
+      with:
+        name: cuda-benchmark-results
+        path: ./cuda-benchmark-results
+        
+    - name: Generate summary report
+      run: |
+        # Find latest report files
+        CPU_REPORT=$(find ./cpu-benchmark-results -name "benchmark_report_*.md" | sort | tail -n 1)
+        CUDA_REPORT=$(find ./cuda-benchmark-results -name "benchmark_report_*.md" | sort | tail -n 1 2>/dev/null)
+        
+        echo "# Benchmark Results Summary" > summary.md
+        echo "" >> summary.md
+        echo "## CPU Benchmarks" >> summary.md
+        echo "" >> summary.md
+        
+        if [ ! -z "$CPU_REPORT" ]; then
+          # Extract summary section
+          sed -n '/^## Summary/,/^##/p' "$CPU_REPORT" | sed '$d' >> summary.md
+        else
+          echo "No CPU benchmark results found." >> summary.md
+        fi
+        
+        echo "" >> summary.md
+        echo "## CUDA Benchmarks" >> summary.md
+        echo "" >> summary.md
+        
+        if [ ! -z "$CUDA_REPORT" ]; then
+          # Extract summary section
+          sed -n '/^## Summary/,/^##/p' "$CUDA_REPORT" | sed '$d' >> summary.md
+        else
+          echo "No CUDA benchmark results found." >> summary.md
+        fi
+        
+        cat summary.md
+        
+    - name: Upload summary report
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-summary
+        path: ./summary.md

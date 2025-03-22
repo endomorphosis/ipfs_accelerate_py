@@ -18,9 +18,9 @@ import time
 import datetime
 
 # ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
+GREEN = "\\033[32m"
+BLUE = "\\033[34m"
+RESET = "\\033[0m"
 import traceback
 import logging
 import argparse
@@ -37,7 +37,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Third-party imports
 import numpy as np
-
 
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
@@ -66,27 +65,16 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-
 # Try to import tokenizers
 try:
+    if MOCK_TOKENIZERS:
+        raise ImportError("Mocked tokenizers import failure")
     import tokenizers
     HAS_TOKENIZERS = True
 except ImportError:
     tokenizers = MagicMock()
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
-
-# Try to import sentencepiece
-try:
-    if MOCK_SENTENCEPIECE:
-        raise ImportError("Mocked sentencepiece import failure")
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
-except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
-
 
 # Mock implementations for missing dependencies
 if not HAS_TOKENIZERS:
@@ -105,7 +93,6 @@ if not HAS_TOKENIZERS:
             return MockTokenizer()
 
     tokenizers.Tokenizer = MockTokenizer
-
 
 # Hardware detection
 def check_hardware():
@@ -145,21 +132,21 @@ HW_CAPABILITIES = check_hardware()
 # Models registry - Maps model IDs to their specific configurations
 GPTJ_MODELS_REGISTRY = {
     "gptj": {
-        "description": "GPT-2 small model",
-        "class": "GptjLMHeadModel",
+        "description": "GPTJ small model",
+        "class": "GPTJLMHeadModel",
     },
     "gptj-medium": {
-        "description": "GPT-2 medium model",
-        "class": "GptjLMHeadModel",
+        "description": "GPTJ medium model",
+        "class": "GPTJLMHeadModel",
     },
     "distilgptj": {
-        "description": "DistilGPT-2 model",
-        "class": "GptjLMHeadModel",
+        "description": "DistilGPTJ model",
+        "class": "GPTJLMHeadModel",
     }
 }
 
 class TestGptjModels:
-    """Base test class for all GPT-2-family models."""
+    """Base test class for all GPTJ-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
@@ -198,7 +185,7 @@ class TestGptjModels:
         self.results = {}
         self.examples = []
         self.performance_stats = {}
-    
+        
     def test_pipeline(self, device="auto"):
         """Test the model using transformers pipeline API."""
         if device == "auto":
@@ -225,6 +212,20 @@ class TestGptjModels:
             return results
         
         try:
+            # Initialize the pipeline with the appropriate task
+            pipe = transformers.pipeline(
+                "fill-mask", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
+            )
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a task-appropriate input
+            test_input = "The <mask> is a language model."
+
             logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
             
             # Create pipeline with appropriate parameters
@@ -241,7 +242,7 @@ class TestGptjModels:
             tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
-                logger.info("Set pad_token to eos_token for GPT-2 tokenizer")
+                logger.info("Set pad_token to eos_token for GPTJ tokenizer")
                 
             # Create pipeline with fixed tokenizer
             pipeline_kwargs["tokenizer"] = tokenizer
@@ -322,7 +323,7 @@ class TestGptjModels:
         # Add to overall results
         self.results[f"pipeline_{device}"] = results
         return results
-    
+        
     def test_from_pretrained(self, device="auto"):
         """Test the model using direct from_pretrained loading."""
         if device == "auto":
@@ -363,17 +364,17 @@ class TestGptjModels:
                 **pretrained_kwargs
             )
             
-            # Fix for GPT-2 padding token issue
+            # Fix for GPTJ padding token issue
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
-                logger.info("Set pad_token to eos_token for GPT-2 tokenizer")
+                logger.info("Set pad_token to eos_token for GPTJ tokenizer")
                 
             tokenizer_load_time = time.time() - tokenizer_load_start
             
             # Use appropriate model class based on model type
             model_class = None
-            if self.class_name == "GptjLMHeadModel":
-                model_class = transformers.GptjLMHeadModel
+            if self.class_name == "GPTJLMHeadModel":
+                model_class = transformers.GPTJLMHeadModel
             else:
                 # Fallback to Auto class
                 model_class = transformers.AutoModelForCausalLM
@@ -408,35 +409,35 @@ class TestGptjModels:
                 except Exception:
                     pass
             
-            # Run multiple inference passes
-            num_runs = 3
-            times = []
-            outputs = []
+                    # Run multiple inference passes
+                    num_runs = 3
+                    times = []
+                    outputs = []
             
-            for _ in range(num_runs):
-                start_time = time.time()
-                with torch.no_grad():
-                    output = model(**inputs)
-                end_time = time.time()
-                times.append(end_time - start_time)
-                outputs.append(output)
+                    for _ in range(num_runs):
+                        start_time = time.time()
+                        with torch.no_grad():
+                            output = model(**inputs)
+                        end_time = time.time()
+                        times.append(end_time - start_time)
+                        outputs.append(output)
             
-            # Calculate statistics
-            avg_time = sum(times) / len(times)
-            min_time = min(times)
-            max_time = max(times)
+                    # Calculate statistics
+                    avg_time = sum(times) / len(times)
+                    min_time = min(times)
+                    max_time = max(times)
             
-            # Process generation output
-            predictions = outputs[0]
-            if hasattr(tokenizer, "decode"):
-                if hasattr(outputs[0], "logits"):
-                    logits = outputs[0].logits
-                    next_token_logits = logits[0, -1, :]
-                    next_token_id = torch.argmax(next_token_logits).item()
-                    next_token = tokenizer.decode([next_token_id])
-                    predictions = [{"token": next_token, "score": 1.0}]
-                else:
-                    predictions = [{"generated_text": "Mock generated text"}]
+                    # Process generation output
+                    predictions = outputs[0]
+                    if hasattr(tokenizer, "decode"):
+                        if hasattr(outputs[0], "logits"):
+                            logits = outputs[0].logits
+                            next_token_logits = logits[0, -1, :]
+                            next_token_id = torch.argmax(next_token_logits).item()
+                            next_token = tokenizer.decode([next_token_id])
+                            predictions = [{"token": next_token, "score": 1.0}]
+                    else:
+                        predictions = [{"generated_text": "Mock generated text"}]
             
             # Calculate model size
             param_count = sum(p.numel() for p in model.parameters())
@@ -498,10 +499,10 @@ class TestGptjModels:
             else:
                 results["from_pretrained_error_type"] = "other"
         
-        # Add to overall results
-        self.results[f"from_pretrained_{device}"] = results
-        return results
-    
+            # Add to overall results
+            self.results[f"from_pretrained_{device}"] = results
+            return results
+            
     def test_with_openvino(self):
         """Test the model using OpenVINO integration."""
         results = {
@@ -614,10 +615,10 @@ class TestGptjModels:
             else:
                 results["openvino_error_type"] = "other"
         
-        # Add to overall results
-        self.results["openvino"] = results
-        return results
-    
+            # Add to overall results
+            self.results["openvino"] = results
+            return results
+            
     def run_tests(self, all_hardware=False):
         """
         Run all tests for this model.
@@ -673,7 +674,7 @@ class TestGptjModels:
                 "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
             }
         }
-
+        
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists
@@ -690,13 +691,13 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     logger.info(f"Saved results to {output_path}")
     return output_path
-
+    
 def get_available_models():
-    """Get a list of all available GPT-2 models in the registry."""
+    """Get a list of all available GPTJ models in the registry."""
     return list(GPTJ_MODELS_REGISTRY.keys())
-
+    
 def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered GPT-2 models."""
+    """Test all registered GPTJ models."""
     models = get_available_models()
     results = {}
     
@@ -721,10 +722,10 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
     
     logger.info(f"Saved summary to {summary_path}")
     return results
-
+    
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test GPT-2-family models")
+    parser = argparse.ArgumentParser(description="Test GPTJ-family models")
     
     # Model selection
     model_group = parser.add_mutually_exclusive_group()
@@ -747,7 +748,7 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable GPT-2-family models:")
+        print(f"\nAvailable GPTJ-family models:")
         for model in models:
             info = GPTJ_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
@@ -762,7 +763,7 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nGPT Models Testing Summary:")
+        print(f"\nGPT Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
@@ -792,7 +793,7 @@ def main():
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
     using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
     
-    print("\nTEST RESULTS SUMMARY:")
+    print(f"\nTEST RESULTS SUMMARY:")
     
     # Indicate real vs mock inference clearly
     if using_real_inference and not using_mocks:
@@ -811,7 +812,7 @@ def main():
         
         # Print example outputs if available
         if results.get("examples") and len(results["examples"]) > 0:
-            print("\nExample output:")
+            print(f"\nExample output:")
             example = results["examples"][0]
             if "predictions" in example:
                 print(f"  Input: {example['input']}")
@@ -828,7 +829,7 @@ def main():
                 print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
                 print(f"    {result.get('pipeline_error', 'Unknown error')}")
     
-    print("\nFor detailed results, use --save flag and check the JSON output file.")
+    print(f"\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
     main()

@@ -102,6 +102,42 @@ def try_model_access(model_name):
     except Exception as e:
         return {"error": str(e), "id": model_name, "private": True}
 
+def query_huggingface_api(model_type, limit=5, min_downloads=1000):
+    """Query the HuggingFace API for popular models of a specific type."""
+    try:
+        import requests
+        url = f"https://huggingface.co/api/models?filter={model_type}&sort=downloads&direction=-1&limit={limit}"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        models = response.json()
+        
+        # Filter models by download count if specified
+        if min_downloads > 0:
+            models = [m for m in models if m.get("downloads", 0) >= min_downloads]
+        
+        # Extract relevant information
+        model_info = []
+        for model in models:
+            model_id = model.get("id")
+            downloads = model.get("downloads", 0)
+            likes = model.get("likes", 0)
+            tags = model.get("tags", [])
+            model_info.append({
+                "id": model_id,
+                "downloads": downloads,
+                "likes": likes,
+                "tags": tags,
+                "model_type": model_type
+            })
+        
+        logger.info(f"Found {len(model_info)} popular models for {model_type}")
+        return model_info
+        
+    except Exception as e:
+        logger.error(f"Error fetching models for {model_type}: {e}")
+        return []
+
 def to_valid_identifier(text):
     """Convert text to a valid Python identifier."""
     # Replace hyphens with underscores
@@ -207,7 +243,37 @@ def find_hyphenated_models():
     
     return combined_models
 
-def generate_registry_entry(model_data):
+def get_recommended_default_model(model_type):
+    """Query the HuggingFace API to find the most suitable default model for a model type."""
+    # Query HuggingFace API for popular models
+    popular_models = query_huggingface_api(model_type, limit=5)
+    
+    if not popular_models:
+        # If API query fails, use fallback defaults
+        fallback_defaults = {
+            "bert": "bert-base-uncased",
+            "gpt2": "gpt2",
+            "t5": "t5-small",
+            "vit": "google/vit-base-patch16-224",
+            "gpt-j": "EleutherAI/gpt-j-6b",
+            "gpt-neo": "EleutherAI/gpt-neo-1.3B",
+            "xlm-roberta": "xlm-roberta-base",
+            "whisper": "openai/whisper-tiny",
+            "wav2vec2": "facebook/wav2vec2-base-960h",
+            "clip": "openai/clip-vit-base-patch32"
+        }
+        return fallback_defaults.get(model_type, f"{model_type}-base")
+    
+    # Prefer smaller models that are still popular
+    # First look for models with "base" or "small" in the name
+    base_or_small_models = [m for m in popular_models if "base" in m["id"].lower() or "small" in m["id"].lower()]
+    if base_or_small_models:
+        return base_or_small_models[0]["id"]
+    
+    # If no base/small models, use the most popular one
+    return popular_models[0]["id"]
+
+def generate_registry_entry(model_data, query_default=False):
     """Generate a MODEL_REGISTRY entry for a model."""
     model_type = model_data['type']
     model_name = model_data['name']
@@ -253,11 +319,19 @@ def generate_registry_entry(model_data):
     elif task == "text-generation":
         input_text += "transformer model that"
     
+    # Get default model - either from API or use fallback
+    if query_default:
+        default_model = get_recommended_default_model(model_type)
+        logger.info(f"Using recommended model for {model_type}: {default_model}")
+    else:
+        # Use heuristic approach
+        default_model = f"{model_type}-base" if '-base' not in model_type else model_type
+    
     # Create the registry entry
     registry_entry = {
         "family_name": family_name,
         "description": f"{family_name} models",
-        "default_model": f"{model_type}-base" if '-base' not in model_type else model_type,
+        "default_model": default_model,
         "class": model_name,
         "test_class": test_class,
         "module_name": module_name,
@@ -303,16 +377,92 @@ def format_class_name_fix(model_name, correct_name):
     """Format a class name fix entry for CLASS_NAME_FIXES."""
     return f'    "{model_name}": "{correct_name}",'
 
+def save_model_registry(registry_data, output_path):
+    """Save the model registry data to a JSON file."""
+    try:
+        with open(output_path, 'w') as f:
+            json.dump(registry_data, f, indent=2)
+        logger.info(f"Saved model registry to {output_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving model registry: {e}")
+        return False
+
 def main():
     """Main function to find models and generate entries."""
     parser = argparse.ArgumentParser(description="Find and categorize models from HuggingFace transformers")
     parser.add_argument("--hyphenated-only", action="store_true", help="Only find hyphenated model names")
     parser.add_argument("--max-models", type=int, default=None, help="Maximum number of models to display")
     parser.add_argument("--output", type=str, help="Output file for model registry entries")
+    parser.add_argument("--query-huggingface", action="store_true", help="Query HuggingFace API for default models")
+    parser.add_argument("--update-registry", action="store_true", help="Update the model registry file")
+    parser.add_argument("--model-type", type=str, help="Query a specific model type")
+    parser.add_argument("--verify", type=str, help="Verify a specific model name")
+    parser.add_argument("--registry-file", type=str, default="huggingface_model_types.json", help="Path to save/load the registry file")
     
     args = parser.parse_args()
     
-    # Find models
+    # Single model verification
+    if args.verify:
+        model_name = args.verify
+        print(f"Verifying model: {model_name}")
+        result = try_model_access(model_name)
+        
+        if result.get("error"):
+            print(f"Error: {result['error']}")
+        else:
+            print(f"Model exists: {result['id']}")
+            print(f"Tags: {', '.join(result.get('tags', []))}")
+        return 0
+    
+    # Single model type query
+    if args.model_type:
+        model_type = args.model_type
+        print(f"Querying models for type: {model_type}")
+        
+        popular_models = query_huggingface_api(model_type, limit=10)
+        if popular_models:
+            print(f"\nFound {len(popular_models)} models for {model_type}:")
+            for i, model in enumerate(popular_models, 1):
+                downloads = f"{model.get('downloads', 0):,}" if model.get('downloads') else "Unknown"
+                print(f"{i}. {model['id']} (Downloads: {downloads})")
+            
+            # Recommend default model
+            default_model = get_recommended_default_model(model_type)
+            print(f"\nRecommended default model: {default_model}")
+            
+            # Save to registry if requested
+            if args.update_registry:
+                registry_data = {}
+                
+                # Try to load existing registry first
+                if os.path.exists(args.registry_file):
+                    try:
+                        with open(args.registry_file, 'r') as f:
+                            registry_data = json.load(f)
+                            # Ensure registry_data is a dictionary
+                            if not isinstance(registry_data, dict):
+                                logger.warning(f"Registry file contains invalid data, initializing empty dictionary")
+                                registry_data = {}
+                    except Exception as e:
+                        logger.error(f"Error loading registry file: {e}")
+                
+                # Update with new model info
+                registry_data[model_type] = {
+                    "default_model": default_model,
+                    "models": [m["id"] for m in popular_models],
+                    "downloads": {m["id"]: m.get("downloads", 0) for m in popular_models},
+                    "updated_at": datetime.now().isoformat()
+                }
+                
+                # Save updated registry
+                save_model_registry(registry_data, args.registry_file)
+        else:
+            print(f"No models found for {model_type}")
+        
+        return 0
+    
+    # Find models from transformers library
     if args.hyphenated_only:
         logger.info("Finding hyphenated model names in transformers...")
         models = find_hyphenated_models()
@@ -328,7 +478,7 @@ def main():
     registry_entries = {}
     for model in models:
         model_type = model['type']
-        registry_entries[model_type] = generate_registry_entry(model)
+        registry_entries[model_type] = generate_registry_entry(model, query_default=args.query_huggingface)
     
     # Print summary
     print(f"\nFound {len(models)} models in transformers library")
@@ -353,6 +503,11 @@ def main():
     for model in sorted(hyphenated_models, key=lambda x: x['type']):
         print(f"- {model['type']}: {model['name']}")
     
+    if args.query_huggingface:
+        print("\nDefault models from HuggingFace API:")
+        for model_type, entry in sorted(registry_entries.items()):
+            print(f"  - {model_type}: {entry['default_model']}")
+    
     # Generate MODEL_REGISTRY entries
     print("\nModel registry entries:")
     for model_type, entry in sorted(registry_entries.items()):
@@ -365,7 +520,6 @@ def main():
         model_type = model['type']
         if '-' in model_type:
             # Create all possible capitalization patterns
-            # For example, for "gpt-j", add fixes for both "GptjForCausalLM" and "GPTJForCausalLM"
             parts = model_type.split('-')
             incorrect_name = ''.join(part.capitalize() for part in parts)
             correct_capitalization = get_class_name_capitalization(model_type)
@@ -397,6 +551,23 @@ def main():
         with open(args.output, 'w') as f:
             json.dump(output_data, f, indent=2)
         logger.info(f"Saved output to {args.output}")
+    
+    # Update registry file if requested
+    if args.update_registry and not args.model_type:
+        registry_data = {}
+        
+        # Convert entries to registry format
+        for model_type, entry in registry_entries.items():
+            registry_data[model_type] = {
+                "default_model": entry["default_model"],
+                "description": entry["description"],
+                "class": entry["class"],
+                "architecture": next((model["architecture"] for model in models if model["type"] == model_type), "unknown"),
+                "updated_at": datetime.now().isoformat()
+            }
+        
+        # Save the registry
+        save_model_registry(registry_data, args.registry_file)
     
     return 0
 

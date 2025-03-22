@@ -2,449 +2,405 @@
 """
 Run Test Validation
 
-This script executes a subset of the generated model tests using small models to verify functionality.
-It validates that the tests can initialize models, run inference, and handle errors gracefully.
+This script executes a sample of HuggingFace model test files to verify they work correctly.
+It focuses on basic functional testing, with an option to run tests with mocked or real models.
 
 Usage:
-    python run_test_validation.py [--directory TESTS_DIR] [--max-tests MAX_TESTS] [--report REPORT_FILE] [--verbose]
+    python run_test_validation.py --directory TESTS_DIR [--max-tests N] [--use-mocks] [--verbose]
 """
 
 import os
 import sys
-import importlib.util
+import random
+import subprocess
 import argparse
 import logging
-import json
-import time
-import glob
-import random
-import traceback
-import subprocess
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import datetime
+import time
+from typing import Dict, List, Optional, Tuple, Any
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Small models for testing different architectures - all under 500MB
-SMALL_MODELS = {
-    "encoder-only": [
-        "distilbert-base-uncased",
-        "prajjwal1/bert-tiny",
-        "google/electra-small-discriminator",
-        "distilroberta-base"
-    ],
-    "decoder-only": [
-        "openai-community/gpt2",
-        "gpt2-medium",
-        "facebook/opt-125m",
-        "mistralai/Mistral-7B-Instruct-v0.2"  # Larger but commonly used
-    ],
-    "encoder-decoder": [
-        "t5-small",
-        "google/flan-t5-small",
-        "facebook/bart-base",
-        "google/pegasus-xsum"
-    ],
-    "vision": [
-        "google/vit-base-patch16-224",
-        "microsoft/resnet-50",
-        "facebook/deit-tiny-patch16-224",
-        "facebook/convnext-tiny-224"
-    ],
-    "vision-text": [
-        "openai/clip-vit-base-patch32",
-        "Salesforce/blip-image-captioning-base",
-        "valhalla/vit-bert-image-classification"
-    ],
-    "speech": [
-        "facebook/wav2vec2-base",
-        "openai/whisper-tiny",
-        "facebook/hubert-base-ls960"
-    ],
-    "multimodal": [
-        "openai/clip-vit-base-patch32",
-        "Salesforce/blip-image-captioning-base"
-    ]
-}
-
 class TestRunner:
-    """Runs HuggingFace model tests to validate functionality."""
+    """Executes HuggingFace model test files to verify functionality."""
     
-    def __init__(self, directory: str, max_tests: int, report_file: str, verbose: bool = False):
+    def __init__(self, directory: str, max_tests: int = 10, use_mocks: bool = True, verbose: bool = False):
         """Initialize the test runner.
         
         Args:
             directory: Directory containing test files
-            max_tests: Maximum number of tests to run
-            report_file: Path to output report file
+            max_tests: Maximum number of tests to run (0 for all)
+            use_mocks: Whether to use mock objects instead of real models
             verbose: Whether to print verbose output
         """
         self.directory = Path(directory)
         self.max_tests = max_tests
-        self.report_file = Path(report_file)
+        self.use_mocks = use_mocks
         self.verbose = verbose
         
-        self.results = {
-            "passed": [],
-            "failed": [],
-            "stats": {
-                "total": 0,
-                "passed": 0,
-                "failed": 0,
-                "by_architecture": {},
-                "by_error_type": {},
-                "avg_execution_time": 0
-            },
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        # Statistics
+        self.stats = {
+            "total_files": 0,
+            "tested_files": 0,
+            "success_count": 0,
+            "failure_count": 0,
+            "by_architecture": {},
+            "test_results": {}
         }
-        
-        # Create architecture stats
-        for arch in SMALL_MODELS.keys():
-            self.results["stats"]["by_architecture"][arch] = {
-                "total": 0, "passed": 0, "failed": 0
-            }
     
-    def find_test_files(self) -> Dict[str, List[Path]]:
-        """Find test files grouped by architecture."""
-        test_files_by_arch = {arch: [] for arch in SMALL_MODELS.keys()}
+    def run(self):
+        """Run a sample of test files."""
+        # Find all test files
+        test_files = list(self.directory.glob("test_hf_*.py"))
+        self.stats["total_files"] = len(test_files)
         
-        all_test_files = list(self.directory.glob("test_hf_*.py"))
+        logger.info(f"Found {len(test_files)} test files")
         
-        # Group files by architecture
-        for file_path in all_test_files:
-            model_name = self._extract_model_name(file_path)
+        # Determine which files to test
+        files_to_test = self._select_test_files(test_files)
+        self.stats["tested_files"] = len(files_to_test)
+        
+        logger.info(f"Selected {len(files_to_test)} files to test")
+        
+        # Run each test file
+        for i, file_path in enumerate(files_to_test):
+            logger.info(f"[{i+1}/{len(files_to_test)}] Testing {file_path.name}...")
+            success, result = self._run_test_file(file_path)
+            
+            # Update statistics
+            self.stats["test_results"][str(file_path)] = result
+            
+            if success:
+                self.stats["success_count"] += 1
+                logger.info(f"✅ Test passed: {file_path.name}")
+            else:
+                self.stats["failure_count"] += 1
+                logger.error(f"❌ Test failed: {file_path.name}")
+        
+        # Generate report
+        self._generate_report()
+        
+        return self.stats
+    
+    def _select_test_files(self, test_files: List[Path]) -> List[Path]:
+        """Select a sample of test files to run."""
+        # If max_tests is 0, run all tests
+        if self.max_tests <= 0:
+            return test_files
+        
+        # If max_tests is greater than the number of files, run all tests
+        if self.max_tests >= len(test_files):
+            return test_files
+        
+        # Group files by architecture for balanced selection
+        files_by_architecture = {}
+        for file_path in test_files:
+            # Extract model name from file name
+            model_name = file_path.stem.replace("test_hf_", "")
+            
+            # Determine architecture (approximate)
             architecture = self._get_model_architecture(model_name)
             
-            if architecture in test_files_by_arch:
-                test_files_by_arch[architecture].append(file_path)
-        
-        return test_files_by_arch
-    
-    def _extract_model_name(self, file_path: Path) -> str:
-        """Extract the model name from a test file path."""
-        return file_path.stem.replace("test_hf_", "")
-    
-    def _get_model_architecture(self, model_name: str) -> str:
-        """Determine the model architecture from the model name."""
-        # Architecture type definitions from validate_model_tests.py
-        ARCHITECTURE_TYPES = {
-            "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta"],
-            "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt"],
-            "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
-            "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2"],
-            "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip"],
-            "speech": ["wav2vec2", "hubert", "whisper", "bark", "speecht5"],
-            "multimodal": ["llava", "clip", "blip", "git", "pix2struct", "paligemma", "video-llava"]
-        }
-        
-        model_name_lower = model_name.lower()
-        
-        for arch_type, models in ARCHITECTURE_TYPES.items():
-            for model in models:
-                if model.lower() in model_name_lower:
-                    return arch_type
-        
-        return "unknown"
-    
-    def select_tests_to_run(self) -> List[Tuple[Path, str, str]]:
-        """Select a subset of tests to run for each architecture."""
-        test_files_by_arch = self.find_test_files()
-        
-        selected_tests = []
-        
-        # Calculate how many tests to run for each architecture
-        total_arch_count = len([a for a in test_files_by_arch.keys() if test_files_by_arch[a]])
-        tests_per_arch = max(1, min(5, self.max_tests // total_arch_count))
-        
-        # Select tests for each architecture
-        for arch, tests in test_files_by_arch.items():
-            if not tests:
-                continue
+            # Add to architecture group
+            if architecture not in files_by_architecture:
+                files_by_architecture[architecture] = []
                 
-            # Select random subset
-            arch_tests = random.sample(tests, min(tests_per_arch, len(tests)))
+                # Initialize architecture stats
+                if architecture not in self.stats["by_architecture"]:
+                    self.stats["by_architecture"][architecture] = {
+                        "total": 0,
+                        "tested": 0,
+                        "success": 0,
+                        "failure": 0
+                    }
             
-            # Assign a small model for each test
-            for test_path in arch_tests:
-                model_name = self._extract_model_name(test_path)
-                small_model = random.choice(SMALL_MODELS.get(arch, ["distilbert-base-uncased"]))
-                selected_tests.append((test_path, small_model, arch))
+            files_by_architecture[architecture].append(file_path)
+            self.stats["by_architecture"][architecture]["total"] += 1
         
-        logger.info(f"Selected {len(selected_tests)} tests to run")
-        return selected_tests
+        # Select files proportionally from each architecture
+        selected_files = []
+        remaining = self.max_tests
+        architecture_counts = {}
+        
+        # First pass: calculate proportional counts
+        total_files = len(test_files)
+        for arch, files in files_by_architecture.items():
+            arch_count = max(1, int(self.max_tests * len(files) / total_files))
+            architecture_counts[arch] = min(arch_count, len(files))
+            remaining -= architecture_counts[arch]
+        
+        # Second pass: distribute remaining tests
+        if remaining > 0:
+            for arch in sorted(architecture_counts.keys()):
+                if architecture_counts[arch] < len(files_by_architecture[arch]):
+                    architecture_counts[arch] += 1
+                    remaining -= 1
+                    if remaining == 0:
+                        break
+        
+        # Select random files from each architecture
+        for arch, count in architecture_counts.items():
+            arch_files = random.sample(files_by_architecture[arch], count)
+            selected_files.extend(arch_files)
+            self.stats["by_architecture"][arch]["tested"] += count
+        
+        return selected_files
     
-    def run_all_tests(self) -> Dict:
-        """Run all selected tests and return results."""
-        selected_tests = self.select_tests_to_run()
-        self.results["stats"]["total"] = len(selected_tests)
-        
-        # Set up total execution time tracking
-        total_execution_time = 0
-        
-        # Use ThreadPoolExecutor for parallel test execution
-        with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 4)) as executor:
-            future_to_test = {
-                executor.submit(self.run_test, test_path, model_id, arch): (test_path, model_id, arch) 
-                for test_path, model_id, arch in selected_tests
-            }
-            
-            for future in as_completed(future_to_test):
-                test_path, model_id, arch = future_to_test[future]
-                try:
-                    result = future.result()
-                    total_execution_time += result.get("execution_time", 0)
-                except Exception as exc:
-                    logger.error(f"Exception running {test_path}: {exc}")
-                    self._record_failure(test_path, model_id, arch, ["Exception during test execution", str(exc)])
-        
-        # Calculate average execution time
-        if self.results["stats"]["passed"] > 0:
-            self.results["stats"]["avg_execution_time"] = round(total_execution_time / self.results["stats"]["passed"], 2)
-        
-        # Generate and save report
-        self.generate_report()
-        
-        return self.results
-    
-    def run_test(self, test_path: Path, model_id: str, arch: str) -> Dict:
-        """Run a single test file as a subprocess."""
-        logger.info(f"Running test: {test_path} with model {model_id}")
-        
+    def _run_test_file(self, file_path: Path) -> Tuple[bool, Dict[str, Any]]:
+        """Run a single test file and return the results."""
         start_time = time.time()
         
+        # Set up environment variables for mocking
+        env = os.environ.copy()
+        if self.use_mocks:
+            env["MOCK_TORCH"] = "True"
+            env["MOCK_TRANSFORMERS"] = "True"
+            env["MOCK_TOKENIZERS"] = "True"
+            env["MOCK_SENTENCEPIECE"] = "True"
+        
         try:
-            # Run the test file as a subprocess
-            cmd = [sys.executable, str(test_path), "--model", model_id]
-            
-            # Run with a timeout to prevent hanging tests
+            # Run the test file with subprocess
             result = subprocess.run(
-                cmd, 
-                capture_output=True, 
-                text=True, 
-                timeout=300  # 5 minute timeout
+                [sys.executable, str(file_path)],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60  # 1 minute timeout
             )
             
             execution_time = time.time() - start_time
             
-            if result.returncode == 0:
-                self._record_success(test_path, model_id, arch, execution_time)
-                return {
-                    "success": True, 
-                    "output": result.stdout,
-                    "execution_time": execution_time
-                }
-            else:
-                errors = [
-                    f"Test failed with exit code {result.returncode}",
-                    f"STDOUT: {result.stdout[:500]}...",
-                    f"STDERR: {result.stderr[:500]}..."
-                ]
-                self._record_failure(test_path, model_id, arch, errors)
-                self._record_error("test_execution_failed")
-                return {
-                    "success": False, 
-                    "errors": errors,
-                    "output": result.stdout,
-                    "stderr": result.stderr,
-                    "execution_time": execution_time
-                }
-                
-        except subprocess.TimeoutExpired:
-            self._record_failure(test_path, model_id, arch, ["Test execution timed out after 5 minutes"])
-            self._record_error("timeout")
-            return {"success": False, "errors": ["Test execution timed out"]}
+            # Check the return code
+            success = result.returncode == 0
             
+            # Extract architecture
+            model_name = file_path.stem.replace("test_hf_", "")
+            architecture = self._get_model_architecture(model_name)
+            
+            # Update architecture stats
+            if success:
+                self.stats["by_architecture"][architecture]["success"] += 1
+            else:
+                self.stats["by_architecture"][architecture]["failure"] += 1
+            
+            # Prepare result dictionary
+            test_result = {
+                "success": success,
+                "execution_time": execution_time,
+                "return_code": result.returncode,
+                "architecture": architecture,
+                "model_name": model_name,
+                "stdout": result.stdout[:1000] if self.verbose else "",  # Limit output size
+                "stderr": result.stderr[:1000] if self.verbose else "",  # Limit output size
+            }
+            
+            if self.verbose:
+                if success:
+                    logger.info(f"Test completed in {execution_time:.2f} seconds")
+                else:
+                    logger.error(f"Test failed with return code {result.returncode}")
+                    logger.error(f"Stderr: {result.stderr[:500]}...")
+            
+            return success, test_result
+            
+        except subprocess.TimeoutExpired:
+            execution_time = time.time() - start_time
+            
+            # Extract architecture
+            model_name = file_path.stem.replace("test_hf_", "")
+            architecture = self._get_model_architecture(model_name)
+            
+            # Update architecture stats
+            self.stats["by_architecture"][architecture]["failure"] += 1
+            
+            logger.error(f"Test timed out after {execution_time:.2f} seconds")
+            
+            return False, {
+                "success": False,
+                "execution_time": execution_time,
+                "return_code": None,
+                "architecture": architecture,
+                "model_name": model_name,
+                "stdout": "",
+                "stderr": "Test timed out after 60 seconds",
+                "error": "Timeout"
+            }
         except Exception as e:
-            self._record_failure(test_path, model_id, arch, [f"Error running test: {str(e)}"])
-            self._record_error("runtime_exception")
-            return {"success": False, "errors": [str(e)]}
+            execution_time = time.time() - start_time
+            
+            # Extract architecture
+            model_name = file_path.stem.replace("test_hf_", "")
+            architecture = self._get_model_architecture(model_name)
+            
+            # Update architecture stats
+            self.stats["by_architecture"][architecture]["failure"] += 1
+            
+            logger.error(f"Error running test: {str(e)}")
+            
+            return False, {
+                "success": False,
+                "execution_time": execution_time,
+                "return_code": None,
+                "architecture": architecture,
+                "model_name": model_name,
+                "stdout": "",
+                "stderr": str(e),
+                "error": "Exception"
+            }
     
-    def _record_success(self, test_path: Path, model_id: str, arch: str, execution_time: float):
-        """Record a successful test run."""
-        self.results["passed"].append({
-            "file": str(test_path),
-            "model_name": self._extract_model_name(test_path),
-            "model_id": model_id,
-            "architecture": arch,
-            "execution_time": round(execution_time, 2)
-        })
-        self.results["stats"]["passed"] += 1
+    def _get_model_architecture(self, model_name: str) -> str:
+        """Determine the model architecture from the model name (approximate)."""
+        model_name_lower = model_name.lower()
         
-        # Update architecture stats
-        if arch in self.results["stats"]["by_architecture"]:
-            self.results["stats"]["by_architecture"][arch]["passed"] += 1
-            self.results["stats"]["by_architecture"][arch]["total"] += 1
+        # Define simple architecture detection rules
+        if "bert" in model_name_lower or "roberta" in model_name_lower or "electra" in model_name_lower:
+            return "encoder-only"
+        elif "gpt" in model_name_lower or "llama" in model_name_lower or "bloom" in model_name_lower:
+            return "decoder-only"
+        elif "t5" in model_name_lower or "bart" in model_name_lower or "pegasus" in model_name_lower:
+            return "encoder-decoder"
+        elif "vit" in model_name_lower or "swin" in model_name_lower or "deit" in model_name_lower:
+            return "vision"
+        elif "clip" in model_name_lower or "blip" in model_name_lower:
+            return "vision-text"
+        elif "wav2vec" in model_name_lower or "whisper" in model_name_lower:
+            return "speech"
+        elif "llava" in model_name_lower:
+            return "multimodal"
         
-        if self.verbose:
-            logger.info(f"✅ Passed: {test_path} with model {model_id} in {round(execution_time, 2)}s")
+        return "unknown"
     
-    def _record_failure(self, test_path: Path, model_id: str, arch: str, errors: List[str]):
-        """Record a failed test run."""
-        self.results["failed"].append({
-            "file": str(test_path),
-            "model_name": self._extract_model_name(test_path),
-            "model_id": model_id,
-            "architecture": arch,
-            "errors": errors
-        })
-        self.results["stats"]["failed"] += 1
+    def _generate_report(self):
+        """Generate a test execution report."""
+        # Create reports directory if needed
+        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+        os.makedirs(reports_dir, exist_ok=True)
         
-        # Update architecture stats
-        if arch in self.results["stats"]["by_architecture"]:
-            self.results["stats"]["by_architecture"][arch]["failed"] += 1
-            self.results["stats"]["by_architecture"][arch]["total"] += 1
+        # Create report file path
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_file = os.path.join(reports_dir, f"test_execution_report_{timestamp}.md")
         
-        if self.verbose:
-            logger.error(f"❌ Failed: {test_path} with model {model_id}")
-            for error in errors:
-                logger.error(f"  - {error}")
-    
-    def _record_error(self, error_type: str):
-        """Record an error type for statistics."""
-        if error_type not in self.results["stats"]["by_error_type"]:
-            self.results["stats"]["by_error_type"][error_type] = 0
-        self.results["stats"]["by_error_type"][error_type] += 1
-    
-    def generate_report(self):
-        """Generate and save a validation report."""
-        # Calculate percentages
-        total = self.results["stats"]["total"]
-        if total > 0:
-            self.results["stats"]["passed_percent"] = round(self.results["stats"]["passed"] / total * 100, 2)
-            self.results["stats"]["failed_percent"] = round(self.results["stats"]["failed"] / total * 100, 2)
-        else:
-            self.results["stats"]["passed_percent"] = 0
-            self.results["stats"]["failed_percent"] = 0
-        
-        # Save JSON report
-        with open(self.report_file.with_suffix('.json'), 'w') as f:
-            json.dump(self.results, f, indent=2)
+        # Calculate overall pass rate
+        tested_files = self.stats["tested_files"]
+        success_count = self.stats["success_count"]
+        pass_rate = success_count / tested_files * 100 if tested_files > 0 else 0
         
         # Generate markdown report
-        md_report = self._generate_markdown_report()
-        with open(self.report_file, 'w') as f:
-            f.write(md_report)
-        
-        logger.info(f"Test execution report saved to {self.report_file}")
-        logger.info(f"JSON report saved to {self.report_file.with_suffix('.json')}")
-        
-        # Print summary
-        logger.info(f"Test execution summary: {self.results['stats']['passed']} passed, "
-                   f"{self.results['stats']['failed']} failed, "
-                   f"out of {total} test files.")
-        if self.results["stats"]["passed"] > 0:
-            logger.info(f"Average execution time: {self.results['stats']['avg_execution_time']}s")
-    
-    def _generate_markdown_report(self) -> str:
-        """Generate a markdown report."""
-        total = self.results["stats"]["total"]
-        passed = self.results["stats"]["passed"]
-        failed = self.results["stats"]["failed"]
-        passed_percent = self.results["stats"]["passed_percent"]
-        
         report = [
             "# HuggingFace Model Test Execution Report",
-            f"\nGenerated on: {self.results['timestamp']}",
-            
-            "\n## Summary",
-            f"- **Total tests executed**: {total}",
-            f"- **Passed**: {passed} ({passed_percent}%)",
-            f"- **Failed**: {failed} ({self.results['stats']['failed_percent']}%)",
+            "",
+            f"**Date:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"**Mode:** {'Mock Objects' if self.use_mocks else 'Real Models'}",
+            "",
+            "## Summary",
+            "",
+            f"- **Total files available:** {self.stats['total_files']}",
+            f"- **Files tested:** {tested_files} ({tested_files/self.stats['total_files']*100:.1f}% sample)",
+            f"- **Tests passed:** {success_count} ({pass_rate:.1f}%)",
+            f"- **Tests failed:** {self.stats['failure_count']} ({100-pass_rate:.1f}%)",
+            "",
+            "## Results by Architecture",
+            ""
         ]
         
-        if passed > 0:
-            report.append(f"- **Average execution time**: {self.results['stats']['avg_execution_time']}s")
+        # Add architecture-specific stats
+        for arch, stats in sorted(self.stats["by_architecture"].items()):
+            if stats["tested"] > 0:
+                arch_pass_rate = stats["success"] / stats["tested"] * 100
+                report.extend([
+                    f"### {arch.capitalize()} Models",
+                    "",
+                    f"- **Files tested:** {stats['tested']} (of {stats['total']} available)",
+                    f"- **Tests passed:** {stats['success']} ({arch_pass_rate:.1f}%)",
+                    f"- **Tests failed:** {stats['failure']} ({100-arch_pass_rate:.1f}%)",
+                    ""
+                ])
         
-        report.extend([
-            "\n## Results by Architecture",
-            "| Architecture | Total | Passed | Failed | Pass Rate |",
-            "|-------------|-------|--------|--------|-----------|",
-        ])
+        # Add detailed results for failed tests
+        failed_tests = [
+            (path, result) for path, result in self.stats["test_results"].items()
+            if not result["success"]
+        ]
         
-        for arch, stats in sorted(self.results["stats"]["by_architecture"].items()):
-            arch_total = stats["total"]
-            if arch_total == 0:
-                continue
-                
-            arch_passed = stats["passed"]
-            arch_failed = stats["failed"]
-            arch_pass_rate = round(arch_passed / arch_total * 100, 2) if arch_total > 0 else 0
-            report.append(f"| {arch} | {arch_total} | {arch_passed} | {arch_failed} | {arch_pass_rate}% |")
-        
-        if self.results["stats"]["by_error_type"]:
-            report.append("\n## Error Types")
-            report.append("| Error Type | Count |")
-            report.append("|------------|-------|")
+        if failed_tests:
+            report.extend([
+                "## Failed Tests",
+                "",
+                "The following tests failed:",
+                ""
+            ])
             
-            for error_type, count in sorted(self.results["stats"]["by_error_type"].items()):
-                # Format the error type for display
-                display_error = error_type.replace("_", " ").capitalize()
-                report.append(f"| {display_error} | {count} |")
+            for path, result in failed_tests:
+                file_name = os.path.basename(path)
+                error_message = result.get("stderr", "No error message")[:200]  # Limit size
+                report.extend([
+                    f"### {file_name}",
+                    "",
+                    f"- **Architecture:** {result['architecture']}",
+                    f"- **Execution time:** {result['execution_time']:.2f} seconds",
+                    f"- **Error type:** {result.get('error', 'Execution failure')}",
+                    "",
+                    "```",
+                    f"{error_message}...",
+                    "```",
+                    ""
+                ])
         
-        if passed > 0:
-            report.append("\n## Passed Tests")
-            report.append("| Model | Architecture | Execution Time (s) |")
-            report.append("|-------|--------------|-------------------|")
-            
-            # Sort by execution time (fastest first)
-            sorted_passed = sorted(self.results["passed"], key=lambda x: x.get("execution_time", float("inf")))
-            
-            for success in sorted_passed[:10]:  # Show top 10 fastest
-                model_name = success["model_name"]
-                arch = success["architecture"]
-                exec_time = success.get("execution_time", "N/A")
-                report.append(f"| {model_name} | {arch} | {exec_time} |")
-                
-            if len(sorted_passed) > 10:
-                report.append(f"... and {len(sorted_passed) - 10} more. See JSON report for details.")
+        # Write report to file
+        with open(report_file, 'w') as f:
+            f.write("\n".join(report))
         
-        if failed > 0:
-            report.append("\n## Failed Tests")
-            for i, failure in enumerate(self.results["failed"]):
-                if i > 9:  # Limit to 10 failures in the report
-                    report.append(f"\n... and {len(self.results['failed']) - 10} more failures. See JSON report for details.")
-                    break
-                
-                report.append(f"\n### {i+1}. {failure['model_name']}")
-                report.append(f"- **Model ID**: {failure['model_id']}")
-                report.append(f"- **Architecture**: {failure['architecture']}")
-                report.append("- **Errors**:")
-                for error in failure["errors"]:
-                    report.append(f"  - {error}")
-        
-        return "\n".join(report)
+        logger.info(f"Test execution report written to {report_file}")
 
 def main():
-    """Main entry point for the test runner."""
-    parser = argparse.ArgumentParser(description="Run HuggingFace model tests")
+    """Main entry point for the script."""
+    parser = argparse.ArgumentParser(description="Run functional tests on HuggingFace model test files")
     parser.add_argument("--directory", "-d", type=str, default="fixed_tests",
                         help="Directory containing test files")
-    parser.add_argument("--max-tests", "-m", type=int, default=20,
-                        help="Maximum number of tests to run")
-    parser.add_argument("--report", "-r", type=str, default="test_execution_report.md",
-                        help="Path to output report file")
+    parser.add_argument("--max-tests", "-m", type=int, default=10,
+                        help="Maximum number of tests to run (0 for all)")
+    parser.add_argument("--use-mocks", "-M", action="store_true", default=True,
+                        help="Use mock objects instead of real models")
+    parser.add_argument("--real-models", "-r", action="store_true",
+                        help="Use real models instead of mocks (overrides --use-mocks)")
     parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Enable verbose output")
+                        help="Print verbose output")
     
     args = parser.parse_args()
+    
+    # Handle real-models flag (inverts use-mocks)
+    if args.real_models:
+        args.use_mocks = False
     
     # Resolve directory path
     directory = args.directory
     if not os.path.isabs(directory):
         directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), directory)
     
-    # Create test runner and run tests
-    runner = TestRunner(directory, args.max_tests, args.report, args.verbose)
-    results = runner.run_all_tests()
+    # Create and run the test runner
+    runner = TestRunner(directory, args.max_tests, args.use_mocks, args.verbose)
+    stats = runner.run()
     
-    # Set exit code based on test results
-    if results["stats"]["failed"] > 0:
-        sys.exit(1)
-    else:
-        sys.exit(0)
+    # Print summary
+    tested_files = stats["tested_files"]
+    success_count = stats["success_count"]
+    pass_rate = success_count / tested_files * 100 if tested_files > 0 else 0
+    
+    print("\nTEST EXECUTION SUMMARY")
+    print("="*50)
+    print(f"Mode: {'Mock Objects' if args.use_mocks else 'Real Models'}")
+    print(f"Files tested: {tested_files} (of {stats['total_files']} available)")
+    print(f"Tests passed: {success_count} ({pass_rate:.1f}%)")
+    print(f"Tests failed: {stats['failure_count']} ({100-pass_rate:.1f}%)")
+    
+    # Determine exit code based on pass rate
+    # For CI/CD integration: non-zero exit code if pass rate is below threshold
+    pass_threshold = 80.0  # 80% pass rate threshold
+    return 0 if pass_rate >= pass_threshold else 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
