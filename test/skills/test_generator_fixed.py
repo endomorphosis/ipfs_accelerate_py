@@ -27,7 +27,7 @@ from pathlib import Path
 # Define architecture types for model mapping
 ARCHITECTURE_TYPES = {
     "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta", "layoutlm", "canine", "roformer"],
-    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt", "codellama", "qwen2", "qwen3"],
+    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt", "codellama", "qwen2", "qwen3", "stablelm"],
     "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
     "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2", "mobilenet-v2"],
     "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip", "blip-2", "chinese-clip", "clipseg"],
