@@ -2,8 +2,8 @@
 
 
 """
-Test file for GPTNeo models.
-This file tests the GPTNeo model type from HuggingFace Transformers.
+Test file for VisionEncoderDecoder models.
+This file tests the VisionEncoderDecoder model type from HuggingFace Transformers.
 """
 
 import os
@@ -36,13 +36,13 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-# Registry for GPTNeo models
-GPT_NEO_MODELS_REGISTRY = {
-    "EleutherAI/gpt-neo-1.3B": {
-        "full_name": "GPTNeo Base",
-        "architecture": "decoder-only",
-        "description": "GPTNeo model for text generation",
-        "model_type": "gpt-neo",
+# Registry for VisionEncoderDecoder models
+VISION_ENCODER_DECODER_MODELS_REGISTRY = {
+    "nlpconnect/vit-gpt2-image-captioning": {
+        "full_name": "VisionEncoderDecoder Base",
+        "architecture": "vision-text",
+        "description": "VisionEncoderDecoder model for text generation",
+        "model_type": "vision-encoder-decoder",
         "parameters": "1.3B",
         "context_length": 2048,
         "embedding_dim": 768,
@@ -59,16 +59,16 @@ def select_device():
     else:
         return "cpu"
 
-class TestGPTNeoModels:
+class TestVisionEncoderDecoderModels:
     """
-    Test class for GPTNeo models.
+    Test class for VisionEncoderDecoder models.
     """
     
-    def __init__(self, model_id="EleutherAI/gpt-neo-1.3B", device=None):
-        """Initialize the test class for GPTNeo models.
+    def __init__(self, model_id="nlpconnect/vit-gpt2-image-captioning", device=None):
+        """Initialize the test class for VisionEncoderDecoder models.
         
         Args:
-            model_id: The model ID to test (default: "EleutherAI/gpt-neo-1.3B")
+            model_id: The model ID to test (default: "nlpconnect/vit-gpt2-image-captioning")
             device: The device to run tests on (default: None = auto-select)
         """
         self.model_id = model_id
@@ -82,14 +82,14 @@ class TestGPTNeoModels:
                 logger.warning("Transformers library not available, skipping pipeline test")
                 return {"success": False, "error": "Transformers library not available"}
                 
-            logger.info(f"Testing GPTNeo model {self.model_id} with pipeline API on {self.device}")
+            logger.info(f"Testing VisionEncoderDecoder model {self.model_id} with pipeline API on {self.device}")
             
             # Record start time
             start_time = time.time()
             
             # Initialize the pipeline with the appropriate task
             pipe = transformers.pipeline(
-                "text-generation", 
+                "image-to-text", 
                 model=self.model_id,
                 device=self.device if self.device != "cpu" else -1
             )
@@ -99,7 +99,7 @@ class TestGPTNeoModels:
             logger.info(f"Model loading time: {load_time:.2f} seconds")
             
             # Test with a task-appropriate input
-            test_input = "GPTNeo is a model that"
+            test_input = "An image of a cat."
             
             # Record inference start time
             inference_start = time.time()
@@ -146,17 +146,17 @@ class TestGPTNeoModels:
 
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test GPTNeo HuggingFace models")
-    parser.add_argument("--model", type=str, default="EleutherAI/gpt-neo-1.3B", help="Model ID to test")
+    parser = argparse.ArgumentParser(description="Test VisionEncoderDecoder HuggingFace models")
+    parser.add_argument("--model", type=str, default="nlpconnect/vit-gpt2-image-captioning", help="Model ID to test")
     parser.add_argument("--device", type=str, help="Device to run tests on (cuda, cpu)")
     
     args = parser.parse_args()
     
     # Initialize the test class
-    gpt_neo_tester = TestGPTNeoModels(model_id=args.model, device=args.device)
+    vision_encoder_decoder_tester = TestVisionEncoderDecoderModels(model_id=args.model, device=args.device)
     
     # Run the tests
-    results = gpt_neo_tester.run_tests()
+    results = vision_encoder_decoder_tester.run_tests()
     
     # Print a summary
     success = results["pipeline"].get("success", False)
@@ -165,7 +165,7 @@ def main():
     
     if success:
         print(f"  Successfully tested {args.model}")
-        print(f"  - Device: {gpt_neo_tester.device}")
+        print(f"  - Device: {vision_encoder_decoder_tester.device}")
         print(f"  - Inference time: {results['pipeline'].get('inference_time', 'N/A'):.4f}s")
     else:
         print(f"  Failed to test {args.model}")

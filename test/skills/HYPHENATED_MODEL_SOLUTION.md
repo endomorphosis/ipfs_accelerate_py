@@ -88,9 +88,40 @@ Example output:
 3. **Extensibility**: New hyphenated model types can be easily added to the mapping.
 4. **Syntax Correctness**: Generated files are validated for syntax before writing.
 
+## Enhancements Implemented
+
+Since the initial implementation, several key enhancements have been added:
+
+1. **Expanded Model Coverage**: Added 30+ hyphenated model types across all architecture categories (encoder-only, decoder-only, encoder-decoder, vision, speech, and multimodal).
+
+2. **Task-Specific Pipeline Configuration**: Each model type now uses the appropriate task for its pipeline:
+   - Encoder-only models use "fill-mask"
+   - Decoder-only models use "text-generation"
+   - Encoder-decoder models use "text2text-generation"
+   - Vision models use "image-classification"
+   - Speech models use "automatic-speech-recognition"
+   - And specialized tasks for other model types
+
+3. **Task-Specific Test Inputs**: Each model now uses appropriate test inputs based on its task:
+   - Fill-mask models use masked sentences
+   - Text generation models use prompts
+   - Vision models use image descriptions
+   - Speech models use audio clip descriptions
+
+4. **Model-Type Detection**: Improved model type detection to properly categorize models into the correct architecture type.
+
+5. **Registry Integration**: Added detailed model registry entries for each hyphenated model type with default model recommendations.
+
+6. **Automated Regeneration**: Created a dedicated script (`regenerate_hyphenated_tests.py`) to regenerate test files for all hyphenated models.
+
 ## Next Steps
 
-1. Test the solution with all hyphenated model types in the HuggingFace ecosystem.
-2. Add task-specific content for different model types (e.g., fill-mask for encoder models, text-generation for decoder models).
-3. Update the model registry with more detailed information for hyphenated models.
-4. Consider extending the approach to other problematic model names (e.g., those with unusual characters).
+1. **Extended Validation**: Test the solution with real model invocations to ensure the generated test files can correctly load and run models.
+
+2. **Pipeline Customization**: Add model-specific pipeline parameters (e.g., max length for text generation, top_k/top_p for sampling).
+
+3. **Hardware Specific Optimizations**: Integrate with the hardware detection system to optimize model loading for different hardware configurations.
+
+4. **Error Handling Improvements**: Add more robust error handling for different model types and potential API changes.
+
+5. **Cross-Validation**: Add a validation step that tests generated files with syntax validators and actual execution tests.

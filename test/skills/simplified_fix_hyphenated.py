@@ -26,25 +26,90 @@ OUTPUT_DIR = CURRENT_DIR / "fixed_tests"
 # Maps for hyphenated model names
 # Format: 'original-name': ('valid_identifier', 'ClassName', 'CLASS_NAME')
 HYPHENATED_MODEL_MAPS = {
+    # Decoder-only models
     'gpt-j': ('gpt_j', 'GPTJ', 'GPT_J'),
     'gpt-neo': ('gpt_neo', 'GPTNeo', 'GPT_NEO'),
     'gpt-neox': ('gpt_neox', 'GPTNeoX', 'GPT_NEOX'),
+    'gpt-sw3': ('gpt_sw3', 'GPTSW3', 'GPT_SW3'),
+    
+    # Encoder-only models
     'xlm-roberta': ('xlm_roberta', 'XLMRoBERTa', 'XLM_ROBERTA'),
+    'bert-generation': ('bert_generation', 'BertGeneration', 'BERT_GENERATION'),
+    'roc-bert': ('roc_bert', 'RoCBert', 'ROC_BERT'),
+    'data2vec-text': ('data2vec_text', 'Data2VecText', 'DATA2VEC_TEXT'),
+    
+    # Vision models
+    'data2vec-vision': ('data2vec_vision', 'Data2VecVision', 'DATA2VEC_VISION'),
+    'chinese-clip': ('chinese_clip', 'ChineseCLIP', 'CHINESE_CLIP'),
+    'vit-mae': ('vit_mae', 'ViTMAE', 'VIT_MAE'),
+    'vit-msn': ('vit_msn', 'ViTMSN', 'VIT_MSN'),
+    
+    # Speech models
+    'wav2vec2-base': ('wav2vec2_base', 'Wav2Vec2Base', 'WAV2VEC2_BASE'),
+    'wav2vec2-bert': ('wav2vec2_bert', 'Wav2Vec2Bert', 'WAV2VEC2_BERT'),
+    'speech-to-text': ('speech_to_text', 'SpeechToText', 'SPEECH_TO_TEXT'),
+    'speech-to-text-2': ('speech_to_text_2', 'SpeechToText2', 'SPEECH_TO_TEXT_2'),
+    'data2vec-audio': ('data2vec_audio', 'Data2VecAudio', 'DATA2VEC_AUDIO'),
+    
+    # Multimodal models
     'vision-text-dual-encoder': ('vision_text_dual_encoder', 'VisionTextDualEncoder', 'VISION_TEXT_DUAL_ENCODER'),
     'vision-encoder-decoder': ('vision_encoder_decoder', 'VisionEncoderDecoder', 'VISION_ENCODER_DECODER'),
-    'wav2vec2-base': ('wav2vec2_base', 'Wav2Vec2Base', 'WAV2VEC2_BASE'),
     'video-llava': ('video_llava', 'VideoLlava', 'VIDEO_LLAVA'),
+    'seamless-m4t': ('seamless_m4t', 'SeamlessM4T', 'SEAMLESS_M4T'),
+    'blip-2': ('blip_2', 'Blip2', 'BLIP_2'),
+    'kosmos-2': ('kosmos_2', 'Kosmos2', 'KOSMOS_2'),
+    'llava-next': ('llava_next', 'LlavaNext', 'LLAVA_NEXT'),
+    'llava-next-video': ('llava_next_video', 'LlavaNextVideo', 'LLAVA_NEXT_VIDEO'),
+    'conditional-detr': ('conditional_detr', 'ConditionalDETR', 'CONDITIONAL_DETR'),
+    
+    # Encoder-decoder models
+    'flan-t5': ('flan_t5', 'FlanT5', 'FLAN_T5'),
+    'xlm-prophetnet': ('xlm_prophetnet', 'XLMProphetNet', 'XLM_PROPHETNET'),
+    'longt5': ('longt5', 'LongT5', 'LONG_T5'),
 }
 
 # Default models for each type
 DEFAULT_MODELS = {
+    # Decoder-only models
     'gpt-j': 'EleutherAI/gpt-j-6b',
     'gpt-neo': 'EleutherAI/gpt-neo-1.3B',
+    'gpt-neox': 'EleutherAI/gpt-neox-20b',
+    'gpt-sw3': 'AI-Sweden-Models/gpt-sw3-20b',
+    
+    # Encoder-only models
     'xlm-roberta': 'xlm-roberta-base',
+    'bert-generation': 'google/bert_for_seq_generation_L-24_bbc_encoder',
+    'roc-bert': 'weiweishi/roc-bert-base-zh',
+    'data2vec-text': 'facebook/data2vec-text-base',
+    
+    # Vision models
+    'data2vec-vision': 'facebook/data2vec-vision-base',
+    'chinese-clip': 'OFA-Sys/chinese-clip-vit-base-patch16',
+    'vit-mae': 'facebook/vit-mae-base',
+    'vit-msn': 'facebook/vit-msn-base',
+    
+    # Speech models
+    'wav2vec2-base': 'facebook/wav2vec2-base',
+    'wav2vec2-bert': 'facebook/wav2vec2-bert-base',
+    'speech-to-text': 'facebook/s2t-small-librispeech-asr',
+    'speech-to-text-2': 'facebook/s2t-wav2vec2-large-en-de',
+    'data2vec-audio': 'facebook/data2vec-audio-base-960h',
+    
+    # Multimodal models
     'vision-text-dual-encoder': 'openai/clip-vit-base-patch32',
     'vision-encoder-decoder': 'nlpconnect/vit-gpt2-image-captioning',
-    'wav2vec2-base': 'facebook/wav2vec2-base',
     'video-llava': 'llava-hf/llava-1.5-7b-hf',
+    'seamless-m4t': 'facebook/seamless-m4t-medium',
+    'blip-2': 'Salesforce/blip2-opt-2.7b',
+    'kosmos-2': 'microsoft/kosmos-2-patch14-224',
+    'llava-next': 'llava-hf/llava-v1.6-34b-hf',
+    'llava-next-video': 'llava-hf/llava-next-video-34b-hf',
+    'conditional-detr': 'microsoft/conditional-detr-resnet-50',
+    
+    # Encoder-decoder models
+    'flan-t5': 'google/flan-t5-base',
+    'xlm-prophetnet': 'microsoft/xprophetnet-large-wiki100-cased',
+    'longt5': 'google/long-t5-local-base',
 }
 
 # Architecture types for model mapping
@@ -137,6 +202,67 @@ def check_file_syntax(content, filename="<string>"):
                 error_message += "\n" + " " * (e.offset - 1) + "^"
         return False, error_message
 
+def get_default_task_for_model(model_name, arch_type=None):
+    """Get the default task for a model type."""
+    if arch_type is None:
+        arch_type = get_architecture_type(model_name)
+    
+    # Map architecture types to tasks
+    task_map = {
+        "encoder-only": "fill-mask",
+        "decoder-only": "text-generation",
+        "encoder-decoder": "text2text-generation",
+        "vision": "image-classification",
+        "vision-text": "image-to-text",
+        "speech": "automatic-speech-recognition",
+        "multimodal": "image-to-text"
+    }
+    
+    # Special case overrides
+    special_tasks = {
+        "chinese-clip": "zero-shot-image-classification",
+        "clip": "zero-shot-image-classification",
+        "vision-text-dual-encoder": "zero-shot-image-classification",
+        "vit": "image-classification",
+        "swin": "image-classification",
+        "deit": "image-classification",
+        "beit": "image-classification",
+        "data2vec-vision": "image-classification",
+        "data2vec-text": "fill-mask",
+        "data2vec-audio": "automatic-speech-recognition",
+        "wav2vec2-bert": "automatic-speech-recognition",
+        "speech-to-text": "automatic-speech-recognition",
+        "speech-to-text-2": "translation",
+        "blip-2": "image-to-text",
+        "video-llava": "video-to-text",
+        "llava-next-video": "video-to-text",
+        "conditional-detr": "object-detection"
+    }
+    
+    # Check if we have a special task for this model
+    if model_name in special_tasks:
+        return special_tasks[model_name]
+    
+    # Otherwise use the architecture type
+    return task_map.get(arch_type, "fill-mask")  # Default to fill-mask for unknown types
+
+def get_test_input_for_task(task, model_name, class_name):
+    """Get an appropriate test input for a task."""
+    test_inputs = {
+        "fill-mask": f"{class_name} is a <mask> language model.",
+        "text-generation": f"{class_name} is a model that",
+        "text2text-generation": "translate English to French: Hello, how are you?",
+        "image-classification": "An image of a cat.",  # Note: This will be replaced with actual image loading code
+        "image-to-text": "An image of a cat.",  # Note: This will be replaced with actual image loading code
+        "automatic-speech-recognition": "A short audio clip",  # Note: This will be replaced with audio loading code
+        "zero-shot-image-classification": "An image of a cat.",  # Note: This will be replaced with image loading code
+        "translation": "Hello, how are you?",
+        "object-detection": "An image of a street scene.",  # Note: This will be replaced with image loading code
+        "video-to-text": "A short video clip"  # Note: This will be replaced with video loading code
+    }
+    
+    return test_inputs.get(task, f"{class_name} is a model for {task}.")
+
 def create_hyphenated_test_file(model_name, output_dir=None):
     """Create a fixed test file for a model with a hyphenated name using direct string replacement."""
     if output_dir is None:
@@ -154,8 +280,10 @@ def create_hyphenated_test_file(model_name, output_dir=None):
         model_upper = get_upper_case_name(model_name)
         arch_type = get_architecture_type(model_name)
         default_model = DEFAULT_MODELS.get(model_name, f"{model_name}-base")
+        default_task = get_default_task_for_model(model_name, arch_type)
+        test_input = get_test_input_for_task(default_task, model_name, class_name)
         
-        logger.info(f"Creating test file for {model_name} -> id: {model_id}, class: {class_name}, type: {arch_type}")
+        logger.info(f"Creating test file for {model_name} -> id: {model_id}, class: {class_name}, type: {arch_type}, task: {default_task}")
         
         # Generate file content directly to avoid template syntax issues
         content = f"""#!/usr/bin/env python3
@@ -248,9 +376,9 @@ class Test{class_name}Models:
             # Record start time
             start_time = time.time()
             
-            # Initialize the pipeline
+            # Initialize the pipeline with the appropriate task
             pipe = transformers.pipeline(
-                "text-generation", 
+                "{default_task}", 
                 model=self.model_id,
                 device=self.device if self.device != "cpu" else -1
             )
@@ -259,8 +387,8 @@ class Test{class_name}Models:
             load_time = time.time() - start_time
             logger.info(f"Model loading time: {{load_time:.2f}} seconds")
             
-            # Test with a simple input
-            test_input = "{class_name} is a model that"
+            # Test with a task-appropriate input
+            test_input = "{test_input}"
             
             # Record inference start time
             inference_start = time.time()

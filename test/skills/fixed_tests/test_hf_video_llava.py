@@ -2,8 +2,8 @@
 
 
 """
-Test file for GPTNeo models.
-This file tests the GPTNeo model type from HuggingFace Transformers.
+Test file for VideoLlava models.
+This file tests the VideoLlava model type from HuggingFace Transformers.
 """
 
 import os
@@ -36,13 +36,13 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-# Registry for GPTNeo models
-GPT_NEO_MODELS_REGISTRY = {
-    "EleutherAI/gpt-neo-1.3B": {
-        "full_name": "GPTNeo Base",
-        "architecture": "decoder-only",
-        "description": "GPTNeo model for text generation",
-        "model_type": "gpt-neo",
+# Registry for VideoLlava models
+VIDEO_LLAVA_MODELS_REGISTRY = {
+    "llava-hf/llava-1.5-7b-hf": {
+        "full_name": "VideoLlava Base",
+        "architecture": "multimodal",
+        "description": "VideoLlava model for text generation",
+        "model_type": "video-llava",
         "parameters": "1.3B",
         "context_length": 2048,
         "embedding_dim": 768,
@@ -59,16 +59,16 @@ def select_device():
     else:
         return "cpu"
 
-class TestGPTNeoModels:
+class TestVideoLlavaModels:
     """
-    Test class for GPTNeo models.
+    Test class for VideoLlava models.
     """
     
-    def __init__(self, model_id="EleutherAI/gpt-neo-1.3B", device=None):
-        """Initialize the test class for GPTNeo models.
+    def __init__(self, model_id="llava-hf/llava-1.5-7b-hf", device=None):
+        """Initialize the test class for VideoLlava models.
         
         Args:
-            model_id: The model ID to test (default: "EleutherAI/gpt-neo-1.3B")
+            model_id: The model ID to test (default: "llava-hf/llava-1.5-7b-hf")
             device: The device to run tests on (default: None = auto-select)
         """
         self.model_id = model_id
@@ -82,14 +82,14 @@ class TestGPTNeoModels:
                 logger.warning("Transformers library not available, skipping pipeline test")
                 return {"success": False, "error": "Transformers library not available"}
                 
-            logger.info(f"Testing GPTNeo model {self.model_id} with pipeline API on {self.device}")
+            logger.info(f"Testing VideoLlava model {self.model_id} with pipeline API on {self.device}")
             
             # Record start time
             start_time = time.time()
             
             # Initialize the pipeline with the appropriate task
             pipe = transformers.pipeline(
-                "text-generation", 
+                "video-to-text", 
                 model=self.model_id,
                 device=self.device if self.device != "cpu" else -1
             )
@@ -99,7 +99,7 @@ class TestGPTNeoModels:
             logger.info(f"Model loading time: {load_time:.2f} seconds")
             
             # Test with a task-appropriate input
-            test_input = "GPTNeo is a model that"
+            test_input = "A short video clip"
             
             # Record inference start time
             inference_start = time.time()
@@ -146,17 +146,17 @@ class TestGPTNeoModels:
 
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test GPTNeo HuggingFace models")
-    parser.add_argument("--model", type=str, default="EleutherAI/gpt-neo-1.3B", help="Model ID to test")
+    parser = argparse.ArgumentParser(description="Test VideoLlava HuggingFace models")
+    parser.add_argument("--model", type=str, default="llava-hf/llava-1.5-7b-hf", help="Model ID to test")
     parser.add_argument("--device", type=str, help="Device to run tests on (cuda, cpu)")
     
     args = parser.parse_args()
     
     # Initialize the test class
-    gpt_neo_tester = TestGPTNeoModels(model_id=args.model, device=args.device)
+    video_llava_tester = TestVideoLlavaModels(model_id=args.model, device=args.device)
     
     # Run the tests
-    results = gpt_neo_tester.run_tests()
+    results = video_llava_tester.run_tests()
     
     # Print a summary
     success = results["pipeline"].get("success", False)
@@ -165,7 +165,7 @@ def main():
     
     if success:
         print(f"  Successfully tested {args.model}")
-        print(f"  - Device: {gpt_neo_tester.device}")
+        print(f"  - Device: {video_llava_tester.device}")
         print(f"  - Inference time: {results['pipeline'].get('inference_time', 'N/A'):.4f}s")
     else:
         print(f"  Failed to test {args.model}")
