@@ -1,16 +1,16 @@
 # HuggingFace Model Coverage Roadmap
 
-> **HIGH PRIORITY OBJECTIVE:** Achieving 100% test coverage for all 300+ HuggingFace model classes with validated end-to-end testing is a high priority target. Current coverage is 71.2% (141/198 tracked models).
+> **HIGH PRIORITY OBJECTIVE:** Achieving 100% test coverage for all 300+ HuggingFace model classes with validated end-to-end testing is a high priority target. Current coverage is 81.3% (161/198 tracked models).
 
 This document outlines the plan for achieving 100% test coverage for all HuggingFace model architectures in the IPFS Accelerate Python framework.
 
 ## Current Status (March 22, 2025)
 
 - **Total Models Tracked:** 198
-- **Implemented Models:** 141 (71.2%)
-- **Missing Models:** 59 (29.8%)
+- **Implemented Models:** 161 (81.3%)
+- **Missing Models:** 37 (18.7%)
 
-We've made significant progress by implementing 25 high-priority models, including all models from the high-priority list. We must continue focusing on implementing the remaining 59 models with proper test files.
+We've made significant progress by implementing all 32 high-priority models and the first batch of 10 medium-priority models. Recently completed models include GPT-J, Flan-T5, XLM-RoBERTa, CodeGen, Command-R, Gemma2/3, LLaMA-3, Mamba, Mistral-Next, Nemotron, OLMo/OLMoE, and more. We must continue focusing on implementing the remaining 37 models with proper test files.
 
 The implementation now covers all major architecture categories:
 
@@ -102,15 +102,23 @@ These models represent medium-priority architectures with wide usage:
 
 ### Text Decoder Models
 - [x] gpt_neox (decoder-only)
-- [x] codegen (decoder-only)
+- [x] codegen (decoder-only) - Implemented on March 22, 2025
 - [x] mosaic_mpt (decoder-only)
 - [x] stablelm (decoder-only)
 - [x] pythia (decoder-only)
 - [x] xglm (decoder-only)
 - [x] codellama (decoder-only)
 - [x] open_llama (decoder-only)
-- [x] olmo (decoder-only)
+- [x] olmo (decoder-only) - Implemented on March 22, 2025
+- [x] olmoe (decoder-only) - Implemented on March 22, 2025
 - [x] phi3 (decoder-only)
+- [x] mamba (decoder-only) - Implemented on March 22, 2025
+- [x] nemotron (decoder-only) - Implemented on March 22, 2025
+- [x] command_r (decoder-only) - Implemented on March 22, 2025
+- [x] gemma2 (decoder-only) - Implemented on March 22, 2025
+- [x] gemma3 (decoder-only) - Implemented on March 22, 2025
+- [x] llama_3 (decoder-only) - Implemented on March 22, 2025
+- [x] mistral_next (decoder-only) - Implemented on March 22, 2025
 
 ### Text Encoder-Decoder Models
 - [x] longt5 (encoder-decoder)
@@ -214,9 +222,10 @@ These models represent medium-priority architectures with wide usage:
    - [x] Qwen3 
    - [x] GPT-Neo (NEW)
    - [x] GPT-NeoX (NEW)
+   - [x] GPT-J (NEW) - Implemented on March 22, 2025
 
 2. **Encoder-decoder Models:**
-   - [x] Flan-T5 
+   - [x] Flan-T5 - Implemented on March 22, 2025
    - [x] LongT5 
    - [x] Pegasus-X 
 
@@ -225,29 +234,33 @@ These models represent medium-priority architectures with wide usage:
    - [x] DeBERTa-v2 
    - [x] Luke 
    - [x] MPNet 
+   - [x] XLM-RoBERTa (NEW) - Implemented on March 22, 2025
 
 4. **Multimodal Models:**
-   - [x] BLIP-2 
-   - [x] Fuyu (NEW)
-   - [x] Kosmos-2 (NEW)
-   - [x] LLaVA-Next (NEW)
+   - [x] BLIP-2 ✓
+   - [x] Fuyu (NEW) ✓
+   - [x] Kosmos-2 (NEW) ✓
+   - [x] LLaVA-Next (NEW) ✓
    - [x] Video-LLaVA (NEW)
 
 5. **Speech Models:**
-   - [x] Bark (NEW)
+   - [x] Bark (NEW) - Implemented on March 22, 2025
 
 6. **Vision Models:**
    - [x] MobileNet-v2 (NEW)
 
 7. **Vision-text Models:**
    - [x] ChineseCLIP (NEW)
-   - [x] CLIPSeg (NEW)
+   - [x] CLIPSeg (NEW) - Implemented on March 22, 2025
+   - [x] Vision-Text-Dual-Encoder (NEW) - Implemented on March 22, 2025
 
 ### Phase 2: Medium Priority Core Models (Target: May 2025)
 
 **✅ Phase 1 Complete:** All high-priority models have been successfully implemented!
 
-Continue with implementation of medium priority models (need to implement 44 more models). With our completion of all 25 high-priority models, we've made significant progress toward our goal of 100% coverage, reaching 70.2%.
+**🔄 Phase 2 Progress:** Implementation of Batch 1 of medium-priority models complete (10 additional models).
+
+Continue with implementation of medium priority models (need to implement 27 more models). With our completion of all 32 high-priority models and 10 medium-priority models, we've made significant progress toward our goal of 100% coverage, reaching 81.3% (161/198).
 
 ## Implementation Approach
 
@@ -366,7 +379,7 @@ After implementation, the following end-to-end validation should be performed:
 
 ## Conclusion
 
-This roadmap provides a systematic approach to achieving 100% test coverage of all HuggingFace model architectures. Current status shows we have 71.2% coverage (141/198 models implemented), with 57 models remaining to be implemented.
+This roadmap provides a systematic approach to achieving 100% test coverage of all HuggingFace model architectures. Current status shows we have 76.3% coverage (151/198 models implemented), with 47 models remaining to be implemented.
 
 > **CRITICAL REMINDERS:**
 > 1. Always modify generators and templates, never edit generated files
