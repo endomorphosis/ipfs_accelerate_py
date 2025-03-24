@@ -3,73 +3,75 @@
 
 """
 Templates package for the refactored generator suite.
-Provides access to all template implementations.
+Provides access to all architecture and hardware templates.
 """
 
 import logging
 
-# Import template classes
-from .base import TemplateBase
-from .encoder_only import EncoderOnlyTemplate
-from .decoder_only import DecoderOnlyTemplate
-from .encoder_decoder import EncoderDecoderTemplate
-from .vision import VisionTemplate
-from .vision_text import VisionTextTemplate
-from .speech import SpeechTemplate
-
-# Set up template registry
-TEMPLATES = {
-    "base": TemplateBase,
-    "encoder-only": EncoderOnlyTemplate,
-    "decoder-only": DecoderOnlyTemplate,
-    "encoder-decoder": EncoderDecoderTemplate,
-    "vision": VisionTemplate,
-    "vision-text": VisionTextTemplate,
-    "speech": SpeechTemplate,
-}
-
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
 
+# Import base hardware template
+from .base_hardware import BaseHardwareTemplate, CPUHardwareTemplate
+
+# Import hardware-specific templates
+# These are new templates for our modular design
+try:
+    from .cuda_hardware import CudaHardwareTemplate
+except ImportError:
+    pass  # Optional, will be imported where needed
+
+try:
+    from .rocm_hardware import RocmHardwareTemplate
+except ImportError:
+    pass  # Optional, will be imported where needed
+
+try:
+    from .openvino_hardware import OpenvinoHardwareTemplate
+except ImportError:
+    pass  # Optional, will be imported where needed
+
+try:
+    from .apple_hardware import AppleHardwareTemplate
+except ImportError:
+    pass  # Optional, will be imported where needed
+
+try:
+    from .qualcomm_hardware import QualcommHardwareTemplate
+except ImportError:
+    pass  # Optional, will be imported where needed
+
+# Import pipeline templates
+from .base_pipeline import BasePipelineTemplate
+try:
+    from .text_pipeline import TextPipelineTemplate
+except ImportError:
+    # Fallback to the example implementation in base_pipeline
+    from .base_pipeline import TextPipelineTemplate
+
+try:
+    from .image_pipeline import ImagePipelineTemplate
+except ImportError:
+    pass  # Optional, will be imported where needed
+
+# Import architecture templates
+from .base_architecture import BaseArchitectureTemplate
+
+# Note: We don't import the architecture-specific template classes here
+# because they may contain template syntax for code generation
+# They will be imported directly where needed
+
 # Package exports
 __all__ = [
-    'TemplateBase',
-    'EncoderOnlyTemplate',
-    'DecoderOnlyTemplate',
-    'EncoderDecoderTemplate',
-    'VisionTemplate',
-    'VisionTextTemplate',
-    'SpeechTemplate',
-    'TEMPLATES',
-    'get_template'
+    'BaseHardwareTemplate',
+    'CPUHardwareTemplate',
+    'CudaHardwareTemplate',
+    'RocmHardwareTemplate',
+    'OpenvinoHardwareTemplate',
+    'AppleHardwareTemplate',
+    'QualcommHardwareTemplate',
+    'BasePipelineTemplate',
+    'TextPipelineTemplate',
+    'ImagePipelineTemplate',
+    'BaseArchitectureTemplate'
 ]
-
-def get_template(template_name, config=None):
-    """Get a template by name.
-    
-    Args:
-        template_name: Name of the template.
-        config: Optional configuration for the template.
-        
-    Returns:
-        Template instance.
-    """
-    if template_name not in TEMPLATES:
-        raise ValueError(f"Unknown template: {template_name}")
-    
-    template_class = TEMPLATES[template_name]
-    return template_class(config)
-
-def get_all_templates(config=None):
-    """Get all available templates.
-    
-    Args:
-        config: Optional configuration for the templates.
-        
-    Returns:
-        Dictionary of template instances.
-    """
-    templates = {}
-    for name, template_class in TEMPLATES.items():
-        templates[name] = template_class(config)
-    return templates

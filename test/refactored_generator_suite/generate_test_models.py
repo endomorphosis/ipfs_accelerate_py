@@ -20,13 +20,16 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from templates.vision_text import VisionTextArchitectureTemplate
 from templates.speech import SpeechArchitectureTemplate
+from templates.multimodal import MultimodalArchitectureTemplate
 
-# Import hardware template
+# Import hardware templates
 from templates.cpu_hardware import CPUHardwareTemplate
+from templates.cuda_hardware import CudaHardwareTemplate
 
 # Import pipeline templates
 from templates.vision_text_pipeline import VisionTextPipelineTemplate
 from templates.audio_pipeline import AudioPipelineTemplate
+from templates.multimodal_pipeline import MultimodalPipelineTemplate
 
 # Import template composer if it exists
 try:
@@ -137,6 +140,58 @@ def generate_speech_model(output_dir, model_name='whisper'):
         logger.error(f"Error generating speech model implementation: {e}")
         return None
 
+def generate_multimodal_model(output_dir, model_name='flava', use_cuda=False):
+    """Generate a multimodal model implementation."""
+    logger.info(f"Generating multimodal model implementation for {model_name}...")
+    
+    try:
+        # Initialize templates
+        multimodal_arch = MultimodalArchitectureTemplate()
+        cpu_hardware = CPUHardwareTemplate()
+        cuda_hardware = CudaHardwareTemplate()
+        multimodal_pipeline = MultimodalPipelineTemplate()
+        
+        # Generate file path
+        file_path = os.path.join(output_dir, f"hf_{model_name}.py")
+        
+        if COMPOSER_AVAILABLE:
+            # Use template composer
+            hardware_templates = {'cpu': cpu_hardware, 'cuda': cuda_hardware}
+            architecture_templates = {'multimodal': multimodal_arch}
+            pipeline_templates = {'multimodal': multimodal_pipeline}
+            
+            # Select hardware types based on use_cuda parameter
+            hw_types = ['cpu', 'cuda'] if use_cuda else ['cpu']
+            
+            composer = TemplateComposer(hardware_templates, architecture_templates, pipeline_templates, output_dir)
+            success, output_file = composer.generate_model_implementation(
+                model_name=model_name,
+                arch_type='multimodal',
+                hardware_types=hw_types,
+                force=True
+            )
+            
+            if success:
+                logger.info(f"Successfully generated multimodal model implementation at {output_file}")
+                return output_file
+            else:
+                logger.error(f"Failed to generate multimodal model implementation")
+                return None
+        else:
+            # Direct template composition
+            logger.warning("Using direct template composition instead of TemplateComposer")
+            # Basic implementation - in a real scenario, we would implement the direct composition logic
+            with open(file_path, 'w') as f:
+                f.write("# Generated multimodal model implementation\n")
+                f.write("# This is a placeholder for direct template composition\n")
+                f.write("# In a real scenario, we would combine the templates manually\n")
+            logger.info(f"Generated placeholder implementation at {file_path}")
+            return file_path
+            
+    except Exception as e:
+        logger.error(f"Error generating multimodal model implementation: {e}")
+        return None
+
 def verify_generated_file(file_path):
     """Verify that the generated file has the expected content."""
     if not file_path or not os.path.exists(file_path):
@@ -172,6 +227,14 @@ def main():
     # Generate speech model
     speech_file = generate_speech_model(output_dir, 'whisper')
     verify_generated_file(speech_file)
+    
+    # Generate multimodal model (CPU only)
+    multimodal_file = generate_multimodal_model(output_dir, 'flava', use_cuda=False)
+    verify_generated_file(multimodal_file)
+    
+    # Generate multimodal model with CUDA support
+    multimodal_cuda_file = generate_multimodal_model(output_dir, 'llava', use_cuda=True)
+    verify_generated_file(multimodal_cuda_file)
     
     logger.info("Test model generation completed.")
 

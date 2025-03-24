@@ -577,7 +577,7 @@ mock_output = {
         return """
 # Vision-Text pipeline utilities
 def resize_image(image, target_size=(224, 224)):
-    """Resize an image to the target size."""
+    # Resize an image to the target size
     if isinstance(image, str) and os.path.exists(image):
         image = Image.open(image)
     
@@ -586,7 +586,7 @@ def resize_image(image, target_size=(224, 224)):
     return image
 
 def encode_image_base64(image):
-    """Encode an image to base64 string."""
+    # Encode an image to base64 string
     if isinstance(image, str) and os.path.exists(image):
         with open(image, 'rb') as f:
             return base64.b64encode(f.read()).decode('utf-8')

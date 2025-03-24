@@ -122,3 +122,32 @@ We prioritized:
 2. Add integration with benchmarking infrastructure
 3. Enhance error handling and reporting
 4. Add more automation for batch processing
+
+## March 2025 Updates
+
+### Refactored Generator Suite (March 23, 2025)
+
+A completely refactored generator suite has been implemented in the `/test/refactored_generator_suite/` directory. Major improvements include:
+
+1. **Template Structure Overhaul**: Completely restructured templates with:
+   - `MockHandler` system for consistent platform mocking
+   - Hardware-specific initialization and handler methods
+   - Improved device lifecycle management and error handling
+   - Test cases for validation across platforms
+   - Standardized public API methods
+
+2. **Hardware Support Expansion**: Added support for 8 hardware backends:
+   - CPU, CUDA, ROCm, MPS, OpenVINO, QNN
+   - Added WebNN and WebGPU support for browser environments
+
+3. **Consistent Handler Pattern**: All templates now use the same handler creation pattern:
+   - `create_cpu_handler()`, `create_cuda_handler()`, etc. for platform-specific handlers
+   - Automatic fallback to CPU when hardware is unavailable
+   - Comprehensive error handling and informative logging
+
+4. **API Standardization**: Consistent interface across all model architectures:
+   - Same method signatures for all model types
+   - Common benchmarking capabilities
+   - Standard CLI for testing generated files
+   
+See `/test/refactored_generator_suite/README.md` and `/test/refactored_generator_suite/templates/README.md` for detailed documentation.

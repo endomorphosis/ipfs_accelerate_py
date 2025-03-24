@@ -601,3 +601,7 @@ def extract_expert_patterns(expert_selection):
             "question_answering",  # Many MoE models can do QA
             "summarization"        # Many MoE models can do summarization
         ]
+
+
+# Define alias for compatibility with the verification script
+MixOfExpertsPipelineTemplate = MoEPipelineTemplate

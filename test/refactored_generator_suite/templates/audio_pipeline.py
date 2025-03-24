@@ -482,7 +482,7 @@ mock_output = {
         return """
 # Audio pipeline utilities
 def encode_audio_base64(audio_path):
-    """Encode an audio file to base64 string."""
+    # Encode an audio file to base64 string
     if not os.path.exists(audio_path):
         return None
         
@@ -490,7 +490,7 @@ def encode_audio_base64(audio_path):
         return base64.b64encode(f.read()).decode('utf-8')
 
 def save_audio_to_file(audio_array, sample_rate, output_path):
-    """Save a numpy array audio to a WAV file."""
+    # Save a numpy array audio to a WAV file
     try:
         import scipy.io.wavfile as wavfile
         wavfile.write(output_path, sample_rate, audio_array)

@@ -124,6 +124,16 @@ class TemplateComposer:
             pipeline_type = "vision-text"  # Use dedicated vision-text pipeline
         elif arch_type in ["speech"]:
             pipeline_type = "audio"  # Use dedicated audio pipeline
+        elif arch_type in ["multimodal"]:
+            pipeline_type = "multimodal"  # Use dedicated multimodal pipeline
+        elif arch_type in ["diffusion", "vae", "sam"]:
+            pipeline_type = "diffusion"  # Use dedicated diffusion pipeline
+        elif arch_type in ["mixture-of-experts", "moe", "sparse"]:
+            pipeline_type = "moe"  # Use dedicated MoE pipeline
+        elif arch_type in ["state-space", "mamba", "rwkv", "linear-attention", "recurrent"]:
+            pipeline_type = "state-space"  # Use dedicated State-Space pipeline
+        elif arch_type in ["rag", "retrieval-augmented-generation", "retrieval-augmented"]:
+            pipeline_type = "rag"  # Use dedicated RAG pipeline
         else:
             pipeline_type = "text"  # Default to text
         
@@ -153,20 +163,18 @@ class TemplateComposer:
         Generate a model implementation file.
         
         Args:
-            model_name: The model name
-            arch_type: The architecture type
+            model_name: The model name (for reference and documentation)
+            arch_type: The architecture type (used for the filename)
             hardware_types: List of hardware types to include
             force: Whether to overwrite existing files
             
         Returns:
             Tuple of (success, output file path)
         """
-        # Generate output file path with the correct prefix
-        # Ensure model_name doesn't already have the hf_ prefix
-        if model_name.startswith("hf_"):
-            output_file = os.path.join(self.output_dir, f"{model_name}.py")
-        else:
-            output_file = os.path.join(self.output_dir, f"hf_{model_name}.py")
+        # Generate output file path using architecture type rather than model name
+        # Architecture type better represents what the file implements
+        arch_type_filename = arch_type.replace('-', '_')
+        output_file = os.path.join(self.output_dir, f"hf_{arch_type_filename}.py")
             
         logger.info(f"Output file will be: {output_file}")
         
@@ -255,10 +263,13 @@ class TemplateComposer:
                                   model_name: str,
                                   arch_template: BaseArchitectureTemplate) -> str:
         """Generate class definition."""
-        return f"""class hf_{model_name}:
-    \"\"\"HuggingFace {model_name.upper()} implementation.
+        # Use architecture type for class name, not model name
+        arch_type = arch_template.architecture_type
+        class_name = arch_type.replace('-', '_')
+        return f"""class hf_{class_name}:
+    \"\"\"HuggingFace {arch_template.architecture_name} implementation for {model_name.upper()}.
     
-    This class provides standardized interfaces for working with {model_name.upper()} models
+    This class provides standardized interfaces for working with {arch_template.architecture_name} models
     across different hardware backends (CPU, CUDA, OpenVINO, Apple, Qualcomm).
     
     {arch_template.model_description}
@@ -270,7 +281,7 @@ class TemplateComposer:
                              arch_template: BaseArchitectureTemplate) -> str:
         """Generate initialization method."""
         return f"""    def __init__(self, resources=None, metadata=None):
-        \"\"\"Initialize the {model_name.upper()} model.
+        \"\"\"Initialize the {arch_template.architecture_name} model.
         
         Args:
             resources (dict): Dictionary of shared resources (torch, transformers, etc.)

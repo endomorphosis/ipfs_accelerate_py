@@ -1,327 +1,167 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
-Encoder-Only Template for the refactored generator suite.
-This template is used for generating tests for encoder-only models like BERT, RoBERTa, etc.
-"""
+Encoder-Only Architecture Template for IPFS Accelerate Python.
 
-import logging
-from typing import Dict, Any, List
-
-from .base import TemplateBase
-
-
-class EncoderOnlyTemplate(TemplateBase):
-    """Template for encoder-only models like BERT, RoBERTa, etc."""
-    
-    def get_metadata(self) -> Dict[str, Any]:
-        """Get metadata about this template.
-        
-        Returns:
-            Dictionary of metadata.
-        """
-        metadata = super().get_metadata()
-        metadata.update({
-            "name": "EncoderOnlyTemplate",
-            "description": "Template for encoder-only models",
-            "supported_architectures": ["encoder-only"],
-            "supported_models": [
-                "bert", "roberta", "distilbert", "albert", "electra", "camembert", 
-                "xlm-roberta", "deberta", "ernie", "rembert"
-            ]
-        })
-        return metadata
-    
-    def get_imports(self) -> List[str]:
-        """Get the imports required by this template.
-        
-        Returns:
-            List of import statements.
-        """
-        imports = super().get_imports()
-        imports.extend([
-            "import torch",
-            "from transformers import AutoModelForMaskedLM, AutoTokenizer",
-            "from transformers import pipeline"
-        ])
-        return imports
-    
-    def get_template_str(self) -> str:
-        """Get the template string.
-        
-        Returns:
-            The template as a string.
-        """
-        return """#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-Generated test for {{ model_info.name }}
-Architecture: {{ model_info.architecture }}
-Generated on: {{ timestamp }}
+This module implements the architecture template for encoder-only models like BERT, RoBERTa, etc.
 """
 
-{% for import_stmt in imports %}
-{{ import_stmt }}
-{% endfor %}
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Hardware detection
-def select_device():
-    """Select the appropriate device based on what's available."""
-    {% if has_cuda %}
-    if torch.cuda.is_available():
-        logger.info("CUDA is available. Using GPU.")
-        return "cuda"
-    {% endif %}
-    {% if has_rocm %}
-    if hasattr(torch, 'version') and hasattr(torch.version, 'hip') and torch.version.hip is not None:
-        logger.info("ROCm is available. Using AMD GPU.")
-        return "cuda"  # ROCm uses the cuda device type
-    {% endif %}
-    {% if has_mps %}
-    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        logger.info("MPS is available. Using Apple Silicon GPU.")
-        return "mps"
-    {% endif %}
-    logger.info("No GPU acceleration available. Using CPU.")
-    return "cpu"
-
-# Environment variable for mock mode
-def is_mock_mode():
-    """Check if running in mock mode."""
-    return os.environ.get("MOCK_TRANSFORMERS", "").lower() == "true"
-
-class {{ model_info.class_name }}Test:
-    """Test case for {{ model_info.name }} model."""
-    
-    def __init__(self, model_name="{{ model_info.id }}", output_dir=None, device=None):
-        """Initialize the test.
-        
-        Args:
-            model_name: Name or path of the model to test
-            output_dir: Optional directory to save outputs
-            device: Device to run on (cuda, cpu, etc.)
-        """
-        self.model_name = model_name
-        self.output_dir = output_dir or "./output"
-        self.device = device or select_device()
-        os.makedirs(self.output_dir, exist_ok=True)
-        
-        # Tracking variables
-        self.results = {}
-        self.start_time = None
-    
-    def run(self):
-        """Run all tests for this model."""
-        logger.info(f"Running tests for {self.model_name} on {self.device}")
-        self.start_time = time.time()
-        
-        # Run tests
-        self.results["pipeline"] = self.test_pipeline()
-        self.results["masked_lm"] = self.test_masked_lm()
-        {% if has_openvino %}
-        self.results["openvino"] = self.test_openvino()
-        {% endif %}
-        
-        # Summarize
-        self.results["duration"] = time.time() - self.start_time
-        self.results["success"] = all(r.get("success", False) for r in self.results.values() if isinstance(r, dict))
-        
-        self._save_results()
-        return self.results
-    
-    def test_pipeline(self):
-        """Test the pipeline API."""
-        logger.info("Testing pipeline API...")
-        result = {"name": "pipeline", "success": False}
-        
-        try:
-            if is_mock_mode():
-                logger.info("Mock mode enabled. Skipping actual pipeline creation.")
-                result["success"] = True
-                result["mock"] = True
-                return result
-            
-            # Create pipeline
-            fill_mask = pipeline(
-                "fill-mask",
-                model=self.model_name,
-                device=self.device
-            )
-            
-            # Test inference
-            test_input = f"Paris is the {fill_mask.tokenizer.mask_token} of France."
-            outputs = fill_mask(test_input)
-            
-            # Validate outputs
-            if isinstance(outputs, list) and len(outputs) > 0:
-                # Log the top prediction
-                top_prediction = outputs[0]["token_str"]
-                logger.info(f"Top prediction: {top_prediction}")
-                
-                # Check if 'capital' is in top predictions
-                result["has_capital"] = any("capital" in output["token_str"].lower() for output in outputs)
-                result["top_predictions"] = [output["token_str"] for output in outputs[:3]]
-                result["success"] = True
-            else:
-                result["error"] = f"Unexpected output format: {outputs}"
-        
-        except Exception as e:
-            logger.error(f"Error in pipeline test: {str(e)}")
-            result["error"] = str(e)
-        
-        return result
-    
-    def test_masked_lm(self):
-        """Test masked language modeling."""
-        logger.info("Testing masked language modeling...")
-        result = {"name": "masked_lm", "success": False}
-        
-        try:
-            if is_mock_mode():
-                logger.info("Mock mode enabled. Skipping actual model loading.")
-                result["success"] = True
-                result["mock"] = True
-                return result
-            
-            # Load model and tokenizer
-            tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            model = AutoModelForMaskedLM.from_pretrained(self.model_name).to(self.device)
-            
-            # Test inference
-            test_input = f"Paris is the {tokenizer.mask_token} of France."
-            inputs = tokenizer(test_input, return_tensors="pt").to(self.device)
-            
-            with torch.no_grad():
-                outputs = model(**inputs)
-                
-            # Get predictions
-            mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[1]
-            logits = outputs.logits
-            mask_token_logits = logits[0, mask_token_index, :]
-            top_tokens = torch.topk(mask_token_logits, 5, dim=1).indices[0].tolist()
-            top_tokens_str = [tokenizer.decode(token) for token in top_tokens]
-            
-            logger.info(f"Top tokens: {top_tokens_str}")
-            result["top_tokens"] = top_tokens_str
-            result["success"] = True
-        
-        except Exception as e:
-            logger.error(f"Error in masked LM test: {str(e)}")
-            result["error"] = str(e)
-        
-        return result
-    
-    {% if has_openvino %}
-    def test_openvino(self):
-        """Test OpenVINO integration."""
-        logger.info("Testing OpenVINO integration...")
-        result = {"name": "openvino", "success": False}
-        
-        try:
-            from optimum.intel import OVModelForMaskedLM
-            
-            if is_mock_mode():
-                logger.info("Mock mode enabled. Skipping actual OpenVINO model loading.")
-                result["success"] = True
-                result["mock"] = True
-                return result
-            
-            # Load tokenizer and model
-            tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            model = OVModelForMaskedLM.from_pretrained(
-                self.model_name,
-                from_transformers=True,
-                device="CPU"
-            )
-            
-            # Test inference
-            test_input = f"Paris is the {tokenizer.mask_token} of France."
-            inputs = tokenizer(test_input, return_tensors="pt")
-            
-            outputs = model(**inputs)
-            
-            # Get predictions
-            mask_token_index = torch.where(inputs["input_ids"] == tokenizer.mask_token_id)[1]
-            logits = outputs.logits
-            mask_token_logits = logits[0, mask_token_index, :]
-            top_tokens = torch.topk(mask_token_logits, 5, dim=1).indices[0].tolist()
-            top_tokens_str = [tokenizer.decode(token) for token in top_tokens]
-            
-            logger.info(f"OpenVINO top tokens: {top_tokens_str}")
-            result["top_tokens"] = top_tokens_str
-            result["success"] = True
-            
-        except ImportError:
-            logger.warning("OpenVINO not available. Skipping test.")
-            result["error"] = "OpenVINO not available"
-            
-        except Exception as e:
-            logger.error(f"Error in OpenVINO test: {str(e)}")
-            result["error"] = str(e)
-            
-        return result
-    {% endif %}
-    
-    def _save_results(self):
-        """Save test results to output directory."""
-        if not self.output_dir:
-            return
-            
-        try:
-            results_file = os.path.join(self.output_dir, f"{self.model_name.replace('/', '_')}_results.json")
-            with open(results_file, 'w') as f:
-                json.dump(self.results, f, indent=2)
-            logger.info(f"Results saved to {results_file}")
-        except Exception as e:
-            logger.error(f"Error saving results: {str(e)}")
+from typing import Dict, Any, Optional, List
+from templates.base_architecture import BaseArchitectureTemplate
 
 
-def parse_args():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Test the {{ model_info.name }} model")
-    parser.add_argument("--model", default="{{ model_info.id }}", help="Model name or path")
-    parser.add_argument("--output-dir", help="Output directory for test results")
-    parser.add_argument("--device", help="Device to run on (cuda, cpu, etc.)")
-    parser.add_argument("--mock", action="store_true", help="Run in mock mode")
-    return parser.parse_args()
+class EncoderOnlyArchitectureTemplate(BaseArchitectureTemplate):
+    """Encoder-only architecture template implementation for models like BERT, RoBERTa, etc."""
+    
+    def __init__(self):
+        """Initialize the encoder-only architecture template."""
+        super().__init__()
+        self.architecture_type = "encoder-only"
+        self.architecture_name = "Encoder-Only"
+        self.model_description = "This model uses a bidirectional Transformer encoder architecture."
+        self.supported_task_types = ["text_embedding", "text_classification", "token_classification", "question_answering", "fill_mask"]
+        self.default_task_type = "text_embedding"
+        self.hidden_size = 768  # Default hidden size for BERT-base
+        self.test_input = "This is an example input for an encoder-only model."
+    
+    def get_model_class(self, task_type: str) -> str:
+        """Get the model class for this architecture and task type."""
+        if task_type == "text_embedding":
+            return "AutoModel"
+        elif task_type == "text_classification":
+            return "AutoModelForSequenceClassification"
+        elif task_type == "token_classification":
+            return "AutoModelForTokenClassification"
+        elif task_type == "question_answering":
+            return "AutoModelForQuestionAnswering"
+        elif task_type == "fill_mask":
+            return "AutoModelForMaskedLM"
+        else:
+            return "AutoModel"
+    
+    def get_processor_class(self, task_type: str) -> str:
+        """Get the processor class for this architecture and task type."""
+        return "AutoTokenizer"
+    
+    def get_input_processing_code(self, task_type: str) -> str:
+        """Get the input processing code for this architecture and task type."""
+        return """
+# Process the input text
+inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
 
+# Move inputs to the correct device
+inputs = {k: v.to(device) for k, v in inputs.items()}
+"""
+    
+    def get_output_processing_code(self, task_type: str) -> str:
+        """Get the output processing code for this architecture and task type."""
+        if task_type == "text_embedding":
+            return """
+# Extract embeddings from the last hidden state
+# For sentence embeddings, use the mean of the last hidden state
+embeddings = outputs.last_hidden_state.mean(dim=1).cpu().numpy().tolist()
+"""
+        elif task_type == "text_classification":
+            return """
+# Extract logits and convert to probabilities
+logits = outputs.logits
+predictions = torch.nn.functional.softmax(logits, dim=-1).cpu().numpy().tolist()
+"""
+        elif task_type == "token_classification":
+            return """
+# Extract token predictions
+token_predictions = outputs.logits.argmax(dim=-1).cpu().numpy().tolist()
+"""
+        elif task_type == "question_answering":
+            return """
+# Extract answer start and end logits
+start_logits = outputs.start_logits
+end_logits = outputs.end_logits
+start_idx = torch.argmax(start_logits, dim=-1).item()
+end_idx = torch.argmax(end_logits, dim=-1).item()
+answer_tokens = inputs.input_ids[0][start_idx:end_idx+1]
+answer = tokenizer.decode(answer_tokens)
+"""
+        elif task_type == "fill_mask":
+            return """
+# Extract masked token predictions
+mask_token_index = torch.where(inputs.input_ids == tokenizer.mask_token_id)[1]
+mask_logits = outputs.logits[:, mask_token_index, :]
+mask_predictions = torch.topk(mask_logits, k=5, dim=-1)
+predicted_token_ids = mask_predictions.indices[0].tolist()
+predicted_tokens = [tokenizer.decode([token_id]) for token_id in predicted_token_ids]
+"""
+        else:
+            return """
+# Generic output processing
+result = outputs
+"""
+    
+    def get_mock_processor_code(self) -> str:
+        """Get code for creating a mock tokenizer."""
+        return """
+def mock_tokenize(text, return_tensors=None, padding=None, truncation=None, max_length=None):
+    # Create a mock tokenizer output
+    import torch
+    
+    if isinstance(text, str):
+        batch_size = 1
+        text_batch = [text]
+    else:
+        batch_size = len(text)
+        text_batch = text
+    
+    # Create mock input IDs (just use token positions as IDs)
+    input_ids = torch.tensor([[i for i in range(min(len(t.split()), 32))] for t in text_batch])
+    attention_mask = torch.ones_like(input_ids)
+    
+    # Add a batch dimension if necessary
+    if return_tensors == "pt":
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask
+        }
+    else:
+        return {
+            "input_ids": input_ids.numpy(),
+            "attention_mask": attention_mask.numpy()
+        }
+"""
+    
+    def get_mock_output_code(self) -> str:
+        """Get code for creating mock outputs."""
+        return """
+# Create mock outputs for encoder-only models
+if isinstance(self, torch.nn):
+    hidden_size = kwargs.get("hidden_size", 768)
+else:
+    hidden_size = 768
 
-def main():
-    """Main entry point."""
-    args = parse_args()
-    
-    # Set mock mode if requested
-    if args.mock:
-        os.environ["MOCK_TRANSFORMERS"] = "true"
-    
-    # Run the test
-    test = {{ model_info.class_name }}Test(
-        model_name=args.model,
-        output_dir=args.output_dir,
-        device=args.device
-    )
-    results = test.run()
-    
-    # Print results summary
-    success = results.get("success", False)
-    print(f"\nTest results for {args.model}:")
-    print(f"Success: {'Yes' if success else 'No'}")
-    print(f"Duration: {results.get('duration', 0):.2f} seconds")
-    
-    if not success:
-        for name, result in results.items():
-            if isinstance(result, dict) and not result.get("success", True):
-                print(f"Failed: {name} - {result.get('error', 'Unknown error')}")
-    
-    return 0 if success else 1
+# Mock output based on task type
+mock_outputs = type('obj', (object,), {
+    'last_hidden_state': torch.randn(batch_size, sequence_length, hidden_size)
+})
 
-
-if __name__ == "__main__":
-    sys.exit(main())
+return mock_outputs
+"""
+    
+    def get_model_config(self, model_name: str) -> str:
+        """Get model-specific configuration code."""
+        return f"""
+def get_model_config(self):
+    \"\"\"Get the model configuration.\"\"\"
+    return {{
+        "model_name": "{model_name}",
+        "architecture": "encoder-only",
+        "hidden_size": 768,
+        "num_attention_heads": 12,
+        "num_hidden_layers": 12,
+        "primary_task": "text_embedding",
+        "supported_tasks": [
+            "text_embedding",
+            "text_classification",
+            "token_classification",
+            "question_answering",
+            "fill_mask"
+        ]
+    }}
 """

@@ -1,191 +1,162 @@
-# Refactored Generator Suite
+# HuggingFace Model Test Generator Suite
 
-This is a comprehensive refactored generator suite for HuggingFace model testing. 
-
-## Overview
-
-The HuggingFace Model Generator is a sophisticated system that automatically creates test files for HuggingFace model architectures. It enables 100% test coverage of the 300+ HuggingFace model classes through a component-based architecture with clear separation of concerns.
+A comprehensive framework for generating hardware-aware test files for HuggingFace Transformer models. The generator creates test files that detect available hardware, select appropriate model implementations, handle graceful degradation, and support specialized model architectures.
 
 ## Key Features
 
-- **Component-Based Architecture**: Clear separation of concerns with modular components.
-- **Template System**: Specialized templates for each model architecture (encoder-only, decoder-only, etc.).
-- **Model Registry**: Centralized registry for model metadata and configuration.
-- **Hardware Detection**: Intelligent detection of available hardware (CUDA, ROCm, MPS, etc.).
-- **Coverage Reporting**: Track and report on test coverage across all model architectures.
-- **Batch Generation**: Generate tests in batches for efficient processing.
-- **Mock Support**: Automatic support for running tests in mock mode for CI/CD.
-- **Validation & Auto-fixing**: Automatic validation and fixing of common syntax issues.
-- **HuggingFace API Integration**: Generate tests by searching the HuggingFace model hub.
-- **Coverage Matrix Export**: Export coverage reports in multiple formats (Markdown, HTML, CSV, JSON).
+- **Hardware-Aware Testing**: Automatically detects and utilizes available hardware (CPU, CUDA, ROCm, MPS, OpenVINO, Qualcomm)
+- **ROCm Support**: Full support for AMD GPUs via both the HIP API and CUDA compatibility layer
+- **Architecture-Specific Templates**: Specialized templates for different model architectures
+- **Graceful Degradation**: Generates code with robust fallback mechanisms
+- **Mock Implementations**: Creates mock implementations when hardware is unavailable
+- **Syntax Validation**: Validates and fixes syntax in generated code
+- **Batch Generation**: Efficiently generates tests for multiple models
 
-## Architecture
+## Supported Hardware Backends
 
-The generator suite is built on a modular, component-based architecture:
+- **CPU**: Default fallback for all models
+- **CUDA**: NVIDIA GPU support with half-precision optimization
+- **ROCm**: AMD GPU support via both HIP API and CUDA compatibility layer
+- **OpenVINO**: Intel hardware acceleration
+- **MPS**: Apple Silicon (M1/M2/M3) acceleration
+- **Qualcomm**: Qualcomm AI Engine support for mobile/edge devices
 
-```
-refactored_generator_suite/
-├── generator_core/       - Core generator components
-├── templates/            - Template implementations for each architecture
-├── model_selection/      - Model selection components
-├── hardware/             - Hardware detection and recommendation
-├── dependencies/         - Dependency management
-├── syntax/               - Syntax validation and fixing
-├── scripts/              - Utility scripts
-├── results/              - Result collection
-├── tests/                - Test suite
-├── examples/             - Example implementations
-```
+## Supported Model Architectures
 
-## Template System
+- **Encoder-Only**: BERT, RoBERTa, ALBERT, etc.
+- **Decoder-Only**: GPT-2, GPT-J, LLaMA, etc.
+- **Encoder-Decoder**: T5, BART, etc.
+- **Vision**: ViT, DeiT, etc.
+- **Vision-Text**: CLIP, BLIP, etc.
+- **Speech**: Wav2Vec2, Whisper, etc.
+- **Multimodal**: FLAVA, etc.
+- **RAG**: Retrieval-Augmented Generation models
+- **Graph Neural Networks**: Graphormer, etc.
+- **Time Series**: PatchTST, Informer, etc.
+- **Object Detection**: DETR, Mask2Former, etc.
+- **Mixture of Experts**: Mixtral, etc.
+- **State Space Models**: Mamba, etc.
 
-The template system supports all major HuggingFace model architectures:
+## ROCm Support Details
 
-1. **Encoder-Only Models** (BERT, RoBERTa, etc.)
-2. **Decoder-Only Models** (GPT-2, LLaMA, etc.)
-3. **Encoder-Decoder Models** (T5, BART, etc.)
-4. **Vision Models** (ViT, ResNet, etc.)
-5. **Vision-Text Models** (CLIP, BLIP, etc.)
-6. **Speech Models** (Whisper, Wav2Vec2, etc.)
+The suite includes comprehensive support for AMD GPUs through ROCm (Radeon Open Compute), including:
 
-Each template handles architecture-specific requirements like imports, model classes, and testing approaches.
+1. **Dual-path detection**: 
+   - Via the dedicated HIP API (`torch.hip.is_available()`)
+   - Via CUDA compatibility layer (detecting AMD GPUs in CUDA device names)
+
+2. **Environment variable support**:
+   - `HIP_VISIBLE_DEVICES` for controlling visible AMD GPUs
+   - Fallback to `CUDA_VISIBLE_DEVICES` when using the CUDA compatibility layer
+
+3. **Half-precision optimization**:
+   - Tests for half-precision support on AMD GPUs
+   - Graceful fallback to full precision when not supported
+
+4. **Memory management**:
+   - Reports available GPU memory
+   - Implements proper VRAM cleanup after operations
+
+5. **AMD-specific error handling**:
+   - Robust error handling for AMD-specific failure modes
+   - Graceful degradation to CPU when necessary
 
 ## Usage
 
-### Generating a Coverage Report
+### Basic Usage
 
 ```bash
-make report
+# Generate a test file for a specific model
+python test_generator_suite.py --model bert --output ./tests/test_bert.py
+
+# Generate tests for all encoder-only models
+python test_generator_suite.py --batch --architecture encoder-only --output-dir ./generated_tests/
+
+# Generate tests from a list of models in a file
+python test_generator_suite.py --batch --batch-file models.txt --output-dir ./generated_tests/
+
+# Generate with a report
+python test_generator_suite.py --model bert --report --report-file bert_report.md
 ```
 
-This command analyzes the current state of HuggingFace model test coverage and generates a report showing:
+### Example Script
 
-- Overall coverage statistics
-- Coverage by architecture
-- Missing models by priority
-- Implementation plan
-
-### Generating High Priority Models
+The included `test_generator_example.py` demonstrates how to use the generator programmatically:
 
 ```bash
-make generate-high
+python test_generator_example.py
 ```
 
-This generates test files for all high-priority missing models from the roadmap.
+### Verifying ROCm Support
 
-### Generating Models by Architecture
+To verify ROCm detection and support:
 
 ```bash
-make generate-arch ARCH=decoder-only
+# Check for ROCm environment
+python test_rocm_detection.py
+
+# Test loading a model on ROCm
+python test_rocm_detection.py --run-model
+
+# Verify ROCm support in all templates
+python verify_templates.py
 ```
 
-This generates test files for all missing models of the specified architecture.
+## Repository Structure
 
-### Generating from HuggingFace API
-
-```bash
-make huggingface MODEL_TYPE=llama QUERY="llama-3" LIMIT=3
+```
+refactored_generator_suite/
+├── test_generator_suite.py      # Main generator class
+├── test_generator_example.py    # Example usage script
+├── test_rocm_detection.py       # ROCm testing utility
+├── verify_templates.py          # Template verification tool
+├── generator_core/              # Core generator components
+│   ├── generator.py             # Base generator class
+│   ├── cli.py                   # Command-line interface
+│   ├── config.py                # Configuration management
+│   └── registry.py              # Component registry
+├── generators/                  # Model generators
+│   ├── model_generator.py       # Model-specific generator
+│   └── reference_model_generator.py # Reference model generator
+├── templates/                   # Template files
+│   ├── base.py                  # Base template
+│   ├── encoder_only_template.py # Encoder-only template
+│   ├── decoder_only_template.py # Decoder-only template
+│   ├── hf_reference_template.py # Reference template
+│   ├── rocm_hardware.py         # ROCm hardware template
+│   └── ...                      # Other architecture templates
+├── hardware/                    # Hardware detection
+│   └── hardware_detection.py    # Hardware detector
+├── model_selection/             # Model selection
+│   ├── registry.py              # Model registry
+│   └── selector.py              # Model selector
+└── syntax/                      # Syntax validation and fixing
+    ├── validator.py             # Syntax validator
+    └── fixer.py                 # Syntax fixer
 ```
 
-This searches the HuggingFace API for LLaMA-3 models and generates test files for them.
+## Integration with Existing Pipeline
 
-### Using Advanced Generator with Auto-fixing
+The generator suite integrates with the existing pipeline:
 
-```bash
-make advanced ARCH=vision-text BATCH_SIZE=5
-```
+1. Templates are designed to work with the existing template composer
+2. Hardware detection is compatible with the existing hardware detector
+3. Generated files follow the same conventions as existing test files
+4. ROCm support is implemented consistently across all templates
 
-This uses the advanced generator with automatic syntax fixing for 5 vision-text models.
+## Extending the Generator
 
-### Exporting Coverage Matrix
+To add support for a new model architecture:
 
-```bash
-make export-matrix FORMATS="markdown html csv"
-```
+1. Create a new template file in the `templates/` directory
+2. Add the architecture to the `ARCHITECTURE_TYPES` list in `test_generator_suite.py`
+3. Update the architecture mapping in the `get_model_info` method
 
-This exports the coverage matrix in multiple formats for reporting and visualization.
+To add support for a new hardware backend:
 
-### Validating Generated Tests
-
-```bash
-make validate
-```
-
-This validates the syntax and structure of generated test files.
-
-## Advanced Features
-
-### Customizing Templates
-
-Templates can be customized to handle specific model types with special requirements:
-
-```python
-from templates import TemplateBase
-
-class CustomTemplate(TemplateBase):
-    def get_metadata(self):
-        metadata = super().get_metadata()
-        metadata.update({
-            "name": "CustomTemplate",
-            "description": "Custom template for specialized models",
-            "supported_architectures": ["custom-arch"],
-            "supported_models": ["custom-model"]
-        })
-        return metadata
-    
-    def get_template_str(self):
-        return """
-# Custom template content
-{{ model_info.name }} implementation
-"""
-```
-
-### Automatic Syntax Fixing
-
-The system includes an automatic syntax fixer that can handle common issues:
-
-- Missing parentheses and brackets
-- Unterminated strings
-- Indentation errors
-- Import statement issues
-- Duplicate imports
-- And more
-
-### Batch Processing with Progress Tracking
-
-For large-scale test generation, use the batch processing capabilities with progress tracking:
-
-```bash
-# Generate first batch
-make batch BATCH_SIZE=20 START_INDEX=0
-
-# Generate next batch (automatically indicated in output)
-make batch BATCH_SIZE=20 START_INDEX=20
-```
-
-## Development
-
-To set up a development environment:
-
-1. Clone the repository
-2. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run the test suite:
-   ```bash
-   pytest
-   ```
-
-## Contributing
-
-Contributions to improve the generator suite are welcome! Please follow these steps:
-
-1. Create an issue describing the improvement
-2. Fork the repository
-3. Create a branch for your changes
-4. Make your changes and add tests
-5. Submit a pull request
+1. Add the hardware type to the `HARDWARE_BACKENDS` list
+2. Implement detection logic in the `detect_hardware` method
+3. Create the hardware template in the `templates/` directory
 
 ## License
 

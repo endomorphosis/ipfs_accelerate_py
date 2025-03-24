@@ -1858,6 +1858,15 @@ def get_template_for_architecture(model_type, templates_dir="templates"):
         else:
             logger.warning(f"Hyphenated name template not found, will use architecture-specific template for {model_type}")
     
+    # For models with underscores, use the specialized underscore template
+    elif '_' in model_type:
+        underscore_template = os.path.join(templates_dir, "underscore_name_template.py")
+        if os.path.exists(underscore_template):
+            logger.info(f"Using underscore name template for {model_type}")
+            return underscore_template
+        else:
+            logger.warning(f"Underscore name template not found, will use architecture-specific template for {model_type}")
+    
     # If it's a special architecture type (that itself contains hyphens)
     arch_type = get_architecture_type(model_type)
     if '-' in arch_type:

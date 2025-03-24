@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Test script for Retrieval-Augmented Generation (RAG) pipeline template.
+Test script for Retrieval-Augmented Generation (RAG) pipeline and model templates.
 
-This script tests the RAG pipeline template with different task types
-to ensure it generates the expected code.
+This script tests the RAG pipeline and model templates with different task types
+to ensure they generate the expected code and integrate properly with the
+architecture template system.
 """
 
 import os
@@ -21,8 +22,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Import templates
 from templates.rag import RAGArchitectureTemplate
 from templates.rag_pipeline import RAGPipelineTemplate
+# Import TestRagModel directly from the template file, which would fail due to template variables
+# Instead, we'll test the file's contents directly
 from templates.cpu_hardware import CPUHardwareTemplate
 from templates.cuda_hardware import CudaHardwareTemplate
+from templates.rocm_hardware import RocmHardwareTemplate
 from templates.template_composer import TemplateComposer
 
 
@@ -33,11 +37,12 @@ def create_test_environment():
     rag_pipeline = RAGPipelineTemplate()
     cpu_hardware = CPUHardwareTemplate()
     cuda_hardware = CudaHardwareTemplate()
+    rocm_hardware = RocmHardwareTemplate()
     
     # Create template mappings
     architecture_templates = {'rag': rag_arch}
     pipeline_templates = {'rag': rag_pipeline}
-    hardware_templates = {'cpu': cpu_hardware, 'cuda': cuda_hardware}
+    hardware_templates = {'cpu': cpu_hardware, 'cuda': cuda_hardware, 'rocm': rocm_hardware}
     
     # Create output directory for HuggingFace transformers hardware backend implementations
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'transformers_implementations')
@@ -213,6 +218,57 @@ def test_template_composer_integration():
     return True
 
 
+def test_rag_model_template():
+    """Test the RAG model template file."""
+    logger.info("Testing RAG model template...")
+    
+    try:
+        # Check template file structure
+        template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    'templates/rag_model_template.py')
+        assert os.path.exists(template_path), f"Template file not found at {template_path}"
+        
+        # Read the template file to check its content
+        with open(template_path, 'r') as f:
+            content = f.read()
+        
+        # Verify model template contains essential RAG components
+        assert "class {skillset_class_name}" in content, "Missing main class template"
+        assert "initialize_retriever" in content, "Missing retriever initialization method"
+        assert "retrieve_documents" in content, "Missing document retrieval method"
+        assert "retrieve_and_generate" in content, "Missing retrieve and generate method"
+        assert "analyze_retrieval_quality" in content, "Missing retrieval quality analysis"
+        
+        # Verify ROCm support
+        assert "device == \"rocm\"" in content, "Missing ROCm hardware support"
+        assert "AMD" in content and "Radeon" in content, "Missing AMD GPU detection"
+        
+        # Verify hardware awareness
+        assert "supports_half_precision" in content, "Missing half-precision support detection"
+        assert "hardware_info" in content, "Missing hardware info tracking"
+        
+        # Verify test infrastructure
+        assert "class TestRagModel" in content, "Missing test class"
+        assert "def run_tests" in content, "Missing test runner method"
+        
+        # Verify RAG-specific functionality
+        assert "_create_mock_retriever" in content, "Missing mock retriever creation"
+        assert "_load_documents_from_file" in content, "Missing document loading function"
+        assert "chat" in content, "Missing chat functionality"
+        assert "embed" in content, "Missing embedding functionality"
+        
+        # Verify specialized RAG methods
+        assert "get_parameters" in content, "Missing parameters method"
+        assert "format_context_from_documents" in content or "format_context" in content, "Missing context formatting"
+        
+        logger.info("✅ RAG model template test PASSED!")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ RAG model template test failed: {str(e)}")
+        return False
+
+
 def run_all_tests():
     """Run all RAG pipeline tests."""
     logger.info("Starting RAG pipeline tests...")
@@ -225,6 +281,9 @@ def run_all_tests():
     
     # Test template composer integration
     results.append(test_template_composer_integration())
+    
+    # Test the RAG model template
+    results.append(test_rag_model_template())
     
     # Test full model implementation generation
     results.append(test_rag_generative_qa())
