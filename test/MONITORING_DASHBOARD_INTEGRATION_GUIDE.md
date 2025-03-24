@@ -181,11 +181,14 @@ For running the stand-alone Enhanced Visualization Dashboard with regression det
 # Run with default settings
 python run_enhanced_visualization_dashboard.py
 
-# Run with specific options
-python run_enhanced_visualization_dashboard.py --port 8085 --theme light --browser
+# Run with specific options and enhanced regression visualization
+python run_enhanced_visualization_dashboard.py --port 8085 --theme light --browser --export-format html --regression-report
 
 # Run with DB connection
 python run_enhanced_visualization_dashboard.py --db-path benchmark_db.duckdb
+
+# Run enhanced visualization with end-to-end testing
+python duckdb_api/distributed_testing/tests/run_enhanced_visualization_ui_e2e_test.py --browser
 ```
 
 Command-line options:
@@ -198,11 +201,29 @@ Command-line options:
 --theme                  Dashboard theme (light or dark, default: dark)
 --debug                  Enable debug mode
 --browser                Open dashboard in browser after starting
+--no-regression          Disable regression detection
+--export-format          Export format for visualizations (html, png, svg, pdf, json)
+--regression-report      Generate comprehensive regression report after analysis
+--no-viz-options         Disable visualization options panel
+--run-tests              Run validation tests before starting
+```
+
+For running the visualization UI tests specifically:
+
+```bash
+# Run all visualization UI tests
+./run_visualization_ui_tests.sh
+
+# Check visualization UI components for syntax errors
+python -m py_compile duckdb_api/distributed_testing/tests/test_enhanced_visualization_ui.py
+
+# Run integration tests if pytest is available
+python -m pytest duckdb_api/distributed_testing/tests/test_enhanced_visualization_ui.py -v
 ```
 
 ## Regression Detection Features
 
-The Monitoring Dashboard now includes advanced regression detection capabilities:
+The Monitoring Dashboard now includes advanced regression detection and enhanced visualization capabilities:
 
 ### Running Regression Analysis
 
@@ -212,8 +233,28 @@ To run regression analysis on performance data:
 2. Select the "Regression Detection" tab
 3. Choose a metric to analyze from the dropdown (e.g., latency, throughput)
 4. Click the "Run Regression Analysis" button
-5. View the detected regressions with statistical significance highlighted
-6. Examine regression details in the sidebar, including severity and significance
+5. View the detected regressions with interactive statistical visualizations
+6. Customize your visualization using the options panel:
+   - **Show Confidence Intervals**: Displays statistical confidence bands showing uncertainty
+   - **Show Trend Lines**: Shows trend lines before and after change points to highlight slope changes
+   - **Show Annotations**: Adds detailed statistical annotations with p-values and percentage changes
+7. Select export format from the dropdown (HTML, PNG, SVG, PDF, JSON)
+8. Export visualizations or generate comprehensive reports directly from the options panel
+9. Examine regression details in the sidebar, including severity and statistical significance
+
+### Enhanced Visualization Features
+
+The enhanced regression visualization provides advanced statistical visualization features:
+
+- **Interactive Confidence Intervals**: Visualizes statistical uncertainty with confidence bands
+- **Trend Line Analysis**: Shows before/after trend lines to identify slope changes
+- **P-value Visualization**: Secondary axis showing statistical p-values at change points
+- **Statistical Annotations**: Detailed annotations with p-values and significance levels
+- **Smoothed Representation**: Exponential smoothing to reduce noise in time series data
+- **Interactive Controls**: Toggle visualization features through UI controls
+- **Theme Switching**: Synchronized dark/light themes across visualizations
+- **Export Options**: Save visualizations in multiple formats (HTML, PNG, SVG, PDF, JSON)
+- **Comprehensive Reporting**: Generate detailed statistical reports with embedded visualizations
 
 ### Interpreting Regression Results
 
@@ -222,11 +263,27 @@ The regression detection results include:
 - **Time Series Visualization**: Shows the performance data with regression points highlighted
 - **Change Points**: Vertical lines indicating where significant changes were detected
 - **Regression Annotations**: Shows the percentage change with direction indicators
+- **Confidence Intervals**: Statistical confidence bands showing uncertainty in values
+- **Trend Lines**: Slope lines showing the trend before and after change points
+- **P-values**: Statistical significance values showing confidence in detected changes
 - **Regression Details**: Provides information about each detected regression:
   - **Severity**: Critical, high, medium, or low based on impact
   - **Statistical Significance**: Confidence level in the detected change
   - **Before/After Values**: Metric values before and after the change point
   - **Percentage Change**: The magnitude of the change
+  
+### Export and Reporting
+
+The enhanced visualization features include powerful export and reporting capabilities:
+
+1. Select an export format from the dropdown (HTML, PNG, SVG, PDF, JSON)
+2. Click "Export Visualization" to save the current visualization
+3. Click "Generate Comprehensive Report" to create a detailed HTML report with:
+   - Executive summary of detected regressions
+   - Detailed statistical analysis for each metric
+   - Interactive visualizations embedded in the report
+   - Correlation analysis between metrics
+   - Severity distribution and statistical insights
 
 ### Correlation Analysis
 

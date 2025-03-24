@@ -1,10 +1,79 @@
 # IPFS Accelerate Framework Documentation Index
 
-Last Updated: July 15, 2025
+Last Updated: July 22, 2025
 
 This document provides a comprehensive index of all project documentation, organized by category and implementation phase.
 
 ## Recently Added Documentation
+
+### Real-Time Performance Metrics Dashboard for DRM (NEW - July 22, 2025)
+
+A comprehensive real-time performance metrics dashboard has been implemented for the Dynamic Resource Management system, providing interactive visualization, statistical regression detection, and alerting capabilities:
+
+- [REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md](REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md) - **NEW** Comprehensive documentation for the performance dashboard
+- [run_drm_real_time_dashboard.py](run_drm_real_time_dashboard.py) - **NEW** Runner script for launching the dashboard
+- [drm_real_time_dashboard.py](duckdb_api/distributed_testing/dashboard/drm_real_time_dashboard.py) - **NEW** Implementation of the real-time dashboard
+- [mock_drm.py](duckdb_api/distributed_testing/testing/mock_drm.py) - **NEW** Mock DRM implementation for testing
+- [test_drm_real_time_dashboard.py](duckdb_api/distributed_testing/tests/test_drm_real_time_dashboard.py) - **NEW** Test suite for the real-time dashboard
+
+### Comprehensive Test Refactoring with Template Integration (NEW - March 22, 2025)
+
+A comprehensive test refactoring initiative has been launched with a focus on standardizing test structure, reducing duplication, and improving maintainability:
+
+- [TEST_REFACTORING_PLAN.md](TEST_REFACTORING_PLAN.md) - **NEW** Updated plan for comprehensive test refactoring
+- [template_integration/TEMPLATE_REFACTORING_GUIDE.md](template_integration/TEMPLATE_REFACTORING_GUIDE.md) - **NEW** Guide for integrating templates with refactored test suite
+- [template_integration/TEMPLATE_INTEGRATION_COMPLETED.md](template_integration/TEMPLATE_INTEGRATION_COMPLETED.md) - **NEW** Completion report for template integration with refactored test suite
+- [run_refactored_test_suite.py](run_refactored_test_suite.py) - **NEW** Runner for the refactored test suite
+- [migrate_tests.py](migrate_tests.py) - **NEW** Migration tool for converting existing tests
+- [analyze_test_ast_report.py](analyze_test_ast_report.py) - **NEW** Analysis tool for test code patterns
+- [generate_test_ast_report.py](generate_test_ast_report.py) - **NEW** AST generation tool for test files
+
+Key features of the refactoring initiative:
+- **Standardized Base Classes**: Hierarchy of specialized test base classes (BaseTest, ModelTest, etc.)
+- **Consistent Directory Structure**: Logical organization of tests by type and purpose
+- **Reduced Duplication**: Identification and elimination of redundant test code
+- **Template Integration**: Updated template system that generates refactored-compatible tests
+- **Comprehensive Analysis**: AST-based analysis of test patterns and relationships
+- **Migration Tooling**: Tools for automated migration of existing tests to new structure
+
+The refactoring initiative addresses the challenges of the rapidly growing test codebase, with over 2,500 test files containing more than 27,000 test methods. By standardizing test structure and eliminating duplication, we aim to reduce code volume by 30-40% while improving maintainability and performance.
+
+### Mock Detection Framework with Visualization (NEW - July 21, 2025)
+
+A comprehensive mock detection system has been implemented with advanced visualization capabilities to track and analyze the use of mock objects in testing:
+
+- [MOCK_DETECTION_GUIDE.md](MOCK_DETECTION_GUIDE.md) - **NEW** Comprehensive guide to implementing and using mock detection
+- [mock_detection_visualization.py](mock_detection_visualization.py) - **NEW** Interactive visualization module for mock detection status
+- [generate_mock_detection_results.py](generate_mock_detection_results.py) - **NEW** Utility for generating sample mock detection results
+
+Key features of the implementation:
+- **Standardized Mock Detection**: Consistent approach to detecting and handling mock dependencies
+- **Clear Visual Indicators**: Standardized emoji indicators (🚀/🔷) for distinguishing real vs. mock test runs 
+- **Comprehensive Visualizations**: Implementation heatmaps, model family analysis, test success rates
+- **Statistical Analysis**: Comparison of test success rates and performance between real and mock tests
+- **Interactive Dashboard**: Combined visualization of implementation status and test results
+- **Test Generation Integration**: Automatic inclusion of mock detection in generated test files
+
+The mock detection system ensures tests can run in both real inference and mock modes, providing clear indicators and consistent behavior. This enhances CI/CD compatibility and enables accurate testing in environments without required dependencies while making it clear when mock objects are being used instead of real implementations.
+
+
+### Vision-Text Model DuckDB Integration and Visualization (NEW - March 21, 2025)
+
+A comprehensive DuckDB integration for vision-text models (CLIP, BLIP) has been implemented with advanced visualization capabilities:
+
+- [VISION_TEXT_DUCKDB_INTEGRATION.md](VISION_TEXT_DUCKDB_INTEGRATION.md) - **NEW** Comprehensive guide to the DuckDB integration for vision-text models
+- [vision_text_duckdb_integration.py](vision_text_duckdb_integration.py) - **NEW** Core implementation for storing and querying vision-text model results
+- [vision_text_visualization.py](vision_text_visualization.py) - **NEW** Interactive visualization module for vision-text model performance data
+
+Key features of the implementation:
+- **Comprehensive Database Schema**: Stores detailed test results and compatibility metrics for vision-text models
+- **Hardware Platform Tracking**: Monitors compatibility across CPU, CUDA, OpenVINO, ROCm, MPS, WebNN, and WebGPU
+- **Interactive Visualizations**: Performance comparisons, compatibility heatmaps, time series analysis
+- **Statistical Analysis**: Confidence intervals and performance metrics across hardware platforms
+- **Interactive Dashboard**: Combined visualization of performance and compatibility data
+- **Integration with Test Runner**: Seamless integration with the comprehensive test runner
+
+The integration extends the existing DuckDB database system to include vision-text models, enhancing the framework's ability to track and analyze performance across hardware platforms. The visualization module provides a comprehensive set of tools for exploring and understanding the data, with support for various export formats and customization options.
 
 ### API Backends TypeScript Migration (COMPLETED - March 19, 2025)
 

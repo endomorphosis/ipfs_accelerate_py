@@ -1,12 +1,12 @@
 # HuggingFace Model Test Coverage Report
 
-**Generated:** 2025-03-20 19:08:06
+**Generated:** 2025-03-22 01:42:35
 
 ## Coverage Summary
 
-- **Total models from HF:** 315
-- **Implemented (from HF list):** 315 (100.0%)
-- **Additional models implemented:** 21
+- **Total models from HF:** 6
+- **Implemented (from HF list):** 6 (100.0%)
+- **Additional models implemented:** 351
 - **Missing models:** 0
 
 ## Coverage by Architecture
@@ -18,7 +18,7 @@
 | encoder_decoder | 9 (100.0%) | 0 |
 | encoder_only | 15 (100.0%) | 0 |
 | multimodal | 12 (100.0%) | 0 |
-| uncategorized | 276 (100.0%) | 0 |
+| uncategorized | 297 (100.0%) | 0 |
 | vision | 5 (100.0%) | 0 |
 
 ## Implemented Models
@@ -103,6 +103,7 @@ The following models have been implemented and tested:
 - autoformer
 - bark
 - big_bird
+- bigbird
 - bigbird_pegasus
 - biogpt
 - bit
@@ -133,6 +134,10 @@ The following models have been implemented and tested:
 - ctrl
 - cvt
 - dac
+- data2vec
+- data2vec-audio
+- data2vec-text
+- data2vec-vision
 - data2vec_audio
 - data2vec_text
 - data2vec_vision
@@ -141,7 +146,7 @@ The following models have been implemented and tested:
 - deberta
 - deberta_v2
 - decision_transformer
-- decoder-only
+- decoder_only
 - deepseek
 - deepseek_coder
 - deepseek_distil
@@ -163,15 +168,18 @@ The following models have been implemented and tested:
 - dpt
 - efficientformer
 - efficientnet
-- encoder-decoder
-- encoder-only
 - encoder_decoder
+- encoder_only
 - ernie
 - ernie_m
 - esm
 - fastspeech2_conformer
+- flamingo
 - flan
+- flan-t5
+- flan_t5
 - flaubert
+- florence
 - fnet
 - focalnet
 - fsmt
@@ -185,7 +193,9 @@ The following models have been implemented and tested:
 - glpn
 - gpt-j
 - gpt-neo
+- gpt-neox
 - gpt_bigcode
+- gpt_j
 - gpt_neox
 - gpt_neox_japanese
 - gpt_sw3
@@ -232,6 +242,8 @@ The following models have been implemented and tested:
 - mimi
 - mixtral
 - mllama
+- mlp-mixer
+- mlp_mixer
 - mobilebert
 - mobilenet_v1
 - mobilenet_v2
@@ -309,6 +321,8 @@ The following models have been implemented and tested:
 - sew_d
 - siglip
 - siglip_vision_model
+- speech-to-text
+- speech-to-text-2
 - speech_encoder_decoder
 - speech_to_text
 - speech_to_text_2
@@ -329,8 +343,11 @@ The following models have been implemented and tested:
 - timm_backbone
 - tinyllama
 - trajectory_transformer
+- transfo-xl
 - transfo_xl
 - trocr
+- trocr_base
+- trocr_large
 - tvlt
 - tvp
 - udop
@@ -338,12 +355,15 @@ The following models have been implemented and tested:
 - umt5
 - univnet
 - upernet
+- usm
 - van
 - video_llava
 - videomae
 - vilt
+- vinvl
 - vipllava
 - vision
+- vision-text-dual-encoder
 - vision_encoder_decoder
 - vision_t5
 - vision_text_dual_encoder
@@ -353,6 +373,7 @@ The following models have been implemented and tested:
 - vits
 - vivit
 - vqgan
+- wav2vec2-conformer
 - wavlm
 - xclip
 - xglm

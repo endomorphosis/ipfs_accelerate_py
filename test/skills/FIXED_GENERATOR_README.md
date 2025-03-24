@@ -1,272 +1,267 @@
-# HuggingFace Test Generator (Fixed)
-
-This document describes the fixed version of the HuggingFace test generator, which addresses indentation issues and implements architecture-aware test generation.
+# Test Generator with Fixed Templates
 
 ## Overview
 
-The test generator creates test files for HuggingFace transformers models with proper indentation and architecture-specific implementations. It supports different model architectures and hardware backends.
+This directory contains a set of tools for generating test files for HuggingFace models. The original test generator had issues with indentation and template handling, particularly for hyphenated model names like `gpt-j` and `xlm-roberta`. These issues have been fixed in the new implementation, and the generator now integrates with the advanced model selection system and architecture-specific templates.
 
+## Latest Improvements (March 21, 2025)
 
-## Hyphenated Model Name Handling
+1. **Complete Template Overhaul**: All templates have been fixed and standardized with proper indentation, error handling, and consistent interfaces.
+2. **Comprehensive Indentation Fixes**: Fixed indentation issues in all template files with special attention to:
+   - Properly indented class methods with consistent spacing
+   - Correctly nested code blocks in try/except blocks
+   - Fixed OVT5Wrapper and MockSentencePieceProcessor class indentation
+   - Properly aligned method bodies and nested statements
+   - Consistent spacing between class and function definitions
+   - Fixed vision_template.py with corrected hardware detection and mock classes
+   - Fixed speech_template.py with proper spacing and consistent method indentation
+   - Fixed multimodal_template.py with corrected indentation and proper method nesting
+   - Repaired multi-line statement indentation in test methods across all templates
+3. **Architecture-Specific Templates**: Added specialized templates for each model architecture (encoder-only, decoder-only, etc.).
+4. **Enhanced Mock Detection**: Improved mock detection system with environment variable controls and clear indicators.
+5. **Advanced Model Selection**: Integrated with the advanced model selection capabilities for task-specific and hardware-aware model selection.
+6. **Hardware-Aware Testing**: Better support for various hardware configurations including CPU, CUDA, ROCm, MPS, OpenVINO, WebNN, and WebGPU.
+7. **Standardized Result Collection**: Unified result collection and JSON output format across all templates.
+8. **Graceful Dependency Handling**: Improved handling of missing dependencies with sophisticated fallbacks.
 
-The test generator now properly handles hyphenated model names like "gpt-j", "gpt-neo", and "xlm-roberta". 
-This prevents syntax errors in the generated test files.
+## Fixed Issues
 
-### Key Features
+1. **Template Indentation**: Fixed indentation issues in all template files, ensuring consistent 4-space indentation and proper code structure.
+2. **Nested Block Alignment**: Ensured proper alignment of nested blocks, particularly in complex try/except blocks and for loops.
+3. **Hyphenated Model Names**: Properly handled hyphenated model names to ensure valid Python identifiers and variable names.
+4. **Task-Specific Input**: Added appropriate input text for different model types and tasks.
+5. **Syntax Validation**: Added syntax validation to ensure generated files are valid Python code.
+6. **Advanced Model Selection**: Integrated with the advanced model selection capabilities for task-specific and hardware-aware model selection.
+7. **Template Selection Logic**: Added architecture-aware template selection based on model type.
+8. **Class and Function Definition Spacing**: Ensured proper spacing between class methods and between standalone functions.
 
-1. **Valid Python Identifiers**: The `to_valid_identifier()` function converts hyphenated model names to valid Python identifiers.
+## Files
 
-```python
-def to_valid_identifier(text):
-    # Replace hyphens with underscores
-    text = text.replace("-", "_")
-    # Remove any other invalid characters
-    text = re.sub(r'[^a-zA-Z0-9_]', '', text)
-    # Ensure it doesn't start with a number
-    if text and text[0].isdigit():
-        text = '_' + text
-    return text
-```
+- `generate_simple_test.py`: A simplified test generator that creates properly indented test files with advanced model selection.
+- `templates/minimal_bert_template.py`: A fixed template file for BERT-like models with proper indentation.
+- `templates/encoder_only_template.py`: A fixed template for encoder-only models.
+- `templates/decoder_only_template.py`: A fixed template for decoder-only models.
+- `templates/encoder_decoder_template.py`: A fixed template for encoder-decoder models.
+- `templates/vision_template.py`: A fixed template for vision models.
+- `templates/vision_text_template.py`: A fixed template for vision-text multimodal models.
+- `templates/speech_template.py`: A fixed template for speech models.
+- `templates/multimodal_template.py`: A fixed template for multimodal models.
 
-2. **Proper Capitalization**: Special logic handles capitalization of hyphenated model names for class names.
-
-```python
-# Create proper capitalized name for class (handling cases like gpt-j → GptJ)
-if "-" in model_family:
-    model_capitalized = ''.join(part.capitalize() for part in model_family.split('-'))
-    test_class = model_config.get("test_class", f"Test{model_capitalized}Models")
-```
-
-3. **Syntax Validation**: Generated files are validated using Python's `compile()` function to ensure valid syntax.
-
-```python
-# Validate syntax
-try:
-    compile(content, output_file, 'exec')
-    logger.info(f"✅ Syntax is valid for {output_file}")
-except SyntaxError as e:
-    logger.error(f"❌ Syntax error in generated file: {e}")
-    # Additional error handling and fixing...
-```
-
-4. **Command-Line Options**: Added the `--hyphenated-only` flag to specifically target models with hyphens.
-
-```
-python test_generator_fixed.py --hyphenated-only --output-dir fixed_tests --verify
-```
-
-### Supported Hyphenated Models
-
-- **gpt-j**: GPT-J autoregressive language models
-- **gpt-neo**: GPT-Neo autoregressive language models
-- **xlm-roberta**: XLM-RoBERTa masked language models for cross-lingual understanding
-
-### Class Name Fixes
-
-Fixed capitalization issues in class names with the `CLASS_NAME_FIXES` dictionary:
+## Basic Usage
 
 ```
-CLASS_NAME_FIXES = {
-    # Original fixes...
-    "GptjForCausalLM": "GPTJForCausalLM",
-    "GptneoForCausalLM": "GPTNeoForCausalLM",
-    "XlmRobertaForMaskedLM": "XLMRobertaForMaskedLM",
-    "XlmRobertaModel": "XLMRobertaModel"
-}
+python generate_simple_test.py --model MODEL_TYPE [--output-dir OUTPUT_DIR] [--template TEMPLATE_PATH]
 ```
-## Key Components
 
-1. **test_generator_fixed.py**: Fixed generator with architecture awareness and proper indentation
-2. **regenerate_tests_with_fixes.py**: Main script for generating test files with fixes
-3. **fix_indentation_and_apply_template.py**: Direct script for applying templates to specific model types
-4. **integrate_generator_fixes.py**: Script to apply fixes to the original generator
-5. **templates/**: Directory containing architecture-specific templates
+The script generates a test file for the specified model type using the appropriate template.
 
-## New Direct Fixing Approach (March 2025)
+## Advanced Usage
 
-We've developed a faster and more reliable approach to fixing test files:
+The test generator now includes integrated advanced model selection with the following options:
 
-1. **Direct Template Application**: The `fix_indentation_and_apply_template.py` script can directly fix model-specific tests without complex regeneration logic.
-2. **Generator Integration**: The fixes have been integrated into the generator itself (`test_generator_fixed.py`).
-3. **Architecture Detection**: Automatic architecture type detection based on model name.
-4. **Fixed Class References**: Corrected class references for different architectures:
-   - `AutoModelForCausalLM` for decoder-only models (was incorrectly using `AutoModelLMHeadModel`)
-   - Fixed capitalization for vision model classes (e.g., `ViTForImageClassification`)
-5. **Architecture-Specific Processing**: Added specialized processing for each architecture type.
+```
+python generate_simple_test.py --model MODEL_TYPE [--task TASK] [--hardware HARDWARE_PROFILE] [--max-size MAX_SIZE_MB] [--framework FRAMEWORK]
+```
 
-## Architecture Support
+### Arguments
 
-The generator supports the following architectures:
+- `--model`: Model type (e.g., bert, gpt2, t5, vit)
+- `--task`: Specific task for model selection (e.g., fill-mask, text-generation)
+- `--hardware`: Hardware profile for size constraints (e.g., cpu-small, gpu-medium)
+- `--max-size`: Maximum model size in MB
+- `--framework`: Framework compatibility (e.g., pytorch, tensorflow)
 
-- **Encoder-Only** (BERT, RoBERTa, DistilBERT, etc.)
-- **Decoder-Only** (GPT-2, LLaMA, Mistral, etc.)
-- **Encoder-Decoder** (T5, BART, Pegasus, etc.)
-- **Vision** (ViT, Swin, DeiT, etc.)
-- **Speech** (Whisper, Wav2Vec2, HuBERT, etc.)
-- **Multimodal** (LLaVA, CLIP, BLIP, etc.)
+### List Available Options
 
-## Using the Fixed Approach
+```
+# List available tasks
+python generate_simple_test.py --list-tasks
 
-### Direct Template Application (Recommended)
+# List available architecture types
+python generate_simple_test.py --list-architectures
+```
 
-This approach is fastest and most reliable:
+## Examples
+
+### Basic Test Generation
 
 ```bash
-# Fix a specific model test
-python fix_indentation_and_apply_template.py bert --output-dir fixed_tests --verify
+# Generate a test for BERT with encoder-only template
+python generate_simple_test.py --model bert --output-dir test_output
 
-# Fix multiple model tests
-python fix_indentation_and_apply_template.py gpt2 --output-dir fixed_tests --verify
-python fix_indentation_and_apply_template.py t5 --output-dir fixed_tests --verify
-python fix_indentation_and_apply_template.py vit --output-dir fixed_tests --verify
+# Generate a test for GPT-2 with decoder-only template
+python generate_simple_test.py --model gpt2 --output-dir test_output
+
+# Generate a test for a hyphenated model name (gpt-j)
+python generate_simple_test.py --model gpt-j --output-dir test_output
+
+# Generate a test for T5 with encoder-decoder template
+python generate_simple_test.py --model t5 --output-dir test_output
+
+# Generate a test for Vision Transformer (ViT) with vision template
+python generate_simple_test.py --model vit --output-dir test_output
+
+# Generate a test for Whisper with speech template
+python generate_simple_test.py --model whisper --output-dir test_output
+
+# Generate a test for CLIP with vision-text template
+python generate_simple_test.py --model clip --output-dir test_output
 ```
 
-### Use the Fixed Generator
-
-Generate tests using the fixed generator:
+### Advanced Test Generation with Constraints
 
 ```bash
-python test_generator_fixed.py --model bert
-python test_generator_fixed.py --model gpt2
+# Generate a test for BERT with task constraint
+python generate_simple_test.py --model bert --task text-classification
+
+# Generate a test for GPT-2 with hardware constraint (smaller model for CPU)
+python generate_simple_test.py --model gpt2 --hardware cpu-small
+
+# Generate a test for T5 with size constraint
+python generate_simple_test.py --model t5 --max-size 500
+
+# Generate a test for ViT with framework constraint
+python generate_simple_test.py --model vit --framework pytorch
+
+# Generate a test for Whisper with multiple constraints
+python generate_simple_test.py --model whisper --task automatic-speech-recognition --hardware gpu-small
 ```
 
-### Apply Fixes to Original Generator
+### Template Override Examples
 
 ```bash
-python integrate_generator_fixes.py --generator test_generator.py
+# Explicitly use encoder_only_template.py for RoBERTa
+python generate_simple_test.py --model roberta --template templates/encoder_only_template.py
+
+# Explicitly use decoder_only_template.py for LLaMA
+python generate_simple_test.py --model llama --template templates/decoder_only_template.py
+
+# Explicitly use vision_template.py for Swin Transformer
+python generate_simple_test.py --model swin --template templates/vision_template.py
 ```
 
-### Legacy Approach
+### Advanced Testing Options
 
 ```bash
-# Still available but not recommended
-python regenerate_tests_with_fixes.py --single bert
-python complete_indentation_fix.py test_hf_bert.py
+# Use CPU-only testing for all models
+python generate_simple_test.py --model gpt2 --device cpu
+
+# Test with all available hardware
+python generate_simple_test.py --model bert --all-hardware
+
+# Generate test with mock environment variables
+MOCK_TRANSFORMERS=True python generate_simple_test.py --model bert
+
+# Generate test with special input for a specific task
+python generate_simple_test.py --model bert --task fill-mask --input "The [MASK] brown fox jumps over the lazy dog."
+
+# Save test results to a specific location
+python generate_simple_test.py --model t5 --save-results --output-dir my_results
 ```
 
-## Architecture-Specific Templates
+### Architecture + Task Examples
 
-The generator uses different templates for each architecture type:
+```bash
+# Encoder-only model for question answering
+python generate_simple_test.py --model bert --task question-answering
 
-### Encoder-Only Template
+# Decoder-only model for text generation
+python generate_simple_test.py --model gpt2 --task text-generation
 
-Special handling for:
-- Mask token replacement in input text
-- Bidirectional attention mechanism
-- Token classification and sequence classification tasks
+# Encoder-decoder model for translation
+python generate_simple_test.py --model t5 --task translation
 
-### Decoder-Only Template
+# Vision model for image classification
+python generate_simple_test.py --model vit --task image-classification
 
-Special handling for:
-- Padding token configuration (pad_token = eos_token)
-- Autoregressive generation parameters
-- Text generation tasks
+# Speech model for speech recognition
+python generate_simple_test.py --model whisper --task automatic-speech-recognition
 
-### Encoder-Decoder Template
+# Multimodal model for zero-shot image classification
+python generate_simple_test.py --model clip --task zero-shot-image-classification
+```
 
-Special handling for:
-- Decoder input initialization
-- Translation and summarization tasks
-- Both encoder and decoder components
+## Hardware Profiles
 
-### Vision Template
+The test generator includes pre-defined hardware profiles:
 
-Special handling for:
-- Image tensor shape (batch_size, channels, height, width)
-- Image preprocessing
-- Classification and detection tasks
+- `cpu-small`: Limited CPU environments (500 MB max)
+- `cpu-medium`: Standard CPU environments (2 GB max)
+- `cpu-large`: High-memory CPU environments (10 GB max)
+- `gpu-small`: Entry-level GPUs (5 GB max)
+- `gpu-medium`: Mid-range GPUs (15 GB max)
+- `gpu-large`: High-end GPUs (50 GB max)
 
-### Speech Template
+These profiles are used to select appropriate model sizes.
 
-Special handling for:
-- Audio input preprocessing
-- Sampling rates and feature extraction
-- Transcription and recognition tasks
+## Supported Tasks
 
-### Multimodal Template
+The test generator supports a wide range of tasks including:
 
-Special handling for:
-- Multiple input modalities
-- Cross-modal attention
-- Multimodal tasks like image captioning
+- `fill-mask`: Masked language modeling (BERT, RoBERTa)
+- `text-generation`: Autoregressive text generation (GPT-2, LLaMA)
+- `text2text-generation`: Encoder-decoder text generation (T5, BART)
+- `image-classification`: Image classification (ViT, Swin)
+- `automatic-speech-recognition`: Speech recognition (Whisper, Wav2Vec2)
+- And many more (see `--list-tasks` for the full list)
 
-## Indentation Fixing
+## Architecture Types
 
-The indentation fixer addresses common issues:
+Models are grouped by architecture type for template selection:
 
-- Misaligned method definitions
-- Incorrect spacing in class definitions
-- Improperly indented dependency checks
-- Broken try/except blocks
-- Incorrect bracket and parenthesis matching
+- `encoder-only`: BERT, RoBERTa, DistilBERT, etc.
+- `decoder-only`: GPT-2, GPT-J, LLaMA, etc.
+- `encoder-decoder`: T5, BART, PEGASUS, etc.
+- `vision`: ViT, Swin, DeiT, etc.
+- `speech`: Whisper, Wav2Vec2, HuBERT, etc.
+- `multimodal`: CLIP, BLIP, LLaVA, etc.
 
-## Hardware Support
+## Integration with Advanced Model Selection
 
-The generator includes code for detecting and using different hardware backends:
+The test generator is now fully integrated with the advanced model selection capabilities from `advanced_model_selection.py`, providing:
 
-- CPU (always available)
-- CUDA (NVIDIA GPUs)
-- MPS (Apple Silicon)
-- OpenVINO (Intel hardware)
+- Task-specific model selection based on model capabilities
+- Hardware-aware model selection to fit available resources
+- Size-constrained selection for constrained environments
+- Framework compatibility filtering (PyTorch, TensorFlow, etc.)
+- Fallback mechanisms to ensure a valid model is always selected
 
-## Documentation
+The integration uses a tiered approach:
+1. If advanced selection is available, it tries that first
+2. If that fails, it falls back to hardware-specific presets
+3. If that fails, it uses default models
+4. As a final fallback, it generates a basic model name
 
-For more information, see:
+## Recent Accomplishments (March 21, 2025)
 
-- **INTEGRATION_README.md**: Complete documentation of the integration framework
-- **HF_TEST_TROUBLESHOOTING_GUIDE.md**: Troubleshooting guidance
-- **INTEGRATION_PLAN.md**: Phased implementation plan
-- **TESTING_FIXES_SUMMARY.md**: Summary of fixes and improvements
-
-## Recent Updates (March 2025)
-
-We've successfully:
-
-1. **Fixed Core Model Tests**:
-   - `test_hf_bert.py` - Encoder-only architecture (verified and working)
-   - `test_hf_gpt2.py` - Decoder-only architecture (verified and working)
-   - `test_hf_t5.py` - Encoder-decoder architecture (verified and working)
-   - `test_hf_vit.py` - Vision architecture (verified and working)
-
-2. **Key Bug Fixes**:
-   - Fixed GPT-2 model class (`AutoModelLMHeadModel` → `AutoModelForCausalLM`)
-   - Fixed ViT capitalization (`VitForImageClassification` → `ViTForImageClassification`)
-   - Added padding token handling for decoder-only models
-   - Added decoder input initialization for encoder-decoder models
-   - Added architecture detection for proper model class selection
-
-3. **Hyphenated Model Name Fixes** (March 20, 2025, 20:31):
-   - Fixed issues with models that have hyphens in their names (gpt-j, gpt-neo, xlm-roberta, etc.)
-   - Created specialized tools for detecting and fixing hyphenated model names
-   - Implemented proper registry key consistency across all test files
-   - Added comprehensive testing for syntax validation
-   - Created clean versions of all hyphenated model test files
-
-4. **Enhanced Test Result Clarity**:
-   - Added comprehensive mock detection system to clearly indicate when tests are using mock objects vs. real inference
-   - Implemented visual indicators (🚀 for real inference, 🔷 for mock objects) with detailed dependency reporting
-   - Added granular dependency tracking in test metadata to improve transparency (`has_transformers`, `has_torch`, `has_tokenizers`, `has_sentencepiece`)
-   - Enhanced test output to show complete environment information and dependency status
-   - Added test type indicator in metadata (`REAL INFERENCE` vs. `MOCK OBJECTS (CI/CD)`)
-
-5. **Reduced Code Debt**:
-   - Integrated fixes directly into the generator
-   - Created a direct template application approach
-   - Added architecture-aware processing at the source
-   - Developed specialized tools for common issues:
-     - `fix_hyphenated_model_names.py`: Fixes hyphenated model names
-     - `fix_syntax.py`: Fixes common syntax errors
-     - `fix_single_file.py`: Direct fix approach for problematic files
-     - `comprehensive_test_fix.py`: Comprehensive tool for fixing all test files
+1. ✅ **Fixed Template Indentation**: Corrected indentation issues in all template files
+2. ✅ **Created Architecture-Specific Templates**: Developed specialized templates for each architecture type
+3. ✅ **Enhanced Mock Detection**: Implemented comprehensive mock detection with environment variable controls
+4. ✅ **Integrated Advanced Model Selection**: Connected the generator with the advanced model selection system
+5. ✅ **Added Hardware Awareness**: Expanded hardware detection for various device types
+6. ✅ **Implemented Robust Error Handling**: Added detailed error reporting across all templates
+7. ✅ **Improved Task-Specific Input Generation**: Created appropriate inputs for different tasks
 
 ## Next Steps
 
-1. Generate tests for all 300+ HuggingFace model architectures
-2. Add specialized templates for speech and multimodal models
-3. Integrate with CI/CD pipelines
-4. Create comprehensive test coverage report
-5. Implement nightly test runs
+1. **Create Specialized Class and Method Variations**: Add more specialized methods for different model variants within each architecture
+2. **Enhance Multimodal Support**: Expand multimodal template with more sophisticated input handling for various input types
+3. **Implement Framework-Specific Adaptations**: Add tailored code paths for PyTorch, TensorFlow, and JAX implementations
+4. **Create Validation Test Suite**: Develop a comprehensive validation suite to ensure all templates work correctly
+5. **Add Distributed Testing Support**: Integrate with the distributed testing framework for parallel execution
+6. **Implement Performance Metrics Collection**: Enhance result collection with detailed performance metrics
+7. **Add CI/CD Pipeline Integration Examples**: Create examples of how to integrate the generator in CI/CD pipelines
+8. **Develop Visualization Tools**: Add tools to visualize test coverage and performance results
+9. **Enhance Model Registry**: Further expand the model registries with detailed parameter information
 
-## License
+## Long-Term Vision
 
-Apache 2.0
+The long-term goal for the template system is to create a comprehensive testing framework that can:
+
+1. **Test Any HuggingFace Model**: Provide specialized templates for all model architectures
+2. **Work in Any Environment**: From high-end GPUs to constrained edge devices
+3. **Support Any Framework**: Work with PyTorch, TensorFlow, JAX, ONNX, and other frameworks
+4. **Integrate with CI/CD Pipelines**: Seamlessly integrate with GitHub Actions, GitLab CI, and Jenkins
+5. **Collect Comprehensive Metrics**: Report detailed performance and compatibility metrics
+6. **Visualize Results**: Provide rich visualizations of test results and model performance
+7. **Scale to Distributed Testing**: Support distributed testing across multiple machines and hardware types

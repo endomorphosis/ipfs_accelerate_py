@@ -1,0 +1,58 @@
+# Example benchmark configuration file for refactored_benchmark_suite
+
+# Models to benchmark
+models:
+  - id: bert-base-uncased
+    task: fill-mask
+    batch_sizes: [1, 2, 4, 8]
+    sequence_lengths: [16, 32, 64]
+  
+  - id: gpt2
+    task: text-generation
+    batch_sizes: [1, 2, 4]
+    sequence_lengths: [32, 64, 128]
+    
+  - id: t5-small
+    task: text2text-generation
+    batch_sizes: [1, 2]
+    sequence_lengths: [16, 32]
+    
+  - id: google/vit-base-patch16-224
+    task: image-classification
+    batch_sizes: [1, 2, 4]
+    sequence_lengths: [1]  # Not applicable for vision models
+
+# Hardware platforms to benchmark on
+hardware:
+  - cpu
+  - cuda  # Will be ignored if not available
+
+# Metrics to collect
+metrics:
+  - latency
+  - throughput
+  - memory
+  - flops
+
+# Benchmark parameters
+warmup_iterations: 5
+test_iterations: 20
+
+# Output options
+output_dir: benchmark_results
+save_results: true
+
+# Export options
+export:
+  formats:
+    - json
+    - csv
+    - markdown
+  publish_to_hub: false
+  hub_token: ${HF_TOKEN}  # Use environment variable
+
+# Visualization options
+visualization:
+  generate_plots: true
+  generate_dashboard: true
+  dashboard_title: "Model Performance Dashboard"

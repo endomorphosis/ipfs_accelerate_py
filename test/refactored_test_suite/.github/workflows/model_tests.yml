@@ -1,0 +1,143 @@
+name: HuggingFace Model Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'test/refactored_test_suite/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'test/refactored_test_suite/**'
+  workflow_dispatch:
+  schedule:
+    # Run weekly on Monday at 2:00 AM UTC
+    - cron: '0 2 * * 1'
+
+jobs:
+  test:
+    name: Run Model Tests
+    runs-on: ubuntu-latest
+    env:
+      MOCK_TORCH: "True"
+      MOCK_TRANSFORMERS: "True"
+      MOCK_TOKENIZERS: "True"
+      MOCK_SENTENCEPIECE: "True"
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [encoder-only, decoder-only, encoder-decoder, vision, vision-encoder-text-decoder, speech, multimodal]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/refactored_test_suite/requirements.txt
+          # Install minimal dependencies needed for mock testing
+          pip install pytest pytest-cov
+
+      - name: Run integration tests for ${{ matrix.architecture }}
+        run: |
+          cd test/refactored_test_suite
+          python run_integration_tests.py --architectures ${{ matrix.architecture }} --mock --save-results
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.architecture }}
+          path: |
+            test/refactored_test_suite/reports/
+            test/refactored_test_suite/*.log
+          retention-days: 7
+
+  coverage-report:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/refactored_test_suite/requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          path: test-results
+          merge-multiple: true
+
+      - name: Generate coverage report
+        run: |
+          cd test/refactored_test_suite
+          python -m pytest --cov=. --cov-report=xml:coverage.xml
+          python generate_model_tests.py --coverage-report
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            test/refactored_test_suite/coverage.xml
+            test/refactored_test_suite/model_test_coverage.md
+          retention-days: 7
+
+  test-new-models:
+    name: Test Automatic Generation for New Models
+    runs-on: ubuntu-latest
+    env:
+      MOCK_TORCH: "True"
+      MOCK_TRANSFORMERS: "True"
+      MOCK_TOKENIZERS: "True"
+      MOCK_SENTENCEPIECE: "True"
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/refactored_test_suite/requirements.txt
+          pip install pytest
+
+      - name: Test model generation for new sample models
+        run: |
+          cd test/refactored_test_suite
+          # Test generation for a few new models to verify the generator still works
+          python test_new_models.py --models "microsoft/phi-3" "meta-llama/Meta-Llama-3-8B" "google/gemma-2-9b" --verify --mock
+      
+      - name: Upload generation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-model-tests
+          path: |
+            test/refactored_test_suite/reports/
+            test/refactored_test_suite/*.log
+          retention-days: 7

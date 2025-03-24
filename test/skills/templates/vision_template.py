@@ -26,9 +26,9 @@ import time
 import datetime
 
 # ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
+GREEN = "\\033[32m"
+BLUE = "\\033[34m"
+RESET = "\\033[0m"
 import traceback
 import logging
 import argparse
@@ -86,12 +86,12 @@ except ImportError:
     HAS_OPENVINO = False
     logger.warning("OpenVINO not available")
 
-
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
 MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
 MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
 MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+
 # Try to import torch
 try:
     if MOCK_TORCH:
@@ -135,8 +135,10 @@ if not HAS_PIL:
             class MockImg:
                 def __init__(self):
                     self.size = (224, 224)
+                
                 def convert(self, mode):
                     return self
+                
                 def resize(self, size):
                     return self
             return MockImg()
@@ -147,6 +149,7 @@ if not HAS_PIL:
             class MockResponse:
                 def __init__(self):
                     self.content = b"mock image data"
+                
                 def raise_for_status(self):
                     pass
             return MockResponse()
@@ -154,7 +157,8 @@ if not HAS_PIL:
     Image.open = MockImage.open
     requests.get = MockRequests.get
 
-# Hardware detection
+
+# Hardware detection    
 def check_hardware():
     """Check available hardware and return capabilities."""
     capabilities = {
@@ -237,7 +241,7 @@ class TestVitModels:
         self.results = {}
         self.examples = []
         self.performance_stats = {}
-    
+        
     def test_pipeline(self, device="auto"):
         """Test the model using transformers pipeline API."""
         if device == "auto":
@@ -359,7 +363,7 @@ class TestVitModels:
         # Add to overall results
         self.results[f"pipeline_{device}"] = results
         return results
-    
+        
     def test_from_pretrained(self, device="auto"):
         """Test the model using direct from_pretrained loading."""
         if device == "auto":
@@ -447,14 +451,14 @@ class TestVitModels:
                 inputs = {key: val.to(device) for key, val in inputs.items()}
             
             # Run warmup inference if using CUDA
-            if device == "cuda":
-                try:
-                    with torch.no_grad():
-                        _ = model(**inputs)
-                except Exception:
-                    pass
-            
-            # Run multiple inference passes
+            if device == \"cuda\":
+        try:
+            with torch.no_grad():
+                _ = model(**inputs)
+        except Exception:
+            pass
+
+    # Run multiple inference passes
             num_runs = 3
             times = []
             outputs = []
@@ -541,11 +545,11 @@ class TestVitModels:
                 results["from_pretrained_error_type"] = "missing_dependency"
             else:
                 results["from_pretrained_error_type"] = "other"
-                
+        
         # Add to overall results
         self.results[f"from_pretrained_{device}"] = results
         return results
-    
+        
     def test_with_openvino(self):
         """Test the model using OpenVINO integration."""
         results = {
@@ -652,11 +656,11 @@ class TestVitModels:
                 results["openvino_error_type"] = "missing_dependency"
             else:
                 results["openvino_error_type"] = "other"
-                
+        
         # Add to overall results
         self.results["openvino"] = results
         return results
-    
+        
     def run_tests(self, all_hardware=False):
         """
         Run all tests for this model.
@@ -713,6 +717,7 @@ class TestVitModels:
             }
         }
 
+
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists
@@ -730,9 +735,11 @@ def save_results(model_id, results, output_dir="collected_results"):
     logger.info(f"Saved results to {output_path}")
     return output_path
 
+
 def get_available_models():
     """Get a list of all available ViT models in the registry."""
     return list(VIT_MODELS_REGISTRY.keys())
+
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
     """Test all registered ViT models."""
@@ -762,6 +769,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
     logger.info(f"Saved summary to {summary_path}")
     return results
 
+
 def main():
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description="Test ViT-family models")
@@ -787,7 +795,7 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable ViT-family models:")
+        print(f"\nAvailable ViT-family models:")
         for model in models:
             info = VIT_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
@@ -802,7 +810,7 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nViT Models Testing Summary:")
+        print(f"\nViT Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
@@ -832,7 +840,7 @@ def main():
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
     using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
     
-    print("\nTEST RESULTS SUMMARY:")
+    print(f"\nTEST RESULTS SUMMARY:")
     
     # Indicate real vs mock inference clearly
     if using_real_inference and not using_mocks:
@@ -851,7 +859,7 @@ def main():
         
         # Print example outputs if available
         if results.get("examples") and len(results["examples"]) > 0:
-            print("\nExample output:")
+            print(f"\nExample output:")
             example = results["examples"][0]
             if "predictions" in example:
                 print(f"  Input: {example['input']}")
@@ -868,7 +876,7 @@ def main():
                 print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
                 print(f"    {result.get('pipeline_error', 'Unknown error')}")
     
-    print("\nFor detailed results, use --save flag and check the JSON output file.")
+    print(f"\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
     main()

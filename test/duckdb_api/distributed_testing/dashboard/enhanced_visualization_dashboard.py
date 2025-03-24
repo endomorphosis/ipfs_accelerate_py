@@ -89,6 +89,14 @@ except ImportError:
     logger.warning("RegressionDetector not available. Regression detection features will be limited.")
     REGRESSION_DETECTOR_AVAILABLE = False
 
+# Try to import regression visualization
+try:
+    from .regression_visualization import RegressionVisualization
+    REGRESSION_VISUALIZATION_AVAILABLE = True
+except ImportError:
+    logger.warning("RegressionVisualization not available. Enhanced regression visualization features will be limited.")
+    REGRESSION_VISUALIZATION_AVAILABLE = False
+
 # Try to import DuckDB connector
 try:
     import duckdb
@@ -107,7 +115,9 @@ class EnhancedVisualizationDashboard:
                 host: str = "localhost",
                 port: int = 8082,
                 debug: bool = False,
-                theme: str = "dark"):
+                theme: str = "dark",
+                enable_regression_detection: bool = True,
+                enhanced_visualization: bool = True):
         """Initialize the enhanced visualization dashboard.
         
         Args:
@@ -118,6 +128,8 @@ class EnhancedVisualizationDashboard:
             port: Port to bind the server to
             debug: Whether to enable debug mode
             theme: Dashboard theme (light or dark)
+            enable_regression_detection: Whether to enable regression detection
+            enhanced_visualization: Whether to use enhanced visualization features
         """
         self.result_aggregator = result_aggregator
         self.db_path = db_path
@@ -126,9 +138,15 @@ class EnhancedVisualizationDashboard:
         self.port = port
         self.debug = debug
         self.theme = theme
+        self.enable_regression_detection = enable_regression_detection
+        self.enhanced_visualization = enhanced_visualization
         
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
+        
+        # Create regression visualizations subdirectory
+        self.regression_output_dir = os.path.join(output_dir, "regression")
+        os.makedirs(self.regression_output_dir, exist_ok=True)
         
         # Initialize database connection if available
         self.db_conn = None
@@ -151,9 +169,9 @@ class EnhancedVisualizationDashboard:
             except Exception as e:
                 logger.error(f"Error initializing visualization engine: {e}")
         
-        # Initialize regression detector if available
+        # Initialize regression detector if available and enabled
         self.regression_detector = None
-        if REGRESSION_DETECTOR_AVAILABLE:
+        if REGRESSION_DETECTOR_AVAILABLE and self.enable_regression_detection:
             try:
                 self.regression_detector = RegressionDetector(
                     db_conn=self.db_conn
@@ -161,6 +179,19 @@ class EnhancedVisualizationDashboard:
                 logger.info("Regression detector initialized")
             except Exception as e:
                 logger.error(f"Error initializing regression detector: {e}")
+        
+        # Initialize regression visualization if available and enhanced viz is enabled
+        self.regression_visualization = None
+        if REGRESSION_VISUALIZATION_AVAILABLE and self.enhanced_visualization:
+            try:
+                self.regression_visualization = RegressionVisualization(
+                    output_dir=self.regression_output_dir
+                )
+                # Set the theme to match the dashboard
+                self.regression_visualization.set_theme(self.theme)
+                logger.info("Regression visualization initialized")
+            except Exception as e:
+                logger.error(f"Error initializing regression visualization: {e}")
         
         # Initialize Dash app if available
         self.app = None
@@ -192,7 +223,16 @@ class EnhancedVisualizationDashboard:
             "regression_analysis": {
                 "regressions_by_metric": {},
                 "regression_report": None,
-                "correlation_analysis": None
+                "correlation_analysis": None,
+                "regression_visualizations": {},
+                "regression_heatmap": None,
+                "visualization_options": {
+                    "include_confidence_intervals": True,
+                    "include_trend_lines": True,
+                    "include_annotations": True,
+                    "export_format": "html"
+                },
+                "enhanced_results": {}
             },
             "last_updated": datetime.datetime.now()
         }
@@ -518,7 +558,20 @@ class EnhancedVisualizationDashboard:
                                                 className="mb-3",
                                             ),
                                         ],
-                                        width=4),
+                                        width=2),
+                                        dbc.Col([
+                                            html.Label("Theme", className="form-label"),
+                                            dcc.Dropdown(
+                                                id="theme-dropdown",
+                                                options=[
+                                                    {"label": "Dark", "value": "dark"},
+                                                    {"label": "Light", "value": "light"},
+                                                ],
+                                                value=self.theme,
+                                                className="mb-3",
+                                            ),
+                                        ],
+                                        width=2),
                                     ]),
                                     dbc.Button("Apply Filters", id="apply-filters-btn", color="primary", className="w-100"),
                                 ])
@@ -834,13 +887,101 @@ class EnhancedVisualizationDashboard:
                                     html.Hr(),
                                     dbc.Row([
                                         dbc.Col([
+                                            html.H5("Regression Analysis Options", className="mb-3"),
+                                            dbc.Row([
+                                                dbc.Col([
+                                                    dbc.Button(
+                                                        "Run Correlation Analysis",
+                                                        id="run-correlation-analysis-btn",
+                                                        color="secondary",
+                                                        className="w-100 mb-3",
+                                                    ),
+                                                ], width=4),
+                                                dbc.Col([
+                                                    dbc.Button(
+                                                        "Generate Regression Report",
+                                                        id="generate-regression-report-btn",
+                                                        color="info",
+                                                        className="w-100 mb-3",
+                                                    ),
+                                                ], width=4),
+                                                dbc.Col([
+                                                    dbc.Button(
+                                                        "Export Visualization",
+                                                        id="export-regression-viz-btn",
+                                                        color="primary",
+                                                        className="w-100 mb-3",
+                                                    ),
+                                                ], width=4),
+                                            ]),
+                                            dbc.Row([
+                                                dbc.Col([
+                                                    html.H6("Visualization Features", className="mb-2"),
+                                                    dbc.Card(
+                                                        dbc.CardBody([
+                                                            dbc.FormGroup([
+                                                                dbc.Label("Display Options"),
+                                                                dbc.Checklist(
+                                                                    options=[
+                                                                        {"label": "Show Confidence Intervals", "value": "ci"},
+                                                                        {"label": "Show Trend Lines", "value": "trend"},
+                                                                        {"label": "Show Annotations", "value": "annotations"},
+                                                                    ],
+                                                                    value=["ci", "trend", "annotations"],
+                                                                    id="regression-viz-options",
+                                                                    inline=True,
+                                                                    switch=True,
+                                                                ),
+                                                            ]),
+                                                            html.Hr(className="my-2"),
+                                                            dbc.FormGroup([
+                                                                dbc.Label("Export Format"),
+                                                                dcc.Dropdown(
+                                                                    id="export-format-dropdown",
+                                                                    options=[
+                                                                        {"label": "HTML", "value": "html"},
+                                                                        {"label": "PNG Image", "value": "png"},
+                                                                        {"label": "SVG Image", "value": "svg"},
+                                                                        {"label": "PDF Document", "value": "pdf"},
+                                                                        {"label": "JSON Data", "value": "json"}
+                                                                    ],
+                                                                    value="html",
+                                                                    clearable=False,
+                                                                    className="mb-2",
+                                                                ),
+                                                            ]),
+                                                            dbc.Row([
+                                                                dbc.Col([
+                                                                    dbc.Button(
+                                                                        "Export Visualization",
+                                                                        id="export-regression-viz-btn-inline",
+                                                                        color="secondary",
+                                                                        size="sm",
+                                                                        className="w-100",
+                                                                    ),
+                                                                ], width=6),
+                                                                dbc.Col([
+                                                                    dbc.Button(
+                                                                        "Generate Report",
+                                                                        id="generate-regression-report-btn-inline",
+                                                                        color="info",
+                                                                        size="sm",
+                                                                        className="w-100",
+                                                                    ),
+                                                                ], width=6),
+                                                            ]),
+                                                            html.Div(id="export-status-inline", className="mt-2 small text-muted"),
+                                                        ]),
+                                                        className="mb-3",
+                                                    ),
+                                                ], width=12),
+                                            ]),
+                                        ], width=12),
+                                    ]),
+                                    html.Hr(),
+                                    dbc.Row([
+                                        dbc.Col([
                                             html.H5("Metric Correlations", className="mb-3"),
-                                            dbc.Button(
-                                                "Run Correlation Analysis",
-                                                id="run-correlation-analysis-btn",
-                                                color="secondary",
-                                                className="mb-3",
-                                            ),
                                             dcc.Graph(
                                                 id="correlation-chart",
                                                 config={"displayModeBar": True},
@@ -848,6 +989,21 @@ class EnhancedVisualizationDashboard:
                                         ],
                                         width=12),
                                     ]),
+                                    # Notification section for exports and reports
+                                    html.Div([
+                                        html.H5("Export and Report Status", className="mb-3"),
+                                        html.Div(id="regression-export-info", className="alert alert-info", style={"display": "none"}),
+                                        
+                                        # Export and report status
+                                        dbc.Row([
+                                            dbc.Col([
+                                                html.Div(id="export-status", className="alert alert-info p-2", style={"fontSize": "0.9rem"}),
+                                            ], width=6),
+                                            dbc.Col([
+                                                html.Div(id="report-status", className="alert alert-info p-2", style={"fontSize": "0.9rem"}),
+                                            ], width=6),
+                                        ]),
+                                    ], className="mt-4"),
                                 ])
                             ],
                             className="shadow-sm mt-3"),
@@ -983,16 +1139,25 @@ class EnhancedVisualizationDashboard:
              State("models-dropdown", "value"),
              State("hardware-dropdown", "value"),
              State("time-range-radio", "value"),
-             State("refresh-rate-dropdown", "value")],
+             State("refresh-rate-dropdown", "value"),
+             State("theme-dropdown", "value")],
             prevent_initial_call=False
         )
         def refresh_dashboard_data(n_intervals, filter_clicks, refresh_tests_clicks, 
-                                metrics, models, hardware, time_range, refresh_rate):
+                                metrics, models, hardware, time_range, refresh_rate, theme):
             """Refresh dashboard data."""
             # Update refresh interval if needed
             if refresh_rate is not None and dash.callback_context.triggered_id == "apply-filters-btn":
                 interval_component = dcc.Interval(id="refresh-interval", interval=refresh_rate*1000, n_intervals=0)
                 self.app.callback_context.response.set({"refreshInterval": refresh_rate*1000})
+            
+            # Update theme if changed
+            if theme is not None and theme != self.theme and dash.callback_context.triggered_id == "apply-filters-btn":
+                self.theme = theme
+                # Update regression visualization theme if available
+                if self.regression_visualization:
+                    self.regression_visualization.set_theme(theme)
+                logger.info(f"Dashboard theme changed to {theme}")
             
             # Get updated data (mocked for now)
             dashboard_data = self._get_dashboard_data(metrics, models, hardware, time_range)
@@ -1005,20 +1170,40 @@ class EnhancedVisualizationDashboard:
         # Callback for running regression analysis
         @self.app.callback(
             [Output("regression-chart", "figure"),
-             Output("regression-details-content", "children")],
+             Output("regression-details-content", "children"),
+             Output("regression-viz-options", "value", allow_duplicate=True)],
             [Input("run-regression-analysis-btn", "n_clicks"),
-             Input("dashboard-data-store", "data")],
-            [State("regression-metric-dropdown", "value")],
+             Input("dashboard-data-store", "data"),
+             Input("regression-viz-options", "value")],
+            [State("regression-metric-dropdown", "value"),
+             State("export-format-dropdown", "value")],
             prevent_initial_call=True
         )
-        def run_regression_analysis(n_clicks, data, selected_metric):
-            """Run regression analysis on selected metric."""
+        def run_regression_analysis(n_clicks, data, viz_options, selected_metric, export_format):
+            """Run regression analysis on selected metric with visualization options."""
             if not data or not self.regression_detector or selected_metric is None:
                 # Return empty figure if no data or regression detector
                 return go.Figure().update_layout(
                     title="No regression data available",
                     template="plotly_dark" if self.theme == "dark" else "plotly"
-                ), "No regression data available"
+                ), "No regression data available", ["ci", "trend", "annotations"]
+                
+            # Update visualization options based on UI selections
+            include_confidence_intervals = "ci" in viz_options if viz_options else True
+            include_trend_lines = "trend" in viz_options if viz_options else True
+            include_annotations = "annotations" in viz_options if viz_options else True
+            
+            # Update data cache with current visualization options
+            viz_options_dict = {
+                "include_confidence_intervals": include_confidence_intervals,
+                "include_trend_lines": include_trend_lines,
+                "include_annotations": include_annotations,
+                "export_format": export_format if export_format else "html"
+            }
+            self.data_cache["regression_analysis"]["visualization_options"].update(viz_options_dict)
+            
+            # Log the visualization options being used
+            logger.info(f"Using visualization options: {viz_options_dict}")
             
             # Check if triggered by button click or data update
             is_button_click = dash.callback_context.triggered_id == "run-regression-analysis-btn"
@@ -1072,12 +1257,38 @@ class EnhancedVisualizationDashboard:
                 # Get the regressions for this time series
                 regressions = regressions_by_metric.get(first_key, [])
                 
-                # Create visualization
+                # Create visualization - use enhanced visualization if available
                 try:
-                    fig_dict = self.regression_detector.create_regression_visualization(
-                        first_data, regressions, selected_metric,
-                        title=f"Regression Analysis for {selected_metric}"
-                    )
+                    # Get visualization options from data cache
+                    viz_options = self.data_cache["regression_analysis"]["visualization_options"]
+                    
+                    if self.regression_visualization and self.enhanced_visualization:
+                        # Get visualization options from the data cache
+                        viz_options_dict = self.data_cache["regression_analysis"]["visualization_options"]
+                        
+                        # Use enhanced visualization with user-selected options
+                        fig_dict = self.regression_visualization.create_interactive_regression_figure(
+                            first_data, 
+                            regressions, 
+                            selected_metric,
+                            title=f"Regression Analysis for {selected_metric}",
+                            include_annotations=viz_options_dict.get("include_annotations", True),
+                            include_confidence_intervals=viz_options_dict.get("include_confidence_intervals", True),
+                            include_trend_lines=viz_options_dict.get("include_trend_lines", True)
+                        )
+                        
+                        # Store the visualization in the data cache for export
+                        if fig_dict:
+                            self.data_cache["regression_analysis"]["enhanced_results"]["current_figure"] = fig_dict
+                            logger.info(f"Created enhanced regression visualization with options: {viz_options_dict}")
+                    else:
+                        # Fall back to basic visualization from regression detector
+                        fig_dict = self.regression_detector.create_regression_visualization(
+                            first_data, 
+                            regressions, 
+                            selected_metric,
+                            title=f"Regression Analysis for {selected_metric}"
+                        )
                     
                     if fig_dict:
                         fig = go.Figure(fig_dict)
@@ -1181,9 +1392,109 @@ class EnhancedVisualizationDashboard:
             else:
                 details_content.append(html.P("No regression report available. Run regression analysis to generate report."))
             
-            return fig, details_content
+            # Return viz_options to ensure checkbox state is consistent
+            return fig, details_content, viz_options
         
-        # Callback for running correlation analysis
+        # Callback for exporting regression visualization (handles both export buttons)
+        @self.app.callback(
+            [Output("export-status", "children"),
+             Output("export-status-inline", "children")],
+            [Input("export-regression-viz-btn", "n_clicks"),
+             Input("export-regression-viz-btn-inline", "n_clicks")],
+            [State("export-format-dropdown", "value")],
+            prevent_initial_call=True
+        )
+        def export_regression_visualization(n_clicks, n_clicks_inline, export_format):
+            """Export the current regression visualization."""
+            # Check which button was clicked
+            trigger_id = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
+            
+            if (not n_clicks and not n_clicks_inline) or not export_format or not self.regression_visualization:
+                return "No visualization to export", ""
+                
+            # Get the current visualization from the data cache
+            current_figure = self.data_cache["regression_analysis"]["enhanced_results"].get("current_figure")
+            if not current_figure:
+                return "No visualization available for export", "No visualization available"
+                
+            try:
+                # Generate timestamp for filename
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"regression_viz_{timestamp}.{export_format}"
+                output_path = os.path.join(self.regression_output_dir, filename)
+                
+                # Export the visualization
+                exported_path = self.regression_visualization.export_regression_visualization(
+                    current_figure,
+                    output_path=output_path,
+                    format=export_format
+                )
+                
+                status_msg = f"Visualization exported to: {os.path.basename(exported_path)}" if exported_path else "Failed to export visualization"
+                inline_msg = f"Exported: {os.path.basename(exported_path)}" if exported_path else "Export failed"
+                
+                return status_msg, inline_msg
+            except Exception as e:
+                logger.error(f"Error exporting visualization: {e}")
+                error_msg = f"Error exporting visualization: {str(e)}"
+                return error_msg, "Export error"
+                
+        # Callback for generating comprehensive regression report (handles both report buttons)
+        @self.app.callback(
+            [Output("report-status", "children"),
+             Output("export-status-inline", "children", allow_duplicate=True)],
+            [Input("generate-regression-report-btn", "n_clicks"),
+             Input("generate-regression-report-btn-inline", "n_clicks")],
+            prevent_initial_call=True
+        )
+        def generate_regression_report(n_clicks, n_clicks_inline):
+            """Generate a comprehensive regression report."""
+            # Check which button was clicked
+            trigger_id = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
+            
+            if (not n_clicks and not n_clicks_inline) or not self.regression_visualization:
+                return "No data for report generation", dash.no_update
+                
+            # Get the metrics data and regressions from the data cache
+            metrics_data = {}
+            regressions_by_metric = {}
+            
+            for key, regressions in self.data_cache["regression_analysis"]["regressions_by_metric"].items():
+                # Extract metric name from combined key (format: "metric_name_hardware")
+                parts = key.split("_")
+                if len(parts) > 1:
+                    metric_name = parts[0]
+                    
+                    # Add to metrics data if available
+                    for perf_metric, hw_data in self.data_cache["performance_metrics"].items():
+                        if perf_metric == metric_name and key in hw_data:
+                            metrics_data[key] = hw_data[key]
+                            regressions_by_metric[key] = regressions
+            
+            if not metrics_data or not regressions_by_metric:
+                return "No regression data available for report generation"
+                
+            try:
+                # Generate the report
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                report_path = os.path.join(self.regression_output_dir, f"regression_report_{timestamp}.html")
+                
+                generated_path = self.regression_visualization.create_regression_summary_report(
+                    metrics_data,
+                    regressions_by_metric,
+                    output_path=report_path,
+                    include_plots=True
+                )
+                
+                if generated_path:
+                    return f"Report generated: {os.path.basename(generated_path)}"
+                else:
+                    return "Failed to generate report"
+            except Exception as e:
+                logger.error(f"Error generating regression report: {e}")
+                return f"Error generating report: {str(e)}"
+        
+        # Callback for running comparative regression analysis
         @self.app.callback(
             Output("correlation-chart", "figure"),
             [Input("run-correlation-analysis-btn", "n_clicks"),
@@ -1231,20 +1542,51 @@ class EnhancedVisualizationDashboard:
                     if "timestamps" in series_data and "values" in series_data:
                         metrics_data[metric] = series_data
             
-            # Run correlation analysis
-            if metrics_data and self.regression_detector:
+            # Run correlation analysis - use enhanced visualization if available
+            if metrics_data:
                 try:
-                    correlation_analysis = self.regression_detector.create_correlation_analysis(metrics_data)
-                    
-                    if correlation_analysis:
-                        # Store in data cache
-                        self.data_cache["regression_analysis"]["correlation_analysis"] = correlation_analysis
+                    if self.regression_visualization and self.enhanced_visualization:
+                        # Load any cached regressions by metric
+                        regressions_by_metric = self.data_cache["regression_analysis"].get("regressions_by_metric", {})
                         
-                        # Return visualization
-                        if "visualization" in correlation_analysis:
-                            return go.Figure(correlation_analysis["visualization"])
+                        # Prepare regressions by metric (format may need adjustment)
+                        formatted_regressions = {}
+                        for metric in metrics_data.keys():
+                            for key, regs in regressions_by_metric.items():
+                                if key.startswith(f"{metric}_"):
+                                    formatted_regressions[metric] = regs
+                                    break
+                        
+                        # Create comparative visualization with enhanced features
+                        correlation_fig = self.regression_visualization.create_comparative_regression_visualization(
+                            metrics_data,
+                            formatted_regressions,
+                            title="Comparative Regression Analysis"
+                        )
+                        
+                        if correlation_fig:
+                            # Store in data cache and return
+                            self.data_cache["regression_analysis"]["correlation_analysis"] = {
+                                "visualization": correlation_fig
+                            }
+                            return go.Figure(correlation_fig)
+                    
+                    # Fallback to basic correlation if enhanced visualization not available
+                    elif self.regression_detector:
+                        correlation_analysis = self.regression_detector.create_correlation_analysis(metrics_data)
+                        
+                        if correlation_analysis:
+                            # Store in data cache
+                            self.data_cache["regression_analysis"]["correlation_analysis"] = correlation_analysis
+                            
+                            # Return visualization
+                            if "visualization" in correlation_analysis:
+                                return go.Figure(correlation_analysis["visualization"])
+                            
                 except Exception as e:
                     logger.error(f"Error in correlation analysis: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
             # Return empty figure if analysis failed
             return go.Figure().update_layout(
@@ -1380,6 +1722,154 @@ class EnhancedVisualizationDashboard:
             
             return fig
         
+        # Callback for updating the regression visualization options
+        @self.app.callback(
+            Output("regression-chart", "figure"),
+            [Input("regression-viz-options", "value"),
+             Input("dashboard-data-store", "data")],
+            [State("regression-metric-dropdown", "value")],
+            prevent_initial_call=True
+        )
+        def update_regression_visualization_options(viz_options, data, selected_metric):
+            """Update the regression visualization with the selected options."""
+            if not data or not self.regression_detector or selected_metric is None:
+                return go.Figure().update_layout(
+                    title="No regression data available",
+                    template="plotly_dark" if self.theme == "dark" else "plotly"
+                )
+            
+            # Get performance metrics data and regressions
+            performance = data.get("performance_metrics", {})
+            regressions_by_metric = self.data_cache["regression_analysis"].get("regressions_by_metric", {})
+            
+            # Find the metric data
+            if selected_metric in performance:
+                # For each hardware series (use the first one)
+                for hw, series_data in performance[selected_metric].items():
+                    if "timestamps" in series_data and "values" in series_data:
+                        time_series_key = f"{selected_metric}_{hw}"
+                        first_data = series_data
+                        
+                        # Get the regressions for this time series
+                        regressions = regressions_by_metric.get(time_series_key, [])
+                        
+                        # Create visualization with selected options if enhanced visualization is available
+                        if self.regression_visualization and self.enhanced_visualization:
+                            try:
+                                # Parse visualization options
+                                include_ci = "ci" in viz_options
+                                include_trend = "trend" in viz_options
+                                include_annotations = "annotations" in viz_options
+                                
+                                # Create visualization
+                                fig_dict = self.regression_visualization.create_interactive_regression_figure(
+                                    first_data,
+                                    regressions,
+                                    selected_metric,
+                                    title=f"Regression Analysis for {selected_metric}",
+                                    include_confidence_intervals=include_ci,
+                                    include_trend_lines=include_trend,
+                                    include_annotations=include_annotations
+                                )
+                                
+                                if fig_dict:
+                                    return go.Figure(fig_dict)
+                            except Exception as e:
+                                logger.error(f"Error updating regression visualization: {e}")
+            
+            # Return the existing figure from the data cache if update failed
+            report = self.data_cache["regression_analysis"].get("regression_report")
+            return go.Figure().update_layout(
+                title=f"Could not update visualization options for {selected_metric}",
+                template="plotly_dark" if self.theme == "dark" else "plotly"
+            )
+        
+        # Callback for exporting regression visualization
+        @self.app.callback(
+            [Output("regression-export-info", "children"),
+             Output("regression-export-info", "style")],
+            Input("export-regression-viz-btn", "n_clicks"),
+            [State("regression-chart", "figure"),
+             State("regression-metric-dropdown", "value")],
+            prevent_initial_call=True
+        )
+        def export_regression_visualization(n_clicks, figure, selected_metric):
+            """Export the current regression visualization."""
+            if n_clicks is None or not figure or selected_metric is None:
+                return None, {"display": "none"}
+            
+            if self.regression_visualization:
+                try:
+                    # Export as HTML by default
+                    export_path = self.regression_visualization.export_regression_visualization(
+                        figure,
+                        format="html"
+                    )
+                    
+                    if export_path:
+                        return f"Visualization exported to: {export_path}", {"display": "block"}
+                except Exception as e:
+                    logger.error(f"Error exporting regression visualization: {e}")
+                    return f"Error exporting visualization: {str(e)}", {"display": "block", "backgroundColor": "#f8d7da", "color": "#721c24"}
+            
+            return "Regression visualization export not available", {"display": "block", "backgroundColor": "#fff3cd", "color": "#856404"}
+        
+        # Callback for generating regression report
+        @self.app.callback(
+            [Output("regression-export-info", "children", allow_duplicate=True),
+             Output("regression-export-info", "style", allow_duplicate=True)],
+            Input("generate-regression-report-btn", "n_clicks"),
+            Input("dashboard-data-store", "data"),
+            prevent_initial_call=True
+        )
+        def generate_regression_report(n_clicks, data):
+            """Generate a comprehensive regression report."""
+            if n_clicks is None or not data:
+                return None, {"display": "none"}
+            
+            if self.regression_visualization:
+                try:
+                    # Get metrics data and regressions
+                    performance = data.get("performance_metrics", {})
+                    regressions_by_metric = self.data_cache["regression_analysis"].get("regressions_by_metric", {})
+                    
+                    # Prepare metrics data for the report
+                    metrics_data = {}
+                    
+                    for metric, hw_data in performance.items():
+                        if hw_data:
+                            # Get the first hardware type
+                            first_hw = list(hw_data.keys())[0]
+                            series_data = hw_data[first_hw]
+                            
+                            if "timestamps" in series_data and "values" in series_data:
+                                metrics_data[metric] = series_data
+                    
+                    # Format regressions by metric
+                    formatted_regressions = {}
+                    for metric in metrics_data.keys():
+                        for key, regs in regressions_by_metric.items():
+                            if key.startswith(f"{metric}_"):
+                                formatted_regressions[metric] = regs
+                                break
+                    
+                    # Generate report
+                    report_path = self.regression_visualization.create_regression_summary_report(
+                        metrics_data,
+                        formatted_regressions,
+                        include_plots=True
+                    )
+                    
+                    if report_path:
+                        return f"Regression report generated: {report_path}", {"display": "block"}
+                except Exception as e:
+                    logger.error(f"Error generating regression report: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    return f"Error generating report: {str(e)}", {"display": "block", "backgroundColor": "#f8d7da", "color": "#721c24"}
+            
+            return "Regression report generation not available", {"display": "block", "backgroundColor": "#fff3cd", "color": "#856404"}
+            
         # Additional callbacks would be defined here for all other charts and UI elements
         # For brevity, I've only included a few key callbacks
     

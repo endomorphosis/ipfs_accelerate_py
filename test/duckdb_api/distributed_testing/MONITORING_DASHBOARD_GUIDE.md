@@ -56,6 +56,16 @@ python run_monitoring_dashboard.py
 
 By default, this will start the dashboard server at http://localhost:8080.
 
+#### Running with DRM Visualization
+
+To run the monitoring dashboard with DRM visualization integration:
+
+```bash
+python run_dashboard_with_drm_visualization.py
+```
+
+This will start the dashboard with DRM visualization capabilities and generate mock data for demonstration purposes. The DRM dashboard will be available at http://localhost:8080/drm-dashboard.
+
 ### Command-Line Options
 
 The dashboard supports various command-line options:
@@ -82,6 +92,20 @@ Example with sample data for demonstration:
 python run_monitoring_dashboard.py --generate-sample-data --auto-open
 ```
 
+#### DRM Visualization Dashboard Options
+
+The DRM visualization dashboard supports additional options:
+
+```
+--no-mock                  Disable mock data generation (use real DynamicResourceManager)
+```
+
+Example with real resource manager:
+
+```bash
+python run_dashboard_with_drm_visualization.py --host 0.0.0.0 --port 8085 --no-mock
+```
+
 ## Dashboard Components
 
 The dashboard consists of multiple pages, each focused on a specific aspect of the distributed testing system:
@@ -96,6 +120,19 @@ The main dashboard provides a high-level overview of the entire system, with key
 - Recent alerts and notifications
 - Performance trends
 - Hardware utilization overview
+
+### Dynamic Resource Management Dashboard
+
+The DRM dashboard provides comprehensive visualizations for resource management:
+
+- Resource utilization heatmaps across workers
+- Scaling history and decision tracking
+- Resource allocation and distribution visualization
+- Resource efficiency metrics and optimization insights
+- Cloud resource usage and cost tracking (if available)
+- Interactive dashboard with real-time updates
+- Configurable auto-refresh functionality
+- Tabbed interface for easy navigation between visualization types
 
 ### System Status
 
@@ -194,6 +231,17 @@ The dashboard exposes several API endpoints for programmatic access:
 ## Integration with Other Components
 
 The monitoring dashboard integrates with several other components:
+
+### Dynamic Resource Manager
+
+The dashboard integrates with the Dynamic Resource Manager through the DRM Visualization Integration module to provide comprehensive resource monitoring and analysis:
+
+- Resource utilization tracking and visualization
+- Scaling decision monitoring and history
+- Resource allocation efficiency analysis
+- Cloud resource usage tracking
+- Real-time updates via WebSockets
+- Dashboard route at `/drm-dashboard` for dedicated resource monitoring
 
 ### Result Aggregator
 

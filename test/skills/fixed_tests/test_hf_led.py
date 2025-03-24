@@ -16,11 +16,6 @@ import sys
 import json
 import time
 import datetime
-
-# ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
 import traceback
 import logging
 import argparse
@@ -28,7 +23,11 @@ from unittest.mock import patch, MagicMock, Mock
 from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
-import asyncio
+# ANSI color codes for terminal output
+GREEN = "\033[32m"
+BLUE = "\033[34m"
+RESET = "\033[0m"
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -57,31 +56,12 @@ try:
 except ImportError:
     HAS_WEBNN = False
 
-# ROCm imports and detection
-HAS_ROCM = False
-try:
-    if torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
-        HAS_ROCM = True
-        ROCM_VERSION = torch._C._rocm_version()
-    elif 'ROCM_HOME' in os.environ:
-        HAS_ROCM = True
-except:
-    HAS_ROCM = False
-
-try:
-    import openvino
-    from openvino.runtime import Core
-    HAS_OPENVINO = True
-except ImportError:
-    HAS_OPENVINO = False
-    logger.warning("OpenVINO not available")
-
-
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
 MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
 MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
 MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+
 # Try to import torch
 try:
     if MOCK_TORCH:
@@ -115,37 +95,59 @@ except ImportError:
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
 
-
-# Try to import sentencepiece
+# ROCm detection
+HAS_ROCM = False
 try:
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
+    if HAS_TORCH and torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+        ROCM_VERSION = torch._C._rocm_version()
+        logger.info(f"ROCm available: version {ROCM_VERSION}")
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+        logger.info("ROCm available (detected via ROCM_HOME)")
+except Exception as e:
+    HAS_ROCM = False
+    logger.info(f"ROCm detection failed: {e}")
+
+# OpenVINO detection
+try:
+    import openvino
+    from openvino.runtime import Core
+    HAS_OPENVINO = True
+    logger.info(f"OpenVINO available: version {openvino.__version__}")
 except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
+    HAS_OPENVINO = False
+    logger.info("OpenVINO not available")
 
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    if HAS_CUDA:
+        cuda_version = torch.version.cuda
+        logger.info(f"CUDA available: version {cuda_version}")
+        num_devices = torch.cuda.device_count()
+        logger.info(f"Number of CUDA devices: {num_devices}")
+        
+        # Log CUDA device properties
+        for i in range(num_devices):
+            device_props = torch.cuda.get_device_properties(i)
+            logger.info(f"CUDA Device {i}: {device_props.name} with {device_props.total_memory / 1024**3:.2f} GB memory")
+    else:
+        logger.info("CUDA not available")
+else:
+    HAS_CUDA = False
+    logger.info("CUDA detection skipped (torch not available)")
 
-if not HAS_SENTENCEPIECE:
-    class MockSentencePieceProcessor:
-        def __init__(self, *args, **kwargs):
-            self.vocab_size = 32000
-            
-        def encode(self, text, out_type=str):
-            return [1, 2, 3, 4, 5]
-            
-        def decode(self, ids):
-            return "Decoded text from mock"
-            
-        def get_piece_size(self):
-            return 32000
-            
-        @staticmethod
-        def load(model_file):
-            return MockSentencePieceProcessor()
-
-    sentencepiece.SentencePieceProcessor = MockSentencePieceProcessor
-
+# MPS (Apple Silicon) detection
+if HAS_TORCH:
+    HAS_MPS = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+    if HAS_MPS:
+        logger.info("MPS available for Apple Silicon acceleration")
+    else:
+        logger.info("MPS not available")
+else:
+    HAS_MPS = False
+    logger.info("MPS detection skipped (torch not available)")
 
 # Hardware detection
 def check_hardware():
@@ -182,46 +184,54 @@ def check_hardware():
 # Get hardware capabilities
 HW_CAPABILITIES = check_hardware()
 
-# Models registry - Maps model IDs to their specific configurations
+# LED Models registry - Maps model IDs to their specific configurations
 LED_MODELS_REGISTRY = {
-    "led-small": {
-        "description": "T5 small model",
-        "class": "LedForConditionalGeneration",
+    "allenai/led-base-16384": {
+        "description": "LED base model with 16K context length",
+        "class": "LEDForConditionalGeneration",
+        "context_length": 16384,
+        "parameters": "220M"
     },
-    "led-base": {
-        "description": "T5 base model",
-        "class": "LedForConditionalGeneration",
+    "allenai/led-large-16384": {
+        "description": "LED large model with 16K context length",
+        "class": "LEDForConditionalGeneration",
+        "context_length": 16384,
+        "parameters": "440M"
     },
-    "google/flan-led-small": {
-        "description": "Flan-T5 small model",
-        "class": "LedForConditionalGeneration",
+    "patrickvonplaten/led-large-16384-pubmed": {
+        "description": "LED large model fine-tuned on PubMed",
+        "class": "LEDForConditionalGeneration",
+        "context_length": 16384,
+        "parameters": "440M",
+        "domain": "medical"
     }
 }
 
-class TestLedModels:
-    """Base test class for all T5-family models."""
+class TestLEDModels:
+    """Base test class for all LED-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "led-small"
+        self.model_id = model_id or "allenai/led-base-16384"
         
         # Verify model exists in registry
         if self.model_id not in LED_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = LED_MODELS_REGISTRY["led-small"]
+            self.model_info = LED_MODELS_REGISTRY["allenai/led-base-16384"]
         else:
             self.model_info = LED_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
-        self.task = "translation_en_to_fr"
+        self.task = "summarization"
         self.class_name = self.model_info["class"]
         self.description = self.model_info["description"]
+        self.context_length = self.model_info["context_length"]
         
         # Define test inputs
-        self.test_text = "Translate to French: Hello, how are you?"
+        self.test_text = "Summarize: LED (Longformer Encoder-Decoder) is a transformer model designed for long document summarization that combines the Longformer's efficient attention mechanism with a standard transformer decoder. LED can process documents with up to 16,384 tokens, which is much longer than traditional transformer models. The model uses a combination of local windowed attention and global attention on specific tokens to efficiently process long documents."
         self.test_texts = [
-            "Translate to French: Hello, how are you?",
-            "Translate to French: The weather is nice today."
+            "Summarize: LED (Longformer Encoder-Decoder) is a transformer model designed for long document summarization that combines the Longformer's efficient attention mechanism with a standard transformer decoder. LED can process documents with up to 16,384 tokens, which is much longer than traditional transformer models. The model uses a combination of local windowed attention and global attention on specific tokens to efficiently process long documents.",
+            "Summarize: The Longformer Encoder-Decoder (LED) was developed by the Allen Institute for AI (AI2) and builds upon the Longformer architecture. It addresses the context length limitations of standard transformer models by using an efficient attention mechanism that scales linearly with sequence length. This makes it particularly suitable for tasks that require processing long documents like summarization, question answering, and document-level natural language understanding."
         ]
         
         # Configure hardware preference
@@ -238,7 +248,7 @@ class TestLedModels:
         self.results = {}
         self.examples = []
         self.performance_stats = {}
-    
+        
     def test_pipeline(self, device="auto"):
         """Test the model using transformers pipeline API."""
         if device == "auto":
@@ -248,7 +258,8 @@ class TestLedModels:
             "model": self.model_id,
             "device": device,
             "task": self.task,
-            "class": self.class_name
+            "class": self.class_name,
+            "context_length": self.context_length
         }
         
         # Check for dependencies
@@ -258,9 +269,9 @@ class TestLedModels:
             results["pipeline_success"] = False
             return results
             
-        if not HAS_SENTENCEPIECE:
+        if not HAS_TOKENIZERS:
             results["pipeline_error_type"] = "missing_dependency"
-            results["pipeline_missing_deps"] = ["sentencepiece>=0.1.91"]
+            results["pipeline_missing_deps"] = ["tokenizers"]
             results["pipeline_success"] = False
             return results
         
@@ -269,16 +280,15 @@ class TestLedModels:
             
             # Create pipeline with appropriate parameters
             pipeline_kwargs = {
-                "task": self.task,
+                "task": "summarization",
                 "model": self.model_id,
-                "device": device
+                "device": device if device != "cpu" else -1
             }
             
             # Time the model loading
             load_start_time = time.time()
             
-            # Create pipeline with T5-specific configuration to handle decoder inputs
-            # This is essential for the pipeline to work correctly
+            # Create pipeline with LED-specific configuration
             tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
             model = transformers.AutoModelForSeq2SeqLM.from_pretrained(self.model_id)
             
@@ -289,13 +299,22 @@ class TestLedModels:
             pipeline = transformers.pipeline(**pipeline_kwargs)
             load_time = time.time() - load_start_time
             
-            # Prepare test input - T5 requires non-empty input
+            # Prepare test input
             pipeline_input = self.test_text
+            
+            # Generation parameters for summarization
+            gen_kwargs = {
+                "max_length": 150,
+                "min_length": 40,
+                "no_repeat_ngram_size": 3,
+                "early_stopping": True,
+                "length_penalty": 2.0
+            }
             
             # Run warmup inference if on CUDA
             if device == "cuda":
                 try:
-                    _ = pipeline(pipeline_input)
+                    _ = pipeline(pipeline_input, **gen_kwargs)
                 except Exception:
                     pass
             
@@ -306,7 +325,7 @@ class TestLedModels:
             
             for _ in range(num_runs):
                 start_time = time.time()
-                output = pipeline(pipeline_input)
+                output = pipeline(pipeline_input, **gen_kwargs)
                 end_time = time.time()
                 times.append(end_time - start_time)
                 outputs.append(output)
@@ -363,7 +382,7 @@ class TestLedModels:
         # Add to overall results
         self.results[f"pipeline_{device}"] = results
         return results
-    
+        
     def test_from_pretrained(self, device="auto"):
         """Test the model using direct from_pretrained loading."""
         if device == "auto":
@@ -373,7 +392,8 @@ class TestLedModels:
             "model": self.model_id,
             "device": device,
             "task": self.task,
-            "class": self.class_name
+            "class": self.class_name,
+            "context_length": self.context_length
         }
         
         # Check for dependencies
@@ -383,9 +403,9 @@ class TestLedModels:
             results["from_pretrained_success"] = False
             return results
             
-        if not HAS_SENTENCEPIECE:
+        if not HAS_TOKENIZERS:
             results["from_pretrained_error_type"] = "missing_dependency"
-            results["from_pretrained_missing_deps"] = ["sentencepiece>=0.1.91"]
+            results["from_pretrained_missing_deps"] = ["tokenizers"]
             results["from_pretrained_success"] = False
             return results
         
@@ -407,8 +427,12 @@ class TestLedModels:
             
             # Use appropriate model class based on model type
             model_class = None
-            if self.class_name == "LedForConditionalGeneration":
-                model_class = transformers.LedForConditionalGeneration
+            if self.class_name == "LEDForConditionalGeneration":
+                try:
+                    model_class = transformers.LEDForConditionalGeneration
+                except:
+                    # Fallback to Auto class
+                    model_class = transformers.AutoModelForSeq2SeqLM
             else:
                 # Fallback to Auto class
                 model_class = transformers.AutoModelForSeq2SeqLM
@@ -429,13 +453,21 @@ class TestLedModels:
             test_input = self.test_text
             
             # Tokenize input
-            inputs = tokenizer(test_input, return_tensors="pt")
+            inputs = tokenizer(test_input, return_tensors="pt", max_length=1024, truncation=True)
             
-            # Add decoder inputs for T5 models - This fixes "You have to specify either decoder_input_ids or decoder_inputs_embeds"
+            # Create global attention mask for LED
+            # Set global attention on the first token (CLS token)
+            global_attention_mask = torch.zeros_like(inputs["input_ids"])
+            global_attention_mask[:, 0] = 1
+            inputs["global_attention_mask"] = global_attention_mask
+            
+            logger.info("Added global_attention_mask for LED model")
+            
+            # Add decoder inputs for LED models
             decoder_input_ids = tokenizer("", return_tensors="pt")["input_ids"]
             inputs["decoder_input_ids"] = decoder_input_ids
             
-            logger.info("Added empty decoder_input_ids for T5 model")
+            logger.info("Added empty decoder_input_ids for LED model")
             
             # Move inputs to device
             if device != "cpu":
@@ -479,6 +511,36 @@ class TestLedModels:
             else:
                 predictions = [{"generated_text": "Mock generated text"}]
             
+            # Test generation method
+            try:
+                generation_start_time = time.time()
+                generation_output = model.generate(
+                    inputs["input_ids"],
+                    attention_mask=inputs.get("attention_mask"),
+                    global_attention_mask=inputs.get("global_attention_mask"),
+                    max_length=150,
+                    min_length=40,
+                    num_beams=4,
+                    length_penalty=2.0,
+                    early_stopping=True,
+                    no_repeat_ngram_size=3
+                )
+                generation_time = time.time() - generation_start_time
+                
+                # Decode generation
+                if hasattr(tokenizer, "decode"):
+                    generated_summary = tokenizer.decode(generation_output[0], skip_special_tokens=True)
+                    generation_result = {"summary": generated_summary}
+                else:
+                    generation_result = {"summary": "Mock generated summary"}
+                
+                # Add to results
+                results["generation_output"] = generation_result
+                results["generation_time"] = generation_time
+            except Exception as e:
+                logger.warning(f"Generation method failed: {e}")
+                results["generation_error"] = str(e)
+            
             # Calculate model size
             param_count = sum(p.numel() for p in model.parameters())
             model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
@@ -506,6 +568,9 @@ class TestLedModels:
             if 'predictions' in locals():
                 example_data["predictions"] = predictions
             
+            if 'generation_result' in locals():
+                example_data["generation"] = generation_result
+            
             self.examples.append(example_data)
             
             # Store in performance stats
@@ -518,6 +583,9 @@ class TestLedModels:
                 "model_size_mb": model_size_mb,
                 "num_runs": num_runs
             }
+            
+            if 'generation_time' in locals():
+                self.performance_stats[f"from_pretrained_{device}"]["generation_time"] = generation_time
             
         except Exception as e:
             # Store error information
@@ -542,216 +610,7 @@ class TestLedModels:
         # Add to overall results
         self.results[f"from_pretrained_{device}"] = results
         return results
-    
-    def test_with_openvino(self):
-        """Test the model using OpenVINO integration."""
-        results = {
-            "model": self.model_id,
-            "task": self.task,
-            "class": self.class_name
-        }
-        
-        # Check for OpenVINO support
-        if not HW_CAPABILITIES["openvino"]:
-            results["openvino_error_type"] = "missing_dependency"
-            results["openvino_missing_core"] = ["openvino"]
-            results["openvino_success"] = False
-            return results
-        
-        # Check for transformers
-        if not HAS_TRANSFORMERS:
-            results["openvino_error_type"] = "missing_dependency"
-            results["openvino_missing_core"] = ["transformers"]
-            results["openvino_success"] = False
-            return results
-        
-        # Define test input
-        test_input = "Translate to French: Hello, how are you?"
-        
-        try:
-            # First try with optimum.intel if available
-            try:
-                import optimum.intel
-                from optimum.intel import OVModelForSeq2SeqLM
-                has_optimum = True
-                logger.info(f"Testing {self.model_id} with OpenVINO via optimum.intel...")
-            except ImportError:
-                has_optimum = False
-                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
-                
-            # Time tokenizer loading
-            tokenizer_load_start = time.time()
-            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
-            tokenizer_load_time = time.time() - tokenizer_load_start
-            
-            # Time model loading
-            model_load_start = time.time()
-            
-            if has_optimum:
-                # Use optimum.intel integration
-                model = OVModelForSeq2SeqLM.from_pretrained(
-                    self.model_id,
-                    export=True,
-                    provider="CPU"
-                )
-            else:
-                # Manual OpenVINO conversion for T5 model
-                import openvino as ov
-                from openvino.runtime import Core
-                
-                # Load transformer model
-                pt_model = transformers.LedForConditionalGeneration.from_pretrained(self.model_id)
-                
-                # Convert encoder to OpenVINO
-                dummy_input = tokenizer(test_input, return_tensors="pt")
-                encoder_inputs = list(dummy_input.values())
-                traced_encoder = torch.jit.trace(pt_model.encoder, tuple(encoder_inputs))
-                ov_encoder = ov.convert_model(traced_encoder, example_input=tuple(encoder_inputs))
-                
-                # For simplicity in this implementation, we'll use a wrapper class to simulate OVModelForSeq2SeqLM
-                class OVT5Wrapper:
-                    def __init__(self, encoder_model, pt_model, tokenizer):
-                        self.encoder_model = encoder_model
-                        self.pt_model = pt_model  # Keep PyTorch model for decoder (simplified approach)
-                        self.tokenizer = tokenizer
-                        self.core = Core()
-                        self.compiled_encoder = self.core.compile_model(encoder_model, "CPU")
-                        
-                    def __call__(self, **kwargs):
-                        # Process through OpenVINO encoder
-                        input_tensors = [kwargs[key] for key in ["input_ids", "attention_mask"]]
-                        encoder_outputs = self.compiled_encoder(input_tensors)[0]
-                        
-                        # Use encoder output with PyTorch decoder (simplified implementation)
-                        encoder_outputs = torch.tensor(encoder_outputs)
-                        
-                        # Return a simplified output structure
-                        class OutputWrapper:
-                            def __init__(self, logits):
-                                self.logits = logits
-                        
-                        # Return dummy logits for this simplified implementation
-                        return OutputWrapper(torch.rand(1, 10, self.tokenizer.vocab_size))
-                    
-                    def generate(self, input_ids, attention_mask=None, **kwargs):
-                        # Simplified generate implementation
-                        return torch.tensor([[1, 2, 3, 4, 5]])  # Return dummy token IDs
-                
-                # Create wrapper model
-                model = OVT5Wrapper(ov_encoder, pt_model, tokenizer)
-                
-            model_load_time = time.time() - model_load_start
-            
-            # Prepare input
-            inputs = tokenizer(test_input, return_tensors="pt")
-            
-            # Warmup run
-            try:
-                _ = model(**inputs)
-            except Exception as e:
-                logger.warning(f"Warmup run failed: {e}")
-            
-            # Run inference
-            num_runs = 3
-            inference_times = []
-            
-            for _ in range(num_runs):
-                start_time = time.time()
-                outputs = model(**inputs)
-                inference_time = time.time() - start_time
-                inference_times.append(inference_time)
-            
-            avg_inference_time = sum(inference_times) / len(inference_times)
-            
-            # Process generation output
-            if hasattr(outputs, "logits"):
-                logits = outputs.logits
-                generated_ids = torch.argmax(logits, dim=-1)
-                
-                if hasattr(tokenizer, "decode"):
-                    decoded_output = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
-                    predictions = [decoded_output]
-                else:
-                    predictions = ["<mock_output>"]
-            else:
-                predictions = ["<mock_output>"]
-            
-            # Try generation
-            try:
-                if hasattr(model, "generate"):
-                    gen_start_time = time.time()
-                    generated_ids = model.generate(inputs["input_ids"], max_length=50)
-                    gen_time = time.time() - gen_start_time
-                    
-                    if hasattr(tokenizer, "decode"):
-                        gen_text = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
-                        results["openvino_generation"] = gen_text
-                        results["openvino_generation_time"] = gen_time
-            except Exception as e:
-                logger.warning(f"Generation failed: {e}")
-                results["openvino_generation_error"] = str(e)
-            
-            # Store results
-            results["openvino_success"] = True
-            results["openvino_load_time"] = model_load_time
-            results["openvino_inference_time"] = avg_inference_time
-            results["openvino_tokenizer_load_time"] = tokenizer_load_time
-            results["openvino_backend"] = "optimum.intel" if has_optimum else "direct_conversion"
-            
-            # Add predictions if available
-            if 'predictions' in locals():
-                results["openvino_predictions"] = predictions
-            
-            results["openvino_error_type"] = "none"
-            
-            # Add to examples
-            example_data = {
-                "method": "OpenVINO inference",
-                "input": str(test_input)
-            }
-            
-            if 'predictions' in locals():
-                example_data["predictions"] = predictions
-            
-            self.examples.append(example_data)
-            
-            # Store in performance stats
-            self.performance_stats["openvino"] = {
-                "inference_time": avg_inference_time,
-                "load_time": model_load_time,
-                "tokenizer_load_time": tokenizer_load_time,
-                "backend": "optimum.intel" if has_optimum else "direct_conversion",
-                "num_runs": num_runs
-            }
-            
-        except Exception as e:
-            # Store error information
-            results["openvino_success"] = False
-            results["openvino_error"] = str(e)
-            results["openvino_traceback"] = traceback.format_exc()
-            logger.error(f"Error testing with OpenVINO: {e}")
-            
-            # Classify error
-            error_str = str(e).lower()
-            traceback_str = traceback.format_exc().lower()
-            
-            if "no module named" in error_str:
-                results["openvino_error_type"] = "missing_dependency"
-                
-                if "optimum" in error_str:
-                    results["openvino_missing_deps"] = ["optimum-intel"]
-                else:
-                    results["openvino_missing_deps"] = ["openvino"]
-            
-            elif "memory" in error_str or "memory" in traceback_str:
-                results["openvino_error_type"] = "out_of_memory"
-            else:
-                results["openvino_error_type"] = "other"
-        
-        # Add to overall results
-        self.results["openvino"] = results
-        return results
-    
+     
     def run_tests(self, all_hardware=False):
         """
         Run all tests for this model.
@@ -777,14 +636,10 @@ class TestLedModels:
             if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
                 self.test_pipeline(device="cuda")
                 self.test_from_pretrained(device="cuda")
-            
-            # Test on OpenVINO if available
-            if HW_CAPABILITIES["openvino"]:
-                self.test_with_openvino()
         
         # Determine if real inference or mock objects were used
         using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
-        using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+        using_mocks = not using_real_inference or not HAS_TOKENIZERS
         
         # Build final results
         return {
@@ -797,17 +652,17 @@ class TestLedModels:
                 "task": self.task,
                 "class": self.class_name,
                 "description": self.description,
+                "context_length": self.context_length,
                 "timestamp": datetime.datetime.now().isoformat(),
                 "has_transformers": HAS_TRANSFORMERS,
                 "has_torch": HAS_TORCH,
                 "has_tokenizers": HAS_TOKENIZERS,
-                "has_sentencepiece": HAS_SENTENCEPIECE,
                 "using_real_inference": using_real_inference,
                 "using_mocks": using_mocks,
                 "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
             }
         }
-
+        
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists
@@ -824,19 +679,19 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     logger.info(f"Saved results to {output_path}")
     return output_path
-
+    
 def get_available_models():
-    """Get a list of all available T5 models in the registry."""
+    """Get a list of all available LED models in the registry."""
     return list(LED_MODELS_REGISTRY.keys())
-
+    
 def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered T5 models."""
+    """Test all registered LED models."""
     models = get_available_models()
     results = {}
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestLedModels(model_id)
+        tester = TestLEDModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -845,7 +700,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         # Add to summary
         results[model_id] = {
             "success": any(r.get("pipeline_success", False) for r in model_results["results"].values()
-                if r.get("pipeline_success") is not False)
+                if isinstance(r, dict) and "pipeline_success" in r)
         }
     
     # Save summary
@@ -858,7 +713,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
 
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test T5-family models")
+    parser = argparse.ArgumentParser(description="Test LED models")
     
     # Model selection
     model_group = parser.add_mutually_exclusive_group()
@@ -881,10 +736,12 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable T5-family models:")
+        print(f"\nAvailable LED models:")
         for model in models:
             info = LED_MODELS_REGISTRY[model]
-            print(f"  - {model} ({info['class']}): {info['description']}")
+            print(f"  - {model} ({info.get('parameters', 'unknown parameters')}):")
+            print(f"      {info['description']}")
+            print(f"      Context Length: {info['context_length']}")
         return
     
     # Create output directory if needed
@@ -896,14 +753,14 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nT5 Models Testing Summary:")
+        print(f"\nLED Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "led-small"
+    model_id = args.model or "allenai/led-base-16384"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -911,7 +768,7 @@ def main():
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
     # Run test
-    tester = TestLedModels(model_id)
+    tester = TestLEDModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested
@@ -919,50 +776,71 @@ def main():
         save_results(model_id, results, output_dir=args.output_dir)
     
     # Print summary
-    success = any(r.get("pipeline_success", False) for r in results["results"].values()
-        if r.get("pipeline_success") is not False)
+    success = False
+    for r in results["results"].values():
+        if isinstance(r, dict) and r.get("pipeline_success", False):
+            success = True
+            break
     
     # Determine if real inference or mock objects were used
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
-    using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
+    using_mocks = not using_real_inference or not HAS_TOKENIZERS
     
-    print("\nTEST RESULTS SUMMARY:")
+    print("\n" + "="*50)
+    print(f"TEST RESULTS SUMMARY")
+    print("="*50)
     
     # Indicate real vs mock inference clearly
     if using_real_inference and not using_mocks:
         print(f"{GREEN}🚀 Using REAL INFERENCE with actual models{RESET}")
     else:
         print(f"{BLUE}🔷 Using MOCK OBJECTS for CI/CD testing only{RESET}")
-        print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+        print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}")
+    
+    # Print model information
+    print(f"\nModel: {model_id}")
+    print(f"Description: {tester.description}")
+    print(f"Context Length: {tester.context_length} tokens")
+    print(f"Device: {tester.preferred_device}")
     
     if success:
-        print(f"✅ Successfully tested {model_id}")
+        print(f"\n✅ Successfully tested LED model")
         
         # Print performance highlights
-        for device, stats in results["performance"].items():
-            if "avg_time" in stats:
-                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
+        if results["performance"]:
+            print("\nPerformance Stats:")
+            for test_name, stats in results["performance"].items():
+                if "avg_time" in stats:
+                    print(f"  - {test_name}: {stats['avg_time']:.4f}s average inference time")
+                if "model_load_time" in stats:
+                    print(f"      Model load time: {stats['model_load_time']:.2f}s")
+                if "generation_time" in stats:
+                    print(f"      Generation time: {stats['generation_time']:.4f}s")
         
-        # Print example outputs if available
-        if results.get("examples") and len(results["examples"]) > 0:
-            print("\nExample output:")
+        # Print example outputs
+        if results["examples"]:
             example = results["examples"][0]
-            if "predictions" in example:
-                print(f"  Input: {example['input']}")
-                print(f"  Predictions: {example['predictions']}")
-            elif "output_preview" in example:
-                print(f"  Input: {example['input']}")
+            print(f"\nExample:")
+            print(f"  Input: {example['input'][:100]}..." if len(example['input']) > 100 else f"  Input: {example['input']}")
+            
+            if "output_preview" in example:
                 print(f"  Output: {example['output_preview']}")
+            elif "predictions" in example:
+                print(f"  Predictions: {example['predictions']}")
+            elif "generation" in example and "summary" in example["generation"]:
+                print(f"  Generated Summary: {example['generation']['summary']}")
     else:
-        print(f"❌ Failed to test {model_id}")
+        print(f"\n❌ Failed to test LED model")
         
         # Print error information
         for test_name, result in results["results"].items():
-            if "pipeline_error" in result:
-                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
-                print(f"    {result.get('pipeline_error', 'Unknown error')}")
-    
-    print("\nFor detailed results, use --save flag and check the JSON output file.")
+            if isinstance(result, dict):
+                if "pipeline_error" in result:
+                    print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
+                    print(f"    {result.get('pipeline_error', 'Unknown error')}")
+                elif "from_pretrained_error" in result:
+                    print(f"  - Error in {test_name}: {result.get('from_pretrained_error_type', 'unknown')}")
+                    print(f"    {result.get('from_pretrained_error', 'Unknown error')}")
 
 if __name__ == "__main__":
     main()

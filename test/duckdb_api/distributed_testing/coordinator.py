@@ -12,6 +12,8 @@ Core responsibilities:
 - Result aggregation and storage
 - Administration API
 - Job scheduling and prioritization
+- Dynamic resource management and adaptive scaling
+- Cloud provider integration
 
 Usage:
     python coordinator.py --host 0.0.0.0 --port 8080 --db-path ./benchmark_db.duckdb
@@ -31,6 +33,8 @@ import signal
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Set, Tuple
 from pathlib import Path
+from dataclasses import dataclass, asdict
+import re
 
 # Import the new components
 try:
@@ -71,10 +75,15 @@ except ImportError:
     RESOURCE_PREDICTOR_AVAILABLE = False
 
 try:
-    from duckdb_api.distributed_testing.cloud_provider_integration import CloudProviderManager
+    from duckdb_api.distributed_testing.cloud_provider_manager import CloudProviderManager
+    from duckdb_api.distributed_testing.cloud_provider_integration import (
+        AWSCloudProvider, 
+        GCPCloudProvider, 
+        DockerLocalProvider
+    )
     CLOUD_PROVIDER_AVAILABLE = True
 except ImportError:
-    logger.warning("Cloud Provider Integration not available. Cloud scaling features disabled.")
+    logger.warning("Cloud Provider Manager not available. Cloud scaling features disabled.")
     CLOUD_PROVIDER_AVAILABLE = False
 
 # Setup logging
@@ -2013,12 +2022,17 @@ class CoordinatorServer:
         
         # Initialize dynamic resource manager if available
         self.dynamic_resource_manager = None
+        self.scaling_interval = 60  # Default scaling evaluation interval in seconds
+        
         if DYNAMIC_RESOURCE_MANAGER_AVAILABLE:
             try:
                 self.dynamic_resource_manager = DynamicResourceManager(
                     target_utilization=0.7,
                     scale_up_threshold=0.8,
-                    scale_down_threshold=0.3
+                    scale_down_threshold=0.3,
+                    evaluation_window=300,  # 5 minutes
+                    scale_up_cooldown=300,  # 5 minutes
+                    scale_down_cooldown=600  # 10 minutes
                 )
                 logger.info("Dynamic Resource Manager initialized")
             except Exception as e:
@@ -2044,11 +2058,44 @@ class CoordinatorServer:
         self.cloud_provider_manager = None
         if CLOUD_PROVIDER_AVAILABLE:
             try:
-                self.cloud_provider_manager = CloudProviderManager()
-                # Add available cloud providers
-                self.cloud_provider_manager.add_provider("aws")
-                self.cloud_provider_manager.add_provider("gcp")
-                self.cloud_provider_manager.add_provider("docker_local")
+                # Look for cloud provider config file
+                cloud_config_path = os.path.join(os.path.dirname(self.db_path) if self.db_path else ".", "cloud_config.json")
+                if os.path.exists(cloud_config_path):
+                    self.cloud_provider_manager = CloudProviderManager(config_path=cloud_config_path)
+                    logger.info(f"Cloud Provider Manager initialized with config from {cloud_config_path}")
+                else:
+                    # Initialize with default configuration
+                    self.cloud_provider_manager = CloudProviderManager()
+                    
+                    # Add available cloud providers
+                    try:
+                        # Try to add AWS provider
+                        aws_provider = AWSCloudProvider("us-east-1")
+                        self.cloud_provider_manager.add_provider("aws", aws_provider)
+                        logger.info("AWS provider added")
+                    except Exception as aws_e:
+                        logger.warning(f"Could not initialize AWS provider: {aws_e}")
+                    
+                    try:
+                        # Try to add GCP provider if project ID is available in environment
+                        if "GCP_PROJECT_ID" in os.environ:
+                            gcp_provider = GCPCloudProvider(
+                                region="us-central1-a", 
+                                project_id=os.environ.get("GCP_PROJECT_ID")
+                            )
+                            self.cloud_provider_manager.add_provider("gcp", gcp_provider)
+                            logger.info("GCP provider added")
+                    except Exception as gcp_e:
+                        logger.warning(f"Could not initialize GCP provider: {gcp_e}")
+                    
+                    try:
+                        # Add Docker local provider
+                        docker_provider = DockerLocalProvider()
+                        self.cloud_provider_manager.add_provider("docker_local", docker_provider)
+                        logger.info("Docker local provider added")
+                    except Exception as docker_e:
+                        logger.warning(f"Could not initialize Docker provider: {docker_e}")
+                
                 logger.info("Cloud Provider Manager initialized")
             except Exception as e:
                 logger.error(f"Error initializing Cloud Provider Manager: {e}")
@@ -2222,14 +2269,8 @@ class CoordinatorServer:
                 logger.info("Dual-layer intelligent result aggregation system is active")
                 
             # Start dynamic resource management and scaling evaluation if available
-            if self.dynamic_resource_manager and self.cloud_provider_manager:
-                # Start scaling evaluation thread
-                self.scaling_thread = threading.Thread(
-                    target=self._scaling_evaluation_loop,
-                    daemon=True
-                )
-                self.scaling_thread.start()
-                logger.info("Dynamic resource scaling evaluation started")
+            # NOTE: The scaling thread is now managed in the main() function when --enable-drm is used
+            # This ensures it's not started multiple times or without proper configuration
             
             # Start WebSocket server
             logger.info(f"Starting WebSocket server on {self.host}:{self.port}")
@@ -2933,40 +2974,60 @@ class CoordinatorServer:
                 if scaling_decision.action == "scale_up":
                     # Need to scale up, provision new workers
                     workers_to_add = scaling_decision.count
-                    logger.info(f"Scaling up: Adding {workers_to_add} worker(s)")
+                    logger.info(f"Scaling up: Adding {workers_to_add} worker(s) due to {scaling_decision.reason}")
                     
                     # Determine resource requirements for new workers
                     resource_requirements = scaling_decision.resource_requirements
+                    worker_type = scaling_decision.worker_type
                     
                     # Choose provider based on requirements
-                    provider_name = "docker_local"  # Default to local for testing
-                    if resource_requirements.get("gpu_required", False):
-                        provider_name = "aws"  # Use AWS for GPU instances
+                    use_gpu = resource_requirements.get("gpu_memory_mb", 0) > 0
+                    provider_name = scaling_decision.provider
+                    
+                    # If provider not specified, choose based on requirements
+                    if not provider_name:
+                        provider_requirements = {
+                            "gpu": use_gpu,
+                            "min_cpu_cores": resource_requirements.get("cpu_cores", 2),
+                            "min_memory_gb": resource_requirements.get("memory_mb", 4096) / 1024
+                        }
+                        
+                        provider_name = self.cloud_provider_manager.get_preferred_provider(provider_requirements)
+                        
+                        # If still no provider, use default
+                        if not provider_name:
+                            provider_name = "docker_local"  # Default to local for testing
                     
                     # Create workers
                     for i in range(workers_to_add):
                         try:
+                            # Prepare API key and coordinator URL for worker
+                            api_key = self.security_manager.generate_worker_key().get("api_key")
+                            coordinator_url = f"ws://{self.host}:{self.port}"
+                            
                             # Create worker with required resources
-                            worker_info = self.cloud_provider_manager.create_worker(
+                            worker_result = self.cloud_provider_manager.create_worker(
                                 provider=provider_name,
                                 resources=resource_requirements,
-                                worker_type=scaling_decision.worker_type,
-                                use_spot=scaling_decision.use_spot_instances
+                                worker_type=worker_type,
+                                coordinator_url=coordinator_url,
+                                api_key=api_key
                             )
                             
-                            if worker_info:
-                                logger.info(f"Created new worker: {worker_info['worker_id']} on {provider_name}")
+                            if worker_result:
+                                logger.info(f"Created new worker: {worker_result.get('worker_id')} on {provider_name}")
                             else:
                                 logger.error(f"Failed to create worker on {provider_name}")
                         except Exception as e:
                             logger.error(f"Error creating worker: {e}")
+                            logger.debug(traceback.format_exc())
                 
                 elif scaling_decision.action == "scale_down":
                     # Need to scale down, terminate excess workers
                     workers_to_remove = scaling_decision.count
                     worker_ids = scaling_decision.worker_ids
                     
-                    logger.info(f"Scaling down: Removing {workers_to_remove} worker(s)")
+                    logger.info(f"Scaling down: Removing {workers_to_remove} worker(s) due to {scaling_decision.reason}")
                     
                     # Terminate each worker
                     for worker_id in worker_ids:
@@ -2988,13 +3049,20 @@ class CoordinatorServer:
                                 
                                 if success:
                                     logger.info(f"Terminated worker: {worker_id} on {provider_name}")
+                                    
+                                    # Deregister worker from worker manager and resource manager
+                                    self.worker_manager.deregister_worker(worker_id)
+                                    if self.dynamic_resource_manager:
+                                        self.dynamic_resource_manager.deregister_worker(worker_id)
                                 else:
                                     logger.error(f"Failed to terminate worker: {worker_id} on {provider_name}")
                         except Exception as e:
                             logger.error(f"Error terminating worker {worker_id}: {e}")
+                            logger.debug(traceback.format_exc())
                 
             except Exception as e:
                 logger.error(f"Error in scaling evaluation loop: {e}")
+                logger.debug(traceback.format_exc())
         
         logger.info("Scaling evaluation thread stopped")
 
@@ -3092,6 +3160,20 @@ def main():
                       help="Generate a performance report when enabled")
     parser.add_argument("--report-output", default="performance_report.html",
                       help="Output file for the performance report")
+                      
+    # Dynamic Resource Management options
+    parser.add_argument("--enable-drm", action="store_true",
+                      help="Enable Dynamic Resource Management with adaptive scaling")
+    parser.add_argument("--scaling-interval", type=int, default=60,
+                      help="Interval in seconds for scaling evaluation")
+    parser.add_argument("--cloud-config", default=None,
+                      help="Path to cloud provider configuration file")
+    parser.add_argument("--target-utilization", type=float, default=0.7,
+                      help="Target resource utilization (0.0-1.0)")
+    parser.add_argument("--scale-up-threshold", type=float, default=0.8,
+                      help="Threshold to trigger scale up (0.0-1.0)")
+    parser.add_argument("--scale-down-threshold", type=float, default=0.3,
+                      help="Threshold to trigger scale down (0.0-1.0)")
     
     args = parser.parse_args()
     
@@ -3111,6 +3193,11 @@ def main():
         coordinator_addresses = args.coordinator_addresses.split(",")
     
     # Create coordinator
+    # Prepare cloud config path if provided
+    cloud_config_path = None
+    if args.cloud_config:
+        cloud_config_path = args.cloud_config
+    
     coordinator = CoordinatorServer(
         host=args.host,
         port=args.port,
@@ -3123,6 +3210,24 @@ def main():
         performance_analyzer=args.performance_analyzer,
         visualization_path=args.visualization_path
     )
+    
+    # Configure DRM system if enabled
+    if args.enable_drm and coordinator.dynamic_resource_manager:
+        # Set scaling interval
+        coordinator.scaling_interval = args.scaling_interval
+        
+        # Update DRM parameters
+        coordinator.dynamic_resource_manager.target_utilization = args.target_utilization
+        coordinator.dynamic_resource_manager.scale_up_threshold = args.scale_up_threshold
+        coordinator.dynamic_resource_manager.scale_down_threshold = args.scale_down_threshold
+        
+        # Start scaling evaluation thread
+        coordinator.scaling_thread = threading.Thread(
+            target=coordinator._scaling_evaluation_loop,
+            daemon=True
+        )
+        coordinator.scaling_thread.start()
+        logger.info(f"Dynamic Resource Management enabled with scaling interval {args.scaling_interval}s")
     
     # Generate worker key if requested
     if args.generate_worker_key:

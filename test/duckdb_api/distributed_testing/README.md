@@ -9,11 +9,22 @@ A high-performance distributed testing system that enables parallel execution of
 ![Stress Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/stress-status.json)
 ![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/username/repo/main/test/duckdb_api/distributed_testing/.github/badges/coverage.json)
 
-## New Features (March 20, 2025)
+## New Features (March 21, 2025)
 
 The framework has been enhanced with the following new features:
 
-1. **Cross-Platform Worker Support** ✅ (NEW): A comprehensive cross-platform support system with:
+1. **Dynamic Resource Management Dashboard** ✅ (NEW): A comprehensive visualization and monitoring system for the Dynamic Resource Manager with:
+   - Dedicated dashboard page in the monitoring dashboard UI
+   - Resource utilization heatmaps showing CPU, memory, and GPU usage across workers
+   - Scaling history visualization for tracking scaling decisions over time
+   - Resource allocation and efficiency visualizations for optimization
+   - Cloud resource usage tracking with cost metrics
+   - Interactive dashboard with WebSocket-based real-time updates
+   - Auto-refresh functionality with configurable intervals
+   - Tabbed interface for easy navigation between visualization types
+   - See [DRM_DASHBOARD_INTEGRATION.md](docs/DRM_DASHBOARD_INTEGRATION.md) for details
+
+2. **Cross-Platform Worker Support** ✅: A comprehensive cross-platform support system with:
    - Unified interface for Linux, Windows, macOS, and containers
    - Platform-specific hardware detection (CPU, memory, GPU, disk)
    - Deployment script generation for each supported platform
@@ -283,7 +294,8 @@ The web-based dashboard server manages the monitoring dashboard:
 - [x] Phase 11: Error Visualization System (March 19, 2025) ✅
 - [x] Phase 12: CI/CD Integration (March 13, 2025) ✅
 - [✅] Phase 13: Intelligent Result Aggregation (March 17, 2025 - COMPLETED)
-- [✅] Phase 14: Cross-Platform Worker Support (March 20, 2025 - COMPLETED) ✅ NEW
+- [✅] Phase 14: Cross-Platform Worker Support (March 20, 2025 - COMPLETED) ✅
+- [✅] Phase 15: Dynamic Resource Management Dashboard (March 21, 2025 - COMPLETED) ✅ NEW
 
 Target completion for all phases: June 26, 2025 (currently ahead of schedule)
 
@@ -434,6 +446,23 @@ python run_monitoring_dashboard.py --debug
 # Enable error tracking visualization
 python run_monitoring_dashboard.py --error-tracking
 ```
+
+### Running the DRM Dashboard
+
+To start the monitoring dashboard with DRM visualization:
+
+```bash
+# Start the DRM visualization dashboard with default settings
+python run_dashboard_with_drm_visualization.py
+
+# Start with custom host and port
+python run_dashboard_with_drm_visualization.py --host 0.0.0.0 --port 8085
+
+# Use real resource manager instead of mock data
+python run_dashboard_with_drm_visualization.py --no-mock
+```
+
+This will provide a dedicated DRM dashboard accessible at `http://<host>:<port>/drm-dashboard` with comprehensive resource management visualizations.
 
 ### Running the Error Visualization Dashboard
 

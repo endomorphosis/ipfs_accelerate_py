@@ -11,181 +11,179 @@ except ImportError:
     HAS_HARDWARE_DETECTION = False
     # We'll detect hardware manually as fallback
 
-import os
-import sys
-import json
-import time
-import datetime
+    import os
+    import sys
+    import json
+    import time
+    import datetime
 
-# ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
-import traceback
-import logging
-import argparse
-from unittest.mock import patch, MagicMock, Mock
-from typing import Dict, List, Any, Optional, Union
-from pathlib import Path
+    # ANSI color codes for terminal output
+    GREEN = "\\033[32m"
+    BLUE = "\\033[34m"
+    RESET = "\\033[0m"
+    import traceback
+    import logging
+    import argparse
+    from unittest.mock import patch, MagicMock, Mock
+    from typing import Dict, List, Any, Optional, Union
+    from pathlib import Path
 
-import asyncio
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+    import asyncio
+    # Configure logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # Add parent directory to path for imports
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Third-party imports
-import numpy as np
+    # Third-party imports
+    import numpy as np
 
-# WebGPU imports and mock setup
-HAS_WEBGPU = False
-try:
-    # Attempt to check for WebGPU availability
-    import ctypes.util
-    HAS_WEBGPU = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webgpu') is not None
-except ImportError:
+    # WebGPU imports and mock setup
     HAS_WEBGPU = False
+    try:
+        # Attempt to check for WebGPU availability
+        import ctypes.util
+        HAS_WEBGPU = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webgpu') is not None
+    except ImportError:
+        HAS_WEBGPU = False
 
-# WebNN imports and mock setup
-HAS_WEBNN = False
-try:
-    # Attempt to check for WebNN availability
-    import ctypes
-    HAS_WEBNN = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webnn') is not None
-except ImportError:
+    # WebNN imports and mock setup
     HAS_WEBNN = False
+    try:
+        # Attempt to check for WebNN availability
+        import ctypes
+        HAS_WEBNN = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webnn') is not None
+    except ImportError:
+        HAS_WEBNN = False
 
-# ROCm imports and detection
-HAS_ROCM = False
-try:
-    if torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
-        HAS_ROCM = True
-        ROCM_VERSION = torch._C._rocm_version()
-    elif 'ROCM_HOME' in os.environ:
-        HAS_ROCM = True
-except:
+    # ROCm imports and detection
     HAS_ROCM = False
+    try:
+        if torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+            HAS_ROCM = True
+            ROCM_VERSION = torch._C._rocm_version()
+        elif 'ROCM_HOME' in os.environ:
+            HAS_ROCM = True
+    except:
+        HAS_ROCM = False
 
-try:
-    import openvino
-    from openvino.runtime import Core
-    HAS_OPENVINO = True
-except ImportError:
-    HAS_OPENVINO = False
-    logger.warning("OpenVINO not available")
-
-
-# Check if we should mock specific dependencies
-MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
-MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
-MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
-MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
-# Try to import torch
-try:
-    if MOCK_TORCH:
-        raise ImportError("Mocked torch import failure")
-    import torch
-    HAS_TORCH = True
-except ImportError:
-    torch = MagicMock()
-    HAS_TORCH = False
-    logger.warning("torch not available, using mock")
-
-# Try to import transformers
-try:
-    if MOCK_TRANSFORMERS:
-        raise ImportError("Mocked transformers import failure")
-    import transformers
-    HAS_TRANSFORMERS = True
-except ImportError:
-    transformers = MagicMock()
-    HAS_TRANSFORMERS = False
-    logger.warning("transformers not available, using mock")
-
-
-# Try to import sentencepiece
-try:
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
-except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
-
-
-if not HAS_SENTENCEPIECE:
-    class MockSentencePieceProcessor:
-        def __init__(self, *args, **kwargs):
-            self.vocab_size = 32000
-            
-        def encode(self, text, out_type=str):
-            return [1, 2, 3, 4, 5]
-            
-        def decode(self, ids):
-            return "Decoded text from mock"
-            
-        def get_piece_size(self):
-            return 32000
-            
-        @staticmethod
-        def load(model_file):
-            return MockSentencePieceProcessor()
-
-    sentencepiece.SentencePieceProcessor = MockSentencePieceProcessor
-
-
-# Hardware detection
-def check_hardware():
-    """Check available hardware and return capabilities."""
-    capabilities = {
-        "cpu": True,
-        "cuda": False,
-        "cuda_version": None,
-        "cuda_devices": 0,
-        "mps": False,
-        "openvino": False
-    }
-    
-    # Check CUDA
-    if HAS_TORCH:
-        capabilities["cuda"] = torch.cuda.is_available()
-        if capabilities["cuda"]:
-            capabilities["cuda_devices"] = torch.cuda.device_count()
-            capabilities["cuda_version"] = torch.version.cuda
-    
-    # Check MPS (Apple Silicon)
-    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
-        capabilities["mps"] = torch.mps.is_available()
-    
-    # Check OpenVINO
     try:
         import openvino
-        capabilities["openvino"] = True
+        from openvino.runtime import Core
+        HAS_OPENVINO = True
     except ImportError:
-        pass
-    
-    return capabilities
+        HAS_OPENVINO = False
+        logger.warning("OpenVINO not available")
 
-# Get hardware capabilities
-HW_CAPABILITIES = check_hardware()
+    # Check if we should mock specific dependencies
+    MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
+    MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
+    MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
+    MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+    # Try to import torch
+    try:
+        if MOCK_TORCH:
+            raise ImportError("Mocked torch import failure")
+        import torch
+        HAS_TORCH = True
+    except ImportError:
+        torch = MagicMock()
+        HAS_TORCH = False
+        logger.warning("torch not available, using mock")
 
-# Models registry - Maps model IDs to their specific configurations
-T5_MODELS_REGISTRY = {
-    "t5-small": {
-        "description": "T5 small model",
-        "class": "T5ForConditionalGeneration",
-    },
-    "t5-base": {
-        "description": "T5 base model",
-        "class": "T5ForConditionalGeneration",
-    },
-    "google/flan-t5-small": {
-        "description": "Flan-T5 small model",
-        "class": "T5ForConditionalGeneration",
+    # Try to import transformers
+    try:
+        if MOCK_TRANSFORMERS:
+            raise ImportError("Mocked transformers import failure")
+        import transformers
+        HAS_TRANSFORMERS = True
+    except ImportError:
+        transformers = MagicMock()
+        HAS_TRANSFORMERS = False
+        logger.warning("transformers not available, using mock")
+
+    # Try to import sentencepiece
+    try:
+        if MOCK_SENTENCEPIECE:
+            raise ImportError("Mocked sentencepiece import failure")
+        import sentencepiece
+        HAS_SENTENCEPIECE = True
+    except ImportError:
+        sentencepiece = MagicMock()
+        HAS_SENTENCEPIECE = False
+        logger.warning("sentencepiece not available, using mock")
+
+    if not HAS_SENTENCEPIECE:
+        class MockSentencePieceProcessor:
+            def __init__(self, *args, **kwargs):
+                self.vocab_size = 32000
+            
+            def encode(self, text, out_type=str):
+                return [1, 2, 3, 4, 5]
+            
+            def decode(self, ids):
+                return "Decoded text from mock"
+            
+            def get_piece_size(self):
+                return 32000
+            
+            @staticmethod
+            def load(model_file):
+                return MockSentencePieceProcessor()
+
+        sentencepiece.SentencePieceProcessor = MockSentencePieceProcessor
+
+    # Hardware detection
+    def check_hardware():
+        """Check available hardware and return capabilities."""
+        capabilities = {
+            "cpu": True,
+            "cuda": False,
+            "cuda_version": None,
+            "cuda_devices": 0,
+            "mps": False,
+            "openvino": False
+        }
+        
+        # Check CUDA
+        if HAS_TORCH:
+            capabilities["cuda"] = torch.cuda.is_available()
+            if capabilities["cuda"]:
+                capabilities["cuda_devices"] = torch.cuda.device_count()
+                capabilities["cuda_version"] = torch.version.cuda
+        
+        # Check MPS (Apple Silicon)
+        if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+            capabilities["mps"] = torch.mps.is_available()
+        
+        # Check OpenVINO
+        try:
+            import openvino
+            capabilities["openvino"] = True
+        except ImportError:
+            pass
+        
+        return capabilities
+
+    # Get hardware capabilities
+    HW_CAPABILITIES = check_hardware()
+
+    # Models registry - Maps model IDs to their specific configurations
+    T5_MODELS_REGISTRY = {
+        "t5-small": {
+            "description": "T5 small model",
+            "class": "T5ForConditionalGeneration",
+        },
+        "t5-base": {
+            "description": "T5 base model",
+            "class": "T5ForConditionalGeneration",
+        },
+        "google/flan-t5-small": {
+            "description": "Flan-T5 small model",
+            "class": "T5ForConditionalGeneration",
+        }
     }
-}
 
 class TestT5Models:
     """Base test class for all T5-family models."""
@@ -227,7 +225,7 @@ class TestT5Models:
         self.results = {}
         self.examples = []
         self.performance_stats = {}
-    
+        
     def test_pipeline(self, device="auto"):
         """Test the model using transformers pipeline API."""
         if device == "auto":
@@ -352,7 +350,7 @@ class TestT5Models:
         # Add to overall results
         self.results[f"pipeline_{device}"] = results
         return results
-    
+        
     def test_from_pretrained(self, device="auto"):
         """Test the model using direct from_pretrained loading."""
         if device == "auto":
@@ -431,14 +429,14 @@ class TestT5Models:
                 inputs = {key: val.to(device) for key, val in inputs.items()}
             
             # Run warmup inference if using CUDA
-            if device == "cuda":
-                try:
-                    with torch.no_grad():
-                        _ = model(**inputs)
-                except Exception:
-                    pass
-            
-            # Run multiple inference passes
+            if device == \"cuda\":
+        try:
+            with torch.no_grad():
+                _ = model(**inputs)
+        except Exception:
+            pass
+
+    # Run multiple inference passes
             num_runs = 3
             times = []
             outputs = []
@@ -531,7 +529,7 @@ class TestT5Models:
         # Add to overall results
         self.results[f"from_pretrained_{device}"] = results
         return results
-    
+        
     def test_with_openvino(self):
         """Test the model using OpenVINO integration."""
         results = {
@@ -568,25 +566,25 @@ class TestT5Models:
                 has_optimum = False
                 logger.warning("optimum.intel not available, using direct OpenVINO conversion")
                 
-            # Time tokenizer loading
-            tokenizer_load_start = time.time()
-            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
-            tokenizer_load_time = time.time() - tokenizer_load_start
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+                tokenizer_load_time = time.time() - tokenizer_load_start
             
-            # Time model loading
-            model_load_start = time.time()
+                # Time model loading
+                model_load_start = time.time()
             
-            if has_optimum:
-                # Use optimum.intel integration
-                model = OVModelForSeq2SeqLM.from_pretrained(
-                    self.model_id,
-                    export=True,
-                    provider="CPU"
-                )
-            else:
-                # Manual OpenVINO conversion for T5 model
-                import openvino as ov
-                from openvino.runtime import Core
+                if has_optimum:
+                    # Use optimum.intel integration
+                    model = OVModelForSeq2SeqLM.from_pretrained(
+                        self.model_id,
+                        export=True,
+                        provider="CPU"
+                    )
+                else:
+                    # Manual OpenVINO conversion for T5 model
+                    import openvino as ov
+                    from openvino.runtime import Core
                 
                 # Load transformer model
                 pt_model = transformers.T5ForConditionalGeneration.from_pretrained(self.model_id)
@@ -621,7 +619,7 @@ class TestT5Models:
                         
                         # Return dummy logits for this simplified implementation
                         return OutputWrapper(torch.rand(1, 10, self.tokenizer.vocab_size))
-                    
+                        
                     def generate(self, input_ids, attention_mask=None, **kwargs):
                         # Simplified generate implementation
                         return torch.tensor([[1, 2, 3, 4, 5]])  # Return dummy token IDs
@@ -640,30 +638,30 @@ class TestT5Models:
             except Exception as e:
                 logger.warning(f"Warmup run failed: {e}")
             
-            # Run inference
-            num_runs = 3
-            inference_times = []
+                # Run inference
+                num_runs = 3
+                inference_times = []
             
-            for _ in range(num_runs):
-                start_time = time.time()
-                outputs = model(**inputs)
-                inference_time = time.time() - start_time
-                inference_times.append(inference_time)
+                for _ in range(num_runs):
+                    start_time = time.time()
+                    outputs = model(**inputs)
+                    inference_time = time.time() - start_time
+                    inference_times.append(inference_time)
             
-            avg_inference_time = sum(inference_times) / len(inference_times)
+                avg_inference_time = sum(inference_times) / len(inference_times)
             
-            # Process generation output
-            if hasattr(outputs, "logits"):
-                logits = outputs.logits
-                generated_ids = torch.argmax(logits, dim=-1)
-                
-                if hasattr(tokenizer, "decode"):
-                    decoded_output = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
-                    predictions = [decoded_output]
+                # Process generation output
+                if hasattr(outputs, "logits"):
+                    logits = outputs.logits
+                    generated_ids = torch.argmax(logits, dim=-1)
+                    
+                    if hasattr(tokenizer, "decode"):
+                        decoded_output = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+                        predictions = [decoded_output]
+                    else:
+                        predictions = ["<mock_output>"]
                 else:
                     predictions = ["<mock_output>"]
-            else:
-                predictions = ["<mock_output>"]
             
             # Try generation
             try:
@@ -680,38 +678,38 @@ class TestT5Models:
                 logger.warning(f"Generation failed: {e}")
                 results["openvino_generation_error"] = str(e)
             
-            # Store results
-            results["openvino_success"] = True
-            results["openvino_load_time"] = model_load_time
-            results["openvino_inference_time"] = avg_inference_time
-            results["openvino_tokenizer_load_time"] = tokenizer_load_time
-            results["openvino_backend"] = "optimum.intel" if has_optimum else "direct_conversion"
+                # Store results
+                results["openvino_success"] = True
+                results["openvino_load_time"] = model_load_time
+                results["openvino_inference_time"] = avg_inference_time
+                results["openvino_tokenizer_load_time"] = tokenizer_load_time
+                results["openvino_backend"] = "optimum.intel" if has_optimum else "direct_conversion"
             
-            # Add predictions if available
-            if 'predictions' in locals():
-                results["openvino_predictions"] = predictions
+                # Add predictions if available
+                if 'predictions' in locals():
+                    results["openvino_predictions"] = predictions
             
-            results["openvino_error_type"] = "none"
+                results["openvino_error_type"] = "none"
             
-            # Add to examples
-            example_data = {
-                "method": "OpenVINO inference",
-                "input": str(test_input)
-            }
+                # Add to examples
+                example_data = {
+                    "method": "OpenVINO inference",
+                    "input": str(test_input)
+                }
             
-            if 'predictions' in locals():
-                example_data["predictions"] = predictions
+                if 'predictions' in locals():
+                    example_data["predictions"] = predictions
             
-            self.examples.append(example_data)
+                self.examples.append(example_data)
             
-            # Store in performance stats
-            self.performance_stats["openvino"] = {
-                "inference_time": avg_inference_time,
-                "load_time": model_load_time,
-                "tokenizer_load_time": tokenizer_load_time,
-                "backend": "optimum.intel" if has_optimum else "direct_conversion",
-                "num_runs": num_runs
-            }
+                # Store in performance stats
+                self.performance_stats["openvino"] = {
+                    "inference_time": avg_inference_time,
+                    "load_time": model_load_time,
+                    "tokenizer_load_time": tokenizer_load_time,
+                    "backend": "optimum.intel" if has_optimum else "direct_conversion",
+                    "num_runs": num_runs
+                }
             
         except Exception as e:
             # Store error information
@@ -740,7 +738,7 @@ class TestT5Models:
         # Add to overall results
         self.results["openvino"] = results
         return results
-    
+        
     def run_tests(self, all_hardware=False):
         """
         Run all tests for this model.
@@ -796,7 +794,7 @@ class TestT5Models:
                 "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
             }
         }
-
+        
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists
@@ -813,11 +811,11 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     logger.info(f"Saved results to {output_path}")
     return output_path
-
+    
 def get_available_models():
     """Get a list of all available T5 models in the registry."""
     return list(T5_MODELS_REGISTRY.keys())
-
+    
 def test_all_models(output_dir="collected_results", all_hardware=False):
     """Test all registered T5 models."""
     models = get_available_models()
@@ -870,7 +868,7 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable T5-family models:")
+        print(f"\nAvailable T5-family models:")
         for model in models:
             info = T5_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
@@ -885,7 +883,7 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nT5 Models Testing Summary:")
+        print(f"\nT5 Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
@@ -915,7 +913,7 @@ def main():
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
     using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
     
-    print("\nTEST RESULTS SUMMARY:")
+    print(f"\nTEST RESULTS SUMMARY:")
     
     # Indicate real vs mock inference clearly
     if using_real_inference and not using_mocks:
@@ -934,7 +932,7 @@ def main():
         
         # Print example outputs if available
         if results.get("examples") and len(results["examples"]) > 0:
-            print("\nExample output:")
+            print(f"\nExample output:")
             example = results["examples"][0]
             if "predictions" in example:
                 print(f"  Input: {example['input']}")
@@ -951,7 +949,7 @@ def main():
                 print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
                 print(f"    {result.get('pipeline_error', 'Unknown error')}")
     
-    print("\nFor detailed results, use --save flag and check the JSON output file.")
+    print(f"\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
     main()

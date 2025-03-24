@@ -1,663 +1,387 @@
 #!/usr/bin/env python3
 """
-Test migration script for IPFS Accelerate.
+Test Migration Tool
 
-This script analyzes existing test files and migrates them to the new test structure.
+This script migrates tests from the existing structure to the refactored test suite.
+It reads the migration plan and transforms tests to use the new base classes.
 """
 
 import os
 import sys
+import json
 import re
 import ast
 import argparse
-import logging
-import json
-from pathlib import Path
+import shutil
 from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Base classes and import mappings
+BASE_CLASS_MAPPING = {
+    'model': 'ModelTest',
+    'hardware': 'HardwareTest',
+    'browser': 'BrowserTest',
+    'api': 'APITest',
+    'unit': 'BaseTest',
+    'integration': 'BaseTest',
+    'resource_pool': 'BaseTest',
+}
 
-# Add the project root to the Python path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Import path mappings
+IMPORT_MAPPING = {
+    'ModelTest': 'from refactored_test_suite.model_test import ModelTest',
+    'HardwareTest': 'from refactored_test_suite.hardware_test import HardwareTest',
+    'BrowserTest': 'from refactored_test_suite.browser_test import BrowserTest',
+    'APITest': 'from refactored_test_suite.api_test import APITest',
+    'BaseTest': 'from refactored_test_suite.base_test import BaseTest',
+}
 
-# Import templates
-try:
-    from test.template_system.templates.model_test_template import ModelTestTemplate
-    from test.template_system.templates.hardware_test_template import HardwareTestTemplate
-    from test.template_system.templates.api_test_template import APITestTemplate
-except ImportError:
-    logger.warning("Could not import templates. Running in analysis-only mode.")
+# Target directory for tests
+REFACTORED_DIR = 'refactored_test_suite'
 
+# Test categories for classification
+TEST_CATEGORIES = {
+    'model': ['bert', 'vit', 'gpt', 'llama', 'model', 'transformer'],
+    'hardware': ['hardware', 'webgpu', 'webnn', 'device', 'platform'],
+    'browser': ['browser', 'firefox', 'chrome', 'safari', 'edge'],
+    'api': ['api', 'endpoint', 'service', 'server', 'client'],
+    'resource_pool': ['resource', 'pool', 'allocation', 'bridge'],
+    'integration': ['integration', 'connect', 'e2e'],
+}
 
-class TestAnalyzer:
-    """
-    Class to analyze test files and determine their type.
-    """
-    
-    def __init__(self, file_path: str):
-        """
-        Initialize the analyzer.
-        
-        Args:
-            file_path: Path to the test file
-        """
-        self.file_path = file_path
-        self.content = self._read_file(file_path)
-        self.ast = self._parse_ast()
-        
-    def _read_file(self, file_path: str) -> str:
-        """
-        Read the file content.
-        
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            File content as string
-        """
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except Exception as e:
-            logger.error(f"Error reading file {file_path}: {e}")
-            return ""
-    
-    def _parse_ast(self) -> Optional[ast.Module]:
-        """
-        Parse the file into an AST.
-        
-        Returns:
-            AST module object or None if parsing fails
-        """
-        try:
-            return ast.parse(self.content)
-        except SyntaxError as e:
-            logger.error(f"Syntax error parsing {self.file_path}: {e}")
-            return None
-    
-    def analyze(self) -> Dict[str, Any]:
-        """
-        Analyze the test file to determine its type and parameters.
-        
-        Returns:
-            Dictionary with analysis results
-        """
-        result = {
-            'file_path': self.file_path,
-            'test_type': 'unknown',
-            'imports': self._analyze_imports(),
-            'classes': self._analyze_classes(),
-            'functions': self._analyze_functions(),
-            'markers': self._analyze_markers(),
-            'parameters': {}
-        }
-        
-        # Determine test type
-        if self._is_model_test():
-            result['test_type'] = 'model'
-            result['parameters'] = self._extract_model_parameters()
-        elif self._is_hardware_test():
-            result['test_type'] = 'hardware'
-            result['parameters'] = self._extract_hardware_parameters()
-        elif self._is_api_test():
-            result['test_type'] = 'api'
-            result['parameters'] = self._extract_api_parameters()
-        
-        return result
-    
-    def _analyze_imports(self) -> List[str]:
-        """
-        Analyze imports in the file.
-        
-        Returns:
-            List of imported modules
-        """
-        if not self.ast:
-            return []
-        
-        imports = []
-        
-        for node in ast.walk(self.ast):
-            if isinstance(node, ast.Import):
-                for name in node.names:
-                    imports.append(name.name)
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    imports.append(f"{node.module}.{name.name}" for name in node.names)
-                else:
-                    imports.extend(name.name for name in node.names)
-        
-        return imports
-    
-    def _analyze_classes(self) -> List[Dict[str, Any]]:
-        """
-        Analyze classes in the file.
-        
-        Returns:
-            List of class information dictionaries
-        """
-        if not self.ast:
-            return []
-        
-        classes = []
-        
-        for node in ast.walk(self.ast):
-            if isinstance(node, ast.ClassDef):
-                methods = []
-                for item in node.body:
-                    if isinstance(item, ast.FunctionDef):
-                        methods.append({
-                            'name': item.name,
-                            'decorator_list': [self._get_decorator_name(d) for d in item.decorator_list]
-                        })
-                
-                classes.append({
-                    'name': node.name,
-                    'methods': methods
-                })
-        
-        return classes
-    
-    def _get_decorator_name(self, decorator: ast.expr) -> str:
-        """
-        Get the name of a decorator.
-        
-        Args:
-            decorator: AST decorator node
-            
-        Returns:
-            Decorator name as string
-        """
-        if isinstance(decorator, ast.Name):
-            return decorator.id
-        elif isinstance(decorator, ast.Attribute):
-            return f"{self._get_decorator_name(decorator.value)}.{decorator.attr}"
-        elif isinstance(decorator, ast.Call):
-            return self._get_decorator_name(decorator.func)
-        return str(decorator)
-    
-    def _analyze_functions(self) -> List[Dict[str, Any]]:
-        """
-        Analyze functions in the file.
-        
-        Returns:
-            List of function information dictionaries
-        """
-        if not self.ast:
-            return []
-        
-        functions = []
-        
-        for node in ast.walk(self.ast):
-            if isinstance(node, ast.FunctionDef) and node.parent_field != 'body':
-                functions.append({
-                    'name': node.name,
-                    'decorator_list': [self._get_decorator_name(d) for d in node.decorator_list]
-                })
-        
-        return functions
-    
-    def _analyze_markers(self) -> List[str]:
-        """
-        Analyze pytest markers in the file.
-        
-        Returns:
-            List of marker names
-        """
-        markers = []
-        
-        # Use regex to find pytest markers
-        marker_pattern = r'@pytest\.mark\.(\w+)'
-        markers = re.findall(marker_pattern, self.content)
-        
-        return list(set(markers))
-    
-    def _is_model_test(self) -> bool:
-        """
-        Check if the file is a model test.
-        
-        Returns:
-            True if the file is a model test, False otherwise
-        """
-        model_keywords = ['model', 'tokenizer', 'transformer', 'bert', 'gpt', 't5', 'vit', 'whisper']
-        model_imports = ['transformers', 'torch', 'tensorflow']
-        
-        # Check imports
-        for imp in self._analyze_imports():
-            if any(keyword in imp.lower() for keyword in model_imports):
-                return True
-        
-        # Check content
-        if any(keyword in self.content.lower() for keyword in model_keywords):
-            return True
-        
-        # Check markers
-        markers = self._analyze_markers()
-        if 'model' in markers or 'text' in markers or 'vision' in markers or 'audio' in markers:
-            return True
-        
-        return False
-    
-    def _is_hardware_test(self) -> bool:
-        """
-        Check if the file is a hardware test.
-        
-        Returns:
-            True if the file is a hardware test, False otherwise
-        """
-        hardware_keywords = ['webgpu', 'webnn', 'cuda', 'rocm', 'mps', 'hardware']
-        
-        # Check content
-        if any(keyword in self.content.lower() for keyword in hardware_keywords):
-            return True
-        
-        # Check markers
-        markers = self._analyze_markers()
-        if any(hw in markers for hw in ['webgpu', 'webnn', 'cuda', 'rocm', 'hardware']):
-            return True
-        
-        return False
-    
-    def _is_api_test(self) -> bool:
-        """
-        Check if the file is an API test.
-        
-        Returns:
-            True if the file is an API test, False otherwise
-        """
-        api_keywords = ['api', 'endpoint', 'client', 'server', 'http', 'rest', 'openai', 'hf_tei', 'hf_tgi', 'ollama', 'vllm', 'claude']
-        api_imports = ['requests', 'openai', 'anthropic']
-        
-        # Check imports
-        for imp in self._analyze_imports():
-            if any(keyword in imp.lower() for keyword in api_imports):
-                return True
-        
-        # Check content
-        if any(keyword in self.content.lower() for keyword in api_keywords):
-            return True
-        
-        # Check markers
-        markers = self._analyze_markers()
-        if 'api' in markers:
-            return True
-        
-        return False
-    
-    def _extract_model_parameters(self) -> Dict[str, Any]:
-        """
-        Extract model test parameters.
-        
-        Returns:
-            Dictionary with model parameters
-        """
-        parameters = {
-            'model_name': 'unknown',
-            'model_type': 'unknown',
-            'framework': 'transformers'
-        }
-        
-        # Try to extract model name
-        model_name_pattern = r'(?:model_name|name)\s*=\s*["\']([^"\']+)["\']'
-        model_name_match = re.search(model_name_pattern, self.content)
-        if model_name_match:
-            parameters['model_name'] = model_name_match.group(1)
-        else:
-            # Try to extract from class name or file name
-            file_name = os.path.basename(self.file_path)
-            if 'test_' in file_name:
-                model_name = file_name.replace('test_', '').replace('.py', '')
-                parameters['model_name'] = model_name
-        
-        # Determine model type
-        if any(keyword in self.content.lower() for keyword in ['bert', 't5', 'gpt', 'llama']):
-            parameters['model_type'] = 'text'
-        elif any(keyword in self.content.lower() for keyword in ['vit', 'resnet', 'image']):
-            parameters['model_type'] = 'vision'
-        elif any(keyword in self.content.lower() for keyword in ['whisper', 'wav2vec', 'audio']):
-            parameters['model_type'] = 'audio'
-        elif any(keyword in self.content.lower() for keyword in ['clip', 'multimodal']):
-            parameters['model_type'] = 'multimodal'
-        
-        return parameters
-    
-    def _extract_hardware_parameters(self) -> Dict[str, Any]:
-        """
-        Extract hardware test parameters.
-        
-        Returns:
-            Dictionary with hardware parameters
-        """
-        parameters = {
-            'hardware_platform': 'unknown',
-            'test_name': 'unknown',
-            'test_operation': 'matmul',
-            'test_category': 'compute'
-        }
-        
-        # Determine hardware platform
-        for platform in ['webgpu', 'webnn', 'cuda', 'rocm', 'cpu']:
-            if platform in self.content.lower():
-                parameters['hardware_platform'] = platform
-                break
-        
-        # Extract test name from file name
-        file_name = os.path.basename(self.file_path).replace('test_', '').replace('.py', '')
-        parameters['test_name'] = file_name
-        
-        # Determine test operation
-        for op in ['matmul', 'conv', 'inference']:
-            if op in self.content.lower():
-                parameters['test_operation'] = op
-                break
-        
-        # Determine test category
-        for cat in ['compute', 'memory', 'throughput', 'latency']:
-            if cat in self.content.lower():
-                parameters['test_category'] = cat
-                break
-        
-        return parameters
-    
-    def _extract_api_parameters(self) -> Dict[str, Any]:
-        """
-        Extract API test parameters.
-        
-        Returns:
-            Dictionary with API parameters
-        """
-        parameters = {
-            'api_name': 'unknown',
-            'test_name': 'unknown',
-            'api_type': 'internal'
-        }
-        
-        # Extract API name
-        for api in ['openai', 'hf_tei', 'hf_tgi', 'ollama', 'vllm', 'claude']:
-            if api in self.content.lower():
-                parameters['api_name'] = api
-                parameters['api_type'] = api
-                break
-        
-        # Extract test name from file name
-        file_name = os.path.basename(self.file_path).replace('test_', '').replace('.py', '')
-        parameters['test_name'] = file_name
-        
-        return parameters
+# Model subcategories for further classification
+MODEL_SUBCATEGORIES = {
+    'text': ['bert', 'gpt', 'llama', 't5', 'roberta', 'text', 'language'],
+    'vision': ['vit', 'clip', 'image', 'vision', 'yolo', 'segmentation'],
+    'audio': ['audio', 'wav', 'whisper', 'speech', 'voice'],
+}
 
 
-class TestMigrator:
-    """
-    Class to migrate test files to the new structure.
-    """
+class TestFileMigrator:
+    """Class for migrating an individual test file."""
     
-    def __init__(self, 
-                 source_path: str, 
-                 output_dir: str, 
-                 analysis_result: Dict[str, Any],
-                 dry_run: bool = False):
-        """
-        Initialize the migrator.
-        
-        Args:
-            source_path: Path to the source test file
-            output_dir: Output directory for the migrated test
-            analysis_result: Analysis result from TestAnalyzer
-            dry_run: Whether to perform a dry run (no file creation)
-        """
+    def __init__(self, source_path: str, migration_plan: Dict[str, Any]):
+        """Initialize the migrator with a source file path."""
         self.source_path = source_path
-        self.output_dir = output_dir
-        self.analysis = analysis_result
-        self.dry_run = dry_run
+        self.migration_plan = migration_plan
+        self.source_filename = os.path.basename(source_path)
+        self.target_path = self._determine_target_path()
+        self.category = self._determine_category()
+        self.base_class = BASE_CLASS_MAPPING.get(self.category, 'BaseTest')
     
-    def migrate(self) -> Optional[str]:
+    def _determine_category(self) -> str:
+        """Determine the category of the test file based on its name and path."""
+        filename = self.source_filename.lower()
+        source_path = self.source_path.lower()
+        
+        # Check path first for more specific categorization
+        for category, keywords in TEST_CATEGORIES.items():
+            for keyword in keywords:
+                if keyword in source_path:
+                    return category
+        
+        # Fall back to checking filename
+        for category, keywords in TEST_CATEGORIES.items():
+            for keyword in keywords:
+                if keyword in filename:
+                    return category
+        
+        # Default to unit test if no category matches
+        return 'unit'
+    
+    def _determine_target_path(self) -> str:
+        """Determine the target path based on the migration plan."""
+        relative_path = os.path.relpath(self.source_path)
+        
+        # Check if the file has a specific mapping in the migration plan
+        if relative_path in self.migration_plan.get('migration_targets', {}):
+            return os.path.join(REFACTORED_DIR, self.migration_plan['migration_targets'][relative_path])
+        
+        # Determine category from filename
+        filename = self.source_filename.lower()
+        
+        # Determine main category
+        category = None
+        for cat, keywords in TEST_CATEGORIES.items():
+            for keyword in keywords:
+                if keyword in filename:
+                    category = cat
+                    break
+            if category:
+                break
+        
+        if not category:
+            category = 'unit'  # Default category
+        
+        # For model tests, determine subcategory
+        if category == 'model':
+            subcategory = None
+            for subcat, keywords in MODEL_SUBCATEGORIES.items():
+                for keyword in keywords:
+                    if keyword in filename:
+                        subcategory = subcat
+                        break
+                if subcategory:
+                    break
+            
+            if not subcategory:
+                subcategory = 'other'  # Default subcategory
+            
+            return os.path.join(REFACTORED_DIR, 'models', subcategory, self.source_filename)
+        
+        # For hardware tests, determine subcategory
+        elif category == 'hardware':
+            if 'webgpu' in filename:
+                return os.path.join(REFACTORED_DIR, 'hardware', 'webgpu', self.source_filename)
+            elif 'webnn' in filename:
+                return os.path.join(REFACTORED_DIR, 'hardware', 'webnn', self.source_filename)
+            else:
+                return os.path.join(REFACTORED_DIR, 'hardware', 'platform', self.source_filename)
+        
+        # Other categories go directly to their folder
+        return os.path.join(REFACTORED_DIR, category, self.source_filename)
+    
+    def migrate(self) -> Tuple[bool, str]:
         """
         Migrate the test file to the new structure.
         
         Returns:
-            Path to the migrated file or None if migration fails
+            Tuple of (success: bool, message: str)
         """
-        test_type = self.analysis['test_type']
-        
         try:
-            if test_type == 'model':
-                return self._migrate_model_test()
-            elif test_type == 'hardware':
-                return self._migrate_hardware_test()
-            elif test_type == 'api':
-                return self._migrate_api_test()
+            # Read source file
+            with open(self.source_path, 'r', encoding='utf-8') as f:
+                source_code = f.read()
+            
+            # Parse AST
+            has_syntax_error = False
+            try:
+                tree = ast.parse(source_code)
+            except SyntaxError as e:
+                # Instead of failing, just fall back to basic file copy for files with syntax errors
+                has_syntax_error = True
+                tree = None
+                print(f"Warning: Syntax error in {self.source_path}: {str(e)} - Will copy file without transformation")
+            
+            # Transform the code or just copy if there's a syntax error
+            if has_syntax_error:
+                transformed_code = source_code
+                
+                # Add a comment at the top
+                migration_note = f"# WARNING: This file had syntax errors and was copied without transformation\n# Migrated on {datetime.now().strftime('%Y-%m-%d')}\n\n"
+                transformed_code = migration_note + transformed_code
             else:
-                logger.warning(f"Unknown test type for {self.source_path}")
-                return None
+                transformed_code = self._transform_code(source_code, tree)
+            
+            # Ensure target directory exists
+            os.makedirs(os.path.dirname(self.target_path), exist_ok=True)
+            
+            # Write to target file
+            with open(self.target_path, 'w', encoding='utf-8') as f:
+                f.write(transformed_code)
+            
+            if has_syntax_error:
+                return True, f"Copied (with syntax errors) {self.source_path} to {self.target_path}"
+            else:
+                return True, f"Migrated {self.source_path} to {self.target_path}"
+        
         except Exception as e:
-            logger.error(f"Error migrating {self.source_path}: {e}")
-            return None
+            return False, f"Error migrating {self.source_path}: {str(e)}"
     
-    def _migrate_model_test(self) -> Optional[str]:
-        """
-        Migrate a model test.
+    def _transform_code(self, source_code: str, tree: ast.AST) -> str:
+        """Transform the source code to use the new structure."""
+        # Find test classes
+        test_classes = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                # Check if it's a test class (either name starts with "Test" or inherits from unittest.TestCase)
+                if node.name.startswith('Test') or any(base.id == 'TestCase' for base in node.bases if isinstance(base, ast.Name)):
+                    test_classes.append(node)
         
-        Returns:
-            Path to the migrated file or None if migration fails
-        """
-        params = self.analysis['parameters']
+        if not test_classes:
+            # No test classes found, just copy the file
+            return source_code
         
-        # Check for required parameters
-        if 'model_name' not in params or params['model_name'] == 'unknown':
-            logger.warning(f"Missing model_name for {self.source_path}")
-            return None
+        # Add import for base class
+        import_statement = IMPORT_MAPPING[self.base_class]
         
-        if 'model_type' not in params or params['model_type'] == 'unknown':
-            logger.warning(f"Missing model_type for {self.source_path}")
-            return None
+        # Simple string replacement for base class
+        # This is a basic approach - for production, you'd want to use a more robust method
+        modified_code = source_code
         
-        if self.dry_run:
-            logger.info(f"Would migrate model test {self.source_path} to {self.output_dir}")
-            return None
+        # Replace unittest.TestCase base class with the new base class
+        test_case_patterns = [
+            r'class\s+(\w+)\(unittest\.TestCase\)',
+            r'class\s+(\w+)\(TestCase\)',
+        ]
         
-        try:
-            # Create the template
-            template = ModelTestTemplate(
-                model_name=params['model_name'],
-                model_type=params['model_type'],
-                framework=params.get('framework', 'transformers'),
-                output_dir=self.output_dir,
-                overwrite=True
-            )
+        for pattern in test_case_patterns:
+            modified_code = re.sub(pattern, f'class \\1({self.base_class})', modified_code)
+        
+        # Add import at the top of the file if it doesn't already exist
+        if import_statement not in modified_code:
+            # Find the position after existing imports
+            import_pos = 0
+            for i, line in enumerate(modified_code.split('\n')):
+                if line.startswith('import ') or line.startswith('from '):
+                    import_pos = i + 1
             
-            # Generate the test file
-            output_path = template.generate()
-            
-            logger.info(f"Migrated model test from {self.source_path} to {output_path}")
-            
-            return output_path
-        except Exception as e:
-            logger.error(f"Error migrating model test {self.source_path}: {e}")
-            return None
-    
-    def _migrate_hardware_test(self) -> Optional[str]:
-        """
-        Migrate a hardware test.
+            # Insert the import
+            lines = modified_code.split('\n')
+            lines.insert(import_pos, import_statement)
+            modified_code = '\n'.join(lines)
         
-        Returns:
-            Path to the migrated file or None if migration fails
-        """
-        params = self.analysis['parameters']
+        # Add migration note as a docstring at the top of the file
+        migration_note = f'"""Migrated to refactored test suite on {datetime.now().strftime("%Y-%m-%d")}\n\n"""'
         
-        # Check for required parameters
-        if params['hardware_platform'] == 'unknown':
-            logger.warning(f"Unknown hardware platform for {self.source_path}")
-            return None
+        # Add the note after the shebang line if it exists
+        if modified_code.startswith('#!'):
+            # Find the end of the shebang line
+            shebang_end = modified_code.find('\n') + 1
+            modified_code = modified_code[:shebang_end] + '\n' + migration_note + '\n' + modified_code[shebang_end:]
+        else:
+            modified_code = migration_note + '\n' + modified_code
         
-        if self.dry_run:
-            logger.info(f"Would migrate hardware test {self.source_path} to {self.output_dir}")
-            return None
-        
-        try:
-            # Create the template
-            template = HardwareTestTemplate(
-                parameters={
-                    'hardware_platform': params['hardware_platform'],
-                    'test_name': params['test_name'],
-                    'test_operation': params.get('test_operation', 'matmul'),
-                    'test_category': params.get('test_category', 'compute')
-                },
-                output_dir=self.output_dir
-            )
-            
-            # Generate the test file
-            output_path = template.write()
-            
-            logger.info(f"Migrated hardware test from {self.source_path} to {output_path}")
-            
-            return output_path
-        except Exception as e:
-            logger.error(f"Error migrating hardware test {self.source_path}: {e}")
-            return None
-    
-    def _migrate_api_test(self) -> Optional[str]:
-        """
-        Migrate an API test.
-        
-        Returns:
-            Path to the migrated file or None if migration fails
-        """
-        params = self.analysis['parameters']
-        
-        if self.dry_run:
-            logger.info(f"Would migrate API test {self.source_path} to {self.output_dir}")
-            return None
-        
-        try:
-            # Create the template
-            template = APITestTemplate(
-                parameters={
-                    'api_name': params['api_name'],
-                    'test_name': params['test_name'],
-                    'api_type': params.get('api_type', 'internal')
-                },
-                output_dir=self.output_dir
-            )
-            
-            # Generate the test file
-            output_path = template.write()
-            
-            logger.info(f"Migrated API test from {self.source_path} to {output_path}")
-            
-            return output_path
-        except Exception as e:
-            logger.error(f"Error migrating API test {self.source_path}: {e}")
-            return None
+        return modified_code
 
 
-def find_test_files(directory: str, regex_pattern: Optional[str] = None) -> List[str]:
+def load_migration_plan(plan_path: str) -> Dict[str, Any]:
+    """Load the migration plan from a JSON file."""
+    with open(plan_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def find_test_files(directory: str, pattern: str = '**/test_*.py') -> List[str]:
+    """Find all test files in a directory."""
+    import glob
+    return [f for f in glob.glob(os.path.join(directory, pattern), recursive=True)
+            if os.path.isfile(f)]
+
+
+def migrate_files(file_paths: List[str], migration_plan: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
     """
-    Find test files in a directory.
+    Migrate multiple test files.
     
     Args:
-        directory: Directory to search
-        regex_pattern: Optional regex pattern to filter files
-        
+        file_paths: List of file paths to migrate
+        migration_plan: Migration plan dictionary
+        dry_run: If True, don't actually migrate, just report what would be done
+    
     Returns:
-        List of file paths
+        Dictionary with migration results
     """
-    if not os.path.isdir(directory):
-        logger.error(f"{directory} is not a directory")
-        return []
+    results = {
+        'success': [],
+        'failure': [],
+        'skipped': []
+    }
     
-    test_files = []
-    
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.startswith('test_') and file.endswith('.py'):
-                file_path = os.path.join(root, file)
-                
-                # Apply regex filter if provided
-                if regex_pattern and not re.search(regex_pattern, file_path):
-                    continue
-                
-                test_files.append(file_path)
-    
-    return test_files
-
-
-def save_analysis_report(analysis_results: List[Dict[str, Any]], output_path: str) -> None:
-    """
-    Save analysis report to a file.
-    
-    Args:
-        analysis_results: List of analysis results
-        output_path: Path to save the report
-    """
-    try:
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(analysis_results, f, indent=2)
+    for source_path in file_paths:
+        # Skip files already in the refactored directory
+        if source_path.startswith(REFACTORED_DIR):
+            results['skipped'].append((source_path, 'Already in refactored directory'))
+            continue
         
-        logger.info(f"Analysis report saved to {output_path}")
-    except Exception as e:
-        logger.error(f"Error saving analysis report: {e}")
-
-
-def main() -> None:
-    """
-    Main function to migrate test files.
-    """
-    parser = argparse.ArgumentParser(description='Migrate test files to the new structure')
+        # Create migrator for this file
+        migrator = TestFileMigrator(source_path, migration_plan)
+        
+        if dry_run:
+            print(f"Would migrate {source_path} to {migrator.target_path} (category: {migrator.category}, base class: {migrator.base_class})")
+            results['success'].append((source_path, migrator.target_path))
+        else:
+            success, message = migrator.migrate()
+            if success:
+                results['success'].append((source_path, migrator.target_path))
+                print(f"✅ {message}")
+            else:
+                results['failure'].append((source_path, message))
+                print(f"❌ {message}")
     
-    parser.add_argument('--source-dir', required=True, help='Source directory containing test files')
-    parser.add_argument('--output-dir', default='test', help='Output directory for migrated tests')
-    parser.add_argument('--pattern', help='Regex pattern to filter test files')
-    parser.add_argument('--analyze-only', action='store_true', help='Only analyze, do not migrate')
-    parser.add_argument('--report-file', default='migration_analysis.json', help='Path to save the analysis report')
-    parser.add_argument('--dry-run', action='store_true', help='Perform a dry run (no file creation)')
+    return results
+
+
+def generate_migration_report(results: Dict[str, Any], output_path: str) -> None:
+    """Generate a report of the migration results."""
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write("# Test Migration Report\n\n")
+        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        
+        f.write("## Summary\n\n")
+        f.write(f"- Total files processed: {len(results['success']) + len(results['failure']) + len(results['skipped'])}\n")
+        f.write(f"- Successfully migrated: {len(results['success'])}\n")
+        f.write(f"- Failed to migrate: {len(results['failure'])}\n")
+        f.write(f"- Skipped: {len(results['skipped'])}\n\n")
+        
+        if results['success']:
+            f.write("## Successful Migrations\n\n")
+            for source, target in results['success']:
+                f.write(f"- {source} → {target}\n")
+            f.write("\n")
+        
+        if results['failure']:
+            f.write("## Failed Migrations\n\n")
+            for source, error in results['failure']:
+                f.write(f"- {source}: {error}\n")
+            f.write("\n")
+        
+        if results['skipped']:
+            f.write("## Skipped Files\n\n")
+            for source, reason in results['skipped']:
+                f.write(f"- {source}: {reason}\n")
+            f.write("\n")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Migrate test files to refactored structure')
+    parser.add_argument('--plan', type=str, default='refactored_test_suite/migration_plan.json',
+                      help='Path to the migration plan JSON file')
+    parser.add_argument('--files', type=str, nargs='+',
+                      help='Specific test files to migrate')
+    parser.add_argument('--dir', type=str, default='.',
+                      help='Directory to search for test files')
+    parser.add_argument('--pattern', type=str, default='**/test_*.py',
+                      help='Glob pattern for finding test files')
+    parser.add_argument('--limit', type=int, default=0,
+                      help='Limit the number of files to migrate (0 for no limit)')
+    parser.add_argument('--dry-run', action='store_true',
+                      help='Do not actually migrate, just print what would be done')
+    parser.add_argument('--report', type=str, default='refactored_test_suite/migration_report.md',
+                      help='Path to save the migration report')
     
     args = parser.parse_args()
     
+    # Load migration plan
+    print(f"Loading migration plan from {args.plan}")
+    migration_plan = load_migration_plan(args.plan)
+    
     # Find test files
-    logger.info(f"Searching for test files in {args.source_dir}")
-    test_files = find_test_files(args.source_dir, args.pattern)
-    logger.info(f"Found {len(test_files)} test files")
+    if args.files:
+        file_paths = args.files
+    else:
+        print(f"Finding test files in {args.dir} matching pattern {args.pattern}")
+        file_paths = find_test_files(args.dir, args.pattern)
     
-    # Analyze test files
-    analysis_results = []
-    for file_path in test_files:
-        logger.info(f"Analyzing {file_path}")
-        analyzer = TestAnalyzer(file_path)
-        result = analyzer.analyze()
-        analysis_results.append(result)
-        logger.info(f"  Type: {result['test_type']}")
+    # Apply limit if specified
+    if args.limit > 0:
+        file_paths = file_paths[:args.limit]
     
-    # Save analysis report
-    save_analysis_report(analysis_results, args.report_file)
+    print(f"Found {len(file_paths)} test files to process")
     
-    if args.analyze_only:
-        logger.info("Analysis completed, skipping migration")
-        return
+    # Migrate files
+    print("Starting migration...")
+    results = migrate_files(file_paths, migration_plan, args.dry_run)
     
-    # Migrate test files
-    logger.info(f"Migrating test files to {args.output_dir}")
+    # Generate report
+    print(f"Generating migration report to {args.report}")
+    generate_migration_report(results, args.report)
     
-    for result in analysis_results:
-        if result['test_type'] == 'unknown':
-            logger.warning(f"Skipping {result['file_path']} with unknown type")
-            continue
-        
-        migrator = TestMigrator(
-            source_path=result['file_path'],
-            output_dir=args.output_dir,
-            analysis_result=result,
-            dry_run=args.dry_run
-        )
-        
-        migrated_path = migrator.migrate()
-        if migrated_path:
-            logger.info(f"Migration successful: {migrated_path}")
-    
-    logger.info("Migration completed")
+    # Print summary
+    print("\nMigration complete!")
+    print(f"Successfully migrated: {len(results['success'])}")
+    print(f"Failed to migrate: {len(results['failure'])}")
+    print(f"Skipped: {len(results['skipped'])}")
+    print(f"See {args.report} for details")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -1,0 +1,306 @@
+name: Hyphenated Model Validation
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Run daily at 2 AM UTC
+  workflow_dispatch:
+    inputs:
+      run_inference:
+        description: 'Run model inference tests'
+        required: false
+        default: 'false'
+      models:
+        description: 'Specific models to validate (comma-separated)'
+        required: false
+        default: ''
+
+jobs:
+  syntax-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-xdist flake8
+          # Install minimal dependencies for validation
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Generate tests for all hyphenated models
+        run: |
+          cd test/skills
+          python integrate_generator_fixes.py --generate-all --output-dir fixed_tests
+          
+      - name: Run syntax validation
+        run: |
+          cd test/skills
+          python validate_hyphenated_model_solution.py --all --report
+
+      - name: Upload validation reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: syntax-validation-reports
+          path: test/skills/validation_reports/
+          retention-days: 14
+
+  architecture-validation:
+    runs-on: ubuntu-latest
+    needs: syntax-validation
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install minimal dependencies + AST parser
+          pip install pytest pytest-xdist flake8 pylint ast black
+
+      - name: Validate proper imports and architecture
+        run: |
+          cd test/skills
+          python validate_hyphenated_model_solution.py --all --report
+
+      - name: Generate matrix of test files
+        id: set-matrix
+        run: |
+          echo "::set-output name=matrix::$(python -c "import glob; import json; print(json.dumps(glob.glob('test/skills/fixed_tests/test_hf_*.py')))")"
+
+      - name: Upload architecture validation reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: architecture-validation-reports
+          path: test/skills/validation_reports/
+          retention-days: 14
+
+  inference-validation:
+    runs-on: ubuntu-latest
+    needs: architecture-validation
+    if: github.event.inputs.run_inference == 'true'
+    strategy:
+      matrix:
+        model: ${{ fromJson(github.event.inputs.models || '["gpt-j", "xlm-roberta", "wav2vec2-bert", "vision-text-dual-encoder"]') }}
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch transformers tokenizers
+          pip install pytest pytest-xdist
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run model inference validation
+        run: |
+          cd test/skills
+          python validate_model_inference.py --model ${{ matrix.model }} --use-small
+
+      - name: Upload inference validation reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: inference-validation-reports-${{ matrix.model }}
+          path: test/skills/validation_reports/inference_validation_*
+          retention-days: 14
+
+  generate-final-report:
+    runs-on: ubuntu-latest
+    needs: [syntax-validation, architecture-validation]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts/
+
+      - name: Generate comprehensive report
+        run: |
+          cd test/skills
+          # Create a script to generate the comprehensive report
+          cat > generate_comprehensive_report.py << 'EOF'
+          #!/usr/bin/env python3
+          import os
+          import json
+          import glob
+          from datetime import datetime
+          
+          # Find all validation reports
+          reports_dir = "../../artifacts"
+          syntax_reports = glob.glob(os.path.join(reports_dir, "syntax-validation-reports/*.json"))
+          arch_reports = glob.glob(os.path.join(reports_dir, "architecture-validation-reports/*.json"))
+          inference_reports = glob.glob(os.path.join(reports_dir, "inference-validation-reports-*/*.json"))
+          
+          # Parse reports
+          all_results = {
+              "syntax": [],
+              "architecture": [],
+              "inference": []
+          }
+          
+          for report in syntax_reports:
+              with open(report, 'r') as f:
+                  all_results["syntax"].append(json.load(f))
+          
+          for report in arch_reports:
+              with open(report, 'r') as f:
+                  all_results["architecture"].append(json.load(f))
+          
+          for report in inference_reports:
+              with open(report, 'r') as f:
+                  all_results["inference"].append(json.load(f))
+          
+          # Generate markdown report
+          timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+          
+          with open("comprehensive_validation_report.md", "w") as f:
+              f.write(f"# Comprehensive Hyphenated Model Validation Report\n\n")
+              f.write(f"Generated: {timestamp}\n\n")
+              f.write(f"## Summary\n\n")
+              
+              # Syntax validation summary
+              syntax_total = sum(len(r.get("results", [])) for r in all_results["syntax"])
+              syntax_passed = sum(sum(1 for result in r.get("results", []) if result.get("status") == "passed") 
+                                for r in all_results["syntax"])
+              
+              f.write(f"### Syntax Validation\n\n")
+              f.write(f"- Total files validated: {syntax_total}\n")
+              f.write(f"- Passed: {syntax_passed}\n")
+              f.write(f"- Pass rate: {syntax_passed/max(1, syntax_total)*100:.1f}%\n\n")
+              
+              # Architecture validation summary
+              arch_total = sum(len(r.get("results", [])) for r in all_results["architecture"])
+              arch_passed = sum(sum(1 for result in r.get("results", []) if result.get("status") == "passed") 
+                              for r in all_results["architecture"])
+              
+              f.write(f"### Architecture Validation\n\n")
+              f.write(f"- Total files validated: {arch_total}\n")
+              f.write(f"- Passed: {arch_passed}\n")
+              f.write(f"- Pass rate: {arch_passed/max(1, arch_total)*100:.1f}%\n\n")
+              
+              # Inference validation summary
+              inf_total = len(all_results["inference"])
+              inf_passed = sum(1 for r in all_results["inference"] if r.get("success"))
+              
+              f.write(f"### Inference Validation\n\n")
+              f.write(f"- Total models tested: {inf_total}\n")
+              f.write(f"- Passed: {inf_passed}\n")
+              f.write(f"- Pass rate: {inf_passed/max(1, inf_total)*100:.1f}%\n\n")
+              
+              # Overall status
+              overall_pass = (syntax_passed == syntax_total and 
+                            arch_passed == arch_total and 
+                            (inf_passed == inf_total or inf_total == 0))
+              
+              status = "✅ PASSED" if overall_pass else "❌ FAILED"
+              f.write(f"## Overall Status: {status}\n\n")
+              
+              # Model breakdown
+              f.write(f"## Model Breakdown\n\n")
+              f.write(f"| Model | Syntax | Architecture | Inference |\n")
+              f.write(f"|-------|--------|--------------|----------|\n")
+              
+              # Get all unique models
+              all_models = set()
+              for results_type in all_results.values():
+                  for report in results_type:
+                      if isinstance(report, list):
+                          for item in report:
+                              model = item.get("model_name")
+                              if model:
+                                  all_models.add(model)
+                      else:
+                          model = report.get("model_name")
+                          if model:
+                              all_models.add(model)
+              
+              # Fill in the model breakdown table
+              for model in sorted(all_models):
+                  syntax_status = "❌"
+                  arch_status = "❌"
+                  inf_status = "❌"
+                  
+                  # Check syntax status
+                  for report in all_results["syntax"]:
+                      for result in report.get("results", []):
+                          if result.get("model_name") == model and result.get("status") == "passed":
+                              syntax_status = "✅"
+                              break
+                  
+                  # Check architecture status
+                  for report in all_results["architecture"]:
+                      for result in report.get("results", []):
+                          if result.get("model_name") == model and result.get("status") == "passed":
+                              arch_status = "✅"
+                              break
+                  
+                  # Check inference status
+                  for report in all_results["inference"]:
+                      if report.get("model_name") == model and report.get("success"):
+                          inf_status = "✅"
+                          break
+                      elif report.get("model_name") == model:
+                          inf_status = "❌"
+                          break
+                      else:
+                          inf_status = "N/A"
+                  
+                  f.write(f"| {model} | {syntax_status} | {arch_status} | {inf_status} |\n")
+              
+              # Recommendations section
+              f.write(f"\n## Recommendations\n\n")
+              
+              all_recommendations = set()
+              
+              # Collect recommendations from all reports
+              for report_type in all_results.values():
+                  for report in report_type:
+                      if isinstance(report, dict) and "recommendations" in report:
+                          all_recommendations.update(report["recommendations"])
+                      elif isinstance(report, list):
+                          for item in report:
+                              if isinstance(item, dict) and "recommendations" in item:
+                                  all_recommendations.update(item["recommendations"])
+              
+              # Write recommendations
+              for rec in sorted(all_recommendations):
+                  f.write(f"- {rec}\n")
+          EOF
+          
+          # Run the script
+          python generate_comprehensive_report.py
+
+      - name: Upload comprehensive report
+        uses: actions/upload-artifact@v3
+        with:
+          name: comprehensive-validation-report
+          path: test/skills/comprehensive_validation_report.md
+          retention-days: 30

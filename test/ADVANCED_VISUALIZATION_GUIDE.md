@@ -1086,6 +1086,80 @@ viz.create_animated_time_series_visualization(
 )
 ```
 
+### Enhanced Regression Visualization
+
+For statistical analysis and visualization of performance regressions with advanced features like confidence intervals, trend lines, and interactive controls:
+
+```python
+from duckdb_api.distributed_testing.dashboard.regression_visualization import RegressionVisualization
+from duckdb_api.distributed_testing.dashboard.regression_detection import RegressionDetector
+
+# Initialize the components
+detector = RegressionDetector()
+visualizer = RegressionVisualization(output_dir="./visualizations/regression")
+
+# Detect regressions in time series data
+time_series_data = {
+    "timestamps": [...],  # List of timestamps
+    "values": [...]       # Corresponding metric values
+}
+regressions = detector.detect_regressions(time_series_data, "latency_ms")
+
+# Create enhanced visualization with statistical features
+figure = visualizer.create_interactive_regression_figure(
+    time_series_data=time_series_data,
+    regressions=regressions,
+    metric="latency_ms",
+    title="Latency Regression Analysis",
+    include_confidence_intervals=True,
+    include_trend_lines=True,
+    include_annotations=True
+)
+
+# Export the visualization
+visualizer.export_regression_visualization(
+    figure_dict=figure,
+    output_path="./latency_regression_analysis.html",
+    format="html"
+)
+
+# Generate comprehensive report
+visualizer.create_regression_summary_report(
+    metrics_data={"latency_ms": time_series_data},
+    regressions_by_metric={"latency_ms": regressions},
+    output_path="./regression_report.html",
+    include_plots=True
+)
+```
+
+#### Dashboard Integration
+
+When used with the EnhancedVisualizationDashboard, you can control visualization options through the UI:
+
+```python
+from duckdb_api.distributed_testing.dashboard.enhanced_visualization_dashboard import EnhancedVisualizationDashboard
+
+# Create and configure the dashboard
+dashboard = EnhancedVisualizationDashboard(
+    db_path="benchmark_db.duckdb",
+    output_dir="./visualizations/dashboard",
+    theme="dark",
+    enable_regression_detection=True,
+    enhanced_visualization=True
+)
+
+# Start the dashboard (provides UI controls for all regression visualization options)
+await dashboard.start()
+```
+
+Key features available in the UI:
+- Toggle confidence intervals to visualize statistical uncertainty
+- Toggle trend lines to identify slope changes before/after regressions
+- Toggle annotations for detailed statistical information at change points
+- Select export formats (HTML, PNG, SVG, PDF, JSON)
+- Generate comprehensive reports with statistical insights
+- Synchronized theme between dashboard and visualizations
+
 ### Event Correlation
 
 To correlate performance changes with system events:

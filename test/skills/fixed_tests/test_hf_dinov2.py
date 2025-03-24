@@ -14,7 +14,7 @@ except ImportError:
 """
 Class-based test file for all ViT-family models.
 This file provides a unified testing interface for:
-    - Dinov2ForImageClassification
+    - ViTForImageClassification
     - DeiTForImageClassification
     - Other vision transformer model variants
 """
@@ -26,9 +26,9 @@ import time
 import datetime
 
 # ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
+GREEN = "\\033[32m"
+BLUE = "\\033[34m"
+RESET = "\\033[0m"
 import traceback
 import logging
 import argparse
@@ -86,12 +86,12 @@ except ImportError:
     HAS_OPENVINO = False
     logger.warning("OpenVINO not available")
 
-
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
 MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
 MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
 MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+
 # Try to import torch
 try:
     if MOCK_TORCH:
@@ -114,28 +114,6 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-# Try to import tokenizers
-try:
-    if MOCK_TOKENIZERS:
-        raise ImportError("Mocked tokenizers import failure")
-    import tokenizers
-    HAS_TOKENIZERS = True
-except ImportError:
-    tokenizers = MagicMock()
-    HAS_TOKENIZERS = False
-    logger.warning("tokenizers not available, using mock")
-
-# Try to import sentencepiece
-try:
-    if MOCK_SENTENCEPIECE:
-        raise ImportError("Mocked sentencepiece import failure")
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
-except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
-
 # Try to import PIL
 try:
     from PIL import Image
@@ -157,8 +135,10 @@ if not HAS_PIL:
             class MockImg:
                 def __init__(self):
                     self.size = (224, 224)
+                
                 def convert(self, mode):
                     return self
+                
                 def resize(self, size):
                     return self
             return MockImg()
@@ -169,6 +149,7 @@ if not HAS_PIL:
             class MockResponse:
                 def __init__(self):
                     self.content = b"mock image data"
+                
                 def raise_for_status(self):
                     pass
             return MockResponse()
@@ -176,7 +157,8 @@ if not HAS_PIL:
     Image.open = MockImage.open
     requests.get = MockRequests.get
 
-# Hardware detection
+
+# Hardware detection    
 def check_hardware():
     """Check available hardware and return capabilities."""
     capabilities = {
@@ -212,10 +194,10 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 
 # Models registry - Maps model IDs to their specific configurations
-DINOV2_MODELS_REGISTRY = {
-    "google/dinov2-base-patch16-224": {
+VIT_MODELS_REGISTRY = {
+    "google/vit-base-patch16-224": {
         "description": "ViT Base model (patch size 16, image size 224)",
-        "class": "Dinov2ForImageClassification",
+        "class": "ViTForImageClassification",
     },
     "facebook/deit-base-patch16-224": {
         "description": "DeiT Base model (patch size 16, image size 224)",
@@ -223,19 +205,19 @@ DINOV2_MODELS_REGISTRY = {
     },
 }
 
-class TestDinov2Models:
+class TestVitModels:
     """Base test class for all ViT-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "google/dinov2-base-patch16-224"
+        self.model_id = model_id or "google/vit-base-patch16-224"
         
         # Verify model exists in registry
-        if self.model_id not in DINOV2_MODELS_REGISTRY:
+        if self.model_id not in VIT_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = DINOV2_MODELS_REGISTRY["google/dinov2-base-patch16-224"]
+            self.model_info = VIT_MODELS_REGISTRY["google/vit-base-patch16-224"]
         else:
-            self.model_info = DINOV2_MODELS_REGISTRY[self.model_id]
+            self.model_info = VIT_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
         self.task = "image-classification"
@@ -259,7 +241,7 @@ class TestDinov2Models:
         self.results = {}
         self.examples = []
         self.performance_stats = {}
-    
+        
     def test_pipeline(self, device="auto"):
         """Test the model using transformers pipeline API."""
         if device == "auto":
@@ -286,6 +268,20 @@ class TestDinov2Models:
             return results
         
         try:
+            # Initialize the pipeline with the appropriate task
+            pipe = transformers.pipeline(
+                "image-classification", 
+                model=self.model_id,
+                device=self.device if self.device != "cpu" else -1
+            )
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Test with a task-appropriate input
+            test_input = "An image of a cat."
+
             logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
             
             # Create pipeline with appropriate parameters
@@ -381,7 +377,7 @@ class TestDinov2Models:
         # Add to overall results
         self.results[f"pipeline_{device}"] = results
         return results
-    
+        
     def test_from_pretrained(self, device="auto"):
         """Test the model using direct from_pretrained loading."""
         if device == "auto":
@@ -425,8 +421,8 @@ class TestDinov2Models:
             
             # Use appropriate model class based on model type
             model_class = None
-            if self.class_name == "Dinov2ForImageClassification":
-                model_class = transformers.Dinov2ForImageClassification
+            if self.class_name == "ViTForImageClassification":
+                model_class = transformers.ViTForImageClassification
             elif self.class_name == "DeiTForImageClassification":
                 model_class = transformers.DeiTForImageClassification
             else:
@@ -563,11 +559,11 @@ class TestDinov2Models:
                 results["from_pretrained_error_type"] = "missing_dependency"
             else:
                 results["from_pretrained_error_type"] = "other"
-                
+        
         # Add to overall results
         self.results[f"from_pretrained_{device}"] = results
         return results
-    
+        
     def test_with_openvino(self):
         """Test the model using OpenVINO integration."""
         results = {
@@ -674,11 +670,11 @@ class TestDinov2Models:
                 results["openvino_error_type"] = "missing_dependency"
             else:
                 results["openvino_error_type"] = "other"
-                
+        
         # Add to overall results
         self.results["openvino"] = results
         return results
-    
+        
     def run_tests(self, all_hardware=False):
         """
         Run all tests for this model.
@@ -735,6 +731,7 @@ class TestDinov2Models:
             }
         }
 
+
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists
@@ -742,7 +739,7 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_dinov2_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"hf_vit_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -752,9 +749,11 @@ def save_results(model_id, results, output_dir="collected_results"):
     logger.info(f"Saved results to {output_path}")
     return output_path
 
+
 def get_available_models():
     """Get a list of all available ViT models in the registry."""
-    return list(DINOV2_MODELS_REGISTRY.keys())
+    return list(VIT_MODELS_REGISTRY.keys())
+
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
     """Test all registered ViT models."""
@@ -763,7 +762,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestDinov2Models(model_id)
+        tester = TestVitModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -777,12 +776,13 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         }
     
     # Save summary
-    summary_path = os.path.join(output_dir, f"hf_dinov2_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    summary_path = os.path.join(output_dir, f"hf_vit_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
     logger.info(f"Saved summary to {summary_path}")
     return results
+
 
 def main():
     """Command-line entry point."""
@@ -809,9 +809,9 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable ViT-family models:")
+        print(f"\nAvailable ViT-family models:")
         for model in models:
-            info = DINOV2_MODELS_REGISTRY[model]
+            info = VIT_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
         return
     
@@ -824,14 +824,14 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nViT Models Testing Summary:")
+        print(f"\nViT Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "google/dinov2-base-patch16-224"
+    model_id = args.model or "google/vit-base-patch16-224"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -839,7 +839,7 @@ def main():
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
     # Run test
-    tester = TestDinov2Models(model_id)
+    tester = TestVitModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested
@@ -854,7 +854,7 @@ def main():
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
     using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
     
-    print("\nTEST RESULTS SUMMARY:")
+    print(f"\nTEST RESULTS SUMMARY:")
     
     # Indicate real vs mock inference clearly
     if using_real_inference and not using_mocks:
@@ -873,7 +873,7 @@ def main():
         
         # Print example outputs if available
         if results.get("examples") and len(results["examples"]) > 0:
-            print("\nExample output:")
+            print(f"\nExample output:")
             example = results["examples"][0]
             if "predictions" in example:
                 print(f"  Input: {example['input']}")
@@ -890,7 +890,7 @@ def main():
                 print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
                 print(f"    {result.get('pipeline_error', 'Unknown error')}")
     
-    print("\nFor detailed results, use --save flag and check the JSON output file.")
+    print(f"\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
     main()

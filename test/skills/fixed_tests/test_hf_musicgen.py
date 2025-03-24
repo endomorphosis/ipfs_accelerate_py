@@ -59,14 +59,30 @@ except ImportError:
 
 # ROCm imports and detection
 HAS_ROCM = False
+
+# Check if we should mock specific dependencies
+MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
+MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
+MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
+MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+
+# Try to import torch
 try:
+    if MOCK_TORCH:
+        raise ImportError("Mocked torch import failure")
+    import torch
+    HAS_TORCH = True
+
+    # Try ROCm detection with torch
     if torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
         HAS_ROCM = True
         ROCM_VERSION = torch._C._rocm_version()
     elif 'ROCM_HOME' in os.environ:
         HAS_ROCM = True
-except:
-    HAS_ROCM = False
+except ImportError:
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
 
 try:
     import openvino
@@ -75,23 +91,6 @@ try:
 except ImportError:
     HAS_OPENVINO = False
     logger.warning("OpenVINO not available")
-
-
-# Check if we should mock specific dependencies
-MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
-MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
-MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
-MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
-# Try to import torch
-try:
-    if MOCK_TORCH:
-        raise ImportError("Mocked torch import failure")
-    import torch
-    HAS_TORCH = True
-except ImportError:
-    torch = MagicMock()
-    HAS_TORCH = False
-    logger.warning("torch not available, using mock")
 
 # Try to import transformers
 try:
@@ -104,9 +103,10 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-
 # Try to import tokenizers
 try:
+    if MOCK_TOKENIZERS:
+        raise ImportError("Mocked tokenizers import failure")
     import tokenizers
     HAS_TOKENIZERS = True
 except ImportError:
@@ -116,6 +116,8 @@ except ImportError:
 
 # Try to import sentencepiece
 try:
+    if MOCK_SENTENCEPIECE:
+        raise ImportError("Mocked sentencepiece import failure")
     import sentencepiece
     HAS_SENTENCEPIECE = True
 except ImportError:
@@ -156,10 +158,10 @@ else:
 # Main BERT model registry
 MUSICGEN_MODELS_REGISTRY = {
     "musicgen-base-uncased": {
-        "full_name": "BERT Base Uncased",
+        "full_name": "MUSICGEN Base Uncased",
         "architecture": "encoder-only",
-        "description": "BERT Base model with uncased vocabulary",
-        "model_type": "musicgen",
+        "description": "MUSICGEN Base model with uncased vocabulary",
+        "musicgen": "musicgen",
         "parameters": "110M",
         "context_length": 512,
         "embedding_dim": 768,
@@ -168,10 +170,10 @@ MUSICGEN_MODELS_REGISTRY = {
         "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     },
     "musicgen-large-uncased": {
-        "full_name": "BERT Large Uncased",
+        "full_name": "MUSICGEN Large Uncased",
         "architecture": "encoder-only",
-        "description": "BERT Large model with uncased vocabulary",
-        "model_type": "musicgen",
+        "description": "MUSICGEN Large model with uncased vocabulary",
+        "musicgen": "musicgen",
         "parameters": "336M",
         "context_length": 512,
         "embedding_dim": 1024,
@@ -180,10 +182,10 @@ MUSICGEN_MODELS_REGISTRY = {
         "recommended_tasks": ["fill-mask", "text-classification", "token-classification", "question-answering"]
     },
     "musicgen-base-cased": {
-        "full_name": "BERT Base Cased",
+        "full_name": "MUSICGEN Base Cased",
         "architecture": "encoder-only",
-        "description": "BERT Base model with cased vocabulary",
-        "model_type": "musicgen",
+        "description": "MUSICGEN Base model with cased vocabulary",
+        "musicgen": "musicgen",
         "parameters": "110M",
         "context_length": 512,
         "embedding_dim": 768,
@@ -267,7 +269,7 @@ class MockSentencePieceProcessor:
     def encode(self, text, *args, **kwargs):
         # Return a list of "token ids"
         return [i for i in range(min(len(text.split()), 15))]
-        
+
     def decode(self, token_ids):
         # Return a simple mock decoded string
         return " ".join([f"token_{id}" for id in token_ids])
@@ -283,14 +285,14 @@ class MockSentencePieceProcessor:
     def piece_to_id(self, piece):
         # Return a fake id
         return hash(piece) % 32000
-        
+    
     @classmethod
     def load(cls, model_path):
         return cls()
 
-class TestMusicgenModels:
+class TestModelTypeModels:
     def __init__(self, model_id="musicgen-base-uncased", device=None):
-        """Initialize the test class for BERT models.
+        """Initialize the test class for MUSICGEN models.
         
         Args:
             model_id: The model ID to test (default: "musicgen-base-uncased")
@@ -307,7 +309,7 @@ class TestMusicgenModels:
                 logger.warning("Transformers library not available, skipping pipeline test")
                 return {"success": False, "error": "Transformers library not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with pipeline API on {self.device}")
+            logger.info(f"Testing MUSICGEN model {self.model_id} with pipeline API on {self.device}")
             
             # Record start time
             start_time = time.time()
@@ -367,7 +369,7 @@ class TestMusicgenModels:
             logger.error(f"Error testing pipeline: {e}")
             traceback.print_exc()
             return {"success": False, "error": str(e)}
-
+            
     def test_from_pretrained(self):
         """Test the model using the from_pretrained API."""
         try:
@@ -375,13 +377,13 @@ class TestMusicgenModels:
                 logger.warning("Transformers or torch library not available, skipping from_pretrained test")
                 return {"success": False, "error": "Required libraries not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with from_pretrained API on {self.device}")
+            logger.info(f"Testing MUSICGEN model {self.model_id} with from_pretrained API on {self.device}")
             
             # Record start time
             start_time = time.time()
             
             # Load the model and tokenizer
-            model = transformers.MusicgenForMaskedLM.from_pretrained(self.model_id)
+            model = transformers.ModelTypeForMaskedLM.from_pretrained(self.model_id)
             tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
             
             # Move the model to the appropriate device
@@ -458,7 +460,7 @@ class TestMusicgenModels:
                 logger.warning("Transformers library not available, skipping OpenVINO test")
                 return {"success": False, "error": "Transformers library not available"}
                 
-            logger.info(f"Testing BERT model {self.model_id} with OpenVINO")
+            logger.info(f"Testing MUSICGEN model {self.model_id} with OpenVINO")
             
             # Record start time
             start_time = time.time()
@@ -478,7 +480,7 @@ class TestMusicgenModels:
                 os.makedirs(os.path.dirname(model_path), exist_ok=True)
                 
                 # Load the PyTorch model
-                pt_model = transformers.MusicgenForMaskedLM.from_pretrained(self.model_id)
+                pt_model = transformers.ModelTypeForMaskedLM.from_pretrained(self.model_id)
                 
                 # Get example inputs
                 example_input = "The quick brown fox jumps over the [MASK] dog."
@@ -514,48 +516,48 @@ class TestMusicgenModels:
             # Load the optimized model
             ov_model = core.read_model(model_path)
             compiled_model = core.compile_model(ov_model, "CPU")
-            
+    
             # Record model loading time
             load_time = time.time() - start_time
             logger.info(f"OpenVINO model loading time: {load_time:.2f} seconds")
-            
+    
             # Test with a simple input
             test_input = "The quick brown fox jumps over the [MASK] dog."
-            
+    
             # Tokenize the input
             inputs = tokenizer(test_input, return_tensors="pt")
-            
+    
             # Convert to numpy arrays
             inputs_np = {k: v.numpy() for k, v in inputs.items()}
-            
+    
             # Record inference start time
             inference_start = time.time()
-            
+    
             # Get the position of the [MASK] token
             mask_token_index = np.where(inputs_np["input_ids"][0] == tokenizer.mask_token_id)[0][0]
-            
+    
             # Forward pass
             logits = compiled_model(inputs_np)[0]
-            
+    
             # Record inference time
             inference_time = time.time() - inference_start
-            
+    
             # Get the top prediction
             mask_token_logits = logits[0, mask_token_index, :]
             top_indices = np.argsort(mask_token_logits)[-5:][::-1]
             top_tokens_words = [tokenizer.decode([token]) for token in top_indices]
-            
+    
             # Log results
             logger.info(f"OpenVINO top predictions: {', '.join(top_tokens_words)}")
             logger.info(f"OpenVINO inference time: {inference_time:.2f} seconds")
-            
+    
             # Store performance stats
             self.performance_stats["openvino"] = {
                 "load_time": load_time,
                 "inference_time": inference_time,
                 "top_predictions": top_tokens_words
             }
-            
+    
             return {
                 "success": True,
                 "model_id": self.model_id,
@@ -572,28 +574,28 @@ class TestMusicgenModels:
             logger.error(f"Error testing with OpenVINO: {e}")
             traceback.print_exc()
             return {"success": False, "error": str(e)}
-
+            
     def run_tests(self, all_hardware=False):
         """Run all tests for this model."""
         results = {}
-        
+    
         # Run pipeline test
         pipeline_result = self.test_pipeline()
         results["pipeline"] = pipeline_result
-        
+    
         # Run from_pretrained test
         from_pretrained_result = self.test_from_pretrained()
         results["from_pretrained"] = from_pretrained_result
-        
+    
         # Run OpenVINO test if requested and available
         if all_hardware and HAS_OPENVINO:
             openvino_result = self.test_openvino()
             results["openvino"] = openvino_result
-        
+    
         # Determine if real inference or mock objects were used
         using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
         using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
-        
+    
         # Add metadata
         results["metadata"] = {
             "model_id": self.model_id,
@@ -622,7 +624,7 @@ class TestMusicgenModels:
             "using_mocks": using_mocks,
             "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
         }
-        
+    
         return results
 
 def save_results(results, model_id=None, output_dir="collected_results"):
@@ -650,48 +652,48 @@ def save_results(results, model_id=None, output_dir="collected_results"):
 
 def main():
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Test BERT HuggingFace models")
+    parser = argparse.ArgumentParser(description="Test MUSICGEN HuggingFace models")
     parser.add_argument("--model", type=str, default="musicgen-base-uncased", help="Model ID to test")
     parser.add_argument("--device", type=str, help="Device to run tests on (cuda, cpu, mps)")
     parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
     parser.add_argument("--save", action="store_true", help="Save results to JSON file")
-    parser.add_argument("--list-models", action="store_true", help="List available BERT models")
-    
+    parser.add_argument("--list-models", action="store_true", help="List available MUSICGEN models")
+
     args = parser.parse_args()
-    
+
     # List models if requested
     if args.list_models:
-        print("\nAvailable BERT models:")
+        print(f"\nAvailable MUSICGEN models:")
         for model_id, info in MUSICGEN_MODELS_REGISTRY.items():
             print(f"  - {model_id} ({info['full_name']})")
             print(f"      Parameters: {info['parameters']}, Embedding: {info['embedding_dim']}, Context: {info['context_length']}")
             print(f"      Description: {info['description']}")
             print()
         return
-    
+
     # Initialize the test class
-    musicgen_tester = TestMusicgenModels(model_id=args.model, device=args.device)
-    
+    bert_tester = TestModelTypeModels(model_id=args.model, device=args.device)
+
     # Run the tests
-    results = musicgen_tester.run_tests(all_hardware=args.all_hardware)
-    
+    results = bert_tester.run_tests(all_hardware=args.all_hardware)
+
     # Print a summary
     print("\n" + "="*50)
-    print("TEST RESULTS SUMMARY")
+    print(f"TEST RESULTS SUMMARY")
     print("="*50)
-    
+
     # Indicate real vs mock inference clearly
     using_real_inference = results["metadata"]["using_real_inference"]
     using_mocks = results["metadata"]["using_mocks"]
-    
+
     if using_real_inference and not using_mocks:
         print(f"{GREEN}🚀 Using REAL INFERENCE with actual models{RESET}")
     else:
         print(f"{BLUE}🔷 Using MOCK OBJECTS for CI/CD testing only{RESET}")
         print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
-    
+
     print(f"\nModel: {args.model}")
-    print(f"Device: {musicgen_tester.device}")
+    print(f"Device: {bert_tester.device}")
     
     # Pipeline results
     pipeline_success = results["pipeline"].get("success", False)
@@ -736,7 +738,7 @@ def main():
         if file_path:
             print(f"\nResults saved to {file_path}")
     
-    print(f"\nSuccessfully tested BERT model: {args.model}")
+    print(f"\nSuccessfully tested MUSICGEN model: {args.model}")
 
 if __name__ == "__main__":
     main()

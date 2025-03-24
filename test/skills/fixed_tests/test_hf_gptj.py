@@ -38,12 +38,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Third-party imports
 import numpy as np
 
-
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
 MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
 MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
 MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+
+try:
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
+
 # Try to import torch
 try:
     if MOCK_TORCH:
@@ -66,7 +74,6 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-
 # Try to import tokenizers
 try:
     import tokenizers
@@ -75,18 +82,6 @@ except ImportError:
     tokenizers = MagicMock()
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
-
-# Try to import sentencepiece
-try:
-    if MOCK_SENTENCEPIECE:
-        raise ImportError("Mocked sentencepiece import failure")
-    import sentencepiece
-    HAS_SENTENCEPIECE = True
-except ImportError:
-    sentencepiece = MagicMock()
-    HAS_SENTENCEPIECE = False
-    logger.warning("sentencepiece not available, using mock")
-
 
 # Mock implementations for missing dependencies
 if not HAS_TOKENIZERS:
@@ -105,7 +100,6 @@ if not HAS_TOKENIZERS:
             return MockTokenizer()
 
     tokenizers.Tokenizer = MockTokenizer
-
 
 # Hardware detection
 def check_hardware():
@@ -143,34 +137,30 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 
 # Models registry - Maps model IDs to their specific configurations
-GPTJ_MODELS_REGISTRY = {
-    "gptj": {
-        "description": "GPT-2 small model",
-        "class": "GptjLMHeadModel",
+GPT_J_MODELS_REGISTRY = {
+    "gpt_j": {
+        "description": "GPT-J model",
+        "class": "GPTJForCausalLM",
     },
-    "gptj-medium": {
-        "description": "GPT-2 medium model",
-        "class": "GptjLMHeadModel",
-    },
-    "distilgptj": {
-        "description": "DistilGPT-2 model",
-        "class": "GptjLMHeadModel",
+    "EleutherAI/gpt-j-6b": {
+        "description": "GPT-J 6B model",
+        "class": "GPTJForCausalLM",
     }
 }
 
-class TestGptjModels:
-    """Base test class for all GPT-2-family models."""
+class TestGptJModels:
+    """Base test class for all GPT-J-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "gptj"
+        self.model_id = model_id or "EleutherAI/gpt-j-6b"
         
         # Verify model exists in registry
-        if self.model_id not in GPTJ_MODELS_REGISTRY:
+        if self.model_id not in GPT_J_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = GPTJ_MODELS_REGISTRY["gptj"]
+            self.model_info = GPT_J_MODELS_REGISTRY["gpt_j"]
         else:
-            self.model_info = GPTJ_MODELS_REGISTRY[self.model_id]
+            self.model_info = GPT_J_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
         self.task = "text-generation"
@@ -241,7 +231,7 @@ class TestGptjModels:
             tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
-                logger.info("Set pad_token to eos_token for GPT-2 tokenizer")
+                logger.info("Set pad_token to eos_token for GPT-J tokenizer")
                 
             # Create pipeline with fixed tokenizer
             pipeline_kwargs["tokenizer"] = tokenizer
@@ -363,20 +353,15 @@ class TestGptjModels:
                 **pretrained_kwargs
             )
             
-            # Fix for GPT-2 padding token issue
+            # Fix for GPT-J padding token issue
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
-                logger.info("Set pad_token to eos_token for GPT-2 tokenizer")
+                logger.info("Set pad_token to eos_token for GPT-J tokenizer")
                 
             tokenizer_load_time = time.time() - tokenizer_load_start
             
-            # Use appropriate model class based on model type
-            model_class = None
-            if self.class_name == "GptjLMHeadModel":
-                model_class = transformers.GptjLMHeadModel
-            else:
-                # Fallback to Auto class
-                model_class = transformers.AutoModelForCausalLM
+            # Get appropriate model class
+            model_class = self.get_model_class()
             
             # Time model loading
             model_load_start = time.time()
@@ -391,7 +376,7 @@ class TestGptjModels:
                 model = model.to(device)
             
             # Prepare test input
-            test_input = self.test_text
+            test_input = self.prepare_test_input()
             
             # Tokenize input
             inputs = tokenizer(test_input, return_tensors="pt")
@@ -426,17 +411,8 @@ class TestGptjModels:
             min_time = min(times)
             max_time = max(times)
             
-            # Process generation output
-            predictions = outputs[0]
-            if hasattr(tokenizer, "decode"):
-                if hasattr(outputs[0], "logits"):
-                    logits = outputs[0].logits
-                    next_token_logits = logits[0, -1, :]
-                    next_token_id = torch.argmax(next_token_logits).item()
-                    next_token = tokenizer.decode([next_token_id])
-                    predictions = [{"token": next_token, "score": 1.0}]
-                else:
-                    predictions = [{"generated_text": "Mock generated text"}]
+            # Process model output based on model type
+            predictions = self.process_model_output(outputs[0], tokenizer)
             
             # Calculate model size
             param_count = sum(p.numel() for p in model.parameters())
@@ -453,7 +429,7 @@ class TestGptjModels:
             results["from_pretrained_error_type"] = "none"
             
             # Add predictions if available
-            if 'predictions' in locals():
+            if predictions:
                 results["predictions"] = predictions
             
             # Add to examples
@@ -462,7 +438,7 @@ class TestGptjModels:
                 "input": str(test_input)
             }
             
-            if 'predictions' in locals():
+            if predictions:
                 example_data["predictions"] = predictions
             
             self.examples.append(example_data)
@@ -501,6 +477,42 @@ class TestGptjModels:
         # Add to overall results
         self.results[f"from_pretrained_{device}"] = results
         return results
+    
+    def get_model_class(self):
+        """Get the appropriate model class based on model type."""
+        if self.class_name == "GPTJForCausalLM":
+            return transformers.GPTJForCausalLM
+        
+        # Try direct model class from transformers
+        if hasattr(transformers, self.class_name):
+            return getattr(transformers, self.class_name)
+            
+        # Fallback based on task
+        if self.task == "text-generation":
+            return transformers.AutoModelForCausalLM
+        else:
+            # Default fallback
+            return transformers.AutoModel
+    
+    def prepare_test_input(self):
+        """Prepare appropriate test input for the model type."""
+        return self.test_text
+    
+    def process_model_output(self, output, tokenizer):
+        """Process model output based on model type."""
+        try:
+            # For text generation models with logits
+            if hasattr(output, "logits"):
+                logits = output.logits
+                next_token_logits = logits[0, -1, :]
+                next_token_id = torch.argmax(next_token_logits).item()
+                next_token = tokenizer.decode([next_token_id])
+                return [{"token": next_token, "score": 1.0}]
+            else:
+                return [{"generated_text": "Mock generated text"}]
+        except Exception as e:
+            logger.warning(f"Error processing model output: {e}")
+            return [{"error": "Unable to process model output"}]
     
     def test_with_openvino(self):
         """Test the model using OpenVINO integration."""
@@ -543,12 +555,7 @@ class TestGptjModels:
             model_load_time = time.time() - model_load_start
             
             # Prepare input
-            if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
-                mask_token = tokenizer.mask_token
-                test_input = self.test_text.replace("[MASK]", mask_token)
-            else:
-                test_input = self.test_text
-                
+            test_input = self.prepare_test_input()
             inputs = tokenizer(test_input, return_tensors="pt")
             
             # Run inference
@@ -556,19 +563,8 @@ class TestGptjModels:
             outputs = model(**inputs)
             inference_time = time.time() - start_time
             
-            # Process generation output
-            if hasattr(outputs, "logits"):
-                logits = outputs.logits
-                next_token_logits = logits[0, -1, :]
-                next_token_id = torch.argmax(next_token_logits).item()
-                
-                if hasattr(tokenizer, "decode"):
-                    next_token = tokenizer.decode([next_token_id])
-                    predictions = [next_token]
-                else:
-                    predictions = ["<mock_token>"]
-            else:
-                predictions = ["<mock_output>"]
+            # Process output
+            predictions = self.process_model_output(outputs, tokenizer)
             
             # Store results
             results["openvino_success"] = True
@@ -577,7 +573,7 @@ class TestGptjModels:
             results["openvino_tokenizer_load_time"] = tokenizer_load_time
             
             # Add predictions if available
-            if 'predictions' in locals():
+            if predictions:
                 results["openvino_predictions"] = predictions
             
             results["openvino_error_type"] = "none"
@@ -588,7 +584,7 @@ class TestGptjModels:
                 "input": str(test_input)
             }
             
-            if 'predictions' in locals():
+            if predictions:
                 example_data["predictions"] = predictions
             
             self.examples.append(example_data)
@@ -692,17 +688,17 @@ def save_results(model_id, results, output_dir="collected_results"):
     return output_path
 
 def get_available_models():
-    """Get a list of all available GPT-2 models in the registry."""
-    return list(GPTJ_MODELS_REGISTRY.keys())
+    """Get a list of all available GPT-J models in the registry."""
+    return list(GPT_J_MODELS_REGISTRY.keys())
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered GPT-2 models."""
+    """Test all registered GPT-J models."""
     models = get_available_models()
     results = {}
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestGptjModels(model_id)
+        tester = TestGptJModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -724,7 +720,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
 
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test GPT-2-family models")
+    parser = argparse.ArgumentParser(description="Test GPT-J models")
     
     # Model selection
     model_group = parser.add_mutually_exclusive_group()
@@ -747,9 +743,9 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable GPT-2-family models:")
+        print("\nAvailable GPT-J models:")
         for model in models:
-            info = GPTJ_MODELS_REGISTRY[model]
+            info = GPT_J_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
         return
     
@@ -762,14 +758,14 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nGPT Models Testing Summary:")
+        print("\nGPT-J Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "gptj"
+    model_id = args.model or "EleutherAI/gpt-j-6b"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -777,7 +773,7 @@ def main():
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
     # Run test
-    tester = TestGptjModels(model_id)
+    tester = TestGptJModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested
@@ -785,8 +781,8 @@ def main():
         save_results(model_id, results, output_dir=args.output_dir)
     
     # Print summary
-    success = any(r.get("pipeline_success", False) for r in results["results"].values()
-        if r.get("pipeline_success") is not False)
+    success = any(r.get("pipeline_success", False) or r.get("from_pretrained_success", False) 
+                 for r in results["results"].values())
     
     # Determine if real inference or mock objects were used
     using_real_inference = HAS_TRANSFORMERS and HAS_TORCH

@@ -12,11 +12,13 @@ This document provides detailed information about the Dynamic Resource Managemen
    - [ResourcePerformancePredictor](#resourceperformancepredictor)
    - [CloudProviderIntegration](#cloudproviderintegration)
    - [CoordinatorOrchestratorIntegration](#coordinatororchestratorintegration)
+   - [ResourceOptimizer](#resourceoptimizer)
 4. [Orchestration Strategies](#orchestration-strategies)
 5. [API Reference](#api-reference)
 6. [Usage Examples](#usage-examples)
 7. [Advanced Features](#advanced-features)
-8. [Best Practices](#best-practices)
+8. [Testing Framework](#testing-framework)
+9. [Best Practices](#best-practices)
 
 ## Introduction
 
@@ -293,6 +295,64 @@ The CoordinatorOrchestratorIntegration connects the MultiDeviceOrchestrator with
 3. Result callback handling
 4. Integration with the coordinator's task and worker management
 5. Coordination of the DRM components
+
+### ResourceOptimizer
+
+The ResourceOptimizer integrates the DynamicResourceManager and ResourcePerformancePredictor to enable intelligent resource allocation and workload optimization. It provides capabilities for:
+
+1. Optimizing resource allocation for tasks based on historical performance data
+2. Predicting resource requirements for different task types and batch sizes
+3. Clustering similar workloads for efficient batch processing
+4. Balancing resources across task types for optimal throughput
+5. Providing enhanced scaling recommendations for different workload patterns
+
+**Key Features:**
+
+- Task resource requirement prediction
+- Intelligent worker-task matching
+- Worker type recommendations
+- Workload pattern analysis
+- Utilization-based scaling recommendations
+- Performance history integration
+
+**API Example:**
+
+```python
+# Initialize the resource optimizer
+optimizer = ResourceOptimizer(
+    resource_manager=dynamic_resource_manager,
+    performance_predictor=resource_predictor,
+    cloud_manager=cloud_provider_manager
+)
+
+# Get optimized resource allocation for a batch of tasks
+task_batch = [task1, task2, task3]
+allocation = optimizer.allocate_resources(
+    task_batch=task_batch,
+    available_workers=["worker1", "worker2"]
+)
+
+# Get worker type recommendations for pending tasks
+recommendations = optimizer.recommend_worker_types(pending_tasks)
+
+# Get scaling recommendations based on workload patterns
+scaling_recommendations = optimizer.get_scaling_recommendations()
+
+# Record task execution results for optimization
+optimizer.record_task_result(
+    task_id="task-123",
+    worker_id="worker-1",
+    result={
+        "task_data": {...},
+        "metrics": {
+            "cpu_cores_used": 3.6,
+            "memory_mb_used": 5120,
+            "execution_time_ms": 850
+        },
+        "success": True
+    }
+)
+```
 
 **Key Features:**
 
@@ -658,22 +718,46 @@ The DRM system uses several strategies to optimize performance:
 
 ### Monitoring and Visualization
 
-The DRM system provides comprehensive monitoring capabilities:
+The DRM system provides comprehensive monitoring and visualization capabilities:
 
 1. **Resource Utilization**:
-   - Real-time tracking of CPU, memory, GPU utilization
-   - Historical utilization patterns
-   - Bottleneck identification
+   - Real-time tracking of CPU, memory, GPU utilization through heatmaps
+   - Historical utilization patterns with trend analysis
+   - Bottleneck identification with visual indicators
 
 2. **Task Execution**:
    - Detailed task execution timelines
-   - Subtask dependencies and status
-   - Performance metrics for each subtask
+   - Subtask dependencies and status visualization
+   - Performance metrics for each subtask with comparative analysis
 
 3. **System Health**:
-   - Worker node status and health
-   - Network conditions and latency
-   - Error rates and failure modes
+   - Worker node status and health dashboards
+   - Network conditions and latency metrics
+   - Error rates and failure modes with visual alerts
+
+4. **Resource Allocation Visualization**:
+   - Visual representation of resource distribution across workers
+   - Efficiency metrics showing utilization vs. allocation
+   - Scaling event timelines with impact analysis
+
+5. **Cloud Resource Tracking**:
+   - Cloud provider resource usage dashboards
+   - Cost tracking and optimization visualizations
+   - Instance type utilization metrics
+
+6. **Interactive Dashboards**:
+   - Real-time monitoring with WebSocket updates
+   - Customizable refresh intervals
+   - Tabbed interface for different visualization types
+   - Comprehensive overview with summary metrics
+
+For a complete demonstration of these visualization capabilities, use the example script:
+
+```bash
+python run_drm_visualization_example.py
+```
+
+For more information, see [DRM Visualization README](DRM_VISUALIZATION_README.md) and [DRM Dashboard Integration](docs/DRM_DASHBOARD_INTEGRATION.md).
 
 ## Best Practices
 
@@ -727,3 +811,80 @@ The DRM system provides comprehensive monitoring capabilities:
    - Log detailed error information
    - Monitor failure patterns
    - Use post-mortem analysis to improve reliability
+
+## Testing Framework
+
+The DRM system includes a comprehensive testing framework to verify functionality, performance, and reliability:
+
+### Test Structure
+
+The DRM testing infrastructure is organized as follows:
+
+```
+duckdb_api/distributed_testing/tests/
+├── run_drm_tests.py              # Main test runner for all DRM tests
+├── run_e2e_drm_test.py           # End-to-end test runner for real environment simulation
+├── test_cloud_provider_manager.py # Tests for CloudProviderManager
+├── test_drm_integration.py       # Integration tests for DRM system
+├── test_dynamic_resource_manager.py # Tests for DynamicResourceManager
+├── test_resource_optimization.py  # Tests for ResourceOptimizer
+└── test_resource_performance_predictor.py # Tests for ResourcePerformancePredictor
+```
+
+### Test Components
+
+1. **Unit Tests**: Testing individual components in isolation
+   - Component-specific functionality
+   - Error handling and edge cases
+   - API contract verification
+
+2. **Integration Tests**: Testing interactions between DRM components
+   - Component communication
+   - Resource allocation workflow
+   - Task scheduling integration
+
+3. **End-to-End Tests**: Testing the complete system in a simulated environment
+   - Complete task lifecycle
+   - Resource management under load
+   - Scaling and fault tolerance
+
+4. **Performance Tests**: Measuring system performance
+   - Resource allocation efficiency
+   - Scaling response time
+   - System overhead
+
+### Running Tests
+
+To run the DRM tests:
+
+```bash
+# Run all DRM tests
+python run_drm_tests.py
+
+# Run tests for a specific component
+python run_drm_tests.py --pattern resource_optimization
+
+# Run with verbose output
+python run_drm_tests.py --verbose
+
+# Run end-to-end tests
+python run_e2e_drm_test.py
+```
+
+### End-to-End Testing
+
+The end-to-end test simulates a realistic environment with:
+
+- Coordinator with DRM enabled
+- Multiple worker nodes with different resource profiles
+- Various task types with different resource requirements
+- Dynamic workload patterns
+- Fault injection and recovery
+
+The test validates:
+- Resource-aware task scheduling
+- Dynamic scaling under varying load
+- Fault tolerance and recovery
+- Performance optimization
+
+For more detailed information, see [DYNAMIC_RESOURCE_MANAGEMENT_TESTING.md](/home/barberb/ipfs_accelerate_py/test/DYNAMIC_RESOURCE_MANAGEMENT_TESTING.md).

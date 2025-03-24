@@ -1,12 +1,12 @@
 # HuggingFace Model Test Coverage Report
 
-**Generated:** 2025-03-20 19:08:06
+**Generated:** 2025-03-22 01:42:35
 
 ## Coverage Summary
 
-- **Total models from HF:** 315
-- **Implemented (from HF list):** 315 (100.0%)
-- **Additional models implemented:** 21
+- **Total models from HF:** 6
+- **Implemented (from HF list):** 6 (100.0%)
+- **Additional models implemented:** 351
 - **Missing models:** 0
 
 ## Coverage by Architecture

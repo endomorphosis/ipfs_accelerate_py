@@ -16,9 +16,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # ANSI color codes for terminal output
-GREEN = "\033[32m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
+GREEN = "\\033[32m"
+BLUE = "\\033[34m"
+RESET = "\\033[0m"
 
 # Check if we should mock specific dependencies
 MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
@@ -37,7 +37,7 @@ except ImportError:
     HAS_TORCH = False
     logger.warning("torch not available, using mock")
 
-# Try to import transformers
+    # Try to import transformers
 try:
     if MOCK_TRANSFORMERS:
         raise ImportError("Mocked transformers import failure")
@@ -48,7 +48,7 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-# Try to import tokenizers
+    # Try to import tokenizers
 try:
     if MOCK_TOKENIZERS:
         raise ImportError("Mocked tokenizers import failure")
@@ -59,7 +59,7 @@ except ImportError:
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
 
-# Try to import sentencepiece
+    # Try to import sentencepiece
 try:
     if MOCK_SENTENCEPIECE:
         raise ImportError("Mocked sentencepiece import failure")
@@ -70,11 +70,11 @@ except ImportError:
     HAS_SENTENCEPIECE = False
     logger.warning("sentencepiece not available, using mock")
 
-# Import numpy (usually available)
-import numpy as np
+    # Import numpy (usually available)
+    import numpy as np
 
-# Define model registry
-BERT_MODELS_REGISTRY = {
+    # Define model registry
+    BERT_MODELS_REGISTRY = {
     "bert-base-uncased": {
         "description": "BERT base uncased model",
         "class": "BertForMaskedLM",
@@ -83,9 +83,7 @@ BERT_MODELS_REGISTRY = {
         "description": "BERT large uncased model",
         "class": "BertForMaskedLM",
     }
-}
-
-def select_device():
+    }    def select_device():
     """Select the best available device for inference."""
     if HAS_TORCH and torch.cuda.is_available():
         return "cuda:0"
@@ -95,16 +93,12 @@ def select_device():
         return "cpu"
 
 class TestBertModels:
-    """Test class for BERT-family models."""
-    
-    def __init__(self, model_id=None, device=None):
+    """Test class for BERT-family models."""    def __init__(self, model_id=None, device=None):
         """Initialize the test class."""
         self.model_id = model_id or "bert-base-uncased"
         self.device = device or select_device()
         self.results = {}
-        self.performance_stats = {}
-        
-    def test_pipeline(self):
+        self.performance_stats = {}    def test_pipeline(self):
         """Test using the pipeline API."""
         try:
             if not HAS_TRANSFORMERS:
@@ -155,22 +149,20 @@ class TestBertModels:
         except Exception as e:
             logger.error(f"Error testing pipeline: {e}")
             traceback.print_exc()
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": str(e)}    def run_tests(self):
+            """Run all tests for the model."""
+            logger.info(f"Testing model: {self.model_id}")
         
-    def run_tests(self):
-        """Run all tests for the model."""
-        logger.info(f"Testing model: {self.model_id}")
+            # Run pipeline test
+            pipeline_result = self.test_pipeline()
+            self.results["pipeline"] = pipeline_result
         
-        # Run pipeline test
-        pipeline_result = self.test_pipeline()
-        self.results["pipeline"] = pipeline_result
+            # Determine if real inference or mock objects were used
+            using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
+            using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
         
-        # Determine if real inference or mock objects were used
-        using_real_inference = HAS_TRANSFORMERS and HAS_TORCH
-        using_mocks = not using_real_inference or not HAS_TOKENIZERS or not HAS_SENTENCEPIECE
-        
-        # Add metadata to results
-        self.results["metadata"] = {
+            # Add metadata to results
+            self.results["metadata"] = {
             "model": self.model_id,
             "device": self.device,
             "timestamp": datetime.datetime.now().isoformat(),
@@ -187,15 +179,11 @@ class TestBertModels:
             "using_real_inference": using_real_inference,
             "using_mocks": using_mocks,
             "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
-        }
+            }
         
-        return self.results
-
-def get_available_models():
+            return self.results    def get_available_models():
     """Get list of available models."""
-    return list(BERT_MODELS_REGISTRY.keys())
-
-def save_results(results, output_dir="collected_results"):
+    return list(BERT_MODELS_REGISTRY.keys())    def save_results(results, output_dir="collected_results"):
     """Save test results to a JSON file."""
     try:
         # Create output directory if it doesn't exist
@@ -216,9 +204,7 @@ def save_results(results, output_dir="collected_results"):
         return file_path
     except Exception as e:
         logger.error(f"Error saving results: {e}")
-        return None
-
-def main():
+        return None    def main():
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description="Test BERT-family models")
     parser.add_argument("--model", type=str, help="Specific model to test")
@@ -230,7 +216,7 @@ def main():
     
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable BERT-family models:")
+        print(f"\nAvailable BERT-family models:")
         for model in models:
             info = BERT_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")

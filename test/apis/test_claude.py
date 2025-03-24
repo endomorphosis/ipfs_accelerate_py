@@ -2,23 +2,36 @@ import os
 import io
 import sys
 import json
-from unittest.mock import MagicMock, patch, Mock
-import requests
 import unittest
 import threading
+from unittest.mock import MagicMock, patch, Mock
+
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
+
+# Import ModelTest base class
+try:
+    from refactored_test_suite.model_test import ModelTest
+except ImportError:
+    # Fallback to alternative import path
+    try:
+        from model_test import ModelTest
+    except ImportError:
+        # Create a temporary ModelTest class if not available
+        class ModelTest(unittest.TestCase):
+            """Temporary ModelTest class."""
+            pass
 
 # Mock the claude module
 class MockClaude:
-    def __init__()))self, resources=None, metadata=None):
-        self.resources = resources or {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        self.metadata = metadata or {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        self.api_key = metadata.get()))"claude_api_key", "test_api_key")
-        self.circuit_lock = threading.RLock())))
-        self.queue_lock = threading.RLock())))
+    def __init__(self, resources=None, metadata=None):
+        self.resources = resources or {}
+        self.metadata = metadata or {}
+        self.api_key = metadata.get("claude_api_key", "test_api_key")
+        self.circuit_lock = threading.RLock()
+        self.queue_lock = threading.RLock()
         self.queue_processing = False
-        self.request_queue = []],,],
-        self.endpoints = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+        self.request_queue = []
+        self.endpoints = {}
         self.circuit_state = "CLOSED"
         self.queue_enabled = True
         self.max_retries = 3
@@ -27,518 +40,385 @@ class MockClaude:
         self.current_requests = 0
         self.max_concurrent_requests = 5
         self.request_tracking = True
-        self.recent_requests = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+        self.recent_requests = {}
     
-    def make_post_request_claude()))self, data, api_key=None, request_id=None):
+    def make_post_request_claude(self, data, api_key=None, request_id=None):
         # For test_endpoint test
-        if isinstance()))data, dict) and data.get()))"messages", []],,],):
-        return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "id": "msg_01abcdefg",
-        "type": "message",
-        "role": "assistant",
-        "content": []],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"type": "text", "text": "This is a test response"}],
-        "model": "claude-3-opus-20240229",
-        "stop_reason": "end_turn",
-        "stop_sequence": None,
-        "usage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "input_tokens": 10,
-        "output_tokens": 20
-        }
-        }
+        if isinstance(data, dict) and data.get("messages", []):
+            return {
+                "id": "msg_01abcdefg",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "This is a test response"}],
+                "model": "claude-3-opus-20240229",
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 20
+                }
+            }
         else:
-        return None
+            return None
     
-    def chat()))self, messages):
-        return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"content": []],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"type": "text", "text": "This is a test response"}]}
-        ,
-    def stream_chat()))self, messages):
-        return iter()))[]],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"content": "This"}, {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"content": " is"}, {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"content": " streaming"}])
-        ,
-    def make_stream_request_claude()))self, data):
+    def chat(self, messages):
+        return {"content": [{"type": "text", "text": "This is a test response"}]}
+    
+    def stream_chat(self, messages):
+        return iter([{"content": "This"}, {"content": " is"}, {"content": " streaming"}])
+    
+    def make_stream_request_claude(self, data):
         # For streaming test
-        return iter()))[]],,
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "message_start",
-        "message": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "id": "msg_01abcdefg",
-        "type": "message",
-        "role": "assistant",
-        "content": []],,],,
-        "model": "claude-3-opus-20240229",
-        "stop_reason": None,
-        "stop_sequence": None,
-        "usage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "input_tokens": 10
-        }
-        }
-        },
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "content_block_start",
-        "index": 0,
-        "content_block": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "text",
-        "text": ""
-        }
-        },
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "content_block_delta",
-        "index": 0,
-        "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "text",
-        "text": "This "
-        }
-        },
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "content_block_delta",
-        "index": 0,
-        "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "text",
-        "text": "is "
-        }
-        },
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "content_block_delta",
-        "index": 0,
-        "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "text",
-        "text": "a "
-        }
-        },
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "content_block_delta",
-        "index": 0,
-        "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "text",
-        "text": "test"
-        }
-        },
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "content_block_stop",
-        "index": 0
-        },
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "message_delta",
-        "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "stop_reason": "end_turn",
-        "stop_sequence": None,
-        "usage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "output_tokens": 20
-        }
-        }
-        },
-        {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        "type": "message_stop"
-        }
+        return iter([
+            {
+                "type": "message_start",
+                "message": {
+                    "id": "msg_01abcdefg",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": "claude-3-opus-20240229",
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {
+                        "input_tokens": 10
+                    }
+                }
+            },
+            {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {
+                    "type": "text",
+                    "text": ""
+                }
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {
+                    "type": "text",
+                    "text": "This "
+                }
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {
+                    "type": "text",
+                    "text": "is "
+                }
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {
+                    "type": "text",
+                    "text": "a "
+                }
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {
+                    "type": "text",
+                    "text": "test"
+                }
+            },
+            {
+                "type": "content_block_stop",
+                "index": 0
+            },
+            {
+                "type": "message_delta",
+                "delta": {
+                    "stop_reason": "end_turn",
+                    "stop_sequence": None,
+                    "usage": {
+                        "output_tokens": 20
+                    }
+                }
+            },
+            {
+                "type": "message_stop"
+            }
         ])
     
-    def _get_api_key()))self, metadata):
-        return metadata.get()))"claude_api_key", "test_api_key")
+    def _get_api_key(self, metadata):
+        return metadata.get("claude_api_key", "test_api_key")
     
-    def track_request_result()))self, success, error_type=None):
+    def track_request_result(self, success, error_type=None):
         pass
     
-    def create_claude_endpoint_handler()))self):
+    def create_claude_endpoint_handler(self):
         return lambda x: x
     
-    def test_claude_endpoint()))self):
+    def test_claude_endpoint(self):
         return True
     
-    def create_endpoint()))self, **kwargs):
-        endpoint_id = "endpoint_" + str()))len()))self.endpoints))
-        self.endpoints[]],,endpoint_id] = kwargs
+    def create_endpoint(self, **kwargs):
+        endpoint_id = "endpoint_" + str(len(self.endpoints))
+        self.endpoints[endpoint_id] = kwargs
         return endpoint_id
     
-    def get_stats()))self, endpoint_id):
+    def get_stats(self, endpoint_id):
         # First call returns initial stats
-        if not hasattr()))self, '_stats_called'):
+        if not hasattr(self, '_stats_called'):
             self._stats_called = True
-        return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"requests": 0, "success": 0, "errors": 0}
+            return {"requests": 0, "success": 0, "errors": 0}
         # Second call returns updated stats
-        return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"requests": 1, "success": 1, "errors": 0}
+        return {"requests": 1, "success": 1, "errors": 0}
     
-    def make_request_with_endpoint()))self, endpoint_id, data):
-        return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"content": []],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"type": "text", "text": "Response for " + endpoint_id}]}
+    def make_request_with_endpoint(self, endpoint_id, data):
+        return {"content": [{"type": "text", "text": "Response for " + endpoint_id}]}
     
-    def is_compatible_model()))self, model):
-        return "claude" in model.lower())))
+    def is_compatible_model(self, model):
+        return "claude" in model.lower()
     
-    def _process_queue()))self):
+    def _process_queue(self):
         pass
 
-# Replace the actual claude module with our mock
-        sys.modules[]],,'ipfs_accelerate_py.api_backends.claude'] = Mock())))
-        sys.modules[]],,'ipfs_accelerate_py.api_backends.claude'].claude = MockClaude
-
-# Import our mock
+class TestClaude(ModelTest):
+    """Test class for Claude API interface."""
+    
+    def setUp(self):
+        """Initialize the test with model details and mock the Claude API."""
+        super().setUp()
+        self.model_id = "anthropic/claude-3-haiku-20240307"
+        self.model_type = "text"
+        
+        # Replace the actual claude module with our mock
+        sys.modules['ipfs_accelerate_py.api_backends.claude'] = Mock()
+        sys.modules['ipfs_accelerate_py.api_backends.claude'].claude = MockClaude
+        
+        # Now import
         from ipfs_accelerate_py.api_backends import claude
-
-class test_claude:
-    def __init__()))self, resources=None, metadata=None):
-        self.resources = resources if resources else {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        self.metadata = metadata if metadata else {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}:
-            "claude_api_key": os.environ.get()))"ANTHROPIC_API_KEY", "test_api_key_for_mock"),
+        
+        # Setup resources and metadata
+        self.resources = {}
+        self.metadata = {
+            "claude_api_key": os.environ.get("ANTHROPIC_API_KEY", "test_api_key_for_mock"),
             "model": "claude-3-haiku-20240307",
             "max_retries": 3,
             "timeout": 30,
             "max_concurrent_requests": 5,
             "queue_size": 100
-            }
-            self.claude = claude()))resources=self.resources, metadata=self.metadata)
-        return None
+        }
+        
+        # Initialize the claude API client
+        self.claude = claude.claude(resources=self.resources, metadata=self.metadata)
+        self.device = self.detect_preferred_device()
     
-    def test()))self):
-        """Run all tests for the Claude ()))Anthropic) API backend"""
-        results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        
-        # Test API key multiplexing features
+    def detect_preferred_device(self):
+        """Detect available hardware and choose preferred device."""
+        return "cpu"  # Claude API is cloud-based, so local device is always "cpu"
+    
+    def load_model(self, model_name):
+        """Load a Claude API model for testing."""
         try:
-            if hasattr()))self.claude, 'create_endpoint'):
-                # Create first endpoint with test key
-                endpoint1 = self.claude.create_endpoint()))
-                api_key="test_claude_key_1",
-                max_concurrent_requests=5,
-                queue_size=20,
-                max_retries=3,
-                initial_retry_delay=1,
-                backoff_factor=2
-                )
-                
-                # Create second endpoint with different test key
-                endpoint2 = self.claude.create_endpoint()))
-                api_key="test_claude_key_2",
-                max_concurrent_requests=10,
-                queue_size=50,
-                max_retries=5
-                )
-                
-                results[]],,"multiplexing_endpoint_creation"] = "Success" if endpoint1 and endpoint2 else "Failed to create endpoints"
-                
-                # Test usage statistics if implemented:::
-                if hasattr()))self.claude, 'get_stats'):
-                    # Get stats for first endpoint
-                    stats1 = self.claude.get_stats()))endpoint1)
-                    
-                    # Make test requests to create stats
-                    with patch.object()))self.claude, 'make_post_request_claude') as mock_post:
-                        mock_post.return_value = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                        "id": "msg_01abcdefg",
-                        "type": "message",
-                        "role": "assistant",
-                        "content": []],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"type": "text", "text": "Response for endpoint 1"}],
-                        "model": "claude-3-opus-20240229",
-                        "stop_reason": "end_turn",
-                        "stop_sequence": None,
-                        "usage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                        "input_tokens": 10,
-                        "output_tokens": 20
-                        }
-                        }
-                        
-                        # Make request with first endpoint if method exists:
-                        if hasattr()))self.claude, 'make_request_with_endpoint'):
-                            self.claude.make_request_with_endpoint()))
-                            endpoint_id=endpoint1,
-                            data={}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"messages": []],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"role": "user", "content": "Test for endpoint 1"}]}
-                            )
-                            
-                            # Get updated stats
-                            stats1_after = self.claude.get_stats()))endpoint1)
-                            
-                            # Verify stats were updated
-                            results[]],,"usage_statistics"] = "Success" if stats1_after != stats1 else "Failed to update statistics":
-                        else:
-                            results[]],,"usage_statistics"] = "Not implemented"
-                else:
-                    results[]],,"usage_statistics"] = "Not implemented"
+            # Create an API client for the specified model
+            metadata = self.metadata.copy()
+            metadata["model"] = model_name
+            
+            # Import the claude module
+            from ipfs_accelerate_py.api_backends import claude
+            
+            # Create a new client with the specified model
+            api_client = claude.claude(resources=self.resources, metadata=metadata)
+            return api_client
+        except Exception as e:
+            self.logger.error(f"Error loading Claude API model {model_name}: {e}")
+            return None
+    
+    def verify_model_output(self, model, input_data, expected_output=None):
+        """Verify that model produces expected output."""
+        try:
+            # For Claude API models, input_data should be messages format
+            if isinstance(input_data, str):
+                # Convert string to messages format
+                messages = [{"role": "user", "content": input_data}]
+            elif isinstance(input_data, list):
+                # Assume it's already in messages format
+                messages = input_data
             else:
-                results[]],,"multiplexing_endpoint_creation"] = "Not implemented"
-        except Exception as e:
-            results[]],,"multiplexing"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
+                self.fail(f"Unsupported input format: {type(input_data)}")
             
-        # Test queue and backoff functionality
-        try:
-            if hasattr()))self.claude, 'queue_enabled'):
-                # Test queue settings
-                results[]],,"queue_enabled"] = "Success" if hasattr()))self.claude, 'queue_enabled') else "Missing queue_enabled"
-                results[]],,"request_queue"] = "Success" if hasattr()))self.claude, 'request_queue') else "Missing request_queue"
-                results[]],,"max_concurrent_requests"] = "Success" if hasattr()))self.claude, 'max_concurrent_requests') else "Missing max_concurrent_requests"
-                results[]],,"current_requests"] = "Success" if hasattr()))self.claude, 'current_requests') else "Missing current_requests counter"
+            # Make API request
+            response = model.chat(messages)
+            
+            # Verify response structure
+            self.assertIsNotNone(response, "Response should not be None")
+            self.assertTrue("content" in response, "Response should have content field")
+            
+            # If expected output is provided, verify the content matches
+            if expected_output is not None:
+                response_text = ""
+                if isinstance(response.get("content"), list):
+                    for content_block in response["content"]:
+                        if content_block.get("type") == "text":
+                            response_text += content_block.get("text", "")
                 
-                # Test backoff settings
-                results[]],,"max_retries"] = "Success" if hasattr()))self.claude, 'max_retries') else "Missing max_retries"
-                results[]],,"initial_retry_delay"] = "Success" if hasattr()))self.claude, 'initial_retry_delay') else "Missing initial_retry_delay"
-                results[]],,"backoff_factor"] = "Success" if hasattr()))self.claude, 'backoff_factor') else "Missing backoff_factor"
-                
-                # Test queue processing if implemented:::
-                if hasattr()))self.claude, '_process_queue'):
-                    with patch.object()))self.claude, '_process_queue') as mock_queue:
-                        mock_queue.return_value = None
-                        
-                        # Force queue to be enabled and at capacity for testing
-                        original_queue_enabled = self.claude.queue_enabled
-                        original_current_requests = self.claude.current_requests
-                        original_max_concurrent = self.claude.max_concurrent_requests
-                        
-                        self.claude.queue_enabled = True
-                        self.claude.current_requests = self.claude.max_concurrent_requests
-                        
-                        # Prepare a mock request to add to queue
-                        request_info = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                        "data": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"messages": []],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"role": "user", "content": "Queued request"}]},
-                        "api_key": "test_key",
-                        "request_id": "queue_test_456",
-                        "future": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"result": None, "error": None, "completed": False}
-                        }
-                        
-                        # Add request to queue
-                        if not hasattr()))self.claude, "request_queue"):
-                            self.claude.request_queue = []],,],
-                            
-                            self.claude.request_queue.append()))request_info)
-                        
-                        # Trigger queue processing
-                        if hasattr()))self.claude, '_process_queue'):
-                            self.claude._process_queue())))
-                            results[]],,"queue_processing"] = "Success" if mock_queue.called else "Failed to call queue processing"
-                        
-                        # Restore original values
-                            self.claude.queue_enabled = original_queue_enabled
-                        self.claude.current_requests = original_current_requests:
-                else:
-                    results[]],,"queue_processing"] = "Not implemented"
-            else:
-                results[]],,"queue_backoff"] = "Not implemented"
+                self.assertEqual(response_text, expected_output)
+            
+            return response
         except Exception as e:
-            results[]],,"queue_backoff"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
+            self.fail(f"Error verifying Claude API output: {e}")
+    
+    def test_model_loading(self):
+        """Test that the model loads correctly."""
+        model = self.load_model(self.model_id)
+        self.assertIsNotNone(model, "Claude API client should load successfully")
+    
+    def test_basic_chat(self):
+        """Test basic chat functionality."""
+        messages = [{"role": "user", "content": "Hello, Claude!"}]
         
-        # Test endpoint handler creation
-        try:
-            endpoint_handler = self.claude.create_claude_endpoint_handler())))
-            results[]],,"endpoint_handler"] = "Success" if callable()))endpoint_handler) else "Failed to create endpoint handler"
-            assert callable()))endpoint_handler), "Endpoint handler should be callable":
-        except Exception as e:
-            results[]],,"endpoint_handler"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
-            
-        # Test endpoint testing function
-        try:
-            # Mock test endpoint success
-            results[]],,"test_endpoint"] = "Success"
-            results[]],,"test_endpoint_params"] = "Success"
-        except Exception as e:
-            results[]],,"test_endpoint"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
-            
-        # Test post request function
-        try:
-            # Mock post request success
-            results[]],,"post_request"] = "Success"
-            results[]],,"post_request_headers"] = "Success"
-            results[]],,"request_id_tracking"] = "Success"
-        except Exception as e:
-            results[]],,"post_request"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
-            
-        # Test chat method
-        try:
-            with patch.object()))self.claude, 'make_post_request_claude') as mock_post:
-                mock_post.return_value = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "id": "msg_01abcdefg",
-                "type": "message",
-                "role": "assistant",
-                "content": []],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"type": "text", "text": "This is a test chat response"}],
-                "model": "claude-3-opus-20240229",
-                "stop_reason": "end_turn",
-                "stop_sequence": None,
-                "usage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "input_tokens": 10,
-                "output_tokens": 20
-                }
-                }
-                
-                messages = []],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"role": "user", "content": "Hello"}]
-                chat_result = self.claude.chat()))messages)
-                results[]],,"chat_method"] = "Success" if chat_result and isinstance()))chat_result, dict) else "Failed chat method"
-                assert chat_result and isinstance()))chat_result, dict), "Chat method should return a dictionary":
-        except Exception as e:
-            results[]],,"chat_method"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
-            
-        # Test streaming functionality if implemented::
-        try:
-            with patch.object()))self.claude, 'make_stream_request_claude') as mock_stream:
-                # Updated streaming format based on Claude Messages API
-                mock_stream.return_value = iter()))[]],,
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "message_start",
-                "message": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "id": "msg_01abcdefg",
-                "type": "message",
-                "role": "assistant",
-                "content": []],,],,
-                "model": "claude-3-opus-20240229",
-                "stop_reason": None,
-                "stop_sequence": None,
-                "usage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "input_tokens": 10
-                }
-                }
-                },
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "content_block_start",
-                "index": 0,
-                "content_block": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "text",
-                "text": ""
-                }
-                },
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "text",
-                "text": "This "
-                }
-                },
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "text",
-                "text": "is "
-                }
-                },
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "text",
-                "text": "a "
-                }
-                },
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "text",
-                "text": "test"
-                }
-                },
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "content_block_stop",
-                "index": 0
-                },
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "message_delta",
-                "delta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "stop_reason": "end_turn",
-                "stop_sequence": None,
-                "usage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "output_tokens": 20
-                }
-                }
-                },
-                {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-                "type": "message_stop"
-                }
-                ])
-                
-                if hasattr()))self.claude, 'stream_chat'):
-                    stream_result = list()))self.claude.stream_chat()))[]],,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"role": "user", "content": "Hello"}]))
-                    results[]],,"streaming"] = "Success" if len()))stream_result) > 0 else "Failed streaming"
-                    assert len()))stream_result) > 0, "Stream chat should return at least one result":
-                else:
-                    results[]],,"streaming"] = "Not implemented"
-        except Exception as e:
-            results[]],,"streaming"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
-            
-        # Test error handling
-        try:
-            # Test invalid API key - just mocking the error since we can't actually make the API call
-            results[]],,"error_handling_auth"] = "Success"
-            
-            # Test rate limit error - also just mocking the success
-            results[]],,"error_handling_rate_limit"] = "Success"
-            
-            # Test invalid request - also just mocking the success
-            results[]],,"error_handling_400"] = "Success"
-        except Exception as e:
-            results[]],,"error_handling"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
-            
-        # Test model compatibility if implemented::
-        try:
-            if hasattr()))self.claude, 'is_compatible_model'):
-                compatible = self.claude.is_compatible_model()))"anthropic/claude-3-opus-20240229")
-                incompatible = self.claude.is_compatible_model()))"nonexistent-model")
-                results[]],,"model_compatibility"] = "Success" if compatible and not incompatible else "Failed model compatibility check"
-                assert compatible, "Should recognize valid model name"
-                assert not incompatible, "Should reject invalid model name":
-            else:
-                results[]],,"model_compatibility"] = "Not implemented"
-        except Exception as e:
-            results[]],,"model_compatibility"] = f"Error: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}"
+        # Get chat response
+        response = self.claude.chat(messages)
         
-                return results
-
-    def __test__()))self):
-        """Run tests and compare/save results"""
-        test_results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-        try:
-            test_results = self.test())))
-        except Exception as e:
-            test_results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"test_error": str()))e)}
+        # Verify response structure
+        self.assertIsNotNone(response, "Chat response should not be None")
+        self.assertTrue("content" in response, "Response should have content field")
         
+        response_text = ""
+        if isinstance(response.get("content"), list):
+            for content_block in response["content"]:
+                if content_block.get("type") == "text":
+                    response_text += content_block.get("text", "")
+        
+        self.assertNotEqual(response_text, "", "Response text should not be empty")
+    
+    def test_streaming_chat(self):
+        """Test streaming chat functionality."""
+        if not hasattr(self.claude, 'stream_chat'):
+            self.skipTest("Streaming not implemented")
+        
+        messages = [{"role": "user", "content": "Hello, Claude!"}]
+        
+        # Get streaming response
+        stream_chunks = list(self.claude.stream_chat(messages))
+        
+        # Verify stream chunks
+        self.assertTrue(len(stream_chunks) > 0, "Should receive streaming chunks")
+    
+    def test_api_key_multiplexing(self):
+        """Test API key multiplexing features."""
+        if not hasattr(self.claude, 'create_endpoint'):
+            self.skipTest("API key multiplexing not implemented")
+        
+        # Create endpoints with different API keys
+        endpoint1 = self.claude.create_endpoint(
+            api_key="test_claude_key_1",
+            max_concurrent_requests=5
+        )
+        
+        endpoint2 = self.claude.create_endpoint(
+            api_key="test_claude_key_2",
+            max_concurrent_requests=10
+        )
+        
+        self.assertIsNotNone(endpoint1, "Endpoint 1 should be created")
+        self.assertIsNotNone(endpoint2, "Endpoint 2 should be created")
+        
+        # Test stats if available
+        if hasattr(self.claude, 'get_stats'):
+            stats1 = self.claude.get_stats(endpoint1)
+            self.assertIsNotNone(stats1, "Stats should be available")
+    
+    def test_queue_and_backoff(self):
+        """Test queue and backoff functionality."""
+        if not hasattr(self.claude, 'queue_enabled'):
+            self.skipTest("Queue not implemented")
+        
+        # Verify queue settings
+        self.assertTrue(hasattr(self.claude, 'queue_enabled'), "Queue enabled setting should exist")
+        self.assertTrue(hasattr(self.claude, 'request_queue'), "Request queue should exist")
+        self.assertTrue(hasattr(self.claude, 'max_retries'), "Max retries setting should exist")
+        self.assertTrue(hasattr(self.claude, 'initial_retry_delay'), "Initial retry delay setting should exist")
+    
+    def test_model_compatibility(self):
+        """Test model compatibility check."""
+        if not hasattr(self.claude, 'is_compatible_model'):
+            self.skipTest("Model compatibility check not implemented")
+        
+        compatible = self.claude.is_compatible_model("anthropic/claude-3-opus-20240229")
+        incompatible = self.claude.is_compatible_model("nonexistent-model")
+        
+        self.assertTrue(compatible, "Should recognize valid Claude model")
+        self.assertFalse(incompatible, "Should reject invalid model")
+    
+    def run_all_tests(self):
+        """Run all tests for Claude API."""
+        results = {}
+        
+        # Run all test methods
+        test_methods = [
+            self.test_model_loading,
+            self.test_basic_chat,
+            self.test_streaming_chat,
+            self.test_api_key_multiplexing,
+            self.test_queue_and_backoff,
+            self.test_model_compatibility
+        ]
+        
+        for test_method in test_methods:
+            method_name = test_method.__name__
+            try:
+                test_method()
+                results[method_name] = "Success"
+            except unittest.SkipTest as e:
+                results[method_name] = f"Skipped: {str(e)}"
+            except Exception as e:
+                results[method_name] = f"Error: {str(e)}"
+        
+        return results
+    
+    def save_results(self, results, expected_dir='expected_results', collected_dir='collected_results'):
+        """Save test results and compare with expected results."""
         # Create directories if they don't exist
-            base_dir = os.path.dirname()))os.path.abspath()))__file__))
-            expected_dir = os.path.join()))base_dir, 'expected_results')
-            collected_dir = os.path.join()))base_dir, 'collected_results')
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        expected_dir = os.path.join(base_dir, expected_dir)
+        collected_dir = os.path.join(base_dir, collected_dir)
         
-        # Create directories with appropriate permissions:
-        for directory in []],,expected_dir, collected_dir]:
-            if not os.path.exists()))directory):
-                os.makedirs()))directory, mode=0o755, exist_ok=True)
+        # Create directories with appropriate permissions
+        for directory in [expected_dir, collected_dir]:
+            if not os.path.exists(directory):
+                os.makedirs(directory, mode=0o755, exist_ok=True)
         
         # Save collected results
-                results_file = os.path.join()))collected_dir, 'claude_test_results.json')
+        results_file = os.path.join(collected_dir, 'claude_test_results.json')
         try:
-            with open()))results_file, 'w') as f:
-                json.dump()))test_results, f, indent=2)
+            with open(results_file, 'w') as f:
+                json.dump(results, f, indent=2)
         except Exception as e:
-            print()))f"Error saving results to {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}results_file}: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}")
+            print(f"Error saving results to {results_file}: {str(e)}")
             
         # Compare with expected results if they exist
-        expected_file = os.path.join()))expected_dir, 'claude_test_results.json'):
-        if os.path.exists()))expected_file):
+        expected_file = os.path.join(expected_dir, 'claude_test_results.json')
+        if os.path.exists(expected_file):
             try:
-                with open()))expected_file, 'r') as f:
-                    expected_results = json.load()))f)
-                    if expected_results != test_results:
-                        print()))"Test results differ from expected results!")
-                        print()))f"Expected: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}json.dumps()))expected_results, indent=2)}")
-                        print()))f"Got: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}json.dumps()))test_results, indent=2)}")
+                with open(expected_file, 'r') as f:
+                    expected_results = json.load(f)
+                    if expected_results != results:
+                        print("Test results differ from expected results!")
+                        print(f"Expected: {json.dumps(expected_results, indent=2)}")
+                        print(f"Got: {json.dumps(results, indent=2)}")
             except Exception as e:
-                print()))f"Error comparing results with {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}expected_file}: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}")
+                print(f"Error comparing results with {expected_file}: {str(e)}")
         else:
-            # Create expected results file if it doesn't exist:
+            # Create expected results file if it doesn't exist
             try:
-                with open()))expected_file, 'w') as f:
-                    json.dump()))test_results, f, indent=2)
-                    print()))f"Created new expected results file: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}expected_file}")
+                with open(expected_file, 'w') as f:
+                    json.dump(results, f, indent=2)
+                    print(f"Created new expected results file: {expected_file}")
             except Exception as e:
-                print()))f"Error creating {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}expected_file}: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}str()))e)}")
+                print(f"Error creating {expected_file}: {str(e)}")
+        
+        return results
 
-                    return test_results
 
 if __name__ == "__main__":
-    metadata = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-    "claude_api_key": os.environ.get()))"ANTHROPIC_API_KEY", "test_api_key_for_mock"),
-    "model": "claude-3-haiku-20240307",
-    "max_retries": 3,
-    "timeout": 30,
-    "max_concurrent_requests": 5,
-    "queue_size": 100
-    }
-    resources = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-    try:
-        this_claude = test_claude()))resources, metadata)
-        results = this_claude.__test__())))
-        print()))f"Claude API Test Results: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}json.dumps()))results, indent=2)}")
-    except KeyboardInterrupt:
-        print()))"Tests stopped by user.")
-        sys.exit()))1)
+    test = TestClaude()
+    results = test.run_all_tests()
+    test.save_results(results)
+    print(f"Claude API Test Results: {json.dumps(results, indent=2)}")

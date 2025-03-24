@@ -1,150 +1,177 @@
 stages:
-  - syntax
-  - test
-  - coverage
-  - deploy
+  - validation
+  - mock-testing
+  - real-testing
+  - mixed-testing
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
 
-# Cache dependencies between jobs
 cache:
-  key: ${CI_JOB_NAME}
   paths:
     - .pip-cache/
 
-# Base definition for all Python jobs
-.python:
-  image: python:3.9
+# Template for Python setup
+.setup_python:
   before_script:
     - python -m pip install --upgrade pip
-    - pip install -r requirements.txt
-
-# Syntax validation job
-syntax-validation:
-  extends: .python
-  stage: syntax
+    - pip install pytest pytest-xdist
+    - pip install numpy
+  
+# Verify mock detection implementation
+verify-mock-detection:
+  stage: validation
+  image: python:3.10
+  extends: .setup_python
   script:
-    - pip install pytest flake8
-    - flake8 test/test_generator.py --count --select=E9,F63,F7,F82 --show-source --statistics
-    - cd test
-    - |
-      for file in test_hf_*.py; do
-        echo "Checking syntax: $file"
-        python -m py_compile "$file"
-      done
-    - cd skills
-    - python test_generator_test_suite.py
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
-      changes:
-        - test/test_generator.py
-        - test/test_hf_*.py
-        - test/skills/test_generator_*.py
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
-        - test/test_generator.py
-        - test/test_hf_*.py
-        - test/skills/test_generator_*.py
-
-# Indentation check job
-indentation-check:
-  extends: .python
-  stage: syntax
-  script:
-    - pip install black
-    - cd test
-    - |
-      for file in test_hf_*.py; do
-        echo "Checking indentation: $file"
-        black --check --line-length 100 "$file" || echo "Indentation issues detected in $file"
-      done
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
-      changes:
-        - test/test_hf_*.py
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
-        - test/test_hf_*.py
-
-# Core functionality test job
-core-functionality:
-  extends: .python
-  stage: test
-  script:
-    - pip install torch transformers
-    - cd test
-    - python test_hf_bert.py --model bert-base-uncased --cpu-only
-    - python test_hf_gpt2.py --model gpt2 --cpu-only
-    - python test_hf_t5.py --model t5-small --cpu-only
-    - python test_hf_vit.py --model google/vit-base-patch16-224 --cpu-only
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
-      changes:
-        - test/test_generator.py
-        - test/test_hf_*.py
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
-        - test/test_generator.py
-        - test/test_hf_*.py
-
-# Coverage report job
-coverage-report:
-  extends: .python
-  stage: coverage
-  script:
-    - pip install matplotlib numpy pandas
     - cd test/skills
-    - python visualize_test_coverage.py
+    - python check_template_mock_status.py --detailed
+    - python verify_all_mock_detection.py --check-only
   artifacts:
     paths:
-      - test/skills/coverage_visualizations/
+      - test/skills/mock_detection_report_*.txt
+    when: always
     expire_in: 1 week
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
-      changes:
-        - test/test_hf_*.py
 
-# Nightly tests job
-nightly-tests:
-  extends: .python
-  stage: test
+# Test with all dependencies mocked
+test-with-mocks:
+  stage: mock-testing
+  image: python:3.10
+  extends: .setup_python
+  variables:
+    MOCK_TORCH: "True"
+    MOCK_TRANSFORMERS: "True"
+    MOCK_TOKENIZERS: "True"
+    MOCK_SENTENCEPIECE: "True"
   script:
-    - pip install torch transformers
-    - cd test/skills
-    - mkdir -p temp_generated
-    - python ../test_generator.py --family bert --output ./temp_generated
-    - python ../test_generator.py --family gpt2 --output ./temp_generated
-    - python ../test_generator.py --family t5 --output ./temp_generated
-    - python ../test_generator.py --family vit --output ./temp_generated
+    - cd test/skills/fixed_tests
+    # Run tests for core models with mock objects
     - |
-      for file in temp_generated/test_hf_*.py; do
-        echo "Testing generated file: $file"
-        python -m py_compile "$file"
+      for model in bert gpt2 t5 vit roberta; do
+        if [ -f "test_hf_${model}.py" ]; then
+          echo "Testing ${model}..."
+          python test_hf_${model}.py
+        fi
       done
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-
-# Update documentation job
-update-docs:
-  extends: .python
-  stage: deploy
-  script:
-    - pip install matplotlib numpy pandas
-    - cd test/skills
-    - python visualize_test_coverage.py
+    # Verify mock detection
+    - cd ..
     - |
-      # Update the HF_COVERAGE_REPORT.md file
-      cp coverage_visualizations/detailed_coverage_report.md HF_COVERAGE_REPORT.md
-    - |
-      # Update the timestamp in TEST_AUTOMATION.md
-      sed -i "s/Last update: .*/Last update: $(date +'%B %d, %Y') - Updated coverage report/" TEST_AUTOMATION.md
+      for model in bert gpt2 t5 vit roberta; do
+        if [ -f "fixed_tests/test_hf_${model}.py" ]; then
+          echo "Verifying ${model}..."
+          python verify_mock_detection.py --file fixed_tests/test_hf_${model}.py
+        fi
+      done
+  dependencies:
+    - verify-mock-detection
   artifacts:
     paths:
-      - test/skills/HF_COVERAGE_REPORT.md
-      - test/skills/TEST_AUTOMATION.md
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-  environment:
-    name: documentation
+      - test/skills/fixed_tests/collected_results/*.json
+    when: always
+    expire_in: 1 week
+
+# Test with real dependencies
+test-with-real-deps:
+  stage: real-testing
+  image: python:3.10
+  extends: .setup_python
+  variables:
+    MOCK_TORCH: "False"
+    MOCK_TRANSFORMERS: "False"
+    MOCK_TOKENIZERS: "False"
+    MOCK_SENTENCEPIECE: "False"
+  script:
+    # Install actual model dependencies
+    - pip install torch==2.1.1 torchvision==0.16.1
+    - pip install transformers==4.37.0 tokenizers==0.15.0 sentencepiece==0.1.99
+    - pip install pillow tqdm
+    - cd test/skills/fixed_tests
+    # Run tests for selected core models with real dependencies
+    - |
+      for model in bert gpt2; do
+        if [ -f "test_hf_${model}.py" ]; then
+          echo "Testing ${model}..."
+          python test_hf_${model}.py
+        fi
+      done
+    # Verify real inference detection
+    - cd ..
+    - |
+      for model in bert gpt2; do
+        if [ -f "fixed_tests/test_hf_${model}.py" ]; then
+          echo "Verifying ${model}..."
+          python verify_mock_detection.py --file fixed_tests/test_hf_${model}.py
+        fi
+      done
+  dependencies:
+    - test-with-mocks
+  artifacts:
+    paths:
+      - test/skills/fixed_tests/collected_results/*.json
+    when: always
+    expire_in: 1 week
+  only:
+    - schedules
+    - web
+
+# Test with torch but without transformers
+test-with-torch-only:
+  stage: mixed-testing
+  image: python:3.10
+  extends: .setup_python
+  variables:
+    MOCK_TORCH: "False"
+    MOCK_TRANSFORMERS: "True"
+    MOCK_TOKENIZERS: "True"
+    MOCK_SENTENCEPIECE: "True"
+  script:
+    # Install torch but not transformers
+    - pip install torch==2.1.1
+    - pip install pillow tqdm
+    - cd test/skills/fixed_tests
+    # Run tests with torch but without transformers
+    - |
+      for model in bert gpt2; do
+        if [ -f "test_hf_${model}.py" ]; then
+          echo "Testing ${model} with torch but without transformers..."
+          python test_hf_${model}.py
+        fi
+      done
+  dependencies:
+    - verify-mock-detection
+  artifacts:
+    paths:
+      - test/skills/fixed_tests/collected_results/*.json
+    when: always
+    expire_in: 1 week
+
+# Test with transformers but without torch
+test-with-transformers-only:
+  stage: mixed-testing
+  image: python:3.10
+  extends: .setup_python
+  variables:
+    MOCK_TORCH: "True" 
+    MOCK_TRANSFORMERS: "False"
+    MOCK_TOKENIZERS: "False"
+    MOCK_SENTENCEPIECE: "False"
+  script:
+    # Install transformers but not torch
+    - pip install transformers==4.37.0 tokenizers==0.15.0 sentencepiece==0.1.99
+    - pip install pillow tqdm
+    - cd test/skills/fixed_tests
+    # Run tests with transformers but without torch
+    - |
+      for model in bert gpt2; do
+        if [ -f "test_hf_${model}.py" ]; then
+          echo "Testing ${model} with transformers but without torch..."
+          python test_hf_${model}.py
+        fi
+      done
+  dependencies:
+    - verify-mock-detection
+  artifacts:
+    paths:
+      - test/skills/fixed_tests/collected_results/*.json
+    when: always
+    expire_in: 1 week

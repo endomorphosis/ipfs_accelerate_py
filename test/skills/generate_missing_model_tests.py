@@ -33,11 +33,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import regenerate_test_file function from regenerate_fixed_tests.py
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     from regenerate_fixed_tests import regenerate_test_file, get_architecture_type, get_template_for_architecture
 except ImportError:
-    logger.error("Failed to import from regenerate_fixed_tests.py. Make sure it exists in the same directory.")
-    sys.exit(1)
+    # Try alternative modules that might contain these functions
+    try:
+        from regenerate_tests_with_fixes import regenerate_test_file, get_architecture_type, get_template_for_architecture
+        logger.info("Successfully imported from regenerate_tests_with_fixes.py")
+    except ImportError:
+        logger.error("Failed to import required functions. Make sure regenerate_fixed_tests.py or regenerate_tests_with_fixes.py exists in the same directory.")
+        sys.exit(1)
 
 # Define priorities based on HF_MODEL_COVERAGE_ROADMAP.md
 PRIORITY_MODELS = {
@@ -63,7 +69,19 @@ PRIORITY_MODELS = {
         # Audio Models
         "sew", "unispeech", "clap", "musicgen", "encodec"
     ],
-    "low": []  # Add low-priority models here when needed
+    "low": [
+        # Additional text models
+        "reformer", "xlnet", "blenderbot", "gptj", "gpt_neo", "bigbird", "longformer", 
+        "camembert", "marian", "mt5", "opus-mt", "m2m_100", "transfo-xl", "ctrl",
+        "squeezebert", "funnel", "t5", "tapas", "canine", "roformer", "layoutlm", "layoutlmv2",
+        # Additional vision models
+        "bit", "dpt", "levit", "mlp-mixer", "mobilevit", "poolformer", "regnet", "segformer",
+        "mobilenet_v1", "mobilenet_v2", "efficientnet", "donut", "beit", 
+        # Additional multimodal
+        "vilt", "vinvl", "align", "flava", "blip-2", "flamingo", "florence",
+        # Additional speech
+        "wavlm", "data2vec", "unispeech-sat", "hubert", "sew-d", "usm", "seamless_m4t"
+    ]  # Low-priority models for more comprehensive coverage
 }
 
 # Skip these special model types since they're not valid Python identifiers due to hyphens
@@ -72,10 +90,25 @@ SKIP_MODELS = [
     # Architecture types
     "encoder-only", "decoder-only", "encoder-decoder", "vision", "multimodal", "audio",
     # Models with hyphens in name
-    "xlm-roberta", "gpt-neo", "gpt-j",
+    "xlm-roberta", "gpt-neo", "gpt-j", "sew-d", "m2m_100", "opus-mt", "blip-2",
+    "unispeech-sat", "layoutlmv2", "mobilenet_v1", "mobilenet_v2",
     # Models with other syntax issues
-    "git", "paligemma"
+    "git", "paligemma",
+    # Models already covered by other test files
+    "t5"  # Covered by mt5, flan-t5, etc.
 ]
+
+# Map for replacing hyphenated names with underscore versions
+MODEL_NAME_MAPPING = {
+    "xlm-roberta": "xlm_roberta",
+    "gpt-neo": "gpt_neo",
+    "gpt-j": "gptj",
+    "blip-2": "blip2",
+    "sew-d": "sew_d",
+    "opus-mt": "opus_mt",
+    "m2m_100": "m2m100",
+    "unispeech-sat": "unispeech_sat"
+}
 
 def extract_models_from_roadmap():
     """Extract model names from the HF_MODEL_COVERAGE_ROADMAP.md file."""
@@ -146,8 +179,22 @@ def generate_missing_models(priority="high", output_dir="fixed_tests", verify=Tr
     # Filter out models that already exist
     models_to_generate = [model for model in models_to_generate if model not in existing_models]
     
-    # Filter out models that should be skipped (contain hyphens which cause syntax errors)
-    models_to_generate = [model for model in models_to_generate if model not in SKIP_MODELS]
+    # Apply mapping for hyphenated model names and filter out models that should be skipped
+    mapped_models = []
+    for model in models_to_generate:
+        if model in SKIP_MODELS:
+            logger.info(f"Skipping model {model} (in skip list)")
+            continue
+        
+        # If model has a mapping, use the mapped name
+        if model in MODEL_NAME_MAPPING:
+            mapped_name = MODEL_NAME_MAPPING[model]
+            logger.info(f"Mapping model {model} to {mapped_name}")
+            mapped_models.append(mapped_name)
+        else:
+            mapped_models.append(model)
+    
+    models_to_generate = mapped_models
     logger.info(f"Will generate {len(models_to_generate)} new {priority}-priority models")
     
     # Generate each missing model
@@ -257,13 +304,84 @@ def main():
                         help="Directory to save generated files (default: fixed_tests)")
     parser.add_argument("--no-update-readme", action="store_true",
                         help="Skip updating the README with progress")
+    parser.add_argument("--direct-regenerate", action="store_true",
+                        help="Directly call regenerate_test_file with fixed argument signature")
     
     args = parser.parse_args()
     
     # Create output directory if needed
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Generate missing models
+    # Handle direct regeneration mode (workaround for argument mismatch)
+    if args.direct_regenerate:
+        from regenerate_tests_with_fixes import regenerate_test_file
+        
+        # Get models to generate
+        priorities = extract_models_from_roadmap()
+        models_to_generate = []
+        
+        if args.priority == "all":
+            for p in priorities:
+                models_to_generate.extend(priorities[p])
+        else:
+            models_to_generate = priorities.get(args.priority, [])
+        
+        # Apply mapping for hyphenated model names and filter out models that should be skipped
+        mapped_models = []
+        for model in models_to_generate:
+            if model in SKIP_MODELS:
+                logger.info(f"Skipping model {model} (in skip list)")
+                continue
+            
+            # If model has a mapping, use the mapped name
+            if model in MODEL_NAME_MAPPING:
+                mapped_name = MODEL_NAME_MAPPING[model]
+                logger.info(f"Mapping model {model} to {mapped_name}")
+                mapped_models.append(mapped_name)
+            else:
+                mapped_models.append(model)
+        
+        models_to_generate = mapped_models
+        logger.info(f"Will generate {len(models_to_generate)} {args.priority}-priority models directly")
+        
+        successes = 0
+        failures = 0
+        
+        for model_type in models_to_generate:
+            file_path = os.path.join(args.output_dir, f"test_hf_{model_type}.py")
+            logger.info(f"Generating model: {model_type} at {file_path}")
+            
+            try:
+                # Direct call with correct arguments
+                success = regenerate_test_file(file_path, force=True, verify=args.verify)
+                
+                if success:
+                    successes += 1
+                    logger.info(f"✅ Successfully generated {file_path}")
+                else:
+                    failures += 1
+                    logger.error(f"❌ Failed to generate test for {model_type}")
+            except Exception as e:
+                failures += 1
+                logger.error(f"Error generating test for {model_type}: {e}")
+        
+        # Print summary
+        logger.info("\nGeneration Summary:")
+        logger.info(f"- Successfully generated: {successes} models")
+        logger.info(f"- Failed: {failures} models")
+        logger.info(f"- Total attempted: {len(models_to_generate)} models")
+        
+        # Update README with progress if requested
+        if not args.no_update_readme and successes > 0:
+            update_readme(successes, len(models_to_generate))
+        
+        # Return success if any model was successfully generated
+        if failures > 0 and successes == 0:
+            logger.error("All model generation attempts failed")
+            return 1
+        return 0
+    
+    # Standard mode (unchanged)
     successes, failures, total = generate_missing_models(
         priority=args.priority,
         output_dir=args.output_dir,

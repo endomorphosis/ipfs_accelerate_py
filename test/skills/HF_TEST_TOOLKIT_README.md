@@ -2,6 +2,8 @@
 
 A comprehensive toolkit for managing HuggingFace model tests in the IPFS Accelerate Python framework.
 
+> **HIGH PRIORITY OBJECTIVE:** Achieving 100% test coverage for all 300+ HuggingFace model classes with end-to-end validation is a critical priority. Current coverage is only 57.6% (114/198 tracked models).
+
 ## Overview
 
 This toolkit provides a unified interface for all test-related operations:
@@ -184,40 +186,88 @@ Comprehensive documentation is available for all aspects of testing:
 
 ## Best Practices
 
-1. **Regenerate After Changes**: After modifying the test generator, regenerate all core tests:
-   ```bash
-   ./test_toolkit.py regenerate
-   ```
+### 1. NEVER Edit Generated Files Directly
 
-2. **Run Test Suite Regularly**: Validate the test generator functionality:
-   ```bash
-   ./test_toolkit.py suite
-   ```
+> **CRITICAL:** Always modify generators and templates, NEVER edit the generated test files directly.
 
-3. **Keep Coverage Updated**: Generate updated coverage reports after adding new tests:
-   ```bash
-   ./test_toolkit.py coverage
-   ```
+❌ **INCORRECT**: Editing test files in the output directory
+```bash
+vim test_hf_bert.py                 # WRONG!
+vim fixed_tests/test_hf_gpt_j.py    # WRONG!
+```
 
-4. **Use Pre-commit Hooks**: Install and use the pre-commit hook to ensure code quality:
-   ```bash
-   ./test_toolkit.py install-hook
-   ```
+✅ **CORRECT**: Modify the generator and templates, then regenerate
+```bash
+# Edit the generator source
+vim skills/test_generator_fixed.py  # Correct!
+vim skills/templates/encoder_only_template.py  # Correct!
 
-5. **Batch Generation**: When implementing many model families, use batch generation:
-   ```bash
-   ./test_toolkit.py batch 20 --all
-   ```
+# Then regenerate affected tests
+./test_toolkit.py regenerate
+```
+
+### 2. Always Reference Official Documentation
+
+When implementing or fixing test files, always reference:
+- **Official Transformers Documentation**: `/home/barberb/ipfs_accelerate_py/test/doc-builder/build`
+- **Current Implementation Status**: `reports/missing_models.md`
+
+### 3. Core Best Practices
+
+- **Regenerate After Changes**: After modifying the test generator, regenerate all core tests:
+  ```bash
+  ./test_toolkit.py regenerate
+  ```
+
+- **Run Test Suite Regularly**: Validate the test generator functionality:
+  ```bash
+  ./test_toolkit.py suite
+  ```
+
+- **Keep Coverage Updated**: Generate updated coverage reports after adding new tests:
+  ```bash
+  ./test_toolkit.py coverage
+  ```
+
+- **Use Pre-commit Hooks**: Install and use the pre-commit hook to ensure code quality:
+  ```bash
+  ./test_toolkit.py install-hook
+  ```
+
+- **Batch Generation**: When implementing many model families, use batch generation:
+  ```bash
+  ./test_toolkit.py batch 20 --priority high
+  ```
 
 ## Contributing
 
 When adding new tests or enhancing existing ones:
 
-1. Follow the architecture-specific guidance in [HF_TEST_DEVELOPMENT_GUIDE.md](HF_TEST_DEVELOPMENT_GUIDE.md)
-2. Update the implementation checklist in [HF_TEST_IMPLEMENTATION_CHECKLIST.md](HF_TEST_IMPLEMENTATION_CHECKLIST.md)
-3. Run the test suite to validate your changes
-4. Generate an updated coverage report
-5. Submit a pull request with your changes
+1. **Focus on High Priority Models First:**
+   - Consult current coverage report to identify high priority missing models
+   - Use `./test_toolkit.py batch --priority high` to implement high priority models
+
+2. **Follow the Proper Modification Process:**
+   - NEVER edit generated test files directly
+   - Always modify generators and templates, then regenerate tests
+   - Apply architecture-specific guidance in [HF_TEST_DEVELOPMENT_GUIDE.md](HF_TEST_DEVELOPMENT_GUIDE.md)
+
+3. **Ensure Changes Are Properly Propagated:**
+   - Update the implementation checklist in [HF_TEST_IMPLEMENTATION_CHECKLIST.md](HF_TEST_IMPLEMENTATION_CHECKLIST.md)
+   - Run the test suite to validate your changes
+   - Generate an updated coverage report
+   - Verify that fixes apply consistently across model architectures
+   - Document any special cases in the generator code comments
+
+4. **End-to-End Validation:**
+   - When possible, validate models with real weights (not just mocks)
+   - Follow guidance in [GENERATOR_MODIFICATION_GUIDE.md](GENERATOR_MODIFICATION_GUIDE.md)
+   - Document transformers version compatibilities
+
+5. **Submit your PR**:
+   - Ensure all changes are made to generators and templates
+   - Include updated coverage reports
+   - Document major modifications to the generator infrastructure
 
 ## Troubleshooting
 

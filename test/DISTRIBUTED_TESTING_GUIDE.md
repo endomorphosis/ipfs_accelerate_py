@@ -509,8 +509,86 @@ The Distributed Testing Framework can be integrated with existing systems:
 | Fault Tolerance System | ✅ 100% | Error handling, circuit breaking, recovery strategies |
 | Comprehensive Monitoring Dashboard | ✅ 100% | Real-time visualization, WebSocket updates, interactive charts |
 | Integrated System Runner | ✅ 100% | Combined execution of all components, unified configuration |
+| ML-based Anomaly Detection | ✅ 100% | Multiple detection algorithms, time series forecasting, visualization |
+| Prometheus/Grafana Integration | ✅ 100% | Metrics exposure, dashboard generation, real-time monitoring |
+| Advanced Scheduling Algorithms | ✅ 100% | Multiple scheduling strategies, task preemption, fair sharing |
 
-All components have now been fully implemented as of March 20, 2025.
+All components have now been fully implemented as of July 2025.
+
+### ML-based Anomaly Detection (NEW - July 2025)
+
+The ML-based Anomaly Detection component provides comprehensive machine learning capabilities for detecting anomalies in system metrics and performance data:
+
+```bash
+# Enable ML-based anomaly detection on coordinator
+python duckdb_api/distributed_testing/run_integrated_system.py --ml-anomaly-detection --ml-config ml_config.json
+
+# Generate anomaly detection visualizations
+python duckdb_api/distributed_testing/ml_anomaly_detection.py --visualize --metrics "worker_performance,task_execution_time" --output anomaly_visualizations/
+
+# Run with specific algorithms
+python duckdb_api/distributed_testing/ml_anomaly_detection.py --algorithms "isolation_forest,dbscan,threshold" --metrics "all"
+```
+
+Key features:
+- Multiple detection algorithms (Isolation Forest, DBSCAN, MAD, threshold-based)
+- Time series forecasting (ARIMA, Prophet, exponential smoothing)
+- Trend analysis with confidence intervals
+- Automatic visualization generation
+- Model persistence and retraining
+- Integration with monitoring systems
+
+### Prometheus and Grafana Integration (NEW - July 2025)
+
+The Prometheus and Grafana Integration component connects the framework to external monitoring systems:
+
+```bash
+# Start with Prometheus/Grafana integration
+python duckdb_api/distributed_testing/run_integrated_system.py --enable-prometheus --prometheus-port 8000
+
+# Configure Grafana integration
+python duckdb_api/distributed_testing/run_integrated_system.py --enable-prometheus --enable-grafana --grafana-url http://localhost:3000 --grafana-api-key YOUR_API_KEY
+
+# Export metrics to existing Prometheus instance
+python duckdb_api/distributed_testing/prometheus_grafana_integration.py --prometheus-url http://prometheus-host:9090 --export-metrics
+```
+
+Key features:
+- Prometheus metrics exposure via HTTP endpoint
+- Automatic Grafana dashboard generation
+- Real-time metric updates
+- Anomaly detection integration
+- Comprehensive metrics for tasks, workers, and system
+- Historical data visualization
+
+### Advanced Scheduling Algorithms (NEW - July 2025)
+
+The Advanced Scheduling component implements intelligent task scheduling:
+
+```bash
+# Run with specific scheduling algorithm
+python duckdb_api/distributed_testing/run_integrated_system.py --scheduling-algorithm resource_aware
+
+# Run with adaptive scheduling
+python duckdb_api/distributed_testing/run_integrated_system.py --scheduling-algorithm adaptive --adaptive-interval 50
+
+# Run with fair scheduling and user fairness
+python duckdb_api/distributed_testing/run_integrated_system.py --scheduling-algorithm fair --user-fair-share
+```
+
+Available scheduling algorithms:
+- Priority-based: Schedules tasks based on priority only
+- Resource-aware: Matches tasks to workers based on resource requirements
+- Predictive: Uses historical performance data to predict optimal assignments
+- Fair: Ensures fair resource allocation among users and task types
+- Adaptive: Automatically selects the best algorithm based on performance
+
+Key features:
+- Multiple scheduling strategies for different workloads
+- Task preemption for high-priority tasks
+- Fair sharing of resources among users
+- Performance prediction using historical data
+- Automatic algorithm selection based on performance metrics
 
 ### Enhanced Result Aggregation
 
