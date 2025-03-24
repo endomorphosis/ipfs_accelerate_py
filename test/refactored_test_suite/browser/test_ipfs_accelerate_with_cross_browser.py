@@ -14,19 +14,22 @@ import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 
-from refactored_test_suite.browser_test import BrowserTest
+from refactored_test_suite.model_test import ModelTest
 from cross_browser_model_sharding_fixed import CrossBrowserModelShardingManager
 
-class TestIPFSAcceleratedBrowserSharding(BrowserTest):
+class TestIPFSAcceleratedBrowserSharding(ModelTest):
     """Test class for IPFS-accelerated browser sharding."""
     
     def setUp(self):
         super().setUp()
-        self.model_name = "llama-7b"
+        self.model_id = "llama-7b"  # Set model_id required by ModelTest
+        self.model_name = self.model_id
         self.ipfs_hash = "QmTestHash123"
         self.browsers = ["chrome", "firefox", "edge"]
         self.shard_manager = None
         self.acceleration_result = None
+        # Browser-specific setup
+        self.browser_type = os.environ.get("BROWSER_TYPE", "chrome")
         
     def tearDown(self):
         # Clean up resources
@@ -272,5 +275,88 @@ class TestIPFSAcceleratedBrowserSharding(BrowserTest):
         self.assertIsNotNone(result)
         self.assertEqual(result["content_hash"], self.ipfs_hash)
         self.assertTrue(result["accelerated"])
+
+
+    def test_model_loading(self):
+        # Test basic model loading
+        if not hasattr(self, 'model_id') or not self.model_id:
+            self.skipTest("No model_id specified")
+        
+        try:
+            # Import the appropriate library
+            if 'bert' in self.model_id.lower() or 'gpt' in self.model_id.lower() or 't5' in self.model_id.lower():
+                import transformers
+                model = transformers.AutoModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'clip' in self.model_id.lower():
+                import transformers
+                model = transformers.CLIPModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'whisper' in self.model_id.lower():
+                import transformers
+                model = transformers.WhisperModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'wav2vec2' in self.model_id.lower():
+                import transformers
+                model = transformers.Wav2Vec2Model.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            else:
+                # Generic loading
+                try:
+                    import transformers
+                    model = transformers.AutoModel.from_pretrained(self.model_id)
+                    self.assertIsNotNone(model, "Model loading failed")
+                except:
+                    self.skipTest(f"Could not load model {self.model_id} with AutoModel")
+        except Exception as e:
+            self.fail(f"Model loading failed: {e}")
+
+
+
+    def detect_preferred_device(self):
+        # Detect available hardware and choose the preferred device
+        try:
+            import torch
+        
+            # Check for CUDA
+            if torch.cuda.is_available():
+                return "cuda"
+        
+            # Check for MPS (Apple Silicon)
+            if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
+                return "mps"
+        
+            # Fallback to CPU
+            return "cpu"
+        except ImportError:
+            return "cpu"
+
+
         self.assertEqual(result["delivery_method"], "p2p")
         self.assertEqual(result["peer_count"], 5)
+        
+    def load_model(self, model_name):
+        """Load a model for testing. Implementation required by ModelTest."""
+        self.logger.info(f"Loading model {model_name} for browser testing")
+        
+        # For browser tests, this would typically set up a model in the browser
+        # Here we're creating a mock model
+        class MockBrowserModel:
+            def __init__(self, name):
+                self.name = name
+                
+            def predict(self, input_data):
+                return f"Browser model prediction for {self.name}: {input_data}"
+        
+        return MockBrowserModel(model_name)
+    
+    def verify_model_output(self, model, input_data, expected_output=None):
+        """Verify model output. Implementation required by ModelTest."""
+        output = model.predict(input_data)
+        self.logger.info(f"Verifying output: {output}")
+        
+        if expected_output:
+            self.assertEqual(expected_output, output)
+        else:
+            self.assertIsNotNone(output)
+            self.assertIn(model.name, output)

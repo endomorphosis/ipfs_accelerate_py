@@ -427,5 +427,62 @@ class TestCLIPModels(ModelTest):
                 # Restore original device
                 self.device = original_device
 
+
+
+    def test_model_loading(self):
+        # Test basic model loading
+        if not hasattr(self, 'model_id') or not self.model_id:
+            self.skipTest("No model_id specified")
+        
+        try:
+            # Import the appropriate library
+            if 'bert' in self.model_id.lower() or 'gpt' in self.model_id.lower() or 't5' in self.model_id.lower():
+                import transformers
+                model = transformers.AutoModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'clip' in self.model_id.lower():
+                import transformers
+                model = transformers.CLIPModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'whisper' in self.model_id.lower():
+                import transformers
+                model = transformers.WhisperModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'wav2vec2' in self.model_id.lower():
+                import transformers
+                model = transformers.Wav2Vec2Model.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            else:
+                # Generic loading
+                try:
+                    import transformers
+                    model = transformers.AutoModel.from_pretrained(self.model_id)
+                    self.assertIsNotNone(model, "Model loading failed")
+                except:
+                    self.skipTest(f"Could not load model {self.model_id} with AutoModel")
+        except Exception as e:
+            self.fail(f"Model loading failed: {e}")
+
+
+
+    def detect_preferred_device(self):
+        # Detect available hardware and choose the preferred device
+        try:
+            import torch
+        
+            # Check for CUDA
+            if torch.cuda.is_available():
+                return "cuda"
+        
+            # Check for MPS (Apple Silicon)
+            if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
+                return "mps"
+        
+            # Fallback to CPU
+            return "cpu"
+        except ImportError:
+            return "cpu"
+
+
 if __name__ == "__main__":
     unittest.main()

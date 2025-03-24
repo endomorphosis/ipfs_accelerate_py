@@ -48,6 +48,9 @@ except ImportError:
     HAS_TOKENIZERS = False
     logger.warning("tokenizers not available, using mock")
 
+# Import ModelTest
+from refactored_test_suite.model_test import ModelTest
+
 # Hardware detection
 def check_hardware():
     """Check available hardware and return capabilities."""
@@ -77,7 +80,7 @@ def check_hardware():
         capabilities["openvino"] = True
     except ImportError:
         pass
-    
+        
     return capabilities
 
 # Get hardware capabilities
@@ -91,7 +94,7 @@ T5_MODELS_REGISTRY = {
     }
 }
 
-class TestT5Models:
+class TestT5Models(ModelTest):
     """Test class for t5 models."""
     
     def __init__(self, model_id=None):
@@ -202,6 +205,135 @@ class TestT5Models:
                 "timestamp": datetime.datetime.now().isoformat(),
             }
         }
+
+
+    def setUp(self):
+        # Set up resources for each test method
+        super().setUp()
+        self.model_id = "t5-base"
+    
+        # Configure hardware preference
+        self.preferred_device = self.detect_preferred_device()
+
+
+
+    def test_model_loading(self):
+        # Test basic model loading
+        if not hasattr(self, 'model_id') or not self.model_id:
+            self.skipTest("No model_id specified")
+        
+        try:
+            # Import the appropriate library
+            if 'bert' in self.model_id.lower() or 'gpt' in self.model_id.lower() or 't5' in self.model_id.lower():
+                import transformers
+                model = transformers.AutoModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'clip' in self.model_id.lower():
+                import transformers
+                model = transformers.CLIPModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'whisper' in self.model_id.lower():
+                import transformers
+                model = transformers.WhisperModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'wav2vec2' in self.model_id.lower():
+                import transformers
+                model = transformers.Wav2Vec2Model.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            else:
+                # Generic loading
+                try:
+                    import transformers
+                    model = transformers.AutoModel.from_pretrained(self.model_id)
+                    self.assertIsNotNone(model, "Model loading failed")
+                except:
+                    self.skipTest(f"Could not load model {self.model_id} with AutoModel")
+        except Exception as e:
+            self.fail(f"Model loading failed: {e}")
+
+
+
+    def detect_preferred_device(self):
+        """Detect available hardware and choose the preferred device."""
+        try:
+            import torch
+        
+            # Check for CUDA
+            if torch.cuda.is_available():
+                return "cuda"
+        
+            # Check for MPS (Apple Silicon)
+            if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
+                return "mps"
+        
+            # Fallback to CPU
+            return "cpu"
+        except ImportError:
+            return "cpu"
+            
+    def load_model(self, model_name=None):
+        """Load a model for testing."""
+        model_name = model_name or self.model_id
+        
+        try:
+            import transformers
+            
+            # Load tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Load model
+            if 't5' in model_name.lower():
+                model = transformers.T5ForConditionalGeneration.from_pretrained(model_name)
+            else:
+                model = transformers.AutoModelForSeq2SeqLM.from_pretrained(model_name)
+                
+            # Move model to appropriate device
+            device = self.detect_preferred_device()
+            if device != "cpu":
+                model = model.to(device)
+                
+            return {
+                "model": model,
+                "tokenizer": tokenizer,
+                "device": device
+            }
+        except Exception as e:
+            logger.error(f"Error loading model {model_name}: {e}")
+            raise
+            
+    def verify_model_output(self, model_components, input_data, expected_output=None):
+        """Verify that model produces expected output."""
+        try:
+            model = model_components["model"]
+            tokenizer = model_components["tokenizer"]
+            device = model_components.get("device", "cpu")
+            
+            # Prepare input
+            inputs = tokenizer(input_data, return_tensors="pt")
+            if device != "cpu":
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+                
+            # Generate output
+            import torch
+            with torch.no_grad():
+                outputs = model.generate(**inputs)
+                
+            # Decode output
+            decoded_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Verify output
+            self.assertIsNotNone(decoded_output)
+            self.assertTrue(len(decoded_output) > 0)
+            
+            # If expected output provided, compare
+            if expected_output is not None:
+                self.assertEqual(expected_output, decoded_output)
+                
+            return decoded_output
+        except Exception as e:
+            logger.error(f"Error verifying model output: {e}")
+            raise
+
 
 def main():
     """Command-line entry point."""

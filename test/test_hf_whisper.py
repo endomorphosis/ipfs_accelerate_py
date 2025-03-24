@@ -8,6 +8,7 @@ import datetime
 import logging
 import argparse
 import traceback
+import unittest
 from unittest.mock import patch, MagicMock
 from typing import Dict, List, Any, Optional
 
@@ -17,6 +18,19 @@ logger = logging.getLogger(__name__)
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Try to import ModelTest with fallbacks
+try:
+    from refactored_test_suite.model_test import ModelTest
+except ImportError:
+    try:
+        from model_test import ModelTest
+    except ImportError:
+        # Create a minimal ModelTest class if not available
+        class ModelTest(unittest.TestCase):
+            """Minimal ModelTest class if the real one is not available."""
+            def setUp(self):
+                super().setUp()
 
 # Try to import required packages with fallbacks
 try:
@@ -36,62 +50,40 @@ except ImportError:
     logger.warning("transformers not available, using mock")
 
 try:
-    import tokenizers
-    HAS_TOKENIZERS = True
+    import librosa
+    HAS_LIBROSA = True
 except ImportError:
-    tokenizers = MagicMock()
-    HAS_TOKENIZERS = False
-    logger.warning("tokenizers not available, using mock")
+    librosa = MagicMock()
+    HAS_LIBROSA = False
+    logger.warning("librosa not available, using mock")
 
-# Hardware detection
-def check_hardware():
-    """Check available hardware and return capabilities."""
-    capabilities = {
-        "cpu": True,
-        "cuda": False,
-        "cuda_version": None,
-        "cuda_devices": 0,
-        "mps": False,
-        "openvino": False
-    }
-    
-    # Check CUDA
-    if HAS_TORCH:
-        capabilities["cuda"] = torch.cuda.is_available()
-        if capabilities["cuda"]:
-            capabilities["cuda_devices"] = torch.cuda.device_count()
-            capabilities["cuda_version"] = torch.version.cuda
-        
-        # Check MPS (Apple Silicon)
-        if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
-            capabilities["mps"] = torch.mps.is_available()
-    
-    # Check OpenVINO
-    try:
-        import openvino
-        capabilities["openvino"] = True
-    except ImportError:
-        pass
-    
-    return capabilities
-
-# Get hardware capabilities
-HW_CAPABILITIES = check_hardware()
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    np = MagicMock()
+    HAS_NUMPY = False
+    logger.warning("numpy not available, using mock")
 
 # Models registry
 WHISPER_MODELS_REGISTRY = {
     "openai/whisper-small": {
         "description": "whisper small model",
         "class": "WhisperForConditionalGeneration",
+    },
+    "openai/whisper-tiny": {
+        "description": "whisper tiny model",
+        "class": "WhisperForConditionalGeneration",
     }
 }
 
-class TestWhisperModels:
+class TestWhisperModels(ModelTest):
     """Test class for whisper models."""
     
-    def __init__(self, model_id=None):
+    def setUp(self):
         """Initialize the test class."""
-        self.model_id = model_id or "openai/whisper-small"
+        super().setUp()
+        self.model_id = "openai/whisper-small"
         
         # Use registry information
         if self.model_id not in WHISPER_MODELS_REGISTRY:
@@ -107,21 +99,153 @@ class TestWhisperModels:
         
         # Test inputs will be created during testing
         self.test_input = None
+        self.sample_rate = 16000  # Default sample rate for Whisper
 
-        # Configure hardware preference
-        if HW_CAPABILITIES["cuda"]:
-            self.preferred_device = "cuda"
-        elif HW_CAPABILITIES["mps"]:
-            self.preferred_device = "mps"
-        else:
-            self.preferred_device = "cpu"
-        
+        # Configure hardware preference 
+        self.preferred_device = self.detect_preferred_device()
         logger.info(f"Using {self.preferred_device} as preferred device")
         
         # Results storage
         self.results = {}
         self.examples = []
         self.performance_stats = {}
+    
+    def load_model(self, model_name):
+        """Load a model for testing."""
+        try:
+            if not HAS_TRANSFORMERS:
+                raise ImportError("transformers package not available")
+                
+            logger.info(f"Loading model {model_name}...")
+            
+            # Create model and processor for whisper speech recognition
+            model = transformers.WhisperForConditionalGeneration.from_pretrained(model_name)
+            processor = transformers.WhisperProcessor.from_pretrained(model_name)
+            
+            # Whisper requires a feature extractor and tokenizer
+            feature_extractor = transformers.WhisperFeatureExtractor.from_pretrained(model_name)
+            tokenizer = transformers.WhisperTokenizer.from_pretrained(model_name)
+            
+            # Move model to preferred device if possible
+            if self.preferred_device == "cuda" and HAS_TORCH and torch.cuda.is_available():
+                model = model.to("cuda")
+            elif self.preferred_device == "mps" and HAS_TORCH and hasattr(torch, "mps") and torch.mps.is_available():
+                model = model.to("mps")
+                
+            return {
+                "model": model, 
+                "processor": processor,
+                "feature_extractor": feature_extractor,
+                "tokenizer": tokenizer
+            }
+        except Exception as e:
+            logger.error(f"Error loading model {model_name}: {e}")
+            raise
+    
+    def verify_model_output(self, model, input_data, expected_output=None):
+        """Verify that model produces expected output."""
+        try:
+            if not isinstance(model, dict) or "model" not in model or "processor" not in model:
+                raise ValueError("Model should be a dict containing 'model' and 'processor' keys")
+                
+            # Unpack model components
+            whisper_model = model["model"]
+            processor = model["processor"]
+            
+            # Process input audio
+            if isinstance(input_data, str) and os.path.isfile(input_data):
+                # Input is a file path to an audio file
+                if HAS_LIBROSA and HAS_NUMPY:
+                    # Load audio file using librosa
+                    waveform, sample_rate = librosa.load(input_data, sr=self.sample_rate)
+                    input_features = processor.feature_extractor(waveform, sampling_rate=sample_rate, return_tensors="pt").input_features
+                else:
+                    raise ImportError("librosa and numpy are required for processing audio files")
+            elif isinstance(input_data, torch.Tensor):
+                # Input is a PyTorch tensor, assume it's already in the right format
+                if input_data.dim() == 1:
+                    # Process raw audio
+                    input_features = processor.feature_extractor(input_data.numpy(), sampling_rate=self.sample_rate, return_tensors="pt").input_features
+                else:
+                    # Assume already processed features
+                    input_features = input_data
+            elif HAS_NUMPY and isinstance(input_data, np.ndarray):
+                # Input is a numpy array
+                input_features = processor.feature_extractor(input_data, sampling_rate=self.sample_rate, return_tensors="pt").input_features
+            else:
+                # If we don't have a valid input, create a random one
+                if HAS_TORCH:
+                    # Create a random audio tensor (2 seconds of audio)
+                    random_input = torch.randn(self.sample_rate * 2)
+                    input_features = processor.feature_extractor(random_input.numpy(), sampling_rate=self.sample_rate, return_tensors="pt").input_features
+                else:
+                    raise ValueError("Cannot process input and torch is not available to create a random input")
+            
+            # Move inputs to the right device if model is on a specific device
+            if hasattr(whisper_model, 'device') and str(whisper_model.device) != "cpu":
+                input_features = input_features.to(whisper_model.device)
+            
+            # Generate tokens
+            forced_decoder_ids = processor.get_decoder_prompt_ids(language="en", task="transcribe")
+            
+            # Perform inference with forced decoder ids
+            generated_ids = whisper_model.generate(
+                input_features,
+                forced_decoder_ids=forced_decoder_ids,
+                max_length=448
+            )
+            
+            # Decode the generated IDs to text
+            transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            
+            # Verify output
+            self.assertIsNotNone(transcription, "Transcription should not be None")
+            self.assertIsInstance(transcription, str, "Transcription should be a string")
+            
+            # If expected output is provided, compare with actual output
+            if expected_output is not None:
+                self.assertEqual(expected_output, transcription)
+                
+            return {"transcription": transcription, "generated_ids": generated_ids}
+        except Exception as e:
+            logger.error(f"Error verifying model output: {e}")
+            raise
+    
+    def test_model_loading(self):
+        """Test that the model loads correctly."""
+        try:
+            model_components = self.load_model(self.model_id)
+            self.assertIsNotNone(model_components, "Model should not be None")
+            self.assertIn("model", model_components, "Model dict should contain 'model' key")
+            self.assertIn("processor", model_components, "Model dict should contain 'processor' key")
+            self.assertIn("feature_extractor", model_components, "Model dict should contain 'feature_extractor' key")
+            self.assertIn("tokenizer", model_components, "Model dict should contain 'tokenizer' key")
+            
+            whisper_model = model_components["model"]
+            self.assertEqual(whisper_model.config.model_type, "whisper", "Model should be a Whisper model")
+            
+            logger.info(f"Successfully loaded {self.model_id}")
+            return model_components
+        except Exception as e:
+            logger.error(f"Error testing model loading: {e}")
+            self.fail(f"Model loading failed: {e}")
+    
+    def detect_preferred_device(self):
+        """Detect available hardware and choose the preferred device."""
+        try:
+            # Check CUDA
+            if HAS_TORCH and torch.cuda.is_available():
+                return "cuda"
+            
+            # Check MPS (Apple Silicon)
+            if HAS_TORCH and hasattr(torch, "mps") and torch.mps.is_available():
+                return "mps"
+            
+            # Fallback to CPU
+            return "cpu"
+        except Exception as e:
+            logger.error(f"Error detecting device: {e}")
+            return "cpu"
     
     def test_pipeline(self, device="auto"):
         """Test the model using pipeline API."""
@@ -143,7 +267,7 @@ class TestWhisperModels:
             return results
         
         try:
-            logger.info(f"Testing {{self.model_id}} with pipeline() on {{device}}...")
+            logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
             
             # Create pipeline with appropriate parameters
             pipeline_kwargs = {
@@ -187,7 +311,7 @@ class TestWhisperModels:
             results["pipeline_success"] = False
             results["pipeline_error"] = str(e)
             results["pipeline_error_type"] = "other"
-            logger.error(f"Error testing pipeline: {{e}}")
+            logger.error(f"Error testing pipeline: {e}")
         
         # Add to overall results
         self.results["pipeline"] = results
@@ -202,7 +326,7 @@ class TestWhisperModels:
         return {
             "results": self.results,
             "examples": self.examples,
-            "hardware": HW_CAPABILITIES,
+            "hardware": self.detect_preferred_device(),
             "metadata": {
                 "model": self.model_id,
                 "task": self.task,
@@ -217,30 +341,37 @@ def main():
     parser.add_argument("--model", type=str, help="Specific model to test")
     parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
     parser.add_argument("--save", action="store_true", help="Save results to file")
+    parser.add_argument("--unittest", action="store_true", help="Run as unittest")
     
     args = parser.parse_args()
     
-    # Override preferred device if CPU only
-    if args.cpu_only:
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
-        logger.info("CPU-only mode enabled")
-    
-    # Run test
-    model_id = args.model or "openai/whisper-small"
-    tester = TestWhisperModels(model_id)
-    results = tester.run_tests()
-    
-    # Print summary
-    success = any(r.get("pipeline_success", False) for r in results["results"].values())
-    
-    print("\nTEST RESULTS SUMMARY:")
-    if success:
-        print(f"✅ Successfully tested {model_id}")
+    if args.unittest or "unittest" in sys.argv:
+        # Run as unittest
+        unittest.main(argv=[sys.argv[0]])
     else:
-        print(f"❌ Failed to test {model_id}")
-        for test_name, result in results["results"].items():
-            if "pipeline_error" in result:
-                print(f"  - Error in {test_name}: {result.get('pipeline_error', 'Unknown error')}")
+        # Override preferred device if CPU only
+        if args.cpu_only:
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+            logger.info("CPU-only mode enabled")
+        
+        # Run test
+        tester = TestWhisperModels()
+        if args.model:
+            tester.model_id = args.model
+            
+        results = tester.run_tests()
+        
+        # Print summary
+        success = any(r.get("pipeline_success", False) for r in results["results"].values())
+        
+        print("\nTEST RESULTS SUMMARY:")
+        if success:
+            print(f"✅ Successfully tested {tester.model_id}")
+        else:
+            print(f"❌ Failed to test {tester.model_id}")
+            for test_name, result in results["results"].items():
+                if "pipeline_error" in result:
+                    print(f"  - Error in {test_name}: {result.get('pipeline_error', 'Unknown error')}")
 
 if __name__ == "__main__":
     main()

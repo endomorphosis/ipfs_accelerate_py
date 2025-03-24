@@ -102,7 +102,7 @@ def select_device():
 class TestBertModel:
     """Test class for BERT-family models."""
     
-    def __init__(self, model_id="nvidia/segformer-b0-finetuned-ade-512-512", device=None):
+    def __init__(self, model_id="bert-base-uncased", device=None):
         """Initialize the test class."""
         self.model_id = model_id
         self.device = device or select_device()
@@ -222,7 +222,7 @@ def save_results(results, output_dir="collected_results"):
 def main():
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description="Test BERT-family models")
-    parser.add_argument("--model", type=str, default="nvidia/segformer-b0-finetuned-ade-512-512", help="Specific model to test")
+    parser.add_argument("--model", type=str, default="bert-base-uncased", help="Specific model to test")
     parser.add_argument("--device", type=str, help="Device to run on (cuda, cpu, mps)")
     parser.add_argument("--save", action="store_true", help="Save results to file")
     

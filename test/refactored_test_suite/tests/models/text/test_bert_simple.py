@@ -23,6 +23,8 @@ try:
     import torch
     import transformers
     from transformers import BertModel, BertTokenizer, pipeline
+
+from refactored_test_suite.model_test import ModelTest
     
     HAS_REQUIREMENTS = True
 except ImportError as e:

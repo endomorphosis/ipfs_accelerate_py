@@ -24,7 +24,11 @@ ARCHITECTURE_TYPES = [
     "vision",
     "vision-encoder-text-decoder",
     "speech",
-    "multimodal"
+    "multimodal",
+    "diffusion",
+    "mixture-of-experts",
+    "state-space",
+    "rag"
 ]
 
 # Define model name to architecture type mapping
@@ -108,6 +112,8 @@ MODEL_NAME_MAPPING = {
     "marian": "encoder-decoder",
     "opus-mt": "encoder-decoder",
     "flan-t5": "encoder-decoder",
+    "mt0": "encoder-decoder",
+    "nllb": "encoder-decoder",
     
     # Vision Models
     "vit": "vision",
@@ -168,6 +174,49 @@ MODEL_NAME_MAPPING = {
     "paligemma": "multimodal",
     "imagebind": "multimodal",
     "florence": "multimodal",
+    
+    # Diffusion Models
+    "stable-diffusion": "diffusion",
+    "sdxl": "diffusion",
+    "ssd": "diffusion",
+    "dalle": "diffusion",
+    "midjourney": "diffusion",
+    "imagen": "diffusion",
+    "kandinsky": "diffusion",
+    "pixart": "diffusion",
+    "latent-diffusion": "diffusion",
+    
+    # Mixture-of-Experts Models
+    "mixtral": "mixture-of-experts",
+    "mixtral-8x7b": "mixture-of-experts",
+    "mixtral-8x22b": "mixture-of-experts",
+    "switchht": "mixture-of-experts",
+    "switchc": "mixture-of-experts",
+    "qwen-moe": "mixture-of-experts",
+    "qwen_moe": "mixture-of-experts",
+    "qwen2-moe": "mixture-of-experts",
+    "qwen2_moe": "mixture-of-experts",
+    "xmoe": "mixture-of-experts",
+    "olmo-moe": "mixture-of-experts",
+    "olmo_moe": "mixture-of-experts",
+    "olmoe": "mixture-of-experts",
+    
+    # State Space Models
+    "mamba": "state-space",
+    "mamba-2": "state-space",
+    "gamba": "state-space",
+    "vim": "state-space",
+    "hyena": "state-space",
+    "rwkv": "state-space",
+    "rwkv5": "state-space",
+    "ssd": "state-space",
+    
+    # RAG Models
+    "rag": "rag",
+    "rag-token": "rag",
+    "rag-sequence": "rag",
+    "rag-end2end": "rag",
+    "rag-document": "rag"
 }
 
 def normalize_model_name(model_name: str) -> str:
@@ -180,11 +229,14 @@ def normalize_model_name(model_name: str) -> str:
     Returns:
         Normalized model name
     """
+    # Save the original name for MoE special case
+    original_name = model_name
+    
     # Extract the base model name (remove organization)
     if "/" in model_name:
         model_name = model_name.split("/")[1]
     
-    # Remove version numbers and sizes
+    # Remove version numbers and sizes (but be careful with MoE patterns)
     model_name = re.sub(r"-\d+b.*$", "", model_name.lower())
     model_name = re.sub(r"\.?v\d+.*$", "", model_name)
     
@@ -200,8 +252,15 @@ def normalize_model_name(model_name: str) -> str:
         if model_name.endswith(suffix):
             model_name = model_name[:-len(suffix)]
     
-    # Normalize hyphens
+    # Special case for MoE models: keep the -moe or _moe suffix for detection
+    if "-moe" in original_name.lower() or "_moe" in original_name.lower():
+        # Extract just the base part and add _moe for consistent handling
+        base_part = re.sub(r"[\-_]moe.*$", "", model_name.lower())
+        return f"{base_part}_moe"
+    
+    # Normalize hyphens and periods (replace with underscore)
     model_name = model_name.replace("-", "_")
+    model_name = model_name.replace(".", "_")
     
     return model_name
 
@@ -215,6 +274,10 @@ def get_architecture_type(model_name: str) -> str:
     Returns:
         Architecture type
     """
+    # Special case for qwen-moe (this is a direct fix for a specific issue)
+    if "qwen-moe" in model_name.lower() or "qwen_moe" in model_name.lower():
+        return "mixture-of-experts"
+    
     # Normalize model name
     normalized_name = normalize_model_name(model_name)
     
@@ -231,7 +294,11 @@ def get_architecture_type(model_name: str) -> str:
         "vision": [r"vit", r"swin", r"resnet", r"convnext"],
         "vision-encoder-text-decoder": [r"clip", r"blip"],
         "speech": [r"whisper", r"wav2vec", r"hubert", r"encodec"],
-        "multimodal": [r"llava", r"flava", r"flamingo"]
+        "multimodal": [r"llava", r"flava", r"flamingo"],
+        "diffusion": [r"diffusion", r"stable-diffusion", r"sdxl", r"dalle", r"imagen", r"kandinsky", r"pixart", r"latent-diffusion"],
+        "mixture-of-experts": [r"mixtral", r"switchht", r"switchc", r"-moe", r"_moe", r"qwen-moe", r"qwen_moe", r"olmo-moe", r"olmo_moe", r"olmoe"],
+        "state-space": [r"mamba", r"hyena", r"rwkv", r"vim", r"gamba", r"s4", r"s5", r"ssm"],
+        "rag": [r"rag", r"rag-token", r"rag-sequence", r"rag-document"]
     }
     
     for arch_type, pattern_list in patterns.items():
@@ -267,7 +334,11 @@ def get_model_metadata(model_name: str) -> Dict[str, Any]:
         "vision": "image-classification",
         "vision-encoder-text-decoder": "image-to-text",
         "speech": "automatic-speech-recognition",
-        "multimodal": "multimodal-classification"
+        "multimodal": "multimodal-classification",
+        "diffusion": "text-to-image",
+        "mixture-of-experts": "text-generation",
+        "state-space": "text-generation",
+        "rag": "retrieval-augmented-generation"
     }
     
     task = task_mapping.get(arch_type, "fill-mask")
@@ -280,7 +351,9 @@ def get_model_metadata(model_name: str) -> Dict[str, Any]:
         "image-classification": 'Image.open("test.jpg")',
         "image-to-text": 'Image.open("test.jpg")',
         "automatic-speech-recognition": 'load_audio_file("test.mp3")',
-        "multimodal-classification": '[Image.open("test.jpg"), "A photo of"]'
+        "multimodal-classification": '[Image.open("test.jpg"), "A photo of"]',
+        "text-to-image": '"A photo of a cat sitting on a beach at sunset"',
+        "retrieval-augmented-generation": '{"query": "What is the capital of France?", "documents": ["Paris is the capital of France."]}'
     }
     
     example_input = example_input_mapping.get(task, '"The capital of France is [MASK]."')

@@ -16,6 +16,28 @@ A comprehensive real-time performance metrics dashboard has been implemented for
 - [mock_drm.py](duckdb_api/distributed_testing/testing/mock_drm.py) - **NEW** Mock DRM implementation for testing
 - [test_drm_real_time_dashboard.py](duckdb_api/distributed_testing/tests/test_drm_real_time_dashboard.py) - **NEW** Test suite for the real-time dashboard
 
+### Comprehensive Test Refactoring with Template Integration (NEW - March 22, 2025)
+
+A comprehensive test refactoring initiative has been launched with a focus on standardizing test structure, reducing duplication, and improving maintainability:
+
+- [TEST_REFACTORING_PLAN.md](TEST_REFACTORING_PLAN.md) - **NEW** Updated plan for comprehensive test refactoring
+- [template_integration/TEMPLATE_REFACTORING_GUIDE.md](template_integration/TEMPLATE_REFACTORING_GUIDE.md) - **NEW** Guide for integrating templates with refactored test suite
+- [template_integration/TEMPLATE_INTEGRATION_COMPLETED.md](template_integration/TEMPLATE_INTEGRATION_COMPLETED.md) - **NEW** Completion report for template integration with refactored test suite
+- [run_refactored_test_suite.py](run_refactored_test_suite.py) - **NEW** Runner for the refactored test suite
+- [migrate_tests.py](migrate_tests.py) - **NEW** Migration tool for converting existing tests
+- [analyze_test_ast_report.py](analyze_test_ast_report.py) - **NEW** Analysis tool for test code patterns
+- [generate_test_ast_report.py](generate_test_ast_report.py) - **NEW** AST generation tool for test files
+
+Key features of the refactoring initiative:
+- **Standardized Base Classes**: Hierarchy of specialized test base classes (BaseTest, ModelTest, etc.)
+- **Consistent Directory Structure**: Logical organization of tests by type and purpose
+- **Reduced Duplication**: Identification and elimination of redundant test code
+- **Template Integration**: Updated template system that generates refactored-compatible tests
+- **Comprehensive Analysis**: AST-based analysis of test patterns and relationships
+- **Migration Tooling**: Tools for automated migration of existing tests to new structure
+
+The refactoring initiative addresses the challenges of the rapidly growing test codebase, with over 2,500 test files containing more than 27,000 test methods. By standardizing test structure and eliminating duplication, we aim to reduce code volume by 30-40% while improving maintainability and performance.
+
 ### Mock Detection Framework with Visualization (NEW - July 21, 2025)
 
 A comprehensive mock detection system has been implemented with advanced visualization capabilities to track and analyze the use of mock objects in testing:

@@ -27,7 +27,7 @@ from pathlib import Path
 # Define architecture types for model mapping
 ARCHITECTURE_TYPES = {
     "encoder-only": ["bert", "distilbert", "roberta", "electra", "camembert", "xlm-roberta", "deberta", "layoutlm", "canine", "roformer"],
-    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt", "codellama", "qwen2", "qwen3", "stablelm"],
+    "decoder-only": ["gpt2", "gpt-j", "gpt-neo", "gpt-neox", "bloom", "llama", "mistral", "falcon", "phi", "mixtral", "mpt", "codellama", "qwen2", "qwen3", "stablelm", "mosaic_mpt", "pythia", "xglm", "open_llama"],
     "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "longt5", "led", "marian", "mt5", "flan"],
     "vision": ["vit", "swin", "deit", "beit", "convnext", "poolformer", "dinov2", "mobilenet-v2"],
     "vision-text": ["vision-encoder-decoder", "vision-text-dual-encoder", "clip", "blip", "blip-2", "chinese-clip", "clipseg"],
@@ -1108,6 +1108,18 @@ MODEL_REGISTRY = {
             "text": "GPT-Neo is a transformer model that",
         },
     },
+    "gpt-neox": {
+        "family_name": "GPTNeoX",
+        "description": "GPTNeoX autoregressive language models",
+        "default_model": "EleutherAI/gpt-neox-20b",
+        "class": "GPTNeoXForCausalLM",
+        "test_class": "TestGPTNeoXModels",
+        "module_name": "test_hf_gpt_neox",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "GPTNeoX is a transformer model that",
+        },
+    },
     "xlm-roberta": {
         "family_name": "XLM-RoBERTa",
         "description": "XLM-RoBERTa masked language models for cross-lingual understanding",
@@ -1331,6 +1343,18 @@ MODEL_REGISTRY = {
             "text": "LLaMA is a foundational language model that",
         },
     },
+    "open_llama": {
+        "family_name": "Open LLaMA",
+        "description": "Open-source implementation of Meta's LLaMA model",
+        "default_model": "openlm-research/open_llama_3b",
+        "class": "LlamaForCausalLM",
+        "test_class": "TestOpenLlamaModels",
+        "module_name": "test_hf_open_llama",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "Open-LLaMA is a transformer model that",
+        },
+    },
     "opt": {
         "family_name": "OPT",
         "description": "Open Pre-trained Transformer language models",
@@ -1353,6 +1377,54 @@ MODEL_REGISTRY = {
         "tasks": ['text-generation'],
         "inputs": {
             "text": "BLOOM is a multilingual language model that",
+        },
+    },
+    "stablelm": {
+        "family_name": "StableLM",
+        "description": "StableLM decoder-only language models",
+        "default_model": "stabilityai/stablelm-3b-4e1t",
+        "class": "AutoModelForCausalLM",
+        "test_class": "TestStablelmModels",
+        "module_name": "test_hf_stablelm",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "StableLM is an open-source language model that",
+        },
+    },
+    "mosaic_mpt": {
+        "family_name": "MosaicMPT",
+        "description": "Mosaic MPT decoder-only language models",
+        "default_model": "mosaicml/mpt-7b-instruct",
+        "class": "AutoModelForCausalLM",
+        "test_class": "TestMosaicMptModels",
+        "module_name": "test_hf_mosaic_mpt",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "Mosaic MPT is a language model that",
+        },
+    },
+    "pythia": {
+        "family_name": "Pythia",
+        "description": "Pythia decoder-only language models by EleutherAI",
+        "default_model": "EleutherAI/pythia-1b",
+        "class": "AutoModelForCausalLM",
+        "test_class": "TestPythiaModels",
+        "module_name": "test_hf_pythia",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "Pythia is a language model that",
+        },
+    },
+    "xglm": {
+        "family_name": "XGLM",
+        "description": "XGLM multilingual decoder-only language models",
+        "default_model": "facebook/xglm-1.7B",
+        "class": "XGLMForCausalLM",
+        "test_class": "TestXglmModels",
+        "module_name": "test_hf_xglm",
+        "tasks": ['text-generation'],
+        "inputs": {
+            "text": "XGLM is a multilingual language model that",
         },
     },
     "codellama": {
@@ -1539,16 +1611,21 @@ CLASS_NAME_FIXES = {
     "CodeLlamaForCausalLM": "LlamaForCausalLM"  # CodeLLama uses LlaMa architecture
 }
 
-def to_valid_identifier(text):
-    """Convert text to a valid Python identifier."""
+def to_valid_identifier(name):
     # Replace hyphens with underscores
-    text = text.replace("-", "_")
-    # Remove any other invalid characters
-    text = re.sub(r'[^a-zA-Z0-9_]', '', text)
-    # Ensure it doesn't start with a number
-    if text and text[0].isdigit():
-        text = '_' + text
-    return text
+    valid_name = name.replace("-", "_")
+    
+    # Ensure the name doesn't start with a number
+    if valid_name and valid_name[0].isdigit():
+        valid_name = f"m{valid_name}"
+    
+    # Replace any invalid characters with underscores
+    valid_name = re.sub(r'[^a-zA-Z0-9_]', '_', valid_name)
+    
+    # Deduplicate consecutive underscores
+    valid_name = re.sub(r'_+', '_', valid_name)
+    
+    return valid_name
 
 def get_pascal_case_identifier(text):
     """Convert a model name (potentially hyphenated) to PascalCase for class names."""

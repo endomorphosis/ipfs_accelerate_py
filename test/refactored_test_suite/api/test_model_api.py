@@ -1,20 +1,24 @@
 """
 Test for model API endpoints.
 
-This demonstrates the new test structure using the standardized APITest base class.
+This demonstrates the new test structure using the standardized ModelTest base class.
 """
 
 import unittest
 import json
+import requests
+import os
 from unittest.mock import MagicMock, patch
-from refactored_test_suite.api_test import APITest
+from refactored_test_suite.model_test import ModelTest
 
-class TestModelAPI(APITest):
+class TestModelAPI(ModelTest):
     """Test suite for model API endpoints."""
     
     def setUp(self):
         """Set up the test environment."""
         super().setUp()
+        # Set up API-specific attributes
+        self.base_url = os.environ.get("API_BASE_URL", "http://localhost:8000")
         # Set up mock session for testing
         self.session = MagicMock()
         self.model_id = "bert-base-uncased"
@@ -97,6 +101,95 @@ class TestModelAPI(APITest):
         args, kwargs = self.session.post.call_args
         self.assertEqual(args[0], url)
         self.assertEqual(kwargs["json"], request_data)
+
+
+    def test_model_loading(self):
+        # Test basic model loading
+        if not hasattr(self, 'model_id') or not self.model_id:
+            self.skipTest("No model_id specified")
+        
+        try:
+            # Import the appropriate library
+            if 'bert' in self.model_id.lower() or 'gpt' in self.model_id.lower() or 't5' in self.model_id.lower():
+                import transformers
+                model = transformers.AutoModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'clip' in self.model_id.lower():
+                import transformers
+                model = transformers.CLIPModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'whisper' in self.model_id.lower():
+                import transformers
+                model = transformers.WhisperModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'wav2vec2' in self.model_id.lower():
+                import transformers
+                model = transformers.Wav2Vec2Model.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            else:
+                # Generic loading
+                try:
+                    import transformers
+                    model = transformers.AutoModel.from_pretrained(self.model_id)
+                    self.assertIsNotNone(model, "Model loading failed")
+                except:
+                    self.skipTest(f"Could not load model {self.model_id} with AutoModel")
+        except Exception as e:
+            self.fail(f"Model loading failed: {e}")
+
+
+
+    def detect_preferred_device(self):
+        # Detect available hardware and choose the preferred device
+        try:
+            import torch
+        
+            # Check for CUDA
+            if torch.cuda.is_available():
+                return "cuda"
+        
+            # Check for MPS (Apple Silicon)
+            if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
+                return "mps"
+        
+            # Fallback to CPU
+            return "cpu"
+        except ImportError:
+            return "cpu"
+
+
+
+
+    def load_model(self, model_name):
+        """Load a model for testing.
+        
+        For API tests, this creates a mock model client.
+        """
+        api_client = MagicMock()
+        api_client.model_name = model_name
+        api_client.generate = MagicMock(return_value="Generated text from API")
+        return api_client
+    
+    def verify_model_output(self, model, input_data, expected_output=None):
+        """Verify that model produces expected output.
+        
+        For API tests, this verifies the mock responses.
+        """
+        # For API tests, we often verify mocks were called correctly
+        output = model.generate(input_data)
+        if expected_output:
+            self.assertEqual(expected_output, output)
+        else:
+            self.assertIsNotNone(output)
+            
+    def get_endpoint_url(self, endpoint):
+        """Get full URL for an endpoint (from APITest)."""
+        return f"{self.base_url}/{endpoint.lstrip('/')}"
+    
+    def assertStatusCode(self, response, expected_code):
+        """Assert that response has expected status code (from APITest)."""
+        self.assertEqual(expected_code, response.status_code, 
+                        f"Expected status code {expected_code}, got {response.status_code}")
 
 
 if __name__ == "__main__":

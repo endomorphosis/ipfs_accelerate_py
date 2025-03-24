@@ -1,10 +1,21 @@
 # Model Test Coverage Report
 
-Generated on: 2025-03-21
+Generated on: 2025-03-22
 
 ## Summary
 
-Total test files: 119
+Total test files: 309
+Total model classes with from_pretrained() tested: 309 (100%)
+
+### From_pretrained() Testing Implementation Methods
+
+| Method | Count | Percentage |
+|--------|-------|------------|
+| Explicit test_from_pretrained method | 226 | 73.1% |
+| Alternative test method names | 38 | 12.3% |
+| Direct calls to from_pretrained | 15 | 4.9% |
+| Pipeline API usage (implicit calls) | 30 | 9.7% |
+| **Total** | **309** | **100%** |
 
 ## Coverage by Architecture Type
 

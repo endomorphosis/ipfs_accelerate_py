@@ -7,15 +7,23 @@ import os
 import sys
 import logging
 import unittest
+import requests
 from unittest.mock import MagicMock, patch
 
-from refactored_test_suite.api_test import APITest
+from refactored_test_suite.model_test import ModelTest
 
-class TestClaudeAPI(APITest):
+class TestClaudeAPI(ModelTest):
     """Test class for Claude API implementation."""
     
     def setUp(self):
         super().setUp()
+        # Set up API-specific attributes from APITest
+        self.base_url = os.environ.get("API_BASE_URL", "http://localhost:8000")
+        self.session = requests.Session()
+        
+        # Set model_id
+        self.model_id = "claude-3-opus-20240229"
+        
         # Set up mocks instead of actual imports
         self.module_mock = MagicMock()
         self.claude_class_mock = MagicMock()
@@ -95,5 +103,98 @@ class TestClaudeAPI(APITest):
         # Check error
         self.assertIn("API authentication failed", str(context.exception))
         
+
+
+    def test_model_loading(self):
+        # Test basic model loading
+        if not hasattr(self, 'model_id') or not self.model_id:
+            self.skipTest("No model_id specified")
+        
+        try:
+            # Import the appropriate library
+            if 'bert' in self.model_id.lower() or 'gpt' in self.model_id.lower() or 't5' in self.model_id.lower():
+                import transformers
+                model = transformers.AutoModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'clip' in self.model_id.lower():
+                import transformers
+                model = transformers.CLIPModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'whisper' in self.model_id.lower():
+                import transformers
+                model = transformers.WhisperModel.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            elif 'wav2vec2' in self.model_id.lower():
+                import transformers
+                model = transformers.Wav2Vec2Model.from_pretrained(self.model_id)
+                self.assertIsNotNone(model, "Model loading failed")
+            else:
+                # Generic loading
+                try:
+                    import transformers
+                    model = transformers.AutoModel.from_pretrained(self.model_id)
+                    self.assertIsNotNone(model, "Model loading failed")
+                except:
+                    self.skipTest(f"Could not load model {self.model_id} with AutoModel")
+        except Exception as e:
+            self.fail(f"Model loading failed: {e}")
+
+
+
+    def detect_preferred_device(self):
+        # Detect available hardware and choose the preferred device
+        try:
+            import torch
+        
+            # Check for CUDA
+            if torch.cuda.is_available():
+                return "cuda"
+        
+            # Check for MPS (Apple Silicon)
+            if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
+                return "mps"
+        
+            # Fallback to CPU
+            return "cpu"
+        except ImportError:
+            return "cpu"
+
+
         # Verify method was called
         self.claude_instance_mock.completion.assert_called_once()
+        
+    def tearDown(self):
+        """Clean up resources."""
+        self.session.close()
+        super().tearDown()
+    
+    def load_model(self, model_name):
+        """Load a model for testing.
+        
+        For API tests, this creates a mock model client.
+        """
+        api_client = MagicMock()
+        api_client.model_name = model_name
+        api_client.generate = MagicMock(return_value="Generated text from Claude API")
+        return api_client
+    
+    def verify_model_output(self, model, input_data, expected_output=None):
+        """Verify that model produces expected output.
+        
+        For API tests, this verifies the mock responses.
+        """
+        # For API tests, we often verify mocks were called correctly
+        output = model.generate(input_data)
+        if expected_output:
+            self.assertEqual(expected_output, output)
+        else:
+            self.assertIsNotNone(output)
+            
+    def get_endpoint_url(self, endpoint):
+        """Get full URL for an endpoint (from APITest)."""
+        return f"{self.base_url}/{endpoint.lstrip('/')}"
+    
+    def assertStatusCode(self, response, expected_code):
+        """Assert that response has expected status code (from APITest)."""
+        self.assertEqual(expected_code, response.status_code, 
+                        f"Expected status code {expected_code}, got {response.status_code}")

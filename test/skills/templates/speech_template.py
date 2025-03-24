@@ -404,14 +404,14 @@ class TestWhisperModels:
                 inputs = {key: val.to(device) for key, val in inputs.items()}
             
             # Run warmup inference if using CUDA
-            if device == "cuda":
-                try:
-                    with torch.no_grad():
-                        _ = model(**inputs)
-                except Exception:
-                    pass
-            
-            # Run multiple inference passes
+            if device == \"cuda\":
+        try:
+            with torch.no_grad():
+                _ = model(**inputs)
+        except Exception:
+            pass
+
+    # Run multiple inference passes
             num_runs = 3
             times = []
             outputs = []

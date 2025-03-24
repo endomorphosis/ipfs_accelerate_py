@@ -1,0 +1,3576 @@
+# ModelTest Compliance Report
+
+Generated: 2025-03-23 10:43:29
+
+## Summary
+
+- Total test files: 3527
+- Compliant files: 15
+- Non-compliant files: 3512
+- **Compliance rate: 0.4%**
+
+## Compliance by Model Type
+
+- Text: 0.4% (7/1581)
+- Vision: 0.2% (2/1047)
+- Audio: 0.4% (1/255)
+- Multimodal: 0.0% (0/42)
+- Api: 4.7% (3/64)
+- Other: 0.4% (2/538)
+
+## Missing Methods
+
+- verify_model_output: 30 files
+- load_model: 11 files
+- detect_preferred_device: 6 files
+
+## Compliant Files
+
+- ✅ `test_bert_simple.py` - `TestBertSimple` (text)
+- ✅ `test_hf_t5.py` - `TestT5Models` (text)
+- ✅ `test_bert_fixed.py` - `TestBertFixed` (text)
+- ✅ `test_whisper-tiny.py` - `TestWhisperTiny` (audio)
+- ✅ `test_bert-base-uncased.py` - `TestBertBaseUncased` (text)
+- ✅ `test_hf_vit.py` - `TestVitModels` (vision)
+- ✅ `refactored_test_suite/test_utils.py` - `TestUtils` (other)
+- ✅ `apis/test_claude.py` - `TestClaude` (api)
+- ✅ `refactored_test_suite/api/test_model_api.py` - `TestModelAPI` (api)
+- ✅ `refactored_test_suite/api/test_claude_api.py` - `TestClaudeAPI` (api)
+- ✅ `refactored_test_suite/browser/test_ipfs_accelerate_with_cross_browser.py` - `TestIPFSAcceleratedBrowserSharding` (other)
+- ✅ `refactored_test_suite/tests/unit/test_hf_t5.py` - `TestT5Models` (text)
+- ✅ `refactored_test_suite/models/vision/test_vit-base-patch16-224.py` - `TestVit_base_patch16_224VitModel` (vision)
+- ✅ `refactored_test_suite/models/text/test_gpt2.py` - `TestGptModel` (text)
+- ✅ `refactored_test_suite/models/text/test_bert_qualcomm.py` - `TestBertQualcomm` (text)
+
+## Non-Compliant Files
+
+### Text Models
+
+- ❌ `test_improved_renderer.py` - ModelTest not imported
+- ❌ `test_hf_pythia.py` - ModelTest not imported
+- ❌ `test_hf_wavlm.py` - ModelTest not imported
+- ❌ `test_hf_speech_to_text.py` - ModelTest not imported
+- ❌ `test_hf_layoutlm.py` - ModelTest not imported
+- ❌ `test_hf_xlm.py` - ModelTest not imported
+- ❌ `test_hf_swinv2.py` - ModelTest not imported
+- ❌ `test_hf_roformer.py` - ModelTest not imported
+- ❌ `test_hf_mistral.py` - ModelTest not imported
+- ❌ `test_hardware_enhanced_bert.py` - Error processing file: unmatched ')' (<unknown>, line 22)
+- ❌ `test_hf_sew.py` - ModelTest not imported
+- ❌ `test_ollama_backoff.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test_hf_pegasus-x.py` - Error processing file: cannot assign to expression here. Maybe you meant '==' instead of '='? (<unknown>, line 82)
+- ❌ `test_hf_umt5.py` - ModelTest not imported
+- ❌ `test_visualization_direct.py` - ModelTest not imported
+- ❌ `test_hf_plbart.py` - ModelTest not imported
+- ❌ `test_webgpu_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `test_hf_qwen2.py` - ModelTest not imported
+- ❌ `test_hf_xglm.py` - ModelTest not imported
+- ❌ `test_visualization_standalone.py` - ModelTest not imported
+- ❌ `test_hf_vilt.py` - ModelTest not imported
+- ❌ `test_hf_cvt.py` - ModelTest not imported
+- ❌ `test_result_collector.py` - Error processing file: unexpected indent (<unknown>, line 48)
+- ❌ `test_hf_camembert.py` - ModelTest not imported
+- ❌ `test_hf_stablelm.py` - ModelTest not imported
+- ❌ `test_hf_deberta.py` - ModelTest not imported
+- ❌ `test_cross_platform_4bit.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test_hf_qwen3.py` - ModelTest not imported
+- ❌ `test_hf_deberta_v2.py` - ModelTest not imported
+- ❌ `test_hf_bark.py` - ModelTest not imported
+- ❌ `test_hf_nllb.py` - ModelTest not imported
+- ❌ `test_hf_luke.py` - ModelTest not imported
+- ❌ `test_webnn_benchmark.py` - Error processing file: unexpected indent (<unknown>, line 12)
+- ❌ `test_generator_with_resource_pool.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `test_hf_distilbert.py` - ModelTest not imported
+- ❌ `test_hf_albert.py` - ModelTest not imported
+- ❌ `test_comprehensive_hardware_coverage.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_hf_flava.py` - ModelTest not imported
+- ❌ `test_hf_bigbird_pegasus.py` - ModelTest not imported
+- ❌ `test_hf_mpnet.py` - ModelTest not imported
+- ❌ `test_hf_flan-t5.py` - Error processing file: cannot assign to expression here. Maybe you meant '==' instead of '='? (<unknown>, line 82)
+- ❌ `test_hf_m2m_100.py` - ModelTest not imported
+- ❌ `test_hardware_selection.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `test_hf_codellama.py` - ModelTest not imported
+- ❌ `test_bert_qualcomm.py` - Error processing file: unmatched ')' (<unknown>, line 15)
+- ❌ `test_hf_mixtral.py` - ModelTest not imported
+- ❌ `generate_bert_test.py` - ModelTest not imported
+- ❌ `test_webgpu_compute_transfer_overlap.py` - Error processing file: unexpected indent (<unknown>, line 21)
+- ❌ `test_local_endpoints.py` - Error processing file: invalid syntax (<unknown>, line 13)
+- ❌ `test_webgpu_4bit_llm_inference.py` - Error processing file: unexpected indent (<unknown>, line 22)
+- ❌ `manual_mock_test.py` - ModelTest not imported
+- ❌ `test_hf_falcon.py` - ModelTest not imported
+- ❌ `test_ipfs_quantization.py` - Error processing file: unexpected indent (<unknown>, line 14)
+- ❌ `test_hf_paligemma.py` - ModelTest not imported
+- ❌ `test_hf_mpt.py` - ModelTest not imported
+- ❌ `test_hf_flan_t5.py` - ModelTest not imported
+- ❌ `test_hf_speecht5.py` - ModelTest not imported
+- ❌ `test_ollama_mock.py` - Error processing file: unmatched ')' (<unknown>, line 13)
+- ❌ `test_ollama_backoff_comprehensive.py` - Error processing file: unexpected indent (<unknown>, line 11)
+- ❌ `test_resource_pool.py` - Error processing file: unmatched ')' (<unknown>, line 11)
+- ❌ `test_mock_detection.py` - ModelTest not imported
+- ❌ `test_hf_gpt2.py` - ModelTest not imported
+- ❌ `test_hf_video_llava.py` - ModelTest not imported
+- ❌ `test_enhanced_openvino.py` - Error processing file: unexpected indent (<unknown>, line 12)
+- ❌ `test_ipfs_accelerate.py` - ModelTest not imported
+- ❌ `test_hf_bert.py` - ModelTest not imported
+- ❌ `test_hf_perceiver.py` - ModelTest not imported
+- ❌ `test_db_query.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `test_hf_funnel.py` - ModelTest not imported
+- ❌ `test_hf_gpt_neo.py` - ModelTest not imported
+- ❌ `test_hf_mobilenet_v2.py` - ModelTest not imported
+- ❌ `test_hf_open_llama.py` - ModelTest not imported
+- ❌ `test_bert_fixed_from_updated.py` - ModelTest not imported
+- ❌ `test_samsung_support.py` - Error processing file: unmatched ')' (<unknown>, line 23)
+- ❌ `test_hf_kosmos_2.py` - ModelTest not imported
+- ❌ `test_hf_mosaic_mpt.py` - ModelTest not imported
+- ❌ `test_bert_template.py` - ModelTest not imported
+- ❌ `test_hf_bart.py` - ModelTest not imported
+- ❌ `test_hf_led.py` - ModelTest not imported
+- ❌ `test_hf_flaubert.py` - ModelTest not imported
+- ❌ `test_hf_phi.py` - ModelTest not imported
+- ❌ `test_hf_siglip.py` - ModelTest not imported
+- ❌ `test_hf_poolformer.py` - ModelTest not imported
+- ❌ `setup_typescript_test.py` - ModelTest not imported
+- ❌ `test_hf_olmo.py` - ModelTest not imported
+- ❌ `test_hf_llama.py` - ModelTest not imported
+- ❌ `test_mediatek_support.py` - Error processing file: unmatched ')' (<unknown>, line 22)
+- ❌ `test_hf_git.py` - ModelTest not imported
+- ❌ `test_ipfs_accelerate_fixed.py` - ModelTest not imported
+- ❌ `test_hf_xlnet.py` - ModelTest not imported
+- ❌ `test_hf_pegasus_x.py` - ModelTest not imported
+- ❌ `test_ollama_direct.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `test_hf_codegen.py` - ModelTest not imported
+- ❌ `test_hf_roberta.py` - ModelTest not imported
+- ❌ `test_predictive_performance_system.py` - Error processing file: unexpected indent (<unknown>, line 21)
+- ❌ `test_hf_longt5.py` - ModelTest not imported
+- ❌ `test_hf_gpt_neox.py` - ModelTest not imported
+- ❌ `test_hf_fuyu.py` - ModelTest not imported
+- ❌ `test_hf_deberta-v2.py` - Error processing file: cannot assign to expression here. Maybe you meant '==' instead of '='? (<unknown>, line 82)
+- ❌ `test_bert_from_template.py` - Error processing file: expected an indented block after 'try' statement on line 110 (<unknown>, line 113)
+- ❌ `test_hf_bigbird.py` - ModelTest not imported
+- ❌ `test_hf_canine.py` - ModelTest not imported
+- ❌ `test_hf_llava.py` - ModelTest not imported
+- ❌ `test_hf_llava_next.py` - ModelTest not imported
+- ❌ `test_hf_hubert.py` - ModelTest not imported
+- ❌ `test_samsung_npu_comparison.py` - ModelTest not imported
+- ❌ `test_streaming_inference.py` - Error processing file: unexpected indent (<unknown>, line 17)
+- ❌ `modality_tests/test_hf_t5.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_distilbert.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_gpt2.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_hubert.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_bert.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_roberta.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_speecht5.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `generated_tests_enhanced/test_t5.py` - ModelTest not imported
+- ❌ `generated_tests_enhanced/test_bert.py` - ModelTest not imported
+- ❌ `generated_tests_enhanced/test_gpt2.py` - ModelTest not imported
+- ❌ `new_generated_tests/test_hf_t5.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `new_generated_tests/test_hf_gpt2.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `new_generated_tests/test_hf_bert.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `new_test_models/test_hf_test_model.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `sample_tests/test_hf_bert_base_uncased_with_amd.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `sample_tests/test_hf_bert.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `sample_tests/test_hf_t5_small.py` - Error processing file: f-string: valid expression required before '}' (<unknown>, line 27)
+- ❌ `sample_tests/test_hf_bert_base_uncased.py` - Error processing file: f-string: valid expression required before '}' (<unknown>, line 27)
+- ❌ `sample_tests/test_hf_llava.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `skills/test_default_embed.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_nougat.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_maskformer_swin.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mistral.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_olmo.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_recurrent_gemma.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_trajectory_transformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_openai_gpt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_data2vec-text.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_bart.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_cohere.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_ernie_m.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_transfo_xl.py` - ModelTest not imported
+- ❌ `skills/test_hf_gpt-neo.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_vision_t5.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_mbart.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_deepseek_distil.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_toolkit.py` - ModelTest not imported
+- ❌ `skills/test_hf_camembert.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_bert.py` - Error processing file: expected an indented block after 'try' statement on line 23 (<unknown>, line 24)
+- ❌ `skills/test_hf_roc_bert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_timm_backbone.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_tvlt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_longt5.py` - ModelTest not imported
+- ❌ `skills/test_hf_superpoint.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_bigbird_pegasus.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_moshi.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_hubert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gpt2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gptj.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_deepseek_r1.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_deberta.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_phi4.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_trocr.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_speech-to-text.py` - ModelTest not imported
+- ❌ `skills/test_hf_tinyllama.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gpt_neox_japanese.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mllama.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_deepseek_r1_distil.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_jetmoe.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_align.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_deepseek_coder.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_kosmos-2.py` - Error processing file: invalid decimal literal (<unknown>, line 159)
+- ❌ `skills/test_hf_qwen2_moe.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_persimmon.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_opt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_timesformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_bridgetower.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_idefics.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_splinter.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_integration.py` - ModelTest not imported
+- ❌ `skills/test_hf_visual_bert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_t5_minimal.py` - ModelTest not imported
+- ❌ `skills/test_hf_udop.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_qwen3_vl.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_deberta_v2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gptsan_japanese.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gpt-j.py` - ModelTest not imported
+- ❌ `skills/test_hf_lxmert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mega.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_bert_copy.py` - Error processing file: unexpected indent (<unknown>, line 47)
+- ❌ `skills/test_hf_data2vec_text.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_longformer.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_speech_to_text_2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_roformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_sew_d.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mobilenet_v2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_codellama.py` - ModelTest not imported
+- ❌ `skills/test_hf_ibert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_ulip.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_t5_small.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_owlv2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_yoso.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_xlnet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_megatron_bert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_dac.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_olmoe.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_layoutlm.py` - ModelTest not imported
+- ❌ `skills/test_hf_cvt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_phimoe.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_hiera.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_bert_copy.py` - Error processing file: unindent does not match any outer indentation level (<unknown>, line 89)
+- ❌ `skills/test_hf_rembert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_falcon_mamba.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_default_lm.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_focalnet.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_bert_minimal.py` - ModelTest not imported
+- ❌ `skills/test_hf_mistral_nemo.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_efficientnet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_llama.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `skills/test_hf_blenderbot.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_distilbert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_convbert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mixtral.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_xmod.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_dbrx_instruct.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_funnel.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_realm.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_dinat.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_bert_base_uncased.py` - Error processing file: unmatched ')' (<unknown>, line 9)
+- ❌ `skills/test_hf_llava_next_video.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mra.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_stablelm.py` - ModelTest not imported
+- ❌ `skills/test_hf_cogvlm2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_prophetnet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_xlm-roberta.py` - ModelTest not imported
+- ❌ `skills/test_hf_fuyu.py` - ModelTest not imported
+- ❌ `skills/test_hf_sew.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mobilenet_v1.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_bert_generation.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_table_transformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_jamba.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_phi3.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_flan-t5.py` - ModelTest not imported
+- ❌ `skills/test_hf_bloom.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_m2m_100.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_xlm.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_cpmant.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mimi.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_optimized_model.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_idefics3.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mobilebert.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_gpt_bigcode.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_esm.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_pop2piano.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_musicgen_melody.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_rwkv.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gpt_neox.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_pvt_v2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_yolos.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_distilroberta_base.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vilt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_pixtral.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_xlm_roberta.py` - ModelTest not imported
+- ❌ `skills/test_hf_gpt_j.py` - ModelTest not imported
+- ❌ `skills/test_hf_speech_to_text.py` - ModelTest not imported
+- ❌ `skills/test_hf_wav2vec2_bert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_video_llava.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_xglm.py` - ModelTest not imported
+- ❌ `skills/test_hf_flan_t5.py` - ModelTest not imported
+- ❌ `skills/test_hf_speech-to-text-2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_umt5.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_rag.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mobilenet-v2.py` - Error processing file: cannot assign to expression here. Maybe you meant '==' instead of '='? (<unknown>, line 159)
+- ❌ `skills/test_hf_pvt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_blenderbot_small.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_rt_detr.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_paligemma.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gpt2_minimal.py` - ModelTest not imported
+- ❌ `skills/test_hf_nemotron.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_gemma.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_univnet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vision-text-dual-encoder.py` - ModelTest not imported
+- ❌ `skills/test_hf_chameleon.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_ctrl.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_seamless_m4t.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mt5.py` - Error processing file: unmatched ')' (<unknown>, line 15)
+- ❌ `skills/test_hf_deta.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_markuplm.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_t5.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_albert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_swin2sr.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/fix_bert_test.py` - ModelTest not imported
+- ❌ `skills/test_hf_open_llama.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_encoder_decoder.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_swiftformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_xlm_roberta_xl.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_fnet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mosaic_mpt.py` - ModelTest not imported
+- ❌ `skills/test_hf_switch_transformers.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gpt_neo.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_command_r.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_qdqbert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_poolformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `skills/test_hf_qwen2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_glm.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_nezha.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_git.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_oneformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_cm3.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_roberta.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_ernie.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_tvp.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_granite.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gemma2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gpt-neox.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_codegen.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_biogpt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_decision_transformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_regnet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mamba.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_reformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_swinv2.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_speecht5.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_led.py` - ModelTest not imported
+- ❌ `skills/test_hf_bigbird.py` - ModelTest not imported
+- ❌ `skills/test_hf_pythia.py` - ModelTest not imported
+- ❌ `skills/test_hf_mistral_next.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_lilt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_orca3.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_marian.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_deformable_detr.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_imagegpt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gpt_sw3.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_conditional_detr.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_plbart.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_glpn.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_starcoder2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mvp.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_zamba.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mamba2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/fix_gptj_test.py` - ModelTest not imported
+- ❌ `skills/test_hf_clip_text_model.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_roberta_prelayernorm.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_granitemoe.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_gemma3.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_grounding_dino.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vipllava.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_nystromformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mctct.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_electra.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_code_llama.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_clvp.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_omdet_turbo.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_kosmos_2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_fsmt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_qwen3_moe.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_pegasus_x.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mgp_str.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_flaubert.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_maskformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_xlm_prophetnet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_deepseek.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_dpr.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_graphormer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_luke.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_nllb_moe.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mpt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_seggpt.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_transfo-xl.py` - ModelTest not imported
+- ❌ `skills/test_hf_dbrx.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_retribert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_flava.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_squeezebert.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_musicgen.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_pegasus.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_bark.py` - ModelTest not imported
+- ❌ `skills/test_hf_mpnet.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `manual_fixes/bert_test.py` - ModelTest not imported
+- ❌ `predictive_performance/test_visualization.py` - ModelTest not imported
+- ❌ `predictive_performance/test_batch_generator.py` - ModelTest not imported
+- ❌ `predictive_performance/test_multi_model_execution.py` - ModelTest not imported
+- ❌ `predictive_performance/test_batch_generator_minimal.py` - ModelTest not imported
+- ❌ `distributed_testing/test_template_generator.py` - ModelTest not imported
+- ❌ `model_test_runners/run_llama_test.py` - Error processing file: invalid syntax (<unknown>, line 15)
+- ❌ `model_test_runners/run_single_test.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `key_model_tests/test_hf_bert.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `key_model_tests/test_hf_t5.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `key_model_tests/test_hf_detr.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `fixes/test_ipfs_accelerate_fixed.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_llama.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_roberta.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_albert.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_bart.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_mpt.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_falcon.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_phi.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_hubert.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_deberta.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_distilbert.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_mistral.py` - ModelTest not imported
+- ❌ `test_outputs/test_hf_bert.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `test_outputs/test_hf_bert_base_uncased.py` - Error processing file: unexpected indent (<unknown>, line 47)
+- ❌ `priority_model_tests_fixed/test_t5.py` - ModelTest not imported
+- ❌ `priority_model_tests_fixed/test_bert.py` - ModelTest not imported
+- ❌ `priority_model_tests_fixed/test_gpt2.py` - ModelTest not imported
+- ❌ `apis/test_vllm_unified.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `apis/test_vllm.py` - Error processing file: unmatched ')' (<unknown>, line 8)
+- ❌ `apis/test_hf_tei_container.py` - Error processing file: unmatched ')' (<unknown>, line 10)
+- ❌ `apis/test_ollama_unified.py` - Error processing file: unmatched ')' (<unknown>, line 10)
+- ❌ `apis/test_hf_tei_unified.py` - Error processing file: unmatched ')' (<unknown>, line 10)
+- ❌ `apis/test_hf_tgi_container.py` - Error processing file: unmatched ')' (<unknown>, line 9)
+- ❌ `apis/test_hf_tgi_unified.py` - Error processing file: unmatched '}' (<unknown>, line 19)
+- ❌ `apis/test_ollama.py` - Error processing file: unmatched ')' (<unknown>, line 8)
+- ❌ `apis/test_hf_tgi.py` - Error processing file: unmatched ')' (<unknown>, line 11)
+- ❌ `apis/test_gemini.py` - Error processing file: unmatched ')' (<unknown>, line 9)
+- ❌ `key_models_hardware_fixes/test_hf_bert.py` - Error processing file: invalid syntax (<unknown>, line 35)
+- ❌ `key_models_hardware_fixes/test_hf_t5.py` - Error processing file: expected an indented block after 'if' statement on line 59 (<unknown>, line 61)
+- ❌ `key_models_hardware_fixes/test_hf_llama.py` - Error processing file: expected an indented block after function definition on line 37 (<unknown>, line 38)
+- ❌ `generated_tests_minimal/test_gpt2.py` - ModelTest not imported
+- ❌ `generated_tests_minimal/test_t5.py` - ModelTest not imported
+- ❌ `generated_tests_minimal/test_bert.py` - ModelTest not imported
+- ❌ `archive/run_bert_test.py` - ModelTest not imported
+- ❌ `archive/comprehensive_test.py` - ModelTest not imported
+- ❌ `archive/run_integrated_hardware_model_test.py` - ModelTest not imported
+- ❌ `fixed_web_tests/test_hf_bert_web.py` - ModelTest not imported
+- ❌ `generated_tests_fixed/test_stablelm.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_persimmon.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_phi4.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_splinter.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `generated_tests_fixed/test_xmod.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `generated_tests_fixed/test_megatron-bert.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `generated_tests_fixed/test_phi3.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_recurrent-gemma.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_rwkv.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_mamba.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_nystromformer.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `generated_tests_fixed/test_mllama.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_starcoder2.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_xlm-roberta-xl.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `generated_tests_fixed/test_imagegpt.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_mra.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `generated_tests_fixed/test_openai-gpt.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_mobilebert.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `generated_tests_fixed/test_nezha.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `final_models/test_hf_bigbird.py` - ModelTest not imported
+- ❌ `final_models/test_seamless_m4t_v2.py` - ModelTest not imported
+- ❌ `final_models/test_xlm_prophetnet.py` - ModelTest not imported
+- ❌ `priority_model_tests/test_bert.py` - ModelTest not imported
+- ❌ `priority_model_tests/test_gpt2.py` - ModelTest not imported
+- ❌ `priority_model_tests/test_t5.py` - ModelTest not imported
+- ❌ `medium_priority_tests/test_bert.py` - ModelTest not imported
+- ❌ `medium_priority_tests/test_t5.py` - ModelTest not imported
+- ❌ `medium_priority_tests/test_gpt2.py` - ModelTest not imported
+- ❌ `generated_tests_validation/test_gpt2.py` - Error processing file: invalid syntax (<unknown>, line 52)
+- ❌ `generated_tests_validation/test_bert.py` - Error processing file: invalid syntax (<unknown>, line 68)
+- ❌ `generated_tests_validation/test_t5.py` - Error processing file: invalid syntax (<unknown>, line 68)
+- ❌ `generated_tests/test_opt.py` - ModelTest not imported
+- ❌ `generated_tests/test_llama2.py` - ModelTest not imported
+- ❌ `generated_tests/test_llama.py` - ModelTest not imported
+- ❌ `generated_tests/test_falcon.py` - ModelTest not imported
+- ❌ `generated_tests/test_gpt-2.py` - ModelTest not imported
+- ❌ `generated_tests/test_gpt-j.py` - ModelTest not imported
+- ❌ `generated_tests/test_t5.py` - ModelTest not imported
+- ❌ `generated_tests/test_gptj.py` - ModelTest not imported
+- ❌ `generated_tests/test_gpt2.py` - ModelTest not imported
+- ❌ `generated_tests/test_bert.py` - Error processing file: unindent does not match any outer indentation level (<unknown>, line 368)
+- ❌ `generated_tests/test_gemma.py` - ModelTest not imported
+- ❌ `generated_tests/test_gpt-neox.py` - ModelTest not imported
+- ❌ `generated_tests/test_phi.py` - ModelTest not imported
+- ❌ `generated_tests/test_mpt.py` - ModelTest not imported
+- ❌ `generated_tests/test_mistral.py` - ModelTest not imported
+- ❌ `generated_tests/test_gpt-neo.py` - ModelTest not imported
+- ❌ `generated_tests_final/test_gpt2.py` - ModelTest not imported
+- ❌ `generated_tests_final/test_bert.py` - ModelTest not imported
+- ❌ `generated_tests_final/test_t5.py` - ModelTest not imported
+- ❌ `fixed_generated_tests/test_hf_llama.py` - ModelTest not imported
+- ❌ `fixed_generated_tests/test_hf_bert_base_uncased.py` - ModelTest not imported
+- ❌ `fixed_generated_tests/test_hf_t5.py` - Error processing file: invalid syntax (<unknown>, line 541)
+- ❌ `fixed_generated_tests/test_hf_gpt2.py` - Error processing file: invalid syntax (<unknown>, line 541)
+- ❌ `fixed_generated_tests/test_hf_bert.py` - ModelTest not imported
+- ❌ `web_platform_test_output/test_hf_bert.py` - Error processing file: expected an indented block after function definition on line 94 (<unknown>, line 95)
+- ❌ `phase16_key_models/tests/test_hf_t5_small.py` - Error processing file: invalid syntax (<unknown>, line 31)
+- ❌ `phase16_key_models/tests/test_hf_llama_7b.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `phase16_key_models/tests/test_hf_bert_base_uncased.py` - Error processing file: invalid syntax (<unknown>, line 31)
+- ❌ `test/api/huggingface/test_peft_integration.py` - ModelTest not imported
+- ❌ `test/hardware/webgpu/compute_shaders/test_webgpu_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `test/models/text/test_webgpu_compute_transfer_overlap.py` - Error processing file: unexpected indent (<unknown>, line 21)
+- ❌ `test/models/text/test_webgpu_4bit_llm_inference.py` - Error processing file: unexpected indent (<unknown>, line 22)
+- ❌ `test/models/text/test_generator_integration.py` - ModelTest not imported
+- ❌ `test/models/text/gpt/test_gpt2_webgpu.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_herbert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_flaubert.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `test/models/text/bert/test_modeling_xlm_roberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_retribert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_tokenization_distilbert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_albert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_bert_web.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_distilbert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_wav2vec2_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hardware_enhanced_bert.py` - Error processing file: unmatched ')' (<unknown>, line 22)
+- ❌ `test/models/text/bert/test_modeling_tf_xlm_roberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased_rocm.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_qdqbert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_modeling_tf_mobilebert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_distilbert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_bert_qualcomm.py` - Error processing file: unmatched ')' (<unknown>, line 15)
+- ❌ `test/models/text/bert/test_modeling_tf_rembert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_deberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_albert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_modeling_flax_distilbert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_deberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_distilroberta_base.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_modeling_roc_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_visual_bert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_bert_from_template.py` - Error processing file: expected an indented block after 'try' statement on line 110 (<unknown>, line 113)
+- ❌ `test/models/text/bert/test_modeling_rembert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_wav2vec2_bert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_modeling_hubert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_flaubert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_convbert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_deberta_v2.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_ibert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_deberta_v2.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_hubert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_roberta.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_modeling_tf_deberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_rembert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased_webnn.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_flax_albert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_squeezebert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_camembert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_xlm_roberta_xl.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_roberta_prelayernorm.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_tokenization_camembert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_bert_japanese.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_flax_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_deberta_v2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_hf_bert.py` - Error processing file: expected an indented block after function definition on line 94 (<unknown>, line 95)
+- ❌ `test/models/text/bert/test_bert_base_uncased.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_convbert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased_openvino.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_xlm_roberta_xl.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_modeling_flax_roberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_convbert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_hf_megatron_bert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_modeling_modernbert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_xlm_roberta.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `test/models/text/bert/test_modeling_tf_deberta_v2.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_squeezebert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert_simple.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_visual_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_ibert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_hf_hubert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_modeling_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased_webgpu.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_camembert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_bert_generation.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_deberta.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `test/models/text/bert/test_tokenization_roc_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_bert_generation.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_roberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_bert_generation.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_tokenization_phobert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_processor_wav2vec2_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_flaubert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_bert_base_uncased_with_amd.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `test/models/text/bert/test_hf_mobilebert.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `test/models/text/bert/test_modeling_albert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_distilbert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_roberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_rembert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_bert_fixed_from_updated.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_albert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_roberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_megatron_bert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_flax_xlm_roberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_bert_tf.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased_mps.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_camembert.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `test/models/text/bert/test_modeling_flax_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_mobilebert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert_fixed.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert-base-uncased_qnn.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_squeezebert.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `test/models/text/bert/test_hf_roc_bert.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `test/models/text/bert/test_tokenization_bertweet.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_bert_template.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_tf_flaubert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_modeling_mobilebert.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_tokenization_xlm_roberta.py` - ModelTest not imported
+- ❌ `test/models/text/bert/test_hf_bert_base_uncased.py` - ModelTest not imported
+- ❌ `transformers/tests/test_modeling_tf_common.py` - ModelTest not imported
+- ❌ `transformers/tests/test_tokenization_common.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_modeling_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_tokenization_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_configuration_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_cache_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_summarization.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_text_to_audio.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_image_text_to_text.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_translation.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_text_classification.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_text_generation.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_table_question_answering.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_image_to_text.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_text2text_generation.py` - ModelTest not imported
+- ❌ `transformers/tests/tokenization/test_tokenization_fast.py` - ModelTest not imported
+- ❌ `transformers/tests/tokenization/test_tokenization_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_text_to_speech.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_monitoring.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_speech_to_text.py` - ModelTest not imported
+- ❌ `transformers/tests/peft_integration/test_peft_integration.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_candidate_generator.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_configuration_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_streamers.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_logits_process.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_stopping_criteria.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_trainer_distributed_loss.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_trainer_seq2seq.py` - ModelTest not imported
+- ❌ `transformers/tests/repo_utils/test_check_dummies.py` - ModelTest not imported
+- ❌ `transformers/tests/deepspeed/test_deepspeed.py` - ModelTest not imported
+- ❌ `transformers/tests/models/phobert/test_tokenization_phobert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gemma3/test_modeling_gemma3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gemma3/test_processing_gemma3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gemma3/test_image_processing_gemma3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bert_japanese/test_tokenization_bert_japanese.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clvp/test_processor_clvp.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clvp/test_modeling_clvp.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clvp/test_tokenization_clvp.py` - ModelTest not imported
+- ❌ `transformers/tests/models/time_series_transformer/test_modeling_time_series_transformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/moshi/test_tokenization_moshi.py` - ModelTest not imported
+- ❌ `transformers/tests/models/moshi/test_modeling_moshi.py` - ModelTest not imported
+- ❌ `transformers/tests/models/switch_transformers/test_modeling_switch_transformers.py` - ModelTest not imported
+- ❌ `transformers/tests/models/herbert/test_tokenization_herbert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/trocr/test_modeling_trocr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/byt5/test_tokenization_byt5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/jetmoe/test_modeling_jetmoe.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlm_roberta_xl/test_modeling_xlm_roberta_xl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bart/test_tokenization_bart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bart/test_modeling_flax_bart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bart/test_modeling_bart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bart/test_modeling_tf_bart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/informer/test_modeling_informer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt2/test_tokenization_gpt2_tf.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt2/test_modeling_tf_gpt2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt2/test_modeling_gpt2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt2/test_tokenization_gpt2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt2/test_modeling_flax_gpt2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dpr/test_modeling_dpr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dpr/test_tokenization_dpr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blip/test_modeling_tf_blip_text.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blip/test_modeling_blip_text.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlm/test_tokenization_xlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/glm/test_modeling_glm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/olmoe/test_modeling_olmoe.py` - ModelTest not imported
+- ❌ `transformers/tests/models/cpm/test_tokenization_cpm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/barthez/test_tokenization_barthez.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlm/test_tokenization_layoutlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clap/test_processor_clap.py` - ModelTest not imported
+- ❌ `transformers/tests/models/reformer/test_tokenization_reformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/marian/test_tokenization_marian.py` - ModelTest not imported
+- ❌ `transformers/tests/models/marian/test_modeling_flax_marian.py` - ModelTest not imported
+- ❌ `transformers/tests/models/marian/test_modeling_marian.py` - ModelTest not imported
+- ❌ `transformers/tests/models/marian/test_modeling_tf_marian.py` - ModelTest not imported
+- ❌ `transformers/tests/models/lxmert/test_tokenization_lxmert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/flaubert/test_tokenization_flaubert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/flaubert/test_modeling_flaubert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/flaubert/test_modeling_tf_flaubert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/paligemma/test_modeling_paligemma.py` - ModelTest not imported
+- ❌ `transformers/tests/models/paligemma/test_processor_paligemma.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2/test_tokenization_qwen2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/longformer/test_tokenization_longformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/modernbert/test_modeling_modernbert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/siglip/test_tokenization_siglip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/luke/test_tokenization_luke.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2_bert/test_processor_wav2vec2_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2_bert/test_modeling_wav2vec2_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/splinter/test_tokenization_splinter.py` - ModelTest not imported
+- ❌ `transformers/tests/models/olmo2/test_modeling_olmo2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlm_roberta/test_tokenization_xlm_roberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlm_roberta/test_modeling_xlm_roberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlm_roberta/test_modeling_flax_xlm_roberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlm_roberta/test_modeling_tf_xlm_roberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mgp_str/test_tokenization_mgp_str.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speecht5/test_processor_speecht5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speecht5/test_modeling_speecht5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speecht5/test_feature_extraction_speecht5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speecht5/test_tokenization_speecht5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/umt5/test_modeling_umt5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/led/test_tokenization_led.py` - ModelTest not imported
+- ❌ `transformers/tests/models/led/test_modeling_tf_led.py` - ModelTest not imported
+- ❌ `transformers/tests/models/diffllama/test_modeling_diffllama.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roberta_prelayernorm/test_modeling_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roberta_prelayernorm/test_modeling_flax_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roberta_prelayernorm/test_modeling_tf_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/ernie/test_modeling_ernie.py` - ModelTest not imported
+- ❌ `transformers/tests/models/patchtsmixer/test_modeling_patchtsmixer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/visual_bert/test_modeling_visual_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deberta_v2/test_tokenization_deberta_v2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deberta_v2/test_modeling_tf_deberta_v2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deberta_v2/test_modeling_deberta_v2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/plbart/test_tokenization_plbart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deberta/test_tokenization_deberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deberta/test_modeling_tf_deberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deberta/test_modeling_deberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roc_bert/test_modeling_roc_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roc_bert/test_tokenization_roc_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/nougat/test_tokenization_nougat.py` - ModelTest not imported
+- ❌ `transformers/tests/models/t5/test_modeling_t5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/t5/test_modeling_flax_t5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/t5/test_tokenization_t5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/t5/test_modeling_tf_t5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bert_generation/test_modeling_bert_generation.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bert_generation/test_tokenization_bert_generation.py` - ModelTest not imported
+- ❌ `transformers/tests/models/textnet/test_modeling_textnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/textnet/test_image_processing_textnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mpnet/test_tokenization_mpnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilebert/test_tokenization_mobilebert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilebert/test_modeling_tf_mobilebert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilebert/test_modeling_mobilebert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/m2m_100/test_modeling_m2m_100.py` - ModelTest not imported
+- ❌ `transformers/tests/models/m2m_100/test_tokenization_m2m_100.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mbart50/test_tokenization_mbart50.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mllama/test_modeling_mllama.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mllama/test_processor_mllama.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mllama/test_image_processing_mllama.py` - ModelTest not imported
+- ❌ `transformers/tests/models/musicgen_melody/test_processor_musicgen_melody.py` - ModelTest not imported
+- ❌ `transformers/tests/models/musicgen_melody/test_modeling_musicgen_melody.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bertweet/test_tokenization_bertweet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/distilbert/test_modeling_flax_distilbert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/distilbert/test_modeling_tf_distilbert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/distilbert/test_tokenization_distilbert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/distilbert/test_modeling_distilbert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gemma/test_modeling_flax_gemma.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gemma/test_modeling_gemma.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gemma/test_tokenization_gemma.py` - ModelTest not imported
+- ❌ `transformers/tests/models/data2vec/test_modeling_data2vec_text.py` - ModelTest not imported
+- ❌ `transformers/tests/models/hubert/test_modeling_hubert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/hubert/test_modeling_tf_hubert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/megatron_bert/test_modeling_megatron_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/stablelm/test_modeling_stablelm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/granite/test_modeling_granite.py` - ModelTest not imported
+- ❌ `transformers/tests/models/longt5/test_modeling_flax_longt5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/longt5/test_modeling_longt5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pegasus_x/test_modeling_pegasus_x.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mamba2/test_modeling_mamba2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/seamless_m4t/test_tokenization_seamless_m4t.py` - ModelTest not imported
+- ❌ `transformers/tests/models/seamless_m4t/test_processor_seamless_m4t.py` - ModelTest not imported
+- ❌ `transformers/tests/models/seamless_m4t/test_modeling_seamless_m4t.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xglm/test_modeling_tf_xglm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xglm/test_modeling_xglm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xglm/test_tokenization_xglm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/granitemoe/test_modeling_granitemoe.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bloom/test_modeling_bloom.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bloom/test_modeling_flax_bloom.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bloom/test_tokenization_bloom.py` - ModelTest not imported
+- ❌ `transformers/tests/models/patchtst/test_modeling_patchtst.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pegasus/test_modeling_flax_pegasus.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pegasus/test_tokenization_pegasus.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pegasus/test_modeling_pegasus.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pegasus/test_modeling_tf_pegasus.py` - ModelTest not imported
+- ❌ `transformers/tests/models/tapas/test_tokenization_tapas.py` - ModelTest not imported
+- ❌ `transformers/tests/models/zamba/test_modeling_zamba.py` - ModelTest not imported
+- ❌ `transformers/tests/models/cohere2/test_modeling_cohere2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/persimmon/test_modeling_persimmon.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bamba/test_modeling_bamba.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt_neox_japanese/test_modeling_gpt_neox_japanese.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt_neox_japanese/test_tokenization_gpt_neox_japanese.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rag/test_modeling_tf_rag.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rag/test_retrieval_rag.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rag/test_modeling_rag.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rwkv/test_modeling_rwkv.py` - ModelTest not imported
+- ❌ `transformers/tests/models/falcon_mamba/test_modeling_falcon_mamba.py` - ModelTest not imported
+- ❌ `transformers/tests/models/zamba2/test_modeling_zamba2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/electra/test_tokenization_electra.py` - ModelTest not imported
+- ❌ `transformers/tests/models/electra/test_modeling_electra.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlnet/test_tokenization_xlnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/ctrl/test_tokenization_ctrl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt_bigcode/test_modeling_gpt_bigcode.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dbrx/test_modeling_dbrx.py` - ModelTest not imported
+- ❌ `transformers/tests/models/albert/test_tokenization_albert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/albert/test_modeling_albert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/albert/test_modeling_flax_albert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/albert/test_modeling_tf_albert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bartpho/test_tokenization_bartpho.py` - ModelTest not imported
+- ❌ `transformers/tests/models/donut/test_processor_donut.py` - ModelTest not imported
+- ❌ `transformers/tests/models/phimoe/test_modeling_phimoe.py` - ModelTest not imported
+- ❌ `transformers/tests/models/nllb/test_tokenization_nllb.py` - ModelTest not imported
+- ❌ `transformers/tests/models/canine/test_tokenization_canine.py` - ModelTest not imported
+- ❌ `transformers/tests/models/megatron_gpt2/test_modeling_megatron_gpt2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rembert/test_modeling_tf_rembert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rembert/test_modeling_rembert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rembert/test_tokenization_rembert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/perceiver/test_tokenization_perceiver.py` - ModelTest not imported
+- ❌ `transformers/tests/models/seggpt/test_image_processing_seggpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/seggpt/test_modeling_seggpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/convbert/test_modeling_tf_convbert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/convbert/test_modeling_convbert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/cohere/test_tokenization_cohere.py` - ModelTest not imported
+- ❌ `transformers/tests/models/cohere/test_modeling_cohere.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fnet/test_tokenization_fnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gemma2/test_modeling_gemma2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/myt5/test_tokenization_myt5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/opt/test_modeling_tf_opt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llama/test_modeling_llama.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llama/test_tokenization_llama.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llama/test_modeling_flax_llama.py` - ModelTest not imported
+- ❌ `transformers/tests/models/codegen/test_modeling_codegen.py` - ModelTest not imported
+- ❌ `transformers/tests/models/codegen/test_tokenization_codegen.py` - ModelTest not imported
+- ❌ `transformers/tests/models/funnel/test_tokenization_funnel.py` - ModelTest not imported
+- ❌ `transformers/tests/models/funnel/test_modeling_funnel.py` - ModelTest not imported
+- ❌ `transformers/tests/models/imagegpt/test_modeling_imagegpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/imagegpt/test_image_processing_imagegpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bark/test_processor_bark.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt_neo/test_modeling_gpt_neo.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt_neo/test_modeling_flax_gpt_neo.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vision_text_dual_encoder/test_modeling_flax_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vision_text_dual_encoder/test_processor_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vision_text_dual_encoder/test_modeling_tf_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vision_text_dual_encoder/test_modeling_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/biogpt/test_modeling_biogpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/biogpt/test_tokenization_biogpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mpt/test_modeling_mpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/seamless_m4t_v2/test_modeling_seamless_m4t_v2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mluke/test_tokenization_mluke.py` - ModelTest not imported
+- ❌ `transformers/tests/models/jamba/test_modeling_jamba.py` - ModelTest not imported
+- ❌ `transformers/tests/models/nemotron/test_modeling_nemotron.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mamba/test_modeling_mamba.py` - ModelTest not imported
+- ❌ `transformers/tests/models/big_bird/test_tokenization_big_bird.py` - ModelTest not imported
+- ❌ `transformers/tests/models/big_bird/test_modeling_big_bird.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt_neox/test_modeling_gpt_neox.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mvp/test_tokenization_mvp.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speech_to_text/test_modeling_speech_to_text.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speech_to_text/test_modeling_tf_speech_to_text.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speech_to_text/test_tokenization_speech_to_text.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speech_to_text/test_processor_speech_to_text.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speech_to_text/test_feature_extraction_speech_to_text.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gpt_sw3/test_tokenization_gpt_sw3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mt5/test_modeling_mt5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mt5/test_modeling_tf_mt5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mt5/test_modeling_flax_mt5.py` - ModelTest not imported
+- ❌ `transformers/tests/models/prophetnet/test_tokenization_prophetnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/prophetnet/test_modeling_prophetnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fsmt/test_tokenization_fsmt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fsmt/test_modeling_fsmt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blenderbot/test_modeling_blenderbot.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blenderbot/test_modeling_tf_blenderbot.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blenderbot/test_tokenization_blenderbot.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blenderbot/test_modeling_flax_blenderbot.py` - ModelTest not imported
+- ❌ `transformers/tests/models/autoformer/test_modeling_autoformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/recurrent_gemma/test_modeling_recurrent_gemma.py` - ModelTest not imported
+- ❌ `transformers/tests/models/code_llama/test_tokenization_code_llama.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gptj/test_modeling_gptj.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gptj/test_modeling_tf_gptj.py` - ModelTest not imported
+- ❌ `transformers/tests/models/gptj/test_modeling_flax_gptj.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roformer/test_modeling_roformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roformer/test_tokenization_roformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/olmo/test_modeling_olmo.py` - ModelTest not imported
+- ❌ `transformers/tests/models/cpmant/test_tokenization_cpmant.py` - ModelTest not imported
+- ❌ `transformers/tests/models/cpmant/test_modeling_cpmant.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blenderbot_small/test_modeling_tf_blenderbot_small.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blenderbot_small/test_tokenization_blenderbot_small.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blenderbot_small/test_modeling_flax_blenderbot_small.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blenderbot_small/test_modeling_blenderbot_small.py` - ModelTest not imported
+- ❌ `transformers/tests/models/ibert/test_modeling_ibert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/granitemoeshared/test_modeling_granitemoeshared.py` - ModelTest not imported
+- ❌ `transformers/tests/models/nystromformer/test_modeling_nystromformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mbart/test_tokenization_mbart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mbart/test_modeling_tf_mbart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mbart/test_modeling_flax_mbart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bert/test_modeling_flax_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bert/test_tokenization_bert_tf.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bert/test_tokenization_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bert/test_modeling_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bert/test_modeling_tf_bert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/musicgen/test_processor_musicgen.py` - ModelTest not imported
+- ❌ `transformers/tests/models/musicgen/test_modeling_musicgen.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mistral/test_modeling_flax_mistral.py` - ModelTest not imported
+- ❌ `transformers/tests/models/paligemma2/test_modeling_paligemma2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/camembert/test_tokenization_camembert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/camembert/test_modeling_tf_camembert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/camembert/test_modeling_camembert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/squeezebert/test_modeling_squeezebert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/squeezebert/test_tokenization_squeezebert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roberta/test_modeling_tf_roberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roberta/test_tokenization_roberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roberta/test_modeling_roberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roberta/test_modeling_flax_roberta.py` - ModelTest not imported
+- ❌ `transformers/tests/models/helium/test_modeling_helium.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/aqlm_integration/test_aqlm.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/quanto_integration/test_quanto.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/torchao_integration/test_torchao.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/higgs/test_higgs.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/vptq_integration/test_vptq.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/hqq/test_hqq.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/compressed_tensors/test_compressed_tensors.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/eetq_integration/test_eetq.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/bnb/test_mixed_int8.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/bnb/test_4bit.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/ggml/test_ggml.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/fbgemm_fp8/test_fbgemm_fp8.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/gptq/test_gptq.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/finegrained_fp8/test_fp8.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/spqr_integration/test_spqr.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/bitnet_integration/test_bitnet.py` - ModelTest not imported
+- ❌ `skills/tmp_test_output/test_hf_xlm_roberta.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 23)
+- ❌ `skills/fixed_tests_new/test_hf_xlm_roberta.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 23)
+- ❌ `skills/fixed_tests_new/test_hf_gpt_neo.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 23)
+- ❌ `skills/fixed_tests_new/test_hf_gpt_j.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 23)
+- ❌ `skills/minimal_tests/test_hf_t5.py` - ModelTest not imported
+- ❌ `skills/minimal_tests/test_hf_gpt2.py` - ModelTest not imported
+- ❌ `skills/minimal_tests/test_hf_bert.py` - Error processing file: expected an indented block after 'try' statement on line 23 (<unknown>, line 24)
+- ❌ `skills/fixed_tests/test_hf_speech-to-text-2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_gemma3.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_open_llama.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_distilbert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_led.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_pegasus.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_recurrent-gemma.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_phi.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_mbart.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_gemma2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_marian.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_llama_3.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_prophetnet.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_flava.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_gemma3.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_xlm-roberta.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_rembert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_xlm_prophetnet.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_roformer.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_usm.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_electra.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_data2vec-text.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_gemma2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_rwkv.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_umt5.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_splinter.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `skills/fixed_tests/test_m2m-100.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_speech-to-text.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_mixtral.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_ctrl.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_t5_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_ernie.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_mamba.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_xlm-roberta.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_flan-t5.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_bigbird.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_umt5.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_opt.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_stablelm.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_roberta.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_codellama.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_switch_transformers.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_mpt.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_nystromformer.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `skills/fixed_tests/test_vision-text-dual-encoder.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_codegen.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_gpt_j_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_convbert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_llama.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_encoder_only.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_trocr_base.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_mistral.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_layoutlm.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_qwen3.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_gemma.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_xlnet.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_olmoe.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_seamless-m4t.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_gpt-neo.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_ibert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_qwen2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_data2vec_text.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_roformer.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_transfo-xl.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_tapas.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_gpt-j.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_gpt-2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_deberta.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_seamless_m4t_v2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_bert_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_luke.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_albert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_clvp.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_mt5.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_camembert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_sew.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_llama-3.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_bark.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_paligemma.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_mra.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `skills/fixed_tests/test_stablelm.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_xlm.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_encodec.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_idefics.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_gpt_j.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_wavlm.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_albert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_git.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_yolos.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_convbert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_speech_to_text.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_bark.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_data2vec.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_wavlm.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_falcon.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_squeezebert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_esm.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_roberta.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_olmo.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_codellama.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_codegen.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_bert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_speech-to-text-2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_switch-transformers.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_flan-t5.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_bart.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_bigbird.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_wav2vec2_bert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_deberta_v2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_falcon.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_speecht5.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_olmo.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_bert.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_reformer.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_gpt-neox.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_bart.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_bloom.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_electra.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_sew.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_gpt2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_gptj.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_musicgen.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_nezha.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `skills/fixed_tests/test_hf_ibert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_qwen2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_gpt-j.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_mt5.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_command-r.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_t5.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_rembert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_gptj.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_gpt2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_flaubert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_deberta-v2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_phi4.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_kosmos_2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_llama.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_olmoe.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_xlnet.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_gemma.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_pegasus.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_qwen3.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_nemotron.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_starcoder2.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_funnel.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_transfo_xl.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_openai-gpt.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_speech-to-text.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_longt5.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_prophetnet.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_megatron-bert.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `skills/fixed_tests/test_hf_command_r.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_imagegpt.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_mistral-next.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_mistral_next.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_decoder_only.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_clap.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_phi.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_encodec.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_canine.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_vision-text-dual-encoder.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_distilbert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_led.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_gpt_neox.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_longt5.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_paligemma.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_speecht5.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_data2vec-text.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_speech_to_text_2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_gpt-neox.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_flan_t5.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_camembert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_mamba.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_ernie.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_canine.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_deberta.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_clap.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_xlm_roberta.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_musicgen.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_mpnet.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_encoder_decoder.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_mllama.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_xlm-roberta-xl.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `skills/fixed_tests/test_mobilebert.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `skills/fixed_tests/test_phi3.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_longformer.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_llama2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hubert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_gpt-neo.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_mpt.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_xmod.py` - Error processing file: invalid syntax (<unknown>, line 72)
+- ❌ `skills/fixed_tests/test_hf_blenderbot.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_trocr_large.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_phi3.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_flaubert.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_opt.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_nemotron.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_t5.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_mistral.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_persimmon.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_mbart.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_gpt_neo.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_hubert.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_pegasus-x.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/output_tests/test_hf_speecht5.py` - ModelTest not imported
+- ❌ `skills/output_tests/test_hf_roberta.py` - ModelTest not imported
+- ❌ `skills/output_tests/test_hf_longt5.py` - ModelTest not imported
+- ❌ `skills/output_tests/test_hf_xlm_roberta.py` - ModelTest not imported
+- ❌ `skills/output_tests/test_hf_llama.py` - Error processing file: unexpected unindent (<unknown>, line 92)
+- ❌ `skills/samples/test_hf_roberta.py` - ModelTest not imported
+- ❌ `skills/samples/test_hf_bert.py` - ModelTest not imported
+- ❌ `skills/samples/test_hf_gpt2.py` - ModelTest not imported
+- ❌ `skills/samples/test_hf_t5.py` - ModelTest not imported
+- ❌ `skills/fixed_files_new/test_hf_t5.py` - Error processing file: invalid syntax (<unknown>, line 65)
+- ❌ `skills/fixed_files_new/test_hf_gpt_j.py` - ModelTest not imported
+- ❌ `skills/fixed_files_new/test_hf_gpt2.py` - Error processing file: invalid syntax (<unknown>, line 65)
+- ❌ `skills/fixed_files_new/test_hf_bert.py` - Error processing file: unexpected indent (<unknown>, line 56)
+- ❌ `skills/ultra_simple_tests/test_hf_t5.py` - ModelTest not imported
+- ❌ `skills/ultra_simple_tests/test_hf_gpt2.py` - ModelTest not imported
+- ❌ `skills/ultra_simple_tests/test_hf_bert.py` - ModelTest not imported
+- ❌ `skills/examples/test_bert_example.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_mosaic_mpt.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_bart.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_xlm.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_mistral.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_hubert.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_deberta.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_longt5.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_pegasus_x.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_mpnet.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_flava.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_funnel.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_stablelm.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_paligemma.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_falcon.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_llava.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_mpt.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_flan_t5.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_vilt.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_xlnet.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_xglm.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_albert.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_llama.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_led.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_phi.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_gpt_neox.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_git.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_roberta.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_codegen.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_camembert.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_distilbert.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_flaubert.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_pythia.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_bigbird_pegasus.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_nllb.py` - ModelTest not imported
+- ❌ `skills/test_output/test_hf_xlm_roberta.py` - ModelTest not imported
+- ❌ `skills/test_output/test_hf_gpt_neo.py` - Error processing file: unterminated triple-quoted string literal (detected at line 171) (<unknown>, line 171)
+- ❌ `skills/test_output/test_hf_t5.py` - ModelTest not imported
+- ❌ `skills/test_output/test_hf_bert.py` - ModelTest not imported
+- ❌ `skills/test_output/test_hf_gpt2.py` - ModelTest not imported
+- ❌ `skills/test_output/test_hf_gpt_j.py` - ModelTest not imported
+- ❌ `skills/fixed_files_manual/test_hf_encoder_decoder.py` - ModelTest not imported
+- ❌ `skills/fixed_files_manual/test_hf_decoder_only.py` - ModelTest not imported
+- ❌ `skills/fixed_files_manual/test_hf_t5.py` - Error processing file: unexpected indent (<unknown>, line 334)
+- ❌ `skills/fixed_files_manual/test_hf_bert.py` - Error processing file: unexpected indent (<unknown>, line 374)
+- ❌ `skills/fixed_files_manual/test_hf_gpt2.py` - Error processing file: unexpected indent (<unknown>, line 339)
+- ❌ `skills/fixed_files_manual/test_hf_encoder_only.py` - ModelTest not imported
+- ❌ `skills/fixed_files_manual/test_hf_gpt_neo.py` - ModelTest not imported
+- ❌ `skills/fixed_files_manual/test_hf_xlm_roberta.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_bert_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_gpt2_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_albert_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_llama_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_roberta_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_gpt_j_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_gemma_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_distilbert_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_t5_standardized.py` - ModelTest not imported
+- ❌ `skills/refactored_benchmark_suite/tests/test_config_loading.py` - ModelTest not imported
+- ❌ `skills/backups/fixed_tests.bak.20250319_223051/test_hf_gpt2.py` - ModelTest not imported
+- ❌ `skills/backups/fixed_tests.bak.20250319_223051/test_hf_t5.py` - ModelTest not imported
+- ❌ `skills/backups/fixed_tests.bak.20250319_223051/test_hf_bert.py` - ModelTest not imported
+- ❌ `refactored_test_suite/tests/models/text/test_bert-base-uncased.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 85)
+- ❌ `refactored_test_suite/tests/models/text/test_bert_simple.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 27)
+- ❌ `refactored_test_suite/tests/models/text/test_bert_fixed.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 231)
+- ❌ `refactored_test_suite/models/text/test_llama.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/text/test_hf_qwen2.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/text/test_roberta_base.py` - Missing required methods: verify_model_output, detect_preferred_device Missing: verify_model_output, detect_preferred_device
+- ❌ `refactored_test_suite/models/text/test_ollama_backoff_comprehensive.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/text/test_bert_base_uncased.py` - Missing required methods: verify_model_output, detect_preferred_device Missing: verify_model_output, detect_preferred_device
+- ❌ `refactored_test_suite/models/text/test_ollama_mock.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/text/test_bert_base.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/text/test_hf_t5.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/text/test_ollama_backoff.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `distributed_testing/tests/test_hardware_utilization_monitor.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_security.py` - ModelTest not imported
+- ❌ `generators/collected_results/bert-base-uncased/cuda/20250316_154613/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `generators/collected_results/bert-base-uncased/cuda/20250316_152830/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `generators/collected_results/bert-base-uncased/cuda/20250316_152713/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/ci_unified_component_test.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_unified_component_tester.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_enhanced_reports.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/component_test_f1af4649-12bb-4454-8515-a94f1014d86e/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
+- ❌ `generators/runners/end_to_end/test_output/component_test_615161af-60f2-4dbe-8b1e-fa19c82a4cdb/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_0e9caf50-75f1-402b-841c-a8ea2f7135da/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_ca339640-ac3f-437e-b9a4-ff0f5d21a185/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_448ff63d-fde2-4a64-91ab-a2a5a061dec9/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_1dd4d5d5-b105-4cae-be71-12d20634e4dc/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_98e48d13-2548-44b1-9aee-2ff256341442/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_0e0f5805-454a-4840-a052-355e44b4619d/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/bert-base-uncased_cuda/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_6bd7ab89-613b-49b9-9c56-c399a619e56d/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_69d7bdde-626d-4a94-85d9-956ae84eec68/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/tester_integration_3d02f537-6f05-4108-b30f-ba90f5ec943c/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_rocm/test_bert-base-uncased_rocm.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_cpu/test_gpt2_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_cuda/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_qnn/test_gpt2_qnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_webgpu/test_bert-base-uncased_webgpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_webnn/test_gpt2_webnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_openvino/test_gpt2_openvino.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_webgpu/test_gpt2_webgpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_mps/test_gpt2_mps.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_mps/test_bert-base-uncased_mps.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_openvino/test_bert-base-uncased_openvino.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_webnn/test_bert-base-uncased_webnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_cpu/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_cuda/test_gpt2_cuda.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_qnn/test_bert-base-uncased_qnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_rocm/test_gpt2_rocm.py` - ModelTest not imported
+- ❌ `models/text/bert/test_bert_base_uncased.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_modeling_tf_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_tokenization_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_text_to_speech.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_speech_to_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_monitoring.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/tokenization/test_tokenization_fast.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/tokenization/test_tokenization_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_text_generation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_text2text_generation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_image_to_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_image_text_to_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_text_classification.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_text_to_audio.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_table_question_answering.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_translation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_summarization.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/peft_integration/test_peft_integration.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/deepspeed/test_deepspeed.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/repo_utils/test_check_dummies.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_tokenization_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_modeling_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_configuration_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_cache_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_trainer_distributed_loss.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_trainer_seq2seq.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_logits_process.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_streamers.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_stopping_criteria.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_configuration_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_candidate_generator.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xglm/test_modeling_xglm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xglm/test_modeling_tf_xglm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xglm/test_tokenization_xglm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/code_llama/test_tokenization_code_llama.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/longt5/test_modeling_longt5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/longt5/test_modeling_flax_longt5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/autoformer/test_modeling_autoformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blenderbot/test_tokenization_blenderbot.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blenderbot/test_modeling_flax_blenderbot.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blenderbot/test_modeling_blenderbot.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blenderbot/test_modeling_tf_blenderbot.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mamba2/test_modeling_mamba2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/prophetnet/test_tokenization_prophetnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/prophetnet/test_modeling_prophetnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mpnet/test_tokenization_mpnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/recurrent_gemma/test_modeling_recurrent_gemma.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/hubert/test_modeling_hubert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/hubert/test_modeling_tf_hubert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rembert/test_tokenization_rembert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rembert/test_modeling_tf_rembert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rembert/test_modeling_rembert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/persimmon/test_modeling_persimmon.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roberta_prelayernorm/test_modeling_flax_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roberta_prelayernorm/test_modeling_tf_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roberta_prelayernorm/test_modeling_roberta_prelayernorm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt_neo/test_modeling_gpt_neo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt_neo/test_modeling_flax_gpt_neo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/seamless_m4t_v2/test_modeling_seamless_m4t_v2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/codegen/test_modeling_codegen.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/codegen/test_tokenization_codegen.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlm_roberta/test_modeling_xlm_roberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlm_roberta/test_tokenization_xlm_roberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlm_roberta/test_modeling_tf_xlm_roberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlm_roberta/test_modeling_flax_xlm_roberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/nougat/test_tokenization_nougat.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speech_to_text/test_feature_extraction_speech_to_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speech_to_text/test_modeling_speech_to_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speech_to_text/test_modeling_tf_speech_to_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speech_to_text/test_tokenization_speech_to_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speech_to_text/test_processor_speech_to_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/electra/test_modeling_electra.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/electra/test_tokenization_electra.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/perceiver/test_tokenization_perceiver.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/cohere2/test_modeling_cohere2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/plbart/test_tokenization_plbart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gemma/test_modeling_flax_gemma.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gemma/test_modeling_gemma.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gemma/test_tokenization_gemma.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/imagegpt/test_image_processing_imagegpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/imagegpt/test_modeling_imagegpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/paligemma2/test_modeling_paligemma2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/tapas/test_tokenization_tapas.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/nystromformer/test_modeling_nystromformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/zamba/test_modeling_zamba.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bartpho/test_tokenization_bartpho.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/convbert/test_modeling_tf_convbert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/convbert/test_modeling_convbert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bloom/test_modeling_flax_bloom.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bloom/test_tokenization_bloom.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bloom/test_modeling_bloom.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mllama/test_image_processing_mllama.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mllama/test_processor_mllama.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mllama/test_modeling_mllama.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/siglip/test_tokenization_siglip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/trocr/test_modeling_trocr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/nemotron/test_modeling_nemotron.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/megatron_gpt2/test_modeling_megatron_gpt2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/lxmert/test_tokenization_lxmert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/marian/test_modeling_tf_marian.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/marian/test_tokenization_marian.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/marian/test_modeling_marian.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/marian/test_modeling_flax_marian.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt_neox_japanese/test_modeling_gpt_neox_japanese.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt_neox_japanese/test_tokenization_gpt_neox_japanese.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt_neox/test_modeling_gpt_neox.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/big_bird/test_modeling_big_bird.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/big_bird/test_tokenization_big_bird.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/umt5/test_modeling_umt5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/moshi/test_tokenization_moshi.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/moshi/test_modeling_moshi.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dpr/test_tokenization_dpr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dpr/test_modeling_dpr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/visual_bert/test_modeling_visual_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roberta/test_modeling_flax_roberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roberta/test_modeling_tf_roberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roberta/test_tokenization_roberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roberta/test_modeling_roberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/switch_transformers/test_modeling_switch_transformers.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/glm/test_modeling_glm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlm/test_tokenization_xlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/cpm/test_tokenization_cpm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mistral/test_modeling_flax_mistral.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/luke/test_tokenization_luke.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/olmoe/test_modeling_olmoe.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2/test_tokenization_qwen2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/musicgen/test_processor_musicgen.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/musicgen/test_modeling_musicgen.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/jetmoe/test_modeling_jetmoe.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blip/test_modeling_tf_blip_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blip/test_modeling_blip_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clap/test_processor_clap.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gemma3/test_image_processing_gemma3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gemma3/test_modeling_gemma3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gemma3/test_processing_gemma3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt_sw3/test_tokenization_gpt_sw3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clvp/test_processor_clvp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clvp/test_tokenization_clvp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clvp/test_modeling_clvp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/time_series_transformer/test_modeling_time_series_transformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/ernie/test_modeling_ernie.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roformer/test_tokenization_roformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roformer/test_modeling_roformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/olmo2/test_modeling_olmo2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/camembert/test_modeling_camembert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/camembert/test_tokenization_camembert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/camembert/test_modeling_tf_camembert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/falcon_mamba/test_modeling_falcon_mamba.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt2/test_modeling_flax_gpt2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt2/test_tokenization_gpt2_tf.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt2/test_tokenization_gpt2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt2/test_modeling_tf_gpt2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt2/test_modeling_gpt2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/byt5/test_tokenization_byt5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bart/test_modeling_flax_bart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bart/test_tokenization_bart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bart/test_modeling_tf_bart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bart/test_modeling_bart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/led/test_modeling_tf_led.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/led/test_tokenization_led.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/seamless_m4t/test_tokenization_seamless_m4t.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/seamless_m4t/test_modeling_seamless_m4t.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/seamless_m4t/test_processor_seamless_m4t.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/distilbert/test_tokenization_distilbert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/distilbert/test_modeling_distilbert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/distilbert/test_modeling_flax_distilbert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/distilbert/test_modeling_tf_distilbert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bert/test_modeling_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bert/test_modeling_flax_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bert/test_tokenization_bert_tf.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bert/test_modeling_tf_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bert/test_tokenization_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mpt/test_modeling_mpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlm/test_tokenization_layoutlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilebert/test_modeling_mobilebert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilebert/test_tokenization_mobilebert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilebert/test_modeling_tf_mobilebert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/cpmant/test_tokenization_cpmant.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/cpmant/test_modeling_cpmant.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/musicgen_melody/test_modeling_musicgen_melody.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/musicgen_melody/test_processor_musicgen_melody.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/helium/test_modeling_helium.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gptj/test_modeling_flax_gptj.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gptj/test_modeling_gptj.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gptj/test_modeling_tf_gptj.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/olmo/test_modeling_olmo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/jamba/test_modeling_jamba.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/informer/test_modeling_informer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deberta_v2/test_modeling_tf_deberta_v2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deberta_v2/test_tokenization_deberta_v2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deberta_v2/test_modeling_deberta_v2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gpt_bigcode/test_modeling_gpt_bigcode.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mvp/test_tokenization_mvp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mluke/test_tokenization_mluke.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bert_generation/test_tokenization_bert_generation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bert_generation/test_modeling_bert_generation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mgp_str/test_tokenization_mgp_str.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mamba/test_modeling_mamba.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mt5/test_modeling_tf_mt5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mt5/test_modeling_flax_mt5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mt5/test_modeling_mt5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/ibert/test_modeling_ibert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/paligemma/test_modeling_paligemma.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/paligemma/test_processor_paligemma.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fsmt/test_tokenization_fsmt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fsmt/test_modeling_fsmt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/phobert/test_tokenization_phobert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/biogpt/test_tokenization_biogpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/biogpt/test_modeling_biogpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/granitemoe/test_modeling_granitemoe.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/herbert/test_tokenization_herbert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speecht5/test_tokenization_speecht5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speecht5/test_modeling_speecht5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speecht5/test_feature_extraction_speecht5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speecht5/test_processor_speecht5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/flaubert/test_modeling_tf_flaubert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/flaubert/test_tokenization_flaubert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/flaubert/test_modeling_flaubert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/patchtsmixer/test_modeling_patchtsmixer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/diffllama/test_modeling_diffllama.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/reformer/test_tokenization_reformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/barthez/test_tokenization_barthez.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/splinter/test_tokenization_splinter.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/megatron_bert/test_modeling_megatron_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mbart/test_tokenization_mbart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mbart/test_modeling_tf_mbart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mbart/test_modeling_flax_mbart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vision_text_dual_encoder/test_modeling_flax_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vision_text_dual_encoder/test_processor_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vision_text_dual_encoder/test_modeling_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vision_text_dual_encoder/test_modeling_tf_vision_text_dual_encoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlnet/test_tokenization_xlnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/seggpt/test_image_processing_seggpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/seggpt/test_modeling_seggpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/granite/test_modeling_granite.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/myt5/test_tokenization_myt5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rag/test_retrieval_rag.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rag/test_modeling_rag.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rag/test_modeling_tf_rag.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fnet/test_tokenization_fnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bark/test_processor_bark.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bamba/test_modeling_bamba.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bertweet/test_tokenization_bertweet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/funnel/test_tokenization_funnel.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/funnel/test_modeling_funnel.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roc_bert/test_modeling_roc_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roc_bert/test_tokenization_roc_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pegasus/test_modeling_tf_pegasus.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pegasus/test_modeling_pegasus.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pegasus/test_modeling_flax_pegasus.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pegasus/test_tokenization_pegasus.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/cohere/test_modeling_cohere.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/cohere/test_tokenization_cohere.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/gemma2/test_modeling_gemma2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bert_japanese/test_tokenization_bert_japanese.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/donut/test_processor_donut.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/textnet/test_modeling_textnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/textnet/test_image_processing_textnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/squeezebert/test_tokenization_squeezebert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/squeezebert/test_modeling_squeezebert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/zamba2/test_modeling_zamba2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/patchtst/test_modeling_patchtst.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/nllb/test_tokenization_nllb.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pegasus_x/test_modeling_pegasus_x.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/albert/test_tokenization_albert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/albert/test_modeling_flax_albert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/albert/test_modeling_albert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/albert/test_modeling_tf_albert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blenderbot_small/test_modeling_tf_blenderbot_small.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blenderbot_small/test_tokenization_blenderbot_small.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blenderbot_small/test_modeling_blenderbot_small.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blenderbot_small/test_modeling_flax_blenderbot_small.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deberta/test_modeling_tf_deberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deberta/test_modeling_deberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deberta/test_tokenization_deberta.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/granitemoeshared/test_modeling_granitemoeshared.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2_bert/test_processor_wav2vec2_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2_bert/test_modeling_wav2vec2_bert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rwkv/test_modeling_rwkv.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/modernbert/test_modeling_modernbert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/longformer/test_tokenization_longformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/data2vec/test_modeling_data2vec_text.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlm_roberta_xl/test_modeling_xlm_roberta_xl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/opt/test_modeling_tf_opt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/t5/test_modeling_tf_t5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/t5/test_modeling_flax_t5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/t5/test_modeling_t5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/t5/test_tokenization_t5.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/ctrl/test_tokenization_ctrl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dbrx/test_modeling_dbrx.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mbart50/test_tokenization_mbart50.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llama/test_tokenization_llama.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llama/test_modeling_flax_llama.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llama/test_modeling_llama.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/phimoe/test_modeling_phimoe.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/m2m_100/test_tokenization_m2m_100.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/m2m_100/test_modeling_m2m_100.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/stablelm/test_modeling_stablelm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/canine/test_tokenization_canine.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/finegrained_fp8/test_fp8.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/bitnet_integration/test_bitnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/spqr_integration/test_spqr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/hqq/test_hqq.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/bnb/test_4bit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/bnb/test_mixed_int8.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/eetq_integration/test_eetq.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/fbgemm_fp8/test_fbgemm_fp8.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/ggml/test_ggml.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/vptq_integration/test_vptq.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/torchao_integration/test_torchao.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/compressed_tensors/test_compressed_tensors.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/gptq/test_gptq.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/higgs/test_higgs.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/aqlm_integration/test_aqlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/quanto_integration/test_quanto.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_template_generator.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_generator_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_error_visualization.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_regression_visualization.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_error_visualization_comprehensive.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_resource_optimization.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_end_to_end_fault_tolerance.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/run_e2e_drm_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_regression_detection.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_auto_recovery_system.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_fault_tolerance_visualization.py` - ModelTest not imported
+
+### Other Models
+
+- ❌ `test_single_model_hardware.py` - Error processing file: unmatched ')' (<unknown>, line 23)
+- ❌ `test_ipfs_accelerate_with_cross_browser.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_basic_resource_pool_fault_tolerance.py` - ModelTest not imported
+- ❌ `test_validation_reporter.py` - ModelTest not imported
+- ❌ `run_web_resource_pool_fault_tolerance_test.py` - ModelTest not imported
+- ❌ `test_hardware_backend.py` - Error processing file: unmatched ')' (<unknown>, line 8)
+- ❌ `test_drm_integration.py` - ModelTest not imported
+- ❌ `test_simulation_validation_foundation.py` - ModelTest not imported
+- ❌ `test_p2p_optimization.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_ipfs_accelerate_new.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `test_cuda_debug.py` - ModelTest not imported
+- ❌ `test_database_predictive_analytics.py` - ModelTest not imported
+- ❌ `test_module_imports.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 30)
+- ❌ `test_file_structure.py` - Error processing file: f-string: valid expression required before '}' (<unknown>, line 16)
+- ❌ `test_ipfs_accelerate_minimal.py` - Error processing file: unmatched '}' (<unknown>, line 23)
+- ❌ `test_browser_environment_validation.py` - ModelTest not imported
+- ❌ `test_model_sharding.py` - Error processing file: unexpected indent (<unknown>, line 18)
+- ❌ `test_model_registry_integration.py` - Error processing file: unmatched ')' (<unknown>, line 22)
+- ❌ `test_webnn_webgpu_integration.py` - Error processing file: unexpected indent (<unknown>, line 17)
+- ❌ `test_cuda_status.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `test_real_webnn_webgpu_implementations.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `test_qnn_support.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_distributed_testing_integration.py` - ModelTest not imported
+- ❌ `test_webnn_webgpu_simplified.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `test_helper.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `test_mock_detection_visualization.py` - ModelTest not imported
+- ❌ `test_ipfs_migration.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_ultra_low_precision.py` - Error processing file: unexpected indent (<unknown>, line 32)
+- ❌ `test_webgpu_kv_cache_optimization.py` - Error processing file: unexpected indent (<unknown>, line 16)
+- ❌ `test_qnn_detection.py` - Error processing file: expected an indented block after 'if' statement on line 31 (<unknown>, line 32)
+- ❌ `test_qualcomm_integration.py` - Error processing file: invalid syntax (<unknown>, line 16)
+- ❌ `test_mapped_models.py` - Error processing file: unmatched ')' (<unknown>, line 22)
+- ❌ `test_webgpu_low_latency.py` - Error processing file: unexpected indent (<unknown>, line 16)
+- ❌ `test_selenium_import.py` - ModelTest not imported
+- ❌ `test_export_visualization.py` - ModelTest not imported
+- ❌ `test_package_imports.py` - Error processing file: invalid syntax (<unknown>, line 34)
+- ❌ `test_all_generators.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `test_safari_webgpu_fallback.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_improved_converter.py` - ModelTest not imported
+- ❌ `test_time_series_performance.py` - Error processing file: unexpected indent (<unknown>, line 18)
+- ❌ `test_resource_pool_with_recovery.py` - ModelTest not imported
+- ❌ `test_webgpu_transformer_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_real_web_implementations.py` - Error processing file: unexpected indent (<unknown>, line 14)
+- ❌ `test_semantic_cache.py` - Error processing file: unexpected indent (<unknown>, line 14)
+- ❌ `test_advanced_visualization.py` - ModelTest not imported
+- ❌ `test_minimal_samsung.py` - ModelTest not imported
+- ❌ `test_simulation_drift_detector.py` - ModelTest not imported
+- ❌ `test_mobile_edge_expansion.py` - Error processing file: unmatched ')' (<unknown>, line 23)
+- ❌ `simple_fault_tolerance_test.py` - ModelTest not imported
+- ❌ `test_dashboard_enhanced_visualization.py` - ModelTest not imported
+- ❌ `test_openvino_simple.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `test_migration_imports.py` - Error processing file: unmatched ']' (<unknown>, line 26)
+- ❌ `test_simulation_statistical_validator.py` - ModelTest not imported
+- ❌ `test_webnn_cross_browser.py` - Error processing file: unexpected indent (<unknown>, line 18)
+- ❌ `test_template_db_migration.py` - ModelTest not imported
+- ❌ `test_ipfs_accelerate_simple.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `test_onnx_verification.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `test_openvino_backend.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `test_streaming_pipeline.py` - Error processing file: unexpected indent (<unknown>, line 19)
+- ❌ `test_browser_cpu_detection.py` - Error processing file: unexpected indent (<unknown>, line 17)
+- ❌ `test_basic_dashboard_integration.py` - ModelTest not imported
+- ❌ `test_endpoint_lifecycle.py` - Error processing file: unmatched ']' (<unknown>, line 10)
+- ❌ `test_samsung_npu_basic.py` - ModelTest not imported
+- ❌ `test_webgpu_video_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_webnn_minimal.py` - Error processing file: unexpected indent (<unknown>, line 17)
+- ❌ `test_simulation_calibrator.py` - ModelTest not imported
+- ❌ `simple_mock_test.py` - ModelTest not imported
+- ❌ `test_mobile_thermal_monitoring.py` - Error processing file: unmatched ')' (<unknown>, line 23)
+- ❌ `skills/test_inference_validation.py` - ModelTest not imported
+- ❌ `skills/test_hf_sam.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vqgan.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_depth_anything.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_upernet.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_indentation_tools.py` - ModelTest not imported
+- ❌ `skills/simple_test.py` - Error processing file: expected an indented block after 'if' statement on line 20 (<unknown>, line 21)
+- ❌ `skills/fix_huggingface_test.py` - ModelTest not imported
+- ❌ `skills/test_llava_models.py` - Error processing file: unexpected indent (<unknown>, line 17)
+- ❌ `skills/create_simple_lookup_test.py` - ModelTest not imported
+- ❌ `skills/test_hf_segformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_model_lookup.py` - ModelTest not imported
+- ❌ `skills/test_hf_graphsage.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_layoutlmv3.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_donut.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_time_series_transformer.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_model_lookup_advanced.py` - ModelTest not imported
+- ❌ `refactored_test_suite/model_test.py` - ModelTest not imported
+- ❌ `refactored_test_suite/base_test.py` - ModelTest not imported
+- ❌ `refactored_test_suite/browser_test.py` - ModelTest not imported
+- ❌ `refactored_test_suite/hardware_test.py` - ModelTest not imported
+- ❌ `predictive_performance/test_multi_model_resource_pool_integration.py` - ModelTest not imported
+- ❌ `predictive_performance/test_active_learning.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `predictive_performance/test_model_update_pipeline.py` - ModelTest not imported
+- ❌ `predictive_performance/test_integration.py` - ModelTest not imported
+- ❌ `predictive_performance/test_visualization_minimal.py` - ModelTest not imported
+- ❌ `distributed_testing/test_adaptive_circuit_breaker.py` - ModelTest not imported
+- ❌ `distributed_testing/test_reporter_artifact_integration.py` - ModelTest not imported
+- ❌ `distributed_testing/test_url_validator.py` - ModelTest not imported
+- ❌ `distributed_testing/run_e2e_integration_test.py` - ModelTest not imported
+- ❌ `distributed_testing/test_artifact_url_retrieval.py` - ModelTest not imported
+- ❌ `distributed_testing/test_dependency_manager.py` - ModelTest not imported
+- ❌ `distributed_testing/test_error_recovery_db_integration.py` - ModelTest not imported
+- ❌ `distributed_testing/test_circuit_breaker_integration.py` - ModelTest not imported
+- ❌ `distributed_testing/test_browser_failure_injector.py` - ModelTest not imported
+- ❌ `distributed_testing/run_test.py` - Error processing file: unexpected indent (<unknown>, line 19)
+- ❌ `distributed_testing/test_hardware_aware_scheduler.py` - ModelTest not imported
+- ❌ `model_test_runners/run_clap_test.py` - Error processing file: invalid syntax (<unknown>, line 15)
+- ❌ `model_test_runners/run_lm_test.py` - Error processing file: invalid syntax (<unknown>, line 15)
+- ❌ `model_test_runners/run_embed_test.py` - Error processing file: invalid syntax (<unknown>, line 15)
+- ❌ `key_model_tests/test_hf_llava.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `enhanced_templates/test_template_enhancements.py` - ModelTest not imported
+- ❌ `apis/test_llvm.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `apis/test_ovms.py` - Error processing file: unmatched ')' (<unknown>, line 8)
+- ❌ `apis/test_s3_kit.py` - Error processing file: unmatched ')' (<unknown>, line 10)
+- ❌ `apis/test_hf_tei.py` - Error processing file: unmatched ')' (<unknown>, line 9)
+- ❌ `apis/test_opea.py` - Error processing file: unmatched '}' (<unknown>, line 13)
+- ❌ `apis/test_ovms_unified.py` - Error processing file: unmatched ')' (<unknown>, line 10)
+- ❌ `archive/simple_test.py` - ModelTest not imported
+- ❌ `archive/minimal_test.py` - ModelTest not imported
+- ❌ `archive/run_webnn_webgpu_test.py` - ModelTest not imported
+- ❌ `archive/simple_webgpu_test.py` - ModelTest not imported
+- ❌ `archive/test_handler_fix.py` - Error processing file: unexpected indent (<unknown>, line 48)
+- ❌ `archive/test_qnn_simulation_fix.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `archive/webnn_webgpu_quantization_test.py` - ModelTest not imported
+- ❌ `archive/simple_webnn_test.py` - ModelTest not imported
+- ❌ `final_models/test_layoutlmv3.py` - ModelTest not imported
+- ❌ `final_models/test_layoutlmv2.py` - ModelTest not imported
+- ❌ `test/integration/test_reporter_artifact_integration.py` - ModelTest not imported
+- ❌ `test/integration/test_sound_notification_integration.py` - ModelTest not imported
+- ❌ `test/integration/test_ci_integration.py` - ModelTest not imported
+- ❌ `test/integration/test_error_recovery_db_integration.py` - ModelTest not imported
+- ❌ `test/api/other/test_dashboard_visualization_web_integration.py` - ModelTest not imported
+- ❌ `test/api/other/test_coordinator_circuit_breaker_integration.py` - ModelTest not imported
+- ❌ `test/api/other/test_dashboard_integration.py` - ModelTest not imported
+- ❌ `test/api/other/test_coordinator_orchestrator_integration.py` - ModelTest not imported
+- ❌ `test/integration/database/test_duckdb_integration.py` - ModelTest not imported
+- ❌ `test/integration/distributed/test_distributed_coordinator.py` - ModelTest not imported
+- ❌ `test/hardware/webgpu/test_circuit_breaker_integration.py` - ModelTest not imported
+- ❌ `test/hardware/webgpu/test_webgpu_matmul.py` - Error processing file: invalid syntax. Perhaps you forgot a comma? (<unknown>, line 39)
+- ❌ `test/hardware/webgpu/test_fault_tolerance_integration.py` - ModelTest not imported
+- ❌ `test/hardware/webgpu/test_coordinator_error_integration.py` - ModelTest not imported
+- ❌ `test/hardware/webgpu/test_integration.py` - ModelTest not imported
+- ❌ `test/hardware/webgpu/test_error_visualization_dashboard_integration.py` - ModelTest not imported
+- ❌ `test/hardware/cpu/test_worker_reconnection_integration.py` - ModelTest not imported
+- ❌ `test/hardware/webgpu/compute_shaders/test_webgpu_matmul.py` - ModelTest not imported
+- ❌ `test/hardware/webgpu/compute_shaders/test_webgpu_video_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test/models/text/test_dashboard_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_webnn_webgpu_integration.py` - Error processing file: unexpected indent (<unknown>, line 17)
+- ❌ `test/models/text/test_duckdb_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_visualization_dashboard_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_model_registry_integration.py` - Error processing file: unmatched ')' (<unknown>, line 22)
+- ❌ `test/models/text/test_monitoring_dashboard_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_drm_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_webgpu_transformer_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test/models/text/test_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_e2e_visualization_db_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_qualcomm_integration.py` - Error processing file: invalid syntax (<unknown>, line 16)
+- ❌ `test/models/text/test_webgpu_low_latency.py` - Error processing file: unexpected indent (<unknown>, line 16)
+- ❌ `test/models/text/test_coordinator_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_webnn_webgpu_simplified.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `test/models/text/test_safari_webgpu_fallback.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test/models/text/test_basic_dashboard_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_real_webnn_webgpu_implementations.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `test/models/text/test_db_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_webgpu_kv_cache_optimization.py` - Error processing file: unexpected indent (<unknown>, line 16)
+- ❌ `test/models/text/test_multi_model_resource_pool_integration.py` - ModelTest not imported
+- ❌ `transformers/utils/add_pipeline_model_mapping_to_test.py` - ModelTest not imported
+- ❌ `transformers/tests/test_training_args.py` - ModelTest not imported
+- ❌ `transformers/tests/test_feature_extraction_common.py` - ModelTest not imported
+- ❌ `transformers/tests/test_configuration_common.py` - ModelTest not imported
+- ❌ `transformers/tests/test_modeling_flax_common.py` - ModelTest not imported
+- ❌ `transformers/tests/test_backbone_common.py` - ModelTest not imported
+- ❌ `transformers/templates/adding_a_missing_tokenization_test/cookiecutter-template-{{cookiecutter.modelname}}/test_tokenization_{{cookiecutter.lowercase_modelname}}.py` - Error processing file: invalid syntax (<unknown>, line 20)
+- ❌ `transformers/tests/utils/test_activations.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_model_card.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_modeling_tf_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_model_output.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_logging.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_cli.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_modeling_tf_core.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_doc_samples.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_versions_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_import_structure.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_convert_slow_tokenizer.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_activations_tf.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_backbone_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_chat_template_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_skip_decorators.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_import_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_modeling_flax_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_feature_extraction_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_deprecation.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_hub_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_offline.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_dynamic_module_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_file_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_modeling_rope_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_hf_argparser.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_generic.py` - ModelTest not imported
+- ❌ `transformers/tests/fsdp/test_fsdp.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_feature_extraction.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_fill_mask.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_translation.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_search.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_agents.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_document_question_answering.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_python_interpreter.py` - ModelTest not imported
+- ❌ `transformers/tests/tensor_parallel/test_tensor_parallel.py` - ModelTest not imported
+- ❌ `transformers/tests/extended/test_trainer_ext.py` - ModelTest not imported
+- ❌ `transformers/tests/optimization/test_optimization_tf.py` - ModelTest not imported
+- ❌ `transformers/tests/optimization/test_optimization.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_beam_search.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_fsdp.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_beam_constraints.py` - ModelTest not imported
+- ❌ `transformers/tests/bettertransformer/test_integration.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_trainer_distributed.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_trainer_tpu.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_trainer_callback.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_trainer_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_trainer_fsdp.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_data_collator.py` - ModelTest not imported
+- ❌ `transformers/tests/repo_utils/test_check_copies.py` - ModelTest not imported
+- ❌ `transformers/tests/repo_utils/test_get_test_info.py` - ModelTest not imported
+- ❌ `transformers/tests/repo_utils/test_check_docstrings.py` - ModelTest not imported
+- ❌ `transformers/tests/repo_utils/test_tests_fetcher.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dpr/test_modeling_tf_dpr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/maskformer/test_modeling_maskformer_swin.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlm/test_modeling_tf_layoutlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlm/test_modeling_layoutlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/lxmert/test_modeling_tf_lxmert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/lxmert/test_modeling_lxmert.py` - ModelTest not imported
+- ❌ `transformers/tests/models/splinter/test_modeling_splinter.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mpnet/test_modeling_mpnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mpnet/test_modeling_tf_mpnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/markuplm/test_feature_extraction_markuplm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pop2piano/test_tokenization_pop2piano.py` - ModelTest not imported
+- ❌ `transformers/tests/models/esm/test_modeling_esm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/esm/test_modeling_esmfold.py` - ModelTest not imported
+- ❌ `transformers/tests/models/esm/test_tokenization_esm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/esm/test_modeling_tf_esm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/encoder_decoder/test_modeling_encoder_decoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/encoder_decoder/test_modeling_flax_encoder_decoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/encoder_decoder/test_modeling_tf_encoder_decoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xglm/test_modeling_flax_xglm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rag/test_tokenization_rag.py` - ModelTest not imported
+- ❌ `transformers/tests/models/electra/test_modeling_flax_electra.py` - ModelTest not imported
+- ❌ `transformers/tests/models/electra/test_modeling_tf_electra.py` - ModelTest not imported
+- ❌ `transformers/tests/models/donut/test_modeling_donut_swin.py` - ModelTest not imported
+- ❌ `transformers/tests/models/canine/test_modeling_canine.py` - ModelTest not imported
+- ❌ `transformers/tests/models/auto/test_tokenization_auto.py` - ModelTest not imported
+- ❌ `transformers/tests/models/auto/test_modeling_auto.py` - ModelTest not imported
+- ❌ `transformers/tests/models/auto/test_modeling_tf_auto.py` - ModelTest not imported
+- ❌ `transformers/tests/models/auto/test_modeling_flax_auto.py` - ModelTest not imported
+- ❌ `transformers/tests/models/auto/test_processor_auto.py` - ModelTest not imported
+- ❌ `transformers/tests/models/auto/test_feature_extraction_auto.py` - ModelTest not imported
+- ❌ `transformers/tests/models/auto/test_configuration_auto.py` - ModelTest not imported
+- ❌ `transformers/tests/models/opt/test_modeling_flax_opt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/funnel/test_modeling_tf_funnel.py` - ModelTest not imported
+- ❌ `transformers/tests/models/decision_transformer/test_modeling_decision_transformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mra/test_modeling_mra.py` - ModelTest not imported
+- ❌ `transformers/tests/models/big_bird/test_modeling_flax_big_bird.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roformer/test_modeling_flax_roformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/timm_backbone/test_modeling_timm_backbone.py` - ModelTest not imported
+- ❌ `transformers/tests/models/owlv2/test_processor_owlv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pixtral/test_modeling_pixtral.py` - ModelTest not imported
+- ❌ `transformers/tests/models/yoso/test_modeling_yoso.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/compressed_tensors/test_compressed_models.py` - ModelTest not imported
+- ❌ `transformers/tests/repo_utils/modular/test_conversion_order.py` - ModelTest not imported
+- ❌ `skills/fixed_templates_minimal/test_hf_canine.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_layoutlm.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_m2m_100.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_esm.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_pix2struct.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_seamless_m4t.py` - ModelTest not imported
+- ❌ `skills/output_tests/test_hf_bark.py` - ModelTest not imported
+- ❌ `skills/output_tests/test_hf_pix2struct.py` - ModelTest not imported
+- ❌ `skills/refactored_benchmark_suite/test_validation.py` - ModelTest not imported
+- ❌ `skills/refactored_benchmark_suite/tests/test_flops_metric.py` - ModelTest not imported
+- ❌ `skills/refactored_benchmark_suite/tests/test_benchmark_config.py` - ModelTest not imported
+- ❌ `refactored_test_suite/hardware/webgpu/test_webgpu_detection.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/vision/test_hf_detr.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/other/test_single_model_hardware.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `distributed_testing/ci/test_provider_standardization.py` - ModelTest not imported
+- ❌ `distributed_testing/ci/test_artifact_handling.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_coordinator_failover.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_worker_auto_discovery_with_ci.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_ci_clients.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_fault_tolerance.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_e2e_integrated_system.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_error_recovery_performance.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_ci_client_implementations.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_ci_integration.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_worker.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_integrated_analysis_system.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_enhanced_hardware_capability.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_dependency_manager.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_coordinator.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_distributed_error_handler.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_hardware_capability_detector.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_result_aggregator.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_execution_orchestrator.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_performance_trend_analyzer.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_coordinator_redundancy.py` - ModelTest not imported
+- ❌ `distributed_testing/tests/test_hardware_test_matcher.py` - ModelTest not imported
+- ❌ `huggingface_doc_builder/tests/test_convert_to_notebook.py` - ModelTest not imported
+- ❌ `huggingface_doc_builder/tests/test_utils.py` - ModelTest not imported
+- ❌ `huggingface_doc_builder/tests/test_style_doc.py` - ModelTest not imported
+- ❌ `huggingface_doc_builder/tests/test_convert_doc_file.py` - ModelTest not imported
+- ❌ `huggingface_doc_builder/tests/test_convert_md_to_mdx.py` - ModelTest not imported
+- ❌ `huggingface_doc_builder/tests/test_build_doc.py` - ModelTest not imported
+- ❌ `huggingface_doc_builder/tests/test_convert_rst_to_mdx.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_visualization_dashboard.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_integrated_visualization_reports.py` - ModelTest not imported
+- ❌ `doc-builder-test/tests/test_convert_doc_file.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `doc-builder-test/tests/test_utils.py` - Error processing file: invalid syntax (<unknown>, line 42)
+- ❌ `doc-builder-test/tests/test_build_doc.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `doc-builder-test/tests/test_convert_to_notebook.py` - Error processing file: unmatched ')' (<unknown>, line 15)
+- ❌ `doc-builder-test/tests/test_convert_md_to_mdx.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `doc-builder-test/tests/test_convert_rst_to_mdx.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `doc-builder-test/tests/test_style_doc.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `archive/stale_scripts/test_simple_simulation_detection.py` - Error processing file: invalid syntax (<unknown>, line 36)
+- ❌ `archive/stale_scripts/test_simulation_detection.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `archive/stale_scripts/test_simulation_awareness.py` - Error processing file: unexpected indent (<unknown>, line 12)
+- ❌ `hardware/webgpu/compute_shaders/test_webgpu_matmul.py` - Error processing file: invalid syntax. Perhaps you forgot a comma? (<unknown>, line 39)
+- ❌ `hardware/webgpu/compute/test_webgpu_matmul.py` - Error processing file: invalid syntax. Perhaps you forgot a comma? (<unknown>, line 48)
+- ❌ `integration/distributed/test_distributed_coordinator.py` - ModelTest not imported
+- ❌ `integration/browser/test_cross_browser_model_sharding.py` - ModelTest not imported
+- ❌ `integration/database/test_duckdb_integration.py` - ModelTest not imported
+- ❌ `doc-builder/tests/test_utils.py` - ModelTest not imported
+- ❌ `doc-builder/tests/test_build_doc.py` - ModelTest not imported
+- ❌ `doc-builder/tests/test_convert_md_to_mdx.py` - ModelTest not imported
+- ❌ `doc-builder/tests/test_convert_to_notebook.py` - ModelTest not imported
+- ❌ `doc-builder/tests/test_style_doc.py` - ModelTest not imported
+- ❌ `doc-builder/tests/test_convert_rst_to_mdx.py` - ModelTest not imported
+- ❌ `doc-builder/tests/test_convert_doc_file.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_backbone_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_configuration_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_training_args.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_feature_extraction_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_modeling_flax_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/utils/add_pipeline_model_mapping_to_test.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/extended/test_trainer_ext.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_translation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_python_interpreter.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_agents.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_document_question_answering.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_search.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_fill_mask.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_feature_extraction.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/optimization/test_optimization_tf.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/optimization/test_optimization.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/bettertransformer/test_integration.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/tensor_parallel/test_tensor_parallel.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/repo_utils/test_tests_fetcher.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/repo_utils/test_check_copies.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/repo_utils/test_check_docstrings.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/repo_utils/test_get_test_info.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_model_output.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_hub_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_activations.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_cli.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_dynamic_module_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_activations_tf.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_versions_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_logging.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_model_card.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_doc_samples.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_convert_slow_tokenizer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_chat_template_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_import_structure.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_file_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_deprecation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_backbone_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_modeling_tf_core.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_hf_argparser.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_modeling_flax_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_generic.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_modeling_tf_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_import_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_feature_extraction_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_modeling_rope_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_skip_decorators.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_offline.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_trainer_distributed.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_trainer_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_data_collator.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_trainer_fsdp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_trainer_tpu.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_trainer_callback.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/fsdp/test_fsdp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_beam_constraints.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_fsdp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_beam_search.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xglm/test_modeling_flax_xglm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mpnet/test_modeling_tf_mpnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mpnet/test_modeling_mpnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/electra/test_modeling_flax_electra.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/electra/test_modeling_tf_electra.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/esm/test_tokenization_esm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/esm/test_modeling_esm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/esm/test_modeling_esmfold.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/esm/test_modeling_tf_esm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/timm_backbone/test_modeling_timm_backbone.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/lxmert/test_modeling_lxmert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/lxmert/test_modeling_tf_lxmert.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/big_bird/test_modeling_flax_big_bird.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dpr/test_modeling_tf_dpr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pixtral/test_modeling_pixtral.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roformer/test_modeling_flax_roformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlm/test_modeling_tf_layoutlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlm/test_modeling_layoutlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/yoso/test_modeling_yoso.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mra/test_modeling_mra.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/owlv2/test_processor_owlv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/encoder_decoder/test_modeling_flax_encoder_decoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/encoder_decoder/test_modeling_encoder_decoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/encoder_decoder/test_modeling_tf_encoder_decoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/splinter/test_modeling_splinter.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/markuplm/test_feature_extraction_markuplm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rag/test_tokenization_rag.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/maskformer/test_modeling_maskformer_swin.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/funnel/test_modeling_tf_funnel.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/auto/test_tokenization_auto.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/auto/test_feature_extraction_auto.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/auto/test_modeling_flax_auto.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/auto/test_configuration_auto.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/auto/test_modeling_auto.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/auto/test_modeling_tf_auto.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/auto/test_processor_auto.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/donut/test_modeling_donut_swin.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pop2piano/test_tokenization_pop2piano.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/decision_transformer/test_modeling_decision_transformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/opt/test_modeling_flax_opt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/canine/test_modeling_canine.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/repo_utils/modular/test_conversion_order.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/compressed_tensors/test_compressed_models.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/templates/adding_a_missing_tokenization_test/cookiecutter-template-{{cookiecutter.modelname}}/test_tokenization_{{cookiecutter.lowercase_modelname}}.py` - Error processing file: invalid syntax (<unknown>, line 20)
+- ❌ `refactored_generator_suite/tests/test_hardware.py` - ModelTest not imported
+- ❌ `refactored_generator_suite/scripts/generate_test.py` - ModelTest not imported
+- ❌ `duckdb_api/unified_test_results_db/test_unified_test_db.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_advanced_calibrator.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_db_performance_metrics.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_monitoring_dashboard_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_validator.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_automated_optimization_manager.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_dashboard_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_db_performance.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_db_performance_optimization.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_enhanced_reporting.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_e2e_visualization_db_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_db_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_reporter.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_performance_optimizer.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_visualization_db_connector.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_validation.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test_visualization.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_coordinator_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/run_dashboard_integration_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_cross_platform_worker_support.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/run_stress_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_worker_thermal_management.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_result_aggregator.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/run_multi_worker_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/run_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_load_balancer_stress.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_fixed_load_balancer.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_duckdb_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/run_end_to_end_reconnection_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_basic_result_aggregator.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/run_fault_tolerance_e2e_test.py` - ModelTest not imported
+- ❌ `duckdb_api/visualization/advanced_visualization/test_animated_time_series.py` - ModelTest not imported
+- ❌ `duckdb_api/visualization/advanced_visualization/test_3d_visualization.py` - ModelTest not imported
+- ❌ `duckdb_api/visualization/advanced_visualization/test_dashboard_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/visualization/advanced_visualization/test_visualizations.py` - ModelTest not imported
+- ❌ `duckdb_api/unified_test_results_db/examples/run_integrated_e2e_test.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test/test_comprehensive_e2e.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test/test_parameter_discovery.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test/test_database_predictive_analytics.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test/test_advanced_calibrator.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test/test_enhanced_statistical_validator.py` - ModelTest not imported
+- ❌ `duckdb_api/simulation_validation/test/test_data_generator.py` - ModelTest not imported
+- ❌ `duckdb_api/benchmark_validation/tests/test_validation_reporter.py` - ModelTest not imported
+- ❌ `duckdb_api/benchmark_validation/tests/test_benchmark_validation.py` - ModelTest not imported
+- ❌ `duckdb_api/benchmark_validation/tests/test_validation_dashboard.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_circuit_breaker.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/run_regression_detection_e2e_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_distributed_error_handler.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_worker_reconnection.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_scheduler.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_dynamic_resource_management_visualization.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_visualization_dashboard_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_load_balancer.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_benchmark.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_auto_recovery.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_health_monitor.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_dashboard_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/run_enhanced_visualization_ui_e2e_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_load_balancer_fault_tolerance.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_error_visualization_dashboard_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_drm_visualization_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/run_drm_visualization_integration_test.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_drm_real_time_dashboard.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_worker_reconnection_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_fault_tolerance_system.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_enhanced_visualization_ui.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_performance_trend_analyzer.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_resource_performance_predictor.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_dashboard_regression_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_coordinator_circuit_breaker_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_drm_external_monitoring_e2e.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_dynamic_resource_manager.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_coordinator_orchestrator_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_drm_external_monitoring.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_multi_device_orchestrator_with_drm.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_end_to_end_framework.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_load_balancer_monitoring.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_hardware_fault_tolerance.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_fault_tolerance_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_multi_device_orchestrator.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_cloud_provider_manager.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_error_visualization_e2e.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_drm_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_coordinator_error_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_circuit_breaker_visualization.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_dashboard_visualization_web_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_enhanced_hardware_taxonomy.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_error_visualization_realtime.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_drm_dashboard_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_monitoring_dashboard.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/dashboard/tests/test_monitoring_dashboard.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/dashboard/tests/test_dashboard_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/dashboard/static/sounds/test_error_notification_system.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/dashboard/static/sounds/test_sound_notification_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/dashboard/static/sounds/test_system_critical_demo.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/result_aggregator/tests/test_aggregator.py` - ModelTest not imported
+- ❌ `.git/hooks/test_generator_test_suite.py` - ModelTest not imported
+
+### Api Models
+
+- ❌ `test_claude_api.py` - Error processing file: unexpected indent (<unknown>, line 41)
+- ❌ `test_api_backend.py` - Error processing file: unmatched ')' (<unknown>, line 7)
+- ❌ `test_api_real_implementation.py` - Error processing file: unmatched ')' (<unknown>, line 12)
+- ❌ `test_single_api.py` - Error processing file: closing parenthesis ']' does not match opening parenthesis '(' on line 17 (<unknown>, line 20)
+- ❌ `test_api_multiplexing_enhanced.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_groq_models.py` - Error processing file: unmatched ')' (<unknown>, line 11)
+- ❌ `test_fast_api.py` - ModelTest not imported
+- ❌ `test_api_backoff_queue.py` - Error processing file: unexpected indent (<unknown>, line 10)
+- ❌ `generate_api_backend_test.py` - ModelTest not imported
+- ❌ `test_groq_queue_mock.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `test_groq_simple.py` - Error processing file: unmatched ')' (<unknown>, line 13)
+- ❌ `test_api_backend_converter.py` - ModelTest not imported
+- ❌ `test_groq_queue.py` - Error processing file: unmatched ')' (<unknown>, line 10)
+- ❌ `test_groq_api.py` - Error processing file: unmatched ']' (<unknown>, line 31)
+- ❌ `test_enhanced_api_features.py` - Error processing file: unexpected indent (<unknown>, line 10)
+- ❌ `test_api_improvements.py` - Error processing file: unexpected indent (<unknown>, line 10)
+- ❌ `test_groq_standalone.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `test_api_backend_converter_integration.py` - ModelTest not imported
+- ❌ `test_openai_api_extensions.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `test_duckdb_api.py` - ModelTest not imported
+- ❌ `test_openai_with_mock.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `test_groq_features.py` - Error processing file: unmatched ')' (<unknown>, line 9)
+- ❌ `test_openai_with_env.py` - Error processing file: invalid syntax (<unknown>, line 18)
+- ❌ `run_openai_api_test.py` - ModelTest not imported
+- ❌ `test_api_multiplexing.py` - Error processing file: unmatched ')' (<unknown>, line 16)
+- ❌ `skills/test_hf_claude3_haiku.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `refactored_test_suite/api_test.py` - ModelTest not imported
+- ❌ `apis/test_groq.py` - Error processing file: unmatched '}' (<unknown>, line 13)
+- ❌ `apis/test_openai_api.py` - Error processing file: unmatched '}' (<unknown>, line 23)
+- ❌ `apis/test_openai_mini.py` - Error processing file: unexpected indent (<unknown>, line 67)
+- ❌ `apis/test_openai_api_fixed.py` - ModelTest not imported
+- ❌ `archive/test_groq_fix.py` - Error processing file: invalid syntax (<unknown>, line 44)
+- ❌ `api/test_api_endpoints.py` - ModelTest not imported
+- ❌ `test/api/other/test_fast_api.py` - ModelTest not imported
+- ❌ `test/api/other/test_duckdb_api.py` - ModelTest not imported
+- ❌ `test/api/local_servers/test_api_backend_converter_integration.py` - ModelTest not imported
+- ❌ `test/api/llm_providers/test_api_multiplexing.py` - Error processing file: unmatched ')' (<unknown>, line 16)
+- ❌ `test/api/llm_providers/test_api_real_implementation.py` - Error processing file: unmatched ')' (<unknown>, line 12)
+- ❌ `test/api/llm_providers/test_api_improvements.py` - Error processing file: unexpected indent (<unknown>, line 10)
+- ❌ `test/api/llm_providers/test_enhanced_api_features.py` - Error processing file: unexpected indent (<unknown>, line 10)
+- ❌ `test/api/llm_providers/test_claude_api.py` - Error processing file: unexpected indent (<unknown>, line 41)
+- ❌ `test/api/llm_providers/test_api_backend.py` - Error processing file: unmatched ')' (<unknown>, line 7)
+- ❌ `test/api/llm_providers/test_api_backend_converter.py` - ModelTest not imported
+- ❌ `test/api/llm_providers/test_groq_api.py` - Error processing file: unmatched ']' (<unknown>, line 31)
+- ❌ `test/api/llm_providers/test_api_multiplexing_enhanced.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test/api/llm_providers/test_openai_api.py` - ModelTest not imported
+- ❌ `test/api/llm_providers/test_single_api.py` - Error processing file: closing parenthesis ']' does not match opening parenthesis '(' on line 17 (<unknown>, line 20)
+- ❌ `test/models/text/test_openai_api_extensions.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `test/models/text/test_api_backoff_queue.py` - Error processing file: unexpected indent (<unknown>, line 10)
+- ❌ `test/models/text/test_api_endpoints.py` - ModelTest not imported
+- ❌ `test/models/text/test_openai_api.py` - ModelTest not imported
+- ❌ `transformers/tests/models/openai/test_tokenization_openai.py` - ModelTest not imported
+- ❌ `transformers/tests/models/openai/test_modeling_tf_openai.py` - ModelTest not imported
+- ❌ `transformers/tests/models/openai/test_modeling_openai.py` - ModelTest not imported
+- ❌ `refactored_test_suite/api/test_api_backend.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/other/test_groq_models.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/openai/test_tokenization_openai.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/openai/test_modeling_tf_openai.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/openai/test_modeling_openai.py` - ModelTest not imported
+- ❌ `api/llm_providers/test_openai_client.py` - ModelTest not imported
+- ❌ `api/llm_providers/test_openai_api.py` - ModelTest not imported
+
+### Vision Models
+
+- ❌ `generate_minimal_test.py` - ModelTest not imported
+- ❌ `test_ipfs_accelerate_webnn_webgpu.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `test_ipfs_web_integration.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_hf_swin.py` - ModelTest not imported
+- ❌ `test_webgpu_webnn_bridge.py` - Error processing file: unexpected indent (<unknown>, line 12)
+- ❌ `test_hf_resnet.py` - ModelTest not imported
+- ❌ `test_fault_tolerant_cross_browser_model_sharding.py` - ModelTest not imported
+- ❌ `test_unified_framework.py` - Error processing file: unexpected indent (<unknown>, line 18)
+- ❌ `test_batch_inference.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `test_generator_fixed.py` - ModelTest not imported
+- ❌ `test_web_platform_optimizations.py` - Error processing file: unexpected indent (<unknown>, line 18)
+- ❌ `test_automated_hardware_compatibility.py` - Error processing file: unmatched ')' (<unknown>, line 23)
+- ❌ `test_mobile_npu_comparison.py` - ModelTest not imported
+- ❌ `test_hf_groupvit.py` - ModelTest not imported
+- ❌ `test_hf_levit.py` - ModelTest not imported
+- ❌ `test_webgpu_shader_precompilation.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_webnn_implementation.py` - Error processing file: unexpected indent (<unknown>, line 16)
+- ❌ `test_generator.py` - ModelTest not imported
+- ❌ `test_ipfs_with_webnn_webgpu.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_webgpu_parallel_model_loading.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_unified_streaming.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_web_platform_integration.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_hf_deit.py` - ModelTest not imported
+- ❌ `create_minimal_test.py` - ModelTest not imported
+- ❌ `test_resource_pool_integration.py` - ModelTest not imported
+- ❌ `run_comprehensive_hf_model_test.py` - ModelTest not imported
+- ❌ `test_refactoring_utils.py` - ModelTest not imported
+- ❌ `test_hf_chinese_clip.py` - ModelTest not imported
+- ❌ `test_model_integration.py` - Error processing file: unexpected indent (<unknown>, line 11)
+- ❌ `test_webgpu_4bit_model_coverage.py` - Error processing file: unexpected indent (<unknown>, line 25)
+- ❌ `test_ipfs_resource_pool_integration.py` - ModelTest not imported
+- ❌ `test_ipfs_accelerate_with_real_webnn_webgpu.py` - Error processing file: unexpected indent (<unknown>, line 27)
+- ❌ `test_hf_clip.py` - ModelTest not imported
+- ❌ `test_quantization.py` - Error processing file: unmatched ')' (<unknown>, line 31)
+- ❌ `test_vit_custom.py` - ModelTest not imported
+- ❌ `test_vit-base-patch16-224.py` - ModelTest not imported
+- ❌ `test_hf_efficientnet.py` - ModelTest not imported
+- ❌ `test_safari_webgpu_support.py` - Error processing file: unexpected indent (<unknown>, line 12)
+- ❌ `test_real_web_implementation.py` - Error processing file: unexpected indent (<unknown>, line 19)
+- ❌ `test_hf_owlvit.py` - ModelTest not imported
+- ❌ `test_hf_convnextv2.py` - ModelTest not imported
+- ❌ `test_hf_convnext.py` - ModelTest not imported
+- ❌ `test_enhanced_resource_pool.py` - ModelTest not imported
+- ❌ `test_comprehensive_hardware.py` - Error processing file: unmatched ')' (<unknown>, line 15)
+- ❌ `test_real_webnn_webgpu.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_hf_clipseg.py` - ModelTest not imported
+- ❌ `test_hf_mobilevit.py` - ModelTest not imported
+- ❌ `test_generator_functions.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `modality_tests/test_hf_swin.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_flava.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_vilt.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_vit.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_resnet.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_deit.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_git.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_clip.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_convnext.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `generated_tests_enhanced/test_vit.py` - ModelTest not imported
+- ❌ `generated_tests_enhanced/test_clip.py` - ModelTest not imported
+- ❌ `sample_tests/test_hf_vit.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `skills/test_hf_vitdet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_beit.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `skills/test_hf_flan.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `skills/test_hf_owlvit.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_canine.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/create_standardized_test.py` - ModelTest not imported
+- ❌ `skills/test_hf_clip.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_groupvit.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_chinese_clip_vision_model.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `skills/test_hf___list_only.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_qwen2_vl.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vision_encoder_decoder.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_videomae.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_data2vec-vision.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_mlp_mixer.py` - ModelTest not imported
+- ❌ `skills/generate_simple_test.py` - ModelTest not imported
+- ❌ `skills/test_hf_xclip.py` - ModelTest not imported
+- ❌ `skills/test_hf_vits.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vit_hybrid.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_patchtsmixer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vit_mae.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_llava.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_imagebind.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_donut_swin.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_clap.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `skills/test_hf_falcon.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mask2former.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_idefics2.py` - Error processing file: unmatched ')' (<unknown>, line 14)
+- ❌ `skills/test_generator_test_suite.py` - ModelTest not imported
+- ❌ `skills/test_advanced_model_selection.py` - ModelTest not imported
+- ❌ `skills/test_hf_siglip.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_video-llava.py` - ModelTest not imported
+- ❌ `skills/test_registry_fixer.py` - Error processing file: unmatched ')' (<unknown>, line 8)
+- ❌ `skills/create_minimal_test.py` - ModelTest not imported
+- ❌ `skills/test_hf_dino.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_altclip.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `skills/test_hf_convnext.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_perceiver.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_vit.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_big_bird.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_mobilevitv2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_autoformer.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_clip_vision_model.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `skills/test_hf_chinese_clip.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_vit_msn.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_generator.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_simplified.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_llava-next.py` - ModelTest not imported
+- ❌ `skills/test_hf_qwen3.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_dinov2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_tapas.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `skills/test_hf_data2vec_vision.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/create_simple_test.py` - ModelTest not imported
+- ❌ `skills/test_hf_swin.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_deepseek_vision.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_dpt.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_detr.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vivit.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_deit.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_convnextv2.py` - ModelTest not imported
+- ❌ `skills/test_hf_phi.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf___model.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_bit.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `skills/test_generator_fixed.py` - ModelTest not imported
+- ❌ `skills/test_hf_chinese-clip.py` - Error processing file: cannot assign to expression here. Maybe you meant '==' instead of '='? (<unknown>, line 186)
+- ❌ `skills/test_hf_resnet.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_mobilevit.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_informer.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/generate_minimal_test.py` - ModelTest not imported
+- ❌ `skills/test_hf_zoedepth.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_pix2struct.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_levit.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_mlp-mixer.py` - ModelTest not imported
+- ❌ `skills/test_hf_siglip_vision_model.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_all_models.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_clipseg.py` - ModelTest not imported
+- ❌ `skills/test_hf_rt_detr_resnet.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_patchtst.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_llava_next.py` - Error processing file: unmatched ')' (<unknown>, line 15)
+- ❌ `skills/test_hf_llava_onevision.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_\.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf___help.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_layoutlmv2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_vit_minimal.py` - ModelTest not imported
+- ❌ `skills/test_hf_vitmatte.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `distributed_testing/test_selenium_browser_integration.py` - ModelTest not imported
+- ❌ `model_test_runners/run_xclip_test.py` - Error processing file: invalid syntax (<unknown>, line 15)
+- ❌ `critical_priority_tests/test_clip.py` - ModelTest not imported
+- ❌ `key_model_tests/test_hf_vit.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `key_model_tests/test_hf_clip.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `fixed_tests/test_hf_llava.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_convnext.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_resnet.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_clip.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_deit.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_swin.py` - ModelTest not imported
+- ❌ `test_outputs/test_hf_vit_base.py` - Error processing file: unexpected indent (<unknown>, line 47)
+- ❌ `temp_generated/test_hf_clap.py` - Error processing file: unmatched ')' (<unknown>, line 16)
+- ❌ `priority_model_tests_fixed/test_clip.py` - ModelTest not imported
+- ❌ `priority_model_tests_fixed/test_vit.py` - ModelTest not imported
+- ❌ `key_models_hardware_fixes/test_hf_llava_next.py` - Error processing file: unmatched ')' (<unknown>, line 12)
+- ❌ `key_models_hardware_fixes/test_hf_clip.py` - Error processing file: unexpected indent (<unknown>, line 18)
+- ❌ `key_models_hardware_fixes/test_hf_xclip.py` - Error processing file: expected an indented block after 'if' statement on line 63 (<unknown>, line 65)
+- ❌ `key_models_hardware_fixes/test_hf_clap.py` - Error processing file: expected an indented block after function definition on line 42 (<unknown>, line 43)
+- ❌ `key_models_hardware_fixes/test_hf_llava.py` - ModelTest not imported
+- ❌ `key_models_hardware_fixes/test_hf_qwen2.py` - ModelTest not imported
+- ❌ `key_models_hardware_fixes/test_hf_detr.py` - Error processing file: expected an indented block after function definition on line 37 (<unknown>, line 38)
+- ❌ `key_models_hardware_fixes/test_hf_vit.py` - ModelTest not imported
+- ❌ `generated_tests_minimal/test_vit.py` - ModelTest not imported
+- ❌ `generated_tests_minimal/test_clip.py` - ModelTest not imported
+- ❌ `archive/test_vit_fixed.py` - ModelTest not imported
+- ❌ `archive/test_webgpu_shader_precompilation_fix2.py` - Error processing file: unmatched ')' (<unknown>, line 19)
+- ❌ `generated_tests_fixed/test_idefics2.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_dinov2.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_beit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_llava-next-video.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_idefics3.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_beit3.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_dinat.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_depth-anything.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_vit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_efficientnet.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_resnet.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_swinv2.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_dino.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_cvt.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_van.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_levit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_mobilenet-v2.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_qwen2-vl.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_convnextv2.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_mobilenet-v1.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_vitdet.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_conditional-detr.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_segformer.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_swin.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_perceiver.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_qwen3-vl.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_deit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_sam.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_mask2former.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_detr.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_siglip.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `generated_tests_fixed/test_poolformer.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_yolos.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_convnext.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `generated_tests_fixed/test_mobilevit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `priority_model_tests/test_clip.py` - ModelTest not imported
+- ❌ `priority_model_tests/test_vit.py` - ModelTest not imported
+- ❌ `medium_priority_tests/test_vit.py` - ModelTest not imported
+- ❌ `medium_priority_tests/test_clip.py` - ModelTest not imported
+- ❌ `generated_tests_validation/test_clip.py` - Error processing file: invalid syntax (<unknown>, line 52)
+- ❌ `generated_tests_validation/test_vit.py` - Error processing file: unexpected indent (<unknown>, line 22)
+- ❌ `generated_tests/test_vit.py` - ModelTest not imported
+- ❌ `generated_tests/test_clip.py` - ModelTest not imported
+- ❌ `generated_tests_final/test_clip.py` - ModelTest not imported
+- ❌ `generated_tests_final/test_vit.py` - ModelTest not imported
+- ❌ `fixed_generated_tests/test_hf_clap.py` - ModelTest not imported
+- ❌ `fixed_generated_tests/test_hf_vit.py` - ModelTest not imported
+- ❌ `phase16_key_models/tests/test_hf_clap_htsat_fused.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `phase16_key_models/tests/test_hf_clip_vit_base_patch32.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `phase16_key_models/tests/test_hf_detr_resnet_50.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `phase16_key_models/tests/test_hf_vit_base_patch16_224.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `phase16_key_models/tests/test_hf_qwen2_7b.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `test/models/text/test_safari_webgpu_support.py` - Error processing file: unexpected indent (<unknown>, line 12)
+- ❌ `test/models/text/test_ipfs_web_integration.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test/models/text/test_web_platform_integration.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test/models/text/test_webgpu_shader_precompilation.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test/models/text/test_real_webnn_webgpu.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test/models/text/test_webgpu_webnn_bridge.py` - Error processing file: unexpected indent (<unknown>, line 12)
+- ❌ `test/models/text/test_ipfs_with_webnn_webgpu.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test/models/text/test_model_integration.py` - Error processing file: unexpected indent (<unknown>, line 11)
+- ❌ `test/models/text/test_selenium_browser_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_ipfs_accelerate_webnn_webgpu.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `test/models/text/test_resource_pool_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_webgpu_4bit_model_coverage.py` - Error processing file: unexpected indent (<unknown>, line 25)
+- ❌ `test/models/text/test_ipfs_resource_pool_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_ipfs_accelerate_with_real_webnn_webgpu.py` - Error processing file: unexpected indent (<unknown>, line 27)
+- ❌ `test/models/vision/test_webgpu_parallel_model_loading.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test/models/vision/test_vit-base-patch16-224_webgpu.py` - ModelTest not imported
+- ❌ `test/models/vision/test_openai_clip-vit-base-patch32_webgpu.py` - ModelTest not imported
+- ❌ `transformers/tests/test_processing_common.py` - ModelTest not imported
+- ❌ `transformers/tests/test_pipeline_mixin.py` - ModelTest not imported
+- ❌ `transformers/tests/test_image_transforms.py` - ModelTest not imported
+- ❌ `transformers/tests/test_image_processing_common.py` - ModelTest not imported
+- ❌ `transformers/tests/test_modeling_common.py` - ModelTest not imported
+- ❌ `transformers/examples/pytorch/test_accelerate_examples.py` - ModelTest not imported
+- ❌ `transformers/examples/pytorch/test_pytorch_examples.py` - ModelTest not imported
+- ❌ `transformers/examples/tensorflow/test_tensorflow_examples.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_processing_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_image_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_image_processing_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_add_new_model_like.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_zero_shot_image_classification.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_question_answering.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_visual_question_answering.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_zero_shot_object_detection.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_video_classification.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_zero_shot.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_image_classification.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_common.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_image_segmentation.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_token_classification.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_depth_estimation.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_mask_generation.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_object_detection.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_document_question_answering.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_image_to_image.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_image_feature_extraction.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_image_question_answering.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_tools_common.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_agent_types.py` - ModelTest not imported
+- ❌ `transformers/tests/generation/test_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/sagemaker/test_single_node_gpu.py` - ModelTest not imported
+- ❌ `transformers/tests/sagemaker/test_multi_node_model_parallel.py` - ModelTest not imported
+- ❌ `transformers/tests/sagemaker/test_multi_node_data_parallel.py` - ModelTest not imported
+- ❌ `transformers/tests/trainer/test_trainer.py` - ModelTest not imported
+- ❌ `transformers/tests/deepspeed/test_model_zoo.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pix2struct/test_processor_pix2struct.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pix2struct/test_image_processing_pix2struct.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pix2struct/test_modeling_pix2struct.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bros/test_modeling_bros.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dab_detr/test_modeling_dab_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vilt/test_image_processing_vilt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vilt/test_modeling_vilt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/zoedepth/test_modeling_zoedepth.py` - ModelTest not imported
+- ❌ `transformers/tests/models/zoedepth/test_image_processing_zoedepth.py` - ModelTest not imported
+- ❌ `transformers/tests/models/videomae/test_image_processing_videomae.py` - ModelTest not imported
+- ❌ `transformers/tests/models/videomae/test_modeling_videomae.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vits/test_tokenization_vits.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vits/test_modeling_vits.py` - ModelTest not imported
+- ❌ `transformers/tests/models/trocr/test_processor_trocr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/yolos/test_image_processing_yolos.py` - ModelTest not imported
+- ❌ `transformers/tests/models/yolos/test_modeling_yolos.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fuyu/test_image_processing_fuyu.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fuyu/test_modeling_fuyu.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fuyu/test_processor_fuyu.py` - ModelTest not imported
+- ❌ `transformers/tests/models/udop/test_modeling_udop.py` - ModelTest not imported
+- ❌ `transformers/tests/models/udop/test_processor_udop.py` - ModelTest not imported
+- ❌ `transformers/tests/models/udop/test_tokenization_udop.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clip/test_modeling_flax_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clip/test_tokenization_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clip/test_modeling_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clip/test_processor_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clip/test_modeling_tf_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clip/test_image_processing_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vision_encoder_decoder/test_modeling_flax_vision_encoder_decoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vision_encoder_decoder/test_modeling_vision_encoder_decoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vision_encoder_decoder/test_modeling_tf_vision_encoder_decoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/resnet/test_modeling_resnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/resnet/test_modeling_flax_resnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/resnet/test_modeling_tf_resnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blip/test_image_processing_blip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlm/test_modeling_tf_xlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlm/test_modeling_xlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2_vl/test_processor_qwen2_vl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2_vl/test_modeling_qwen2_vl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2_vl/test_image_processing_qwen2_vl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/depth_anything/test_modeling_depth_anything.py` - ModelTest not imported
+- ❌ `transformers/tests/models/glpn/test_modeling_glpn.py` - ModelTest not imported
+- ❌ `transformers/tests/models/glpn/test_image_processing_glpn.py` - ModelTest not imported
+- ❌ `transformers/tests/models/maskformer/test_image_processing_maskformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/maskformer/test_modeling_maskformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/ijepa/test_modeling_ijepa.py` - ModelTest not imported
+- ❌ `transformers/tests/models/nllb_moe/test_modeling_nllb_moe.py` - ModelTest not imported
+- ❌ `transformers/tests/models/reformer/test_modeling_reformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/siglip2/test_image_processing_siglip2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/siglip2/test_modeling_siglip2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics2/test_modeling_idefics2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics2/test_processor_idefics2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics2/test_image_processing_idefics2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2/test_modeling_qwen2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/longformer/test_modeling_tf_longformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/longformer/test_modeling_longformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/falcon/test_modeling_falcon.py` - ModelTest not imported
+- ❌ `transformers/tests/models/siglip/test_image_processing_siglip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/siglip/test_modeling_siglip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/regnet/test_modeling_regnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/regnet/test_modeling_flax_regnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/regnet/test_modeling_tf_regnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/luke/test_modeling_luke.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pvt_v2/test_modeling_pvt_v2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/conditional_detr/test_image_processing_conditional_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/conditional_detr/test_modeling_conditional_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mgp_str/test_processor_mgp_str.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mgp_str/test_modeling_mgp_str.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dinat/test_modeling_dinat.py` - ModelTest not imported
+- ❌ `transformers/tests/models/colpali/test_processing_colpali.py` - ModelTest not imported
+- ❌ `transformers/tests/models/colpali/test_modeling_colpali.py` - ModelTest not imported
+- ❌ `transformers/tests/models/beit/test_image_processing_beit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/beit/test_modeling_beit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/beit/test_modeling_flax_beit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/led/test_modeling_led.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mixtral/test_modeling_mixtral.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutxlm/test_processor_layoutxlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutxlm/test_tokenization_layoutxlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/plbart/test_modeling_plbart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics/test_image_processing_idefics.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics/test_processor_idefics.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics/test_modeling_idefics.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics/test_modeling_tf_idefics.py` - ModelTest not imported
+- ❌ `transformers/tests/models/smolvlm/test_processor_smolvlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/smolvlm/test_modeling_smolvlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/smolvlm/test_image_processing_smolvlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/align/test_modeling_align.py` - ModelTest not imported
+- ❌ `transformers/tests/models/align/test_processor_align.py` - ModelTest not imported
+- ❌ `transformers/tests/models/upernet/test_modeling_upernet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/nougat/test_image_processing_nougat.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vitpose/test_modeling_vitpose.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vitpose/test_image_processing_vitpose.py` - ModelTest not imported
+- ❌ `transformers/tests/models/superpoint/test_image_processing_superpoint.py` - ModelTest not imported
+- ❌ `transformers/tests/models/superpoint/test_modeling_superpoint.py` - ModelTest not imported
+- ❌ `transformers/tests/models/cvt/test_modeling_tf_cvt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/cvt/test_modeling_cvt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/altclip/test_processor_altclip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/altclip/test_modeling_altclip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilevitv2/test_modeling_mobilevitv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vit/test_modeling_vit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vit/test_modeling_flax_vit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vit/test_modeling_tf_vit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vit/test_image_processing_vit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2_moe/test_modeling_qwen2_moe.py` - ModelTest not imported
+- ❌ `transformers/tests/models/markuplm/test_modeling_markuplm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/markuplm/test_tokenization_markuplm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/markuplm/test_processor_markuplm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2_5_vl/test_modeling_qwen2_5_vl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2_5_vl/test_processor_qwen2_5_vl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_next/test_image_processing_llava_next.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_next/test_processor_llava_next.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_next/test_modeling_llava_next.py` - ModelTest not imported
+- ❌ `transformers/tests/models/levit/test_image_processing_levit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/levit/test_modeling_levit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/focalnet/test_modeling_focalnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/tvp/test_modeling_tvp.py` - ModelTest not imported
+- ❌ `transformers/tests/models/tvp/test_image_processing_tvp.py` - ModelTest not imported
+- ❌ `transformers/tests/models/detr/test_image_processing_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/detr/test_modeling_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/data2vec/test_modeling_data2vec_vision.py` - ModelTest not imported
+- ❌ `transformers/tests/models/data2vec/test_modeling_tf_data2vec_vision.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deit/test_modeling_tf_deit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deit/test_modeling_deit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deit/test_image_processing_deit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/got_ocr2/test_processor_got_ocr2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/got_ocr2/test_modeling_got_ocr2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/got_ocr2/test_image_processing_got_ocr2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv3/test_modeling_layoutlmv3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv3/test_image_processing_layoutlmv3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv3/test_tokenization_layoutlmv3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv3/test_processor_layoutlmv3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv3/test_modeling_tf_layoutlmv3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bit/test_modeling_bit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/aya_vision/test_modeling_aya_vision.py` - ModelTest not imported
+- ❌ `transformers/tests/models/aya_vision/test_processor_aya_vision.py` - ModelTest not imported
+- ❌ `transformers/tests/models/tapas/test_modeling_tapas.py` - ModelTest not imported
+- ❌ `transformers/tests/models/tapas/test_modeling_tf_tapas.py` - ModelTest not imported
+- ❌ `transformers/tests/models/efficientnet/test_modeling_efficientnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/efficientnet/test_image_processing_efficientnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava/test_processor_llava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava/test_image_processing_llava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava/test_configuration_llava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava/test_modeling_llava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_next_video/test_processor_llava_next_video.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_next_video/test_modeling_llava_next_video.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_next_video/test_image_processing_llava_next_video.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vivit/test_image_processing_vivit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vivit/test_modeling_vivit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bridgetower/test_image_processing_bridgetower.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bridgetower/test_modeling_bridgetower.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bridgetower/test_processor_bridgetower.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlnet/test_modeling_tf_xlnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xlnet/test_modeling_xlnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/ctrl/test_modeling_tf_ctrl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/ctrl/test_modeling_ctrl.py` - ModelTest not imported
+- ❌ `transformers/tests/models/convnext/test_image_processing_convnext.py` - ModelTest not imported
+- ❌ `transformers/tests/models/convnext/test_modeling_convnext.py` - ModelTest not imported
+- ❌ `transformers/tests/models/convnext/test_modeling_tf_convnext.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dinov2_with_registers/test_modeling_dinov2_with_registers.py` - ModelTest not imported
+- ❌ `transformers/tests/models/donut/test_image_processing_donut.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics3/test_image_processing_idefics3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics3/test_processor_idefics3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/idefics3/test_modeling_idefics3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/flava/test_processor_flava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/flava/test_modeling_flava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/flava/test_image_processing_flava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vitmatte/test_modeling_vitmatte.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vitmatte/test_image_processing_vitmatte.py` - ModelTest not imported
+- ❌ `transformers/tests/models/owlvit/test_modeling_owlvit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/owlvit/test_image_processing_owlvit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/owlvit/test_processor_owlvit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vit_mae/test_modeling_tf_vit_mae.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vit_mae/test_modeling_vit_mae.py` - ModelTest not imported
+- ❌ `transformers/tests/models/lilt/test_modeling_lilt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/superglue/test_modeling_superglue.py` - ModelTest not imported
+- ❌ `transformers/tests/models/superglue/test_image_processing_superglue.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vipllava/test_processor_vipllava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vipllava/test_modeling_vipllava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dpt/test_modeling_dpt_hybrid.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dpt/test_modeling_dpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dpt/test_image_processing_dpt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dpt/test_modeling_dpt_auto_backbone.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vit_msn/test_modeling_vit_msn.py` - ModelTest not imported
+- ❌ `transformers/tests/models/perceiver/test_modeling_perceiver.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilenet_v2/test_modeling_mobilenet_v2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilenet_v2/test_image_processing_mobilenet_v2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/starcoder2/test_modeling_starcoder2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/depth_pro/test_image_processing_depth_pro.py` - ModelTest not imported
+- ❌ `transformers/tests/models/depth_pro/test_modeling_depth_pro.py` - ModelTest not imported
+- ❌ `transformers/tests/models/auto/test_image_processing_auto.py` - ModelTest not imported
+- ❌ `transformers/tests/models/swin2sr/test_image_processing_swin2sr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/swin2sr/test_modeling_swin2sr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vitpose_backbone/test_modeling_vitpose_backbone.py` - ModelTest not imported
+- ❌ `transformers/tests/models/emu3/test_modeling_emu3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/emu3/test_processor_emu3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/chinese_clip/test_modeling_chinese_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/chinese_clip/test_processor_chinese_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/chinese_clip/test_image_processing_chinese_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fnet/test_modeling_fnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/opt/test_modeling_opt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/poolformer/test_image_processing_poolformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/poolformer/test_modeling_poolformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clipseg/test_processor_clipseg.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clipseg/test_modeling_clipseg.py` - ModelTest not imported
+- ❌ `transformers/tests/models/chameleon/test_processor_chameleon.py` - ModelTest not imported
+- ❌ `transformers/tests/models/chameleon/test_modeling_chameleon.py` - ModelTest not imported
+- ❌ `transformers/tests/models/chameleon/test_image_processing_chameleon.py` - ModelTest not imported
+- ❌ `transformers/tests/models/convnextv2/test_modeling_tf_convnextv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/convnextv2/test_modeling_convnextv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/swin/test_modeling_tf_swin.py` - ModelTest not imported
+- ❌ `transformers/tests/models/swin/test_modeling_swin.py` - ModelTest not imported
+- ❌ `transformers/tests/models/phi3/test_modeling_phi3.py` - ModelTest not imported
+- ❌ `transformers/tests/models/sam/test_modeling_sam.py` - ModelTest not imported
+- ❌ `transformers/tests/models/sam/test_processor_sam.py` - ModelTest not imported
+- ❌ `transformers/tests/models/sam/test_modeling_tf_sam.py` - ModelTest not imported
+- ❌ `transformers/tests/models/git/test_processor_git.py` - ModelTest not imported
+- ❌ `transformers/tests/models/git/test_modeling_git.py` - ModelTest not imported
+- ❌ `transformers/tests/models/table_transformer/test_modeling_table_transformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/kosmos2/test_modeling_kosmos2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/kosmos2/test_processor_kosmos2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv2/test_processor_layoutlmv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv2/test_tokenization_layoutlmv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv2/test_image_processing_layoutlmv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/layoutlmv2/test_modeling_layoutlmv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/phi/test_modeling_phi.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rt_detr_v2/test_modeling_rt_detr_v2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_onevision/test_image_processing_llava_onevision.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_onevision/test_modeling_llava_onevision.py` - ModelTest not imported
+- ❌ `transformers/tests/models/llava_onevision/test_processor_llava_onevision.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bigbird_pegasus/test_modeling_bigbird_pegasus.py` - ModelTest not imported
+- ❌ `transformers/tests/models/aria/test_processor_aria.py` - ModelTest not imported
+- ❌ `transformers/tests/models/aria/test_modeling_aria.py` - ModelTest not imported
+- ❌ `transformers/tests/models/aria/test_image_processing_aria.py` - ModelTest not imported
+- ❌ `transformers/tests/models/timm_wrapper/test_modeling_timm_wrapper.py` - ModelTest not imported
+- ❌ `transformers/tests/models/timm_wrapper/test_image_processing_timm_wrapper.py` - ModelTest not imported
+- ❌ `transformers/tests/models/omdet_turbo/test_processor_omdet_turbo.py` - ModelTest not imported
+- ❌ `transformers/tests/models/omdet_turbo/test_modeling_omdet_turbo.py` - ModelTest not imported
+- ❌ `transformers/tests/models/swinv2/test_modeling_swinv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilevit/test_modeling_mobilevit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilevit/test_image_processing_mobilevit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilevit/test_modeling_tf_mobilevit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/hiera/test_modeling_hiera.py` - ModelTest not imported
+- ❌ `transformers/tests/models/segformer/test_modeling_segformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/segformer/test_image_processing_segformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/segformer/test_modeling_tf_segformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mvp/test_modeling_mvp.py` - ModelTest not imported
+- ❌ `transformers/tests/models/timesformer/test_modeling_timesformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/xmod/test_modeling_xmod.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pvt/test_modeling_pvt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pvt/test_image_processing_pvt.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dinov2/test_modeling_dinov2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dinov2/test_modeling_flax_dinov2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/roformer/test_modeling_tf_roformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilenet_v1/test_modeling_mobilenet_v1.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mobilenet_v1/test_image_processing_mobilenet_v1.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rt_detr/test_image_processing_rt_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rt_detr/test_modeling_rt_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/rt_detr/test_modeling_rt_detr_resnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mask2former/test_modeling_mask2former.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mask2former/test_image_processing_mask2former.py` - ModelTest not imported
+- ❌ `transformers/tests/models/instructblipvideo/test_image_processing_instrictblipvideo.py` - ModelTest not imported
+- ❌ `transformers/tests/models/x_clip/test_modeling_x_clip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/owlv2/test_image_processing_owlv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/owlv2/test_modeling_owlv2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mbart/test_modeling_mbart.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mistral/test_modeling_tf_mistral.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mistral/test_modeling_mistral.py` - ModelTest not imported
+- ❌ `transformers/tests/models/grounding_dino/test_processor_grounding_dino.py` - ModelTest not imported
+- ❌ `transformers/tests/models/grounding_dino/test_modeling_grounding_dino.py` - ModelTest not imported
+- ❌ `transformers/tests/models/grounding_dino/test_image_processing_grounding_dino.py` - ModelTest not imported
+- ❌ `transformers/tests/models/vitdet/test_modeling_vitdet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pixtral/test_image_processing_pixtral.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pixtral/test_processor_pixtral.py` - ModelTest not imported
+- ❌ `transformers/tests/models/oneformer/test_modeling_oneformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/oneformer/test_processor_oneformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/oneformer/test_image_processing_oneformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/swiftformer/test_modeling_swiftformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/swiftformer/test_modeling_tf_swiftformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/video_llava/test_image_processing_video_llava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/video_llava/test_modeling_video_llava.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deformable_detr/test_image_processing_deformable_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/deformable_detr/test_modeling_deformable_detr.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dit/test_modeling_dit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/groupvit/test_modeling_tf_groupvit.py` - ModelTest not imported
+- ❌ `transformers/tests/models/groupvit/test_modeling_groupvit.py` - ModelTest not imported
+- ❌ `transformers/tests/quantization/autoawq/test_awq.py` - ModelTest not imported
+- ❌ `skills/minimal_tests/test_hf_vit.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_bit.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_resnet.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_florence.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_swinv2.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_mask2former.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_vinvl.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_donut.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_sam.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_efficientnet.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_vilt.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_poolformer.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_mobilevit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_clipseg.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_regnet.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_vision.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_resnet.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_llava-next-video.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_xclip.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_swin.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_video-llava.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_kosmos-2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_mask2former.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_levit.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_swin.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_imagebind.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_van.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_detr.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_vit.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_mlp_mixer.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_llava_next.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_perceiver.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_deit.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_layoutlmv3.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_beit3.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_segformer.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_mobilenet_v2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_detr.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_layoutlmv2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_cvt.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_deit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_efficientnet.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_llava.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_depth-anything.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_convnextv2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_vit_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_idefics3.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_dinov2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_dpt.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_data2vec-vision.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_dinat.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_idefics2.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_flamingo.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_dinov2.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_vision-encoder-decoder.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_beit.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_clip.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_imagebind.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_yolos.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_vit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_conditional-detr.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_beit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_chinese-clip.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_clip.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_chinese_clip.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_convnext.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_kosmos2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_mobilevit.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_clipseg.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_llava.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_mlp-mixer.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_convnextv2.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_git.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_siglip.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_llava-next.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_align.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_levit.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_vision_encoder_decoder.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_qwen3-vl.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_mobilenet-v1.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_vitdet.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_idefics.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_xclip.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_sam.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_poolformer.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_convnext.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_video_llava.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_dino.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_flava.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_mobilenet-v2.py` - Error processing file: unexpected indent (<unknown>, line 23)
+- ❌ `skills/fixed_tests/test_hf_fuyu.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_qwen2-vl.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_hf_segformer.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_fuyu.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_data2vec_vision.py` - ModelTest not imported
+- ❌ `skills/samples/test_hf_vit.py` - ModelTest not imported
+- ❌ `skills/fixed_files_new/test_hf_vit.py` - Error processing file: invalid syntax (<unknown>, line 69)
+- ❌ `skills/ultra_simple_tests/test_hf_vit.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_mobilevit.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_levit.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_clip.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_cvt.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_chinese_clip.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_perceiver.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_convnext.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_swin.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_deit.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_resnet.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_efficientnet.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_swinv2.py` - ModelTest not imported
+- ❌ `skills/test_output/test_hf_clip.py` - ModelTest not imported
+- ❌ `skills/fixed_files_manual/test_hf_vit.py` - Error processing file: unexpected indent (<unknown>, line 352)
+- ❌ `skills/fixed_tests/standardized/test_hf_falcon_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_clip_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_deit_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_vit_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_bart_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_electra_standardized.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_mistral_standardized.py` - ModelTest not imported
+- ❌ `skills/refactored_benchmark_suite/tests/test_model_adapters.py` - ModelTest not imported
+- ❌ `skills/backups/fixed_tests.bak.20250319_223051/test_hf_vit.py` - ModelTest not imported
+- ❌ `refactored_test_suite/hardware/webgpu/test_ipfs_accelerate_webnn_webgpu.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/multimodal/test_hf_xclip.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/multimodal/test_blip_image_captioning_base.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/multimodal/test_hf_clip.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/multimodal/test_hf_llava.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/multimodal/test_clip_vit_large_patch14.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/multimodal/test_flava_full.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/multimodal/test_clip_vit_base_patch32.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `refactored_test_suite/models/vision/test_vit_base_patch16_224.py` - Missing required methods: verify_model_output, detect_preferred_device Missing: verify_model_output, detect_preferred_device
+- ❌ `distributed_testing/tests/test_dynamic_resource_manager.py` - ModelTest not imported
+- ❌ `huggingface_doc_builder/tests/test_autodoc.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/manual_doc_test.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_template_system.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_enhanced_documentation.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_webnn/test_openai_clip-vit-base-patch32_webnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_rocm/test_vit-base-patch16-224_rocm.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_webnn/test_vit-base-patch16-224_webnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_cuda/test_vit-base-patch16-224_cuda.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_openvino/test_openai_clip-vit-base-patch32_openvino.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_cpu/test_openai_clip-vit-base-patch32_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_cuda/test_openai_clip-vit-base-patch32_cuda.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_mps/test_vit-base-patch16-224_mps.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_qnn/test_openai_clip-vit-base-patch32_qnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_rocm/test_openai_clip-vit-base-patch32_rocm.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_cpu/test_vit-base-patch16-224_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_webgpu/test_openai_clip-vit-base-patch32_webgpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_webgpu/test_vit-base-patch16-224_webgpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_mps/test_openai_clip-vit-base-patch32_mps.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_openvino/test_vit-base-patch16-224_openvino.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_qnn/test_vit-base-patch16-224_qnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/vision_webgpu_test/vit-base-patch16-224_webgpu/test_vit-base-patch16-224_webgpu.py` - ModelTest not imported
+- ❌ `doc-builder-test/tests/test_autodoc.py` - Error processing file: unmatched ')' (<unknown>, line 24)
+- ❌ `doc-builder/tests/test_autodoc.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_modeling_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_pipeline_mixin.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_processing_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_image_transforms.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_image_processing_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_image_question_answering.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_tools_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_agent_types.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_zero_shot.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_image_to_image.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_token_classification.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_mask_generation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_question_answering.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_document_question_answering.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_image_classification.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_zero_shot_object_detection.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_zero_shot_image_classification.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_video_classification.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_image_segmentation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_visual_question_answering.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_image_feature_extraction.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_object_detection.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_depth_estimation.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/deepspeed/test_model_zoo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_image_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_add_new_model_like.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_image_processing_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_processing_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/sagemaker/test_multi_node_data_parallel.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/sagemaker/test_single_node_gpu.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/sagemaker/test_multi_node_model_parallel.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/trainer/test_trainer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/generation/test_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vitmatte/test_modeling_vitmatte.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vitmatte/test_image_processing_vitmatte.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/swin2sr/test_modeling_swin2sr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/swin2sr/test_image_processing_swin2sr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics3/test_image_processing_idefics3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics3/test_processor_idefics3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics3/test_modeling_idefics3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deit/test_image_processing_deit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deit/test_modeling_tf_deit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deit/test_modeling_deit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/cvt/test_modeling_cvt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/cvt/test_modeling_tf_cvt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vipllava/test_modeling_vipllava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vipllava/test_processor_vipllava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vit_msn/test_modeling_vit_msn.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/align/test_modeling_align.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/align/test_processor_align.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/grounding_dino/test_modeling_grounding_dino.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/grounding_dino/test_image_processing_grounding_dino.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/grounding_dino/test_processor_grounding_dino.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/superglue/test_image_processing_superglue.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/superglue/test_modeling_superglue.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bigbird_pegasus/test_modeling_bigbird_pegasus.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_onevision/test_modeling_llava_onevision.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_onevision/test_image_processing_llava_onevision.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_onevision/test_processor_llava_onevision.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vit/test_image_processing_vit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vit/test_modeling_tf_vit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vit/test_modeling_flax_vit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vit/test_modeling_vit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/levit/test_image_processing_levit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/levit/test_modeling_levit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilenet_v1/test_image_processing_mobilenet_v1.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilenet_v1/test_modeling_mobilenet_v1.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vision_encoder_decoder/test_modeling_flax_vision_encoder_decoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vision_encoder_decoder/test_modeling_vision_encoder_decoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vision_encoder_decoder/test_modeling_tf_vision_encoder_decoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/convnext/test_modeling_convnext.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/convnext/test_modeling_tf_convnext.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/convnext/test_image_processing_convnext.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/tvp/test_image_processing_tvp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/tvp/test_modeling_tvp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clipseg/test_modeling_clipseg.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clipseg/test_processor_clipseg.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv2/test_image_processing_layoutlmv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv2/test_processor_layoutlmv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv2/test_modeling_layoutlmv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv2/test_tokenization_layoutlmv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rt_detr_v2/test_modeling_rt_detr_v2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/nougat/test_image_processing_nougat.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/instructblipvideo/test_image_processing_instrictblipvideo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/perceiver/test_modeling_perceiver.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/depth_pro/test_image_processing_depth_pro.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/depth_pro/test_modeling_depth_pro.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/plbart/test_modeling_plbart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deformable_detr/test_image_processing_deformable_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/deformable_detr/test_modeling_deformable_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/detr/test_image_processing_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/detr/test_modeling_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/tapas/test_modeling_tf_tapas.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/tapas/test_modeling_tapas.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava/test_configuration_llava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava/test_image_processing_llava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava/test_modeling_llava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava/test_processor_llava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vit_mae/test_modeling_tf_vit_mae.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vit_mae/test_modeling_vit_mae.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/chameleon/test_image_processing_chameleon.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/chameleon/test_processor_chameleon.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/chameleon/test_modeling_chameleon.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/conditional_detr/test_modeling_conditional_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/conditional_detr/test_image_processing_conditional_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bit/test_modeling_bit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/timm_wrapper/test_image_processing_timm_wrapper.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/timm_wrapper/test_modeling_timm_wrapper.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/yolos/test_image_processing_yolos.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/yolos/test_modeling_yolos.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/chinese_clip/test_modeling_chinese_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/chinese_clip/test_processor_chinese_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/chinese_clip/test_image_processing_chinese_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/falcon/test_modeling_falcon.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/siglip/test_modeling_siglip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/siglip/test_image_processing_siglip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/trocr/test_processor_trocr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilevit/test_modeling_tf_mobilevit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilevit/test_modeling_mobilevit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilevit/test_image_processing_mobilevit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/regnet/test_modeling_regnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/regnet/test_modeling_tf_regnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/regnet/test_modeling_flax_regnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pvt_v2/test_modeling_pvt_v2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/beit/test_modeling_beit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/beit/test_image_processing_beit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/beit/test_modeling_flax_beit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rt_detr/test_image_processing_rt_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rt_detr/test_modeling_rt_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/rt_detr/test_modeling_rt_detr_resnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilenet_v2/test_image_processing_mobilenet_v2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilenet_v2/test_modeling_mobilenet_v2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/segformer/test_image_processing_segformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/segformer/test_modeling_tf_segformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/segformer/test_modeling_segformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/ijepa/test_modeling_ijepa.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlm/test_modeling_xlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlm/test_modeling_tf_xlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mistral/test_modeling_mistral.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mistral/test_modeling_tf_mistral.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mobilevitv2/test_modeling_mobilevitv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/luke/test_modeling_luke.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pixtral/test_image_processing_pixtral.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pixtral/test_processor_pixtral.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/convnextv2/test_modeling_tf_convnextv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/convnextv2/test_modeling_convnextv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2/test_modeling_qwen2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blip/test_image_processing_blip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dinov2_with_registers/test_modeling_dinov2_with_registers.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/groupvit/test_modeling_tf_groupvit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/groupvit/test_modeling_groupvit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/kosmos2/test_modeling_kosmos2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/kosmos2/test_processor_kosmos2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/glpn/test_modeling_glpn.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/glpn/test_image_processing_glpn.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/poolformer/test_modeling_poolformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/poolformer/test_image_processing_poolformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dinat/test_modeling_dinat.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vilt/test_modeling_vilt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vilt/test_image_processing_vilt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/table_transformer/test_modeling_table_transformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/roformer/test_modeling_tf_roformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bros/test_modeling_bros.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clip/test_image_processing_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clip/test_modeling_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clip/test_modeling_tf_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clip/test_processor_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clip/test_modeling_flax_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clip/test_tokenization_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/resnet/test_modeling_flax_resnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/resnet/test_modeling_resnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/resnet/test_modeling_tf_resnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fuyu/test_image_processing_fuyu.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fuyu/test_processor_fuyu.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fuyu/test_modeling_fuyu.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/udop/test_modeling_udop.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/udop/test_processor_udop.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/udop/test_tokenization_udop.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/oneformer/test_modeling_oneformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/oneformer/test_processor_oneformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/oneformer/test_image_processing_oneformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/starcoder2/test_modeling_starcoder2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/led/test_modeling_led.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vits/test_modeling_vits.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vits/test_tokenization_vits.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2_vl/test_modeling_qwen2_vl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2_vl/test_image_processing_qwen2_vl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2_vl/test_processor_qwen2_vl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_next_video/test_modeling_llava_next_video.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_next_video/test_processor_llava_next_video.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_next_video/test_image_processing_llava_next_video.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/x_clip/test_modeling_x_clip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/hiera/test_modeling_hiera.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/phi/test_modeling_phi.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/nllb_moe/test_modeling_nllb_moe.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dinov2/test_modeling_flax_dinov2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dinov2/test_modeling_dinov2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/efficientnet/test_image_processing_efficientnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/efficientnet/test_modeling_efficientnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_next/test_processor_llava_next.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_next/test_modeling_llava_next.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/llava_next/test_image_processing_llava_next.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/siglip2/test_image_processing_siglip2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/siglip2/test_modeling_siglip2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2_5_vl/test_processor_qwen2_5_vl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2_5_vl/test_modeling_qwen2_5_vl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/superpoint/test_image_processing_superpoint.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/superpoint/test_modeling_superpoint.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bridgetower/test_image_processing_bridgetower.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bridgetower/test_modeling_bridgetower.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bridgetower/test_processor_bridgetower.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/videomae/test_modeling_videomae.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/videomae/test_image_processing_videomae.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/zoedepth/test_modeling_zoedepth.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/zoedepth/test_image_processing_zoedepth.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dab_detr/test_modeling_dab_detr.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/colpali/test_modeling_colpali.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/colpali/test_processing_colpali.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mvp/test_modeling_mvp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pvt/test_image_processing_pvt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pvt/test_modeling_pvt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mgp_str/test_modeling_mgp_str.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mgp_str/test_processor_mgp_str.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vitdet/test_modeling_vitdet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/aya_vision/test_modeling_aya_vision.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/aya_vision/test_processor_aya_vision.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/swinv2/test_modeling_swinv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/owlv2/test_modeling_owlv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/owlv2/test_image_processing_owlv2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv3/test_modeling_layoutlmv3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv3/test_image_processing_layoutlmv3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv3/test_processor_layoutlmv3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv3/test_modeling_tf_layoutlmv3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutlmv3/test_tokenization_layoutlmv3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vitpose_backbone/test_modeling_vitpose_backbone.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xmod/test_modeling_xmod.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/aria/test_image_processing_aria.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/aria/test_modeling_aria.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/aria/test_processor_aria.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics2/test_image_processing_idefics2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics2/test_modeling_idefics2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics2/test_processor_idefics2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/reformer/test_modeling_reformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dit/test_modeling_dit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mbart/test_modeling_mbart.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlnet/test_modeling_tf_xlnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/xlnet/test_modeling_xlnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/markuplm/test_modeling_markuplm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/markuplm/test_tokenization_markuplm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/markuplm/test_processor_markuplm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fnet/test_modeling_fnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/maskformer/test_image_processing_maskformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/maskformer/test_modeling_maskformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vivit/test_image_processing_vivit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vivit/test_modeling_vivit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/phi3/test_modeling_phi3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/timesformer/test_modeling_timesformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/focalnet/test_modeling_focalnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutxlm/test_processor_layoutxlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/layoutxlm/test_tokenization_layoutxlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/swin/test_modeling_swin.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/swin/test_modeling_tf_swin.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/auto/test_image_processing_auto.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/emu3/test_modeling_emu3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/emu3/test_processor_emu3.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pix2struct/test_processor_pix2struct.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pix2struct/test_image_processing_pix2struct.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pix2struct/test_modeling_pix2struct.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dpt/test_modeling_dpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dpt/test_modeling_dpt_hybrid.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dpt/test_modeling_dpt_auto_backbone.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dpt/test_image_processing_dpt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/omdet_turbo/test_processor_omdet_turbo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/omdet_turbo/test_modeling_omdet_turbo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/flava/test_modeling_flava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/flava/test_image_processing_flava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/flava/test_processor_flava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/donut/test_image_processing_donut.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2_moe/test_modeling_qwen2_moe.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/swiftformer/test_modeling_tf_swiftformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/swiftformer/test_modeling_swiftformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vitpose/test_modeling_vitpose.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/vitpose/test_image_processing_vitpose.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/depth_anything/test_modeling_depth_anything.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/got_ocr2/test_image_processing_got_ocr2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/got_ocr2/test_processor_got_ocr2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/got_ocr2/test_modeling_got_ocr2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/altclip/test_processor_altclip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/altclip/test_modeling_altclip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mixtral/test_modeling_mixtral.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/lilt/test_modeling_lilt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/video_llava/test_modeling_video_llava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/video_llava/test_image_processing_video_llava.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/upernet/test_modeling_upernet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/smolvlm/test_modeling_smolvlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/smolvlm/test_image_processing_smolvlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/smolvlm/test_processor_smolvlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics/test_modeling_idefics.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics/test_image_processing_idefics.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics/test_processor_idefics.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/idefics/test_modeling_tf_idefics.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/longformer/test_modeling_longformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/longformer/test_modeling_tf_longformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/data2vec/test_modeling_data2vec_vision.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/data2vec/test_modeling_tf_data2vec_vision.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/opt/test_modeling_opt.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/sam/test_modeling_tf_sam.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/sam/test_modeling_sam.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/sam/test_processor_sam.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/git/test_processor_git.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/git/test_modeling_git.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/ctrl/test_modeling_tf_ctrl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/ctrl/test_modeling_ctrl.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mask2former/test_modeling_mask2former.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mask2former/test_image_processing_mask2former.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/owlvit/test_image_processing_owlvit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/owlvit/test_modeling_owlvit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/owlvit/test_processor_owlvit.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/quantization/autoawq/test_awq.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/examples/pytorch/test_accelerate_examples.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/examples/pytorch/test_pytorch_examples.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/examples/tensorflow/test_tensorflow_examples.py` - ModelTest not imported
+- ❌ `refactored_generator_suite/tests/test_integration.py` - ModelTest not imported
+- ❌ `refactored_generator_suite/tests/test_templates.py` - ModelTest not imported
+- ❌ `refactored_generator_suite/tests/test_model_selection.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_heterogeneous_scheduler.py` - ModelTest not imported
+
+### Audio Models
+
+- ❌ `test_hf_unispeech.py` - ModelTest not imported
+- ❌ `test_web_resource_pool_integration.py` - ModelTest not imported
+- ❌ `test_web_resource_pool.py` - ModelTest not imported
+- ❌ `test_resource_pool_enhanced.py` - ModelTest not imported
+- ❌ `test_web_resource_pool_fault_tolerance_integration.py` - ModelTest not imported
+- ❌ `generate_test.py` - ModelTest not imported
+- ❌ `test_cross_model_tensor_sharing.py` - ModelTest not imported
+- ❌ `test_webgpu_4bit_inference.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_firefox_webgpu_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 22)
+- ❌ `test_resource_pool_bridge_integration.py` - ModelTest not imported
+- ❌ `test_fault_tolerant_cross_browser_model_sharding_validation.py` - ModelTest not imported
+- ❌ `test_real_browser_fault_tolerance.py` - ModelTest not imported
+- ❌ `test_hf_data2vec_audio.py` - ModelTest not imported
+- ❌ `test_cross_browser_model_sharding.py` - Error processing file: unexpected indent (<unknown>, line 14)
+- ❌ `test_ipfs_ultra_low_precision_integration.py` - ModelTest not imported
+- ❌ `resource_pool_bridge_test.py` - Error processing file: unexpected indent (<unknown>, line 12)
+- ❌ `test_webgpu_browsers_comparison.py` - Error processing file: unexpected indent (<unknown>, line 19)
+- ❌ `openvino_backend_standalone_test.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `test_webgpu_audio_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 16)
+- ❌ `test_webgpu_ultra_low_precision.py` - Error processing file: unexpected indent (<unknown>, line 20)
+- ❌ `test_hf_wav2vec2.py` - ModelTest not imported
+- ❌ `test_enhanced_openvino_integration.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test_hf_whisper.py` - ModelTest not imported
+- ❌ `test_hf_musicgen.py` - ModelTest not imported
+- ❌ `test_hf_audioldm2.py` - ModelTest not imported
+- ❌ `test_module_paths.py` - Error processing file: invalid syntax (<unknown>, line 15)
+- ❌ `test_browser_performance_optimizer.py` - ModelTest not imported
+- ❌ `test_webgpu_ulp_demo.py` - ModelTest not imported
+- ❌ `test_resource_pool_bridge_recovery.py` - ModelTest not imported
+- ❌ `test_webgpu_quantization.py` - Error processing file: unexpected indent (<unknown>, line 17)
+- ❌ `test_power_efficient_deployment.py` - Error processing file: unmatched ')' (<unknown>, line 24)
+- ❌ `test_hf_clap.py` - ModelTest not imported
+- ❌ `template_integration/generate_refactored_test.py` - ModelTest not imported
+- ❌ `template_integration/temp_test.py` - Missing required methods: verify_model_output, detect_preferred_device Missing: verify_model_output, detect_preferred_device
+- ❌ `template_system/generate_test.py` - ModelTest not imported
+- ❌ `modality_tests/test_hf_whisper.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `modality_tests/test_hf_wav2vec2.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `generated_tests_enhanced/test_whisper.py` - ModelTest not imported
+- ❌ `sample_tests/test_hf_whisper.py` - Error processing file: unmatched ')' (<unknown>, line 20)
+- ❌ `skills/test_hf_unispeech_sat.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_data2vec-audio.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_fastspeech2_conformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_unispeech.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_seamless_m4t_v2.py` - Error processing file: unmatched ')' (<unknown>, line 15)
+- ❌ `skills/test_hf_qwen2_audio.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_qwen2_audio_encoder.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_wav2vec2_conformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_van.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_efficientformer.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_audio_spectrogram_transformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_audioldm2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_encodec.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_whisper.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_speech_encoder_decoder.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_wavlm.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_nat.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_wav2vec2-conformer.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_jukebox.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_wav2vec2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_bros.py` - Error processing file: unmatched ')' (<unknown>, line 18)
+- ❌ `skills/test_hf_data2vec_audio.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `predictive_performance/test_multi_model_web_integration.py` - ModelTest not imported
+- ❌ `predictive_performance/test_web_resource_pool_adapter.py` - ModelTest not imported
+- ❌ `distributed_testing/selenium_e2e_browser_recovery_test.py` - ModelTest not imported
+- ❌ `distributed_testing/run_real_browser_test.py` - ModelTest not imported
+- ❌ `distributed_testing/test_enhanced_hardware_taxonomy.py` - ModelTest not imported
+- ❌ `model_test_runners/run_whisper_test.py` - Error processing file: invalid syntax (<unknown>, line 15)
+- ❌ `model_test_runners/run_wav2vec2_test.py` - Error processing file: invalid syntax (<unknown>, line 15)
+- ❌ `key_model_tests/test_hf_clap.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `key_model_tests/test_hf_wav2vec2.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `key_model_tests/test_hf_whisper.py` - Error processing file: unexpected indent (<unknown>, line 79)
+- ❌ `fixed_tests/test_hf_wav2vec2.py` - ModelTest not imported
+- ❌ `fixed_tests/test_hf_whisper.py` - ModelTest not imported
+- ❌ `priority_model_tests_fixed/test_whisper.py` - ModelTest not imported
+- ❌ `key_models_hardware_fixes/test_hf_whisper.py` - Error processing file: unmatched ')' (<unknown>, line 13)
+- ❌ `key_models_hardware_fixes/test_hf_wav2vec2.py` - Error processing file: expected an indented block after function definition on line 37 (<unknown>, line 38)
+- ❌ `generated_tests_minimal/test_whisper.py` - ModelTest not imported
+- ❌ `archive/test_webgpu_shader_precompilation_fix.py` - Error processing file: unmatched ')' (<unknown>, line 16)
+- ❌ `generated_tests_fixed/test_wav2vec2-conformer.py` - Error processing file: invalid syntax (<unknown>, line 55)
+- ❌ `final_models/test_clvp.py` - ModelTest not imported
+- ❌ `priority_model_tests/test_whisper.py` - ModelTest not imported
+- ❌ `generated_tests_validation/test_whisper.py` - Error processing file: invalid syntax (<unknown>, line 53)
+- ❌ `generated_tests/test_whisper.py` - ModelTest not imported
+- ❌ `generated_tests_final/test_whisper.py` - ModelTest not imported
+- ❌ `fixed_generated_tests/test_hf_wav2vec2.py` - Error processing file: expected an indented block after function definition on line 94 (<unknown>, line 95)
+- ❌ `fixed_generated_tests/test_hf_whisper.py` - ModelTest not imported
+- ❌ `phase16_key_models/tests/test_hf_whisper_tiny.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `phase16_key_models/tests/test_hf_wav2vec2_base.py` - Error processing file: unmatched '}' (<unknown>, line 59)
+- ❌ `test/hardware/webgpu/test_hardware_taxonomy_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_enhanced_openvino_integration.py` - Error processing file: unexpected indent (<unknown>, line 13)
+- ❌ `test/models/text/test_webgpu_browsers_comparison.py` - Error processing file: unexpected indent (<unknown>, line 19)
+- ❌ `test/models/text/test_resource_pool_bridge_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_webgpu_ulp_demo.py` - ModelTest not imported
+- ❌ `test/models/text/test_web_resource_pool_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_webgpu_quantization.py` - Error processing file: unexpected indent (<unknown>, line 17)
+- ❌ `test/models/text/test_webgpu_ultra_low_precision.py` - Error processing file: unexpected indent (<unknown>, line 20)
+- ❌ `test/models/text/test_ipfs_ultra_low_precision_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_multi_model_web_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_web_resource_pool_fault_tolerance_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_load_balancer_resource_pool_integration.py` - ModelTest not imported
+- ❌ `test/models/text/test_webgpu_4bit_inference.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test/models/audio/test_webgpu_audio_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 16)
+- ❌ `test/models/audio/test_whisper-tiny_webgpu.py` - ModelTest not imported
+- ❌ `test/models/audio/test_firefox_webgpu_compute_shaders.py` - Error processing file: unexpected indent (<unknown>, line 22)
+- ❌ `transformers/tests/test_sequence_feature_extraction_common.py` - ModelTest not imported
+- ❌ `transformers/examples/flax/test_flax_examples.py` - ModelTest not imported
+- ❌ `transformers/tests/utils/test_audio_utils.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_audio_classification.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_automatic_speech_recognition.py` - ModelTest not imported
+- ❌ `transformers/tests/pipelines/test_pipelines_zero_shot_audio_classification.py` - ModelTest not imported
+- ❌ `transformers/tests/agents/test_final_answer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clvp/test_feature_extraction_clvp.py` - ModelTest not imported
+- ❌ `transformers/tests/models/sew/test_modeling_sew.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2_with_lm/test_processor_wav2vec2_with_lm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clap/test_feature_extraction_clap.py` - ModelTest not imported
+- ❌ `transformers/tests/models/clap/test_modeling_clap.py` - ModelTest not imported
+- ❌ `transformers/tests/models/audio_spectrogram_transformer/test_modeling_audio_spectrogram_transformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/audio_spectrogram_transformer/test_feature_extraction_audio_spectrogram_transformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speech_encoder_decoder/test_modeling_flax_speech_encoder_decoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/speech_encoder_decoder/test_modeling_speech_encoder_decoder.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2_conformer/test_modeling_wav2vec2_conformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/univnet/test_modeling_univnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/univnet/test_feature_extraction_univnet.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2/test_tokenization_wav2vec2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2/test_modeling_flax_wav2vec2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2/test_modeling_wav2vec2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2/test_processor_wav2vec2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2/test_feature_extraction_wav2vec2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2/test_modeling_tf_wav2vec2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2_audio/test_processor_qwen2_audio.py` - ModelTest not imported
+- ❌ `transformers/tests/models/qwen2_audio/test_modeling_qwen2_audio.py` - ModelTest not imported
+- ❌ `transformers/tests/models/musicgen_melody/test_feature_extraction_musicgen_melody.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pop2piano/test_feature_extraction_pop2piano.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pop2piano/test_processor_pop2piano.py` - ModelTest not imported
+- ❌ `transformers/tests/models/pop2piano/test_modeling_pop2piano.py` - ModelTest not imported
+- ❌ `transformers/tests/models/data2vec/test_modeling_data2vec_audio.py` - ModelTest not imported
+- ❌ `transformers/tests/models/whisper/test_feature_extraction_whisper.py` - ModelTest not imported
+- ❌ `transformers/tests/models/whisper/test_modeling_whisper.py` - ModelTest not imported
+- ❌ `transformers/tests/models/whisper/test_tokenization_whisper.py` - ModelTest not imported
+- ❌ `transformers/tests/models/whisper/test_modeling_tf_whisper.py` - ModelTest not imported
+- ❌ `transformers/tests/models/whisper/test_processor_whisper.py` - ModelTest not imported
+- ❌ `transformers/tests/models/whisper/test_modeling_flax_whisper.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fastspeech2_conformer/test_tokenization_fastspeech2_conformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/fastspeech2_conformer/test_modeling_fastspeech2_conformer.py` - ModelTest not imported
+- ❌ `transformers/tests/models/seamless_m4t/test_feature_extraction_seamless_m4t.py` - ModelTest not imported
+- ❌ `transformers/tests/models/unispeech/test_modeling_unispeech.py` - ModelTest not imported
+- ❌ `transformers/tests/models/mimi/test_modeling_mimi.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wavlm/test_modeling_wavlm.py` - ModelTest not imported
+- ❌ `transformers/tests/models/wav2vec2_phoneme/test_tokenization_wav2vec2_phoneme.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dac/test_modeling_dac.py` - ModelTest not imported
+- ❌ `transformers/tests/models/dac/test_feature_extraction_dac.py` - ModelTest not imported
+- ❌ `transformers/tests/models/encodec/test_feature_extraction_encodec.py` - ModelTest not imported
+- ❌ `transformers/tests/models/encodec/test_modeling_encodec.py` - ModelTest not imported
+- ❌ `transformers/tests/models/unispeech_sat/test_modeling_unispeech_sat.py` - ModelTest not imported
+- ❌ `transformers/tests/models/bark/test_modeling_bark.py` - ModelTest not imported
+- ❌ `transformers/tests/models/moonshine/test_modeling_moonshine.py` - ModelTest not imported
+- ❌ `transformers/tests/models/sew_d/test_modeling_sew_d.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_data2vec_audio.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_data2vec-audio.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_audioldm2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_unispeech.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_wav2vec2-conformer.py` - Error processing file: invalid syntax (<unknown>, line 55)
+- ❌ `skills/fixed_tests/test_whisper.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_wav2vec2.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_audio.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_whisper.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_wav2vec2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_unispeech.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_data2vec-audio.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_sew.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_wavlm.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_whisper.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_data2vec_audio.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_musicgen.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_unispeech.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_wav2vec2.py` - ModelTest not imported
+- ❌ `skills/test_output/test_hf_whisper.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_wav2vec2_standardized.py` - ModelTest not imported
+- ❌ `refactored_test_suite/tests/unit/test_whisper-tiny.py` - Error processing file: expected 'except' or 'finally' block (<unknown>, line 117)
+- ❌ `refactored_test_suite/models/audio/test_wav2vec2_base_960h.py` - Missing required methods: verify_model_output, detect_preferred_device Missing: verify_model_output, detect_preferred_device
+- ❌ `refactored_test_suite/models/audio/test_hf_clap.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/audio/test_whisper_tiny.py` - Missing required methods: verify_model_output, detect_preferred_device Missing: verify_model_output, detect_preferred_device
+- ❌ `refactored_test_suite/models/audio/test_hf_wav2vec2.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `refactored_test_suite/models/audio/test_hf_whisper.py` - Missing required methods: verify_model_output Missing: verify_model_output
+- ❌ `distributed_testing/tests/test_browser_recovery_strategies.py` - ModelTest not imported
+- ❌ `distributed_testing/integration_tests/test_load_balancer_resource_pool_integration.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_webnn/test_whisper-tiny_webnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_openvino/test_whisper-tiny_openvino.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_webgpu/test_whisper-tiny_webgpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_mps/test_whisper-tiny_mps.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_cpu/test_whisper-tiny_cpu.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_qnn/test_whisper-tiny_qnn.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_cuda/test_whisper-tiny_cuda.py` - ModelTest not imported
+- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_rocm/test_whisper-tiny_rocm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/test_sequence_feature_extraction_common.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_final_answer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_automatic_speech_recognition.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_zero_shot_audio_classification.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_audio_classification.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/utils/test_audio_utils.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/unispeech/test_modeling_unispeech.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2_with_lm/test_processor_wav2vec2_with_lm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/encodec/test_modeling_encodec.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/encodec/test_feature_extraction_encodec.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2_conformer/test_modeling_wav2vec2_conformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/audio_spectrogram_transformer/test_feature_extraction_audio_spectrogram_transformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/audio_spectrogram_transformer/test_modeling_audio_spectrogram_transformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speech_encoder_decoder/test_modeling_speech_encoder_decoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/speech_encoder_decoder/test_modeling_flax_speech_encoder_decoder.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/sew/test_modeling_sew.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/moonshine/test_modeling_moonshine.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2_audio/test_processor_qwen2_audio.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/qwen2_audio/test_modeling_qwen2_audio.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clap/test_feature_extraction_clap.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clap/test_modeling_clap.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/unispeech_sat/test_modeling_unispeech_sat.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/clvp/test_feature_extraction_clvp.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/seamless_m4t/test_feature_extraction_seamless_m4t.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/univnet/test_modeling_univnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/univnet/test_feature_extraction_univnet.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fastspeech2_conformer/test_tokenization_fastspeech2_conformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/fastspeech2_conformer/test_modeling_fastspeech2_conformer.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/musicgen_melody/test_feature_extraction_musicgen_melody.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2_phoneme/test_tokenization_wav2vec2_phoneme.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/sew_d/test_modeling_sew_d.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2/test_modeling_wav2vec2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2/test_feature_extraction_wav2vec2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2/test_modeling_flax_wav2vec2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2/test_processor_wav2vec2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2/test_tokenization_wav2vec2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wav2vec2/test_modeling_tf_wav2vec2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/whisper/test_tokenization_whisper.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/whisper/test_feature_extraction_whisper.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/whisper/test_processor_whisper.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/whisper/test_modeling_whisper.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/whisper/test_modeling_tf_whisper.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/whisper/test_modeling_flax_whisper.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/bark/test_modeling_bark.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/wavlm/test_modeling_wavlm.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/mimi/test_modeling_mimi.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dac/test_modeling_dac.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/dac/test_feature_extraction_dac.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pop2piano/test_modeling_pop2piano.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pop2piano/test_processor_pop2piano.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/pop2piano/test_feature_extraction_pop2piano.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/data2vec/test_modeling_data2vec_audio.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/examples/flax/test_flax_examples.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_coordinator_load_balancer.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/test_basic_load_balancer.py` - ModelTest not imported
+- ❌ `duckdb_api/visualization/advanced_visualization/test_customizable_dashboard.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_hardware_abstraction_layer.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/tests/test_hardware_taxonomy_integration.py` - ModelTest not imported
+- ❌ `duckdb_api/distributed_testing/dashboard/static/sounds/test_sound_files.py` - ModelTest not imported
+- ❌ `fixed_web_platform/test/test_fault_tolerant_model_sharding.py` - ModelTest not imported
+
+### Multimodal Models
+
+- ❌ `test_hf_blip-2.py` - Error processing file: invalid decimal literal (<unknown>, line 82)
+- ❌ `test_multimodal_optimization.py` - Error processing file: unexpected indent (<unknown>, line 15)
+- ❌ `test_hf_blip.py` - ModelTest not imported
+- ❌ `test_hf_instruct_blip.py` - ModelTest not imported
+- ❌ `test_hf_blip_2.py` - ModelTest not imported
+- ❌ `template_integration/generate_multimodal_test.py` - ModelTest not imported
+- ❌ `modality_tests/test_hf_blip.py` - Error processing file: unmatched ')' (<unknown>, line 21)
+- ❌ `skills/test_hf_blip2.py` - Error processing file: unmatched ')' (<unknown>, line 17)
+- ❌ `skills/test_hf_blip_2.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_instructblipvideo.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_blip.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `skills/test_hf_instructblip.py` - Error processing file: unmatched ')' (<unknown>, line 5)
+- ❌ `fixed_tests/test_hf_blip.py` - ModelTest not imported
+- ❌ `generated_tests_fixed/test_instructblip.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `transformers/tests/models/instructblip/test_modeling_instructblip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/instructblip/test_processor_instructblip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blip/test_processor_blip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blip/test_modeling_tf_blip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blip/test_modeling_blip.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blip_2/test_modeling_blip_2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/blip_2/test_processor_blip_2.py` - ModelTest not imported
+- ❌ `transformers/tests/models/instructblipvideo/test_modeling_instructblipvideo.py` - ModelTest not imported
+- ❌ `transformers/tests/models/instructblipvideo/test_processor_instructblipvideo.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_instructblip.py` - Error processing file: invalid syntax (<unknown>, line 54)
+- ❌ `skills/fixed_tests/test_blip-2.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_blip.py` - Error processing file: invalid syntax (<unknown>, line 10)
+- ❌ `skills/fixed_tests/test_hf_blip.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/test_hf_blip_2.py` - Error processing file: unexpected character after line continuation character (<unknown>, line 156)
+- ❌ `skills/fixed_tests/test_hf_multimodal.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_blip_2.py` - ModelTest not imported
+- ❌ `skills/temp_generated/test_hf_blip.py` - ModelTest not imported
+- ❌ `skills/fixed_tests/standardized/test_hf_blip_standardized.py` - ModelTest not imported
+- ❌ `refactored_test_suite/models/multimodal/test_blip_vqa_base.py` - Missing required methods: load_model, verify_model_output Missing: load_model, verify_model_output
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/instructblipvideo/test_modeling_instructblipvideo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/instructblipvideo/test_processor_instructblipvideo.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blip/test_modeling_blip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blip/test_processor_blip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blip/test_modeling_tf_blip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blip_2/test_modeling_blip_2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/blip_2/test_processor_blip_2.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/instructblip/test_modeling_instructblip.py` - ModelTest not imported
+- ❌ `doc-builder/transformers-docs/transformers/tests/models/instructblip/test_processor_instructblip.py` - ModelTest not imported
+

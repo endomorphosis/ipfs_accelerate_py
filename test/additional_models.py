@@ -329,6 +329,86 @@ ADDITIONAL_MODELS = {
         "task": "zero-shot-image-classification",
         "class": "SiglipModel",
         "test_input": ["test.jpg", ["a photo of a cat", "a photo of a dog", "a photo of a person"]]
+    },
+    
+    # Additional models found in "Unknown" section but missing proper architecture categories
+    "stablelm": {
+        "default_model": "stabilityai/stablelm-3b-4e1t",
+        "task": "text-generation",
+        "class": "StableLmForCausalLM",
+        "test_input": "Once upon a time"
+    },
+    "data2vec-text": {
+        "default_model": "facebook/data2vec-text-base",
+        "task": "fill-mask",
+        "class": "Data2VecTextForMaskedLM",
+        "test_input": "The quick brown fox jumps over the [MASK] dog."
+    },
+    "vision-text-dual-encoder": {
+        "default_model": "google/vit-base-patch16-224",
+        "task": "zero-shot-image-classification",
+        "class": "VisionTextDualEncoderModel",
+        "test_input": ["test.jpg", ["a photo of a cat", "a photo of a dog", "a photo of a person"]]
+    },
+    "umt5": {
+        "default_model": "google/umt5-small",
+        "task": "text2text-generation",
+        "class": "UMT5ForConditionalGeneration",
+        "test_input": "translate English to German: Hello, how are you?"
+    },
+    "xlm-roberta-xl": {
+        "default_model": "facebook/xlm-roberta-xl",
+        "task": "fill-mask",
+        "class": "XLMRobertaXLForMaskedLM",
+        "test_input": "The quick brown fox jumps over the <mask> dog."
+    },
+    "nezha": {
+        "default_model": "sijunhe/nezha-cn-base",
+        "task": "fill-mask",
+        "class": "NezhaForMaskedLM",
+        "test_input": "The quick brown fox jumps over the [MASK] dog."
+    },
+    "mra": {
+        "default_model": "uw-madison/mra-base-512-4l",
+        "task": "fill-mask",
+        "class": "MraForMaskedLM",
+        "test_input": "The quick brown fox jumps over the [MASK] dog."
+    },
+    "flaubert": {
+        "default_model": "flaubert/flaubert_small_cased",
+        "task": "fill-mask",
+        "class": "FlaubertForMaskedLM",
+        "test_input": "Le <special:mask> est tombé dans la rivière."
+    },
+    "olmo": {
+        "default_model": "allenai/OLMo-7B",
+        "task": "text-generation",
+        "class": "OLMoForCausalLM",
+        "test_input": "Once upon a time"
+    },
+    "olmoe": {
+        "default_model": "allenai/OLMoE-8B",
+        "task": "text-generation",
+        "class": "OLMoEForCausalLM",
+        "test_input": "Once upon a time"
+    },
+    "convnextv2": {
+        "default_model": "facebook/convnextv2-tiny-1k-224",
+        "task": "image-classification",
+        "class": "ConvNextV2ForImageClassification",
+        "test_input": "test.jpg"
+    },
+    "swinv2": {
+        "default_model": "microsoft/swinv2-tiny-patch4-window8-256",
+        "task": "image-classification",
+        "class": "Swinv2ForImageClassification",
+        "test_input": "test.jpg"
+    },
+    "cvt": {
+        "default_model": "microsoft/cvt-13",
+        "task": "image-classification",
+        "class": "CvtForImageClassification",
+        "test_input": "test.jpg"
     }
 }
 
@@ -337,7 +417,7 @@ ADDITIONAL_ARCHITECTURE_MAPPINGS = {
     "encoder-only": [
         "bigbird", "canine", "convbert", "data2vec-text", "esm", "flaubert", 
         "ibert", "luke", "megatron-bert", "mobilebert", "nystromformer", 
-        "roformer", "splinter", "xlm", "xmod"
+        "roformer", "splinter", "xlm", "xmod", "xlm-roberta-xl", "nezha", "mra"
     ],
     "decoder-only": [
         "codegen", "command-r", "gemma2", "gemma3", "llama-3", "mamba", 
@@ -349,10 +429,10 @@ ADDITIONAL_ARCHITECTURE_MAPPINGS = {
     ],
     "vision": [
         "beit3", "conditional-detr", "convnextv2", "depth-anything", "dinat",
-        "dino", "imagegpt", "mobilenet-v1", "van", "vitdet"
+        "dino", "imagegpt", "mobilenet-v1", "van", "vitdet", "swinv2", "cvt"
     ],
     "vision-text": [
-        "instructblip", "vision-encoder-decoder", "xclip"
+        "instructblip", "vision-encoder-decoder", "xclip", "vision-text-dual-encoder"
     ],
     "speech": [
         "speech-to-text", "speech-to-text-2", "wav2vec2-conformer"

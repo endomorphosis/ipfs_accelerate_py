@@ -43,11 +43,11 @@ GPT_NEOX_MODELS_REGISTRY = {
         "architecture": "decoder-only",
         "description": "GPTNeoX model for text generation",
         "model_type": "gpt-neox",
-        "parameters": "1.3B",
+        "parameters": "20B",
         "context_length": 2048,
-        "embedding_dim": 768,
-        "attention_heads": 12,
-        "layers": 12,
+        "embedding_dim": 6144,
+        "attention_heads": 48,
+        "layers": 44,
         "recommended_tasks": ["text-generation"]
     }
 }
@@ -88,7 +88,7 @@ class TestGPTNeoXModels:
             start_time = time.time()
             
             # Initialize the pipeline with the appropriate task
-            pipe = transformers.pipeline("fill-mask", 
+            pipe = transformers.pipeline("text-generation", 
                 model=self.model_id,
                 device=self.device if self.device != "cpu" else -1
             )
@@ -98,7 +98,7 @@ class TestGPTNeoXModels:
             logger.info(f"Model loading time: {load_time:.2f} seconds")
             
             # Test with a task-appropriate input
-            test_input = "The <mask> is a language model."
+            test_input = "GPTNeoX is a transformer model that"
             
             # Record inference start time
             inference_start = time.time()
@@ -125,6 +125,66 @@ class TestGPTNeoXModels:
             logger.error(f"Error testing pipeline: {e}")
             return {"success": False, "error": str(e)}
     
+    def test_from_pretrained(self):
+        """Test loading the model directly using from_pretrained."""
+        try:
+            if not HAS_TRANSFORMERS or not HAS_TORCH:
+                logger.warning("Transformers or torch not available, skipping from_pretrained test")
+                return {"success": False, "error": "Required libraries not available"}
+                
+            logger.info(f"Testing GPTNeoX model {self.model_id} with from_pretrained on {self.device}")
+            
+            # Record start time
+            start_time = time.time()
+            
+            # Load tokenizer and model
+            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+            model = transformers.AutoModelForCausalLM.from_pretrained(self.model_id)
+            
+            if self.device != "cpu" and HAS_TORCH and torch.cuda.is_available():
+                model = model.to(self.device)
+            
+            # Record model loading time
+            load_time = time.time() - start_time
+            logger.info(f"Model loading time: {load_time:.2f} seconds")
+            
+            # Prepare input
+            test_input = "GPTNeoX is a transformer model that"
+            inputs = tokenizer(test_input, return_tensors="pt")
+            
+            if self.device != "cpu" and HAS_TORCH and torch.cuda.is_available():
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            # Record inference start time
+            inference_start = time.time()
+            
+            # Run inference
+            with torch.no_grad():
+                outputs = model.generate(**inputs, max_length=50)
+                
+            # Decode output
+            output_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Record inference time
+            inference_time = time.time() - inference_start
+            
+            # Store performance stats
+            self.performance_stats["from_pretrained"] = {
+                "load_time": load_time,
+                "inference_time": inference_time
+            }
+            
+            return {
+                "success": True,
+                "model_id": self.model_id,
+                "device": self.device,
+                "inference_time": inference_time,
+                "output": output_text
+            }
+        except Exception as e:
+            logger.error(f"Error in from_pretrained test: {e}")
+            return {"success": False, "error": str(e)}
+    
     def run_tests(self, all_hardware=False):
         """Run all tests for this model."""
         results = {}
@@ -132,6 +192,10 @@ class TestGPTNeoXModels:
         # Run pipeline test
         pipeline_result = self.test_pipeline()
         results["pipeline"] = pipeline_result
+        
+        # Run from_pretrained test
+        from_pretrained_result = self.test_from_pretrained()
+        results["from_pretrained"] = from_pretrained_result
         
         # Add metadata
         results["metadata"] = {
@@ -158,19 +222,25 @@ def main():
     results = gpt_neox_tester.run_tests()
     
     # Print a summary
-    success = results["pipeline"].get("success", False)
+    pipeline_success = results["pipeline"].get("success", False)
+    pretrained_success = results["from_pretrained"].get("success", False)
+    overall_success = pipeline_success and pretrained_success
     
     print("\nTEST RESULTS SUMMARY:")
     
-    if success:
+    if overall_success:
         print(f"  Successfully tested {args.model}")
         print(f"  - Device: {gpt_neox_tester.device}")
-        print(f"  - Inference time: {results['pipeline'].get('inference_time', 'N/A'):.4f}s")
+        print(f"  - Pipeline inference time: {results['pipeline'].get('inference_time', 'N/A'):.4f}s")
+        print(f"  - From_pretrained inference time: {results['from_pretrained'].get('inference_time', 'N/A'):.4f}s")
     else:
         print(f"  Failed to test {args.model}")
-        print(f"  - Error: {results['pipeline'].get('error', 'Unknown error')}")
+        if not pipeline_success:
+            print(f"  - Pipeline error: {results['pipeline'].get('error', 'Unknown error')}")
+        if not pretrained_success:
+            print(f"  - From_pretrained error: {results['from_pretrained'].get('error', 'Unknown error')}")
     
-    return 0 if success else 1
+    return 0 if overall_success else 1
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -379,6 +379,7 @@ We have successfully completed the HuggingFace Testing Framework implementation,
 1. ⚠️ **End-to-End Validation**: Many implemented models need validation with real inference
 2. ⚠️ **Syntax Fixes**: Some generated test files may need syntax improvements 
 3. ⚠️ **Test Execution**: Run the full test suite to verify functionality
+4. ⚠️ **Standardize from_pretrained Testing**: Unify the 4 different implementation approaches (explicit methods, alternative methods, direct calls, and pipeline usage) to a consistent pattern
 
 ### Path Forward
 1. Focus on end-to-end validation with real model weights
@@ -386,6 +387,8 @@ We have successfully completed the HuggingFace Testing Framework implementation,
 3. Create advanced testing strategies for various model architectures
 4. Continue improving the comprehensive test infrastructure
 5. Develop training materials on using the test framework
+6. Implement a standardized approach for from_pretrained() testing across all model types
+7. Enhance automated validation of from_pretrained() testing coverage
 
 The framework now provides complete coverage with 100% of tracked models (309/309) implemented, significantly exceeding our original goal of 198 models. This achievement marks a major milestone in our testing capability, completing the high-priority objective well ahead of the May 15, 2025 target date.
 

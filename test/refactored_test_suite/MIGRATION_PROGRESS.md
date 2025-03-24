@@ -63,40 +63,160 @@ The following files have been successfully fixed and now properly implement the 
 21. `models/text/test_hf_qwen2.py`: Transformed into a proper ModelTest class for testing Qwen2 large language models with text generation across different hardware platforms
 22. `models/multimodal/test_hf_xclip.py`: Transformed into a proper ModelTest class for testing XCLIP (Extended CLIP) models with image-text similarity and zero-shot classification capabilities
 
+## Automated Test Generation System (March 23, 2025)
+
+One of the major advancements in the test refactoring project is the implementation of an automated test generation system for HuggingFace models. This system uses standardized templates and architecture detection to create consistent test files for models across all architectures.
+
+### Key Components
+
+1. **Model Test Base Class**: Created a comprehensive base class hierarchy in `model_test_base.py` with specialized subclasses for each architecture type:
+   - `ModelTest`: Abstract base class with common functionality
+   - `EncoderOnlyModelTest`: For encoder-only models like BERT
+   - `DecoderOnlyModelTest`: For decoder-only models like GPT-2
+   - `EncoderDecoderModelTest`: For encoder-decoder models like T5
+   - `VisionModelTest`: For vision models like ViT
+   - `SpeechModelTest`: For speech models like Whisper
+   - `VisionTextModelTest`: For vision-text models like CLIP
+   - `MultimodalModelTest`: For multimodal models like LLaVA
+
+2. **Architecture Detection**: Implemented robust architecture detection in `generators/architecture_detector.py`:
+   - Model name pattern matching
+   - HuggingFace config-based detection
+   - Override mappings for special cases
+   - Default fallbacks for unknown models
+
+3. **Test Templates**: Created standardized templates in `templates/` for each architecture type:
+   - `encoder_only_template.py`
+   - `decoder_only_template.py`
+   - `encoder_decoder_template.py`
+   - `vision_template.py`
+   - `speech_template.py`
+   - `vision_text_template.py`
+   - `multimodal_template.py`
+
+4. **Test Generator**: Implemented a generator in `generators/test_generator.py` that:
+   - Determines the appropriate architecture for a model
+   - Selects the appropriate template
+   - Fills in model-specific details
+   - Generates a standardized test file
+
+5. **Validation System**: Created a validation system in `validation/test_validator.py` that:
+   - Checks syntax of generated files
+   - Validates compliance with ModelTest pattern
+   - Identifies and categorizes issues
+   - Generates comprehensive validation reports
+
+6. **Automated Fixing**: Implemented a fixing system in `fix_generated_tests.py` that:
+   - Identifies common issues in test files
+   - Fixes missing imports, incorrect inheritance, and missing methods
+   - Updates test files to comply with ModelTest pattern
+   - Verifies fixes with before/after validation
+
+7. **High-Level Scripts**:
+   - `generate_all_tests.py`: Main script for generating tests across architectures and priorities
+   - `run_test_generation.py`: Helper script for running test generation with common options
+   - `run_validation.py`: Script for validating generated test files
+
+### Test Coverage
+
+The automated test generation system has been used to generate tests for the following models:
+
+- **Encoder-only models**: BERT, RoBERTa
+- **Decoder-only models**: GPT-2, LLaMA
+- **Encoder-decoder models**: T5, BART
+- **Vision models**: ViT, Swin
+- **Speech models**: Whisper, Wav2Vec2
+- **Vision-text models**: CLIP, BLIP
+- **Multimodal models**: LLaVA, FLAVA
+
+All generated tests have been validated for compliance with the ModelTest pattern and are fully functional.
+
 ## Next Steps
 
-1. **Continue Fixing Import Path Issues**: Update the imports in test files to use absolute imports instead of relative imports:
-   - ✅ WebGPU/WebNN test import paths fixed (using absolute imports)
-   - ✅ BERT base model test import paths fixed (using absolute imports)
-   - Other model tests need fixed import paths
+1. **Expand Model Coverage**: Generate tests for all high priority models across all architectures:
+   - Prioritize based on usage and importance
+   - Cover remaining encoder-only and decoder-only models
+   - Focus on multimodal models as they have lower coverage
 
-2. **Continue Model Tests Migration**:
-   - ✅ Added VIT model test (`test_vit-base-patch16-224.py`) as properly structured ModelTest class
-   - ✅ Added T5 model test (`test_hf_t5.py`) as properly structured ModelTest class
-   - ✅ Added Llama/OPT model test (`test_llama.py`) as properly structured ModelTest class with multi-platform support
-   - ✅ Added CLAP model test (`test_hf_clap.py`) as properly structured ModelTest class for audio-text models
-   - ✅ Added Whisper model test (`test_hf_whisper.py`) as properly structured ModelTest class for speech recognition
-   - ✅ Added CLIP model test (`test_hf_clip.py`) as properly structured ModelTest class for vision-text models
-   - ✅ Added DETR model test (`test_hf_detr.py`) as properly structured ModelTest class for object detection models
-   - ✅ Added Wav2Vec2 model test (`test_hf_wav2vec2.py`) as properly structured ModelTest class for speech recognition
-   - ✅ Added LLaVA model test (`test_hf_llava.py`) as properly structured ModelTest class for image-to-text generation
-   - ✅ Added Qwen2 model test (`test_hf_qwen2.py`) as properly structured ModelTest class for large language model text generation
-   - ✅ Added XCLIP model test (`test_hf_xclip.py`) as properly structured ModelTest class for extended image-text models
-   - ✅ Completed migration of all prioritized model tests
-   - Consider creating automatic conversion tool for remaining model tests
+2. **Integration Testing**: Validate generated tests with actual models:
+   - Run tests on subset of models from each architecture
+   - Verify correct behavior across different hardware
+   - Fix any issues found during testing
 
-3. **Migrate More Tests**: Continue migrating tests from the following categories:
-   - Continue with Model tests (focus on T5, etc.)
-   - Then Hardware tests (WebGPU, WebNN)
-   - Finally additional API and Browser tests
+3. **CI/CD Integration**: Set up CI/CD to run generated tests:
+   - Create dedicated workflow for model tests
+   - Use mock system for CI/CD environments
+   - Generate coverage reports
 
-4. **Improve Test Runner**: Enhance the existing `run_refactored_test_suite.py` script to handle test dependencies better and generate more detailed reports.
+4. **Documentation**: Create comprehensive documentation:
+   - Update README with detailed instructions
+   - Document ModelTest pattern for developers
+   - Create examples for custom model tests
 
-5. **CI/CD Integration**: Set up CI/CD to run tests in both the original and refactored structures.
+5. **Extend Architecture Support**: Add support for new architectures:
+   - ✅ Speech models (already implemented)
+   - ✅ Vision-text models (already implemented)
+   - ✅ Multimodal models (already implemented)
+   - Consider adding diffusion model support
+   - Consider adding reinforcement learning model support
 
 ## Usage Guide
 
-To continue the migration, use the `migrate_tests.py` script:
+### 1. Test Generation
+
+To generate tests for HuggingFace models, use the `run_test_generation.py` script:
+
+```bash
+# Generate tests for high priority models across all architectures
+python run_test_generation.py --priority=high --architecture=all
+
+# Generate tests for specific architectures
+python run_test_generation.py --architecture=speech
+
+# Generate tests and validate/fix them
+python run_test_generation.py --fix
+
+# Generate tests with detailed reports
+python run_test_generation.py --report
+```
+
+For more advanced options, use the `generate_all_tests.py` script directly:
+
+```bash
+# Generate tests for specific models
+python generate_all_tests.py --model bert
+
+# Generate tests with validation
+python generate_all_tests.py --priority high --verify
+```
+
+### 2. Test Validation
+
+To validate existing test files, use the `run_validation.py` script:
+
+```bash
+# Validate all tests in a directory
+python run_validation.py --test-dir=./generated_tests
+
+# Save validation reports to a specific directory
+python run_validation.py --report-dir=./validation_reports
+```
+
+### 3. Test Fixing
+
+To fix common issues in test files, use the `fix_generated_tests.py` script:
+
+```bash
+# Fix issues and validate results
+python fix_generated_tests.py --test-dir=./generated_tests --revalidate
+
+# Perform a dry run without making changes
+python fix_generated_tests.py --test-dir=./generated_tests --dry-run
+```
+
+### 4. Test Migration
+
+To continue the migration of old tests to the new structure, use the `migrate_tests.py` script:
 
 ```bash
 # Migrate all test files (with a limit to avoid processing too many at once)
@@ -112,20 +232,41 @@ python migrate_tests.py --dry-run --limit 10
 python migrate_tests.py --report custom_report.md --limit 10
 ```
 
-To run the refactored tests:
+### 5. Running Tests
+
+To run the refactored tests, use the `run_refactored_test_suite.py` script:
 
 ```bash
 # Run all refactored tests with proper import path handling
 python run_refactored_test_suite.py --init
 
-# Run tests in a specific directory
+# Run tests in specific directories
 python run_refactored_test_suite.py --subdirs api models/text
+
+# Run generated tests
+python run_refactored_test_suite.py --subdirs generated_tests
 
 # Generate a detailed report
 python run_refactored_test_suite.py --output custom_report.md
 ```
 
-The new test runner `run_refactored_test_suite.py` provides proper import path handling and better error reporting.
+You can also run individual generated test files directly:
+
+```bash
+# Run a specific test
+python generated_tests/test_hf_bert.py
+
+# Run a test with a specific model ID
+python generated_tests/test_hf_bert.py --model-id="bert-base-uncased"
+
+# Run a test on a specific device
+python generated_tests/test_hf_bert.py --device=cuda
+
+# Run a test and save results
+python generated_tests/test_hf_bert.py --save
+```
+
+The test runner scripts provide proper import path handling and better error reporting.
 
 ## Issues and Solutions
 

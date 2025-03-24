@@ -50,8 +50,8 @@ All test files in this directory have been validated to ensure:
 
 | Architecture Type | Models Covered |
 |------------------|----------------|
-| decoder-only | bloom, falcon, gemma, gpt-j, gpt-neo, gpt-neox, gpt2, llama, mistral, mixtral, mpt, opt, phi |
-| encoder-decoder | bart, flan-t5, led, mbart, mt5, pegasus, prophetnet, t5 |
+| decoder-only | bloom, codellama, falcon, gemma, gpt-j, gpt-neo, gpt-neox, gpt2, llama, mistral, mixtral, mosaic_mpt, mpt, opt, phi, pythia, stablelm, xglm |
+| encoder-decoder | bart, flan-t5, led, longt5, mbart, mt5, pegasus, prophetnet, t5 |
 | encoder-only | albert, bert, bigbird, canine, deberta, deberta-v2, distilbert, electra, ernie, layoutlm, rembert, roberta, roformer, xlm-roberta |
 | multimodal | blip, blip-2, clip, flava, git, idefics, imagebind, llava, paligemma, video-llava |
 | speech | bark, clap, encodec, hubert, musicgen, sew, unispeech, wav2vec2, whisper |
@@ -68,7 +68,16 @@ These models represent the architecture expansion phase of our coverage roadmap:
 - **bigbird** (encoder-only): Big Bird model with block sparse attention (March 22, 2025)
 - **bark** (speech): Bark text-to-audio model (March 22, 2025)
 - **canine** (encoder-only): CANINE character-level transformer for multilingual NLP (March 22, 2025)
+- **mosaic_mpt** (decoder-only): MosaicML MPT decoder-only language models (March 22, 2025)
+- **pythia** (decoder-only): Pythia decoder-only language models by EleutherAI (March 22, 2025)
+- **xglm** (decoder-only): XGLM multilingual decoder-only language models (March 22, 2025)
+- **codellama** (decoder-only): CodeLLama code generation model by Meta AI (March 22, 2025)
+- **gpt-neox** (decoder-only): GPT-NeoX autoregressive language model (March 22, 2025)
+- **layoutlm** (encoder-only): LayoutLM model for document understanding (March 22, 2025)
+- **open_llama** (decoder-only): Open-source implementation of Meta's LLaMA model (March 22, 2025)
+- **phi3** (decoder-only): Phi-3 decoder-only language model (March 22, 2025)
 - **roformer** (encoder-only): RoFormer rotary position embedding transformer for NLP (March 22, 2025)
+- **stablelm** (decoder-only): StableLM decoder-only language models (March 22, 2025)
 - **beit** (vision): BEiT vision transformer models for image classification (March 21, 2025)
 - **clap** (speech): Contrastive Language-Audio Pretraining model (March 21, 2025)
 - **clipseg** (vision-text): CLIPSeg segmentation model (March 22, 2025)
@@ -82,7 +91,8 @@ These models represent the architecture expansion phase of our coverage roadmap:
 - **gpt-j** (decoder-only): GPT-J autoregressive language model (March 22, 2025)
 - **gpt-neo** (decoder-only): GPT-Neo autoregressive language models (March 21, 2025)
 - **imagebind** (multimodal): ImageBind multimodal binding model (March 21, 2025)
-- **led** (encoder-decoder): Longformer Encoder-Decoder for long text (March 20, 2025)
+- **led** (encoder-decoder): Longformer Encoder-Decoder for long text (March 22, 2025)
+- **longt5** (encoder-decoder): LongT5 text model with extended context length (March 22, 2025)
 - **musicgen** (speech): MusicGen music generation model (March 20, 2025)
 - **paligemma** (multimodal): PaliGemma multimodal model (March 21, 2025)
 - **pegasus** (encoder-decoder): PEGASUS text summarization model (March 20, 2025)
