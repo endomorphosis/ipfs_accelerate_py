@@ -13,9 +13,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 def generate_model(model_type, output_dir=None):
     """Generate a model implementation from the simple template."""
-    # Default output dir is generated_reference
+    # Default output dir is ipfs_accelerate_py/worker/skillset
     if output_dir is None:
-        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_reference")
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../ipfs_accelerate_py/worker/skillset")
     
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)

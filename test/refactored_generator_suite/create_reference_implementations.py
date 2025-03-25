@@ -218,7 +218,7 @@ def main():
     """Generate reference implementations using the modular template system."""
     parser = argparse.ArgumentParser(description="Generate reference implementations using modular templates")
     parser.add_argument("--model", type=str, help="Model name to generate implementation for", required=True)
-    parser.add_argument("--output-dir", type=str, default="generated_reference", help="Output directory for generated files")
+    parser.add_argument("--output-dir", type=str, default="../ipfs_accelerate_py/worker/skillset", help="Output directory for generated files")
     parser.add_argument("--hardware", type=str, nargs="+", default=["cpu", "cuda"], 
                         help="Hardware backends to include (cpu, cuda, rocm, openvino, mps, qnn)")
     parser.add_argument("--force", action="store_true", help="Force overwrite existing files")
@@ -229,9 +229,9 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Ensure directory path is properly formed
-    if args.output_dir != "generated_reference":
-        logger.warning("Output directory is not 'generated_reference', which is the standard location")
-        logger.warning("Consider using --output-dir generated_reference for consistency")
+    if args.output_dir != "../ipfs_accelerate_py/worker/skillset":
+        logger.warning("Output directory is not '../ipfs_accelerate_py/worker/skillset', which is the standard location")
+        logger.warning("Consider using --output-dir ../ipfs_accelerate_py/worker/skillset for consistency")
     
     # Create templates
     hardware_templates = create_hardware_templates()

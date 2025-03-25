@@ -178,6 +178,9 @@ class TemplateComposer:
             
         logger.info(f"Output file will be: {output_file}")
         
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        
         # Check if file already exists
         if os.path.exists(output_file) and not force:
             logger.warning(f"File already exists: {output_file}, use force=True to overwrite")

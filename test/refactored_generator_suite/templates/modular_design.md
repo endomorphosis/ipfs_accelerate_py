@@ -162,7 +162,7 @@ The generated files follow a specific naming convention:
 2. The model type is derived from:
    - The model's config.json using AutoConfig if available
    - The model name if autodetection is not available
-3. Files are placed in the `refactored_generator_suite/generated_reference/` directory
+3. Files are placed in the `../ipfs_accelerate_py/worker/skillset/` directory (relative to the generator suite)
 
 ## Design Considerations
 

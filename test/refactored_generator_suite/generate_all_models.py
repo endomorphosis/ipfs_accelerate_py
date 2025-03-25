@@ -121,7 +121,7 @@ def parse_args():
     # Output options
     output_group = parser.add_argument_group("Output Options")
     output_group.add_argument(
-        "--output-dir", "-o", type=str, default="generated_reference",
+        "--output-dir", "-o", type=str, default="../ipfs_accelerate_py/worker/skillset",
         help="Directory to write generated skillsets to"
     )
     output_group.add_argument(

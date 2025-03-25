@@ -63,17 +63,22 @@ The suite includes comprehensive support for AMD GPUs through ROCm (Radeon Open 
 
 ## Usage
 
+The generators create files in the `../ipfs_accelerate_py/worker/skillset/` directory (relative to this directory). This is a staging area for new versions of the library before they are pushed to production.
+
 ### Basic Usage
 
 ```bash
-# Generate a test file for a specific model
-python test_generator_suite.py --model bert --output ./tests/test_bert.py
+# Generate a simple model implementation
+python generate_simple_model.py bert
+
+# Generate skillsets for critical priority models
+python generate_all_skillsets.py --priority critical
 
 # Generate tests for all encoder-only models
-python test_generator_suite.py --batch --architecture encoder-only --output-dir ./generated_tests/
+python test_generator_suite.py --batch --architecture encoder-only
 
 # Generate tests from a list of models in a file
-python test_generator_suite.py --batch --batch-file models.txt --output-dir ./generated_tests/
+python test_generator_suite.py --batch --batch-file models.txt
 
 # Generate with a report
 python test_generator_suite.py --model bert --report --report-file bert_report.md
