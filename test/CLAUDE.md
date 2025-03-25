@@ -243,6 +243,93 @@ The generator is implemented as a modular system with the following components:
 3. **Task Templates**: Task-specific code for different model use cases
 4. **Template Composition**: Combines hardware and task templates into complete modules
 
+## Skillset Benchmarking System (NEW)
+
+The framework now includes a comprehensive benchmarking system for measuring the performance of skillset implementations across various hardware backends.
+
+### Benchmark Types
+
+The benchmarking system supports two primary benchmark types:
+
+1. **Inference Benchmarks**: Measure initialization performance including module import time, class instantiation time, and model initialization time across different batch sizes.
+
+2. **Throughput Benchmarks**: Measure concurrent execution performance including throughput in models per second and speedup compared to sequential execution.
+
+### Hardware Support
+
+The benchmarking system supports multiple hardware backends:
+- CPU: Standard CPU processing
+- CUDA: NVIDIA GPU acceleration
+- ROCm: AMD GPU acceleration
+- OpenVINO: Intel's neural network optimization framework
+- MPS: Apple's Metal Performance Shaders for Apple Silicon
+- QNN: Qualcomm Neural Network processing
+
+### Generating Benchmark Files
+
+To generate benchmark files for skillset implementations:
+
+```bash
+cd /path/to/ipfs_accelerate_py/test/refactored_benchmark_suite
+python generate_skillset_benchmarks.py
+```
+
+This will generate benchmark files for all 211+ skillset implementations in the `benchmarks/skillset/` directory.
+
+To generate a benchmark for a specific model:
+
+```bash
+python generate_skillset_benchmarks.py --model bert
+```
+
+### Running Benchmarks
+
+To run benchmarks for all skillset implementations:
+
+```bash
+# Run inference benchmarks on CPU
+python run_all_skillset_benchmarks.py --type inference --hardware cpu --report
+
+# Run throughput benchmarks on CPU
+python run_all_skillset_benchmarks.py --type throughput --hardware cpu --report
+
+# Run both benchmark types
+python run_all_skillset_benchmarks.py --type both --hardware cpu --report
+```
+
+To benchmark specific models:
+
+```bash
+python run_all_skillset_benchmarks.py --type both --hardware cpu --model bert --model roberta --model t5 --report
+```
+
+### Command-line Options
+
+The benchmark runner supports the following options:
+- `--skillset-dir`: Directory containing skillset implementations
+- `--output-dir`: Directory to write benchmark results
+- `--benchmark-dir`: Directory to write benchmark files
+- `--hardware`: Hardware backend to use (cpu, cuda, rocm, openvino, mps, qnn)
+- `--type`: Type of benchmark to run (inference, throughput, both)
+- `--concurrent-workers`: Number of concurrent workers for throughput benchmarks
+- `--batch-sizes`: Comma-separated list of batch sizes to test
+- `--runs`: Number of measurement runs
+- `--model`: Specific model to benchmark (can be specified multiple times)
+- `--generate-only`: Only generate benchmark files, don't run benchmarks
+- `--report`: Generate HTML reports with visualizations for benchmark results
+
+### Benchmark Results
+
+Benchmark results are saved as JSON files in the specified output directory. If the `--report` option is used, HTML reports with visualizations are also generated. The reports include:
+
+- Module import time
+- Class instantiation time
+- Initialization times for each batch size
+- Statistical metrics (mean, standard deviation)
+- Throughput in models per second
+- Speedup compared to sequential execution
+- Charts and visualizations for easy analysis
+
 ## Command Reference
 
 For detailed documentation on all commands and capabilities, see the full documentation in 
