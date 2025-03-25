@@ -13,9 +13,12 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 def generate_model(model_type, output_dir=None):
     """Generate a model implementation from the simple template."""
-    # Default output dir is generated_reference
+    # Default output dir is test/skillset
     if output_dir is None:
-        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_reference")
+        # Get the path to the refactored_generator_suite directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Go up one level to 'test' directory and then into 'skillset'
+        output_dir = os.path.normpath(os.path.join(current_dir, "../../test/skillset"))
     
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -421,15 +424,17 @@ def generate_model(model_type, output_dir=None):
 
 def main():
     """Main entry point."""
-    if len(sys.argv) < 2:
-        print("Usage: python generate_simple_model.py <model_type> [output_dir]")
-        return 1
+    import argparse
     
-    model_type = sys.argv[1]
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else None
+    parser = argparse.ArgumentParser(description="Generate a model implementation using a simple template")
+    parser.add_argument("model_type", help="Model type to generate (e.g., bert, gpt2)")
+    parser.add_argument("--output-dir", "-o", help="Directory to write generated model to")
+    parser.add_argument("--force", "-f", action="store_true", help="Force overwrite if file exists")
+    
+    args = parser.parse_args()
     
     try:
-        output_file = generate_model(model_type, output_dir)
+        output_file = generate_model(args.model_type, args.output_dir)
         print(f"Successfully generated: {output_file}")
         return 0
     except Exception as e:

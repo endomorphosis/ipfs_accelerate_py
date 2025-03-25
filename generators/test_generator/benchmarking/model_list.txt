@@ -1,0 +1,27 @@
+# Model list for batch benchmarking
+# Format: one model ID per line
+# Comments start with #
+
+# Encoder-only models
+bert-base-uncased
+roberta-base
+
+# Decoder-only models
+gpt2
+facebook/opt-125m
+
+# Encoder-decoder models
+t5-small
+facebook/bart-base
+
+# Vision models
+google/vit-base-patch16-224
+microsoft/resnet-50
+
+# Speech models
+openai/whisper-tiny
+facebook/wav2vec2-base
+
+# Multimodal models
+openai/clip-vit-base-patch32
+facebook/flava-full

@@ -139,6 +139,110 @@ For ML-based Anomaly Detection and Prometheus/Grafana Integration:
 - The `distributed_testing/prometheus_grafana_integration.py` module connects the framework to external monitoring systems
 - The `distributed_testing/advanced_scheduling.py` module implements intelligent task scheduling algorithms
 
+## Model Skillset Generation
+
+The framework includes a comprehensive skillset generation system for creating hardware-aware implementations for 300+ HuggingFace model types. These implementations include support for multiple hardware backends (CPU, CUDA, ROCm, OpenVINO, Apple, Qualcomm) with proper fallback mechanisms.
+
+### Skillset Generator Overview
+
+The skillset generator creates Python modules for each model type with the following features:
+- Hardware detection and optimization for multiple backends
+- Model-specific initialization and inference code
+- Task-specific processing based on model architecture
+- Graceful fallback when hardware is unavailable
+- Mock implementations for testing and development
+
+### Generated Skillset Directory
+
+All skillset files are generated in the `test/ipfs_accelerate_py/worker/skillset/` directory (relative to the repo root). This serves as a staging area for testing before deployment to production.
+
+### Regenerating Skillset Files
+
+To regenerate the skillset files, use the following commands:
+
+#### Generate All 300+ Model Files at Once
+
+To generate all 300+ model skillset files in a single command:
+
+```bash
+cd /path/to/ipfs_accelerate_py/test/refactored_generator_suite
+python generate_all_skillsets.py --priority all
+```
+
+This command will generate implementations for every supported model type in the HuggingFace ecosystem, including all architectures:
+- Encoder-only models (BERT, RoBERTa, etc.)
+- Decoder-only models (GPT-2, LLaMA, etc.)
+- Encoder-decoder models (T5, BART, etc.)
+- Vision models (ViT, BEiT, etc.)
+- Vision-text models (CLIP, BLIP, etc.)
+- Speech models (Whisper, Wav2Vec2, etc.)
+- Diffusion models, MoE models, state-space models, and more
+
+The process may take a few minutes to complete as it generates over 300 model implementations.
+
+#### Generate by Priority
+
+```bash
+# Generate only critical priority models (bert, gpt2, llama, etc.)
+python generate_all_skillsets.py --priority critical
+
+# Generate high priority models (includes critical + more common models)
+python generate_all_skillsets.py --priority high
+
+# Generate medium priority models (includes high + critical + less common models)
+python generate_all_skillsets.py --priority medium
+```
+
+#### Generate Specific Models
+
+```bash
+# Generate a single model implementation
+python generate_simple_model.py bert
+
+# Generate specific model types
+python generate_simple_model.py llama
+python generate_simple_model.py mixtral
+python generate_simple_model.py stable-diffusion
+```
+
+#### Specialized Model Types
+
+Special model architectures are also supported:
+- State-space models: `python generate_simple_model.py mamba`
+- Mixture-of-experts models: `python generate_simple_model.py mixtral`
+- Diffusion models: `python generate_simple_model.py stable-diffusion`
+- Vision-text models: `python generate_simple_model.py clip`
+- Speech models: `python generate_simple_model.py whisper`
+
+### Verifying Generated Files
+
+After generation, verify the generated files:
+
+```bash
+# Count total generated files
+find /path/to/ipfs_accelerate_py/test/ipfs_accelerate_py/worker/skillset -type f -name "hf_*.py" | wc -l
+
+# List all generated files
+find /path/to/ipfs_accelerate_py/test/ipfs_accelerate_py/worker/skillset -type f -name "hf_*.py" | sort
+```
+
+### Customizing the Generator
+
+To customize the generator behavior:
+
+1. Modify templates in `refactored_generator_suite/templates/`
+2. Update hardware detection in `refactored_generator_suite/hardware/hardware_detection.py`
+3. Add new model types in `refactored_generator_suite/generators/model_generator.py`
+
+### Generator Architecture
+
+The generator is implemented as a modular system with the following components:
+
+1. **Model Metadata**: Architecture type detection and model class selection
+2. **Hardware Templates**: Hardware-specific code for different backends
+3. **Task Templates**: Task-specific code for different model use cases
+4. **Template Composition**: Combines hardware and task templates into complete modules
+
 ## Command Reference
 
 For detailed documentation on all commands and capabilities, see the full documentation in 
