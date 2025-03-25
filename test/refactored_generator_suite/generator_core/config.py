@@ -111,7 +111,7 @@ class ConfigManager:
         """Set default values for missing configuration entries."""
         # Default output directory
         if 'output_dir' not in self.config:
-            self.config['output_dir'] = './generated_tests'
+            self.config['output_dir'] = '../test/skillset'
         
         # Default templates directory
         if 'templates_dir' not in self.config:
