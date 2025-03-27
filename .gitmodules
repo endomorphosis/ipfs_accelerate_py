@@ -1,3 +1,6 @@
 [submodule "test/huggingface_transformers"]
 	path = test/huggingface_transformers
 	url = https://github.com/huggingface/transformers.git
+[submodule "test/doc-builder"]
+	path = test/doc-builder
+	url = https://github.com/huggingface/doc-builder.git
