@@ -61,15 +61,23 @@ To publish automatically via GitHub Actions:
    - Select "GitHub Actions" publishing method
    - Configure the repository and environment name
 
-2. Trigger automatic publishing with a version bump:
-   - Update the version in `pyproject.toml`
-   - Commit and push to the main branch
-   - The GitHub Actions workflow will automatically detect the version change
-   - The workflow will build and publish to PyPI when the version number is increased
+2. Publishing methods:
+   
+   a) Automatic triggering with a version bump:
+      - Update the version in both `pyproject.toml` and `setup.py`
+      - Commit and push to the main branch
+      - The GitHub Actions workflow will automatically detect the version change
+      - The workflow will build and publish to PyPI when the version number is increased
+   
+   b) Manual triggering (useful for troubleshooting):
+      - Go to GitHub Actions → "Upload Python Package" workflow
+      - Click "Run workflow" button in the UI
+      - Select "Force publishing regardless of version change" if you want to bypass version check
+      - Click "Run workflow" to start the process
 
 3. The publishing uses OpenID Connect (OIDC) trusted publishing for secure authentication.
 
-Note: Manual release creation is no longer needed - publishing happens automatically whenever the version is bumped in pyproject.toml.
+Note: Manual GitHub release creation is no longer needed - publishing happens automatically whenever the version is bumped or manually triggered.
 
 ## Version Management
 

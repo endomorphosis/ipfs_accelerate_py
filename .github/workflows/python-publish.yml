@@ -14,6 +14,13 @@ on:
       - main
     paths:
       - 'pyproject.toml'
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Force publishing regardless of version change'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: read
@@ -30,9 +37,19 @@ jobs:
         with:
           fetch-depth: 2
       
-      - name: Check if version changed
+      - name: Check if version changed or manual trigger
         id: check-version
         run: |
+          # Check if this is a manual run with force_publish
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.force_publish }}" == "true" ]]; then
+            NEW_VERSION=$(grep 'version =' pyproject.toml | sed 's/.*version = "\(.*\)".*/\1/')
+            echo "Manual trigger with force_publish. Using version: $NEW_VERSION"
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # For push events, check if version was changed
           git diff HEAD^ HEAD -- pyproject.toml | grep '+version' || echo "No version change detected"
           if git diff HEAD^ HEAD -- pyproject.toml | grep '+version'; then
             NEW_VERSION=$(grep 'version =' pyproject.toml | sed 's/.*version = "\(.*\)".*/\1/')
@@ -46,7 +63,7 @@ jobs:
   release-build:
     runs-on: ubuntu-latest
     needs: version-check
-    if: needs.version-check.outputs.version_changed == 'true'
+    if: needs.version-check.outputs.version_changed == 'true' || github.event.inputs.force_publish == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +89,7 @@ jobs:
     needs:
       - release-build
       - version-check
-    if: needs.version-check.outputs.version_changed == 'true'
+    if: needs.version-check.outputs.version_changed == 'true' || github.event.inputs.force_publish == 'true'
     permissions:
       # IMPORTANT: this permission is mandatory for trusted publishing
       id-token: write

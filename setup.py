@@ -6,7 +6,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
 	name='ipfs_accelerate_py',
-	version='0.0.44',
+	version='0.0.45',
 	packages=find_packages(),
 	description="A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution",
 	long_description=long_description,
