@@ -52,7 +52,6 @@ setup(
 		'openvino-tokenizers>=2024.6',
 		'openvino-genai>=2024.6',
 		'nncf>=2.14.0',
-		'onnxruntime==1.19.2',
 		'onnx==1.16.1',
 		'multiformats',
 		'pydub',
