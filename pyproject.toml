@@ -27,7 +27,6 @@ Homepage = "https://github.com/endomorphosis/ipfs_accelerate_py"
 Issues = "https://github.com/endomorphosis/ipfs_accelerate_py/issues"
 
 [tool.setuptools]
-packages = ["ipfs_accelerate_py"] 
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
