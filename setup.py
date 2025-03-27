@@ -47,7 +47,6 @@ setup(
 		'pydantic',
 		'einops',
 		'timm',
-		'flash-attn',
 		'Pillow',
 		'openvino>=2024.6',
 		'openvino-tokenizers>=2024.6',
