@@ -84,12 +84,14 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             install/requirements_base.txt
+            install/requirements_github_ci.txt
       
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install build twine
-          pip install -e .
+          # Install CI-specific lightweight dependencies without ONNX
+          pip install -r install/requirements_github_ci.txt
       
       - name: Update version in files if override provided
         if: github.event.inputs.version_override != ''
@@ -121,7 +123,8 @@ jobs:
       - name: Build release distributions
         run: |
           echo "Building Python package version ${{ needs.version-check.outputs.new_version }}"
-          python -m build
+          # Build with --no-isolation to prevent pip from installing all dependencies
+          python -m build --no-isolation
           
       - name: Test built package
         run: |
