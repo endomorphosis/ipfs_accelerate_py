@@ -4,12 +4,6 @@
 name: Upload Python Package
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'pyproject.toml'
-      - 'setup.py'
   workflow_dispatch:
     inputs:
       force_publish:
@@ -21,6 +15,12 @@ on:
         description: 'Override version number (leave empty to use version from pyproject.toml)'
         required: false
         type: string
+  push:
+    branches:
+      - main
+    paths:
+      - 'pyproject.toml'
+      - 'setup.py'
 
 permissions:
   contents: read
