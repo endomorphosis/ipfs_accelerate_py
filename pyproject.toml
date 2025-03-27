@@ -8,14 +8,35 @@ version = "0.0.45"
 authors = [
   { name="Benjamin Barber", email="starworks5@gmail.com" },
 ]
-description = "a python model server and api endpoint demultiplexer."
+description = "A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution"
 readme = "README.md"
 requires-python = ">=3.8"
+license = { text = "GNU Affero General Public License v3 or later (AGPLv3+)" }
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Operating System :: POSIX :: Linux",
 ]
+dynamic = ["dependencies", "keywords"]
+
 [project.urls]
 Homepage = "https://github.com/endomorphosis/ipfs_accelerate_py"
 Issues = "https://github.com/endomorphosis/ipfs_accelerate_py/issues"
+
+[tool.setuptools]
+packages = ["ipfs_accelerate_py"] 
+package-dir = {"" = "."}
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.md"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+keywords = {file = "keywords.txt"}
+
+[tool.setuptools.packages.find]
+include = ["ipfs_accelerate_py*"]
+exclude = ["test*", "benchmarks*"]
