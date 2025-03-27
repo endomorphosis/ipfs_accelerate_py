@@ -49,3 +49,4 @@ test_output
 test_output2
 test_outputs
 transformers_docs_build
+test/doc-builder
