@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Operating System :: POSIX :: Linux",
 ]
-dynamic = ["dependencies", "keywords"]
+dynamic = ["dependencies"]
 
 [project.urls]
 Homepage = "https://github.com/endomorphosis/ipfs_accelerate_py"
@@ -34,7 +34,6 @@ package-dir = {"" = "."}
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
-keywords = {file = "keywords.txt"}
 
 [tool.setuptools.packages.find]
 include = ["ipfs_accelerate_py*"]
