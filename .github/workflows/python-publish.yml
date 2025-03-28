@@ -169,6 +169,8 @@ jobs:
           packages-dir: dist/
           verbose: true
           print-hash: true
+          # Uncomment the line below and add your token in GitHub secrets if trusted publishing isn't working
+          # password: ${{ secrets.PYPI_API_TOKEN }}
           
       - name: Publish summary
         run: |

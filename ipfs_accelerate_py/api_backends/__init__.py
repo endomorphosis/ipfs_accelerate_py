@@ -1,8 +1,18 @@
 # ipfs_accelerate_py.api_backends module initialization
 # This module exposes all the API backend classes directly
 
+import os
 import logging
 logger = logging.getLogger(__name__)
+
+# Make sure model_list directory exists
+model_list_dir = os.path.join(os.path.dirname(__file__), "model_list")
+if not os.path.exists(model_list_dir):
+    try:
+        os.makedirs(model_list_dir, exist_ok=True)
+        logger.info(f"Created model_list directory at {model_list_dir}")
+    except Exception as e:
+        logger.warning(f"Could not create model_list directory: {e}")
 
 try:
     from .claude import claude

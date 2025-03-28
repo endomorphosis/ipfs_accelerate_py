@@ -343,8 +343,8 @@ def plot_inheritance_clusters(clusters: List[Dict[str, Any]], output_file: str) 
     # Draw the graph
     plt.figure(figsize=(14, 14))
     
-    # Use hierarchical layout
-    pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
+    # Use spring layout instead of graphviz_layout to avoid dependency on pygraphviz
+    pos = nx.spring_layout(G, k=0.5, iterations=100)
     
     # Draw nodes and edges
     nx.draw_networkx_nodes(G, pos, node_size=100, alpha=0.8)

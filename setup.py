@@ -76,6 +76,7 @@ setup(
 		'selenium>=4.10.0',
 		'scikit-learn>=1.0.0',
 		'statsmodels>=0.14.0',
-		'matplotlib>=3.7.0'
+		'matplotlib>=3.7.0',
+		'sseclient-py'
 	]
 )
