@@ -77,6 +77,28 @@ setup(
 		'scikit-learn>=1.0.0',
 		'statsmodels>=0.14.0',
 		'matplotlib>=3.7.0',
-		'sseclient-py'
-	]
+		'sseclient-py',
+		'aiohttp>=3.8.1',
+		'ipfshttpclient>=0.8.0'
+	],
+	extras_require={
+		"webnn": [
+			"playwright>=1.31.0",
+			"aiohttp>=3.8.1",
+			"websockets>=12.0.0",
+		],
+		"viz": [
+			"matplotlib>=3.7.0",
+			"seaborn>=0.13.0",
+			"plotly>=5.22.0",
+		],
+		"all": [
+			"playwright>=1.31.0",
+			"aiohttp>=3.8.1",
+			"websockets>=12.0.0",
+			"matplotlib>=3.7.0",
+			"seaborn>=0.13.0",
+			"plotly>=5.22.0",
+		],
+	}
 )

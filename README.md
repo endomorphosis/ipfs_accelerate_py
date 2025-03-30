@@ -1,315 +1,232 @@
 # IPFS Accelerate Python
 
-A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution and acceleration.
+A Python framework for hardware-accelerated machine learning inference with IPFS network-based distribution and acceleration.
 
-Author - Benjamin Barber  
-QA - Kevin De Haan
+## Features
 
-## Overview
+- **Hardware Acceleration**:
+  - CPU optimization (x86, ARM)
+  - GPU acceleration (CUDA, ROCm)
+  - Intel Neural Compute (OpenVINO)
+  - Apple Silicon (MPS)
+  - WebNN/WebGPU for browser-based acceleration
+  - Automatic hardware detection and optimization
 
-IPFS Accelerate Python provides a unified interface for running machine learning inference across various hardware platforms and leveraging the IPFS network for distributed inference when local resources are insufficient.
+- **IPFS Integration**:
+  - Content-addressed model storage and distribution
+  - Efficient caching and retrieval
+  - P2P content distribution
+  - Reduced bandwidth for frequently used models
 
-This is meant to be an extension of the Huggingface accelerate library, acting as a model server that can contain lists of other endpoints to call, call a local instance, and respond to external calls for inference. It includes modular backends such as Libp2p, Akash, Lilypad, Huggingface Zero, and Vast AI for autoscaling. If the model is already listed in the ipfs_model_manager, there should be an associated hw_requirements key in the manifest. For libp2p requests, inference will go to peers in the same trusted zone; if no peers are available and local resources are sufficient, it will run locally, otherwise a docker container will be launched with one of the providers.
+- **Model Support**:
+  - Text generation models
+  - Embedding/encoding models
+  - Vision models
+  - Audio models
+  - Multimodal models
 
-## Directory Structure (Updated March 2025)
+- **Framework Compatibility**:
+  - HuggingFace Transformers
+  - PyTorch
+  - ONNX
+  - Custom model formats
 
-The codebase has been reorganized for better maintainability with the following top-level structure:
-
-- **`generators/`**: Generation tools for tests, models, and benchmarks
-  - `generators/benchmark_generators/`: Benchmark generation tools
-  - `generators/models/`: Model implementations and skills
-  - `generators/runners/`: Test runner scripts
-  - `generators/skill_generators/`: Skill generation tools
-  - `generators/template_generators/`: Template generation utilities
-  - `generators/templates/`: Template files for model generation
-  - `generators/test_generators/`: Test generation tools
-  - `generators/utils/`: Utility functions
-  - `generators/hardware/`: Hardware-specific generator tools
-
-- **`duckdb_api/`**: Database functionality for storing and analyzing benchmark results
-  - `duckdb_api/core/`: Core database functionality
-  - `duckdb_api/migration/`: Migration tools for JSON to database
-  - `duckdb_api/schema/`: Database schema definitions 
-  - `duckdb_api/utils/`: Utility functions for database operations
-  - `duckdb_api/visualization/`: Result visualization tools
-  - `duckdb_api/distributed_testing/`: Distributed testing framework components
-
-- **`fixed_web_platform/`**: Web platform implementations
-  - `fixed_web_platform/unified_framework/`: Unified API for cross-browser WebNN/WebGPU
-  - `fixed_web_platform/wgsl_shaders/`: WebGPU Shading Language shader implementations
-
-- **`predictive_performance/`**: ML-based performance prediction system
-
-Key features:
-
-- **Hardware-Accelerated Inference**: Support for multiple hardware platforms (CPU, CUDA, ROCm, MPS, OpenVINO, Qualcomm, WebNN, WebGPU)
-- **IPFS Network Acceleration**: Distribute inference workloads across the IPFS network
-- **Automatic Hardware Selection**: Intelligently select the optimal hardware for each model
-- **Model Family Classification**: Identify and optimize for different model families
-- **Resource Management**: Efficient handling of model loading and memory usage
-- **Cross-Platform Support**: Works across Linux, macOS, and Web Platforms
-- **Template-Based Generation**: Generate optimized code for 300+ HuggingFace model types
-
-## IPFS Huggingface Bridge
-
-The IPFS Accelerate Python framework is part of a larger ecosystem of tools:
-
-- Huggingface transformers python library: [ipfs_transformers](https://github.com/endomorphosis/ipfs_transformers/)
-- Huggingface datasets python library: [ipfs_datasets](https://github.com/endomorphosis/ipfs_datasets/)
-- Faiss KNN index python library: [ipfs_faiss](https://github.com/endomorphosis/ipfs_faiss)
-- Transformers.js: [ipfs_transformers_js](https://github.com/endomorphosis/ipfs_transformers_js)
-- Orbitdb_kit nodejs library: [orbitdb_kit](https://github.com/endomorphosis/orbitdb_kit/)
-- Fireproof_kit nodejs library: [fireproof_kit](https://github.com/endomorphosis/fireproof_kit/)
-- IPFS_kit nodejs library: [ipfs_kit](https://github.com/endomorphosis/ipfs_kit/)
-- Python model manager library: [ipfs_model_manager](https://github.com/endomorphosis/ipfs_model_manager/)
-- Node.js model manager library: [ipfs_model_manager_js](https://github.com/endomorphosis/ipfs_model_manager_js/)
-- Node.js IPFS huggingface scraper: [ipfs_huggingface_scraper](https://github.com/endomorphosis/ipfs_huggingface_scraper/)
-- IPFS agents: [ipfs_agents](https://github.com/endomorphosis/ipfs_agents/)
-- IPFS accelerate: [ipfs_accelerate](https://github.com/endomorphosis/ipfs_accelerate/)
+- **Browser Integration**:
+  - WebNN hardware acceleration
+  - WebGPU acceleration
+  - Browser-specific optimizations
+  - Cross-browser model sharding
+  - Cross-model tensor sharing
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/endomorphosis/ipfs_accelerate_py.git
-cd ipfs_accelerate_py
+# Basic installation
+pip install ipfs_accelerate_py
 
-# Install requirements
-pip install -r requirements.txt
+# With WebNN/WebGPU support
+pip install ipfs_accelerate_py[webnn]
+
+# With visualization tools
+pip install ipfs_accelerate_py[viz]
+
+# Full installation with all dependencies
+pip install ipfs_accelerate_py[all]
 ```
 
 ## Quick Start
 
+### Basic Usage
+
 ```python
-import asyncio
 from ipfs_accelerate_py import ipfs_accelerate_py
 
-async def main():
-    # Initialize the framework
-    framework = ipfs_accelerate_py()
-    
-    # Initialize a model
-    models = ["bert-base-uncased"]
-    await framework.init_endpoints(models)
-    
-    # Run inference with automatic hardware selection
-    result = await framework.process_async("bert-base-uncased", "This is a test sentence.")
-    print(f"Result: {result}")
-    
-    # Use IPFS acceleration with automatic fallback
-    result = await framework.accelerate_inference("bert-base-uncased", "This is a test sentence.")
-    print(f"IPFS Accelerated Result: {result}")
+# Initialize with default settings
+accelerator = ipfs_accelerate_py({}, {})
 
-# Run the example
-asyncio.run(main())
+# Get optimal hardware backend for a model
+optimal_backend = accelerator.get_optimal_backend("bert-base-uncased", "text_embedding")
+
+# Run inference with automatic hardware selection
+result = accelerator.run_model(
+    "bert-base-uncased",
+    {"input_ids": [101, 2054, 2003, 2026, 2171, 2024, 2059, 2038, 102]},
+    "text_embedding"
+)
+
+# Access the output
+embedding = result["embedding"]
 ```
 
-For more examples, see `example.py`.
-
-## Hardware Support
-
-The framework supports multiple hardware platforms, with automatic detection and selection:
-
-| Hardware Platform | Status | Notes |
-|-------------------|--------|-------|
-| CPU | ✅ | Always available |
-| CUDA (NVIDIA) | ✅ | Automatically detected |
-| AMD ROCm | ✅ | For AMD GPUs |
-| Apple MPS | ✅ | For M1/M2/M3 Macs |
-| OpenVINO | ✅ | For Intel hardware |
-| Qualcomm AI Engine | ✅ | For Snapdragon devices |
-| WebNN | ✅ | For web browsers |
-| WebGPU | ✅ | For web browsers |
-
-## IPFS Network Acceleration
-
-When local hardware resources are insufficient, the framework can distribute inference workloads across the IPFS network:
+### WebNN/WebGPU Acceleration
 
 ```python
-# Store a model weight to IPFS
-cid = await framework.store_to_ipfs(model_weights)
+from ipfs_accelerate_py import accelerate_with_browser
 
-# Query data from IPFS
-data = await framework.query_ipfs(cid)
+# Run inference with WebGPU in browser
+result = accelerate_with_browser(
+    model_name="bert-base-uncased",
+    inputs={"input_ids": [101, 2023, 2003, 1037, 3231, 102]},
+    platform="webgpu",
+    browser="chrome",
+    precision=16
+)
 
-# Find providers for a specific model
-providers = await framework.find_providers("gpt2")
+print(f"Inference time: {result['inference_time']:.3f}s")
+print(f"Output: {result['output']}")
+```
 
-# Connect to a provider
-connected = await framework.connect_to_provider(providers[0])
+### Custom Configuration
 
-# Run accelerated inference with automatic IPFS fallback
-result = await framework.accelerate_inference(
-    "gpt2-xl", 
-    "This is a test prompt",
-    use_ipfs=True
+```python
+from ipfs_accelerate_py import ipfs_accelerate_py
+
+# Initialize with custom config
+config = {
+    "ipfs": {
+        "gateway": "http://localhost:8080/ipfs/",
+        "local_node": "http://localhost:5001",
+        "timeout": 30
+    },
+    "hardware": {
+        "prefer_cuda": True,
+        "allow_openvino": True,
+        "precision": "fp16",
+        "mixed_precision": True
+    },
+    "db_path": "benchmark_results.duckdb"
+}
+
+accelerator = ipfs_accelerate_py(config, {})
+
+# Accelerate model with custom configuration
+result = accelerator.run_model(
+    "llama-7b",
+    {"prompt": "Explain quantum computing in simple terms"},
+    "text_generation",
+    max_length=100
 )
 ```
 
-## API Documentation
+## Documentation
 
-### Core Classes
+For detailed documentation on all components and features, please refer to:
 
-#### `ipfs_accelerate_py`
+- [General Usage Guide](docs/USAGE.md)
+- [WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)
+- [API Reference](docs/API.md)
+- [Hardware Optimization](docs/HARDWARE.md)
+- [IPFS Integration](docs/IPFS.md)
+- [Examples](examples/README.md)
 
-The main framework class that provides the unified interface for hardware-accelerated inference.
+## Browser Integration
+
+The IPFS Accelerate Python framework provides comprehensive browser integration for hardware-accelerated inference:
 
 ```python
-# Initialize the framework
-framework = ipfs_accelerate_py(resources=None, metadata=None)
+from ipfs_accelerate_py import get_accelerator
 
-# Initialize endpoints for models
-await framework.init_endpoints(models, resources=None)
+# Create an accelerator with WebNN/WebGPU support
+accelerator = get_accelerator(enable_ipfs=True)
 
-# Process input with automatic hardware selection
-result = await framework.process_async(model, input_data, endpoint_type=None)
-
-# Process input synchronously
-result = framework.process(model, input_data, endpoint_type=None)
-
-# Accelerated inference with IPFS fallback
-result = await framework.accelerate_inference(model, input_data, use_ipfs=True)
-
-# IPFS operations
-cid = await framework.store_to_ipfs(data)
-data = await framework.query_ipfs(cid)
-providers = await framework.find_providers(model)
-connected = await framework.connect_to_provider(provider_id)
-```
-
-## API Backends
-
-### OpenVINO Model Server (OVMS) Backend
-The OVMS backend provides integration with OpenVINO Model Server deployments. Features:
-- Any OpenVINO-supported model type (classification, NLP, vision, speech)
-- Both sync and async inference modes 
-- Automatic input handling and tokenization
-- Custom pre/post processing pipelines
-- Batched inference support
-- Multiple precision support (FP32, FP16, INT8)
-
-Example usage:
-```python
-from ipfs_accelerate_py.api_backends import ovms
-
-# Initialize backend
-ovms_backend = ovms()
-
-# For text/NLP models
-endpoint_url, api_key, handler, queue, batch_size = ovms_backend.init(
-    endpoint_url="http://localhost:9000",
-    model_name="gpt2",
-    context_length=1024
+# Run vision model on WebGPU
+result = await accelerator.accelerate_with_browser(
+    model_name="vit-base-patch16-224",
+    inputs={"pixel_values": image_tensor},
+    model_type="vision",
+    platform="webgpu",
+    browser="chrome",
+    precision=16
 )
 
-response = handler("What is quantum computing?")
-
-# For vision models with custom preprocessing
-def preprocess_image(image_data):
-    # Convert image to model input format
-    return processed_data
-
-handler = ovms_backend.create_remote_ovms_endpoint_handler(
-    endpoint_url="http://localhost:9000",
-    model_name="resnet50",
-    preprocessing=preprocess_image
-)
-
-result = handler(image_data, parameters={"raw": True})
-
-# For async high-throughput inference
-async_handler = await ovms_backend.create_async_ovms_endpoint_handler(
-    endpoint_url="http://localhost:9000",
-    model_name="bert-base"
-)
-
-results = await asyncio.gather(
-    async_handler(batch1),
-    async_handler(batch2)
+# Run text model on WebNN
+result = await accelerator.accelerate_with_browser(
+    model_name="bert-base-uncased",
+    inputs={"input_ids": token_ids},
+    model_type="text_embedding",
+    platform="webnn",
+    browser="edge",
+    precision=16
 )
 ```
 
-### Other Backends
+For more information on WebNN/WebGPU integration, see the [WebNN/WebGPU README](WEBNN_WEBGPU_README.md).
 
-The framework supports multiple API backends including:
+## Benchmarking and Optimization
 
-- OpenAI API
-- Claude API
-- Groq API
-- Ollama
-- Hugging Face TGI
-- Hugging Face TEI
-- Gemini API
-- VLLM
-- OVMS
-- OPEA
-- S3 Kit
-
-## Advanced Features
-
-### Hardware Detection
-
-The framework automatically detects available hardware platforms and selects the optimal one for each model:
+Measure performance across hardware platforms and get optimization recommendations:
 
 ```python
-# Get hardware detection results
-hardware = framework.hardware_detection.detect_hardware()
+from ipfs_accelerate_py.benchmark import run_benchmark
+from ipfs_accelerate_py.optimization import get_optimization_recommendations
 
-# Check if CUDA is available
-if hardware.get("cuda", {}).get("available", False):
-    print("CUDA is available")
+# Run benchmark across all available hardware
+results = run_benchmark(
+    model_name="bert-base-uncased",
+    inputs={"input_ids": [101, 2054, 2003, 2026, 2171, 102]},
+    model_type="text_embedding",
+    hardware=["cpu", "cuda", "openvino", "webgpu"],
+    batch_sizes=[1, 8, 32],
+    precision=["fp32", "fp16"],
+    num_runs=5
+)
+
+# Generate visualization
+results.to_visualization("benchmark_results.html")
+
+# Get hardware-specific optimization recommendations
+recommendations = get_optimization_recommendations(
+    model_name="bert-base-uncased",
+    hardware_platform="cuda",
+    batch_size=8,
+    current_precision="fp32"
+)
+
+# Export optimization recommendations
+from test.optimization_recommendation.optimization_exporter import OptimizationExporter
+
+exporter = OptimizationExporter(output_dir="./optimizations")
+export_result = exporter.export_optimization(
+    model_name="bert-base-uncased",
+    hardware_platform="cuda"
+)
+
+# Create ZIP archive of exported files
+archive_data = exporter.create_archive(export_result)
+with open("optimization_exports.zip", "wb") as f:
+    f.write(archive_data.getvalue())
 ```
 
-### Model Classification
+## Examples
 
-Models are automatically classified by family to apply appropriate optimizations:
+The `examples` directory contains practical examples for various use cases:
 
-```python
-# Classify a model by family
-if hasattr(framework, "model_classifier"):
-    family = framework.model_classifier.classify_model("bert-base-uncased")
-    print(f"Model family: {family}")
-```
-
-### Resource Management
-
-Efficient management of model loading and memory usage:
-
-```python
-# Get the resource pool
-if framework.resource_pool is not None:
-    # Use the resource pool for efficient model loading
-    model = framework.resource_pool.get_model("bert-base-uncased", device="cuda")
-```
-
-## Architecture
-
-The framework consists of several main components:
-
-1. **Hardware Detection**: Identifies available hardware platforms
-2. **Resource Pool**: Manages model loading and memory usage
-3. **Model Family Classifier**: Identifies model types and families
-4. **Endpoint Management**: Sets up and manages inference endpoints
-5. **IPFS Integration**: Provides interaction with the IPFS network
-6. **Template System**: Generates optimized code for models
-7. **API Backends**: Integrations with various API providers
-
-## Requirements
-
-- Python 3.8+
-- IPFS node (for distributed inference)
-- Hardware-specific requirements:
-  - CUDA: NVIDIA GPU + CUDA toolkit
-  - ROCm: AMD GPU + ROCm toolkit
-  - MPS: Apple M1/M2/M3 Mac
-  - OpenVINO: Intel CPU/GPU/VPU
-  - Qualcomm: Snapdragon device + AI SDK
-  - WebNN/WebGPU: Modern web browser
+- [Basic Usage](examples/basic_usage.py)
+- [WebNN/WebGPU Demo](examples/demo_webnn_webgpu.py)
+- [Multi-Model Pipeline](examples/multi_model_pipeline.py)
+- [Hardware Benchmarking](examples/hardware_benchmark.py)
+- [IPFS Content Addressing](examples/ipfs_content_addressing.py)
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3 (AGPL-3.0) - see the LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+This project is licensed under the [MIT License](LICENSE).

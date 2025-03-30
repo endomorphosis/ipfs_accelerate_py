@@ -565,7 +565,10 @@ class ResourcePoolRecoveryManager:
     def __init__(
         self,
         strategy: str = "progressive",
-        state_manager: BrowserStateManager = None
+        state_manager: BrowserStateManager = None,
+        fault_tolerance_level: str = "medium",
+        max_retries: int = 3,
+        checkpoint_interval: int = 60
     ):
         """
         Initialize the recovery manager.
@@ -573,9 +576,15 @@ class ResourcePoolRecoveryManager:
         Args:
             strategy: Default recovery strategy to use
             state_manager: Reference to the state manager
+            fault_tolerance_level: Level of fault tolerance (none, low, medium, high, critical)
+            max_retries: Maximum number of retry attempts
+            checkpoint_interval: Interval between state checkpoints in seconds
         """
         self.strategy = strategy
         self.state_manager = state_manager
+        self.fault_tolerance_level = fault_tolerance_level
+        self.max_retries = max_retries
+        self.checkpoint_interval = checkpoint_interval
         
         # Recovery tracking
         self.recovery_attempts = {}
@@ -587,7 +596,32 @@ class ResourcePoolRecoveryManager:
         # Active operations
         self.active_operations = {}
         
-        logger.info(f"ResourcePoolRecoveryManager initialized with strategy={strategy}")
+        # Recovery metrics
+        self.recovery_metrics = {
+            "total_attempts": 0,
+            "successful_recoveries": 0,
+            "failed_recoveries": 0,
+            "recovery_times_ms": [],
+            "by_browser": {},
+            "by_strategy": {
+                "simple": {"attempts": 0, "successes": 0},
+                "progressive": {"attempts": 0, "successes": 0},
+                "parallel": {"attempts": 0, "successes": 0},
+                "coordinated": {"attempts": 0, "successes": 0}
+            },
+            "by_error_type": {}
+        }
+        
+        # Component dependencies
+        self.component_dependencies = {}
+        
+        # Circuit breaker state
+        self.circuit_breakers = {}
+        
+        # Recovery in progress flags
+        self.recovery_in_progress = set()
+        
+        logger.info(f"ResourcePoolRecoveryManager initialized with strategy={strategy}, fault_tolerance_level={fault_tolerance_level}")
     
     async def initialize(self):
         """Initialize the recovery manager."""
@@ -597,7 +631,96 @@ class ResourcePoolRecoveryManager:
         self.recovery_attempts = {}
         self.recovery_history = []
         
+        # Initialize component dependencies
+        await self._initialize_component_dependencies()
+        
+        # Initialize circuit breakers
+        await self._initialize_circuit_breakers()
+        
+        # Start checkpoint task if high fault tolerance
+        if self.fault_tolerance_level in ["high", "critical"]:
+            asyncio.create_task(self._periodic_checkpoint())
+        
         logger.info("ResourcePoolRecoveryManager initialization complete")
+    
+    async def _initialize_component_dependencies(self):
+        """Initialize component dependency mapping."""
+        # Default dependency map for common model architectures
+        # This helps in coordinated recovery to restore components in the right order
+        self.component_dependencies = {
+            "embedding": [],  # No dependencies
+            "encoder": ["embedding"],  # Depends on embedding
+            "decoder": ["encoder"],  # Depends on encoder
+            "lm_head": ["decoder"],  # Depends on decoder
+            "attention": ["embedding"],  # Depends on embedding
+            "feedforward": ["attention"],  # Depends on attention
+            "vision_encoder": [],  # No dependencies
+            "text_encoder": [],  # No dependencies 
+            "audio_encoder": [],  # No dependencies
+            "projection": ["vision_encoder", "text_encoder"],  # Depends on both encoders
+            "multimodal_fusion": ["vision_encoder", "text_encoder"]  # Depends on both encoders
+        }
+        
+        logger.debug("Component dependency map initialized")
+    
+    async def _initialize_circuit_breakers(self):
+        """Initialize circuit breakers for fault isolation."""
+        # Circuit breakers help prevent cascading failures by isolating problematic components
+        self.circuit_breakers = {
+            "browser": {
+                # Default settings, can be overridden per browser
+                "failure_threshold": 3,
+                "reset_timeout": 300,  # seconds
+                "half_open_timeout": 60,  # seconds
+                "instances": {}  # Browser-specific instances
+            },
+            "component": {
+                # Default settings, can be overridden per component type
+                "failure_threshold": 5,
+                "reset_timeout": 120,  # seconds
+                "half_open_timeout": 30,  # seconds
+                "instances": {}  # Component-specific instances
+            }
+        }
+        
+        logger.debug("Circuit breakers initialized")
+    
+    async def _periodic_checkpoint(self):
+        """Periodically create state checkpoints."""
+        while True:
+            try:
+                # Create a checkpoint of current state
+                if self.state_manager:
+                    await self._create_state_checkpoint()
+                    
+                # Wait for next checkpoint
+                await asyncio.sleep(self.checkpoint_interval)
+                
+            except Exception as e:
+                logger.error(f"Error in checkpoint task: {str(e)}")
+                await asyncio.sleep(self.checkpoint_interval)
+    
+    async def _create_state_checkpoint(self):
+        """Create a checkpoint of current state."""
+        logger.debug("Creating state checkpoint")
+        
+        # In a production system, this would serialize state to durable storage
+        # For this implementation, we'll just mark that a checkpoint was created
+        checkpoint_id = f"checkpoint-{int(time.time())}"
+        
+        # Track checkpoint in state manager
+        if self.state_manager:
+            transaction_id = await self.state_manager.start_transaction("create_checkpoint", {
+                "checkpoint_id": checkpoint_id,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # Add checkpoint metadata
+            # This would include more state information in a real implementation
+            await self.state_manager.commit_transaction(transaction_id)
+        
+        logger.debug(f"Created checkpoint {checkpoint_id}")
+        return checkpoint_id
     
     async def start_operation(
         self,
@@ -625,7 +748,8 @@ class ResourcePoolRecoveryManager:
             "type": operation_type,
             "start_time": datetime.now().isoformat(),
             "status": "started",
-            "metadata": metadata or {}
+            "metadata": metadata or {},
+            "checkpoints": []
         }
         
         # Record in state manager if available
@@ -642,12 +766,41 @@ class ResourcePoolRecoveryManager:
         logger.debug(f"Started tracking operation {operation_id} for model {model_id}")
         return operation_id
     
-    async def complete_operation(self, operation_id: str):
+    async def create_operation_checkpoint(self, operation_id: str, state: Dict[str, Any]):
+        """
+        Create a checkpoint for an operation to enable state recovery.
+        
+        Args:
+            operation_id: Operation ID
+            state: Current operation state
+        """
+        if operation_id not in self.active_operations:
+            logger.warning(f"Operation {operation_id} not found, cannot create checkpoint")
+            return False
+        
+        # Add checkpoint to operation
+        checkpoint = {
+            "timestamp": datetime.now().isoformat(),
+            "state": state
+        }
+        
+        self.active_operations[operation_id]["checkpoints"].append(checkpoint)
+        
+        # Limit number of checkpoints per operation
+        if len(self.active_operations[operation_id]["checkpoints"]) > 5:
+            # Keep most recent 5 checkpoints
+            self.active_operations[operation_id]["checkpoints"] = self.active_operations[operation_id]["checkpoints"][-5:]
+        
+        logger.debug(f"Created checkpoint for operation {operation_id}")
+        return True
+    
+    async def complete_operation(self, operation_id: str, result: Any = None):
         """
         Mark an operation as completed.
         
         Args:
             operation_id: Operation ID
+            result: Optional operation result
         """
         if operation_id not in self.active_operations:
             logger.warning(f"Operation {operation_id} not found, cannot complete")
@@ -657,18 +810,54 @@ class ResourcePoolRecoveryManager:
         self.active_operations[operation_id]["status"] = "completed"
         self.active_operations[operation_id]["end_time"] = datetime.now().isoformat()
         
+        if result is not None:
+            self.active_operations[operation_id]["result"] = result
+        
         # Record in state manager if available
         if self.state_manager:
             await self.state_manager.complete_operation(
                 operation_id=operation_id,
                 status="completed",
-                end_time=datetime.now().isoformat()
+                end_time=datetime.now().isoformat(),
+                result=result
             )
         
         # Remove from active operations
-        del self.active_operations[operation_id]
+        completed_operation = self.active_operations.pop(operation_id)
         
         logger.debug(f"Operation {operation_id} completed")
+        return True
+    
+    async def fail_operation(self, operation_id: str, error: str):
+        """
+        Mark an operation as failed.
+        
+        Args:
+            operation_id: Operation ID
+            error: Error message
+        """
+        if operation_id not in self.active_operations:
+            logger.warning(f"Operation {operation_id} not found, cannot mark as failed")
+            return False
+        
+        # Update operation status
+        self.active_operations[operation_id]["status"] = "failed"
+        self.active_operations[operation_id]["end_time"] = datetime.now().isoformat()
+        self.active_operations[operation_id]["error"] = error
+        
+        # Record in state manager if available
+        if self.state_manager:
+            await self.state_manager.complete_operation(
+                operation_id=operation_id,
+                status="failed",
+                end_time=datetime.now().isoformat(),
+                result={"error": error}
+            )
+        
+        # Keep failed operations for a while to aid recovery
+        # Will be removed by operation cleanup task
+        
+        logger.debug(f"Operation {operation_id} marked as failed: {error}")
         return True
     
     async def set_model_recovery_settings(
@@ -676,7 +865,8 @@ class ResourcePoolRecoveryManager:
         model_id: str,
         recovery_timeout: int,
         state_persistence: bool,
-        failover_strategy: str
+        failover_strategy: str,
+        component_dependencies: Dict[str, List[str]] = None
     ):
         """
         Set recovery settings for a specific model.
@@ -686,12 +876,19 @@ class ResourcePoolRecoveryManager:
             recovery_timeout: Maximum recovery time in seconds
             state_persistence: Whether to persist state between sessions
             failover_strategy: Strategy for failover (immediate, progressive, etc.)
+            component_dependencies: Custom component dependencies for this model
         """
         self.model_recovery_settings[model_id] = {
             "recovery_timeout": recovery_timeout,
             "state_persistence": state_persistence,
-            "failover_strategy": failover_strategy
+            "failover_strategy": failover_strategy,
+            "component_dependencies": component_dependencies
         }
+        
+        # If component dependencies are provided, update the dependency map
+        if component_dependencies:
+            for component, dependencies in component_dependencies.items():
+                self.component_dependencies[component] = dependencies
         
         logger.info(f"Recovery settings updated for model {model_id}")
     
@@ -700,7 +897,8 @@ class ResourcePoolRecoveryManager:
         model_id: str,
         operation_type: str,
         error: str,
-        inputs: Any = None
+        inputs: Any = None,
+        operation_id: str = None
     ) -> Tuple[bool, Any]:
         """
         Recover from a failed model operation.
@@ -710,77 +908,315 @@ class ResourcePoolRecoveryManager:
             operation_type: Type of operation that failed
             error: Error message
             inputs: Inputs to the operation (for retry)
+            operation_id: ID of the failed operation (for state recovery)
             
         Returns:
             Tuple of (success, recovered_model)
         """
-        # Increment recovery attempts
-        model_attempts = self.recovery_attempts.get(model_id, 0) + 1
-        self.recovery_attempts[model_id] = model_attempts
+        start_time = time.time()
         
-        # Log recovery attempt
-        logger.info(f"Attempting to recover model {model_id} (attempt {model_attempts})")
-        
-        # Get model recovery settings
-        settings = self.model_recovery_settings.get(model_id, {
-            "recovery_timeout": 30,
-            "state_persistence": True,
-            "failover_strategy": "immediate"
-        })
-        
-        # Get model state
-        model_state = None
-        if self.state_manager:
-            model_state = self.state_manager.get_model_state(model_id)
-        
-        if not model_state:
-            logger.warning(f"Model {model_id} state not found, cannot recover")
+        # Prevent concurrent recoveries of the same model
+        if model_id in self.recovery_in_progress:
+            logger.warning(f"Recovery already in progress for model {model_id}, skipping")
             return False, None
         
-        # Get browser state
-        browser_id = model_state.get("browser_id")
-        browser_state = None
+        self.recovery_in_progress.add(model_id)
         
-        if self.state_manager and browser_id:
-            browser_state = self.state_manager.get_browser_state(browser_id)
+        try:
+            # Increment recovery attempts and metrics
+            model_attempts = self.recovery_attempts.get(model_id, 0) + 1
+            self.recovery_attempts[model_id] = model_attempts
+            
+            self.recovery_metrics["total_attempts"] += 1
+            
+            # Track error type
+            error_type = self._categorize_error(error)
+            if error_type not in self.recovery_metrics["by_error_type"]:
+                self.recovery_metrics["by_error_type"][error_type] = {"attempts": 0, "successes": 0}
+            self.recovery_metrics["by_error_type"][error_type]["attempts"] += 1
+            
+            # Log recovery attempt
+            logger.info(f"Attempting to recover model {model_id} (attempt {model_attempts})")
+            
+            # Get model recovery settings
+            settings = self.model_recovery_settings.get(model_id, {
+                "recovery_timeout": 30,
+                "state_persistence": True,
+                "failover_strategy": self.strategy
+            })
+            
+            # Get model state
+            model_state = None
+            if self.state_manager:
+                model_state = self.state_manager.get_model_state(model_id)
+            
+            if not model_state:
+                logger.warning(f"Model {model_id} state not found, cannot recover")
+                self.recovery_metrics["failed_recoveries"] += 1
+                return False, None
+            
+            # Get browser state
+            browser_id = model_state.get("browser_id")
+            browser_state = None
+            
+            if self.state_manager and browser_id:
+                browser_state = self.state_manager.get_browser_state(browser_id)
+            
+            # Track metrics by browser
+            if browser_id not in self.recovery_metrics["by_browser"]:
+                self.recovery_metrics["by_browser"][browser_id] = {"attempts": 0, "successes": 0}
+            self.recovery_metrics["by_browser"][browser_id]["attempts"] += 1
+            
+            # Determine recovery strategy based on settings and attempts
+            strategy = settings.get("failover_strategy", self.strategy)
+            
+            # Track metrics by strategy
+            if strategy not in self.recovery_metrics["by_strategy"]:
+                self.recovery_metrics["by_strategy"][strategy] = {"attempts": 0, "successes": 0}
+            self.recovery_metrics["by_strategy"][strategy]["attempts"] += 1
+            
+            # Check circuit breaker before attempting recovery
+            if self._check_browser_circuit_breaker(browser_id):
+                logger.warning(f"Circuit breaker open for browser {browser_id}, using failover")
+                # Force failover if circuit breaker is open
+                strategy = "failover"
+            
+            # Apply recovery strategy
+            success = False
+            recovered_model = None
+            
+            if strategy == "simple" or (strategy == "progressive" and model_attempts == 1):
+                # Simple retry on same browser
+                success, recovered_model = await self._recover_model_retry(
+                    model_id, browser_id, model_state, inputs, operation_id
+                )
+                
+            elif strategy == "progressive":
+                # Progressive recovery - try increasingly aggressive approaches
+                if model_attempts == 1:
+                    # First try simple retry
+                    success, recovered_model = await self._recover_model_retry(
+                        model_id, browser_id, model_state, inputs, operation_id
+                    )
+                elif model_attempts == 2:
+                    # Then try component recovery
+                    success, recovered_model = await self._recover_model_components(
+                        model_id, browser_id, model_state, inputs, operation_id
+                    )
+                else:
+                    # Finally try browser failover
+                    success, recovered_model = await self._recover_model_failover(
+                        model_id, browser_id, model_state, inputs, operation_id
+                    )
+                    
+            elif strategy == "parallel":
+                # Parallel recovery - try multiple approaches simultaneously
+                results = await asyncio.gather(
+                    self._recover_model_retry(model_id, browser_id, model_state, inputs, operation_id),
+                    self._recover_model_failover(model_id, browser_id, model_state, inputs, operation_id),
+                    return_exceptions=True
+                )
+                
+                # Use the first successful result
+                for result in results:
+                    if isinstance(result, tuple) and result[0]:
+                        success, recovered_model = result
+                        break
+                        
+            elif strategy == "coordinated":
+                # Coordinated recovery - coordinate across components with dependency awareness
+                success, recovered_model = await self._recover_model_coordinated(
+                    model_id, browser_id, model_state, inputs, operation_id
+                )
+                
+            else:
+                # Default to failover
+                success, recovered_model = await self._recover_model_failover(
+                    model_id, browser_id, model_state, inputs, operation_id
+                )
+            
+            # Record recovery result
+            recovery_time_ms = (time.time() - start_time) * 1000
+            self.recovery_metrics["recovery_times_ms"].append(recovery_time_ms)
+            
+            self.recovery_history.append({
+                "model_id": model_id,
+                "operation_type": operation_type,
+                "error": error,
+                "error_type": error_type,
+                "browser_id": browser_id,
+                "attempt": model_attempts,
+                "strategy": strategy,
+                "success": success,
+                "recovery_time_ms": recovery_time_ms,
+                "time": datetime.now().isoformat()
+            })
+            
+            # Update metrics based on success
+            if success:
+                self.recovery_metrics["successful_recoveries"] += 1
+                self.recovery_metrics["by_browser"][browser_id]["successes"] += 1
+                self.recovery_metrics["by_strategy"][strategy]["successes"] += 1
+                self.recovery_metrics["by_error_type"][error_type]["successes"] += 1
+                
+                # Reset recovery attempts for this model
+                self.recovery_attempts[model_id] = 0
+                
+                # Record browser success in circuit breaker
+                self._record_browser_success(browser_id)
+            else:
+                self.recovery_metrics["failed_recoveries"] += 1
+                
+                # Record browser failure in circuit breaker
+                self._record_browser_failure(browser_id)
+            
+            return success, recovered_model
+            
+        except Exception as e:
+            logger.error(f"Error in recovery process for model {model_id}: {str(e)}")
+            self.recovery_metrics["failed_recoveries"] += 1
+            return False, None
+        finally:
+            # Remove from in-progress set
+            self.recovery_in_progress.discard(model_id)
+    
+    def _categorize_error(self, error: str) -> str:
+        """
+        Categorize an error to track recovery metrics by error type.
         
-        # Choose recovery strategy based on settings and error
-        strategy = settings.get("failover_strategy", "immediate")
+        Args:
+            error: Error message
+            
+        Returns:
+            Categorized error type
+        """
+        error_lower = error.lower()
         
-        if strategy == "progressive" and model_attempts < 3:
-            # Try simpler recovery first
-            success, recovered_model = await self._recover_model_retry(
-                model_id, browser_id, model_state, inputs
-            )
+        if "timeout" in error_lower:
+            return "timeout"
+        elif "memory" in error_lower:
+            return "memory"
+        elif "crash" in error_lower or "exit" in error_lower:
+            return "crash"
+        elif "network" in error_lower or "connection" in error_lower:
+            return "network"
+        elif "permission" in error_lower:
+            return "permission"
+        elif "not found" in error_lower:
+            return "not_found"
+        elif "invalid" in error_lower:
+            return "invalid_input"
         else:
-            # Go straight to browser failover
-            success, recovered_model = await self._recover_model_failover(
-                model_id, browser_id, model_state, inputs
-            )
+            return "other"
+    
+    def _check_browser_circuit_breaker(self, browser_id: str) -> bool:
+        """
+        Check if circuit breaker is open for a browser.
         
-        # Record recovery result
-        self.recovery_history.append({
-            "model_id": model_id,
-            "operation_type": operation_type,
-            "error": error,
-            "attempt": model_attempts,
-            "strategy": strategy,
-            "success": success,
-            "time": datetime.now().isoformat()
-        })
+        Args:
+            browser_id: Browser ID
+            
+        Returns:
+            True if circuit breaker is open (preventing operations)
+        """
+        browser_circuit = self.circuit_breakers["browser"]["instances"].get(browser_id, {})
         
-        # Reset recovery attempts if successful
-        if success:
-            self.recovery_attempts[model_id] = 0
+        # If no circuit breaker state, create one
+        if not browser_circuit:
+            self.circuit_breakers["browser"]["instances"][browser_id] = {
+                "state": "closed",  # closed = normal, open = preventing operations
+                "failure_count": 0,
+                "last_failure": None,
+                "last_success": None
+            }
+            return False
         
-        return success, recovered_model
+        # Check if circuit breaker is open
+        if browser_circuit.get("state") == "open":
+            # Check if we should try half-open state
+            last_failure = browser_circuit.get("last_failure")
+            if last_failure:
+                try:
+                    failure_time = datetime.fromisoformat(last_failure)
+                    reset_timeout = self.circuit_breakers["browser"]["reset_timeout"]
+                    
+                    if (datetime.now() - failure_time).total_seconds() > reset_timeout:
+                        # Move to half-open state
+                        self.circuit_breakers["browser"]["instances"][browser_id]["state"] = "half-open"
+                        return False
+                except (ValueError, TypeError):
+                    pass
+            
+            # Circuit breaker still open
+            return True
+        
+        return False
+    
+    def _record_browser_success(self, browser_id: str):
+        """
+        Record a successful operation for a browser in circuit breaker.
+        
+        Args:
+            browser_id: Browser ID
+        """
+        if browser_id not in self.circuit_breakers["browser"]["instances"]:
+            self.circuit_breakers["browser"]["instances"][browser_id] = {
+                "state": "closed",
+                "failure_count": 0,
+                "last_failure": None,
+                "last_success": datetime.now().isoformat()
+            }
+            return
+        
+        browser_circuit = self.circuit_breakers["browser"]["instances"][browser_id]
+        
+        # Update last success time
+        browser_circuit["last_success"] = datetime.now().isoformat()
+        
+        # Reset failure count on success
+        browser_circuit["failure_count"] = 0
+        
+        # Close circuit if in half-open state
+        if browser_circuit["state"] == "half-open":
+            browser_circuit["state"] = "closed"
+    
+    def _record_browser_failure(self, browser_id: str):
+        """
+        Record a failed operation for a browser in circuit breaker.
+        
+        Args:
+            browser_id: Browser ID
+        """
+        if browser_id not in self.circuit_breakers["browser"]["instances"]:
+            self.circuit_breakers["browser"]["instances"][browser_id] = {
+                "state": "closed",
+                "failure_count": 1,
+                "last_failure": datetime.now().isoformat(),
+                "last_success": None
+            }
+            return
+        
+        browser_circuit = self.circuit_breakers["browser"]["instances"][browser_id]
+        
+        # Update last failure time
+        browser_circuit["last_failure"] = datetime.now().isoformat()
+        
+        # Increment failure count
+        browser_circuit["failure_count"] += 1
+        
+        # Check if we should open the circuit
+        threshold = self.circuit_breakers["browser"]["failure_threshold"]
+        if browser_circuit["failure_count"] >= threshold:
+            browser_circuit["state"] = "open"
+            logger.warning(f"Circuit breaker opened for browser {browser_id} after {threshold} failures")
     
     async def _recover_model_retry(
         self,
         model_id: str,
         browser_id: str,
         model_state: Dict[str, Any],
-        inputs: Any
+        inputs: Any,
+        operation_id: str = None
     ) -> Tuple[bool, Any]:
         """
         Attempt to recover a model by retrying the operation on the same browser.
@@ -790,6 +1226,7 @@ class ResourcePoolRecoveryManager:
             browser_id: Browser ID
             model_state: Model state
             inputs: Inputs to the operation
+            operation_id: Optional operation ID for state recovery
             
         Returns:
             Tuple of (success, recovered_model)
@@ -801,22 +1238,107 @@ class ResourcePoolRecoveryManager:
             # In a real implementation, would try to restart the model on the same browser
             # For now, just simulate a recovery attempt
             
+            # Try to recover from operation checkpoint if available
+            last_checkpoint = None
+            if operation_id and operation_id in self.active_operations:
+                checkpoints = self.active_operations[operation_id].get("checkpoints", [])
+                if checkpoints:
+                    last_checkpoint = checkpoints[-1]
+                    logger.info(f"Found checkpoint for operation {operation_id}, using for recovery")
+            
             # Create a simple model proxy
-            from resource_pool_bridge import ModelProxy
-            
-            # Create a recovered model proxy
-            recovered_model = ModelProxy(
-                model_id=model_id,
-                model_name=model_state.get("name", "unknown"),
-                model_type=model_state.get("type", "unknown"),
-                browser_id=browser_id
-            )
-            
-            logger.info(f"Model {model_id} recovered on browser {browser_id}")
-            return True, recovered_model
+            try:
+                from resource_pool_bridge import ModelProxy
+                
+                # Create a recovered model proxy
+                recovered_model = ModelProxy(
+                    model_id=model_id,
+                    model_name=model_state.get("name", "unknown"),
+                    model_type=model_state.get("type", "unknown"),
+                    browser_id=browser_id,
+                    checkpoint_state=last_checkpoint.get("state") if last_checkpoint else None
+                )
+                
+                logger.info(f"Model {model_id} recovered on browser {browser_id}")
+                return True, recovered_model
+                
+            except ImportError:
+                # ModelProxy class not found, create stub result
+                recovered_model = {
+                    "id": model_id,
+                    "name": model_state.get("name", "unknown"),
+                    "type": model_state.get("type", "unknown"),
+                    "browser_id": browser_id
+                }
+                
+                logger.info(f"Model {model_id} recovered on browser {browser_id} (stub implementation)")
+                return True, recovered_model
             
         except Exception as e:
             logger.error(f"Error recovering model {model_id} by retry: {str(e)}")
+            return False, None
+    
+    async def _recover_model_components(
+        self,
+        model_id: str,
+        browser_id: str,
+        model_state: Dict[str, Any],
+        inputs: Any,
+        operation_id: str = None
+    ) -> Tuple[bool, Any]:
+        """
+        Attempt to recover a model by recovering individual components.
+        
+        Args:
+            model_id: Model ID
+            browser_id: Browser ID
+            model_state: Model state
+            inputs: Inputs to the operation
+            operation_id: Optional operation ID for state recovery
+            
+        Returns:
+            Tuple of (success, recovered_model)
+        """
+        logger.info(f"Attempting to recover model {model_id} by component recovery on browser {browser_id}")
+        
+        # In a real implementation, would identify failed components and reload only those
+        # For this simulation, we'll just retry with a delay
+        
+        try:
+            # Simulate component recovery process
+            await asyncio.sleep(0.5)  # Simulate recovery time
+            
+            # Create a simple model proxy
+            try:
+                from resource_pool_bridge import ModelProxy
+                
+                # Create a recovered model proxy
+                recovered_model = ModelProxy(
+                    model_id=model_id,
+                    model_name=model_state.get("name", "unknown"),
+                    model_type=model_state.get("type", "unknown"),
+                    browser_id=browser_id,
+                    recovered_components=True  # Indicate this went through component recovery
+                )
+                
+                logger.info(f"Model {model_id} components recovered on browser {browser_id}")
+                return True, recovered_model
+                
+            except ImportError:
+                # ModelProxy class not found, create stub result
+                recovered_model = {
+                    "id": model_id,
+                    "name": model_state.get("name", "unknown"),
+                    "type": model_state.get("type", "unknown"),
+                    "browser_id": browser_id,
+                    "recovered_components": True
+                }
+                
+                logger.info(f"Model {model_id} components recovered on browser {browser_id} (stub implementation)")
+                return True, recovered_model
+            
+        except Exception as e:
+            logger.error(f"Error recovering model {model_id} components: {str(e)}")
             return False, None
     
     async def _recover_model_failover(
@@ -824,7 +1346,8 @@ class ResourcePoolRecoveryManager:
         model_id: str,
         browser_id: str,
         model_state: Dict[str, Any],
-        inputs: Any
+        inputs: Any,
+        operation_id: str = None
     ) -> Tuple[bool, Any]:
         """
         Attempt to recover a model by failing over to a different browser.
@@ -834,6 +1357,7 @@ class ResourcePoolRecoveryManager:
             browser_id: Original browser ID
             model_state: Model state
             inputs: Inputs to the operation
+            operation_id: Optional operation ID for state recovery
             
         Returns:
             Tuple of (success, recovered_model)
@@ -845,27 +1369,259 @@ class ResourcePoolRecoveryManager:
             # Generate a new browser ID
             new_browser_id = f"recovery-{uuid.uuid4().hex[:8]}"
             
+            # Try to recover from operation checkpoint if available
+            last_checkpoint = None
+            if operation_id and operation_id in self.active_operations:
+                checkpoints = self.active_operations[operation_id].get("checkpoints", [])
+                if checkpoints:
+                    last_checkpoint = checkpoints[-1]
+                    logger.info(f"Found checkpoint for operation {operation_id}, using for failover")
+            
             # Update model state if state manager is available
             if self.state_manager:
                 await self.state_manager.update_model_browser(model_id, new_browser_id)
             
             # Create a simple model proxy
-            from resource_pool_bridge import ModelProxy
-            
-            # Create a recovered model proxy
-            recovered_model = ModelProxy(
-                model_id=model_id,
-                model_name=model_state.get("name", "unknown"),
-                model_type=model_state.get("type", "unknown"),
-                browser_id=new_browser_id
-            )
-            
-            logger.info(f"Model {model_id} recovered by failover to browser {new_browser_id}")
-            return True, recovered_model
+            try:
+                from resource_pool_bridge import ModelProxy
+                
+                # Create a recovered model proxy
+                recovered_model = ModelProxy(
+                    model_id=model_id,
+                    model_name=model_state.get("name", "unknown"),
+                    model_type=model_state.get("type", "unknown"),
+                    browser_id=new_browser_id,
+                    checkpoint_state=last_checkpoint.get("state") if last_checkpoint else None,
+                    failover=True  # Indicate this is a failover recovery
+                )
+                
+                logger.info(f"Model {model_id} recovered by failover to browser {new_browser_id}")
+                return True, recovered_model
+                
+            except ImportError:
+                # ModelProxy class not found, create stub result
+                recovered_model = {
+                    "id": model_id,
+                    "name": model_state.get("name", "unknown"),
+                    "type": model_state.get("type", "unknown"),
+                    "browser_id": new_browser_id,
+                    "failover": True
+                }
+                
+                logger.info(f"Model {model_id} recovered by failover to browser {new_browser_id} (stub implementation)")
+                return True, recovered_model
             
         except Exception as e:
             logger.error(f"Error recovering model {model_id} by failover: {str(e)}")
             return False, None
+    
+    async def _recover_model_coordinated(
+        self,
+        model_id: str,
+        browser_id: str,
+        model_state: Dict[str, Any],
+        inputs: Any,
+        operation_id: str = None
+    ) -> Tuple[bool, Any]:
+        """
+        Attempt to recover a model using coordinated recovery with dependency awareness.
+        
+        Args:
+            model_id: Model ID
+            browser_id: Browser ID
+            model_state: Model state
+            inputs: Inputs to the operation
+            operation_id: Optional operation ID for state recovery
+            
+        Returns:
+            Tuple of (success, recovered_model)
+        """
+        logger.info(f"Attempting coordinated recovery for model {model_id}")
+        
+        # Coordinated recovery is the most advanced recovery strategy
+        # It considers component dependencies and ensures they are recovered in the right order
+        
+        try:
+            # Get model components
+            model_components = model_state.get("components", [])
+            if not model_components:
+                # If no components specified, try to infer from model type
+                model_type = model_state.get("type", "")
+                if "text" in model_type:
+                    model_components = ["embedding", "encoder", "decoder", "lm_head"]
+                elif "vision" in model_type:
+                    model_components = ["vision_encoder", "projection"]
+                elif "audio" in model_type:
+                    model_components = ["audio_encoder", "decoder", "lm_head"]
+                elif "multimodal" in model_type:
+                    model_components = ["vision_encoder", "text_encoder", "multimodal_fusion"]
+                else:
+                    model_components = ["embedding", "layers", "output"]
+            
+            # Sort components by dependency order
+            sorted_components = self._sort_components_by_dependencies(model_components)
+            
+            # Check if we should try to keep the same browser or failover
+            if self._check_browser_circuit_breaker(browser_id):
+                # Circuit breaker is open, need to failover
+                logger.info(f"Circuit breaker open for browser {browser_id}, using failover in coordinated recovery")
+                new_browser_id = f"recovery-{uuid.uuid4().hex[:8]}"
+                
+                if self.state_manager:
+                    await self.state_manager.update_model_browser(model_id, new_browser_id)
+                
+                browser_id = new_browser_id
+            
+            # Simulate component recovery in dependency order
+            logger.info(f"Coordinated recovery of components: {', '.join(sorted_components)}")
+            
+            # Try to recover from operation checkpoint if available
+            last_checkpoint = None
+            if operation_id and operation_id in self.active_operations:
+                checkpoints = self.active_operations[operation_id].get("checkpoints", [])
+                if checkpoints:
+                    last_checkpoint = checkpoints[-1]
+            
+            # Create a simple model proxy
+            try:
+                from resource_pool_bridge import ModelProxy
+                
+                # Create a recovered model proxy
+                recovered_model = ModelProxy(
+                    model_id=model_id,
+                    model_name=model_state.get("name", "unknown"),
+                    model_type=model_state.get("type", "unknown"),
+                    browser_id=browser_id,
+                    checkpoint_state=last_checkpoint.get("state") if last_checkpoint else None,
+                    recovered_components=sorted_components,
+                    coordinated_recovery=True
+                )
+                
+                logger.info(f"Model {model_id} recovered with coordinated recovery on browser {browser_id}")
+                return True, recovered_model
+                
+            except ImportError:
+                # ModelProxy class not found, create stub result
+                recovered_model = {
+                    "id": model_id,
+                    "name": model_state.get("name", "unknown"),
+                    "type": model_state.get("type", "unknown"),
+                    "browser_id": browser_id,
+                    "recovered_components": sorted_components,
+                    "coordinated_recovery": True
+                }
+                
+                logger.info(f"Model {model_id} recovered with coordinated recovery on browser {browser_id} (stub implementation)")
+                return True, recovered_model
+            
+        except Exception as e:
+            logger.error(f"Error in coordinated recovery for model {model_id}: {str(e)}")
+            return False, None
+    
+    def _sort_components_by_dependencies(self, components: List[str]) -> List[str]:
+        """
+        Sort components by dependency order to ensure correct recovery sequence.
+        
+        Args:
+            components: List of component names
+            
+        Returns:
+            Sorted list of components in dependency order
+        """
+        # Build dependency graph
+        graph = {}
+        for component in components:
+            if component not in graph:
+                graph[component] = set()
+            
+            # Add dependencies
+            dependencies = self.component_dependencies.get(component, [])
+            for dep in dependencies:
+                if dep in components:
+                    graph[component].add(dep)
+        
+        # Topological sort
+        visited = set()
+        temp_visited = set()
+        order = []
+        
+        def visit(node):
+            if node in temp_visited:
+                # Circular dependency, handle gracefully
+                return
+            if node in visited:
+                return
+            
+            temp_visited.add(node)
+            
+            for neighbor in graph.get(node, set()):
+                visit(neighbor)
+                
+            temp_visited.remove(node)
+            visited.add(node)
+            order.append(node)
+        
+        for component in components:
+            if component not in visited:
+                visit(component)
+                
+        # Reverse to get dependency order
+        return list(reversed(order))
+    
+    def get_recovery_metrics(self) -> Dict[str, Any]:
+        """
+        Get metrics about recovery attempts and success rates.
+        
+        Returns:
+            Dictionary of recovery metrics
+        """
+        metrics = dict(self.recovery_metrics)
+        
+        # Calculate success rate
+        total_attempts = metrics["total_attempts"]
+        if total_attempts > 0:
+            metrics["success_rate"] = metrics["successful_recoveries"] / total_attempts
+        else:
+            metrics["success_rate"] = 0.0
+        
+        # Calculate average recovery time
+        recovery_times = metrics["recovery_times_ms"]
+        if recovery_times:
+            metrics["avg_recovery_time_ms"] = sum(recovery_times) / len(recovery_times)
+        else:
+            metrics["avg_recovery_time_ms"] = 0.0
+        
+        # Calculate strategy success rates
+        for strategy, data in metrics["by_strategy"].items():
+            if data["attempts"] > 0:
+                data["success_rate"] = data["successes"] / data["attempts"]
+            else:
+                data["success_rate"] = 0.0
+        
+        # Calculate browser success rates
+        for browser, data in metrics["by_browser"].items():
+            if data["attempts"] > 0:
+                data["success_rate"] = data["successes"] / data["attempts"]
+            else:
+                data["success_rate"] = 0.0
+        
+        # Calculate error type success rates
+        for error_type, data in metrics["by_error_type"].items():
+            if data["attempts"] > 0:
+                data["success_rate"] = data["successes"] / data["attempts"]
+            else:
+                data["success_rate"] = 0.0
+        
+        return metrics
+    
+    def get_circuit_breaker_status(self) -> Dict[str, Any]:
+        """
+        Get status of all circuit breakers.
+        
+        Returns:
+            Dictionary of circuit breaker statuses
+        """
+        return self.circuit_breakers
 
 
 class PerformanceHistoryTracker:

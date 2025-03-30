@@ -1,0 +1,184 @@
+# Report Templates
+
+This directory contains templates for generating reports in various formats. Templates are used by the Reporting System to ensure consistent structure and styling across different report types.
+
+## Template Organization
+
+Templates are organized by report type and format:
+
+```
+templates/
+├── comprehensive_report_html.template     # HTML template for comprehensive reports
+├── comprehensive_report_markdown.template # Markdown template for comprehensive reports
+├── executive_summary_html.template        # HTML template for executive summaries
+├── executive_summary_markdown.template    # Markdown template for executive summaries
+├── technical_report_html.template         # HTML template for technical reports
+├── technical_report_markdown.template     # Markdown template for technical reports
+├── comparative_report_html.template       # HTML template for comparative reports
+├── comparative_report_markdown.template   # Markdown template for comparative reports
+├── css/                                   # CSS styling for HTML reports
+│   ├── default.css                        # Default styling
+│   ├── executive.css                      # Executive summary styling
+│   ├── technical.css                      # Technical report styling
+│   └── comparative.css                    # Comparative report styling
+└── README.md                              # This file
+```
+
+## Template Variables
+
+Templates support variable substitution using the `{{variable_name}}` syntax. Common variables include:
+
+### Common Variables
+
+- `{{metadata.title}}`: Report title
+- `{{metadata.description}}`: Report description
+- `{{metadata.generated_at}}`: Generation timestamp
+- `{{metadata.version}}`: Report version
+- `{{metadata.company}}`: Company name (if provided)
+- `{{metadata.report_id}}`: Unique report ID
+
+### Report-Specific Content
+
+- `{{summary_html}}`, `{{summary_markdown}}`, `{{summary_text}}`: Summary content in different formats
+- `{{validation_results_html}}`, `{{validation_results_markdown}}`, `{{validation_results_text}}`: Validation results
+- `{{visualizations}}`: List of visualizations to include
+- `{{comparative_analysis_html}}`, `{{comparative_analysis_markdown}}`, `{{comparative_analysis_text}}`: Comparative analysis
+
+### Executive Summary Variables
+
+- `{{key_highlights}}`: List of key metrics and status highlights
+- `{{business_impact}}`: Business impact statement
+- `{{strategic_implications}}`: Strategic implications statement
+- `{{next_steps}}`: Recommended next steps
+
+### Technical Report Variables
+
+- `{{detailed_statistics}}`: Detailed statistical analysis
+- `{{technical_report_html}}`, `{{technical_report_markdown}}`, `{{technical_report_text}}`: Technical analysis
+- `{{methodology_description}}`: Methodology description
+- `{{statistical_notes}}`: Statistical analysis notes
+- `{{raw_data}}`: Raw data tables
+
+### Comparative Report Variables
+
+- `{{before_label}}`: Label for "before" results
+- `{{after_label}}`: Label for "after" results
+- `{{improvement_threshold}}`: Threshold for highlighting improvements
+- `{{regression_threshold}}`: Threshold for highlighting regressions
+- `{{comparative_report_html}}`, `{{comparative_report_markdown}}`, `{{comparative_report_text}}`: Comparative analysis
+- `{{significant_changes}}`: List of significant improvements and regressions
+- `{{comparison_notes}}`: Notes about the comparison
+
+## Custom Templates
+
+To use custom templates:
+
+1. Create your template file with the appropriate structure
+2. Pass the template file path to the report generator:
+
+```python
+from duckdb_api.simulation_validation.reporting import ReportManager
+from duckdb_api.simulation_validation.reporting.report_generator import ReportType, ReportFormat
+
+# Create a report manager with custom templates
+manager = ReportManager(
+    output_dir="reports",
+    template_dirs={
+        "executive_summary": "path/to/custom/executive/templates",
+        "technical_report": "path/to/custom/technical/templates"
+    }
+)
+
+# Generate a report with custom templates
+report = manager.generate_report(
+    validation_results=results,
+    report_type=ReportType.EXECUTIVE_SUMMARY,
+    output_format=ReportFormat.HTML
+)
+```
+
+## Template Format
+
+Templates should be structured according to the output format:
+
+### HTML Templates
+
+HTML templates should include proper HTML structure with CSS styling:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{metadata.title}}</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; }
+        /* Additional styling */
+        {{custom_css}}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{metadata.title}}</h1>
+        <p>Generated: {{metadata.generated_at}}</p>
+    </div>
+    
+    <div class="summary">
+        {{summary_html}}
+    </div>
+    
+    <!-- Additional sections -->
+    
+    <div class="footer">
+        <p>Generated by Simulation Validation Reporting Framework</p>
+    </div>
+</body>
+</html>
+```
+
+### Markdown Templates
+
+Markdown templates should follow Markdown syntax:
+
+```markdown
+# {{metadata.title}}
+
+*Generated: {{metadata.generated_at}}*
+
+## Summary
+
+{{summary_markdown}}
+
+<!-- Additional sections -->
+
+---
+
+Generated by Simulation Validation Reporting Framework
+```
+
+## Customizing CSS
+
+HTML templates can include custom CSS styling:
+
+1. Create a custom CSS file
+2. Pass the CSS file path to the report generator:
+
+```python
+manager = ReportManager(
+    output_dir="reports",
+    custom_css="path/to/custom.css"
+)
+```
+
+The CSS content will be inserted into the template at the `{{custom_css}}` placeholder.
+
+## Template Inheritance
+
+The template system supports a form of template inheritance where default templates are used as fallbacks if specific templates are not found. The search order is:
+
+1. Custom template provided via `custom_templates` parameter
+2. Template in the specified `templates_dir` directory
+3. Default template embedded in the report generator
+
+This allows for selective customization of specific report types or formats while using defaults for others.

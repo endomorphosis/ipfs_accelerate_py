@@ -1,931 +1,357 @@
-# IPFS Accelerate Framework Documentation Index
+# IPFS Accelerate Documentation Index
+
+This document serves as a central index to all documentation for the IPFS Accelerate project.
+
+## API Metrics and Simulation Validation
+
+- [API Management UI README](API_MANAGEMENT_UI_README.md): Documentation for the API Management UI dashboard
+- [API Monitoring README](API_MONITORING_README.md): Guide to monitoring API performance and reliability
+- [API Distributed Testing Guide](API_DISTRIBUTED_TESTING_GUIDE.md): Guide to running distributed tests for APIs
+- [Predictive Analytics README](PREDICTIVE_ANALYTICS_README.md): Documentation for the predictive analytics system
+
+## Hardware Optimization and Visualization
+
+- [HARDWARE_OPTIMIZATION_GUIDE.md](HARDWARE_OPTIMIZATION_GUIDE.md): Guide to hardware-specific optimizations
+- [OPTIMIZATION_EXPORTER_README.md](OPTIMIZATION_EXPORTER_README.md): Documentation for the Hardware Optimization Exporter
+- [ENHANCED_VISUALIZATION_EXPORT_GUIDE.md](ENHANCED_VISUALIZATION_EXPORT_GUIDE.md): Guide to the Enhanced Visualization UI for exports
+- [DuckDB Simulation Validation](../duckdb_api/simulation_validation/README.md): Documentation for the simulation validation module
+- [API Metrics Validation Guide](API_METRICS_VALIDATION_GUIDE.md): Comprehensive guide to API metrics validation
+- [API Metrics Validation Tool](run_api_metrics_validation.py): CLI tool for validating API metrics
+- [Calibration DuckDB Integration Guide](CALIBRATION_DUCKDB_INTEGRATION_GUIDE.md): Guide to using DuckDB with simulation calibration
+- [Calibration DuckDB CLI Tool](run_calibration_with_duckdb.py): Command-line tool for calibration with DuckDB integration
+- [Predictive Performance DuckDB Integration Guide](PREDICTIVE_PERFORMANCE_DUCKDB_INTEGRATION_GUIDE.md): Guide to using DuckDB with predictive performance modeling
+- [Predictive Performance DuckDB CLI Tool](run_predictive_performance_with_duckdb.py): Command-line tool for predictive performance with DuckDB integration
+- [Predictive Performance API Integration Guide](PREDICTIVE_PERFORMANCE_API_INTEGRATION_GUIDE.md): Guide to the FastAPI integration for predictive performance
+
+## Mobile Edge Support
+
+### Planning Documentation
+- [MOBILE_EDGE_EXPANSION_PLAN.md](MOBILE_EDGE_EXPANSION_PLAN.md) - Strategic plan for mobile and edge device support
+- [MOBILE_EDGE_CI_INTEGRATION_PLAN.md](MOBILE_EDGE_CI_INTEGRATION_PLAN.md) - Plan for CI/CD integration of mobile testing
+
+### Implementation Components
+- [CROSS_PLATFORM_ANALYSIS_GUIDE.md](CROSS_PLATFORM_ANALYSIS_GUIDE.md) - Guide to cross-platform mobile analysis tool
+- Android Test Harness - See `android_test_harness` directory
+  - `android_test_harness/README.md` - Android test harness documentation
+  - `android_test_harness/run_ci_benchmarks.py` - CI benchmark runner for Android
+- iOS Test Harness - See `ios_test_harness` directory
+  - `ios_test_harness/README.md` - iOS test harness documentation
+  - `ios_test_harness/run_ci_benchmarks.py` - CI benchmark runner for iOS
+
+### CI/CD Integration Tools
+- `merge_benchmark_databases.py` - Utility for merging benchmark databases from different platforms
+- `check_mobile_regressions.py` - Tool for detecting performance regressions in mobile benchmarks
+- `generate_mobile_dashboard.py` - Dashboard generator for mobile performance visualization
+- `test_mobile_ci_integration.py` - Test script for the mobile CI integration components
+
+## API Documentation
 
-Last Updated: July 22, 2025
+### FastAPI Integration
 
-This document provides a comprehensive index of all project documentation, organized by category and implementation phase.
+- [FASTAPI_INTEGRATION_GUIDE.md](FASTAPI_INTEGRATION_GUIDE.md) - Comprehensive guide to FastAPI integration
+- [API_INTEGRATION_PLAN.md](refactored_test_suite/integration/API_INTEGRATION_PLAN.md) - Detailed API refactoring plan
+- [API_DUCKDB_INTEGRATION.md](API_DUCKDB_INTEGRATION.md) - DuckDB integration for API components
+- [API_UNIFIED_DB_INTEGRATION.md](API_UNIFIED_DB_INTEGRATION.md) - Unified API Server with cross-component database operations
+- [BENCHMARK_FASTAPI_DASHBOARD.md](refactored_benchmark_suite/BENCHMARK_FASTAPI_DASHBOARD.md) - Benchmark API dashboard documentation
 
-## Recently Added Documentation
+### API Components
 
-### Real-Time Performance Metrics Dashboard for DRM (NEW - July 22, 2025)
+- **Test Suite API** - Endpoints for running tests and retrieving results
+  - API Server: `/test/refactored_test_suite/api/test_api_server.py`
+  - Test Runner: `/test/refactored_test_suite/api/test_runner.py`
+  - API Client: `/test/refactored_test_suite/api/api_client.py`
+  - Base URL: `http://localhost:8000/api/test/`
+  - Documentation: `/test/refactored_test_suite/api/README.md`
+  - Database Integration: `/test/refactored_test_suite/database/`
+  - DB Documentation: `/test/refactored_test_suite/database/README.md`
 
-A comprehensive real-time performance metrics dashboard has been implemented for the Dynamic Resource Management system, providing interactive visualization, statistical regression detection, and alerting capabilities:
+- **Generator API** - Endpoints for generating model implementations
+  - Location: `/test/refactored_generator_suite/generator_api_server.py`
+  - Base URL: `http://localhost:8001/api/generator/`
+  - Database Integration: `/test/refactored_generator_suite/database/`
+  - Documentation: [GENERATOR_DUCKDB_INTEGRATION.md](GENERATOR_DUCKDB_INTEGRATION.md)
 
-- [REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md](REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md) - **NEW** Comprehensive documentation for the performance dashboard
-- [run_drm_real_time_dashboard.py](run_drm_real_time_dashboard.py) - **NEW** Runner script for launching the dashboard
-- [drm_real_time_dashboard.py](duckdb_api/distributed_testing/dashboard/drm_real_time_dashboard.py) - **NEW** Implementation of the real-time dashboard
-- [mock_drm.py](duckdb_api/distributed_testing/testing/mock_drm.py) - **NEW** Mock DRM implementation for testing
-- [test_drm_real_time_dashboard.py](duckdb_api/distributed_testing/tests/test_drm_real_time_dashboard.py) - **NEW** Test suite for the real-time dashboard
+- **Benchmark API** - Endpoints for running benchmarks and retrieving metrics
+  - Location: `/test/refactored_benchmark_suite/benchmark_api_server.py`
+  - Base URL: `http://localhost:8002/api/benchmark/`
 
-### Comprehensive Test Refactoring with Standardized Base Classes (COMPLETED - July 27, 2025)
+- **Predictive Performance API** - Endpoints for hardware recommendations and performance predictions
+  - API Server: `/test/api_server/predictive_performance_api_server.py`
+  - Integration Module: `/test/api_server/integrations/predictive_performance_integration.py`
+  - API Client: `/test/api_client/predictive_performance_client.py`
+  - Base URL: `http://localhost:8500/api/predictive-performance/`
+  - Gateway URL: `http://localhost:8080/api/predictive-performance/`
+  - Documentation: [PREDICTIVE_PERFORMANCE_API_INTEGRATION_GUIDE.md](PREDICTIVE_PERFORMANCE_API_INTEGRATION_GUIDE.md)
+  - Example Usage: `/test/demo_predictive_performance_api.py`
+  - Run Script: `/test/run_integrated_api_servers.py`
 
-A comprehensive test refactoring initiative has been completed with a focus on standardizing test structure, reducing duplication, and improving maintainability:
+- **Unified API Server** - Gateway to all API components (✅ COMPLETED - 100%)
+  - Location: `/test/unified_api_server.py`
+  - Base URL: `http://localhost:8080/api/`
+  - Database Operations: `http://localhost:8080/api/db/`
+  - Cross-Component Database: `http://localhost:8080/api/db/overview` and `http://localhost:8080/api/db/model/{model_name}`
+  - Authentication: API key required via `X-API-Key` header for database operations
+  - Documentation: [API_UNIFIED_DB_INTEGRATION.md](API_UNIFIED_DB_INTEGRATION.md)
+  - Example Usage: 
+    - `/test/examples/api_integration_example.py` - General API integration example
+    - `/test/examples/unified_db_example.py` - Unified database operations example
 
-- [COMPREHENSIVE_TEST_REFACTORING_PLAN.md](COMPREHENSIVE_TEST_REFACTORING_PLAN.md) - **NEW** Complete refactoring strategy with timeline and implementation plan
-- [README_TEST_REFACTORING_IMPLEMENTATION.md](README_TEST_REFACTORING_IMPLEMENTATION.md) - **NEW** Detailed implementation plan for Phase 1 of the refactoring
-- [TEST_REFACTORING_SUMMARY.md](TEST_REFACTORING_SUMMARY.md) - **NEW** Summary of the completed test refactoring analysis and implementation
-- [refactored_tests_README.md](refactored_tests_README.md) - **NEW** Guide to the new refactored test directory structure
-- [REFACTORED_TEST_MIGRATION_GUIDE.md](REFACTORED_TEST_MIGRATION_GUIDE.md) - **NEW** Comprehensive guide for migrating tests to the refactored structure
-- [setup_refactored_tests.py](setup_refactored_tests.py) - **NEW** Script to set up the refactored test infrastructure
-- [run_refactored_tests.py](run_refactored_tests.py) - **NEW** Script to run the refactored tests
-- [analyze_test_ast_report.py](analyze_test_ast_report.py) - **UPDATED** Analysis tool for test code patterns with visualization capabilities
-- [generate_test_ast_report.py](generate_test_ast_report.py) - AST generation tool for test files
+## Project Modules
 
-Key features of the completed refactoring initiative:
-- **Comprehensive Analysis**: AST-based analysis of 2,169 test files, 5,490 test classes, and 26,000+ test methods
-- **Standardized Base Classes**: Complete hierarchy of specialized test base classes (BaseTest, ModelTest, HardwareTest, APITest, BrowserTest)
-- **Consistent Directory Structure**: Logical organization of tests by type and purpose (unit, integration, models, hardware, browser, api, e2e)
-- **Reduced Duplication**: Identification and elimination of 4,245 potential duplicate test methods
-- **Implementation Plan**: Four-phase implementation approach with concrete timelines and deliverables
-- **Migration Tooling**: Comprehensive setup script and migration guide for converting existing tests
-- **Template Tests**: Sample implementations showing the new standardized approach
+### Core Modules
 
-The refactoring implementation addresses the challenges of the rapidly growing test codebase by standardizing test structure and eliminating duplication. Expected benefits include 30-40% reduction in code volume, 20-30% improvement in test execution time, improved maintainability, better coverage visibility, and more consistent test behavior. The refactoring was completed ahead of schedule (July 27, 2025 vs. August 15, 2025 target).
+- [CLAUDE.md](CLAUDE.md) - Central project status and development guide
+- [README.md](../README.md) - Main project documentation
 
-### Mock Detection Framework with Visualization (NEW - July 21, 2025)
+### Distributed Testing Framework
 
-A comprehensive mock detection system has been implemented with advanced visualization capabilities to track and analyze the use of mock objects in testing:
+- [DISTRIBUTED_TESTING_DESIGN.md](DISTRIBUTED_TESTING_DESIGN.md) - Architecture design
+- [DISTRIBUTED_TESTING_GUIDE.md](DISTRIBUTED_TESTING_GUIDE.md) - Usage guide
+- [DISTRIBUTED_TESTING_COMPLETION.md](DISTRIBUTED_TESTING_COMPLETION.md) - Completion report
 
-- [MOCK_DETECTION_GUIDE.md](MOCK_DETECTION_GUIDE.md) - **NEW** Comprehensive guide to implementing and using mock detection
-- [mock_detection_visualization.py](mock_detection_visualization.py) - **NEW** Interactive visualization module for mock detection status
-- [generate_mock_detection_results.py](generate_mock_detection_results.py) - **NEW** Utility for generating sample mock detection results
+### Fault Tolerance and High Availability
 
-Key features of the implementation:
-- **Standardized Mock Detection**: Consistent approach to detecting and handling mock dependencies
-- **Clear Visual Indicators**: Standardized emoji indicators (🚀/🔷) for distinguishing real vs. mock test runs 
-- **Comprehensive Visualizations**: Implementation heatmaps, model family analysis, test success rates
-- **Statistical Analysis**: Comparison of test success rates and performance between real and mock tests
-- **Interactive Dashboard**: Combined visualization of implementation status and test results
-- **Test Generation Integration**: Automatic inclusion of mock detection in generated test files
+- [HARDWARE_FAULT_TOLERANCE_GUIDE.md](HARDWARE_FAULT_TOLERANCE_GUIDE.md) - Fault tolerance implementation
+- [REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md](REAL_TIME_PERFORMANCE_METRICS_DASHBOARD.md) - Performance monitoring
+- [DYNAMIC_RESOURCE_MANAGEMENT.md](DYNAMIC_RESOURCE_MANAGEMENT.md) - Resource management
 
-The mock detection system ensures tests can run in both real inference and mock modes, providing clear indicators and consistent behavior. This enhances CI/CD compatibility and enables accurate testing in environments without required dependencies while making it clear when mock objects are being used instead of real implementations.
+### Refactored Components
 
+- [README_TEST_REFACTORING_IMPLEMENTATION.md](README_TEST_REFACTORING_IMPLEMENTATION.md) - Test suite refactoring
+- [refactored_test_suite/README.md](refactored_test_suite/README.md) - Test suite documentation
+- [refactored_generator_suite/README.md](refactored_generator_suite/README.md) - Generator suite documentation
+- [refactored_benchmark_suite/README.md](refactored_benchmark_suite/README.md) - Benchmark suite documentation
 
-### Vision-Text Model DuckDB Integration and Visualization (NEW - March 21, 2025)
+### Cross-Browser Features
 
-A comprehensive DuckDB integration for vision-text models (CLIP, BLIP) has been implemented with advanced visualization capabilities:
+- [CROSS_BROWSER_MODEL_SHARDING_TESTING_GUIDE.md](CROSS_BROWSER_MODEL_SHARDING_TESTING_GUIDE.md) - Model sharding implementation
+- [WEB_RESOURCE_POOL_FAULT_TOLERANCE_README.md](WEB_RESOURCE_POOL_FAULT_TOLERANCE_README.md) - Resource pool fault tolerance
+- [IPFS_CROSS_MODEL_TENSOR_SHARING_GUIDE.md](IPFS_CROSS_MODEL_TENSOR_SHARING_GUIDE.md) - Tensor sharing
 
-- [VISION_TEXT_DUCKDB_INTEGRATION.md](VISION_TEXT_DUCKDB_INTEGRATION.md) - **NEW** Comprehensive guide to the DuckDB integration for vision-text models
-- [vision_text_duckdb_integration.py](vision_text_duckdb_integration.py) - **NEW** Core implementation for storing and querying vision-text model results
-- [vision_text_visualization.py](vision_text_visualization.py) - **NEW** Interactive visualization module for vision-text model performance data
-
-Key features of the implementation:
-- **Comprehensive Database Schema**: Stores detailed test results and compatibility metrics for vision-text models
-- **Hardware Platform Tracking**: Monitors compatibility across CPU, CUDA, OpenVINO, ROCm, MPS, WebNN, and WebGPU
-- **Interactive Visualizations**: Performance comparisons, compatibility heatmaps, time series analysis
-- **Statistical Analysis**: Confidence intervals and performance metrics across hardware platforms
-- **Interactive Dashboard**: Combined visualization of performance and compatibility data
-- **Integration with Test Runner**: Seamless integration with the comprehensive test runner
+## Guides
 
-The integration extends the existing DuckDB database system to include vision-text models, enhancing the framework's ability to track and analyze performance across hardware platforms. The visualization module provides a comprehensive set of tools for exploring and understanding the data, with support for various export formats and customization options.
+### Installation and Setup
 
-### API Backends TypeScript Migration (COMPLETED - March 19, 2025)
+- [install/README.md](../install/README.md) - Installation instructions
+- [setup.py](../setup.py) - Package setup
 
-The API Backends TypeScript Migration project has been successfully completed, with all 18 backends fully migrated to TypeScript with comprehensive documentation, tests, and examples:
+### API Usage
 
-- [API_BACKENDS_TYPESCRIPT_COMPLETION_REPORT.md](API_BACKENDS_TYPESCRIPT_COMPLETION_REPORT.md) - **NEW** Comprehensive completion report for the TypeScript migration
-- [ipfs_accelerate_js/API_BACKENDS_STATUS.md](ipfs_accelerate_js/API_BACKENDS_STATUS.md) - **UPDATED** Status report showing 100% completion
-- [ipfs_accelerate_js/docs/api_backends/README.md](ipfs_accelerate_js/docs/api_backends/README.md) - **UPDATED** Index of all API backend documentation
-- [ipfs_accelerate_js/docs/api_backends/VLLM_UNIFIED_USAGE.md](ipfs_accelerate_js/docs/api_backends/VLLM_UNIFIED_USAGE.md) - **UPDATED** Comprehensive documentation for VLLM Unified backend
-- [ipfs_accelerate_js/examples/vllm_unified_comprehensive_example.ts](ipfs_accelerate_js/examples/vllm_unified_comprehensive_example.ts) - **UPDATED** Production-ready example for VLLM Unified
+- [integration_workflow_example.py](integration_workflow_example.py) - End-to-end API workflow example
+- [examples/unified_db_example.py](examples/unified_db_example.py) - Unified database operations example with cross-component queries
 
-Key features of the TypeScript migration:
+### Development Guides
 
-- **Complete Backend Suite**: All 18 API backends fully migrated to TypeScript
-- **Enhanced Functionality**: Additional features beyond the Python implementation
-- **Container Management**: Built-in Docker container management for self-hosted backends
-- **Production-Ready Features**: Circuit breaker pattern, error handling, and recovery
-- **Comprehensive Documentation**: Detailed usage guides and API reference
-- **TypeScript Type Definitions**: Complete type definitions for all APIs
-- **Enterprise-Ready Examples**: Production-ready implementation patterns
+- [COMPREHENSIVE_TEST_REFACTORING_PLAN.md](COMPREHENSIVE_TEST_REFACTORING_PLAN.md) - Test refactoring plan
+- [TEST_REFACTORING_SUMMARY.md](TEST_REFACTORING_SUMMARY.md) - Test refactoring summary
 
-The implementation provides a complete TypeScript SDK for API backends, with a focus on developer experience, reliability, and type safety. This marks the completion of the API Backends TypeScript Migration project ahead of schedule, with all components fully implemented, tested, and documented.
-
-### Integrated System for Distributed Testing (COMPLETED - March 20, 2025)
-
-The Integrated System Runner brings together all major components of the Distributed Testing Framework into a unified solution, providing a seamless experience for running the entire system:
-
-- [run_integrated_system.py](duckdb_api/distributed_testing/run_integrated_system.py) - **NEW** Main implementation of the Integrated System Runner
-- [examples/integrated_system_example.py](duckdb_api/distributed_testing/examples/integrated_system_example.py) - **NEW** Simple example of the Integrated System
-- [DISTRIBUTED_TESTING_GUIDE.md](DISTRIBUTED_TESTING_GUIDE.md) - **UPDATED** Comprehensive documentation including Integrated System usage
-- [comprehensive_monitoring_dashboard.py](duckdb_api/distributed_testing/comprehensive_monitoring_dashboard.py) - **NEW** Comprehensive Monitoring Dashboard component
-- [fault_tolerance_system.py](duckdb_api/distributed_testing/fault_tolerance_system.py) - **UPDATED** Fault Tolerance System with enhanced integration capabilities
-- [multi_device_orchestrator.py](duckdb_api/distributed_testing/multi_device_orchestrator.py) - **UPDATED** Multi-Device Orchestrator with improved error handling
-
-The Integrated System combines all major components of the Distributed Testing Framework:
-
-- **Coordinator Server**: Central server for task distribution and coordination
-- **Load Balancer**: Intelligent task distribution across workers
-- **Multi-Device Orchestrator**: Task splitting across workers with 5 different strategies
-- **Fault Tolerance System**: Comprehensive error handling and recovery
-- **Comprehensive Monitoring Dashboard**: Real-time visualization dashboard
-
-Key features of the integrated solution:
-
-- **Unified Configuration**: Single configuration system for all components
-- **Combined Execution**: All components run together with proper integration
-- **Real-time Visualization**: Web-based dashboard for monitoring the entire system
-- **Intelligent Task Distribution**: Task splitting and load balancing across workers
-- **Fault Tolerance and Recovery**: Comprehensive error handling and recovery
-- **Mock Worker Generation**: Easy testing with automatically generated workers
-- **Stress Testing**: Built-in stress testing capabilities with fault injection
-
-The implementation provides a production-ready solution for distributed testing, with a focus on ease of use, reliability, and comprehensive monitoring. This marks the completion of the Distributed Testing Framework ahead of schedule, with all components fully integrated and working together seamlessly.
-
-### Dynamic Resource Management & Multi-Device Orchestration (COMPLETED - March 18, 2025)
-
-The Dynamic Resource Management (DRM) system with Multi-Device Orchestration is a core component of the Distributed Testing Framework that enables intelligent allocation and utilization of computational resources across heterogeneous hardware environments, with advanced capabilities for orchestrating complex tasks across multiple worker nodes:
-
-- [DYNAMIC_RESOURCE_MANAGEMENT.md](duckdb_api/distributed_testing/DYNAMIC_RESOURCE_MANAGEMENT.md) - **UPDATED** Comprehensive documentation of the DRM system and Multi-Device Orchestrator architecture and implementation
-- [DYNAMIC_RESOURCE_MANAGEMENT_IMPLEMENTATION_SUMMARY.md](DYNAMIC_RESOURCE_MANAGEMENT_IMPLEMENTATION_SUMMARY.md) - **UPDATED** Implementation summary with status updates and next steps
-- [ORCHESTRATION_STRATEGIES.md](duckdb_api/distributed_testing/ORCHESTRATION_STRATEGIES.md) - **NEW** Detailed documentation of the five orchestration strategies and their implementation
-- [dynamic_resource_manager.py](duckdb_api/distributed_testing/dynamic_resource_manager.py) - Core implementation of the DynamicResourceManager
-- [resource_performance_predictor.py](duckdb_api/distributed_testing/resource_performance_predictor.py) - ML-based prediction system for resource requirements
-- [cloud_provider_integration.py](duckdb_api/distributed_testing/cloud_provider_integration.py) - Multi-cloud deployment for dynamic worker management
-- [multi_device_orchestrator.py](duckdb_api/distributed_testing/multi_device_orchestrator.py) - **NEW** Core implementation of the MultiDeviceOrchestrator
-- [coordinator_orchestrator_integration.py](duckdb_api/distributed_testing/coordinator_orchestrator_integration.py) - **NEW** Integration between CoordinatorServer and MultiDeviceOrchestrator
-- [tests/test_coordinator_orchestrator_integration.py](duckdb_api/distributed_testing/tests/test_coordinator_orchestrator_integration.py) - **NEW** Tests for the coordinator-orchestrator integration
-- [tests/test_multi_device_orchestrator.py](duckdb_api/distributed_testing/tests/test_multi_device_orchestrator.py) - **NEW** Unit tests for the MultiDeviceOrchestrator
-- [tests/test_multi_device_orchestrator_with_drm.py](duckdb_api/distributed_testing/tests/test_multi_device_orchestrator_with_drm.py) - **NEW** Integration tests for orchestrator with DRM
-- [examples/coordinator_orchestrator_example.py](duckdb_api/distributed_testing/examples/coordinator_orchestrator_example.py) - **NEW** Example usage of the coordinator-orchestrator integration
-- [examples/multi_device_example.py](duckdb_api/distributed_testing/examples/multi_device_example.py) - **NEW** Example implementation of all orchestration strategies
-- [examples/split_strategy_examples.py](duckdb_api/distributed_testing/examples/split_strategy_examples.py) - **NEW** Detailed examples of the different task splitting strategies
-- [coordinator.py](duckdb_api/distributed_testing/coordinator.py) - **UPDATED** with full DRM and orchestrator integration
-- [DISTRIBUTED_TESTING_DESIGN.md](DISTRIBUTED_TESTING_DESIGN.md) - **UPDATED** with Multi-Device Orchestrator and integration components
-- [DISTRIBUTED_TESTING_GUIDE.md](DISTRIBUTED_TESTING_GUIDE.md) - **UPDATED** with comprehensive DRM and orchestrator usage documentation
-
-The enhanced system now provides comprehensive resource tracking, allocation, and scaling capabilities, along with sophisticated task orchestration across multiple worker nodes with different hardware capabilities. Key features include:
-
-- Five different task splitting strategies:
-  - **Data Parallel**: Divides input data across workers for batch processing
-  - **Model Parallel**: Splits model components across workers for large models
-  - **Pipeline Parallel**: Processes data in sequential stages across workers
-  - **Ensemble**: Runs multiple model variants in parallel for improved accuracy
-  - **Function Parallel**: Divides different functions across specialized workers
-
-- Intelligent resource allocation and scheduling based on hardware capabilities
-- Hardware-aware subtask distribution and sophisticated result merging
-- Comprehensive fault tolerance and recovery mechanisms for subtask failures
-- Real-time monitoring and visualization of distributed execution
-- Resource-aware task distribution with ML-based performance prediction
-- Cloud provider integration for dynamic worker scaling
-- API endpoints for orchestrating and monitoring complex distributed tasks
-
-With this implementation, the Distributed Testing Framework reaches 100% completion ahead of schedule, providing a robust foundation for distributed execution of complex AI workloads across heterogeneous hardware environments.
-
-### Browser Environment Validation (COMPLETED - March 14, 2025)
-
-The IPFS Accelerate project now includes a comprehensive Browser Environment Validation system for detecting and validating WebNN and WebGPU capabilities across different browsers:
-
-- [BROWSER_ENVIRONMENT_VALIDATION_GUIDE.md](BROWSER_ENVIRONMENT_VALIDATION_GUIDE.md) - **NEW** Comprehensive guide to the browser validation system
-- [.github/workflows/browser_environment_validation.yml](/.github/workflows/browser_environment_validation.yml) - **NEW** CI/CD workflow for automated browser testing
-- [test_browser_environment_validation.py](test_browser_environment_validation.py) - **NEW** Unit tests for browser validation components
-- [fixed_web_platform/browser_automation.py](fixed_web_platform/browser_automation.py) - **UPDATED** Enhanced browser automation with feature detection
-- [check_browser_capabilities.py](check_browser_capabilities.py) - **UPDATED** Basic browser capability detection
-- [check_browser_webnn_webgpu.py](check_browser_webnn_webgpu.py) - **UPDATED** Enhanced WebNN/WebGPU capability detection
-
-The system provides comprehensive validation of browser WebNN and WebGPU capabilities, including:
-
-- Cross-browser testing for Chrome, Firefox, Edge, and Safari
-- Detection of real hardware acceleration vs. simulation mode
-- Testing for March 2025 features (compute shaders, shader precompilation, parallel loading)
-- Model-specific browser recommendations (e.g., Firefox for audio models)
-- Automated testing in CI/CD pipelines with GitHub Actions
-- Interactive dashboard with browser compatibility visualization
-- Advanced hardware detection with detailed GPU capability reporting
-
-The implementation leverages Selenium for browser automation with fallback to subprocess for environments without Selenium. It includes detailed reporting in multiple formats (HTML, Markdown, JSON) and provides clear recommendations for optimal browser and platform combinations based on model type (text, vision, audio).
-
-### Samsung Exynos NPU Support (NEW - March 14, 2025)
-
-The IPFS Accelerate Python Framework now includes comprehensive support for Samsung Exynos Neural Processing Units (NPUs), enabling detection, benchmarking, model conversion, and optimization for Samsung NPU hardware:
-
-- [SAMSUNG_NPU_SUPPORT_GUIDE.md](SAMSUNG_NPU_SUPPORT_GUIDE.md) - **NEW** Comprehensive guide to Samsung NPU support
-- [SAMSUNG_NPU_TEST_GUIDE.md](SAMSUNG_NPU_TEST_GUIDE.md) - **NEW** Guide for testing Samsung NPU support
-- [SAMSUNG_NPU_DOCUMENTATION_UPDATES.md](SAMSUNG_NPU_DOCUMENTATION_UPDATES.md) - **NEW** Summary of documentation improvements
-- [samsung_support.py](samsung_support.py) - **NEW** Core implementation of Samsung NPU detection and capabilities
-- [test_samsung_npu_comparison.py](test_samsung_npu_comparison.py) - **NEW** Hardware comparison tool for Samsung NPU
-- [test_samsung_support.py](test_samsung_support.py) - **NEW** Test suite for Samsung NPU support
-- [test_samsung_npu_basic.py](test_samsung_npu_basic.py) - **NEW** Basic test for Samsung NPU support
-- [test_minimal_samsung.py](test_minimal_samsung.py) - **NEW** Ultra-minimal test for Samsung NPU core functionality
-- [test_mobile_npu_comparison.py](test_mobile_npu_comparison.py) - **UPDATED** Mobile NPU comparison with Samsung NPU support
-- [requirements_samsung.txt](requirements_samsung.txt) - **NEW** Dependency requirements for Samsung NPU support
-- [check_samsung_dependencies.py](check_samsung_dependencies.py) - **NEW** Dependency checker and basic test script
-
-This implementation provides comprehensive support for all Samsung Exynos NPU-equipped devices, including model compatibility assessment, performance benchmarking, power efficiency analysis, and integration with the centralized hardware detection system. The system supports six Samsung Exynos chipsets from entry-level to flagship devices and provides detailed optimization recommendations specific to each chipset. The implementation includes a comprehensive testing suite, from ultra-minimal tests to detailed hardware comparisons.
-
-The documentation has been significantly enhanced with detailed sections on thermal management, model compatibility, framework ecosystem integration, and troubleshooting. Advanced usage examples are provided for optimal performance on Samsung devices. A dedicated requirements file (`requirements_samsung.txt`) has been created to easily install all dependencies needed for Samsung NPU support, with clear documentation on which dependencies are needed for different levels of functionality.
-
-### Simulation Accuracy and Validation Framework (NEW - July 14, 2025)
-
-The Simulation Accuracy and Validation Framework is a comprehensive system for validating, calibrating, and monitoring hardware simulation accuracy, ensuring that simulation results closely match real hardware performance:
-
-- [SIMULATION_ACCURACY_VALIDATION_DESIGN.md](SIMULATION_ACCURACY_VALIDATION_DESIGN.md) - **NEW** Design document for the Simulation Accuracy and Validation Framework
-- [SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md](SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md) - **UPDATED** Implementation details and progress report
-- [SIMULATION_DATABASE_VISUALIZATION_TESTING.md](SIMULATION_DATABASE_VISUALIZATION_TESTING.md) - **UPDATED** End-to-end testing guide for database visualization integration
-- [duckdb_api/simulation_validation/README.md](duckdb_api/simulation_validation/README.md) - **NEW** Overview of the simulation validation directory structure and components
-- [duckdb_api/simulation_validation/core/base.py](duckdb_api/simulation_validation/core/base.py) - **UPDATED** Core interfaces and abstract classes for the framework
-- [duckdb_api/simulation_validation/core/schema.py](duckdb_api/simulation_validation/core/schema.py) - **NEW** Database schema for storing simulation and validation data
-- [duckdb_api/simulation_validation/db_integration.py](duckdb_api/simulation_validation/db_integration.py) - **NEW** Database integration module for simulation validation
-- [duckdb_api/simulation_validation/db_integration_summary.md](duckdb_api/simulation_validation/db_integration_summary.md) - **UPDATED** Summary of database integration with testing information
-- [duckdb_api/simulation_validation/test_db_integration.py](duckdb_api/simulation_validation/test_db_integration.py) - **NEW** Test file for database integration
-- [duckdb_api/simulation_validation/visualization/validation_visualizer.py](duckdb_api/simulation_validation/visualization/validation_visualizer.py) - **NEW** Visualization component for simulation results
-- [duckdb_api/simulation_validation/visualization/validation_visualizer_db_connector.py](duckdb_api/simulation_validation/visualization/validation_visualizer_db_connector.py) - **NEW** Database-visualization connector
-- [duckdb_api/simulation_validation/visualization/README.md](duckdb_api/simulation_validation/visualization/README.md) - **UPDATED** Visualization component documentation with database connector info
-- [duckdb_api/simulation_validation/test_visualization_db_connector.py](duckdb_api/simulation_validation/test_visualization_db_connector.py) - **NEW** Test file for visualization connector
-- [duckdb_api/simulation_validation/test_e2e_visualization_db_integration.py](duckdb_api/simulation_validation/test_e2e_visualization_db_integration.py) - **NEW** End-to-end tests for database visualization integration
-- [duckdb_api/simulation_validation/run_e2e_tests.py](duckdb_api/simulation_validation/run_e2e_tests.py) - **NEW** Test runner script for all simulation validation tests
-- [duckdb_api/simulation_validation/test_visualization.py](duckdb_api/simulation_validation/test_visualization.py) - **NEW** Test file for visualization components
-- [duckdb_api/simulation_validation/calibration/README.md](duckdb_api/simulation_validation/calibration/README.md) - **NEW** Documentation for calibration components
-- [duckdb_api/simulation_validation/drift_detection/README.md](duckdb_api/simulation_validation/drift_detection/README.md) - **NEW** Documentation for drift detection components
-- [duckdb_api/simulation_validation/drift_detection/advanced_detector.py](duckdb_api/simulation_validation/drift_detection/advanced_detector.py) - **NEW** Advanced drift detection implementation
-- [duckdb_api/simulation_validation/visualization/README.md](duckdb_api/simulation_validation/visualization/README.md) - **NEW** Documentation for visualization components
-- [duckdb_api/simulation_validation/visualization/validation_visualizer.py](duckdb_api/simulation_validation/visualization/validation_visualizer.py) - **NEW** Core visualization implementation
-- [test_simulation_validation_foundation.py](test_simulation_validation_foundation.py) - **NEW** Test script for the foundation of the framework
-- [run_simulation_validation_tests.sh](run_simulation_validation_tests.sh) - **UPDATED** Enhanced shell script for running all simulation validation tests
-
-The framework provides tools for comparing simulation results with real hardware measurements, statistical validation of simulation accuracy, calibration of simulation parameters, detection of simulation drift, and comprehensive reporting. Implementation began in July 2025 with significant progress already made on the database integration, visualization components, and testing infrastructure. Key features implemented so far include:
-
-- ✅ **Database Integration**: Comprehensive module for storing, retrieving, and analyzing simulation validation data
-- ✅ **Visualization System**: Advanced visualization system with support for MAPE comparison, hardware comparison, time series, drift detection, and calibration effectiveness
-- ✅ **Visualization Database Connector**: Integration component connecting the database with visualization tools
-- ✅ **End-to-End Testing**: Comprehensive testing system validating the entire flow from database to visualization
-- ✅ **Test Runner**: Unified test runner with JSON and HTML reporting capabilities
-- ✅ **Drift Detection**: Advanced detection system for identifying simulation drift over time
-- ✅ **Calibration System**: Parameter optimization for improving simulation accuracy
-- ✅ **Example Generation**: Automated system for generating example visualizations
-
-Implementation is ongoing with a target completion date of October 15, 2025. Recent enhancements include:
-
-- Advanced drift detection implementation with statistical validation
-- Comprehensive end-to-end testing with HTML and JSON reporting
-- Example visualization generation for documentation and demonstration
-- Enhanced shell script for test execution and result presentation
-- Database connector implementation for visualization data retrieval
-- Improved documentation with detailed testing information
-
-### Monitoring Dashboard Integration for Advanced Visualization (NEW - July 5, 2025)
-
-The Advanced Visualization System has been fully integrated with the Monitoring Dashboard, enabling centralized visualization management, real-time updates, and improved collaboration:
-
-- [MONITORING_DASHBOARD_INTEGRATION_GUIDE.md](MONITORING_DASHBOARD_INTEGRATION_GUIDE.md) - **NEW** Guide for integrating visualizations with the monitoring dashboard
-- [dashboard_enhanced_visualization.py](duckdb_api/visualization/dashboard_enhanced_visualization.py) - **NEW** Implementation of the enhanced visualization system with dashboard integration
-- [monitor_dashboard_integration.py](duckdb_api/visualization/advanced_visualization/monitor_dashboard_integration.py) - **NEW** Core implementation of the dashboard integration
-- [test_dashboard_enhanced_visualization.py](test_dashboard_enhanced_visualization.py) - **NEW** Comprehensive test suite for the dashboard integration
-- [run_monitoring_dashboard_integration.py](run_monitoring_dashboard_integration.py) - **NEW** Command-line tool for dashboard integration
-
-The integration allows visualizations to be automatically synchronized with a central dashboard, enabling real-time updates via WebSocket, dashboard panel creation, and snapshot export/import capabilities. This marks the completion of the Advanced Visualization System, a major milestone in the project roadmap.
-
-### BERT Model Implementation with Hardware Acceleration (NEW - April 5, 2025)
-
-The BERT (Bidirectional Encoder Representations from Transformers) model has been implemented in the TypeScript SDK with full hardware acceleration support on WebGPU and WebNN backends:
-
-- [BERT_MODEL_DOCUMENTATION.md](ipfs_accelerate_js/docs/models/BERT_MODEL_DOCUMENTATION.md) - **NEW** Comprehensive documentation for the BERT model implementation
-- [bert.ts](ipfs_accelerate_js/src/model/transformers/bert.ts) - **NEW** Core implementation of the BERT model with hardware acceleration
-- [bert_example.html](ipfs_accelerate_js/examples/browser/models/bert_example.html) - **NEW** Interactive browser demo for BERT model inference
-- [bert_example.ts](ipfs_accelerate_js/examples/browser/models/bert_example.ts) - **NEW** TypeScript implementation of the BERT model example
-- [bert_test.ts](ipfs_accelerate_js/test/models/transformers/bert_test.ts) - **NEW** Comprehensive test suite for the BERT model
-
-The implementation provides a memory-efficient BERT model with cross-model tensor sharing, optimized matrix operations, and support for different hardware backends. This marks significant progress in the TypeScript SDK implementation, advancing the project to 97% completion.
-
-### Hardware Abstracted Model Implementations (NEW - March 14, 2025)
-
-The Hardware Abstracted model implementations provide a unified interface for running models across different hardware backends (WebGPU, WebNN, CPU), automatically selecting the optimal backend based on available hardware and model requirements:
+## Running the API Servers
 
-- [HARDWARE_ABSTRACTION_BERT_GUIDE.md](HARDWARE_ABSTRACTION_BERT_GUIDE.md) - **NEW** Comprehensive guide to the HAL-based BERT implementation
-- [HARDWARE_ABSTRACTION_WHISPER_GUIDE.md](HARDWARE_ABSTRACTION_WHISPER_GUIDE.md) - **NEW** Comprehensive guide to the HAL-based Whisper implementation
-- [HARDWARE_ABSTRACTION_VIT_GUIDE.md](HARDWARE_ABSTRACTION_VIT_GUIDE.md) - **NEW** Comprehensive guide to the HAL-based ViT implementation
-- [HARDWARE_ABSTRACTION_CLIP_GUIDE.md](HARDWARE_ABSTRACTION_CLIP_GUIDE.md) - **NEW** Comprehensive guide to the HAL-based CLIP implementation
-- [ipfs_accelerate_js_bert_hardware_abstraction.ts](ipfs_accelerate_js_bert_hardware_abstraction.ts) - **NEW** Core implementation of HAL-based BERT model
-- [ipfs_accelerate_js_hardware_abstracted_bert_example.ts](ipfs_accelerate_js_hardware_abstracted_bert_example.ts) - **NEW** Example usage with cross-backend performance comparison
-- [ipfs_accelerate_js/examples/browser/models/hardware_abstracted_whisper_example.html](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_whisper_example.html) - **NEW** Interactive browser demo for Whisper with HAL
-- [ipfs_accelerate_js/examples/browser/models/hardware_abstracted_whisper_example.ts](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_whisper_example.ts) - **NEW** TypeScript implementation for Whisper with HAL
-- [ipfs_accelerate_js/examples/browser/models/hardware_abstracted_vit_example.html](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_vit_example.html) - **NEW** Interactive browser demo for ViT with HAL
-- [ipfs_accelerate_js/examples/browser/models/hardware_abstracted_vit_example.ts](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_vit_example.ts) - **NEW** TypeScript implementation for ViT with HAL
-- [ipfs_accelerate_js/examples/browser/models/hardware_abstracted_clip_example.html](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_clip_example.html) - **NEW** Interactive browser demo for CLIP with HAL
-- [ipfs_accelerate_js/examples/browser/models/hardware_abstracted_clip_example.ts](ipfs_accelerate_js/examples/browser/models/hardware_abstracted_clip_example.ts) - **NEW** TypeScript implementation for CLIP with HAL
-- [ipfs_accelerate_js/test/integration/hardware_abstracted_clip.test.ts](ipfs_accelerate_js/test/integration/hardware_abstracted_clip.test.ts) - **NEW** Comprehensive integration test suite for Hardware Abstracted CLIP
-
-The implementation provides automatic backend selection with WebNN generally preferred for text models, WebGPU for vision models, and WebGPU with Firefox optimizations for audio models. The system includes graceful fallbacks if the preferred backend fails and comprehensive performance metrics. Benchmarks show that WebNN provides ~1.6x faster performance than WebGPU and ~5.8x faster than CPU for text models like BERT, while WebGPU provides ~6.5x faster performance than CPU for vision models like ViT, and Firefox's WebGPU compute shader performance provides superior audio processing for Whisper. 
+### Unified API Server
 
-The implementation supports multiple tasks including text embeddings, sentiment analysis, question answering, image classification, visual embeddings, audio transcription, and translation. Cross-model tensor sharing enables efficient multimodal applications by sharing embeddings between different models.
-
-### Browser-Specific WebGPU Optimization (NEW - March 13, 2025)
-
-The browser-specific optimization system automatically tunes WebGPU compute shader parameters based on the detected browser type and hardware vendor, ensuring optimal performance across different environments:
-
-- [WebGPU_BROWSER_OPTIMIZATIONS.md](WebGPU_BROWSER_OPTIMIZATIONS.md) - **NEW** Comprehensive guide to browser-specific optimizations for WebGPU
-- [browser_optimized_matmul_example.html](ipfs_accelerate_js/examples/browser/basic/browser_optimized_matmul_example.html) - **NEW** Interactive example of browser-optimized matrix multiplication
-- [browser_optimized_matmul_example.ts](ipfs_accelerate_js/examples/browser/basic/browser_optimized_matmul_example.ts) - **NEW** TypeScript implementation of the browser-optimized example
-- [browser_optimized_operations.ts](ipfs_accelerate_js/src/hardware/webgpu/browser_optimized_operations.ts) - **NEW** Core implementation of the browser optimization system
-
-The system automatically detects browser type (Chrome, Firefox, Safari, Edge) and hardware vendor (NVIDIA, AMD, Intel, Apple, Qualcomm, ARM) to select optimal parameters for WebGPU compute shaders. Performance improvements of up to 3x have been observed for specific operations like audio processing in Firefox and matrix multiplication in Chrome.
-
-### Cross-Model Tensor Sharing System (NEW - March 28, 2025)
+To run the unified API server that provides access to all component APIs and database operations:
 
-The Cross-Model Tensor Sharing system enables efficient sharing of tensors between multiple models, significantly improving memory efficiency and performance for multi-model workloads:
-
-- [CROSS_MODEL_TENSOR_SHARING_GUIDE.md](CROSS_MODEL_TENSOR_SHARING_GUIDE.md) - **NEW** Comprehensive guide to the Cross-Model Tensor Sharing system
-- [ipfs_accelerate_js_tensor_sharing_integration.ts](ipfs_accelerate_js_tensor_sharing_integration.ts) - **NEW** Implementation of the TensorSharingIntegration with Storage Manager integration
-- [ipfs_accelerate_js_tensor_sharing_example.ts](ipfs_accelerate_js_tensor_sharing_example.ts) - **NEW** Example usage of the Cross-Model Tensor Sharing system
-- [TensorSharingDemo.html](TensorSharingDemo.html) - **NEW** Interactive browser demo for tensor sharing visualization
+```bash
+python test/unified_api_server.py --gateway-port 8080
+```
 
-This implementation provides shared tensor memory across models, reference counting for efficient memory management, zero-copy tensor views, persistent storage through IndexedDB, and seamless WebNN integration. Benchmarks show up to 30% memory reduction and 30% faster inference when sharing tensors between models.
+This starts a gateway on port 8080 that forwards requests to the component APIs and provides cross-component database operations.
 
-### Monitoring Dashboard (NEW - March 17, 2025)
+For database operations, you need to provide an API key in the `X-API-Key` header:
 
-A comprehensive monitoring dashboard for the Distributed Testing Framework has been implemented, providing real-time monitoring and visualization:
+```bash
+# Example curl request to get database overview
+curl -H "X-API-Key: your-api-key" http://localhost:8080/api/db/overview
 
-- [MONITORING_DASHBOARD_GUIDE.md](duckdb_api/distributed_testing/MONITORING_DASHBOARD_GUIDE.md) - **NEW** Comprehensive guide to the monitoring dashboard
-- [monitoring_dashboard.py](duckdb_api/distributed_testing/dashboard/monitoring_dashboard.py) - **NEW** Implementation of the comprehensive monitoring dashboard
-- [run_monitoring_dashboard.py](duckdb_api/distributed_testing/run_monitoring_dashboard.py) - **NEW** Runner script for easily starting the monitoring dashboard
-- [tests/test_monitoring_dashboard.py](duckdb_api/distributed_testing/dashboard/tests/test_monitoring_dashboard.py) - **NEW** Test suite for the monitoring dashboard
-
-This implementation provides a comprehensive web-based monitoring interface with real-time metrics visualization, WebSocket-based live updates, system topology visualization, integrated alert system, task tracking, fault tolerance integration, and a comprehensive API. This completes the Distributed Testing Framework ahead of schedule.
-
-### Browser-Specific Recovery Strategies (NEW - March 21, 2025)
-
-The Distributed Testing Framework has been enhanced with sophisticated, model-aware recovery strategies for browser automation, providing a comprehensive approach to recovering from browser failures:
-
-- [ADVANCED_FAULT_TOLERANCE_RECOVERY_STRATEGIES.md](ADVANCED_FAULT_TOLERANCE_RECOVERY_STRATEGIES.md) - **NEW** Comprehensive documentation of the browser recovery strategies
-- [ADVANCED_FAULT_TOLERANCE_BROWSER_INTEGRATION.md](ADVANCED_FAULT_TOLERANCE_BROWSER_INTEGRATION.md) - **UPDATED** Browser integration guide with recovery strategy examples
-- [distributed_testing/browser_recovery_strategies.py](distributed_testing/browser_recovery_strategies.py) - **NEW** Implementation of browser-specific recovery strategies
-- [distributed_testing/tests/test_browser_recovery_strategies.py](distributed_testing/tests/test_browser_recovery_strategies.py) - **NEW** Comprehensive test suite for recovery strategies
-- [distributed_testing/run_test_browser_recovery_strategies.py](distributed_testing/run_test_browser_recovery_strategies.py) - **NEW** Test runner for browser recovery strategies
-- [distributed_testing/run_browser_recovery_demo.py](distributed_testing/run_browser_recovery_demo.py) - **NEW** Demo application for browser recovery
-- [distributed_testing/integration_examples/browser_recovery_integration.py](distributed_testing/integration_examples/browser_recovery_integration.py) - **NEW** Integration examples
-
-This implementation provides browser-specific recovery strategies (Chrome, Firefox, Edge, Safari), model-aware optimizations (text, vision, audio, multimodal), progressive recovery with escalating intervention levels, detailed performance tracking, and seamless integration with the Circuit Breaker pattern. The system implements five levels of recovery strategies: simple retry, browser restart, settings adjustment, browser fallback, and simulation fallback, with specific optimizations for each browser/model combination.
-
-### Hardware Fault Tolerance Enhancements (NEW - March 13, 2025)
+# Example curl request to get unified model data
+curl -H "X-API-Key: your-api-key" http://localhost:8080/api/db/model/bert-base-uncased
+```
 
-The Distributed Testing Framework has been enhanced with a comprehensive hardware-aware fault tolerance system that includes advanced features ahead of schedule:
+The unified API server also provides a configuration file option for more detailed setup:
 
-- [HARDWARE_FAULT_TOLERANCE_OVERVIEW.md](HARDWARE_FAULT_TOLERANCE_OVERVIEW.md) - **NEW** Executive summary and comprehensive overview
-- [HARDWARE_FAULT_TOLERANCE_GUIDE.md](duckdb_api/distributed_testing/HARDWARE_FAULT_TOLERANCE_GUIDE.md) - Complete guide to the hardware-aware fault tolerance system
-- [HARDWARE_FAULT_TOLERANCE_ENHANCEMENTS.md](HARDWARE_FAULT_TOLERANCE_ENHANCEMENTS.md) - **NEW** Documentation of ML pattern detection and visualization enhancements
-- [hardware_aware_fault_tolerance.py](duckdb_api/distributed_testing/hardware_aware_fault_tolerance.py) - Implementation of hardware-specific recovery strategies
-- [ml_pattern_detection.py](duckdb_api/distributed_testing/ml_pattern_detection.py) - **NEW** Machine learning-based pattern detection system
-- [fault_tolerance_visualization.py](duckdb_api/distributed_testing/fault_tolerance_visualization.py) - **NEW** Comprehensive visualization system
-- [run_fault_tolerance_visualization.py](duckdb_api/distributed_testing/run_fault_tolerance_visualization.py) - **NEW** Visualization tool with simulation capabilities
-- [tests/test_hardware_fault_tolerance.py](duckdb_api/distributed_testing/tests/test_hardware_fault_tolerance.py) - Comprehensive test suite
-- [tests/test_fault_tolerance_visualization.py](duckdb_api/distributed_testing/tests/test_fault_tolerance_visualization.py) - **NEW** Visualization test suite
-- [run_fault_tolerance_tests.sh](duckdb_api/distributed_testing/run_fault_tolerance_tests.sh) - Enhanced test script supporting hardware fault tolerance tests
+```bash
+python test/unified_api_server.py --config config.json
+```
 
-This implementation provides specialized recovery strategies for different hardware types (CPUs, GPUs, TPUs, browsers with WebGPU/WebNN), intelligent retry policies with ML-based pattern detection, comprehensive visualization and reporting, failure pattern detection, task state persistence, and checkpoint/resume capabilities. The system is deeply integrated with the heterogeneous hardware support and scheduler.
+See [API_UNIFIED_DB_INTEGRATION.md](API_UNIFIED_DB_INTEGRATION.md) for more details on database operations.
 
-### Heterogeneous Hardware Support (NEW - March 15, 2025)
+### Individual Component Servers
 
-The Distributed Testing Framework has been enhanced with comprehensive support for heterogeneous hardware environments:
+To run the individual API servers directly:
 
-- [HETEROGENEOUS_HARDWARE_GUIDE.md](duckdb_api/distributed_testing/HETEROGENEOUS_HARDWARE_GUIDE.md) - Comprehensive guide to heterogeneous hardware support
-- [hardware_taxonomy.py](duckdb_api/distributed_testing/hardware_taxonomy.py) - Advanced hardware taxonomy system for device classification
-- [enhanced_hardware_detector.py](duckdb_api/distributed_testing/enhanced_hardware_detector.py) - Enhanced hardware detection for CPUs, GPUs, TPUs, NPUs, browsers
-- [heterogeneous_scheduler.py](duckdb_api/distributed_testing/heterogeneous_scheduler.py) - Hardware-aware scheduler with multiple scheduling strategies
-- [test_heterogeneous_scheduler.py](duckdb_api/distributed_testing/test_heterogeneous_scheduler.py) - Comprehensive testing and simulation infrastructure
+```bash
+# Test Suite API (with DuckDB integration)
+python -m test.refactored_test_suite.api.test_api_server --db-path ./data/test_runs.duckdb
 
-This implementation enhances the Distributed Testing Framework with sophisticated hardware detection, classification, and scheduling capabilities optimized for heterogeneous environments. The system includes workload profiling, thermal management, performance learning, and support for specialized hardware including mobile NPUs and browser WebGPU/WebNN.
+# Generator API (with DuckDB integration)
+python -m test.refactored_generator_suite.generator_api_server --db-path ./data/generator_tasks.duckdb
 
-### WebGPU/WebNN TypeScript Migration (NEW - March 13, 2025)
+# Benchmark API
+python -m test.refactored_benchmark_suite.benchmark_api_server
 
-The TypeScript migration of the IPFS Accelerate JavaScript SDK is now complete, with full integration of WebGPU and WebNN hardware acceleration:
+# Predictive Performance API
+python -m test.api_server.predictive_performance_api_server --db-path ./data/predictive_performance.duckdb
+```
 
-- [TYPESCRIPT_IMPLEMENTATION_SUMMARY.md](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md) - Comprehensive implementation summary of the TypeScript SDK
-- [TYPESCRIPT_MIGRATION_FINAL_REPORT.md](TYPESCRIPT_MIGRATION_FINAL_REPORT.md) - Detailed report on the migration process and outcomes
-- [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - Updated API documentation with TypeScript interfaces and examples
-- [SDK_DOCUMENTATION.md](SDK_DOCUMENTATION.md) - Updated SDK documentation with both Python and TypeScript SDK information
-- [setup_typescript_test.py](setup_typescript_test.py) - Helper script for TypeScript validation
-- [validate_import_paths.py](validate_import_paths.py) - Tool for fixing TypeScript import paths
-- [src/types/webgpu.d.ts](src/types/webgpu.d.ts) - TypeScript definitions for WebGPU
-- [src/types/webnn.d.ts](src/types/webnn.d.ts) - TypeScript definitions for WebNN
-- [webgpu.d.ts](webgpu.d.ts) - Main WebGPU type definitions
-- [webnn.d.ts](webnn.d.ts) - Main WebNN type definitions
+### Integrated API Servers
 
-This migration completes the WebGPU/WebNN JavaScript SDK implementation with proper TypeScript type safety and React integration.
+To run both the Predictive Performance API and the Unified API Server together:
 
-### Adaptive Load Balancer Implementation (NEW - March 15, 2025)
+```bash
+# Run both servers with default settings
+python test/run_integrated_api_servers.py
 
-The Adaptive Load Balancer component of the Distributed Testing Framework has been completed with comprehensive stress testing and monitoring capabilities:
+# Run with custom ports
+python test/run_integrated_api_servers.py --gateway-port 8080 --predictive-port 8500
 
-- [LOAD_BALANCER_IMPLEMENTATION_STATUS.md](duckdb_api/distributed_testing/LOAD_BALANCER_IMPLEMENTATION_STATUS.md) - Implementation details and completion status (100% complete)
-- [LOAD_BALANCER_STRESS_TESTING_GUIDE.md](duckdb_api/distributed_testing/LOAD_BALANCER_STRESS_TESTING_GUIDE.md) - Comprehensive guide for stress testing the load balancer
-- [LOAD_BALANCER_MONITORING_GUIDE.md](duckdb_api/distributed_testing/LOAD_BALANCER_MONITORING_GUIDE.md) - Guide to monitoring and visualization tools (NEW - March 15, 2025)
-- [LOAD_BALANCER_COMMAND_REFERENCE.md](duckdb_api/distributed_testing/LOAD_BALANCER_COMMAND_REFERENCE.md) - Comprehensive command-line reference (NEW - March 15, 2025)
-- [test_load_balancer_stress.py](duckdb_api/distributed_testing/test_load_balancer_stress.py) - Comprehensive stress testing framework
-- [visualize_load_balancer_performance.py](duckdb_api/distributed_testing/visualize_load_balancer_performance.py) - Performance visualization tools
-- [load_balancer_live_dashboard.py](duckdb_api/distributed_testing/load_balancer_live_dashboard.py) - Real-time monitoring dashboard (NEW - March 15, 2025)
-- [load_balancer_stress_config.json](duckdb_api/distributed_testing/load_balancer_stress_config.json) - Scenario-based configuration for stress testing
+# Run with custom database path
+python test/run_integrated_api_servers.py --db-path ./data/predictive_performance.duckdb
 
-This implementation completes the Adaptive Load Balancer component ahead of schedule (originally planned for May 29-June 5, 2025), advancing the Distributed Testing Framework to 92% completion.
+# Run only the Predictive Performance API
+python test/run_integrated_api_servers.py --predictive-only
 
-### Basic Resource Pool Fault Tolerance Test (NEW - March 13, 2025)
+# Run only the Unified API Server (assumes Predictive Performance API is running)
+python test/run_integrated_api_servers.py --unified-only
+```
 
-A new simplified test implementation for the WebGPU/WebNN Resource Pool Fault Tolerance system has been added:
+### Demo the Predictive Performance API
 
-- [test_basic_resource_pool_fault_tolerance.py](test_basic_resource_pool_fault_tolerance.py) - Simple, standalone test case for the WebGPU/WebNN Resource Pool fault tolerance system
-- [BASIC_FAULT_TOLERANCE_TEST_README.md](BASIC_FAULT_TOLERANCE_TEST_README.md) - Comprehensive guide to using the basic fault tolerance test
+To run the Predictive Performance API demo:
 
-### WebGPU/WebNN Resource Pool Advanced Fault Tolerance (COMPLETED - May 22, 2025)
+```bash
+# Generate sample data and run all demos
+python test/demo_predictive_performance_api.py --setup --all
 
-The WebGPU/WebNN Resource Pool Integration has been completed with the addition of Advanced Fault Tolerance Visualization and Validation capabilities:
+# Run specific demos
+python test/demo_predictive_performance_api.py --hardware  # Hardware recommendations demo
+python test/demo_predictive_performance_api.py --performance  # Performance predictions demo
+python test/demo_predictive_performance_api.py --batch  # Batch size analysis demo
+```
 
-- [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - May 2025 enhancements documentation (NEW - May 22, 2025)
-- [WEB_RESOURCE_POOL_FAULT_TOLERANCE_TESTING.md](WEB_RESOURCE_POOL_FAULT_TOLERANCE_TESTING.md) - Comprehensive fault tolerance testing guide (NEW - May 22, 2025)
-- [RESOURCE_POOL_FAULT_TOLERANCE_README.md](RESOURCE_POOL_FAULT_TOLERANCE_README.md) - Quick start guide for fault tolerance testing (NEW - May 22, 2025)
-- [BASIC_FAULT_TOLERANCE_TEST_README.md](BASIC_FAULT_TOLERANCE_TEST_README.md) - Basic fault tolerance test guide (NEW - March 13, 2025)
-- [run_web_resource_pool_fault_tolerance_test.py](run_web_resource_pool_fault_tolerance_test.py) - CLI tool for fault tolerance testing (NEW - May 22, 2025)
-- [run_advanced_fault_tolerance_visualization.py](run_advanced_fault_tolerance_visualization.py) - CLI tool for fault tolerance visualization (NEW - May 22, 2025)
-- [simple_fault_tolerance_test.py](simple_fault_tolerance_test.py) - Simplified fault tolerance test for CI/CD environments (NEW - May 22, 2025)
-- [test_basic_resource_pool_fault_tolerance.py](test_basic_resource_pool_fault_tolerance.py) - Basic resource pool fault tolerance test (NEW - March 13, 2025)
-- [test_web_resource_pool_fault_tolerance_integration.py](test_web_resource_pool_fault_tolerance_integration.py) - Integration test framework (NEW - May 22, 2025)
-- [fixed_web_platform/visualization/fault_tolerance_visualizer.py](fixed_web_platform/visualization/fault_tolerance_visualizer.py) - Visualization component (NEW - May 22, 2025)
-- [fixed_web_platform/fault_tolerance_visualization_integration.py](fixed_web_platform/fault_tolerance_visualization_integration.py) - Validation and visualization integration (NEW - May 22, 2025)
-- [fixed_mock_cross_browser_sharding.py](fixed_mock_cross_browser_sharding.py) - Fixed mock implementation for CI/CD testing (NEW - May 22, 2025)
-- [mock_cross_browser_sharding.py](mock_cross_browser_sharding.py) - Original mock implementation for testing (NEW - May 22, 2025)
+### Integration Workflow Example
 
-This completes the WebGPU/WebNN Resource Pool Integration project ahead of schedule, with enterprise-grade fault tolerance, visualization, and testing capabilities.
+To run the end-to-end integration workflow example:
 
-### Predictive Performance System Completion (May 11, 2025)
+```bash
+python test/integration_workflow_example.py --model bert-base-uncased
+```
 
-The Predictive Performance System has been completed with the successful implementation of the Multi-Model Resource Pool Integration and Multi-Model Web Integration components:
+### Unified Database Example
 
-- [PREDICTIVE_PERFORMANCE_COMPLETION.md](PREDICTIVE_PERFORMANCE_COMPLETION.md) - Comprehensive completion report (NEW - May 11, 2025)
-- [predictive_performance/multi_model_web_integration.py](predictive_performance/multi_model_web_integration.py) - Multi-Model Web Integration implementation (NEW - May 11, 2025)
-- [predictive_performance/test_multi_model_web_integration.py](predictive_performance/test_multi_model_web_integration.py) - Comprehensive test suite (NEW - May 11, 2025)
-- [run_multi_model_web_integration.py](run_multi_model_web_integration.py) - Command-line demo with browser detection and strategy comparison (NEW - May 11, 2025)
-- [verify_multi_model_integration.py](verify_multi_model_integration.py) - Verification script (NEW - May 11, 2025)
-- [predictive_performance/README.md](predictive_performance/README.md) - Updated documentation (UPDATED - May 11, 2025)
+To run the unified database operations example:
 
-This implementation completes the Predictive Performance System, providing comprehensive integration between prediction, execution, and validation components with browser-specific optimizations, tensor sharing, and empirical validation.
+```bash
+python test/examples/unified_db_example.py --api-key your-api-key --model bert-base-uncased
+```
 
-### Advanced Visualization System Implementation (May 15, 2025)
+This example shows how to access cross-component database operations, including:
+- Database overview across all components
+- Unified model data from all components
+- Cross-component search operations
 
-The Advanced Visualization System has been implemented, providing comprehensive visualization capabilities for the Predictive Performance System:
+## API Client Usage
 
-- [ADVANCED_VISUALIZATION_GUIDE.md](ADVANCED_VISUALIZATION_GUIDE.md) - Comprehensive guide to the advanced visualization capabilities (NEW - May 15, 2025)
-- [run_visualization_demo.py](run_visualization_demo.py) - Updated demo script with advanced visualization features (NEW - May 15, 2025)
-- [predictive_performance/visualization.py](predictive_performance/visualization.py) - Advanced visualization implementation (NEW - May 15, 2025)
-- [predictive_performance/test_visualization.py](predictive_performance/test_visualization.py) - Unit tests for visualization capabilities (NEW - May 15, 2025)
+### Test Suite API Client
 
-This implementation provides interactive and static visualizations, including 3D visualizations, interactive dashboards, time-series tracking, power efficiency analysis, dimension reduction, and confidence visualization.
+The Test Suite API client provides a convenient way to interact with the Test API:
 
-### Distributed Testing Framework Advanced Fault Tolerance (May 22, 2025)
+```python
+from test.refactored_test_suite.api.api_client import ApiClient
 
-The Distributed Testing Framework has been enhanced with advanced fault tolerance mechanisms and comprehensive integration capabilities:
+# Create client
+client = ApiClient(base_url="http://localhost:8000")
 
-- [DISTRIBUTED_TESTING_INTEGRATION_PR.md](DISTRIBUTED_TESTING_INTEGRATION_PR.md) - Latest status update on advanced fault tolerance implementation
-- [DISTRIBUTED_TESTING_GUIDE.md](DISTRIBUTED_TESTING_GUIDE.md) - Updated comprehensive user guide
-- [FAULT_TOLERANCE_UPDATE.md](FAULT_TOLERANCE_UPDATE.md) - Previous update on fault tolerance implementation
-- [distributed_testing/docs/ADVANCED_RECOVERY_STRATEGIES.md](distributed_testing/docs/ADVANCED_RECOVERY_STRATEGIES.md) - Advanced failure recovery mechanisms
-- [distributed_testing/docs/PERFORMANCE_TREND_ANALYSIS.md](distributed_testing/docs/PERFORMANCE_TREND_ANALYSIS.md) - Documentation of the performance trend analysis system
-- [distributed_testing/README_PLUGIN_ARCHITECTURE.md](distributed_testing/README_PLUGIN_ARCHITECTURE.md) - Plugin architecture documentation (NEW - May 22, 2025)
-- [distributed_testing/docs/RESOURCE_POOL_INTEGRATION.md](distributed_testing/docs/RESOURCE_POOL_INTEGRATION.md) - Resource Pool integration documentation (NEW - May 22, 2025)
-- [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md) - Updated main integration guide
-- [WEB_RESOURCE_POOL_RECOVERY_GUIDE.md](WEB_RESOURCE_POOL_RECOVERY_GUIDE.md) - Recovery system documentation
-- [WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md) - Guide to cross-browser model sharding
-- [IPFS_CROSS_MODEL_TENSOR_SHARING_GUIDE.md](IPFS_CROSS_MODEL_TENSOR_SHARING_GUIDE.md) - Tensor sharing documentation
+# Run a test
+response = client.run_test("bert-base-uncased")
+run_id = response["run_id"]
 
-## Recently Archived Documentation
+# Monitor the test until completion
+result = client.monitor_test(run_id)
 
-### April 2025 Archive
+# Print result
+print(f"Test completed with status: {result['status']}")
+```
 
-The following documentation has been archived as part of the April 2025 cleanup:
+For asynchronous usage:
 
-- Performance reports older than 30 days have been moved to `archived_reports_april2025/`
-- Outdated documentation files have been moved to `archived_documentation_april2025/`
-- Each archived file has been marked with an archive notice
+```python
+from test.refactored_test_suite.api.api_client import AsyncApiClient
+import asyncio
 
-To access archived documentation, please check the appropriate archive directory.
+async def run_async_example():
+    client = AsyncApiClient(base_url="http://localhost:8000")
+    response = await client.run_test("bert-base-uncased")
+    result = await client.monitor_test_ws(response["run_id"])
+    print(f"Test completed with status: {result['status']}")
 
-## Current Hardware and Model Coverage Status (April 7, 2025)
+# Run the async example
+asyncio.run(run_async_example())
+```
 
-### Hardware Backend Support
+### Predictive Performance API Client
 
-Based on the current implementation, the hardware compatibility matrix shows:
+The Predictive Performance API client provides a simple interface for hardware recommendations and performance predictions:
 
-| Model Family | CUDA | ROCm (AMD) | MPS (Apple) | OpenVINO | WebNN | WebGPU | Notes |
-|--------------|------|------------|-------------|----------|-------|--------|-------|
-| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Fully supported on all hardware |
-| Text Generation (LLMs) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | Memory requirements critical |
-| Vision (ViT, CLIP, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Full cross-platform support |
-| Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | CUDA preferred, Web simulation added |
-| Multimodal (LLaVA, etc.) | ✅ High | ⚠️ Limited | ✅ High | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | CUDA/MPS for production, others are limited |
+```python
+from test.api_client.predictive_performance_client import (
+    PredictivePerformanceClient,
+    HardwarePlatform,
+    PrecisionType,
+    ModelMode
+)
 
-### HuggingFace Model Coverage Summary
+# Create client (pointing to Unified API Server gateway)
+client = PredictivePerformanceClient(base_url="http://localhost:8080")
 
-Overall coverage for 213+ HuggingFace model architectures:
+# Predict optimal hardware
+result = client.predict_hardware(
+    model_name="bert-base-uncased",
+    batch_size=8,
+    available_hardware=[HardwarePlatform.CPU, HardwarePlatform.CUDA],
+    predict_performance=True,
+    wait=True  # Wait for task completion
+)
+print(f"Hardware recommendation: {result['result']['primary_recommendation']}")
 
-| Hardware Platform | Coverage Percentage |
-|-------------------|---------------------|
-| CPU               | 100%                |
-| CUDA              | 100%                |
-| ROCm (AMD)        | 93%                 |
-| MPS (Apple)       | 90%                 |
-| OpenVINO          | 85%                 |
-| Qualcomm          | 75%                 |
-| WebNN             | 40%                 |
-| WebGPU            | 40%                 |
-
-For detailed model coverage information, see [CROSS_PLATFORM_TEST_COVERAGE.md](CROSS_PLATFORM_TEST_COVERAGE.md).
-
-### Benchmark Database Status
-
-The migration of benchmark and test scripts to use the DuckDB database system is now complete:
-
-- **Migration Progress**: 100% Complete (17 total scripts)
-- **Database Implementation**: Full schema with performance, hardware, and compatibility components
-- **Benefits**: 50-80% size reduction, 5-20x faster queries, consolidated analysis
+# Predict performance metrics
+result = client.predict_performance(
+    model_name="bert-base-uncased",
+    hardware=[HardwarePlatform.CPU, HardwarePlatform.CUDA],
+    batch_size=8,
+    wait=True
+)
+print(f"Predicted throughput on CPU: {result['result']['predictions']['cpu']['throughput']}")
 
-For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.md](DATABASE_MIGRATION_STATUS.md).
-
-## Current Focus Areas (May 2025)
-
-The project is currently focused on completing in-progress components and implementing planned enhancements:
-
-### 0. WebGPU/WebNN JavaScript SDK Migration (✅ COMPLETED - March 14, 2025)
-
-The WebGPU/WebNN migration to TypeScript has been completed with full type safety and React integration:
-
-- ✅ **Hardware Abstraction Layer**: Unified interface for accessing hardware backends with proper TypeScript generics
-  - [HARDWARE_ABSTRACTION_LAYER_GUIDE.md](HARDWARE_ABSTRACTION_LAYER_GUIDE.md) - **NEW** Comprehensive guide to the HAL
-  - [ipfs_accelerate_js_hardware_abstraction.ts](ipfs_accelerate_js_hardware_abstraction.ts) - **NEW** HAL implementation
-- ✅ **Hardware Abstracted Models**: Model implementations using the HAL for optimal performance
-  - [HARDWARE_ABSTRACTION_VIT_GUIDE.md](HARDWARE_ABSTRACTION_VIT_GUIDE.md) - **NEW** Guide to HAL-accelerated ViT model
-  - [ipfs_accelerate_js_vit_hardware_abstraction.ts](ipfs_accelerate_js_vit_hardware_abstraction.ts) - **NEW** HAL-accelerated ViT
-  - [HardwareAbstractionDemo.html](HardwareAbstractionDemo.html) - **NEW** Interactive demo for HAL capabilities
-- ✅ **WebGPU Backend**: Complete implementation for GPU acceleration via WebGPU API
-- ✅ **WebNN Backend**: Implementation for neural network acceleration via WebNN API
-- ✅ **React Integration**: Custom hooks for easy integration with React applications
-- ✅ **Type Definitions**: Comprehensive types for WebGPU, WebNN, and hardware abstractions
-- ✅ **Documentation**: Complete API documentation with TypeScript interfaces and examples
-
-Documentation:
-- [TYPESCRIPT_IMPLEMENTATION_SUMMARY.md](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md) - Implementation summary
-- [TYPESCRIPT_MIGRATION_FINAL_REPORT.md](TYPESCRIPT_MIGRATION_FINAL_REPORT.md) - Detailed migration report
-- [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - Updated API documentation with TypeScript interfaces
-- [SDK_DOCUMENTATION.md](SDK_DOCUMENTATION.md) - Updated SDK documentation with both Python and TypeScript
-- [BERT_MODEL_DOCUMENTATION.md](ipfs_accelerate_js/docs/models/BERT_MODEL_DOCUMENTATION.md) - **NEW** Comprehensive BERT model documentation
-
-### 1. Predictive Performance System (✅ COMPLETED - May 11, 2025)
-
-The Predictive Performance System has been completed with the successful implementation of the Multi-Model Resource Pool Integration and Multi-Model Web Integration components:
-
-- ✅ **Multi-Model Execution**: Performance prediction for multiple models executing concurrently
-- ✅ **Resource Pool Integration**: Connection with WebNN/WebGPU Resource Pool for empirical validation
-- ✅ **Browser-Specific Optimizations**: Automatic selection of optimal browser for each model type
-- ✅ **Cross-Model Tensor Sharing**: Efficient memory sharing between models (30% reduction)
-- ✅ **Adaptive Strategy Selection**: Intelligent selection of execution strategies
-- ✅ **Empirical Validation**: Continuous refinement based on actual measurements
-- ✅ **Web Integration**: Unified interface for all components with browser acceleration
-
-Documentation:
-- [PREDICTIVE_PERFORMANCE_COMPLETION.md](PREDICTIVE_PERFORMANCE_COMPLETION.md) - Comprehensive completion report
-- [predictive_performance/README.md](predictive_performance/README.md) - Updated main documentation
-- [run_multi_model_web_integration.py](run_multi_model_web_integration.py) - Demo script with browser detection
-
-### 2. Advanced Visualization System (✅ COMPLETED - July 5, 2025)
-
-The Advanced Visualization System for the Predictive Performance System has been completed, providing comprehensive visualization capabilities with full monitoring dashboard integration:
-
-- ✅ **3D Visualizations**: Multi-dimensional performance exploration with interactive rotation and filtering
-- ✅ **Interactive Dashboards**: Performance metrics with filtering and comparison capabilities
-- ✅ **Time-Series Visualization**: Performance tracking over time with trend detection and anomaly highlighting
-- ✅ **Power Efficiency Analysis**: Visualizations showing performance relative to power consumption with efficiency contours
-- ✅ **Dimension Reduction**: Feature importance analysis through PCA and t-SNE visualizations
-- ✅ **Confidence Visualization**: Visual presentation of prediction uncertainties and confidence intervals
-- ✅ **Visualization Reports**: Comprehensive HTML reports combining multiple visualization types
-- ✅ **Monitoring Dashboard Integration**: Centralized visualization management with real-time updates via WebSocket
-- ✅ **Dashboard Panel Creation**: Automatic creation of dashboard panels from visualizations
-- ✅ **Snapshot Export/Import**: Exporting and importing dashboard snapshots for sharing
-
-Documentation:
-- [ADVANCED_VISUALIZATION_GUIDE.md](ADVANCED_VISUALIZATION_GUIDE.md) - Comprehensive visualization guide
-- [MONITORING_DASHBOARD_INTEGRATION_GUIDE.md](MONITORING_DASHBOARD_INTEGRATION_GUIDE.md) - Guide for dashboard integration
-- [predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md](predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md) - Updated main guide with visualization features
-- [run_visualization_demo.py](run_visualization_demo.py) - Demo script with advanced visualization features
-
-### 3. WebGPU/WebNN Resource Pool Integration (🔄 IN PROGRESS - 97% complete)
-
-The WebNN/WebGPU Resource Pool Integration is nearing completion with the following status:
-
-- 🔄 **Fault-Tolerant Cross-Browser Model Sharding**: Advanced enterprise-grade fault tolerance (90% complete)
-  - ✅ Multiple sharding strategies implementation (layer-based, attention-feedforward, component-based)
-  - ✅ Transaction-based state management with consistent recovery
-  - ✅ Dependency-aware execution and recovery planning
-  - ✅ Distributed consensus for reliable state management
-  - 🔄 Advanced fault tolerance validation (95% complete)
-  - 🔄 End-to-end testing across all sharding strategies (85% complete)
-- ✅ **Browser-Specific Optimizations**: Intelligent optimization based on performance history (COMPLETED - May 14, 2025)
-- ✅ **Performance History Tracking**: Comprehensive time-series analysis of browser performance (COMPLETED - May 14, 2025)
-- ✅ **Enhanced Error Recovery**: Production-grade recovery mechanisms with progressive strategies (COMPLETED)
-- ✅ **Database Integration**: Comprehensive storage and analysis of performance metrics (COMPLETED)
-
-Documentation:
-- [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - Latest enhancements (UPDATED - May 14, 2025)
-- [WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md) - Cross-browser model sharding guide (UPDATED - May 14, 2025)
-- [CROSS_BROWSER_MODEL_SHARDING_TESTING_GUIDE.md](CROSS_BROWSER_MODEL_SHARDING_TESTING_GUIDE.md) - End-to-end testing guide (NEW - May 14, 2025)
-- [WEB_BROWSER_PERFORMANCE_HISTORY.md](WEB_BROWSER_PERFORMANCE_HISTORY.md) - Browser performance history system (NEW - May 14, 2025)
-- [WEB_RESOURCE_POOL_COMPLETION_REPORT.md](WEB_RESOURCE_POOL_COMPLETION_REPORT.md) - Initial completion report
-- [WEB_RESOURCE_POOL_DATABASE_INTEGRATION.md](WEB_RESOURCE_POOL_DATABASE_INTEGRATION.md) - Database integration documentation
-- [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md) - Main integration guide
-- [IPFS_RESOURCE_POOL_INTEGRATION_GUIDE.md](IPFS_RESOURCE_POOL_INTEGRATION_GUIDE.md) - IPFS integration guide
-
-### 4. Simulation Accuracy and Validation Framework (🔄 IN PROGRESS - July 2025)
-
-The Simulation Accuracy and Validation Framework is being implemented to provide comprehensive tools for validating, calibrating, and monitoring hardware simulation accuracy:
-
-- ✅ **Database Predictive Analytics**: Time series forecasting for database metrics with proactive recommendations (COMPLETED - July 15, 2025)
-- 🔄 **Simulation Validation Methodology**: Statistical metrics and validation protocols for simulation accuracy (IN PROGRESS)
-- 🔄 **Comparison Pipeline**: Tools for comparing simulation with real hardware measurements (IN PROGRESS) 
-- 🔄 **Statistical Validation Tools**: Statistical methods for quantifying simulation accuracy (IN PROGRESS)
-- 🔄 **Calibration System**: Parameter optimization for improving simulation models (IN PROGRESS)
-- ✅ **Drift Detection**: Monitoring system for detecting simulation accuracy drift (COMPLETED - July 14, 2025)
-- 🔄 **Reporting and Visualization**: Comprehensive reports and visualizations for accuracy analysis (IN PROGRESS)
-
-Documentation:
-- [SIMULATION_ACCURACY_VALIDATION_DESIGN.md](SIMULATION_ACCURACY_VALIDATION_DESIGN.md) - Design document (UPDATED - July 15, 2025)
-- [SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md](SIMULATION_ACCURACY_VALIDATION_IMPLEMENTATION.md) - Implementation progress (UPDATED - July 15, 2025)
-- [duckdb_api/simulation_validation/API_DOCUMENTATION.md](duckdb_api/simulation_validation/API_DOCUMENTATION.md) - Comprehensive API reference including predictive analytics (NEW - July 15, 2025)
-- [duckdb_api/simulation_validation/README.md](duckdb_api/simulation_validation/README.md) - Implementation overview (UPDATED - July 15, 2025)
-- [duckdb_api/simulation_validation/core/base.py](duckdb_api/simulation_validation/core/base.py) - Core interfaces (UPDATED - July 8, 2025)
-- [duckdb_api/simulation_validation/core/schema.py](duckdb_api/simulation_validation/core/schema.py) - Database schema (UPDATED - July 8, 2025)
-- [duckdb_api/simulation_validation/database_predictive_analytics.py](duckdb_api/simulation_validation/database_predictive_analytics.py) - Predictive analytics implementation (UPDATED - March 14, 2025)
-- [test_database_predictive_analytics.py](test_database_predictive_analytics.py) - Comprehensive test script for predictive analytics (UPDATED - March 14, 2025)
-- [test_simulation_validation_foundation.py](test_simulation_validation_foundation.py) - Foundation test script (UPDATED - July 15, 2025)
-
-### 3. Distributed Testing Framework (100% Complete)
-
-The Distributed Testing Framework enables parallel execution of tests across multiple machines with these key features:
-
-- **Dynamic Resource Management**: Intelligent resource allocation and scaling (COMPLETED March 18, 2025)
-  - Fine-grained CPU, memory, and GPU resource tracking
-  - ML-based resource requirement prediction
-  - Adaptive worker scaling based on resource utilization
-  - Cloud provider integration for ephemeral workers
-  - Resource-aware task scheduling with fitness scoring
-  - Detailed documentation: [DYNAMIC_RESOURCE_MANAGEMENT.md](duckdb_api/distributed_testing/DYNAMIC_RESOURCE_MANAGEMENT.md)
-- **Hardware-Aware Fault Tolerance**: Sophisticated recovery mechanisms tailored to hardware types (COMPLETED March 13, 2025)
-  - Hardware-specific recovery strategies for different platforms
-  - ML-based pattern detection for intelligent recovery
-  - Comprehensive visualization and reporting system
-  - Checkpoint and resume capabilities for long-running tasks
-- **Heterogeneous Hardware Support**: Advanced hardware taxonomy and scheduling (COMPLETED March 15, 2025)
-  - Hardware detection across CPUs, GPUs, TPUs, NPUs, and browsers
-  - Workload profiling with hardware-specific requirements
-  - Thermal state simulation and management
-- **Adaptive Load Balancing**: Intelligent test distribution (COMPLETED March 15, 2025)
-  - Thermal management for optimal worker utilization
-  - Advanced scheduling algorithms with customizable weighting
-  - Work stealing algorithms for load redistribution
-- **Live Monitoring and Visualization**: Comprehensive monitoring and reporting (COMPLETED March 13, 2025)
-  - Fault tolerance visualization and reporting system
-  - Recovery strategy effectiveness analysis
-  - Failure pattern detection and visualization
-
-Documentation:
-- [HARDWARE_FAULT_TOLERANCE_OVERVIEW.md](HARDWARE_FAULT_TOLERANCE_OVERVIEW.md) - Executive summary of fault tolerance system (NEW - March 13, 2025)
-- [HARDWARE_FAULT_TOLERANCE_GUIDE.md](duckdb_api/distributed_testing/HARDWARE_FAULT_TOLERANCE_GUIDE.md) - Detailed guide to fault tolerance system (COMPLETED March 13, 2025)
-- [HARDWARE_FAULT_TOLERANCE_ENHANCEMENTS.md](HARDWARE_FAULT_TOLERANCE_ENHANCEMENTS.md) - ML detection and visualization enhancements (NEW - March 13, 2025)
-- [FAULT_TOLERANCE_VISUALIZATION_README.md](duckdb_api/distributed_testing/FAULT_TOLERANCE_VISUALIZATION_README.md) - Visualization system guide (NEW - March 13, 2025)
-- [HETEROGENEOUS_HARDWARE_GUIDE.md](duckdb_api/distributed_testing/HETEROGENEOUS_HARDWARE_GUIDE.md) - Guide to heterogeneous hardware support (COMPLETED March 15, 2025)
-- [DISTRIBUTED_TESTING_INTEGRATION_PR.md](DISTRIBUTED_TESTING_INTEGRATION_PR.md) - Latest status update
-- [DISTRIBUTED_TESTING_GUIDE.md](DISTRIBUTED_TESTING_GUIDE.md) - Comprehensive user guide
-- [DISTRIBUTED_TESTING_DESIGN.md](DISTRIBUTED_TESTING_DESIGN.md) - Detailed design document
-- [LOAD_BALANCER_IMPLEMENTATION_STATUS.md](duckdb_api/distributed_testing/LOAD_BALANCER_IMPLEMENTATION_STATUS.md) - Load balancer implementation status (COMPLETED March 15, 2025)
-- [LOAD_BALANCER_MONITORING_GUIDE.md](duckdb_api/distributed_testing/LOAD_BALANCER_MONITORING_GUIDE.md) - Monitoring and visualization guide (COMPLETED March 15, 2025)
-- [LOAD_BALANCER_COMMAND_REFERENCE.md](duckdb_api/distributed_testing/LOAD_BALANCER_COMMAND_REFERENCE.md) - Comprehensive command reference (COMPLETED March 15, 2025)
-- [LOAD_BALANCER_STRESS_TESTING_GUIDE.md](duckdb_api/distributed_testing/LOAD_BALANCER_STRESS_TESTING_GUIDE.md) - Stress testing guide (COMPLETED March 14, 2025)
-
-## Phase 16 Documentation (Completed March 2025)
-
-### Core Documentation
-
-- [PHASE16_COMPLETION_REPORT.md](PHASE16_COMPLETION_REPORT.md) - Comprehensive report on the completed Phase 16 implementation (archived: [PHASE16_README.md](archived_phase16_docs/PHASE16_README.md))
-- [PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md](PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md) - Detailed implementation status (100% complete)
-- [PHASE16_COMPLETION_REPORT.md](PHASE16_COMPLETION_REPORT.md) - Final completion report (March 2025)
-- [PHASE16_VERIFICATION_REPORT.md](PHASE16_VERIFICATION_REPORT.md) - Comprehensive verification testing results
-- [PHASE16_ARCHIVED_DOCS.md](PHASE16_ARCHIVED_DOCS.md) - Reference for archived Phase 16 documentation
-
-### Hardware Benchmarking and Performance Analysis
-
-- [HARDWARE_BENCHMARKING_GUIDE.md](HARDWARE_BENCHMARKING_GUIDE.md) - Main hardware benchmarking documentation
-- [HARDWARE_BENCHMARKING_README.md](HARDWARE_BENCHMARKING_README.md) - **NEW** Enhanced hardware benchmarking tools documentation
-- [run_hardware_comparison.py](run_hardware_comparison.py) - **NEW** Direct Python API for hardware benchmarking
-- [run_hardware_benchmark.sh](run_hardware_benchmark.sh) - **NEW** Command-line script for hardware benchmarking
-- [interactive_hardware_benchmark.py](interactive_hardware_benchmark.py) - **NEW** Interactive tool for guided benchmarking
-- [HARDWARE_BENCHMARKING_GUIDE_PHASE16.md](HARDWARE_BENCHMARKING_GUIDE_PHASE16.md) - Phase 16 benchmarking enhancements
-- [HARDWARE_SELECTION_GUIDE.md](HARDWARE_SELECTION_GUIDE.md) - Guide to hardware selection and optimization
-- [HARDWARE_DETECTION_GUIDE.md](HARDWARE_DETECTION_GUIDE.md) - Hardware detection system documentation
-- [HARDWARE_MODEL_INTEGRATION_GUIDE.md](HARDWARE_MODEL_INTEGRATION_GUIDE.md) - Hardware-model integration guide
-- [HARDWARE_MODEL_VALIDATION_GUIDE.md](HARDWARE_MODEL_VALIDATION_GUIDE.md) - Model validation across hardware platforms
-- [HARDWARE_PLATFORM_TEST_GUIDE.md](HARDWARE_PLATFORM_TEST_GUIDE.md) - Hardware platform testing guide
-- [HARDWARE_MODEL_PREDICTOR_GUIDE.md](HARDWARE_MODEL_PREDICTOR_GUIDE.md) - Hardware performance prediction system
-- [HARDWARE_IMPLEMENTATION_SUMMARY.md](HARDWARE_IMPLEMENTATION_SUMMARY.md) - Summary of hardware implementation status
-- [APPLE_SILICON_GUIDE.md](APPLE_SILICON_GUIDE.md) - Apple Silicon (MPS) acceleration guide
-- [QUALCOMM_INTEGRATION_GUIDE.md](QUALCOMM_INTEGRATION_GUIDE.md) - Qualcomm AI Engine integration guide
-- [final_hardware_coverage_report.md](final_hardware_coverage_report.md) - Current hardware coverage status
-
-### Comprehensive Benchmarking Documentation (March 2025)
-
-- [benchmark_results/DOCUMENTATION_README.md](benchmark_results/DOCUMENTATION_README.md) - **NEW** Central index for all benchmark documentation
-- [benchmark_results/NEXT_STEPS_BENCHMARKING_PLAN.md](benchmark_results/NEXT_STEPS_BENCHMARKING_PLAN.md) - **NEW** Detailed week-by-week execution plan for benchmarking
-- [benchmark_results/MARCH_2025_BENCHMARK_PROGRESS.md](benchmark_results/MARCH_2025_BENCHMARK_PROGRESS.md) - **NEW** Current progress report with detailed Week 1 plan
-- [benchmark_results/BENCHMARK_SUMMARY.md](benchmark_results/BENCHMARK_SUMMARY.md) - **NEW** Comprehensive summary of benchmark results
-- [benchmark_results/BENCHMARK_COMMAND_CHEATSHEET.md](benchmark_results/BENCHMARK_COMMAND_CHEATSHEET.md) - **NEW** Quick reference for benchmark commands
-- [run_comprehensive_benchmarks.py](run_comprehensive_benchmarks.py) - **NEW** Main script for running comprehensive benchmarks
-
-### Database Implementation
-
-- [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) - Benchmark database architecture and usage
-- [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) - Guide to migrating data to the database
-- [DATABASE_MIGRATION_STATUS.md](DATABASE_MIGRATION_STATUS.md) - Status of database migration (100% complete)
-- [PHASE16_DATABASE_IMPLEMENTATION.md](PHASE16_DATABASE_IMPLEMENTATION.md) - Database implementation details
-- [run_incremental_benchmarks.py](run_incremental_benchmarks.py) - **NEW** Intelligent benchmark runner for identifying and running missing or outdated benchmarks
-
-### Web Platform Integration
-
-- [WEB_PLATFORM_INTEGRATION_GUIDE.md](WEB_PLATFORM_INTEGRATION_GUIDE.md) - Web platform integration guide
-- [WEB_PLATFORM_INTEGRATION_SUMMARY.md](WEB_PLATFORM_INTEGRATION_SUMMARY.md) - Summary of web platform implementation
-- [WEB_PLATFORM_OPTIMIZATION_GUIDE.md](WEB_PLATFORM_OPTIMIZATION_GUIDE.md) - Web platform optimization guide
-- [WEB_PLATFORM_TESTING_GUIDE.md](WEB_PLATFORM_TESTING_GUIDE.md) - Guide to testing web platform implementations
-- [WEB_PLATFORM_AUDIO_TESTING_GUIDE.md](WEB_PLATFORM_AUDIO_TESTING_GUIDE.md) - Web platform audio testing guide
-- [WEB_PLATFORM_AUDIO_TESTING_SUMMARY.md](WEB_PLATFORM_AUDIO_TESTING_SUMMARY.md) - Summary of audio testing implementation
-- [web_platform_integration_quick_reference.md](web_platform_integration_quick_reference.md) - Quick reference for web integration
-
-### WebNN/WebGPU Documentation
-
-#### Implementation and Benchmarking
-
-- [REAL_WEBNN_WEBGPU_IMPLEMENTATION.md](REAL_WEBNN_WEBGPU_IMPLEMENTATION.md) - Current implementation details for real WebNN/WebGPU
-- [REAL_WEBNN_WEBGPU_IMPLEMENTATION_UPDATE.md](REAL_WEBNN_WEBGPU_IMPLEMENTATION_UPDATE.md) - Latest implementation updates (March 2025)
-- [REAL_WEBNN_WEBGPU_BENCHMARKING_GUIDE.md](REAL_WEBNN_WEBGPU_BENCHMARKING_GUIDE.md) - Comprehensive benchmarking guide
-- [WEBNN_WEBGPU_BENCHMARK_README.md](WEBNN_WEBGPU_BENCHMARK_README.md) - Overview of the benchmark system
-- [WEBNN_WEBGPU_DATABASE_INTEGRATION.md](WEBNN_WEBGPU_DATABASE_INTEGRATION.md) - Database integration guide
-- [WEBNN_WEBGPU_ARCHIVED_DOCS.md](WEBNN_WEBGPU_ARCHIVED_DOCS.md) - Reference for archived WebNN/WebGPU documentation
-- [WebGPU_BROWSER_OPTIMIZATIONS.md](WebGPU_BROWSER_OPTIMIZATIONS.md) - Browser-specific optimizations for WebGPU compute shaders (NEW - March 13, 2025)
-
-#### TypeScript Implementation (NEW - March 13, 2025)
-
-- [TYPESCRIPT_IMPLEMENTATION_SUMMARY.md](TYPESCRIPT_IMPLEMENTATION_SUMMARY.md) - Comprehensive implementation summary
-- [TYPESCRIPT_MIGRATION_FINAL_REPORT.md](TYPESCRIPT_MIGRATION_FINAL_REPORT.md) - Detailed migration report
-- [WEBGPU_WEBNN_MIGRATION_PROGRESS_UPDATED.md](WEBGPU_WEBNN_MIGRATION_PROGRESS_UPDATED.md) - Final migration progress update
-- [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - Updated API documentation with TypeScript interfaces
-- [SDK_DOCUMENTATION.md](SDK_DOCUMENTATION.md) - Updated SDK documentation with TypeScript section
-- [webgpu.d.ts](webgpu.d.ts) - Main WebGPU type definitions
-- [webnn.d.ts](webnn.d.ts) - Main WebNN type definitions 
-- [src/types/webgpu.d.ts](src/types/webgpu.d.ts) - Structure-specific WebGPU type definitions
-- [src/types/webnn.d.ts](src/types/webnn.d.ts) - Structure-specific WebNN type definitions
-- [WEBNN_GRAPH_BUILDING_GUIDE.md](WEBNN_GRAPH_BUILDING_GUIDE.md) - Comprehensive guide to WebNN graph building (NEW - March 14, 2025)
-- [ipfs_accelerate_js_webnn_graph_builder.ts](ipfs_accelerate_js_webnn_graph_builder.ts) - Core implementation of WebNN graph building for neural networks (NEW - March 14, 2025)
-- [ipfs_accelerate_js_webnn_graph_builder.test.ts](ipfs_accelerate_js_webnn_graph_builder.test.ts) - Comprehensive test suite for WebNN graph building (NEW - March 14, 2025)
-- [ipfs_accelerate_js_webnn_graph_example.ts](ipfs_accelerate_js_webnn_graph_example.ts) - Example code for building neural networks with WebNN (NEW - March 14, 2025)
-
-#### Cross-Model Tensor Sharing (NEW - March 28, 2025)
-
-- [CROSS_MODEL_TENSOR_SHARING_GUIDE.md](CROSS_MODEL_TENSOR_SHARING_GUIDE.md) - Comprehensive guide to the Cross-Model Tensor Sharing system
-- [ipfs_accelerate_js_tensor_sharing_integration.ts](ipfs_accelerate_js_tensor_sharing_integration.ts) - TensorSharingIntegration implementation
-- [ipfs_accelerate_js_tensor_sharing_example.ts](ipfs_accelerate_js_tensor_sharing_example.ts) - Example usage of tensor sharing
-- [TensorSharingDemo.html](TensorSharingDemo.html) - Interactive browser demo
-- [ipfs_accelerate_js/src/tensor/shared_tensor.ts](ipfs_accelerate_js/src/tensor/shared_tensor.ts) - Core shared tensor implementation
-
-#### Resource Pool and Cross-Browser Features
-
-- [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - Latest enhancements to WebNN/WebGPU Resource Pool (UPDATED - May 14, 2025)
-- [WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md) - Guide to cross-browser model sharding (UPDATED - May 14, 2025)
-- [CROSS_BROWSER_MODEL_SHARDING_TESTING_GUIDE.md](CROSS_BROWSER_MODEL_SHARDING_TESTING_GUIDE.md) - End-to-end testing guide for fault-tolerant model sharding (NEW - May 14, 2025)
-- [WEB_BROWSER_PERFORMANCE_HISTORY.md](WEB_BROWSER_PERFORMANCE_HISTORY.md) - Browser performance history system for optimization (NEW - May 14, 2025)
-
-### Cross-Platform Testing
-
-- [CROSS_PLATFORM_TEST_COVERAGE.md](CROSS_PLATFORM_TEST_COVERAGE.md) - Cross-platform test coverage status
-- [PHASE16_CROSS_PLATFORM_TESTING.md](PHASE16_CROSS_PLATFORM_TESTING.md) - Cross-platform testing implementation details
-- [HF_COMPREHENSIVE_TESTING_GUIDE.md](HF_COMPREHENSIVE_TESTING_GUIDE.md) - Guide to testing all 300+ HuggingFace models across hardware platforms
-
-### Training Mode Benchmarking
-
-- [TRAINING_BENCHMARKING_GUIDE.md](TRAINING_BENCHMARKING_GUIDE.md) - Guide to training mode benchmarking
-- [DISTRIBUTED_TRAINING_GUIDE.md](DISTRIBUTED_TRAINING_GUIDE.md) - Guide to distributed training capabilities
-
-## Implementation Notes and Plans
-
-- [PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md](PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md) - Final implementation summary for Phase 16
-- [WEB_PLATFORM_IMPLEMENTATION_PLAN.md](WEB_PLATFORM_IMPLEMENTATION_PLAN.md) - Web platform implementation plan
-- [WEB_PLATFORM_IMPLEMENTATION_SUMMARY.md](WEB_PLATFORM_IMPLEMENTATION_SUMMARY.md) - Web implementation summary
-- [WEB_PLATFORM_IMPLEMENTATION_NEXT_STEPS.md](WEB_PLATFORM_IMPLEMENTATION_NEXT_STEPS.md) - Next implementation steps
-
-## Model-Specific Documentation
-
-- [model_specific_optimizations/text_models.md](docs/model_specific_optimizations/text_models.md) - Text model optimization guide
-- [model_specific_optimizations/audio_models.md](docs/model_specific_optimizations/audio_models.md) - Audio model optimization guide
-- [model_specific_optimizations/multimodal_models.md](docs/model_specific_optimizations/multimodal_models.md) - Multimodal model optimization guide
-- [MODEL_COMPRESSION_GUIDE.md](MODEL_COMPRESSION_GUIDE.md) - Guide to model compression techniques
-- [MODEL_FAMILY_GUIDE.md](MODEL_FAMILY_GUIDE.md) - Guide to model family classification
-- [MODEL_FAMILY_CLASSIFIER_GUIDE.md](MODEL_FAMILY_CLASSIFIER_GUIDE.md) - Model family classifier documentation
-
-## Advanced Features Documentation (July 2025)
-
-### Simulation Accuracy and Validation Framework (July 2025)
-
-- [SIMULATION_ACCURACY_VALIDATION_DESIGN.md](SIMULATION_ACCURACY_VALIDATION_DESIGN.md) - Design document for the framework (NEW - July 8, 2025)
-- [duckdb_api/simulation_validation/README.md](duckdb_api/simulation_validation/README.md) - Implementation overview (NEW - July 8, 2025)
-- [duckdb_api/simulation_validation/core/base.py](duckdb_api/simulation_validation/core/base.py) - Core interfaces and abstract classes (NEW - July 8, 2025)
-- [duckdb_api/simulation_validation/core/schema.py](duckdb_api/simulation_validation/core/schema.py) - Database schema for simulation and validation data (NEW - July 8, 2025)
-- [test_simulation_validation_foundation.py](test_simulation_validation_foundation.py) - Foundation test script (NEW - July 8, 2025)
-
-### Predictive Performance System (May 2025)
-
-- [PREDICTIVE_PERFORMANCE_COMPLETION.md](PREDICTIVE_PERFORMANCE_COMPLETION.md) - Complete system implementation report (NEW - May 11, 2025)
-- [ADVANCED_VISUALIZATION_GUIDE.md](ADVANCED_VISUALIZATION_GUIDE.md) - Comprehensive guide to advanced visualization capabilities (NEW - May 15, 2025)
-- [PREDICTIVE_PERFORMANCE_GUIDE.md](predictive_performance/PREDICTIVE_PERFORMANCE_GUIDE.md) - Main guide for the Predictive Performance System (UPDATED - May 15, 2025)
-- [ACTIVE_LEARNING_DESIGN.md](predictive_performance/ACTIVE_LEARNING_DESIGN.md) - Design document for the Active Learning System
-- [INTEGRATED_ACTIVE_LEARNING_GUIDE.md](predictive_performance/INTEGRATED_ACTIVE_LEARNING_GUIDE.md) - Integration guide for Active Learning
-- [MODEL_UPDATE_PIPELINE_GUIDE.md](predictive_performance/MODEL_UPDATE_PIPELINE_GUIDE.md) - Documentation for the Model Update Pipeline
-- [MULTI_MODEL_EXECUTION_GUIDE.md](predictive_performance/MULTI_MODEL_EXECUTION_GUIDE.md) - Guide to multi-model execution performance prediction
-- [TEST_BATCH_GENERATOR_GUIDE.md](predictive_performance/TEST_BATCH_GENERATOR_GUIDE.md) - Guide to the Test Batch Generator
-- [MULTI_MODEL_RESOURCE_POOL_INTEGRATION_GUIDE.md](predictive_performance/MULTI_MODEL_RESOURCE_POOL_INTEGRATION_GUIDE.md) - Guide to resource pool integration (NEW - May 11, 2025)
-- [MULTI_MODEL_WEB_INTEGRATION_GUIDE.md](predictive_performance/MULTI_MODEL_WEB_INTEGRATION_GUIDE.md) - Guide to browser-based integration (NEW - May 11, 2025)
-- [EMPIRICAL_VALIDATION_GUIDE.md](predictive_performance/EMPIRICAL_VALIDATION_GUIDE.md) - Guide to empirical validation (NEW - May 11, 2025)
-
-### Resource Pool and Framework Integration
-
-- [WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md](WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md) - Latest enhancements to WebNN/WebGPU Resource Pool (NEW - May 12, 2025)
-- [DISTRIBUTED_TESTING_INTEGRATION_PR.md](DISTRIBUTED_TESTING_INTEGRATION_PR.md) - Status of Distributed Testing Framework advanced fault tolerance (NEW - May 12, 2025)
-- [MODEL_FILE_VERIFICATION_README.md](MODEL_FILE_VERIFICATION_README.md) - Comprehensive guide to the Model File Verification and Conversion Pipeline
-- [ARCHIVE_STRUCTURE.md](ARCHIVE_STRUCTURE.md) - Documentation of the archive directory structure and management
-- [DOCUMENTATION_CLEANUP_GUIDE.md](DOCUMENTATION_CLEANUP_GUIDE.md) - Guide for documentation and report cleanup
-- [TIME_SERIES_PERFORMANCE_GUIDE.md](TIME_SERIES_PERFORMANCE_GUIDE.md) - Time-series performance tracking system
-- [IPFS_ACCELERATION_TESTING.md](IPFS_ACCELERATION_TESTING.md) - IPFS acceleration testing with DuckDB integration
-- [MODEL_REGISTRY_INTEGRATION.md](MODEL_REGISTRY_INTEGRATION.md) - Model registry integration system
-- [MOBILE_EDGE_EXPANSION_PLAN.md](MOBILE_EDGE_EXPANSION_PLAN.md) - Mobile/edge support expansion plan
-- [BATTERY_IMPACT_ANALYSIS.md](BATTERY_IMPACT_ANALYSIS.md) - Battery impact analysis methodology
-- [SIMULATION_DETECTION_IMPROVEMENTS.md](SIMULATION_DETECTION_IMPROVEMENTS.md) - Simulation detection and flagging improvements
-- [DOCUMENTATION_CLEANUP_SUMMARY.md](DOCUMENTATION_CLEANUP_SUMMARY.md) - Summary of documentation and report cleanup
-- [NEXT_STEPS_IMPLEMENTATION.md](NEXT_STEPS_IMPLEMENTATION.md) - Implementation guide for next steps
-- [NEXT_STEPS.md](NEXT_STEPS.md) - Next steps and roadmap for the framework
-
-### Implementation Files
-
-- [WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md](WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md) - Guide to cross-browser model sharding with fault tolerance (NEW - May 12, 2025)
-- [distributed_testing/docs/ADVANCED_RECOVERY_STRATEGIES.md](distributed_testing/docs/ADVANCED_RECOVERY_STRATEGIES.md) - Advanced failure recovery mechanisms
-- [model_file_verification.py](model_file_verification.py) - Core implementation of the Model File Verification and Conversion Pipeline
-- [benchmark_model_verification.py](benchmark_model_verification.py) - Integration of the verification system with benchmarks
-- [run_model_verification.sh](run_model_verification.sh) - Script to demonstrate model verification usage
-- [archive/archive_backups.sh](archive/archive_backups.sh) - Script for archiving backup files and old reports
-- [archive/archive_stale.sh](archive/archive_stale.sh) - Script for archiving stale scripts and documentation
-- [archive_old_documentation.py](archive_old_documentation.py) - Utility for archiving outdated documentation
-- [cleanup_stale_reports.py](cleanup_stale_reports.py) - Tool for cleaning up stale benchmark reports
-- [run_documentation_cleanup.sh](run_documentation_cleanup.sh) - Script to run all documentation cleanup tools
-- [time_series_performance.py](time_series_performance.py) - Time-series performance tracking implementation
-- [test_ipfs_accelerate.py](test_ipfs_accelerate.py) - IPFS acceleration testing implementation with DuckDB integration
-- [model_registry_integration.py](model_registry_integration.py) - Model registry integration implementation
-- [mobile_edge_expansion_plan.py](mobile_edge_expansion_plan.py) - Mobile/edge support expansion implementation
-- [test_model_registry_integration.py](test_model_registry_integration.py) - Test script for model registry integration
-- [test_mobile_edge_expansion.py](test_mobile_edge_expansion.py) - Test script for mobile/edge support expansion
-- [test_simulation_detection.py](test_simulation_detection.py) - Test script for simulation detection and flagging
-- [test_simulation_awareness.py](test_simulation_awareness.py) - Test script for report simulation awareness
-- [run_cleanup_stale_reports.py](run_cleanup_stale_reports.py) - Script to automate the cleanup of stale benchmark reports
-- [update_db_schema_for_simulation.py](update_db_schema_for_simulation.py) - Script to update database schema with simulation flags
-- [qnn_simulation_helper.py](qnn_simulation_helper.py) - Utility for controlling QNN simulation
-
-## API and Integration Documentation
-
-- [unified_framework_api.md](docs/unified_framework_api.md) - Comprehensive API reference for the unified framework
-- [websocket_protocol_spec.md](docs/websocket_protocol_spec.md) - WebSocket protocol specification for streaming inference
-- [api_reference/webgpu_streaming_inference.md](docs/api_reference/webgpu_streaming_inference.md) - WebGPU streaming inference API reference
-- [RESOURCE_POOL_GUIDE.md](RESOURCE_POOL_GUIDE.md) - Guide to the ResourcePool system
-- [TEMPLATE_INHERITANCE_GUIDE.md](TEMPLATE_INHERITANCE_GUIDE.md) - Template inheritance system documentation
-- [MODALITY_TEMPLATE_GUIDE.md](MODALITY_TEMPLATE_GUIDE.md) - Modality-specific template documentation
-- [TEMPLATE_GENERATOR_README.md](TEMPLATE_GENERATOR_README.md) - Template generator documentation
-- [INTEGRATED_SKILLSET_GENERATOR_GUIDE.md](INTEGRATED_SKILLSET_GENERATOR_GUIDE.md) - Skillset generator documentation
-
-## Archived Documentation
-
-Older documentation files have been archived in the following directories:
-- `archive/old_documentation/` - Older documentation files (March 10, 2025)
-- `archive/old_reports/` - Old benchmark reports and results files (March 10, 2025)
-- `archive/stale_scripts/` - Deprecated Python scripts that are no longer in active use (March 10, 2025)
-- `archive/backup_files/` - Backup files with original directory structure preserved (March 10, 2025)
-- `archived_md_files/` - Legacy documentation from previous phases
-- `archived_documentation_april2025/` - Recently archived documentation (April 2025)
-- `archived_reports_april2025/` - Recently archived performance reports (April 2025)
-- `archived_stale_reports/` - Problematic benchmark reports identified during cleanup
-
-See [ARCHIVE_STRUCTURE.md](ARCHIVE_STRUCTURE.md) for a complete guide to the archive directory structure and management procedures.
-
-## How to Use This Index
-
-1. **For New Users**: Start with the PHASE16_COMPLETION_REPORT.md and the main guide for your area of interest
-2. **For Implementation Status**: See PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md and PHASE16_COMPLETION_REPORT.md
-3. **For Verification Results**: Review PHASE16_VERIFICATION_REPORT.md for testing outcomes
-4. **For Technical Details**: See the specialized guides for each component
-5. **For Documentation Maintenance**: Refer to DOCUMENTATION_CLEANUP_GUIDE.md for cleanup procedures
-
-## Documentation Maintenance
-
-This documentation index is regularly updated as the project evolves. When adding new documentation:
-
-1. Add a reference to this index in the appropriate category
-2. Archive outdated documents using the `archive_old_documentation.py` script
-3. Run `./run_documentation_cleanup.sh` periodically to maintain a clean documentation structure
-4. Update status indicators in active documentation files
-
-For any documentation questions or issues, please refer to CLAUDE.md for additional guidance or the DOCUMENTATION_CLEANUP_GUIDE.md for maintenance procedures.
+# Record a measurement
+client.record_measurement(
+    model_name="bert-base-uncased",
+    hardware_platform=HardwarePlatform.CUDA,
+    batch_size=8,
+    throughput=120.5,
+    latency=8.3,
+    memory_usage=1024.0,
+    wait=True
+)
+```
+
+For asynchronous usage:
+
+```python
+from test.api_client.predictive_performance_client import AsyncPredictivePerformanceClient
+import asyncio
+
+async def run_async_example():
+    client = AsyncPredictivePerformanceClient(base_url="http://localhost:8080")
+    try:
+        result = await client.predict_hardware(
+            model_name="bert-base-uncased",
+            batch_size=8,
+            wait=True
+        )
+        print(f"Hardware recommendation: {result['result']['primary_recommendation']}")
+    finally:
+        await client.close()
+
+# Run the async example
+asyncio.run(run_async_example())
+```

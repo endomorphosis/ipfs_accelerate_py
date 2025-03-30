@@ -892,7 +892,8 @@ class FaultToleranceValidator:
         result = {
             "integrity_verified": False,
             "checks_passed": [],
-            "checks_failed": []
+            "checks_failed": [],
+            "performance_impact": {}
         }
         
         try:
@@ -958,16 +959,177 @@ class FaultToleranceValidator:
                         "post_recovery": post_hash
                     }
             
+            # Check 6: Verify browser configuration integrity
+            if "browser_allocation" in pre_failure_state and "browser_allocation" in post_recovery_state:
+                # Check if critical browsers are still present or properly replaced
+                pre_allocation = pre_failure_state["browser_allocation"]
+                post_allocation = post_recovery_state["browser_allocation"]
+                
+                missing_browsers = []
+                replaced_browsers = []
+                preserved_browsers = []
+                
+                for browser, allocation in pre_allocation.items():
+                    if browser in post_allocation:
+                        preserved_browsers.append(browser)
+                    else:
+                        # Check if this browser's shards were reallocated
+                        pre_shards = allocation.get("shards", [])
+                        reallocated = True
+                        
+                        for shard in pre_shards:
+                            shard_reallocated = False
+                            for post_browser, post_alloc in post_allocation.items():
+                                if shard in post_alloc.get("shards", []):
+                                    shard_reallocated = True
+                                    replaced_browsers.append((browser, post_browser, shard))
+                                    break
+                            
+                            if not shard_reallocated:
+                                reallocated = False
+                                missing_browsers.append((browser, shard))
+                        
+                        if not reallocated and missing_browsers:
+                            result["checks_failed"].append("browser_reallocation")
+                
+                if not missing_browsers:
+                    result["checks_passed"].append("browser_reallocation")
+                    
+                result["browser_reallocation_details"] = {
+                    "preserved_browsers": preserved_browsers,
+                    "replaced_browsers": replaced_browsers,
+                    "missing_browsers": missing_browsers
+                }
+            
+            # Check 7: Verify component state integrity
+            if "component_states" in pre_failure_state and "component_states" in post_recovery_state:
+                pre_states = pre_failure_state["component_states"]
+                post_states = post_recovery_state["component_states"]
+                
+                # Check if all components from pre-failure are present in post-recovery
+                missing_components = []
+                degraded_components = []
+                recovered_components = []
+                
+                for component, state in pre_states.items():
+                    if component not in post_states:
+                        missing_components.append(component)
+                    elif post_states[component] in ["ready", "recovered"]:
+                        recovered_components.append(component)
+                    else:
+                        degraded_components.append((component, post_states[component]))
+                
+                if not missing_components and not degraded_components:
+                    result["checks_passed"].append("component_state_integrity")
+                else:
+                    result["checks_failed"].append("component_state_integrity")
+                    
+                result["component_state_details"] = {
+                    "missing_components": missing_components,
+                    "degraded_components": degraded_components,
+                    "recovered_components": recovered_components
+                }
+            
+            # Check 8: Performance impact assessment
+            if "metrics" in pre_failure_state and "metrics" in post_recovery_state:
+                pre_metrics = pre_failure_state["metrics"]
+                post_metrics = post_recovery_state["metrics"]
+                
+                # Compare performance metrics before and after recovery
+                pre_latency = pre_metrics.get("average_latency_ms", 0)
+                post_latency = post_metrics.get("average_latency_ms", 0)
+                
+                latency_impact = (post_latency - pre_latency) / max(1, pre_latency) * 100
+                
+                # Performance metrics
+                result["performance_impact"] = {
+                    "pre_latency_ms": pre_latency,
+                    "post_latency_ms": post_latency,
+                    "latency_difference_ms": post_latency - pre_latency,
+                    "latency_impact_percentage": latency_impact,
+                    "acceptable_impact": latency_impact < 50  # Less than 50% slowdown is acceptable
+                }
+                
+                if result["performance_impact"]["acceptable_impact"]:
+                    result["checks_passed"].append("performance_impact")
+                else:
+                    # Performance impact is high, but not a critical failure
+                    # Just note it as a warning
+                    result["performance_warning"] = f"Performance degraded by {latency_impact:.2f}% after recovery"
+            
+            # Check 9: Resource utilization
+            if "resource_utilization" in pre_failure_state and "resource_utilization" in post_recovery_state:
+                pre_util = pre_failure_state["resource_utilization"]
+                post_util = post_recovery_state["resource_utilization"]
+                
+                # Compare memory usage
+                pre_memory = pre_util.get("memory_usage_mb", 0)
+                post_memory = post_util.get("memory_usage_mb", 0)
+                
+                memory_impact = (post_memory - pre_memory) / max(1, pre_memory) * 100
+                
+                result["resource_impact"] = {
+                    "pre_memory_mb": pre_memory,
+                    "post_memory_mb": post_memory,
+                    "memory_difference_mb": post_memory - pre_memory,
+                    "memory_impact_percentage": memory_impact,
+                    "acceptable_impact": memory_impact < 30  # Less than 30% increase is acceptable
+                }
+                
+                if result["resource_impact"]["acceptable_impact"]:
+                    result["checks_passed"].append("resource_impact")
+                else:
+                    # Memory impact is high, but not a critical failure
+                    result["resource_warning"] = f"Memory usage increased by {memory_impact:.2f}% after recovery"
+            
+            # Check 10: State transition consistency
+            if "transactions" in pre_failure_state and "transactions" in post_recovery_state:
+                pre_tx = pre_failure_state["transactions"]
+                post_tx = post_recovery_state["transactions"]
+                
+                # Check if all pre-failure transactions are present in post-recovery
+                missing_transactions = []
+                
+                for tx_id in pre_tx:
+                    if tx_id not in post_tx:
+                        missing_transactions.append(tx_id)
+                
+                if not missing_transactions:
+                    result["checks_passed"].append("transaction_consistency")
+                else:
+                    result["checks_failed"].append("transaction_consistency")
+                    result["transaction_consistency_details"] = {
+                        "missing_transactions": missing_transactions,
+                        "pre_transaction_count": len(pre_tx),
+                        "post_transaction_count": len(post_tx)
+                    }
+            
             # Determine overall integrity based on critical checks
             critical_checks = ["model_operational", "component_count_match", "no_error_state"]
             
-            # For high fault tolerance levels, also check browser count
+            # For high fault tolerance levels, add more critical checks
             if self.config['fault_tolerance_level'] in ["high", "critical"]:
-                critical_checks.append("browser_count_appropriate")
+                critical_checks.extend([
+                    "browser_count_appropriate", 
+                    "browser_reallocation", 
+                    "transaction_consistency"
+                ])
+            
+            # For medium and above, component state integrity is important
+            if self.config['fault_tolerance_level'] in ["medium", "high", "critical"]:
+                critical_checks.append("component_state_integrity")
             
             # All critical checks must pass
             all_critical_passed = all(check in result["checks_passed"] for check in critical_checks)
             result["integrity_verified"] = all_critical_passed
+            
+            # Calculate integrity score (percentage of checks passed)
+            total_checks = len(result["checks_passed"]) + len(result["checks_failed"])
+            if total_checks > 0:
+                integrity_score = len(result["checks_passed"]) / total_checks * 100
+                result["integrity_score"] = integrity_score
+            else:
+                result["integrity_score"] = 0
             
             return result
             

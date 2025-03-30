@@ -608,7 +608,7 @@ class TestCoordinator:
                 if req not in worker.capabilities.get('software', {}):
                     return False
                 
-                if worker.capabilities.get('software', {}).get(req) \!= value:
+                if worker.capabilities.get('software', {}).get(req) != value:
                     return False
         
         return True
@@ -622,7 +622,7 @@ class TestCoordinator:
                 # log the heartbeat.
                 with self.state_lock:
                     active_workers = sum(1 for worker in self.state.workers.values() 
-                                       if worker.status \!= WorkerStatus.OFFLINE)
+                                       if worker.status != WorkerStatus.OFFLINE)
                     running_tasks = sum(1 for task in self.state.tasks.values() 
                                        if task.status == TaskStatus.RUNNING)
                     
@@ -643,7 +643,7 @@ class TestCoordinator:
             try:
                 # Only assign tasks if we're the leader
                 with self.state_lock:
-                    if self.high_availability and self.state.role \!= NodeRole.LEADER:
+                    if self.high_availability and self.state.role != NodeRole.LEADER:
                         self.stop_event.wait(1)
                         continue
                 
@@ -739,7 +739,7 @@ class TestCoordinator:
                         'worker_id': task.worker_id
                     }
                     for task_id, task in self.state.tasks.items()
-                    if task.status \!= TaskStatus.COMPLETED  # Only include non-completed tasks
+                    if task.status != TaskStatus.COMPLETED  # Only include non-completed tasks
                 }
             }
             

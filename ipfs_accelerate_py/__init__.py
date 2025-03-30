@@ -2,7 +2,13 @@
 IPFS Accelerate Python package.
 
 This package provides a framework for hardware-accelerated machine learning inference
-with IPFS network-based distribution and acceleration.
+with IPFS network-based distribution and acceleration. Key features include:
+
+- Hardware acceleration (CPU, GPU, OpenVINO, WebNN, WebGPU)
+- IPFS-based content distribution and caching
+- Browser integration for client-side inference
+- Model type detection and optimization
+- Cross-platform support
 """
 
 # Import original components
@@ -36,6 +42,28 @@ try:
 except ImportError:
     config = None
 
+# Import WebNN/WebGPU integration
+try:
+    from .webnn_webgpu_integration import (
+        accelerate_with_browser,
+        WebNNWebGPUAccelerator,
+        get_accelerator
+    )
+    webnn_webgpu_available = True
+except ImportError:
+    webnn_webgpu_available = False
+    
+    # Create stubs if not available
+    def accelerate_with_browser(*args, **kwargs):
+        raise NotImplementedError("WebNN/WebGPU integration is not available")
+    
+    def get_accelerator(*args, **kwargs):
+        raise NotImplementedError("WebNN/WebGPU integration is not available")
+    
+    class WebNNWebGPUAccelerator:
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError("WebNN/WebGPU integration is not available")
+
 # Import our new implementation
 try:
     import sys
@@ -66,8 +94,19 @@ export = {
     "ipfs_accelerate_py": ipfs_accelerate_py,
     "worker": worker,
     "ipfs_multiformats_py": ipfs_multiformats_py,
-    "get_instance": get_instance
+    "get_instance": get_instance,
+    "accelerate_with_browser": accelerate_with_browser,
+    "WebNNWebGPUAccelerator": WebNNWebGPUAccelerator,
+    "get_accelerator": get_accelerator,
+    "webnn_webgpu_available": webnn_webgpu_available
 }
 
-__all__ = ['ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
-           'install_depends', 'worker', 'ipfs_multiformats_py']
+__all__ = [
+    'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
+    'install_depends', 'worker', 'ipfs_multiformats_py',
+    'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
+    'webnn_webgpu_available'
+]
+
+# Package version
+__version__ = "0.4.0"

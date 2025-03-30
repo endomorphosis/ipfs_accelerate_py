@@ -1033,18 +1033,44 @@ class ipfs_accelerate_py:
         return ValueError("Not implemented")
 
     def get_model_type(self, model_name, model_type=None):
+        if model_type is not None:
+            return model_type
+            
+        # Try to use AutoConfig if available
         if "AutoConfig" not in globals() and "AutoConfig" not in list(self.resources.keys()):
             try:
                 from transformers import AutoConfig
                 config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
                 model_type = config.__class__.model_type
-            except:
-                return None
+                return model_type
+            except Exception as e:
+                pass
         else:
-            if model_type is None:
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-                model_type = config.__class__.model_type
-        return model_type
+            try:
+                if "AutoConfig" in globals():
+                    config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                    model_type = config.__class__.model_type
+                    return model_type
+            except Exception as e:
+                pass
+        
+        # Fallback to name-based detection
+        model_name_lower = model_name.lower()
+        if any(x in model_name_lower for x in ["bert", "roberta", "mpnet", "minilm", "deberta"]):
+            return "text_embedding"
+        elif any(x in model_name_lower for x in ["t5", "mt5", "bart"]):
+            return "text2text"
+        elif any(x in model_name_lower for x in ["llama", "gpt", "qwen", "phi", "mistral", "falcon"]):
+            return "text_generation"
+        elif any(x in model_name_lower for x in ["vit", "clip", "detr", "convnext"]):
+            return "vision"
+        elif any(x in model_name_lower for x in ["whisper", "wav2vec", "clap", "hubert"]):
+            return "audio"
+        elif any(x in model_name_lower for x in ["llava", "blip", "fuyu", "paligemma"]):
+            return "multimodal"
+        
+        # Default to generic text model
+        return "text"
     
     async def test_local_endpoint(self, model, endpoint_list=None):
         this_endpoint = None

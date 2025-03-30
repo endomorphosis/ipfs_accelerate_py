@@ -6,6 +6,13 @@ This directory contains the implementation of a unified benchmark system for the
 
 - `benchmark_refactoring_plan.md`: Comprehensive plan for the benchmark refactoring
 - `benchmark_ast_analyzer.py`: Script to analyze the AST of benchmark code
+- `BENCHMARK_FASTAPI_DASHBOARD.md`: Comprehensive documentation for the API server and dashboard
+- `benchmark_api_server.py`: FastAPI server implementation for benchmark operations
+- `benchmark_api_client.py`: Python client for interacting with the API server
+- `benchmark_dashboard.py`: Interactive dashboard for visualizing benchmark results
+- `run_benchmark_api_server.sh`: Shell script for starting the API server
+- `run_benchmark_dashboard.sh`: Shell script for starting the dashboard
+- `benchmark_integration_example.py`: Example script demonstrating API integration
 - `benchmark_core/`: Core framework implementation
   - `__init__.py`: Package exports
   - `registry.py`: Benchmark registry system
@@ -13,6 +20,7 @@ This directory contains the implementation of a unified benchmark system for the
   - `hardware.py`: Hardware detection and management
   - `results.py`: Result collection and storage
   - `runner.py`: Main entry point for running benchmarks
+  - `db_integration.py`: Database integration for result storage
 
 ## Core Architecture
 
@@ -144,12 +152,68 @@ The analyzer generates the following reports:
 - `summary.json`: Summary of analysis results
 - `summary.md`: Markdown version of the summary report
 
-## Next Steps
+## API Server and Interactive Dashboard
 
-1. Migrate existing benchmark code to the new framework
-2. Create adapters for existing benchmark scripts
-3. Implement comprehensive tests
-4. Update CI/CD pipeline to use the new framework
+The benchmark framework now includes a comprehensive API server and interactive dashboard for benchmark control and visualization.
+
+### FastAPI Server
+
+To start the benchmark API server:
+
+```bash
+# Start with default settings
+./run_benchmark_api_server.sh
+
+# Start with custom settings
+./run_benchmark_api_server.sh --port 8888 --db-path /path/to/benchmarks.duckdb --results-dir /path/to/results
+```
+
+The server provides these RESTful endpoints:
+
+- `POST /api/benchmark/run` - Start a benchmark run with specified parameters
+- `GET /api/benchmark/status/{run_id}` - Get status of a running benchmark
+- `GET /api/benchmark/results/{run_id}` - Get results of a completed benchmark
+- `GET /api/benchmark/models` - List available models for benchmarking
+- `GET /api/benchmark/hardware` - List available hardware platforms
+- `GET /api/benchmark/reports` - List available benchmark reports
+- `GET /api/benchmark/query` - Query benchmark results with optional filters
+- `WebSocket /api/benchmark/ws/{run_id}` - Real-time benchmark progress tracking
+
+### Interactive Dashboard
+
+To start the interactive dashboard for visualization:
+
+```bash
+# Start with default settings
+./run_benchmark_dashboard.sh
+
+# Start with custom settings
+./run_benchmark_dashboard.sh --port 8050 --api-url http://localhost:8000 --db-path /path/to/benchmarks.duckdb
+```
+
+The dashboard provides the following features:
+
+1. **Overview Tab**: High-level metrics and performance comparisons
+2. **Comparison Tab**: Detailed performance comparisons with heatmap visualization
+3. **Live Runs Tab**: Monitor and control active benchmark runs
+4. **Reports Tab**: Access benchmark reports and run custom SQL queries
+
+### Running an Example
+
+To run an example benchmark and see the complete workflow:
+
+```bash
+# First, start the API server
+./run_benchmark_api_server.sh
+
+# In another terminal, run the example script
+python benchmark_integration_example.py
+
+# Start the dashboard to visualize results
+./run_benchmark_dashboard.sh
+```
+
+For comprehensive documentation, see [BENCHMARK_FASTAPI_DASHBOARD.md](./BENCHMARK_FASTAPI_DASHBOARD.md).
 
 ## Design Principles
 

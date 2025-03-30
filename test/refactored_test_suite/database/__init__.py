@@ -1,0 +1,1 @@
+# Database integration module for the refactored test suite
