@@ -1,13 +1,11 @@
 """
 IPFS Accelerate MCP Tools
 
-This module registers all tools with the MCP server.
+This package provides tools for the IPFS Accelerate MCP server.
 """
 
-import os
-import sys
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Any
 
 # Set up logging
 logger = logging.getLogger("ipfs_accelerate_mcp.tools")
@@ -21,17 +19,17 @@ def register_all_tools(mcp: Any) -> None:
     Args:
         mcp: MCP server instance
     """
-    logger.debug("Registering all tools")
+    logger.debug("Registering all tools with MCP server")
     
     try:
-        # Import hardware tools
+        # Import tools
         from ipfs_accelerate_py.mcp.tools.hardware import register_hardware_tools
         
-        # Register hardware tools
+        # Register tools
         register_hardware_tools(mcp)
         
-        logger.debug("All tools registered")
+        logger.debug("All tools registered with MCP server")
     
     except Exception as e:
-        logger.error(f"Error registering tools: {e}")
+        logger.error(f"Error registering tools with MCP server: {e}")
         raise

@@ -1,58 +1,111 @@
 """
-Tools for IPFS Accelerate MCP server.
+Tools package for IPFS Accelerate MCP.
 
-This package contains tool implementations that expose IPFS operations
-to LLM clients through the MCP server.
+This package provides tools that can be used by LLMs through the MCP interface.
+Tools are organized by functionality into separate modules.
 """
 
 import importlib
+import logging
 import sys
-import os
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, cast
 
-__all__ = ["register_all_tools"]
+# Configure logging
+logger = logging.getLogger("mcp.tools")
 
+# Try imports with fallbacks
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    try:
+        from fastmcp import FastMCP
+    except ImportError:
+        # Fall back to mock implementation
+        from mcp.mock_mcp import FastMCP
 
-def register_all_tools(mcp: Any) -> None:
-    """Register all available tools with the MCP server.
+# Try to import ipfs_kit_py
+try:
+    import ipfs_kit_py
+    # Check if IPFSApi is available
+    try:
+        from ipfs_kit_py import IPFSApi
+        ipfs_api_available = True
+    except ImportError:
+        logger.warning("IPFSApi not available in ipfs_kit_py")
+        ipfs_api_available = False
     
-    This function dynamically imports and registers all tool modules,
-    making it easier to add new tool modules without changing this file.
+    ipfs_kit_available = True
+except ImportError:
+    ipfs_kit_available = False
+    ipfs_api_available = False
+    logger.warning("ipfs_kit_py not available. Using mock implementations.")
+
+# Import the mock IPFS client
+from mcp.tools.mock_ipfs import MockIPFSClient
+
+
+def register_all_tools(mcp: FastMCP) -> None:
+    """Register all tools with the MCP server.
     
     Args:
-        mcp: The FastMCP server instance
+        mcp: The MCP server to register tools with
     """
-    # Get the directory of this file
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    logger.info("Registering all tools")
     
-    # Helper function to import and register tools from a module
-    def import_and_register(module_name: str) -> None:
-        try:
-            # Try relative import first
-            module_path = f"mcp.tools.{module_name}"
-            module = importlib.import_module(module_path)
-            
-            # Look for register_*_tools function
-            register_func_name = f"register_{module_name}_tools"
-            if hasattr(module, register_func_name):
-                register_func = getattr(module, register_func_name)
-                register_func(mcp)
-                print(f"Registered tools from {module_path}")
-        except (ImportError, AttributeError) as e:
-            # Try direct import if relative import fails
-            try:
-                sys.path.insert(0, current_dir)
-                module = importlib.import_module(module_name)
-                register_func_name = f"register_{module_name}_tools"
-                if hasattr(module, register_func_name):
-                    register_func = getattr(module, register_func_name)
-                    register_func(mcp)
-                    print(f"Registered tools from {module_name} (direct import)")
-                sys.path.pop(0)
-            except (ImportError, AttributeError) as e2:
-                print(f"Could not import tools from {module_name}: {e2}")
+    # List of tool modules to import
+    tool_modules = [
+        "acceleration",
+        "ipfs_files",
+        "ipfs_network"
+    ]
+    
+    # Track registered tool modules
+    registered_modules = set()
+    
+    # Check if ipfs_kit_py is available
+    if not ipfs_kit_available:
+        logger.warning("Error importing tool modules: ipfs_kit_py not available")
     
     # Register tools from each module
-    import_and_register("ipfs_files")
-    import_and_register("ipfs_network")
-    import_and_register("acceleration")
+    for module_name in tool_modules:
+        try:
+            logger.info(f"Importing module: {module_name}")
+            
+            # Import the module
+            module = importlib.import_module(f"mcp.tools.{module_name}")
+            
+            # Register tools from the module
+            register_function = getattr(module, f"register_{module_name.replace('ipfs_', '')}_tools", None)
+            if register_function:
+                register_function(mcp)
+                registered_modules.add(module_name)
+            else:
+                logger.warning(f"No registration function found in module {module_name}")
+        except Exception as e:
+            logger.error(f"Error registering tools from module {module_name}: {str(e)}")
+    
+    logger.info("Tool registration complete")
+    
+    # If no modules were registered, log a warning
+    if not registered_modules:
+        logger.warning("No tool modules were registered")
+
+
+def get_ipfs_client() -> Any:
+    """Get an IPFS client instance.
+    
+    This function returns either a real IPFS client from ipfs_kit_py if available,
+    or a mock client if ipfs_kit_py is not available.
+    
+    Returns:
+        An IPFS client instance
+    """
+    if ipfs_api_available:
+        try:
+            # Try to create a real IPFS client
+            return ipfs_kit_py.IPFSApi()
+        except Exception as e:
+            logger.warning(f"Error creating IPFSApi: {str(e)}")
+    
+    # Fall back to mock implementation
+    return MockIPFSClient()

@@ -1,223 +1,207 @@
 #!/usr/bin/env python3
 """
-IPFS Accelerate MCP Integration Example
+IPFS Accelerate MCP Integration Example.
 
-This example demonstrates how to use the IPFS Accelerate MCP server with LLMs for 
-performing IPFS operations and hardware acceleration.
-
-Usage:
-    python mcp_integration_example.py
-
-Requirements:
-    - ipfs_accelerate_py (this package)
-    - fastmcp or mcp (can be installed with `pip install fastmcp` or `pip install mcp[cli]`)
-    - httpx (for LLM communication example)
-    - asyncio
+This example demonstrates how to integrate with and use the IPFS Accelerate MCP
+server from a Python client application.
 """
 
 import asyncio
 import json
+import logging
 import os
 import sys
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
-# Add the root directory to the path
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, root_dir)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("mcp_example")
 
-# Import MCP components
-try:
-    # Try direct import first
-    from mcp.server import create_ipfs_mcp_server
-except ImportError:
-    # Fallback to a mock implementation for demonstration purposes
-    def create_ipfs_mcp_server(name="IPFS Accelerate", dependencies=None):
-        """Mock implementation for the example script."""
-        print(f"Creating mock MCP server: {name}")
-        class MockMCP:
-            def run(self, transport="stdio", **kwargs):
-                print(f"Running mock MCP server with {transport} transport")
-                print(f"Additional args: {kwargs}")
-        return MockMCP()
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-
-async def run_mcp_server(host: str = "127.0.0.1", port: int = 8000):
-    """Run the MCP server with WebSocket transport.
+# Import MCP client (this would typically be from a library)
+# For this example, we'll use a simplified mock client
+class SimpleMCPClient:
+    """Simple mock MCP client for demonstration purposes."""
     
-    This runs the server in a subprocess to simulate a real deployment.
+    def __init__(self, server_name: str):
+        """Initialize the client.
+        
+        Args:
+            server_name: Name of the MCP server to connect to
+        """
+        self.server_name = server_name
+        logger.info(f"Connecting to MCP server: {server_name}")
+        # In a real client, we'd establish a connection here
+    
+    async def call_tool(self, tool_name: str, **kwargs) -> Any:
+        """Call a tool on the MCP server.
+        
+        Args:
+            tool_name: Name of the tool to call
+            **kwargs: Tool arguments
+            
+        Returns:
+            Tool result
+        """
+        logger.info(f"Calling tool: {tool_name} with args: {kwargs}")
+        
+        # In a real client, we'd send a request to the MCP server and await the response
+        # For this example, we'll just simulate some API calls
+        
+        if tool_name == "ipfs_add_file":
+            # Simulate adding a file to IPFS
+            path = kwargs.get("path", "")
+            if not path:
+                raise ValueError("Missing required argument: path")
+            
+            # Check if file exists
+            if not os.path.exists(path):
+                return {
+                    "error": "File not found",
+                    "path": path,
+                    "success": False
+                }
+            
+            # Simulate successful response
+            return {
+                "cid": "QmSimulatedCidForDemonstrationPurposes12345",
+                "size": os.path.getsize(path),
+                "name": os.path.basename(path),
+                "success": True
+            }
+        
+        elif tool_name == "ipfs_cat":
+            # Simulate retrieving content from IPFS
+            cid = kwargs.get("cid", "")
+            if not cid:
+                raise ValueError("Missing required argument: cid")
+            
+            # Simulate content for demonstration
+            return f"Simulated content for CID: {cid}"
+        
+        elif tool_name == "ipfs_files_write":
+            # Simulate writing content to the IPFS MFS
+            path = kwargs.get("path", "")
+            content = kwargs.get("content", "")
+            if not path:
+                raise ValueError("Missing required argument: path")
+            if not content:
+                raise ValueError("Missing required argument: content")
+            
+            # Simulate successful response
+            return {
+                "path": path,
+                "written": True,
+                "size": len(content),
+                "cid": "QmSimulatedCidForMfsWrite12345"
+            }
+        
+        # Add more tool simulations as needed
+        
+        # Default response for unknown tools
+        return {
+            "error": f"Unknown tool: {tool_name}",
+            "success": False
+        }
+
+
+async def basic_file_operations_example(client: SimpleMCPClient) -> None:
+    """Demonstrate basic IPFS file operations using the MCP client.
+    
+    Args:
+        client: The MCP client to use
     """
-    import subprocess
-    import time
+    logger.info("=== Basic File Operations Example ===")
     
-    print("Starting MCP server on http://{}:{}".format(host, port))
-    process = subprocess.Popen(
-        [sys.executable, "-m", "mcp", "run", "--transport", "ws", "--host", host, "--port", str(port)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    
-    # Wait for the server to start
-    time.sleep(2)
-    
-    return process
-
-
-async def simulate_llm_client(host: str = "127.0.0.1", port: int = 8000):
-    """Simulate an LLM client connecting to the MCP server and using tools.
-    
-    This demonstrates how an LLM would interact with the MCP server.
-    """
-    import httpx
-    import uuid
-    
-    ws_url = f"ws://{host}:{port}/mcp"
-    print(f"Connecting to MCP server at {ws_url}")
-    
-    async with httpx.AsyncClient() as client:
-        # In a real implementation, this would use a WebSocket connection
-        # This is a simplified example using HTTP requests
-        
-        # Step 1: Generate a unique conversation ID
-        conversation_id = str(uuid.uuid4())
-        
-        # Step 2: Example of using the ipfs_status tool
-        print("\n--- Example: Using ipfs_status tool ---")
-        tool_call = {
-            "conversation_id": conversation_id,
-            "request_id": str(uuid.uuid4()),
-            "type": "tool_call",
-            "tool": "ipfs_status",
-            "parameters": {}
-        }
-        
-        print(f"Tool call: {json.dumps(tool_call, indent=2)}")
-        print("Sending tool call to MCP server...")
-        
-        # In a real implementation, this would be sent over WebSocket
-        # For this example, we'll simulate the response
-        response = {
-            "request_id": tool_call["request_id"],
-            "type": "tool_response",
-            "result": {
-                "status": "online",
-                "peer_count": 5,
-                "acceleration_enabled": True,
-                "version": "0.1.0"
-            }
-        }
-        
-        print(f"Response: {json.dumps(response, indent=2)}")
-        
-        # Step 3: Example of using file operations
-        print("\n--- Example: Using ipfs_add_file tool ---")
-        sample_file = os.path.join(root_dir, "README.md")
-        
-        tool_call = {
-            "conversation_id": conversation_id,
-            "request_id": str(uuid.uuid4()),
-            "type": "tool_call",
-            "tool": "ipfs_add_file",
-            "parameters": {
-                "path": sample_file,
-                "wrap_with_directory": True
-            }
-        }
-        
-        print(f"Tool call: {json.dumps(tool_call, indent=2)}")
-        print("Sending tool call to MCP server...")
-        
-        # Simulate response
-        response = {
-            "request_id": tool_call["request_id"],
-            "type": "tool_response",
-            "result": {
-                "cid": "QmExample...",
-                "size": 1024,
-                "name": "README.md",
-                "wrapped": True
-            }
-        }
-        
-        print(f"Response: {json.dumps(response, indent=2)}")
-        
-        # Step 4: Example of using network operations
-        print("\n--- Example: Using ipfs_swarm_peers tool ---")
-        
-        tool_call = {
-            "conversation_id": conversation_id,
-            "request_id": str(uuid.uuid4()),
-            "type": "tool_call",
-            "tool": "ipfs_swarm_peers",
-            "parameters": {}
-        }
-        
-        print(f"Tool call: {json.dumps(tool_call, indent=2)}")
-        print("Sending tool call to MCP server...")
-        
-        # Simulate response
-        response = {
-            "request_id": tool_call["request_id"],
-            "type": "tool_response",
-            "result": [
-                {"peer_id": "QmPeer1...", "addr": "/ip4/1.2.3.4/tcp/4001", "latency": "23ms"},
-                {"peer_id": "QmPeer2...", "addr": "/ip4/5.6.7.8/tcp/4001", "latency": "45ms"}
-            ]
-        }
-        
-        print(f"Response: {json.dumps(response, indent=2)}")
-        
-        # Step 5: Example of using acceleration operations
-        print("\n--- Example: Using ipfs_accelerate_model tool ---")
-        
-        tool_call = {
-            "conversation_id": conversation_id,
-            "request_id": str(uuid.uuid4()),
-            "type": "tool_call",
-            "tool": "ipfs_accelerate_model",
-            "parameters": {
-                "cid": "QmModelExample..."
-            }
-        }
-        
-        print(f"Tool call: {json.dumps(tool_call, indent=2)}")
-        print("Sending tool call to MCP server...")
-        
-        # Simulate response
-        response = {
-            "request_id": tool_call["request_id"],
-            "type": "tool_response",
-            "result": {
-                "cid": "QmModelExample...",
-                "accelerated": True,
-                "device": "GPU",
-                "status": "Acceleration successfully applied"
-            }
-        }
-        
-        print(f"Response: {json.dumps(response, indent=2)}")
-
-
-async def main():
-    """Main function to run the example."""
-    host = "127.0.0.1"
-    port = 8765  # Use a different port to avoid conflicts
-    
-    # Start the MCP server
-    server_process = await run_mcp_server(host, port)
+    # Create a temporary file for testing
+    temp_file_path = "example_temp_file.txt"
+    with open(temp_file_path, "w") as f:
+        f.write("This is a test file for IPFS MCP example.")
     
     try:
-        # Simulate an LLM client
-        await simulate_llm_client(host, port)
+        # Add the file to IPFS
+        logger.info("Adding file to IPFS...")
+        add_result = await client.call_tool("ipfs_add_file", path=temp_file_path)
+        
+        if add_result.get("success", False):
+            logger.info(f"File added successfully: {add_result}")
+            cid = add_result["cid"]
+            
+            # Retrieve the file content
+            logger.info(f"Retrieving content for CID: {cid}")
+            content = await client.call_tool("ipfs_cat", cid=cid)
+            logger.info(f"Retrieved content: {content}")
+            
+            # Write to MFS
+            logger.info("Writing to IPFS MFS...")
+            mfs_path = "/ipfs_accelerate_example/test.txt"
+            write_result = await client.call_tool(
+                "ipfs_files_write", 
+                path=mfs_path, 
+                content="This is content written to MFS for testing."
+            )
+            logger.info(f"MFS write result: {write_result}")
+        else:
+            logger.error(f"Failed to add file: {add_result}")
+    
     finally:
-        # Terminate the server process
-        server_process.terminate()
-        print("\nMCP server terminated")
+        # Clean up the temporary file
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+            logger.info(f"Removed temporary file: {temp_file_path}")
+
+
+async def model_acceleration_example(client: SimpleMCPClient) -> None:
+    """Demonstrate model acceleration using the MCP client.
+    
+    Args:
+        client: The MCP client to use
+    """
+    logger.info("=== Model Acceleration Example ===")
+    
+    # This is a simulated example
+    model_cid = "QmExampleModelCid123456789"
+    
+    # Get hardware information
+    logger.info("Getting hardware information...")
+    hw_info = await client.call_tool("get_hardware_info")
+    logger.info(f"Hardware info: {hw_info}")
+    
+    # Accelerate the model
+    logger.info(f"Accelerating model with CID: {model_cid}")
+    acceleration_result = await client.call_tool(
+        "accelerate_model",
+        model_cid=model_cid,
+        target_device="cpu",  # or "gpu", "webgpu", etc.
+        optimization_level="medium"
+    )
+    
+    logger.info(f"Acceleration result: {acceleration_result}")
+    
+    # In a real application, we'd do something with the accelerated model here
+
+
+async def main() -> None:
+    """Run the MCP integration examples."""
+    # Create MCP client
+    client = SimpleMCPClient("direct-ipfs-kit-mcp")
+    
+    try:
+        # Run examples
+        await basic_file_operations_example(client)
+        await model_acceleration_example(client)
+        
+        logger.info("All examples completed successfully")
+    except Exception as e:
+        logger.error(f"Error running examples: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
-    print("IPFS Accelerate MCP Integration Example")
-    print("=======================================")
-    print("This example demonstrates how an LLM would interact with the IPFS Accelerate MCP server")
-    print("to perform IPFS operations and leverage hardware acceleration.")
-    
     asyncio.run(main())

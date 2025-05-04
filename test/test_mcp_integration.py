@@ -2,236 +2,193 @@
 """
 Unit tests for the IPFS Accelerate MCP integration.
 
-These tests verify that the MCP server correctly exposes IPFS operations
-and hardware acceleration functionality to LLM clients.
+These tests verify that the MCP server and tools function correctly.
 """
 
-import unittest
 import asyncio
 import os
 import sys
-import json
+import tempfile
+import unittest
 from unittest.mock import patch, MagicMock
 
-# Add the root directory to the path
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, root_dir)
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Import MCP components
+from mcp.mock_mcp import FastMCP, Context
+from mcp.types import IPFSAccelerateContext
+from mcp.tools.mock_ipfs import MockIPFSClient
+from mcp.server import create_ipfs_mcp_server, register_tools
 
 
-class MockContext:
-    """Mock MCP context for testing."""
-    
-    def __init__(self):
-        self.request_context = MagicMock()
-        self.request_context.lifespan_context = MagicMock()
-        self.info_messages = []
-        self.error_messages = []
-        self.progress_reports = []
-    
-    async def info(self, message):
-        """Record info messages."""
-        self.info_messages.append(message)
-        return None
-    
-    async def error(self, message):
-        """Record error messages."""
-        self.error_messages.append(message)
-        return None
-    
-    async def report_progress(self, current, total):
-        """Record progress reports."""
-        self.progress_reports.append((current, total))
-        return None
-
-
-class TestMCPFileTools(unittest.TestCase):
-    """Test IPFS file operation tools."""
+class TestMCPIntegration(unittest.TestCase):
+    """Test cases for the MCP integration."""
     
     def setUp(self):
         """Set up test environment."""
-        self.ctx = MockContext()
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
+        # Create a mock MCP server for testing
+        self.mcp_server = FastMCP(name="Test MCP Server")
+        
+        # Create a mock context
+        self.context = Context()
     
-    def tearDown(self):
-        """Clean up after tests."""
-        self.loop.close()
+    def test_server_creation(self):
+        """Test that the MCP server can be created."""
+        # Create a new server
+        server = create_ipfs_mcp_server("Test Server")
+        
+        # Verify that the server was created with the correct name
+        self.assertEqual(server.name, "Test Server")
+        
+        # Verify that the server has lifespan handlers
+        self.assertIsNotNone(server.lifespan_start_handler)
+        self.assertIsNotNone(server.lifespan_stop_handler)
     
-    def test_import(self):
-        """Test that we can import the MCP server module."""
-        try:
-            from mcp.server import create_ipfs_mcp_server
-            self.assertTrue(True, "Successfully imported create_ipfs_mcp_server")
-        except ImportError:
-            self.skipTest("MCP server module not available")
+    def test_tool_registration(self):
+        """Test that tools can be registered with the server."""
+        # Register tools with the server
+        register_tools(self.mcp_server)
+        
+        # Verify that the server has tools registered
+        self.assertGreater(len(self.mcp_server.tools), 0)
     
-    def test_import_tools(self):
-        """Test that we can import the tools package."""
-        try:
-            from mcp.tools import register_all_tools
-            self.assertTrue(True, "Successfully imported register_all_tools")
-        except ImportError:
-            self.skipTest("MCP tools module not available")
-    
-    @patch('mcp.tools.ipfs_files.register_file_tools')
-    def test_register_all_tools(self, mock_register_file_tools):
-        """Test that register_all_tools calls the individual tool registration functions."""
-        try:
-            from mcp.tools import register_all_tools
-            mock_mcp = MagicMock()
-            register_all_tools(mock_mcp)
-            mock_register_file_tools.assert_called_once_with(mock_mcp)
-        except ImportError:
-            self.skipTest("MCP tools module not available")
-    
-    @patch('ipfs_accelerate_py')
-    def test_ipfs_add_file(self, mock_ipfs_accelerate):
+    @patch('mcp.tools.get_ipfs_client')
+    async def test_ipfs_add_file(self, mock_get_client):
         """Test the ipfs_add_file tool."""
+        # Set up a mock IPFS client
+        mock_client = MockIPFSClient()
+        mock_get_client.return_value = mock_client
+        
+        # Import the tool registration function
+        from mcp.tools.ipfs_files import register_files_tools
+        
+        # Register the file tools
+        register_files_tools(self.mcp_server)
+        
+        # Create a temporary file for testing
+        with tempfile.NamedTemporaryFile(delete=False) as temp:
+            temp.write(b"Test content")
+            temp_path = temp.name
+        
         try:
-            from mcp.tools.ipfs_files import register_file_tools
+            # Call the tool
+            tool_func = self.mcp_server.tools["ipfs_add_file"]["function"]
+            result = await tool_func(path=temp_path, ctx=self.context)
             
-            # Create a mock MCP server
-            mock_mcp = MagicMock()
-            mock_mcp.tool = lambda: lambda f: f
-            
-            # Register the file tools
-            register_file_tools(mock_mcp)
-            
-            # Get the ipfs_add_file function
-            # In a real test, we would extract this from the registered tools
-            # For this test, we'll create a mock implementation
-            async def mock_ipfs_add_file(path, ctx, wrap_with_directory=False):
-                await ctx.info(f"Adding file: {path}")
-                await ctx.report_progress(0, 1)
-                await ctx.report_progress(1, 1)
-                return {
-                    "cid": "QmTestCID",
-                    "size": 123,
-                    "name": os.path.basename(path),
-                    "wrapped": wrap_with_directory
-                }
-            
-            # Run the tool
-            result = self.loop.run_until_complete(
-                mock_ipfs_add_file("test.txt", self.ctx, True)
-            )
-            
-            # Check the result
-            self.assertEqual(result["cid"], "QmTestCID")
-            self.assertEqual(result["name"], "test.txt")
-            self.assertEqual(result["wrapped"], True)
-            
-            # Check that the context was used correctly
-            self.assertIn("Adding file: test.txt", self.ctx.info_messages)
-            self.assertEqual(self.ctx.progress_reports, [(0, 1), (1, 1)])
-            
-        except ImportError:
-            self.skipTest("MCP file tools module not available")
+            # Verify the result
+            self.assertTrue(result["success"])
+            self.assertIsNotNone(result["cid"])
+            self.assertEqual(result["size"], len(b"Test content"))
+            self.assertEqual(result["name"], os.path.basename(temp_path))
+        finally:
+            # Clean up
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    @patch('mcp.tools.get_ipfs_client')
+    async def test_ipfs_cat(self, mock_get_client):
+        """Test the ipfs_cat tool."""
+        # Set up a mock IPFS client
+        mock_client = MockIPFSClient()
+        mock_get_client.return_value = mock_client
+        
+        # Import the tool registration function
+        from mcp.tools.ipfs_files import register_files_tools
+        
+        # Register the file tools
+        register_files_tools(self.mcp_server)
+        
+        # Mock a CID
+        cid = "QmTestCid123456789"
+        
+        # Call the tool
+        tool_func = self.mcp_server.tools["ipfs_cat"]["function"]
+        result = await tool_func(cid=cid, ctx=self.context)
+        
+        # Verify the result is a string
+        self.assertIsInstance(result, str)
+    
+    @patch('mcp.tools.get_ipfs_client')
+    async def test_ipfs_files_write(self, mock_get_client):
+        """Test the ipfs_files_write tool."""
+        # Set up a mock IPFS client
+        mock_client = MockIPFSClient()
+        mock_get_client.return_value = mock_client
+        
+        # Import the tool registration function
+        from mcp.tools.ipfs_files import register_files_tools
+        
+        # Register the file tools
+        register_files_tools(self.mcp_server)
+        
+        # Call the tool
+        tool_func = self.mcp_server.tools["ipfs_files_write"]["function"]
+        result = await tool_func(
+            path="/test/file.txt",
+            content="Test content",
+            ctx=self.context
+        )
+        
+        # Verify the result
+        self.assertTrue(result["written"])
+        self.assertEqual(result["path"], "/test/file.txt")
+        self.assertIsNotNone(result["cid"])
+    
+    async def test_server_lifecycle(self):
+        """Test the server lifecycle (start/stop)."""
+        # Create a server
+        server = create_ipfs_mcp_server("Lifecycle Test")
+        
+        # Start the server
+        context = await server.start()
+        
+        # Verify that the context was created
+        self.assertIsNotNone(context)
+        self.assertIsInstance(context, IPFSAccelerateContext)
+        
+        # Stop the server
+        await server.stop()
 
 
-class TestMCPNetworkTools(unittest.TestCase):
-    """Test IPFS network operation tools."""
-    
-    def setUp(self):
-        """Set up test environment."""
-        self.ctx = MockContext()
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-    
-    def tearDown(self):
-        """Clean up after tests."""
-        self.loop.close()
-    
-    @patch('ipfs_accelerate_py')
-    def test_ipfs_swarm_peers(self, mock_ipfs_accelerate):
-        """Test the ipfs_swarm_peers tool."""
-        try:
-            from mcp.tools.ipfs_network import register_network_tools
-            
-            # Create a mock MCP server
-            mock_mcp = MagicMock()
-            mock_mcp.tool = lambda: lambda f: f
-            
-            # Register the network tools
-            register_network_tools(mock_mcp)
-            
-            # Mock implementation
-            async def mock_ipfs_swarm_peers(ctx):
-                await ctx.info("Listing connected peers")
-                return [
-                    {"peer_id": "QmPeer1", "addr": "/ip4/1.2.3.4/tcp/4001", "latency": "23ms"},
-                    {"peer_id": "QmPeer2", "addr": "/ip4/5.6.7.8/tcp/4001", "latency": "45ms"}
-                ]
-            
-            # Run the tool
-            result = self.loop.run_until_complete(
-                mock_ipfs_swarm_peers(self.ctx)
-            )
-            
-            # Check the result
-            self.assertEqual(len(result), 2)
-            self.assertEqual(result[0]["peer_id"], "QmPeer1")
-            self.assertEqual(result[1]["peer_id"], "QmPeer2")
-            
-            # Check that the context was used correctly
-            self.assertIn("Listing connected peers", self.ctx.info_messages)
-            
-        except ImportError:
-            self.skipTest("MCP network tools module not available")
-
-
-class TestMCPAccelerationTools(unittest.TestCase):
-    """Test IPFS acceleration operation tools."""
-    
-    def setUp(self):
-        """Set up test environment."""
-        self.ctx = MockContext()
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-    
-    def tearDown(self):
-        """Clean up after tests."""
-        self.loop.close()
-    
-    @patch('ipfs_accelerate_py')
-    def test_ipfs_accelerate_model(self, mock_ipfs_accelerate):
-        """Test the ipfs_accelerate_model tool."""
-        try:
-            from mcp.tools.acceleration import register_acceleration_tools
-            
-            # Create a mock MCP server
-            mock_mcp = MagicMock()
-            mock_mcp.tool = lambda: lambda f: f
-            
-            # Register the acceleration tools
-            register_acceleration_tools(mock_mcp)
-            
-            # Mock implementation
-            async def mock_ipfs_accelerate_model(cid, ctx):
-                await ctx.info(f"Accelerating model with CID: {cid}")
-                return {
-                    "cid": cid,
-                    "accelerated": True,
-                    "device": "GPU",
-                    "status": "Acceleration successfully applied"
-                }
-            
-            # Run the tool
-            result = self.loop.run_until_complete(
-                mock_ipfs_accelerate_model("QmModelCID", self.ctx)
-            )
-            
-            # Check the result
-            self.assertEqual(result["cid"], "QmModelCID")
-            self.assertEqual(result["accelerated"], True)
-            self.assertEqual(result["device"], "GPU")
-            
-            # Check that the context was used correctly
-            self.assertIn("Accelerating model with CID: QmModelCID", self.ctx.info_messages)
-            
-        except ImportError:
-            self.skipTest("MCP acceleration tools module not available")
-
-
+# Run the tests
 if __name__ == "__main__":
-    unittest.main()
+    # For async tests, we need to use asyncio
+    async def run_async_tests():
+        # Create a test suite
+        suite = unittest.TestSuite()
+        
+        # Add the tests
+        test_cases = [
+            TestMCPIntegration("test_server_creation"),
+            TestMCPIntegration("test_tool_registration")
+        ]
+        
+        # Add async tests
+        async_tests = [
+            TestMCPIntegration("test_ipfs_add_file"),
+            TestMCPIntegration("test_ipfs_cat"),
+            TestMCPIntegration("test_ipfs_files_write"),
+            TestMCPIntegration("test_server_lifecycle")
+        ]
+        
+        # Run the standard tests
+        for test in test_cases:
+            suite.addTest(test)
+        
+        # Run the standard tests
+        runner = unittest.TextTestRunner()
+        runner.run(suite)
+        
+        # Run the async tests
+        for test in async_tests:
+            try:
+                await getattr(test, test._testMethodName)()
+                print(f"PASS: {test._testMethodName}")
+            except Exception as e:
+                print(f"FAIL: {test._testMethodName} - {str(e)}")
+                import traceback
+                traceback.print_exc()
+    
+    # Run the async tests
+    asyncio.run(run_async_tests())

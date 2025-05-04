@@ -1,360 +1,199 @@
 """
-Main MCP server implementation for IPFS Accelerate.
+IPFS Accelerate MCP server implementation.
 
-This module provides the core FastMCP server that exposes IPFS Accelerate
-functionality to LLM clients through the Model Context Protocol.
+This module provides functions for creating and running an MCP server
+that exposes IPFS Accelerate functionality.
 """
 
-from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
-from typing import Optional, Dict, Any, List, cast, Callable
+import argparse
+import asyncio
+import logging
+import os
+import signal
+import sys
+from typing import Any, Dict, List, Optional, Union, cast
 
-# Try to import FastMCP and Context from the actual packages
-# Fall back to mock implementations if not available
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Try imports with fallbacks
 try:
-    from mcp.server.fastmcp import FastMCP, Context
+    # Try to import FastMCP if available
+    from fastmcp import FastMCP, Context
+    fastmcp_available = True
 except ImportError:
-    # Fall back to the standalone FastMCP if MCP SDK is not installed
-    try:
-        from fastmcp import FastMCP, Context
-    except ImportError:
-        # Provide mock implementations directly
-        print("Using mock MCP implementation as neither 'mcp' nor 'fastmcp' packages are installed.")
-        print("Install with 'pip install mcp[cli]' or 'pip install fastmcp' for full functionality.")
-        
-        # Mock Context class
-        class Context:
-            """Mock implementation of MCP Context."""
-            
-            def __init__(self, request_id: str = "mock-request-id"):
-                """Initialize a mock Context."""
-                self.request_id = request_id
-                self.request_context = MockRequestContext()
-            
-            async def info(self, message: str) -> None:
-                """Log an informational message."""
-                print(f"[INFO] {message}")
-            
-            async def error(self, message: str) -> None:
-                """Log an error message."""
-                print(f"[ERROR] {message}")
-            
-            async def report_progress(self, current: int, total: int) -> None:
-                """Report progress for a long-running operation."""
-                percentage = 100 * current / total
-                print(f"[PROGRESS] {percentage:.1f}% ({current}/{total})")
+    # Fall back to mock implementation if FastMCP is not available
+    from mcp.mock_mcp import FastMCP, Context
+    fastmcp_available = False
+    logger.warning("FastMCP import failed, falling back to mock implementation")
 
+# Import the IPFS context
+from mcp.types import IPFSAccelerateContext
 
-        class MockRequestContext:
-            """Mock implementation of MCP RequestContext."""
-            
-            def __init__(self):
-                """Initialize a mock RequestContext."""
-                self.lifespan_context = {}
-
-
-        class MockLifespan:
-            """A simple mock async context manager for use as a lifespan."""
-            
-            def __init__(self, context_obj: Any = None):
-                """Initialize with optional context object."""
-                self.context_obj = context_obj or {}
-                
-            async def __aenter__(self):
-                """Enter the context manager and return the context."""
-                return self.context_obj
-                
-            async def __aexit__(self, exc_type, exc_val, exc_tb):
-                """Exit the context manager."""
-                pass
-
-
-        class FastMCP:
-            """Mock implementation of FastMCP server."""
-            
-            def __init__(self, name: str, dependencies: Optional[List[str]] = None, 
-                        lifespan: Any = None):
-                """Initialize a mock FastMCP server."""
-                self.name = name
-                self.dependencies = dependencies or []
-                self.lifespan = lifespan
-                self.tools: Dict[str, Callable] = {}
-                self.resources: Dict[str, Callable] = {}
-                self.prompts: Dict[str, Callable] = {}
-            
-            def tool(self, **kwargs):
-                """Decorator for registering a tool with the MCP server."""
-                def decorator(func):
-                    tool_name = func.__name__
-                    self.tools[tool_name] = func
-                    print(f"Registered tool: {tool_name}")
-                    return func
-                return decorator
-            
-            def resource(self, uri: str, **kwargs):
-                """Decorator for registering a resource with the MCP server."""
-                def decorator(func):
-                    self.resources[uri] = func
-                    print(f"Registered resource: {uri}")
-                    return func
-                return decorator
-            
-            def prompt(self, **kwargs):
-                """Decorator for registering a prompt with the MCP server."""
-                def decorator(func):
-                    prompt_name = func.__name__
-                    self.prompts[prompt_name] = func
-                    print(f"Registered prompt: {prompt_name}")
-                    return func
-                return decorator
-            
-            def run(self, transport: str = "stdio", **kwargs):
-                """Run the MCP server with the specified transport."""
-                print(f"Running mock MCP server '{self.name}' with {transport} transport")
-                print(f"Additional arguments: {kwargs}")
-                print(f"Registered {len(self.tools)} tools, {len(self.resources)} resources, and {len(self.prompts)} prompts")
-                
-                for tool_name in self.tools:
-                    print(f"- Tool: {tool_name}")
-
-
-# Try to import ipfs_accelerate_py, but don't fail if it's not available
+# Try to import ipfs_kit_py
 try:
-    import ipfs_accelerate_py
+    import ipfs_kit_py
+    from ipfs_kit_py import IPFSApi
+    ipfs_available = True
 except ImportError:
-    # Create a placeholder module
-    class DummyModule:
-        __version__ = "0.0.0-mock"
-    ipfs_accelerate_py = DummyModule()
+    ipfs_available = False
+    logger.warning("ipfs_kit_py not available, some functionality will be limited")
 
 
-# Define IPFSAccelerateContext here to avoid import issues
-@dataclass
-class IPFSAccelerateContext:
-    """Context object for the IPFS Accelerate MCP server."""
-    config: Dict[str, Any]
-    ipfs_client: Any = None
-
-
-@asynccontextmanager
-async def ipfs_accelerate_lifespan(server: FastMCP) -> AsyncIterator[IPFSAccelerateContext]:
-    """Manage the lifecycle of IPFS Accelerate resources and connections.
-    
-    This context manager initializes necessary resources when the server starts
-    and ensures they're properly cleaned up when the server shuts down.
-    """
-    # Initialize IPFS client and acceleration context
-    config = {
-        "ipfs_api_endpoint": "/ip4/127.0.0.1/tcp/5001",
-        "acceleration_enabled": True,
-        # Additional configuration options
-    }
-    
-    # TODO: Initialize actual IPFS client and connections
-    ipfs_client = None  # Replace with actual initialization
-    
-    try:
-        # Create and yield the context
-        context = IPFSAccelerateContext(
-            config=config,
-            ipfs_client=ipfs_client,
-        )
-        yield context
-    finally:
-        # Cleanup resources
-        if ipfs_client:
-            # Close connections, release resources, etc.
-            pass
-
-
-def create_ipfs_mcp_server(name: str = "IPFS Accelerate", 
-                          dependencies: Optional[List[str]] = None) -> FastMCP:
-    """Create and configure the IPFS Accelerate MCP server.
+def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
+    """Create a new IPFS Accelerate MCP server.
     
     Args:
-        name: The name of the MCP server
-        dependencies: Optional list of additional dependencies
+        name: Server name
+        description: Server description
         
     Returns:
-        Configured FastMCP server instance
+        The MCP server instance
     """
-    if dependencies is None:
-        dependencies = []
+    mcp_server = FastMCP(name=name, description=description or f"IPFS Accelerate MCP: {name}")
+    logger.info(f"Created MCP server: {name}")
     
-    # Ensure required dependencies are included
-    all_dependencies = list(set(dependencies + [
-        "ipfs-accelerate-py",  # Replace with actual package name if different
-        "aiohttp",
-        "pydantic>=2.0.0",
-    ]))
+    # Set up lifespan handlers
+    @mcp_server.on_lifespan_start()
+    async def on_start(ctx: Context) -> IPFSAccelerateContext:
+        """Initialize resources when the server starts."""
+        logger.info("MCP server starting...")
+        
+        # Create IPFS Accelerate context for sharing state
+        ipfs_context = IPFSAccelerateContext()
+        
+        # Initialize IPFS client if available
+        if ipfs_available:
+            try:
+                # Create IPFS client
+                ipfs_client = ipfs_kit_py.IPFSApi()
+                ipfs_context.set_ipfs_client(ipfs_client)
+                
+                # Test connection
+                version = await asyncio.to_thread(ipfs_client.version)
+                await ctx.info(f"Connected to IPFS: {version.get('Version', 'unknown')}")
+            except Exception as e:
+                await ctx.error(f"Error initializing IPFS client: {str(e)}")
+                # Continue without IPFS client
+        else:
+            # Using mock implementation
+            from mcp.tools.mock_ipfs import MockIPFSClient
+            mock_client = MockIPFSClient()
+            ipfs_context.set_ipfs_client(mock_client)
+            await ctx.info("Using mock IPFS client")
+        
+        return ipfs_context
     
-    # Create the server
-    mcp = FastMCP(
-        name, 
-        dependencies=all_dependencies,
-        lifespan=ipfs_accelerate_lifespan
-    )
+    @mcp_server.on_lifespan_stop()
+    async def on_stop(ctx: Context, ipfs_context: IPFSAccelerateContext) -> None:
+        """Clean up resources when the server stops."""
+        logger.info("MCP server shutting down...")
+        
+        # Clean up any resources
+        # Currently we don't need to do any special cleanup
+        await ctx.info("MCP server shutdown complete")
     
-    # Register tools directly
-    _register_tools(mcp)
-    _register_resources(mcp)
-    _register_prompts(mcp)
-    
-    return mcp
+    # Return the configured server
+    return mcp_server
 
 
-def _register_tools(mcp: FastMCP) -> None:
-    """Register IPFS Accelerate tools with the MCP server.
+def register_tools(mcp_server: FastMCP) -> None:
+    """Register tools with the MCP server.
     
-    This is a placeholder that will be expanded as we implement tool modules.
+    Args:
+        mcp_server: The MCP server instance
     """
-    # Basic IPFS file tool examples - these will be moved to dedicated modules
+    try:
+        # Import the tools module
+        from mcp.tools import register_all_tools
+        
+        # Register all tools
+        register_all_tools(mcp_server)
+    except Exception as e:
+        logger.error(f"Error registering tools: {str(e)}")
+
+
+def create_and_register(name: str, description: str = "") -> FastMCP:
+    """Create an MCP server and register all tools.
     
-    @mcp.tool()
-    async def ipfs_status(ctx: Context) -> Dict[str, Any]:
-        """Get the current status of the IPFS node.
+    Args:
+        name: Server name
+        description: Server description
         
-        Returns:
-            Dictionary with IPFS node status information
-        """
-        # Access the lifespan context
-        ipfs_ctx = cast(IPFSAccelerateContext, ctx.request_context.lifespan_context)
-        
-        # Example implementation
-        return {
-            "status": "online",
-            "peer_count": 0,  # Will be implemented with actual peer count
-            "acceleration_enabled": ipfs_ctx.config["acceleration_enabled"],
-            "version": ipfs_accelerate_py.__version__,
-        }
-    
-    
-    @mcp.tool()
-    async def ipfs_add(path: str, ctx: Context) -> Dict[str, Any]:
-        """Add a file to IPFS.
-        
-        Args:
-            path: Path to the file to add
-            
-        Returns:
-            Dictionary with CID and size information
-        """
-        # Placeholder implementation
-        await ctx.info(f"Adding file: {path}")
-        
-        # This will be replaced with actual implementation
-        return {
-            "cid": "QmExample...",
-            "size": 1024,
-            "name": path.split("/")[-1]
-        }
-
-
-    @mcp.tool()
-    async def ipfs_files_ls(path: str, ctx: Context) -> List[Dict[str, Any]]:
-        """List files in a directory in the IPFS MFS.
-        
-        Args:
-            path: Path to the directory to list
-            
-        Returns:
-            List of file information dictionaries
-        """
-        # Placeholder implementation
-        await ctx.info(f"Listing directory: {path}")
-        
-        # This will be replaced with actual implementation
-        return [
-            {"name": "example.txt", "type": "file", "size": 1024, "cid": "QmExample1..."},
-            {"name": "subdir", "type": "directory", "size": 0, "cid": "QmExample2..."}
-        ]
-
-
-    @mcp.tool()
-    async def ipfs_accelerate_model(cid: str, ctx: Context) -> Dict[str, Any]:
-        """Accelerate an AI model stored on IPFS.
-        
-        Args:
-            cid: Content identifier of the model to accelerate
-            
-        Returns:
-            Status of the acceleration operation
-        """
-        await ctx.info(f"Accelerating model with CID: {cid}")
-        
-        # This will be replaced with actual implementation
-        return {
-            "cid": cid,
-            "accelerated": True,
-            "device": "GPU",
-            "status": "Acceleration successfully applied"
-        }
-
-
-def _register_resources(mcp: FastMCP) -> None:
-    """Register IPFS Accelerate resources with the MCP server.
-    
-    This is a placeholder that will be expanded as we implement resource modules.
+    Returns:
+        The MCP server instance with tools registered
     """
-    # Basic IPFS resource examples - these will be moved to dedicated modules
+    # Create server
+    mcp_server = create_ipfs_mcp_server(name, description)
     
-    @mcp.resource("ipfs://status")
-    async def get_ipfs_status(ctx: Context) -> str:
-        """Get the current status of the IPFS node as a formatted string.
-        
-        Returns:
-            Formatted status information
-        """
-        # Access the lifespan context
-        ipfs_ctx = cast(IPFSAccelerateContext, ctx.request_context.lifespan_context)
-        
-        # Example implementation
-        return f"""
-        IPFS Accelerate Status
-        ---------------------
-        Version: {ipfs_accelerate_py.__version__}
-        Acceleration: {'Enabled' if ipfs_ctx.config['acceleration_enabled'] else 'Disabled'}
-        IPFS API: {ipfs_ctx.config['ipfs_api_endpoint']}
-        """
+    # Register tools
+    register_tools(mcp_server)
+    
+    return mcp_server
 
 
-def _register_prompts(mcp: FastMCP) -> None:
-    """Register IPFS Accelerate prompts with the MCP server.
+async def run_server(
+    name: str = "IPFS Accelerate MCP",
+    description: str = "MCP server for IPFS Accelerate",
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    debug: bool = False
+) -> None:
+    """Run the MCP server.
     
-    This is a placeholder that will be expanded as we implement prompt modules.
+    Args:
+        name: Server name
+        description: Server description
+        transport: Transport type (stdio or sse)
+        host: Host to bind to for network transports
+        port: Port to bind to for network transports
+        debug: Whether to enable debug logging
     """
-    # Basic IPFS prompt examples - these will be moved to dedicated modules
+    # Configure logging based on debug flag
+    if debug:
+        logging.getLogger().setLevel(logging.DEBUG)
     
-    @mcp.prompt()
-    def ipfs_help(topic: str = "general") -> str:
-        """Generate a help prompt for IPFS operations.
-        
-        Args:
-            topic: The topic to get help with
-            
-        Returns:
-            A formatted help prompt
-        """
-        topics = {
-            "general": "IPFS is a peer-to-peer hypermedia protocol designed to make the web faster, safer, and more open. With IPFS Accelerate, you can leverage hardware acceleration for AI models stored on IPFS.",
-            "add": "To add a file to IPFS, you can use the ipfs_add tool with the path to your file.",
-            "pin": "Pinning ensures that files are kept in your local IPFS repository and not garbage collected."
-        }
-        
-        return f"""
-        # IPFS Help: {topic}
-        
-        {topics.get(topic.lower(), "Topic not found. Try 'general', 'add', or 'pin'.")}
-        
-        What specific IPFS operation would you like help with?
-        """
-
-
-# Convenience instance for direct usage
-default_server = create_ipfs_mcp_server()
+    # Log server information
+    logger.info(f"Starting MCP server: {name}")
+    logger.info(f"Transport: {transport}, Host: {host}, Port: {port}")
+    
+    # Create and configure the server
+    mcp_server = create_and_register(name, description)
+    
+    try:
+        # Run the server with the specified transport
+        await mcp_server.run(transport=transport, host=host, port=port)
+    except KeyboardInterrupt:
+        logger.info("Server interrupted")
+    except Exception as e:
+        logger.error(f"Error running server: {str(e)}")
+    finally:
+        logger.info("Server shutdown complete")
 
 
 if __name__ == "__main__":
-    # Run the server directly when this module is executed as a script
-    default_server.run()
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Run the IPFS Accelerate MCP server")
+    parser.add_argument("--name", default="IPFS Accelerate MCP", help="Server name")
+    parser.add_argument("--description", default="", help="Server description")
+    parser.add_argument("--transport", default="stdio", choices=["stdio", "sse"], help="Transport type")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to for network transports")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to for network transports")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    
+    args = parser.parse_args()
+    
+    # Run the server
+    asyncio.run(run_server(
+        name=args.name,
+        description=args.description,
+        transport=args.transport,
+        host=args.host,
+        port=args.port,
+        debug=args.debug
+    ))

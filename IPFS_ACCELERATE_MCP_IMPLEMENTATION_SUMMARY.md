@@ -1,99 +1,115 @@
 # IPFS Accelerate MCP Implementation Summary
 
+This document summarizes the implementation of the Model Context Protocol (MCP) integration for IPFS Accelerate.
+
 ## Overview
 
-We have successfully implemented the Model Context Protocol (MCP) integration for IPFS Accelerate, allowing Language Models to directly interact with IPFS operations and hardware acceleration capabilities. This integration bridges the gap between LLMs and decentralized content, enabling powerful new AI workflows.
+The IPFS Accelerate MCP integration provides a robust interface for Large Language Models (LLMs) to interact with IPFS and hardware acceleration capabilities. The implementation follows a modular design and includes both real implementations (when dependencies are available) and fallback mock implementations (for development and testing).
 
-## Implemented Components
+## Architecture
 
-The implementation includes:
+The MCP integration is organized into the following components:
 
-1. **Core MCP Server Integration**
-   - `mcp/server.py`: Server implementation with fallbacks
-   - `mcp/mock_mcp.py`: Mock implementation for development
-   - `mcp/__main__.py`: Command-line interface
+### Core Components
 
-2. **Tool Modules**
-   - `mcp/tools/ipfs_files.py`: IPFS file system operations
-   - `mcp/tools/ipfs_network.py`: IPFS networking capabilities
+1. **Server**: The main MCP server implementation
+   - `mcp/server.py`: Core server implementation with lifespan handlers
+   - `mcp/mock_mcp.py`: Mock MCP server implementation for when FastMCP is not available
+
+2. **Tools**: Individual tools exposed through the MCP API
+   - `mcp/tools/ipfs_files.py`: IPFS file operation tools (add, cat, ls, etc.)
+   - `mcp/tools/ipfs_network.py`: IPFS network operation tools (swarm, dht, etc.)
    - `mcp/tools/acceleration.py`: Model acceleration tools
-   - `mcp/tools/__init__.py`: Tool registration system
+   - `mcp/tools/mock_ipfs.py`: Mock IPFS client implementation for testing
 
-3. **Documentation**
-   - `mcp/README.md`: Usage documentation
-   - `mcp/README_MCP_INTEGRATION.md`: Implementation details
-   - `mcp/requirements-mcp.txt`: Dependency specifications
+3. **Types**: Shared type definitions and context objects
+   - `mcp/types.py`: Definitions for IPFS Accelerate context and other shared types
 
-4. **Testing and Examples**
-   - `examples/mcp_integration_example.py`: Example LLM integration
-   - `test/test_mcp_integration.py`: Unit tests for tools
+4. **Runner**: Entry point for starting the MCP server
+   - `run_mcp.py`: Script for starting the MCP server with configuration options
 
-5. **Execution Scripts**
-   - `run_mcp.py`: Standalone script for running the server
+### Supporting Components
 
-## Key Features
+1. **Examples**: Example usage of the MCP integration
+   - `examples/mcp_integration_example.py`: Example Python client for MCP server
 
-- **Robust Dependency Management**: Falls back to mock implementations when needed
-- **Modular Design**: Separation of concerns for maintainability
-- **Multiple Transports**: Support for stdio, WebSocket, and SSE
-- **Comprehensive API**: IPFS operations and acceleration tools
-- **Easy Deployment**: Simple command-line interface and standalone script
+2. **Tests**: Unit tests for the MCP integration
+   - `test/test_mcp_integration.py`: Tests for MCP server and tools
 
-## Dependency Integration
+3. **Documentation**: Documentation files
+   - `mcp/README.md`: General documentation for the MCP integration
+   - `mcp/requirements-mcp.txt`: List of required dependencies
 
-The MCP integration has been added as an optional dependency in `setup.py`:
+## Implementation Details
 
-```python
-extras_require={
-    # Other extras...
-    "mcp": [
-        "fastmcp>=0.1.0",
-        "libp2p>=0.1.5",
-        "async-timeout>=4.0.0",
-    ],
+### Dependency Handling
+
+The implementation gracefully handles dependencies that may or may not be available:
+
+- **FastMCP**: Falls back to a mock implementation if the real FastMCP package is not available
+- **ipfs-kit-py**: Falls back to a mock IPFS client if ipfs-kit-py is not available
+
+This approach ensures that development and basic testing can proceed even without all dependencies installed.
+
+### Tool Organization
+
+Tools are organized by functionality:
+
+- **File Operations**: Adding, retrieving, listing, and pinning IPFS content
+- **Network Operations**: Working with IPFS swarm, DHT, and PubSub
+- **Acceleration**: Hardware acceleration of AI models
+
+Each tool module provides a registration function that registers all tools in the module with the MCP server.
+
+### Context Sharing
+
+Shared state is maintained through the IPFSAccelerateContext object:
+
+- **IPFS Client**: Shared IPFS client instance
+- **Hardware Info**: Information about available hardware for acceleration
+- **Model Registry**: Registry of accelerated models
+
+The context is created during server startup and passed to all tools.
+
+## Usage
+
+### Starting the Server
+
+```bash
+# Basic usage
+python run_mcp.py
+
+# With debug logging
+python run_mcp.py --debug
+
+# Using SSE transport
+python run_mcp.py --transport sse --host 127.0.0.1 --port 8000
+```
+
+### Using from Claude
+
+Claude can interact with the MCP server using the `use_mcp_tool` capability:
+
+```
+<use_mcp_tool>
+<server_name>direct-ipfs-kit-mcp</server_name>
+<tool_name>ipfs_add_file</tool_name>
+<arguments>
+{
+  "path": "/path/to/file.txt"
 }
+</arguments>
+</use_mcp_tool>
 ```
-
-Users can now install the MCP integration with:
-
-```bash
-pip install ipfs-accelerate-py[mcp]
-```
-
-## Testing Results
-
-The MCP server was successfully tested with WebSocket transport on port 8080:
-
-```bash
-python run_mcp.py -t ws --port 8080
-```
-
-The server starts correctly and falls back to mock implementations when dependencies are unavailable, confirming the robustness of our design.
 
 ## Next Steps
 
-1. **API Integration Enhancements**
-   - Connect tool implementations to the actual IPFS Accelerate API
-   - Improve error handling for network and API issues
-
-2. **Documentation Updates**
-   - Create tutorials for common use cases
-   - Add API reference documentation
-
-3. **Performance Optimization**
-   - Add caching for frequently accessed resources
-   - Optimize data transfer for large files and models
-
-4. **Additional Tools**
-   - Implement more IPFS operations
-   - Add specialized AI model management tools
-
-5. **Deployment Improvements**
-   - Create Docker containers for easy deployment
-   - Add configuration options for different environments
+1. **Complete Tool Implementations**: Some tool functions need implementation details specific to IPFS Accelerate
+2. **Integration with WebNN/WebGPU**: Connect with existing WebNN and WebGPU functionality
+3. **Comprehensive Testing**: Expand test coverage for all tools and edge cases
+4. **Documentation**: Create detailed documentation for LLM usage
+5. **Packaging**: Package the MCP integration for distribution
 
 ## Conclusion
 
-The MCP integration provides a powerful new capability for IPFS Accelerate, allowing Language Models to perform IPFS operations and leverage hardware acceleration directly. The implementation is flexible, extensible, and robust, with graceful fallbacks when dependencies are unavailable.
-
-This integration opens up exciting possibilities for decentralized AI applications, enabling LLMs to interact with content stored on IPFS and accelerate AI models using available hardware resources.
+The IPFS Accelerate MCP integration provides a flexible and robust interface for LLMs to interact with IPFS and hardware acceleration functionality. The modular design and fallback mock implementations ensure that development and testing can proceed smoothly, while the comprehensive tool set exposes the full power of IPFS Accelerate to LLMs.

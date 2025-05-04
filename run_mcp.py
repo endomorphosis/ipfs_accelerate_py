@@ -1,137 +1,91 @@
 #!/usr/bin/env python3
 """
-Simple script to run the IPFS Accelerate MCP server.
+Run the IPFS Accelerate MCP server.
 
-This script serves as a simple entry point to run the MCP server without
-having to deal with complex import paths.
-
-Example usage:
-    python run_mcp.py
-    python run_mcp.py --transport ws --port 8080
+This script serves as the main entry point for starting the IPFS Accelerate MCP server.
+It parses command-line arguments and runs the server with the specified configuration.
 """
 
+import argparse
+import asyncio
+import logging
 import os
 import sys
-import argparse
-import importlib.util
-from typing import Any
+from typing import Any, Dict, Optional
 
-# Banner to print when starting
-BANNER = """
-╭───────────────────────────────────────────╮
-│                                           │
-│  IPFS Accelerate MCP Server               │
-│  Model Context Protocol Integration       │
-│                                           │
-│  Provide IPFS operations to LLMs          │
-│  Accelerate AI models with IPFS           │
-│                                           │
-╰───────────────────────────────────────────╯
-"""
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("ipfs_accelerate_mcp")
+
+# Import the server module
+try:
+    from mcp.server import run_server
+except ImportError as e:
+    logger.error(f"Error importing MCP server: {str(e)}")
+    logger.error("Make sure the IPFS Accelerate MCP package is installed or in your PYTHONPATH")
+    sys.exit(1)
 
 
-def import_module_from_path(module_path: str, module_name: str = "") -> Any:
-    """Import a module from a specific file path.
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments.
     
-    Args:
-        module_path: Path to the module file
-        module_name: Name to assign to the module (defaults to file basename)
-        
     Returns:
-        The imported module
+        Parsed arguments
     """
-    # Verify the file exists
-    if not os.path.exists(module_path):
-        raise ImportError(f"Module file not found: {module_path}")
-    
-    # Generate module name if not provided
-    if not module_name:
-        module_name = os.path.basename(module_path).split('.')[0]
-    
-    # Load the module spec
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load spec for {module_path}")
-    
-    # Create the module from the spec
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    
-    # Execute the module
-    try:
-        spec.loader.exec_module(module)
-    except Exception as e:
-        raise ImportError(f"Error executing module {module_path}: {e}")
-    
-    return module
-
-
-def parse_args():
-    """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Run the IPFS Accelerate MCP server")
     
-    parser.add_argument(
-        "--transport", "-t",
-        choices=["stdio", "sse", "ws"],
-        default="stdio",
-        help="Transport protocol to use (default: stdio)"
-    )
-    parser.add_argument(
-        "--host", 
-        default="127.0.0.1", 
-        help="Host to bind to for SSE/WS transport"
-    )
-    parser.add_argument(
-        "--port", 
-        type=int, 
-        default=8000, 
-        help="Port to listen on for SSE/WS transport"
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging"
-    )
+    # Server configuration
+    parser.add_argument("--name", default="IPFS Accelerate MCP", help="Server name")
+    parser.add_argument("--description", default="MCP server for IPFS Accelerate", help="Server description")
+    
+    # Transport configuration
+    parser.add_argument("--transport", default="stdio", choices=["stdio", "sse"], 
+                        help="Transport type (stdio or sse)")
+    parser.add_argument("--host", default="127.0.0.1", 
+                        help="Host to bind to for network transports (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8000, 
+                        help="Port to bind to for network transports (default: 8000)")
+    
+    # Logging configuration
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     
     return parser.parse_args()
 
 
-def main():
-    """Run the MCP server."""
-    # Print banner
-    print(BANNER)
-    
-    # Parse arguments
+async def main() -> None:
+    """Main function."""
+    # Parse command-line arguments
     args = parse_args()
     
-    # Import the server module directly from its path
-    server_path = os.path.join('mcp', 'server.py')
-    try:
-        server_module = import_module_from_path(server_path, 'mcp_server')
-        print("Successfully imported MCP server module")
-    except ImportError as e:
-        print(f"Error importing MCP server: {e}")
-        sys.exit(1)
+    # Configure logging based on debug flag
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Debug logging enabled")
     
-    # Get the server instance
-    mcp_server = server_module.default_server
-    
-    # Run the server
-    print(f"Starting IPFS Accelerate MCP server with {args.transport} transport")
+    # Log startup information
+    logger.info(f"Starting IPFS Accelerate MCP server: {args.name}")
+    logger.info(f"Transport: {args.transport}, Host: {args.host}, Port: {args.port}")
     
     try:
-        if args.transport in ["sse", "ws"]:
-            print(f"Listening on {args.host}:{args.port}")
-            kwargs = {"host": args.host, "port": args.port}
-        else:
-            kwargs = {}
-        
-        # Run the server with the specified transport
-        mcp_server.run(transport=args.transport, **kwargs)
+        # Run the server
+        await run_server(
+            name=args.name,
+            description=args.description,
+            transport=args.transport,
+            host=args.host,
+            port=args.port,
+            debug=args.debug
+        )
+    except KeyboardInterrupt:
+        logger.info("Server interrupted")
     except Exception as e:
-        print(f"Error running server: {e}")
+        logger.error(f"Error running server: {str(e)}")
         sys.exit(1)
-
+    
 
 if __name__ == "__main__":
-    main()
+    # Run the main function
+    asyncio.run(main())

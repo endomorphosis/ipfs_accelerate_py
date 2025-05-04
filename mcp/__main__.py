@@ -1,167 +1,134 @@
 """
-Main entry point for the IPFS Accelerate MCP server.
+Command-line entry point for the IPFS Accelerate MCP server.
 
-This module allows the package to be run directly with 'python -m mcp'
-and provides a command-line interface for the MCP server.
+This module allows running the MCP server directly with:
+    python -m mcp
 """
 
 import argparse
-import asyncio
-import sys
-import os
-import importlib
 import logging
+import sys
+from typing import List
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("mcp")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("ipfs_accelerate_mcp_cli")
 
-# Ensure package directory is in the path
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-# Import the server components - try multiple import approaches
-server_module = None
-
-# Try different import approaches
-try:
-    # Approach 1: Direct import 
-    import server as server_module
-    logger.info("Successfully imported server module directly")
-except ImportError:
-    try:
-        # Approach 2: Absolute import
-        from mcp import server as server_module
-        logger.info("Successfully imported server module with absolute import")
-    except ImportError:
-        try:
-            # Approach 3: Relative import
-            from . import server as server_module
-            logger.info("Successfully imported server module with relative import")
-        except ImportError:
-            try:
-                # Approach 4: Dynamic import
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                sys.path.insert(0, current_dir)
-                server_module = importlib.import_module("server")
-                logger.info("Successfully imported server module with dynamic import")
-            except ImportError as e:
-                logger.error(f"Error importing IPFS Accelerate MCP server: {e}")
-                print(f"Error: {e}")
-                sys.exit(1)
-
-# Get the server components
-create_ipfs_mcp_server = getattr(server_module, "create_ipfs_mcp_server")
-default_server = getattr(server_module, "default_server")
-
-
-def parse_args():
-    """Parse command line arguments.
+def parse_args(args: List[str]) -> argparse.Namespace:
+    """Parse command-line arguments.
     
+    Args:
+        args: Command-line arguments
+        
     Returns:
         Parsed arguments
     """
     parser = argparse.ArgumentParser(
-        prog="mcp",
-        description="IPFS Accelerate MCP Server for LLM integration",
+        description="IPFS Accelerate MCP Server",
+        prog="python -m mcp"
     )
     
-    # Add subparsers for different commands
+    # Define commands as subparsers
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
     
     # Run command
     run_parser = subparsers.add_parser("run", help="Run the MCP server")
-    run_parser.add_argument(
-        "--transport", "-t",
-        choices=["stdio", "sse", "ws"],
-        default="stdio",
-        help="Transport protocol to use (default: stdio)"
-    )
-    run_parser.add_argument(
-        "--host", 
-        default="127.0.0.1", 
-        help="Host to bind to for SSE/WS transport"
-    )
-    run_parser.add_argument(
-        "--port", 
-        type=int, 
-        default=8000, 
-        help="Port to listen on for SSE/WS transport"
-    )
-    run_parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging"
-    )
+    run_parser.add_argument("-t", "--transport", choices=["stdio", "ws", "sse"], 
+                         default="stdio", help="Transport to use")
+    run_parser.add_argument("--host", default="127.0.0.1", 
+                         help="Host to listen on (for ws and sse transports)")
+    run_parser.add_argument("--port", type=int, default=8000, 
+                         help="Port to listen on (for ws and sse transports)")
+    run_parser.add_argument("--debug", action="store_true", 
+                         help="Enable debug logging")
     
-    # Import command
-    import_parser = subparsers.add_parser("import-model", help="Import an AI model from IPFS")
-    import_parser.add_argument(
-        "cid",
-        help="IPFS Content Identifier (CID) of the model to import"
-    )
-    import_parser.add_argument(
-        "--name",
-        help="Name to assign to the imported model"
-    )
+    # Version command
+    subparsers.add_parser("version", help="Show version information")
     
-    return parser.parse_args()
+    # Parse the arguments
+    return parser.parse_args(args)
 
-
-def print_banner():
-    """Print the IPFS Accelerate MCP banner."""
-    banner = """
-    ╭───────────────────────────────────────────╮
-    │                                           │
-    │  IPFS Accelerate MCP Server               │
-    │  Model Context Protocol Integration       │
-    │                                           │
-    │  Provide IPFS operations to LLMs          │
-    │  Accelerate AI models with IPFS           │
-    │                                           │
-    ╰───────────────────────────────────────────╯
+def main() -> int:
+    """Main entry point for the CLI.
+    
+    Returns:
+        Exit code
     """
-    print(banner)
-
-
-def main():
-    """Run the IPFS Accelerate MCP server."""
-    print_banner()
+    args = parse_args(sys.argv[1:])
     
-    args = parse_args()
+    # Print help if no command is specified
+    if not args.command:
+        print("Error: command is required", file=sys.stderr)
+        print("Run 'python -m mcp --help' for usage", file=sys.stderr)
+        return 1
     
-    # Set debug logging if requested
-    if getattr(args, 'debug', False):
-        logger.setLevel(logging.DEBUG)
-        logger.debug("Debug logging enabled")
-    
-    if args.command == "run" or args.command is None:
-        # Run the server
-        print(f"Starting IPFS Accelerate MCP server with {args.transport} transport")
-        
+    # Handle commands
+    if args.command == "run":
+        # Import the run_server function
         try:
-            if args.transport in ["sse", "ws"]:
-                print(f"Listening on {args.host}:{args.port}")
-                kwargs = {"host": args.host, "port": args.port}
-            else:
-                kwargs = {}
+            from mcp import run_server
             
-            # Run the server with the specified transport
-            default_server.run(transport=args.transport, **kwargs)
-        except Exception as e:
-            logger.error(f"Error running server: {e}")
-            print(f"Error: {e}")
-            sys.exit(1)
-        
-    elif args.command == "import-model":
-        # Import a model (example command - would be implemented in real code)
-        print(f"Importing model with CID: {args.cid}")
-        print(f"Model name: {args.name or 'auto-generated'}")
-        print("This is a placeholder for the model import functionality.")
-        print("It would be implemented in a future version.")
-
+            # Set log level
+            if args.debug:
+                logging.getLogger().setLevel(logging.DEBUG)
+                logger.setLevel(logging.DEBUG)
+            
+            # Run the server
+            logger.info(f"Starting MCP server with {args.transport} transport")
+            if args.transport in ["ws", "sse"]:
+                logger.info(f"Listening on {args.host}:{args.port}")
+            
+            try:
+                run_server(
+                    transport=args.transport,
+                    host=args.host,
+                    port=args.port,
+                    debug=args.debug
+                )
+                return 0
+            except KeyboardInterrupt:
+                logger.info("Server stopped by user")
+                return 0
+            except Exception as e:
+                logger.error(f"Error running server: {str(e)}")
+                return 1
+        except ImportError as e:
+            logger.error(f"Error importing run_server: {str(e)}")
+            return 1
+    
+    elif args.command == "version":
+        # Show version information
+        try:
+            from mcp import __version__
+            print(f"IPFS Accelerate MCP version: {__version__}")
+            
+            # Try to get IPFS version
+            try:
+                import ipfs_kit_py
+                ipfs = ipfs_kit_py.IPFSApi()
+                version = ipfs.version()
+                print(f"IPFS version: {version.get('Version', 'unknown')}")
+            except (ImportError, Exception):
+                print("IPFS version: Not available")
+            
+            # Check if FastMCP is available
+            try:
+                import fastmcp
+                print(f"FastMCP version: {getattr(fastmcp, '__version__', 'unknown')}")
+            except ImportError:
+                print("FastMCP: Not available (using mock implementation)")
+            
+            return 0
+        except ImportError as e:
+            logger.error(f"Error getting version information: {str(e)}")
+            return 1
+    
+    # Unknown command
+    logger.error(f"Unknown command: {args.command}")
+    return 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

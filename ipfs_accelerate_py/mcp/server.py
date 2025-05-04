@@ -9,7 +9,7 @@ import sys
 import json
 import logging
 import argparse
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Callable
 
 # Set up logging
 logging.basicConfig(
@@ -17,6 +17,260 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("ipfs_accelerate_mcp.server")
+
+class StandaloneMCP:
+    """
+    Standalone MCP Implementation
+    
+    This class provides a standalone implementation of the Model Context Protocol
+    when FastMCP is not available.
+    """
+    
+    def __init__(self, name: str):
+        """
+        Initialize the Standalone MCP
+        
+        Args:
+            name: Name of the server
+        """
+        self.name = name
+        self.tools = {}
+        self.resources = {}
+        self.prompts = {}
+        
+        logger.info(f"Using standalone MCP implementation: {name}")
+    
+    def register_tool(
+        self,
+        name: str,
+        function: Callable,
+        description: str,
+        input_schema: Dict[str, Any]
+    ) -> None:
+        """
+        Register a tool with the MCP server
+        
+        Args:
+            name: Name of the tool
+            function: Function to be called when the tool is used
+            description: Description of the tool
+            input_schema: JSON schema for the tool's input
+        """
+        self.tools[name] = {
+            "function": function,
+            "description": description,
+            "input_schema": input_schema
+        }
+        
+        logger.debug(f"Registered tool: {name}")
+    
+    def register_resource(
+        self,
+        uri: str,
+        function: Callable,
+        description: str
+    ) -> None:
+        """
+        Register a resource with the MCP server
+        
+        Args:
+            uri: URI of the resource
+            function: Function to be called when the resource is accessed
+            description: Description of the resource
+        """
+        self.resources[uri] = {
+            "function": function,
+            "description": description
+        }
+        
+        logger.debug(f"Registered resource: {uri}")
+    
+    def register_prompt(
+        self,
+        name: str,
+        template: str,
+        description: str,
+        input_schema: Dict[str, Any]
+    ) -> None:
+        """
+        Register a prompt with the MCP server
+        
+        Args:
+            name: Name of the prompt
+            template: Template for the prompt
+            description: Description of the prompt
+            input_schema: JSON schema for the prompt's input
+        """
+        self.prompts[name] = {
+            "template": template,
+            "description": description,
+            "input_schema": input_schema
+        }
+        
+        logger.debug(f"Registered prompt: {name}")
+    
+    def create_fastapi_app(
+        self,
+        title: str,
+        description: str,
+        version: str,
+        docs_url: str,
+        redoc_url: str,
+        mount_path: str
+    ) -> Any:
+        """
+        Create a FastAPI app for the MCP server
+        
+        Args:
+            title: Title of the API
+            description: Description of the API
+            version: Version of the API
+            docs_url: URL for the API documentation
+            redoc_url: URL for the API redoc documentation
+            mount_path: Path to mount the API at
+            
+        Returns:
+            FastAPI app
+        """
+        logger.debug(f"Creating FastAPI app for standalone MCP: {title}")
+        
+        try:
+            from fastapi import FastAPI, APIRouter, Body, Depends
+            from pydantic import BaseModel, Field, create_model
+            from functools import partial
+            
+            app = FastAPI(
+                title=title,
+                description=description,
+                version=version,
+                docs_url=docs_url,
+                redoc_url=redoc_url
+            )
+            
+            router = APIRouter()
+            
+            # Create a single endpoint for all tools that dynamically dispatches based on the tool name
+            from fastapi import HTTPException, Path, Body
+            
+            @router.post("/tool/{tool_name}", summary="Generic tool endpoint")
+            async def generic_tool_endpoint(tool_name: str = Path(..., description="The name of the tool to execute"), 
+                                           data: dict = Body({}, description="Tool input data")):
+                if tool_name not in self.tools:
+                    raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+                
+                try:
+                    # Get the tool function
+                    tool = self.tools[tool_name]
+                    tool_function = tool["function"]
+                    
+                    # Execute the tool function
+                    result = tool_function(**data)
+                    return result
+                except Exception as e:
+                    logger.error(f"Error executing tool {tool_name}: {e}")
+                    raise HTTPException(status_code=500, detail=str(e))
+            
+            # Log all registered tools
+            for name, tool in self.tools.items():
+                logger.debug(f"Registered tool: {name} (accessible at POST /tool/{name})")
+            
+            # Create a single endpoint for all resources that dynamically dispatches based on the resource URI
+            @router.get("/resource/{resource_uri:path}", summary="Generic resource endpoint")
+            async def generic_resource_endpoint(resource_uri: str = Path(..., description="The URI of the resource to access")):
+                if resource_uri not in self.resources:
+                    raise HTTPException(status_code=404, detail=f"Resource '{resource_uri}' not found")
+                
+                try:
+                    # Get the resource function
+                    resource = self.resources[resource_uri]
+                    resource_function = resource["function"]
+                    
+                    # Execute the resource function
+                    result = resource_function()
+                    return result
+                except Exception as e:
+                    logger.error(f"Error accessing resource {resource_uri}: {e}")
+                    raise HTTPException(status_code=500, detail=str(e))
+            
+            # Log all registered resources
+            for uri, resource in self.resources.items():
+                logger.debug(f"Registered resource: {uri} (accessible at GET /resource/{uri})")
+            
+            # Mount the router
+            app.include_router(router, prefix=mount_path)
+            
+            # Debug: Print all registered routes
+            logger.debug(f"FastAPI app created for standalone MCP with routes:")
+            for route in app.routes:
+                logger.debug(f"Route: {route.path} {route.methods if hasattr(route, 'methods') else ''}")
+            
+            return app
+        
+        except ImportError:
+            logger.error("Failed to create FastAPI app: FastAPI not installed")
+            raise
+        
+        except Exception as e:
+            logger.error(f"Failed to create FastAPI app: {e}")
+            raise
+    
+    def _create_pydantic_model(self, name: str, schema: Dict[str, Any]) -> Any:
+        """
+        Create a Pydantic model from a JSON schema
+        
+        Args:
+            name: Name of the model
+            schema: JSON schema for the model
+            
+        Returns:
+            Pydantic model
+        """
+        from pydantic import create_model, Field
+        
+        if "properties" not in schema:
+            return create_model(name, __base__=BaseModel)
+        
+        required = schema.get("required", [])
+        fields = {}
+        
+        for prop_name, prop_schema in schema["properties"].items():
+            field_type = self._get_field_type(prop_schema)
+            default = None if prop_name in required else prop_schema.get("default", ...)
+            description = prop_schema.get("description", "")
+            
+            fields[prop_name] = (field_type, Field(default=default, description=description))
+        
+        return create_model(name, **fields, __base__=BaseModel)
+    
+    def _get_field_type(self, schema: Dict[str, Any]) -> Any:
+        """
+        Get the Python type for a JSON schema type
+        
+        Args:
+            schema: JSON schema
+            
+        Returns:
+            Python type
+        """
+        if "type" not in schema:
+            return Any
+        
+        schema_type = schema["type"]
+        
+        if schema_type == "string":
+            return str
+        elif schema_type == "integer":
+            return int
+        elif schema_type == "number":
+            return float
+        elif schema_type == "boolean":
+            return bool
+        elif schema_type == "array":
+            return List[self._get_field_type(schema.get("items", {}))]
+        elif schema_type == "object":
+            return Dict[str, Any]
+        else:
+            return Any
 
 class IPFSAccelerateMCPServer:
     """
@@ -48,6 +302,7 @@ class IPFSAccelerateMCPServer:
         self.port = port
         self.mount_path = mount_path
         self.debug = debug
+        self._using_fastmcp = False
         
         # Configure logging
         if debug:
@@ -69,11 +324,43 @@ class IPFSAccelerateMCPServer:
         logger.info(f"Setting up IPFS Accelerate MCP Server: {self.name}")
         
         try:
-            # Import FastMCP
-            from fastmcp import FastMCP
+            # Try to import FastMCP
+            try:
+                from fastmcp import FastMCP
+                
+                # Create FastMCP instance
+                self.mcp = FastMCP(name=self.name)
+                
+                # Create FastAPI app
+                self.fastapi_app = self.mcp.create_fastapi_app(
+                    title="IPFS Accelerate MCP API",
+                    description="API for the IPFS Accelerate MCP Server",
+                    version="0.1.0",
+                    docs_url="/docs",
+                    redoc_url="/redoc",
+                    mount_path=self.mount_path
+                )
+                
+                # Use FastMCP implementation
+                logger.info("Using FastMCP implementation")
+                self._using_fastmcp = True
             
-            # Create FastMCP instance
-            self.mcp = FastMCP(name=self.name)
+            except ImportError:
+                # Use standalone implementation
+                logger.warning("FastMCP not available, using standalone implementation")
+                self.mcp = StandaloneMCP(name=self.name)
+                
+                # Create FastAPI app
+                self.fastapi_app = self.mcp.create_fastapi_app(
+                    title="IPFS Accelerate MCP API",
+                    description="API for the IPFS Accelerate MCP Server",
+                    version="0.1.0",
+                    docs_url="/docs",
+                    redoc_url="/redoc",
+                    mount_path=self.mount_path
+                )
+                
+                self._using_fastmcp = False
             
             # Register tools
             self._register_tools()
@@ -81,21 +368,10 @@ class IPFSAccelerateMCPServer:
             # Register resources
             self._register_resources()
             
-            # Create FastAPI app
-            self.fastapi_app = self.mcp.create_fastapi_app(
-                title="IPFS Accelerate MCP API",
-                description="API for the IPFS Accelerate MCP Server",
-                version="0.1.0",
-                docs_url="/docs",
-                redoc_url="/redoc",
-                mount_path=self.mount_path
-            )
+            # Register prompts
+            self._register_prompts()
             
             logger.info(f"IPFS Accelerate MCP Server set up: {self.server_url}")
-        
-        except ImportError:
-            logger.error("Failed to import FastMCP. Please install with 'pip install fastmcp'.")
-            raise
         
         except Exception as e:
             logger.error(f"Error setting up MCP server: {e}")
@@ -172,6 +448,50 @@ class IPFSAccelerateMCPServer:
         except Exception as e:
             logger.error(f"Error registering resources with MCP server: {e}")
             raise
+    
+    def _register_prompts(self) -> None:
+        """
+        Register prompts with the MCP server
+        
+        This function registers all prompts with the MCP server.
+        """
+        logger.debug("Registering prompts with MCP server")
+        
+        try:
+            # Define default help prompt
+            self.mcp.register_prompt(
+                name="ipfs_help",
+                template="""
+                # IPFS Accelerate Help
+                
+                IPFS Accelerate provides tools and resources for working with IPFS and accelerating AI models.
+                
+                ## Available Tools
+                
+                {% for tool_name, tool in server.tools.items() %}
+                - **{{ tool_name }}**: {{ tool.description }}
+                {% endfor %}
+                
+                ## Available Resources
+                
+                {% for uri, resource in server.resources.items() %}
+                - **{{ uri }}**: {{ resource.description }}
+                {% endfor %}
+                """,
+                description="Get help with IPFS Accelerate",
+                input_schema={
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            )
+            
+            logger.debug("Prompts registered with MCP server")
+        
+        except Exception as e:
+            logger.error(f"Error registering prompts with MCP server: {e}")
+            # Don't raise here, as prompts are optional
+            pass
 
 def main() -> None:
     """

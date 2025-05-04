@@ -1,13 +1,11 @@
 """
 IPFS Accelerate MCP Resources
 
-This module registers all resources with the MCP server.
+This package provides resources for the IPFS Accelerate MCP server.
 """
 
-import os
-import sys
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Any
 
 # Set up logging
 logger = logging.getLogger("ipfs_accelerate_mcp.resources")
@@ -21,23 +19,17 @@ def register_all_resources(mcp: Any) -> None:
     Args:
         mcp: MCP server instance
     """
-    logger.debug("Registering all resources")
+    logger.debug("Registering all resources with MCP server")
     
     try:
-        # Import config resources
-        from ipfs_accelerate_py.mcp.resources.config import register_config_resources
-        
-        # Register config resources
-        register_config_resources(mcp)
-        
-        # Import model info resources
+        # Import resources
         from ipfs_accelerate_py.mcp.resources.model_info import register_model_info_resources
         
-        # Register model info resources
+        # Register resources
         register_model_info_resources(mcp)
         
-        logger.debug("All resources registered")
+        logger.debug("All resources registered with MCP server")
     
     except Exception as e:
-        logger.error(f"Error registering resources: {e}")
+        logger.error(f"Error registering resources with MCP server: {e}")
         raise
