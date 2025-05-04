@@ -1,0 +1,20 @@
+# MCP Integration Dependencies
+
+# Core MCP Dependencies
+fastmcp>=0.1.0; python_version >= "3.8"  # Model Context Protocol
+pydantic>=2.0.0  # Data validation and settings management
+
+# IPFS Dependencies
+ipfs-kit-py>=0.1.0; python_version >= "3.8"  # IPFS integration kit
+libp2p>=0.1.5; python_version >= "3.8"  # P2P networking library
+
+# Async Support
+aiohttp>=3.8.0  # Async HTTP client/server
+async-timeout>=4.0.0  # Timeout context manager
+
+# Optional Dependencies
+websockets>=10.0; python_version >= "3.8"  # For WebSocket transport
+uvicorn>=0.17.0; python_version >= "3.8"  # For SSE transport
+
+# Note: If a dependency is not available on PyPI, it will be mocked
+# by the fallback implementations in mcp/mock_mcp.py

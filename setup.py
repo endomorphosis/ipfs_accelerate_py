@@ -92,6 +92,11 @@ setup(
 			"seaborn>=0.13.0",
 			"plotly>=5.22.0",
 		],
+		"mcp": [
+			"fastmcp>=0.1.0",
+			"libp2p>=0.1.5",
+			"async-timeout>=4.0.0",
+		],
 		"all": [
 			"playwright>=1.31.0",
 			"aiohttp>=3.8.1",
@@ -99,6 +104,9 @@ setup(
 			"matplotlib>=3.7.0",
 			"seaborn>=0.13.0",
 			"plotly>=5.22.0",
+			"fastmcp>=0.1.0",
+			"libp2p>=0.1.5",
+			"async-timeout>=4.0.0",
 		],
 	}
 )

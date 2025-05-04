@@ -3,6 +3,8 @@ import uvicorn
 import asyncio
 from fastapi import FastAPI, BackgroundTasks
 from ipfs_accelerate_py import ipfs_accelerate_py
+# Import MCP integration
+from ipfs_accelerate_py.mcp import integrate_with_fastapi
 from pydantic import BaseModel
 import json
 from torch import Tensor
@@ -57,6 +59,13 @@ app = FastAPI(lifespan=lifespan, port=9999)
 # app = FastAPI(port=9999)
 resources = {}
 metadata = {}
+
+# Integrate MCP server with the FastAPI app
+try:
+    mcp_server = integrate_with_fastapi(app, mount_path="/mcp")
+    print("MCP server integrated successfully with FastAPI")
+except Exception as e:
+    print(f"Failed to integrate MCP server: {e}")
 
 class ModelServer:
     def __init__(self, resources=None, metadata=None):
