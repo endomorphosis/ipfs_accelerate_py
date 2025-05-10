@@ -1,7 +1,7 @@
 # Core dependencies
 aiohttp>=3.8.1
 duckdb>=0.7.0
-ipfshttpclient>=0.8.0
+ipfshttpclient>=0.8.0a2
 websockets>=10.1
 
 # Optional dependencies for WebNN/WebGPU support

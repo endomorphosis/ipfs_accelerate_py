@@ -4,3 +4,12 @@
 [submodule "test/doc-builder"]
 	path = test/doc-builder
 	url = https://github.com/huggingface/doc-builder.git
+[submodule "external/ipfs_transformers_py"]
+	path = external/ipfs_transformers_py
+	url = https://github.com/endomorphosis/ipfs_transformers_py.git
+[submodule "external/ipfs_kit_py"]
+	path = external/ipfs_kit_py
+	url = https://github.com/endomorphosis/ipfs_kit_py.git
+[submodule "external/ipfs_model_manager_py"]
+	path = external/ipfs_model_manager_py
+	url = https://github.com/endomorphosis/ipfs_model_manager_py.git
