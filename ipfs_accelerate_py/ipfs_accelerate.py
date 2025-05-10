@@ -7,14 +7,21 @@ import asyncio
 import random
 import ipfs_kit_py
 import ipfs_model_manager_py
-import libp2p_kit_py
+#import libp2p_kit_py
 import hashlib
 import time
+import logging
+
+from typing import Dict, List, Any, Optional
+
+from external.ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel
+from .transformers_integration import TransformersModelProvider
 
 class ipfs_accelerate_py:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata
+
         if self.resources is None:
             self.resources = {}
         if self.metadata is None:
@@ -144,7 +151,144 @@ class ipfs_accelerate_py:
         # self.get_libp2p_endpoint = self.get_libp2p_endpoint
         self.init_endpoints = self.init_endpoints
         self.hwtest = self.test_hardware()
+
+        # Initialize the transformers model provider
+        self.transformers_provider = TransformersModelProvider(
+            config=self.resources.get("transformers", {})
+        )
+
+        # Track loaded models
+        self.loaded_models = {}
+
+        # Log initialization status
+        if self.transformers_provider.is_available():
+            logging.info("Transformers integration initialized successfully")
+        else:
+            logging.warning("Transformers integration not available")
+
         return None
+
+
+    def get_optimal_backend(self, model_name, model_type):
+        """Determine the optimal hardware backend for a model."""
+        # Implement hardware detection logic
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"  # Apple Silicon
+        else:
+            return "cpu"
+
+    # Enhance run_model to use ipfs_transformers_py
+    def run_model_old(self, model_name, inputs, model_type="text_generation", **kwargs):
+        """Run a model with automatic hardware selection."""
+        # Check if model is already loaded
+        if model_name in self.loaded_models:
+            model_id = self.loaded_models[model_name]["model_id"]
+        else:
+            # Get the optimal backend
+            backend = kwargs.pop("backend", self.get_optimal_backend(model_name, model_type))
+
+            # Load the model
+            result = self.transformers_provider.load_model(
+                model_name=model_name,
+                model_type=model_type,
+                device=backend,
+                **kwargs
+            )
+
+            if not result["success"]:
+                return result
+
+            # Track the loaded model
+            model_id = result["model_id"]
+            self.loaded_models[model_name] = {
+                "model_id": model_id,
+                "backend": backend,
+                "type": model_type
+            }
+
+        # Run inference
+        return self.transformers_provider.run_inference(
+            model_id=model_id,
+            inputs=inputs,
+            **kwargs
+        )
+
+
+    def run_model(
+        self,
+        model_name: str,
+        inputs: Dict[str, Any],
+        model_type: str = "text_generation",
+        device: str = "cuda",
+        use_ipfs: bool = False,
+        ipfs_cid: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Load a model and run inference with proper tensor conversion.
+        """
+        try:
+            # First, load the model
+            load_result = self.transformers_provider.load_model(
+                model_name=model_name,
+                model_type=model_type,
+                device=device,
+                use_ipfs=use_ipfs,
+                ipfs_cid=ipfs_cid,
+                **kwargs
+            )
+
+            if not load_result.get("success", False):
+                return load_result
+
+            model_id = load_result["model_id"]
+
+            # Convert inputs to PyTorch tensors
+            import torch
+            tensor_inputs = {}
+
+            for key, value in inputs.items():
+                if isinstance(value, list):
+                    if key == "input_ids" or key.endswith("_ids"):
+                        # Convert nested lists to tensors
+                        if isinstance(value[0], list):
+                            tensor_inputs[key] = torch.tensor(value)
+                        else:
+                            # Single sequence, add batch dimension
+                            tensor_inputs[key] = torch.tensor([value])
+                    else:
+                        # For other list inputs, try to convert directly
+                        tensor_inputs[key] = torch.tensor(value)
+                elif isinstance(value, torch.Tensor):
+                    # Already a tensor, use as is
+                    tensor_inputs[key] = value
+                else:
+                    # Pass through other types
+                    tensor_inputs[key] = value
+
+                tensor_inputs[key] = tensor_inputs[key].to(device)
+
+            # Add attention_mask if not provided but input_ids is
+            if "input_ids" in tensor_inputs and "attention_mask" not in tensor_inputs:
+                tensor_inputs["attention_mask"] = torch.ones_like(tensor_inputs["input_ids"]).to(device)
+
+            print(f"Converted input types: {[type(v) for k, v in tensor_inputs.items()]}")
+
+            # Run inference with properly converted inputs
+            return self.transformers_provider.run_inference(model_id, tensor_inputs, **kwargs)
+
+        except Exception as e:
+            logging.error(f"Error in run_model: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     def test_hardware(self):
         install_file_hash = None
