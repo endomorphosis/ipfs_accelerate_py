@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # List of supported hardware backends
-SUPPORTED_BACKENDS = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn"]
+SUPPORTED_BACKENDS = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "max", "mojo"]
 
 # Check if environment variables are set for mock mode
 MOCK_MODE = os.environ.get("MOCK_MODE", "False").lower() == "true"
@@ -30,7 +30,9 @@ ARCHITECTURE_HARDWARE_COMPATIBILITY = {
         "rocm": True,
         "mps": True,
         "openvino": True,
-        "qnn": True
+        "qnn": True,
+        "max": True,
+        "mojo": True
     },
     "decoder-only": {
         "cpu": True,
@@ -38,7 +40,9 @@ ARCHITECTURE_HARDWARE_COMPATIBILITY = {
         "rocm": True,
         "mps": True,
         "openvino": True,
-        "qnn": False  # QNN has limited support for decoder-only models
+        "qnn": False,  # QNN has limited support for decoder-only models
+        "max": True,   # MAX has excellent decoder-only support
+        "mojo": True   # Mojo can compile decoder-only models
     },
     "encoder-decoder": {
         "cpu": True,
@@ -46,7 +50,9 @@ ARCHITECTURE_HARDWARE_COMPATIBILITY = {
         "rocm": True,
         "mps": True,
         "openvino": True,
-        "qnn": False
+        "qnn": False,
+        "max": True,   # MAX supports encoder-decoder
+        "mojo": True   # Mojo can compile encoder-decoder models
     },
     "vision": {
         "cpu": True,

@@ -97,7 +97,9 @@ HARDWARE_BACKENDS = [
     "rocm",
     "openvino",
     "mps",
-    "qnn"
+    "qnn",
+    "max",
+    "mojo"
 ]
 
 # Comprehensive model architecture mapping

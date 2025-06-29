@@ -84,7 +84,17 @@ class ModelTemplateRegistry:
             # Load module
             module_name = template_path.stem
             spec = importlib.util.spec_from_file_location(module_name, template_path)
+            
+            if spec is None:
+                logger.error(f"Could not get module spec for {template_path}")
+                return None
+            
             module = importlib.util.module_from_spec(spec)
+            
+            if spec.loader is None:
+                logger.error(f"Could not get module loader for {template_path}")
+                return None
+                
             spec.loader.exec_module(module)
             
             # Extract metadata
@@ -270,6 +280,10 @@ class ModelTemplateRegistry:
                 available_hardware.append("mps")
             if hardware_info.get("openvino", False):
                 available_hardware.append("openvino")
+            if hardware_info.get("mojo", False):
+                available_hardware.append("mojo")
+            if hardware_info.get("max", False):
+                available_hardware.append("max")
             
             # CPU is always available
             available_hardware.append("cpu")

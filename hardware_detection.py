@@ -29,6 +29,7 @@ import platform
 import logging
 import subprocess
 import importlib.util
+import shutil # Added for shutil.which
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 import re
@@ -48,6 +49,8 @@ OPENVINO = "openvino"
 WEBNN = "webnn"
 WEBGPU = "webgpu"
 QUALCOMM = "qualcomm"
+MOJO = "mojo"
+MAX = "max"
 
 class HardwareDetector:
     """
@@ -78,6 +81,12 @@ class HardwareDetector:
     
     def _load_from_cache(self):
         """Load hardware detection results from cache file"""
+        if self.cache_file is None:
+            logger.warning("Cache file path is None, cannot load from cache.")
+            self._detect_hardware()
+            self._save_to_cache()
+            return
+
         try:
             with open(self.cache_file, 'r') as f:
                 cached_data = json.load(f)
@@ -92,6 +101,10 @@ class HardwareDetector:
     
     def _save_to_cache(self):
         """Save hardware detection results to cache file"""
+        if self.cache_file is None:
+            logger.warning("Cache file path is None, cannot save to cache.")
+            return
+
         try:
             cache_data = {
                 'hardware': self._hardware_info,
@@ -139,6 +152,12 @@ class HardwareDetector:
         
         # Qualcomm AI detection
         self._detect_qualcomm()
+
+        # Mojo detection
+        self._detect_mojo()
+
+        # MAX detection
+        self._detect_max()
         
         logger.info(f"Hardware detection complete. Available: {', '.join(hw for hw, available in self._hardware_info.items() if available)}")
     
@@ -250,9 +269,9 @@ class HardwareDetector:
         try:
             import torch
             if feature.lower() == "avx":
-                return torch.backends.cpu.supports_avx()
+                return hasattr(torch.backends.cpu, 'supports_avx') and torch.backends.cpu.supports_avx()
             elif feature.lower() == "avx2":
-                return torch.backends.cpu.supports_avx2()
+                return hasattr(torch.backends.cpu, 'supports_avx2') and torch.backends.cpu.supports_avx2()
         except (ImportError, AttributeError):
             pass
             
@@ -413,7 +432,7 @@ class HardwareDetector:
                     self._details[ROCM] = {
                         "device_count": torch.cuda.device_count(),
                         "current_device": torch.cuda.current_device(),
-                        "hip_version": torch.version.hip,
+                        "hip_version": torch.version.hip if hasattr(torch.version, 'hip') else None,
                         "devices": []
                     }
                     
@@ -623,8 +642,8 @@ class HardwareDetector:
                 "environment": "node",
                 "mode": "onnx_export",
                 "python_export_capability": {
-                    "torch": torch.__version__,
-                    "onnx": onnx.__version__
+                    "torch": getattr(torch, '__version__', None),
+                    "onnx": getattr(onnx, '__version__', None)
                 }
             }
             logger.info("WebNN support detected via Python ONNX export capabilities")
@@ -757,8 +776,8 @@ class HardwareDetector:
                 "environment": "node",
                 "mode": "onnx_export",
                 "python_export_capability": {
-                    "torch": torch.__version__,
-                    "onnx": onnx.__version__
+                    "torch": getattr(torch, '__version__', None),
+                    "onnx": getattr(onnx, '__version__', None)
                 }
             }
             logger.info("WebGPU support detected via Python ONNX export capabilities")
@@ -809,6 +828,7 @@ class HardwareDetector:
                     }
                     return
             except ImportError:
+                logger.debug("qti.aisw.dlc_utils not found, skipping Qualcomm detection via this module.")
                 pass
                 
             # Try checking for SNPE
@@ -823,6 +843,7 @@ class HardwareDetector:
                     }
                     return
             except ImportError:
+                logger.debug("snpe not found, skipping Qualcomm detection via this module.")
                 pass
                 
             # Check if qnn_wrapper is available
@@ -861,6 +882,207 @@ class HardwareDetector:
         except Exception as e:
             self._errors[QUALCOMM] = f"Unexpected error detecting Qualcomm AI: {str(e)}"
             logger.warning(f"Error detecting Qualcomm AI: {str(e)}")
+
+    def _detect_mojo(self):
+        """Detect Mojo availability and capabilities."""
+        self._hardware_info[MOJO] = False
+        try:
+            mojo_details = {}
+            
+            # Check for Mojo executable in PATH
+            if shutil.which("mojo"):
+                try:
+                    # Get Mojo version
+                    version_output = subprocess.check_output(
+                        ["mojo", "--version"], universal_newlines=True, timeout=10
+                    ).strip()
+                    mojo_details["version"] = version_output
+                    mojo_details["executable_path"] = shutil.which("mojo")
+                except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    mojo_details["version"] = "unknown"
+                    mojo_details["executable_path"] = shutil.which("mojo")
+                
+                self._hardware_info[MOJO] = True
+                mojo_details["detection_method"] = "executable_in_path"
+                mojo_details["capabilities"] = {
+                    "compilation": True,
+                    "jit_execution": True,
+                    "python_interop": True
+                }
+                self._details[MOJO] = mojo_details
+                logger.info("Mojo detected via executable in PATH.")
+                return
+
+            # Check for MOJO_HOME environment variable
+            if "MOJO_HOME" in os.environ:
+                mojo_path = Path(os.environ["MOJO_HOME"]) / "bin" / "mojo"
+                if mojo_path.exists():
+                    try:
+                        # Get version from MOJO_HOME installation
+                        version_output = subprocess.check_output(
+                            [str(mojo_path), "--version"], universal_newlines=True, timeout=10
+                        ).strip()
+                        mojo_details["version"] = version_output
+                    except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                        mojo_details["version"] = "unknown"
+                    
+                    self._hardware_info[MOJO] = True
+                    mojo_details["mojo_home"] = os.environ["MOJO_HOME"]
+                    mojo_details["executable_path"] = str(mojo_path)
+                    mojo_details["detection_method"] = "mojo_home_env"
+                    mojo_details["capabilities"] = {
+                        "compilation": True,
+                        "jit_execution": True,
+                        "python_interop": True
+                    }
+                    self._details[MOJO] = mojo_details
+                    logger.info("Mojo detected via MOJO_HOME environment variable.")
+                    return
+
+            # Attempt to import mojo modules
+            try:
+                if importlib.util.find_spec("mojo") is not None:
+                    import mojo
+                    mojo_details["python_package"] = True
+                    mojo_details["detection_method"] = "python_package"
+                    mojo_details["capabilities"] = {
+                        "compilation": True,
+                        "jit_execution": True,
+                        "python_interop": True
+                    }
+                    if hasattr(mojo, '__version__'):
+                        mojo_details["version"] = mojo.__version__
+                    
+                    self._hardware_info[MOJO] = True
+                    self._details[MOJO] = mojo_details
+                    logger.info("Mojo detected via Python package.")
+                    return
+            except ImportError:
+                logger.debug("mojo Python package not found, skipping Mojo detection via this module.")
+                pass
+
+            self._details[MOJO] = {"reason": "Mojo not found (executable, MOJO_HOME, or Python package)."}
+        except Exception as e:
+            self._hardware_info[MOJO] = False
+            self._errors[MOJO] = f"Unexpected error detecting Mojo: {str(e)}"
+            logger.error(f"Error detecting Mojo: {str(e)}", exc_info=True)
+
+    def _detect_max(self):
+        """Detect MAX availability and capabilities."""
+        self._hardware_info[MAX] = False
+        try:
+            max_details = {}
+            
+            # Check for max executable in PATH
+            if shutil.which("max"):
+                try:
+                    # Get MAX version and capabilities
+                    version_output = subprocess.check_output(
+                        ["max", "--version"], universal_newlines=True, timeout=10
+                    ).strip()
+                    max_details["version"] = version_output
+                    max_details["executable_path"] = shutil.which("max")
+                    
+                    # Try to get MAX server capabilities
+                    try:
+                        help_output = subprocess.check_output(
+                            ["max", "serve", "--help"], universal_newlines=True, timeout=10
+                        )
+                        max_details["has_server"] = True
+                        max_details["server_capabilities"] = {
+                            "openai_api": "openai" in help_output.lower(),
+                            "streaming": "stream" in help_output.lower(),
+                            "batch_processing": "batch" in help_output.lower()
+                        }
+                    except:
+                        max_details["has_server"] = False
+                        
+                except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    max_details["version"] = "unknown"
+                    max_details["executable_path"] = shutil.which("max")
+                
+                self._hardware_info[MAX] = True
+                max_details["detection_method"] = "executable_in_path"
+                max_details["capabilities"] = {
+                    "model_serving": True,
+                    "graph_optimization": True,
+                    "quantization": True,
+                    "multi_backend": True,
+                    "openai_compatible": True
+                }
+                self._details[MAX] = max_details
+                logger.info("MAX detected via executable in PATH.")
+                return
+
+            # Check for MAX_HOME environment variable
+            if "MAX_HOME" in os.environ:
+                max_path = Path(os.environ["MAX_HOME"]) / "bin" / "max"
+                if max_path.exists():
+                    try:
+                        # Get version from MAX_HOME installation
+                        version_output = subprocess.check_output(
+                            [str(max_path), "--version"], universal_newlines=True, timeout=10
+                        ).strip()
+                        max_details["version"] = version_output
+                    except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                        max_details["version"] = "unknown"
+                    
+                    self._hardware_info[MAX] = True
+                    max_details["max_home"] = os.environ["MAX_HOME"]
+                    max_details["executable_path"] = str(max_path)
+                    max_details["detection_method"] = "max_home_env"
+                    max_details["capabilities"] = {
+                        "model_serving": True,
+                        "graph_optimization": True,
+                        "quantization": True,
+                        "multi_backend": True,
+                        "openai_compatible": True
+                    }
+                    self._details[MAX] = max_details
+                    logger.info("MAX detected via MAX_HOME environment variable.")
+                    return
+
+            # Attempt to import max modules
+            try:
+                if importlib.util.find_spec("max") is not None:
+                    try:
+                        import max
+                        max_details["python_package"] = True
+                        max_details["detection_method"] = "python_package"
+                        
+                        # Check for specific MAX modules
+                        max_modules = {}
+                        for module_name in ["max.engine", "max.graph", "max.nn", "max.dtype"]:
+                            if importlib.util.find_spec(module_name) is not None:
+                                max_modules[module_name.split('.')[-1]] = True
+                        
+                        max_details["available_modules"] = max_modules
+                        max_details["capabilities"] = {
+                            "model_serving": "engine" in max_modules,
+                            "graph_optimization": "graph" in max_modules,
+                            "neural_networks": "nn" in max_modules,
+                            "data_types": "dtype" in max_modules,
+                            "python_api": True
+                        }
+                        
+                        if hasattr(max, '__version__'):
+                            max_details["version"] = max.__version__
+                        
+                        self._hardware_info[MAX] = True
+                        self._details[MAX] = max_details
+                        logger.info("MAX detected via Python package.")
+                        return
+                    except ImportError as import_err:
+                        logger.debug(f"MAX Python package found but import failed: {import_err}")
+            except ImportError:
+                logger.debug("max Python package not found, skipping MAX detection via this module.")
+                pass
+
+            self._details[MAX] = {"reason": "MAX not found (executable, MAX_HOME, or Python package)."}
+        except Exception as e:
+            self._hardware_info[MAX] = False
+            self._errors[MAX] = f"Unexpected error detecting MAX: {str(e)}"
+            logger.error(f"Error detecting MAX: {str(e)}", exc_info=True)
     
     def get_available_hardware(self) -> Dict[str, bool]:
         """Get dictionary of available hardware platforms"""
@@ -880,13 +1102,17 @@ class HardwareDetector:
     
     def get_best_available_hardware(self) -> str:
         """Get the best available hardware platform for inference"""
-        # Priority order: CUDA > ROCm > MPS > OpenVINO > CPU
-        if self.is_available(CUDA):
+        # Priority order: MAX > CUDA > ROCm > MPS > MOJO > OpenVINO > QUALCOMM > WEBGPU > WEBNN > CPU
+        if self.is_available(MAX):
+            return MAX
+        elif self.is_available(CUDA):
             return CUDA
         elif self.is_available(ROCM):
             return ROCM
         elif self.is_available(MPS):
             return MPS
+        elif self.is_available(MOJO):
+            return MOJO
         elif self.is_available(OPENVINO):
             return OPENVINO
         elif self.is_available(QUALCOMM):
@@ -900,12 +1126,16 @@ class HardwareDetector:
     
     def get_torch_device(self) -> str:
         """Get the appropriate torch device string for the best available hardware"""
-        if self.is_available(CUDA):
+        if self.is_available(MAX):
+            return "max"  # MAX can use its own device specification
+        elif self.is_available(CUDA):
             return "cuda"
         elif self.is_available(ROCM):
             return "cuda"  # ROCm uses CUDA API
         elif self.is_available(MPS):
             return "mps"
+        elif self.is_available(MOJO):
+            return "mojo"  # Mojo can use its own device specification
         else:
             return "cpu"
             
@@ -1060,7 +1290,7 @@ class HardwareDetector:
         elif best_hardware == MPS:
             return "mps"
         else:
-            return "cpu"
+            return "cpu" # Default return to ensure a string is always returned
     
     def print_summary(self, detailed: bool = False):
         """Print a summary of detected hardware capabilities"""
