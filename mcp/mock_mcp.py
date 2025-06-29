@@ -210,9 +210,9 @@ class FastMCP:
             await self.lifespan_stop_handler(ctx, self.lifespan_context)
     
     async def run(self, 
-                  transport: Optional[Union[TransportType, str]] = None,
+                  transport: Optional[Union[TransportType, str]] = "sse",
                   host: str = "127.0.0.1",
-                  port: int = 8000) -> None:
+                  port: int = 3000) -> None:
         """Run the server using the specified transport.
         
         Args:

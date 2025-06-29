@@ -377,9 +377,13 @@ class IPFSAccelerateMCPServer:
             logger.error(f"Error setting up MCP server: {e}")
             raise
     
-    def run(self) -> None:
+    def run(self, transport: str = None) -> None:
         """
         Run the MCP server
+        
+        Args:
+            transport: Transport protocol to use (e.g., 'sse', 'ws'). 
+                      If None, defaults to standard HTTP.
         
         This function runs the MCP server using uvicorn.
         """
@@ -390,6 +394,158 @@ class IPFSAccelerateMCPServer:
         
         try:
             import uvicorn
+            from fastapi import FastAPI
+            from starlette.middleware.cors import CORSMiddleware
+            
+            # Add transport-specific endpoints
+            router = None
+            
+            if transport == 'sse':
+                logger.info("Adding SSE transport endpoint")
+                from fastapi import APIRouter
+                from sse_starlette.sse import EventSourceResponse
+                import asyncio
+                import json
+                
+                router = APIRouter()
+                
+                @router.get("/sse")
+                async def sse_endpoint(request):
+                    """
+                    Server-Sent Events (SSE) endpoint
+                    """
+                    async def event_generator():
+                        while True:
+                            if await request.is_disconnected():
+                                break
+                                
+                            # Just send a ping event to keep the connection alive
+                            yield {
+                                "event": "ping",
+                                "data": json.dumps({"timestamp": asyncio.get_event_loop().time()})
+                            }
+                            
+                            await asyncio.sleep(1)
+                            
+                    return EventSourceResponse(event_generator())
+            
+            elif transport == 'ws':
+                logger.info("Adding WebSockets transport endpoint")
+                from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+                import json
+                
+                router = APIRouter()
+                
+                @router.websocket("/ws")
+                async def websocket_endpoint(websocket: WebSocket):
+                    """
+                    WebSockets endpoint
+                    """
+                    await websocket.accept()
+                    
+                    try:
+                        # Basic WebSocket handler for MCP
+                        while True:
+                            # Receive message
+                            data = await websocket.receive_text()
+                            
+                            try:
+                                # Parse JSON message
+                                message = json.loads(data)
+                                message_type = message.get("type", "unknown")
+                                
+                                if message_type == "ping":
+                                    # Respond to ping
+                                    await websocket.send_json({"type": "pong"})
+                                
+                                elif message_type == "call_tool":
+                                    # Extract tool information
+                                    tool_name = message.get("tool_name")
+                                    tool_input = message.get("input", {})
+                                    
+                                    if tool_name and tool_name in self.mcp.tools:
+                                        # Call the tool
+                                        try:
+                                            tool = self.mcp.tools[tool_name]
+                                            result = tool["function"](**tool_input)
+                                            
+                                            # Send result
+                                            await websocket.send_json({
+                                                "type": "tool_result",
+                                                "tool_name": tool_name,
+                                                "result": result
+                                            })
+                                        except Exception as e:
+                                            # Send error
+                                            await websocket.send_json({
+                                                "type": "error",
+                                                "message": f"Error executing tool {tool_name}: {str(e)}"
+                                            })
+                                    else:
+                                        # Tool not found
+                                        await websocket.send_json({
+                                            "type": "error",
+                                            "message": f"Tool not found: {tool_name}"
+                                        })
+                                
+                                elif message_type == "get_resource":
+                                    # Extract resource information
+                                    resource_uri = message.get("resource_uri")
+                                    
+                                    if resource_uri and resource_uri in self.mcp.resources:
+                                        # Get the resource
+                                        try:
+                                            resource = self.mcp.resources[resource_uri]
+                                            result = resource["function"]()
+                                            
+                                            # Send result
+                                            await websocket.send_json({
+                                                "type": "resource_result",
+                                                "resource_uri": resource_uri,
+                                                "content": result
+                                            })
+                                        except Exception as e:
+                                            # Send error
+                                            await websocket.send_json({
+                                                "type": "error",
+                                                "message": f"Error accessing resource {resource_uri}: {str(e)}"
+                                            })
+                                    else:
+                                        # Resource not found
+                                        await websocket.send_json({
+                                            "type": "error",
+                                            "message": f"Resource not found: {resource_uri}"
+                                        })
+                                        
+                                else:
+                                    # Unknown message type
+                                    await websocket.send_json({
+                                        "type": "error", 
+                                        "message": f"Unknown message type: {message_type}"
+                                    })
+                            
+                            except json.JSONDecodeError:
+                                # Send error for invalid JSON
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "message": "Invalid JSON message"
+                                })
+                                
+                    except WebSocketDisconnect:
+                        logger.info("WebSocket client disconnected")
+            
+            # Mount the router at the mount_path if one was created
+            if router:
+                self.fastapi_app.include_router(router, prefix=self.mount_path)
+                
+            # Add CORS middleware to allow cross-origin requests
+            self.fastapi_app.add_middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
             
             # Run the server
             uvicorn.run(
@@ -507,6 +663,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
     parser.add_argument("--mount-path", default="/mcp", help="Path to mount the server at")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--transport", choices=["sse", "ws"], help="Transport protocol to use (e.g., 'sse', 'ws')")
     
     args = parser.parse_args()
     
@@ -521,7 +678,7 @@ def main() -> None:
     
     # Run server
     try:
-        server.run()
+        server.run(transport=args.transport)
     
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received, stopping server...")

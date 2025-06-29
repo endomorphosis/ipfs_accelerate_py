@@ -1,290 +1,363 @@
 """
-Mock implementations of IPFS functionality for the MCP server.
+Mock implementation of the IPFS client.
 
-This module provides mock implementations that can be used when the actual
-ipfs_kit_py dependency is not available.
+This module provides a mock implementation of the IPFS client interface
+for use when the actual ipfs-kit-py package is not available. This enables
+testing and development without the full IPFS infrastructure.
 """
 
-import asyncio
 import json
 import logging
 import os
 import random
-import string
 import time
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union
 
+# Configure logging
 logger = logging.getLogger(__name__)
 
-def random_cid() -> str:
-    """Generate a random CID-like string for mocking purposes."""
-    letters = string.ascii_lowercase + string.digits
-    return "Qm" + ''.join(random.choice(letters) for _ in range(44))
 
 class MockIPFSClient:
-    """Mock implementation of IPFS client for testing and development."""
+    """Mock implementation of the IPFS client.
+    
+    This class simulates the behavior of an IPFS client for testing and
+    development when the actual IPFS client is not available.
+    """
     
     def __init__(self):
-        """Initialize the mock IPFS client."""
-        self.files = {}
-        self.pins = {}
-        self.mfs = {}
+        """Initialize a new mock IPFS client."""
+        self.files = {}  # Simulated MFS
+        self.blocks = {}  # Simulated blockstore
+        self.pins = set()  # Simulated pinset
+        self.peers = []  # Simulated peers
         logger.info("Initialized mock IPFS client")
     
-    def add_file(self, path: str, wrap_with_directory: bool = False) -> Dict[str, Any]:
-        """Mock implementation of adding a file to IPFS."""
+    def version(self) -> Dict[str, str]:
+        """Get the IPFS version.
+        
+        Returns:
+            Dictionary with version information
+        """
+        return {
+            "Version": "0.1.0-mock",
+            "Commit": "mock",
+            "Repo": "0",
+            "System": "mock",
+            "Golang": "mock"
+        }
+    
+    def add(self, path: str) -> Dict[str, Any]:
+        """Add a file to IPFS.
+        
+        Args:
+            path: Path to the file to add
+            
+        Returns:
+            Dictionary with information about the added file
+            
+        Raises:
+            FileNotFoundError: If the file is not found
+        """
+        # Check if file exists
         if not os.path.exists(path):
             raise FileNotFoundError(f"File not found: {path}")
         
-        file_size = os.path.getsize(path)
-        file_name = os.path.basename(path)
-        cid = random_cid()
+        # Get file size
+        size = os.path.getsize(path)
         
-        # Store file info
-        self.files[cid] = {
-            "path": path,
-            "size": file_size,
-            "name": file_name,
-            "wrapped": wrap_with_directory
-        }
+        # Generate a simulated CID
+        cid = f"QmMock{random.randint(1000000, 9999999)}"
         
+        # Store in simulated blockstore
+        with open(path, "rb") as f:
+            content = f.read()
+            self.blocks[cid] = content
+        
+        # Return information
         return {
+            "Name": os.path.basename(path),
             "Hash": cid,
-            "Size": file_size,
-            "Name": file_name
+            "Size": size,
+            "success": True
         }
     
-    def cat(self, cid: str, offset: int = 0, length: int = -1) -> bytes:
-        """Mock implementation of reading a file from IPFS."""
-        if cid not in self.files:
-            # Return some placeholder content
-            return f"Mock content for CID: {cid}".encode('utf-8')
+    def cat(self, cid: str) -> bytes:
+        """Get the content of a file from IPFS.
         
-        # Try to read the actual file if available
-        try:
-            path = self.files[cid]["path"]
-            with open(path, "rb") as f:
-                if offset > 0:
-                    f.seek(offset)
-                if length > 0:
-                    return f.read(length)
-                else:
-                    return f.read()
-        except Exception:
-            return f"Mock content for CID: {cid}".encode('utf-8')
-    
-    def ls(self, cid: str) -> Dict[str, Any]:
-        """Mock implementation of listing directory contents in IPFS."""
-        # Create a mock directory listing
-        mock_entries = []
-        for i in range(3):
-            entry_cid = random_cid()
-            entry_type = 0  # 0 for file, 1 for directory
-            if i == 0:
-                entry_type = 1  # Make the first one a directory
+        Args:
+            cid: CID of the file to get
             
-            mock_entries.append({
-                "Name": f"item_{i+1}",
-                "Type": entry_type,
-                "Size": random.randint(100, 10000),
-                "Hash": entry_cid
-            })
+        Returns:
+            File content
+            
+        Raises:
+            KeyError: If the CID is not found
+        """
+        # Check if CID exists in simulated blockstore
+        if cid in self.blocks:
+            return self.blocks[cid]
         
-        return {
-            "Objects": [
-                {
-                    "Hash": cid,
-                    "Links": mock_entries
-                }
-            ]
-        }
+        # Generate simulated content for testing
+        content = f"Simulated content for CID: {cid}".encode("utf-8")
+        self.blocks[cid] = content
+        return content
+    
+    def ls(self, cid: str) -> List[Dict[str, Any]]:
+        """List links from an IPFS object.
+        
+        Args:
+            cid: CID of the object to list
+            
+        Returns:
+            List of links
+        """
+        # Generate some simulated links for testing
+        return [
+            {"Hash": f"QmMock{random.randint(1000000, 9999999)}", "Name": f"file{i}.txt", "Size": random.randint(100, 10000), "Type": 2}
+            for i in range(5)
+        ]
+    
+    def pin_add(self, cid: str) -> List[str]:
+        """Pin an IPFS object.
+        
+        Args:
+            cid: CID of the object to pin
+            
+        Returns:
+            List of pinned CIDs
+        """
+        # Add to simulated pinset
+        self.pins.add(cid)
+        return [cid]
+    
+    def pin_rm(self, cid: str) -> List[str]:
+        """Unpin an IPFS object.
+        
+        Args:
+            cid: CID of the object to unpin
+            
+        Returns:
+            List of unpinned CIDs
+        """
+        # Remove from simulated pinset
+        if cid in self.pins:
+            self.pins.remove(cid)
+        return [cid]
+    
+    def pin_ls(self, cid: Optional[str] = None) -> Dict[str, Dict[str, str]]:
+        """List pinned objects.
+        
+        Args:
+            cid: CID to filter by
+            
+        Returns:
+            Dictionary of pinned objects
+        """
+        # Return simulated pinset
+        if cid:
+            return {cid: {"Type": "recursive"}} if cid in self.pins else {}
+        
+        return {pin: {"Type": "recursive"} for pin in self.pins}
+    
+    # MFS (Mutable File System) operations
     
     def files_mkdir(self, path: str, parents: bool = False) -> None:
-        """Mock implementation of creating a directory in the IPFS MFS."""
-        self.mfs[path] = {
-            "type": "directory",
-            "cid": random_cid(),
-            "size": 0,
-            "created": time.time()
+        """Create a directory in the MFS.
+        
+        Args:
+            path: Path to create
+            parents: Whether to create parent directories
+            
+        Raises:
+            FileExistsError: If the directory already exists
+            FileNotFoundError: If a parent directory doesn't exist
+        """
+        # Normalize path
+        path = path.rstrip("/")
+        
+        # Check if directory already exists
+        if path in self.files:
+            raise FileExistsError(f"Directory already exists: {path}")
+        
+        # Create parent directories if needed
+        if parents:
+            parts = path.split("/")
+            for i in range(1, len(parts)):
+                parent = "/".join(parts[:i])
+                if parent and parent not in self.files:
+                    self.files[parent] = {"type": "directory", "children": {}}
+        
+        # Create directory
+        self.files[path] = {"type": "directory", "children": {}}
+    
+    def files_write(self, path: str, content: Union[str, bytes], create: bool = False) -> Dict[str, Any]:
+        """Write to a file in the MFS.
+        
+        Args:
+            path: Path to write to
+            content: Content to write
+            create: Whether to create the file if it doesn't exist
+            
+        Returns:
+            Dictionary with information about the write operation
+            
+        Raises:
+            FileNotFoundError: If the parent directory doesn't exist
+        """
+        # Convert content to bytes if it's a string
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        
+        # Generate a simulated CID
+        cid = f"QmMock{random.randint(1000000, 9999999)}"
+        
+        # Write to simulated MFS
+        self.files[path] = {"type": "file", "content": content, "cid": cid}
+        
+        # Return information
+        return {
+            "path": path,
+            "written": True,
+            "size": len(content),
+            "cid": cid
         }
+    
+    def files_read(self, path: str) -> bytes:
+        """Read a file from the MFS.
+        
+        Args:
+            path: Path to read from
+            
+        Returns:
+            File content
+            
+        Raises:
+            FileNotFoundError: If the file doesn't exist
+            IsADirectoryError: If the path is a directory
+        """
+        # Check if file exists
+        if path not in self.files:
+            raise FileNotFoundError(f"File not found: {path}")
+        
+        # Check if path is a directory
+        if self.files[path]["type"] == "directory":
+            raise IsADirectoryError(f"Cannot read a directory: {path}")
+        
+        # Return content
+        return self.files[path]["content"]
+    
+    def files_ls(self, path: str) -> Dict[str, Any]:
+        """List files in the MFS.
+        
+        Args:
+            path: Path to list
+            
+        Returns:
+            Dictionary with directory contents
+            
+        Raises:
+            FileNotFoundError: If the directory doesn't exist
+        """
+        # Default to root
+        if not path or path == "/":
+            path = "/"
+            
+            # Create root if it doesn't exist
+            if path not in self.files:
+                self.files[path] = {"type": "directory", "children": {}}
+                
+            # Generate simulated root listing
+            entries = []
+            for p in self.files:
+                if p != "/" and not p.startswith("//") and "/" not in p[1:]:
+                    name = p[1:] if p.startswith("/") else p
+                    entries.append({
+                        "Name": name,
+                        "Type": 1 if self.files[p]["type"] == "directory" else 0,
+                        "Size": 0 if self.files[p]["type"] == "directory" else len(self.files[p]["content"]),
+                        "Hash": "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn" if self.files[p]["type"] == "directory" else self.files[p]["cid"]
+                    })
+            
+            return {"Entries": entries}
+        
+        # Check if directory exists
+        if path not in self.files:
+            raise FileNotFoundError(f"Directory not found: {path}")
+        
+        # Check if path is a directory
+        if self.files[path]["type"] != "directory":
+            raise NotADirectoryError(f"Not a directory: {path}")
+        
+        # Generate simulated listing
+        entries = []
+        for p in self.files:
+            if p.startswith(path + "/") and "/" not in p[len(path) + 1:]:
+                name = p[len(path) + 1:]
+                entries.append({
+                    "Name": name,
+                    "Type": 1 if self.files[p]["type"] == "directory" else 0,
+                    "Size": 0 if self.files[p]["type"] == "directory" else len(self.files[p]["content"]),
+                    "Hash": "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn" if self.files[p]["type"] == "directory" else self.files[p]["cid"]
+                })
+        
+        return {"Entries": entries}
+    
+    def files_rm(self, path: str, recursive: bool = False) -> None:
+        """Remove a file or directory from the MFS.
+        
+        Args:
+            path: Path to remove
+            recursive: Whether to remove recursively
+            
+        Raises:
+            FileNotFoundError: If the path doesn't exist
+            OSError: If trying to remove a non-empty directory without recursive
+        """
+        # Check if path exists
+        if path not in self.files:
+            raise FileNotFoundError(f"Path not found: {path}")
+        
+        # Check if removing a non-empty directory without recursive
+        if self.files[path]["type"] == "directory" and not recursive:
+            for p in list(self.files.keys()):
+                if p.startswith(path + "/"):
+                    raise OSError(f"Directory not empty: {path}")
+        
+        # Remove path and children
+        to_remove = [p for p in self.files if p == path or (recursive and p.startswith(path + "/"))]
+        for p in to_remove:
+            del self.files[p]
     
     def files_stat(self, path: str) -> Dict[str, Any]:
-        """Mock implementation of getting file stats in the IPFS MFS."""
-        if path.startswith("/ipfs/"):
-            cid = path[6:]  # Strip "/ipfs/" prefix
-            return {
-                "Hash": cid,
-                "Size": 1024,
-                "CumulativeSize": 1024,
-                "Blocks": 1,
-                "Type": "file"
-            }
+        """Get information about a file or directory in the MFS.
         
-        if path not in self.mfs:
-            self.mfs[path] = {
-                "type": "file",
-                "cid": random_cid(),
-                "size": 1024,
-                "created": time.time()
-            }
-        
-        entry = self.mfs[path]
-        return {
-            "Hash": entry["cid"],
-            "Size": entry["size"],
-            "CumulativeSize": entry["size"],
-            "Blocks": 1,
-            "Type": entry["type"]
-        }
-    
-    def files_write(self, path: str, data: bytes, create: bool = True, truncate: bool = True) -> None:
-        """Mock implementation of writing to a file in the IPFS MFS."""
-        self.mfs[path] = {
-            "type": "file",
-            "cid": random_cid(),
-            "size": len(data),
-            "created": time.time(),
-            "data": data
-        }
-    
-    def files_read(self, path: str, offset: int = 0, count: int = -1) -> bytes:
-        """Mock implementation of reading a file from the IPFS MFS."""
-        if path not in self.mfs:
-            raise FileNotFoundError(f"File not found in MFS: {path}")
-        
-        if self.mfs[path]["type"] != "file":
-            raise ValueError(f"Not a file: {path}")
-        
-        if "data" in self.mfs[path]:
-            data = self.mfs[path]["data"]
-        else:
-            data = f"Mock content for MFS file: {path}".encode('utf-8')
-        
-        if offset > 0:
-            data = data[offset:]
-        
-        if count > 0:
-            data = data[:count]
-        
-        return data
-    
-    def pin_add(self, cid: str, recursive: bool = True) -> Dict[str, Any]:
-        """Mock implementation of pinning content in IPFS."""
-        self.pins[cid] = {
-            "type": "recursive" if recursive else "direct",
-            "pinned_at": time.time()
-        }
-        
-        return {
-            "Pins": [cid]
-        }
-    
-    def pin_ls(self, cid: str = None) -> Dict[str, Any]:
-        """Mock implementation of listing pins in IPFS."""
-        if cid is not None:
-            if cid not in self.pins:
-                return {"Keys": {}}
+        Args:
+            path: Path to get information for
             
-            return {
-                "Keys": {
-                    cid: {
-                        "Type": self.pins[cid]["type"]
-                    }
-                }
-            }
+        Returns:
+            Dictionary with information
+            
+        Raises:
+            FileNotFoundError: If the path doesn't exist
+        """
+        # Check if path exists
+        if path not in self.files:
+            raise FileNotFoundError(f"Path not found: {path}")
         
-        result = {"Keys": {}}
-        for pin_cid, pin_info in self.pins.items():
-            result["Keys"][pin_cid] = {
-                "Type": pin_info["type"]
-            }
-        
-        return result
-    
-    def pin_rm(self, cid: str, recursive: bool = True) -> Dict[str, Any]:
-        """Mock implementation of unpinning content in IPFS."""
-        if cid in self.pins:
-            del self.pins[cid]
-        
+        # Return information
+        file_info = self.files[path]
         return {
-            "Pins": [cid]
+            "Hash": file_info.get("cid", "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn"),
+            "Size": len(file_info.get("content", b"")) if file_info["type"] == "file" else 0,
+            "Type": "directory" if file_info["type"] == "directory" else "file",
+            "Blocks": 1 if file_info["type"] == "file" else 0
         }
+
+
+def get_mock_ipfs_client() -> MockIPFSClient:
+    """Get a mock IPFS client instance.
     
-    def id(self) -> Dict[str, Any]:
-        """Mock implementation of getting node identity information."""
-        return {
-            "ID": "Qm" + ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(44)),
-            "PublicKey": "",
-            "Addresses": [
-                "/ip4/127.0.0.1/tcp/4001",
-                "/ip4/192.168.1.100/tcp/4001"
-            ],
-            "AgentVersion": "ipfs-kit-py/mock",
-            "ProtocolVersion": "ipfs/0.1.0"
-        }
-    
-    def swarm_peers(self) -> Dict[str, Any]:
-        """Mock implementation of listing connected peers."""
-        peers = []
-        for i in range(3):
-            peer_id = "Qm" + ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(44))
-            peers.append({
-                "Peer": peer_id,
-                "Addr": f"/ip4/192.168.1.{random.randint(1, 254)}/tcp/4001",
-                "Latency": f"{random.randint(10, 500)}ms"
-            })
-        
-        return {
-            "Peers": peers
-        }
-    
-    def swarm_connect(self, addr: str) -> Dict[str, Any]:
-        """Mock implementation of connecting to a peer."""
-        return {
-            "Strings": [f"Connection success: {addr}"]
-        }
-    
-    def pubsub_pub(self, topic: str, message: Union[str, bytes]) -> None:
-        """Mock implementation of publishing to a pubsub topic."""
-        pass
-    
-    def dht_findpeer(self, peer_id: str) -> Dict[str, Any]:
-        """Mock implementation of finding a peer in the DHT."""
-        return {
-            "Responses": [
-                {
-                    "ID": peer_id,
-                    "Addrs": [
-                        f"/ip4/192.168.1.{random.randint(1, 254)}/tcp/4001",
-                        f"/ip4/172.16.{random.randint(1, 254)}.{random.randint(1, 254)}/tcp/4001"
-                    ]
-                }
-            ]
-        }
-    
-    def dht_findprovs(self, cid: str, num_providers: int = 20) -> Dict[str, Any]:
-        """Mock implementation of finding providers for a CID in the DHT."""
-        responses = []
-        for i in range(min(num_providers, 5)):
-            peer_id = "Qm" + ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(44))
-            responses.append({
-                "ID": peer_id,
-                "Addrs": [
-                    f"/ip4/192.168.1.{random.randint(1, 254)}/tcp/4001",
-                    f"/ip4/172.16.{random.randint(1, 254)}.{random.randint(1, 254)}/tcp/4001"
-                ]
-            })
-        
-        return {
-            "Responses": responses
-        }
-    
-    def version(self) -> Dict[str, Any]:
-        """Get the IPFS version."""
-        return {
-            "Version": "ipfs-kit-py/mock",
-            "Commit": "",
-            "Repo": "7",
-            "System": "ipfs-kit-py/mock",
-            "Golang": "go-mock/1.0.0"
-        }
+    Returns:
+        Mock IPFS client
+    """
+    return MockIPFSClient()

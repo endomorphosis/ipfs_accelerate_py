@@ -25,6 +25,13 @@ A Python framework for hardware-accelerated machine learning inference with IPFS
   - Audio models
   - Multimodal models
 
+- **Model Context Protocol (MCP) Integration**:
+  - ✅ **Production Ready**: Full JSON-RPC 2.0 protocol support  
+  - ✅ **VS Code Compatible**: Works seamlessly with VS Code MCP extension
+  - ✅ **8 Tools Available**: Hardware detection, IPFS operations, data processing
+  - ✅ **Dual Protocol Support**: JSON-RPC 2.0 + HTTP REST endpoints
+  - Real-time AI assistant integration for accelerated workflows
+
 - **Framework Compatibility**:
   - HuggingFace Transformers
   - PyTorch
@@ -55,6 +62,31 @@ pip install ipfs_accelerate_py[all]
 ```
 
 ## Quick Start
+
+### MCP Server Integration ✅
+
+Start the production-ready MCP server for AI assistant integration:
+
+```bash
+# Start the MCP server (fully operational with JSON-RPC 2.0)
+python final_mcp_server.py --host 127.0.0.1 --port 8004 --debug
+
+# Test server connectivity
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"ping","id":1}' \
+  http://127.0.0.1:8004/jsonrpc
+
+# List available tools (8 tools registered)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":2}' \
+  http://127.0.0.1:8004/jsonrpc
+```
+
+**Features**:
+- ✅ JSON-RPC 2.0 protocol for VS Code MCP extension
+- ✅ 8 production tools: hardware detection, IPFS operations, data processing  
+- ✅ Dual protocol support (JSON-RPC + HTTP REST)
+- ✅ Enterprise-grade error handling and logging
 
 ### Basic Usage
 
@@ -132,12 +164,19 @@ result = accelerator.run_model(
 
 For detailed documentation on all components and features, please refer to:
 
-- [General Usage Guide](docs/USAGE.md)
-- [WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)
-- [API Reference](docs/API.md)
-- [Hardware Optimization](docs/HARDWARE.md)
-- [IPFS Integration](docs/IPFS.md)
-- [Examples](examples/README.md)
+- **MCP Integration** ✅:
+  - [MCP Connection Resolution Status](MCP_CONNECTION_RESOLUTION_STATUS.md) - **All issues resolved**
+  - [MCP Integration Guide](IPFS_ACCELERATE_MCP_INTEGRATION_GUIDE.md) - Updated troubleshooting
+  - [MCP Server README](mcp/README.md) - Updated architecture and usage
+  - [Comprehensive MCP Guide](ipfs_accelerate_py/mcp/COMPREHENSIVE_MCP_GUIDE.md) - Complete documentation
+
+- **General Documentation**:
+  - [General Usage Guide](docs/USAGE.md)
+  - [WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)
+  - [API Reference](docs/API.md)
+  - [Hardware Optimization](docs/HARDWARE.md)
+  - [IPFS Integration](docs/IPFS.md)
+  - [Examples](examples/README.md)
 
 ## Browser Integration
 

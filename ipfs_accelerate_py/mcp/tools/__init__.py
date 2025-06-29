@@ -24,9 +24,11 @@ def register_all_tools(mcp: Any) -> None:
     try:
         # Import tools
         from ipfs_accelerate_py.mcp.tools.hardware import register_hardware_tools
+        from ipfs_accelerate_py.mcp.tools.ipfs import register_with_mcp as register_ipfs_tools
         
         # Register tools
         register_hardware_tools(mcp)
+        register_ipfs_tools(mcp)
         
         logger.debug("All tools registered with MCP server")
     

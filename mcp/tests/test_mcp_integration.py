@@ -1,123 +1,136 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-Test script for the IPFS Accelerate MCP server.
+MCP Integration Test
 
-This script tests the MCP server functionality by:
-1. Creating an MCP server instance
-2. Testing that tools and resources are registered correctly
-3. Starting the server in test mode and making a simple request
+This script tests the full integration of IPFS Accelerate with the MCP server.
+It starts the server, connects a client, and tests various functionality.
 """
-import sys
-import logging
+
 import os
+import sys
 import json
-import httpx
-import asyncio
-from multiprocessing import Process
+import logging
 import time
+import unittest
+from contextlib import contextmanager
+import multiprocessing
+
+# Add the parent directory to the system path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
-logger = logging.getLogger("mcp_test")
 
-# Add the parent directory to sys.path if needed
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+logger = logging.getLogger(__name__)
 
-# Import the required modules
-from ipfs_accelerate_py import ipfs_accelerate_py
-from mcp.server import create_mcp_server, get_mcp_server_instance
-from mcp.integration import initialize_mcp_server
-from fastapi import FastAPI
-import uvicorn
-
-def start_server():
-    """Start the MCP server in a separate process for testing."""
-    # Create IPFS Accelerate instance
-    accelerate = ipfs_accelerate_py()
+@contextmanager
+def start_test_server(port=8765):
+    """Start a test MCP server in a separate process"""
+    from mcp.server import app, register_tool
+    import uvicorn
     
-    # Create FastAPI app for testing
-    app = FastAPI(title="MCP Test App")
-    
-    # Initialize the MCP server with our app
-    initialize_mcp_server(app, accelerate)
-    
-    # Run the server
-    uvicorn.run(app, host="127.0.0.1", port=8765)
-
-async def test_mcp_server():
-    """Test the MCP server by making requests to it."""
-    # Start server in a separate process
-    server_process = Process(target=start_server)
-    server_process.start()
+    # Start the server in a separate process
+    process = multiprocessing.Process(
+        target=uvicorn.run,
+        kwargs={
+            "app": app,
+            "host": "127.0.0.1",
+            "port": port,
+            "log_level": "error",
+        },
+    )
+    process.daemon = True
+    process.start()
     
     try:
-        # Wait for server to start
-        logger.info("Waiting for server to start...")
-        await asyncio.sleep(3)
-        
-        # Create a client
-        logger.info("Creating client and testing server...")
-        base_url = "http://127.0.0.1:8765/mcp"
-        
-        async with httpx.AsyncClient() as client:
-            # Test server info endpoint
-            response = await client.get(base_url)
-            logger.info(f"Server info status: {response.status_code}")
-            if response.status_code == 200:
-                server_info = response.json()
-                logger.info(f"Server name: {server_info.get('name')}")
-                logger.info(f"Server description: {server_info.get('description')}")
-            else:
-                logger.error(f"Failed to get server info: {response.text}")
-            
-            # Test health endpoint
-            response = await client.get(f"{base_url}/health")
-            logger.info(f"Health endpoint status: {response.status_code}")
-            if response.status_code == 200:
-                health_info = response.json()
-                logger.info(f"Health status: {json.dumps(health_info, indent=2)}")
-            else:
-                logger.error(f"Health endpoint error: {response.text}")
-            
-            # Test system info resource
-            response = await client.get(f"{base_url}/resources/system://info")
-            logger.info(f"System info resource status: {response.status_code}")
-            if response.status_code == 200:
-                system_info = response.json()
-                logger.info(f"System platform: {system_info.get('platform')}")
-            else:
-                logger.error(f"Failed to get system info: {response.text}")
-            
-            # Test hardware detection tool
-            response = await client.post(
-                f"{base_url}/tools/detect_hardware",
-                json={}
-            )
-            logger.info(f"Hardware detection tool status: {response.status_code}")
-            if response.status_code == 200:
-                hardware_info = response.json()
-                logger.info(f"Hardware detection result: {json.dumps(hardware_info, indent=2)}")
-            else:
-                logger.error(f"Failed to call hardware detection tool: {response.text}")
-                
-    except Exception as e:
-        logger.error(f"Error during test: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        # Wait for the server to start
+        time.sleep(2)
+        yield port
     finally:
-        # Terminate the server process
-        logger.info("Terminating server...")
-        server_process.terminate()
-        server_process.join()
+        # Terminate the server
+        process.terminate()
+        process.join(timeout=1)
+        if process.is_alive():
+            process.kill()
 
-def run_tests():
-    """Run the MCP server tests."""
-    logger.info("Starting MCP server tests")
-    asyncio.run(test_mcp_server())
-    logger.info("MCP server tests completed")
+class TestMCPIntegration(unittest.TestCase):
+    """Test cases for MCP integration"""
+    
+    def setUp(self):
+        """Set up the test case"""
+        self.test_port = 8765
+    
+    def test_server_client_integration(self):
+        """Test full integration of server and client"""
+        from mcp import MCPClient, is_server_running
+        
+        with start_test_server(self.test_port):
+            # Check server availability
+            is_running = is_server_running(self.test_port, host="127.0.0.1")
+            self.assertTrue(is_running, "Server should be running")
+            
+            # Create client
+            client = MCPClient(host="127.0.0.1", port=self.test_port)
+            self.assertTrue(client.is_server_available(), "Client should detect server")
+            
+            # Get hardware info
+            hardware_info = client.get_hardware_info()
+            self.assertIsInstance(hardware_info, dict, "Hardware info should be a dictionary")
+            self.assertIn("system", hardware_info, "Hardware info should contain system information")
+            self.assertIn("accelerators", hardware_info, "Hardware info should contain accelerator information")
+            
+            # Print hardware info for debugging
+            logger.info(f"System: {hardware_info.get('system', {}).get('os', 'Unknown')}")
+            logger.info(f"CPU: {hardware_info.get('accelerators', {}).get('cpu', {}).get('available', False)}")
+            
+            # Access system_info resource
+            try:
+                system_info = client.access_resource("system_info")
+                self.assertIsInstance(system_info, dict, "System info should be a dictionary")
+                logger.info(f"System info: {system_info.get('os', 'Unknown')}")
+            except Exception as e:
+                self.fail(f"Access to system_info resource failed: {e}")
+            
+            # Access accelerator_info resource
+            try:
+                accelerator_info = client.access_resource("accelerator_info")
+                self.assertIsInstance(accelerator_info, dict, "Accelerator info should be a dictionary")
+                logger.info(f"Accelerators: {list(accelerator_info.keys())}")
+            except Exception as e:
+                self.fail(f"Access to accelerator_info resource failed: {e}")
+    
+    def test_server_manifest(self):
+        """Test server manifest endpoint"""
+        import requests
+        
+        with start_test_server(self.test_port):
+            # Get server manifest
+            response = requests.get(f"http://127.0.0.1:{self.test_port}/mcp/manifest")
+            self.assertEqual(response.status_code, 200, "Manifest endpoint should return 200")
+            
+            manifest = response.json()
+            self.assertIsInstance(manifest, dict, "Manifest should be a dictionary")
+            self.assertIn("tools", manifest, "Manifest should contain tools")
+            self.assertIn("resources", manifest, "Manifest should contain resources")
+            
+            # Check tools
+            tools = manifest["tools"]
+            self.assertIn("get_hardware_info", tools, "get_hardware_info tool should be available")
+            
+            # Check resources
+            resources = manifest["resources"]
+            self.assertIn("system_info", resources, "system_info resource should be available")
+            self.assertIn("accelerator_info", resources, "accelerator_info resource should be available")
+            
+            logger.info(f"Server name: {manifest.get('server_name', 'Unknown')}")
+            logger.info(f"Server version: {manifest.get('version', 'Unknown')}")
+
+def main():
+    """Run the tests"""
+    unittest.main()
 
 if __name__ == "__main__":
-    run_tests()
+    main()

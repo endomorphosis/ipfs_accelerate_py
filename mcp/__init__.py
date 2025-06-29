@@ -1,65 +1,39 @@
 """
-IPFS Accelerate MCP - Model Context Protocol integration for IPFS Accelerate
+IPFS Accelerate MCP Integration
 
-This package provides an MCP server implementation that exposes IPFS Accelerate
-functionality to LLMs, allowing them to interact with IPFS operations and hardware
-acceleration.
+This package integrates the IPFS Accelerate library with the Model Context Protocol (MCP),
+allowing AI models to access hardware information and model inference capabilities.
 """
 
-import importlib
-import logging
 import os
 import sys
-from typing import Any, Dict, Optional
+import logging
+from typing import Tuple, Dict, Any, Optional, Union, List
+
+__version__ = "0.1.0"
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
-logger = logging.getLogger("ipfs_accelerate_mcp")
+logger = logging.getLogger(__name__)
 
-# Version information
-__version__ = "0.1.0"  # Initial version
-
-# Explicitly import and expose key components
+# Import key components from submodules
 try:
-    # Try to import FastMCP if available
-    from fastmcp import FastMCP, Context
-    fastmcp_available = True
-    logger.info("Using real FastMCP implementation")
-except ImportError:
-    # Fall back to mock implementation if FastMCP is not available
-    from mcp.mock_mcp import FastMCP, Context
-    fastmcp_available = False
-    logger.warning("FastMCP import failed, falling back to mock implementation")
-    logger.warning("Using mock MCP implementation")
+    from .client import MCPClient, get_hardware_info, is_server_running, start_server
+    from .server import register_tool, register_resource
+    from .tools import get_hardware_info
+except ImportError as e:
+    logger.warning(f"Error importing MCP components: {e}")
+    logger.warning("Some functionality may not be available")
 
-# Check for ipfs_kit_py
-try:
-    import ipfs_kit_py
-    ipfs_kit_available = True
-    logger.info("IPFS Kit available")
-except ImportError:
-    ipfs_kit_available = False
-    logger.warning("IPFS Kit not available, some functionality will be limited")
-
-# Import key modules for easy access
-from mcp.types import IPFSAccelerateContext
-from mcp.server import create_ipfs_mcp_server, run_server
-
-# Initialize the package
-logger.info("IPFS Accelerate MCP package initialized")
-
-
-def get_version() -> str:
-    """Get the package version."""
-    return __version__
-
-
-# Ensure the mock_mcp module is loaded when needed
-if not fastmcp_available:
-    try:
-        import mcp.mock_mcp
-    except ImportError:
-        logger.error("Failed to import mock_mcp module")
+# List of exported components
+__all__ = [
+    "MCPClient",
+    "get_hardware_info",
+    "is_server_running",
+    "start_server",
+    "register_tool",
+    "register_resource",
+]

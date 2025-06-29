@@ -1,8 +1,16 @@
 # Core dependencies
 aiohttp>=3.8.1
 duckdb>=0.7.0
-ipfshttpclient>=0.8.0
+ipfshttpclient>=0.8.0a2
 websockets>=10.1
+
+# FastMCP dependencies
+fastapi>=0.95.0
+uvicorn>=0.22.0
+pydantic>=1.10.7
+sse-starlette>=1.6.0
+httpx>=0.24.0
+orjson>=3.8.10
 
 # Optional dependencies for WebNN/WebGPU support
 # Uncomment the one that works best for your platform
@@ -16,3 +24,7 @@ websockets>=10.1
 # Optional utilities
 tqdm>=4.64.0
 numpy>=1.23.0
+
+# MCP Server dependencies
+transformers
+jsonrpcserver

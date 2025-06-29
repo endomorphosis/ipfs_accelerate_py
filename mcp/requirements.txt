@@ -1,0 +1,16 @@
+# IPFS Accelerate MCP Requirements
+
+# HTTP Client and Server
+requests>=2.25.0
+fastapi>=0.68.0
+uvicorn>=0.15.0
+pydantic>=1.8.0
+
+# Async HTTP Client (for SSE)
+aiohttp>=3.8.0
+
+# System Information
+psutil>=5.8.0
+
+# Utilities
+python-dotenv>=0.19.0

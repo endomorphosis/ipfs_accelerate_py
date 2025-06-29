@@ -1,111 +1,43 @@
 """
-Tools package for IPFS Accelerate MCP.
+IPFS Accelerate MCP Tools
 
-This package provides tools that can be used by LLMs through the MCP interface.
-Tools are organized by functionality into separate modules.
+This package contains tools registered with the MCP server.
 """
 
-import importlib
 import logging
-import sys
-from typing import Any, Dict, List, Optional, Set, cast
+from typing import Dict, Any
 
 # Configure logging
-logger = logging.getLogger("mcp.tools")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-# Try imports with fallbacks
+# Import tools
 try:
-    from mcp.server.fastmcp import FastMCP
-except ImportError:
-    try:
-        from fastmcp import FastMCP
-    except ImportError:
-        # Fall back to mock implementation
-        from mcp.mock_mcp import FastMCP
+    from .hardware import get_hardware_info
+except ImportError as e:
+    logger.warning(f"Error importing hardware tools: {e}")
+    
+    # Define fallback function
+    def get_hardware_info() -> Dict[str, Any]:
+        """Fallback function for hardware info"""
+        import platform
+        
+        return {
+            "system": {
+                "os": platform.system(),
+                "os_version": platform.version(),
+                "architecture": platform.machine(),
+                "python_version": platform.python_version(),
+            },
+            "accelerators": {
+                "cuda": {"available": False},
+                "webgpu": {"available": False},
+                "webnn": {"available": False},
+            }
+        }
 
-# Try to import ipfs_kit_py
-try:
-    import ipfs_kit_py
-    # Check if IPFSApi is available
-    try:
-        from ipfs_kit_py import IPFSApi
-        ipfs_api_available = True
-    except ImportError:
-        logger.warning("IPFSApi not available in ipfs_kit_py")
-        ipfs_api_available = False
-    
-    ipfs_kit_available = True
-except ImportError:
-    ipfs_kit_available = False
-    ipfs_api_available = False
-    logger.warning("ipfs_kit_py not available. Using mock implementations.")
-
-# Import the mock IPFS client
-from mcp.tools.mock_ipfs import MockIPFSClient
-
-
-def register_all_tools(mcp: FastMCP) -> None:
-    """Register all tools with the MCP server.
-    
-    Args:
-        mcp: The MCP server to register tools with
-    """
-    logger.info("Registering all tools")
-    
-    # List of tool modules to import
-    tool_modules = [
-        "acceleration",
-        "ipfs_files",
-        "ipfs_network"
-    ]
-    
-    # Track registered tool modules
-    registered_modules = set()
-    
-    # Check if ipfs_kit_py is available
-    if not ipfs_kit_available:
-        logger.warning("Error importing tool modules: ipfs_kit_py not available")
-    
-    # Register tools from each module
-    for module_name in tool_modules:
-        try:
-            logger.info(f"Importing module: {module_name}")
-            
-            # Import the module
-            module = importlib.import_module(f"mcp.tools.{module_name}")
-            
-            # Register tools from the module
-            register_function = getattr(module, f"register_{module_name.replace('ipfs_', '')}_tools", None)
-            if register_function:
-                register_function(mcp)
-                registered_modules.add(module_name)
-            else:
-                logger.warning(f"No registration function found in module {module_name}")
-        except Exception as e:
-            logger.error(f"Error registering tools from module {module_name}: {str(e)}")
-    
-    logger.info("Tool registration complete")
-    
-    # If no modules were registered, log a warning
-    if not registered_modules:
-        logger.warning("No tool modules were registered")
-
-
-def get_ipfs_client() -> Any:
-    """Get an IPFS client instance.
-    
-    This function returns either a real IPFS client from ipfs_kit_py if available,
-    or a mock client if ipfs_kit_py is not available.
-    
-    Returns:
-        An IPFS client instance
-    """
-    if ipfs_api_available:
-        try:
-            # Try to create a real IPFS client
-            return ipfs_kit_py.IPFSApi()
-        except Exception as e:
-            logger.warning(f"Error creating IPFSApi: {str(e)}")
-    
-    # Fall back to mock implementation
-    return MockIPFSClient()
+# Export functions
+__all__ = ["get_hardware_info"]

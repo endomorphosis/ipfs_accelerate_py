@@ -1,23 +1,21 @@
 # Core dependencies
 fastmcp>=0.1.0
-anyio>=3.7.0
-typing_extensions>=4.5.0
+fastapi>=0.95.0
+uvicorn>=0.21.1
+pydantic>=1.10.7
+starlette>=0.26.1
 
-# IPFS integration
+# IPFS dependencies
 ipfs-kit-py>=0.1.0
 
-# Optional dependencies
-# For WebSocket transport
-websockets>=10.4; extra == "ws"
+# Optional SSE transport
+sse-starlette>=1.6.5
 
-# For Server-Sent Events transport
-sse-starlette>=1.6.1; extra == "sse"
-starlette>=0.26.1; extra == "sse"
-uvicorn>=0.22.0; extra == "sse"
+# Async utilities
+anyio>=3.6.2
+httpx>=0.24.0
+websockets>=11.0.2
 
-# For development and testing
-pytest>=7.3.1; extra == "dev"
-pytest-asyncio>=0.21.0; extra == "dev"
-black>=23.3.0; extra == "dev"
-isort>=5.12.0; extra == "dev"
-mypy>=1.3.0; extra == "dev"
+# Testing and development
+pytest>=7.3.1
+pytest-asyncio>=0.21.0
