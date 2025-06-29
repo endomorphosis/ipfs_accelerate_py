@@ -1,0 +1,269 @@
+# Docker Compose for Mojo Testing Environment
+# 
+# Provides complete testing infrastructure including:
+# - MCP Server
+# - Mock IPFS node  
+# - Test runners
+# - Monitoring and reporting
+
+version: '3.8'
+
+services:
+  # Main MCP server for testing
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mojo
+      target: testing
+    container_name: mojo-mcp-server
+    ports:
+      - "8004:8004"
+    environment:
+      - PYTHONPATH=/app
+      - MOJO_MOCK_MODE=true
+      - LOG_LEVEL=INFO
+      - TEST_ENVIRONMENT=docker
+    volumes:
+      - ./test-results:/app/test-results
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - mojo-test-network
+
+  # Mock IPFS node for testing
+  ipfs-mock:
+    image: ipfs/go-ipfs:latest
+    container_name: mojo-ipfs-mock
+    ports:
+      - "5001:5001"
+      - "8080:8080"
+    environment:
+      - IPFS_PROFILE=test
+    volumes:
+      - ipfs-data:/data/ipfs
+    networks:
+      - mojo-test-network
+
+  # Unit test runner
+  unit-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.mojo
+      target: testing
+    container_name: mojo-unit-tests
+    environment:
+      - PYTHONPATH=/app
+      - MOJO_MOCK_MODE=true
+      - TEST_TYPE=unit
+      - MCP_SERVER_HOST=mcp-server
+      - MCP_SERVER_PORT=8004
+    volumes:
+      - ./test-results:/app/test-results
+      - ./logs:/app/logs
+    command: >
+      sh -c "
+        echo 'Waiting for MCP server...' &&
+        until curl -f http://mcp-server:8004/health; do sleep 5; done &&
+        echo 'Running unit tests...' &&
+        pytest tests/test_modular_integration.py -v -m unit --tb=short --timeout=300 --junit-xml=/app/test-results/unit-tests.xml
+      "
+    depends_on:
+      - mcp-server
+    networks:
+      - mojo-test-network
+
+  # Integration test runner
+  integration-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.mojo
+      target: testing
+    container_name: mojo-integration-tests
+    environment:
+      - PYTHONPATH=/app
+      - MOJO_MOCK_MODE=true
+      - TEST_TYPE=integration
+      - MCP_SERVER_HOST=mcp-server
+      - MCP_SERVER_PORT=8004
+      - IPFS_HOST=ipfs-mock
+      - IPFS_PORT=5001
+    volumes:
+      - ./test-results:/app/test-results
+      - ./logs:/app/logs
+    command: >
+      sh -c "
+        echo 'Waiting for services...' &&
+        until curl -f http://mcp-server:8004/health; do sleep 5; done &&
+        until curl -f http://ipfs-mock:5001/api/v0/id; do sleep 5; done &&
+        echo 'Running integration tests...' &&
+        pytest tests/test_modular_integration.py -v -m integration --tb=short --timeout=300 --junit-xml=/app/test-results/integration-tests.xml
+      "
+    depends_on:
+      - mcp-server
+      - ipfs-mock
+    networks:
+      - mojo-test-network
+
+  # End-to-end test runner
+  e2e-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.mojo
+      target: testing
+    container_name: mojo-e2e-tests
+    environment:
+      - PYTHONPATH=/app
+      - MOJO_MOCK_MODE=true
+      - TEST_TYPE=e2e
+      - MCP_SERVER_HOST=mcp-server
+      - MCP_SERVER_PORT=8004
+    volumes:
+      - ./test-results:/app/test-results
+      - ./logs:/app/logs
+    command: >
+      sh -c "
+        echo 'Waiting for MCP server...' &&
+        until curl -f http://mcp-server:8004/health; do sleep 5; done &&
+        echo 'Running E2E tests...' &&
+        pytest tests/e2e/test_mojo_e2e.py -v -s --tb=short --timeout=600 --junit-xml=/app/test-results/e2e-tests.xml
+      "
+    depends_on:
+      - mcp-server
+      - ipfs-mock
+    networks:
+      - mojo-test-network
+
+  # Performance test runner
+  performance-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.mojo
+      target: testing
+    container_name: mojo-performance-tests
+    environment:
+      - PYTHONPATH=/app
+      - MOJO_MOCK_MODE=true
+      - TEST_TYPE=performance
+      - MCP_SERVER_HOST=mcp-server
+      - MCP_SERVER_PORT=8004
+    volumes:
+      - ./test-results:/app/test-results
+      - ./logs:/app/logs
+    command: >
+      sh -c "
+        echo 'Waiting for MCP server...' &&
+        until curl -f http://mcp-server:8004/health; do sleep 5; done &&
+        echo 'Running performance tests...' &&
+        pytest tests/e2e/test_mojo_e2e.py::TestMojoPerformance -v --tb=short --timeout=900 --benchmark-json=/app/test-results/performance.json
+      "
+    depends_on:
+      - mcp-server
+    networks:
+      - mojo-test-network
+
+  # Code quality checker
+  quality-check:
+    build:
+      context: .
+      dockerfile: Dockerfile.mojo
+      target: testing
+    container_name: mojo-quality-check
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./test-results:/app/test-results
+      - ./logs:/app/logs
+    command: >
+      sh -c "
+        echo 'Running code quality checks...' &&
+        black --check --diff src/ final_mcp_server.py > /app/test-results/black-check.log 2>&1 || true &&
+        flake8 src/ final_mcp_server.py --max-line-length=100 > /app/test-results/flake8-check.log 2>&1 || true &&
+        mypy src/ final_mcp_server.py --ignore-missing-imports > /app/test-results/mypy-check.log 2>&1 || true &&
+        bandit -r src/ final_mcp_server.py > /app/test-results/bandit-check.log 2>&1 || true &&
+        safety check > /app/test-results/safety-check.log 2>&1 || true &&
+        echo 'Quality checks completed'
+      "
+    networks:
+      - mojo-test-network
+
+  # Test reporter - aggregates results
+  test-reporter:
+    build:
+      context: .
+      dockerfile: Dockerfile.mojo
+      target: testing
+    container_name: mojo-test-reporter
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./test-results:/app/test-results
+      - ./logs:/app/logs
+    command: >
+      sh -c "
+        echo 'Waiting for tests to complete...' &&
+        sleep 30 &&
+        echo 'Generating test report...' &&
+        python3 scripts/generate_test_report.py /app/test-results &&
+        echo 'Report generation completed'
+      "
+    depends_on:
+      - unit-tests
+      - integration-tests
+      - e2e-tests
+      - quality-check
+    networks:
+      - mojo-test-network
+
+  # Monitoring dashboard (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mojo-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - mojo-test-network
+    profiles:
+      - monitoring
+
+  # Prometheus for metrics collection (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mojo-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - mojo-test-network
+    profiles:
+      - monitoring
+
+networks:
+  mojo-test-network:
+    driver: bridge
+
+volumes:
+  ipfs-data:
+  grafana-data:
+  prometheus-data:
+
+# Override configurations for different environments
+# Usage examples:
+#   docker-compose up                    # Run MCP server only
+#   docker-compose --profile test up     # Run all tests
+#   docker-compose --profile monitoring up  # Include monitoring

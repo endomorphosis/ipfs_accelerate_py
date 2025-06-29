@@ -28,3 +28,8 @@ numpy>=1.23.0
 # MCP Server dependencies
 transformers
 jsonrpcserver
+
+# HuggingFace and PyTorch dependencies for comprehensive testing
+torch
+diffusers
+accelerate

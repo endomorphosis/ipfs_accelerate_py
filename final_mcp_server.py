@@ -170,7 +170,7 @@ class MCPServer:
             return func
         return decorator
 
-    def register_tool(self, name: str, func: Callable, description: str = "", parameter_descriptions: Optional[Dict[str, str]] = None):
+    def register_tool(self, name: str, func: Callable, description: str = "", parameter_descriptions: Optional[Dict[str, Any]] = None):
         """Register a tool with the server"""
         if name in self.tools:
             logger.warning(f"Tool {name} already registered, overwriting")
@@ -356,6 +356,223 @@ def register_model_tools(server_instance: MCPServer, accel: Any):
 
     logger.info("Registered model tools")
 
+def register_modular_tools(server_instance: MCPServer, accel: Any):
+    """Register Modular/MAX/Mojo-related tools."""
+    
+    async def compile_to_mojo(model_id: str, optimization_level: str = "O2") -> Dict[str, Any]:
+        """Compile model to Mojo for maximum performance."""
+        logger.info(f"Compiling {model_id} to Mojo with optimization {optimization_level}")
+        try:
+            # Mock implementation for now - will be replaced with actual Mojo compilation
+            result = {
+                "model_id": model_id,
+                "optimization_level": optimization_level,
+                "status": "compilation_started",
+                "compiled_path": f"mock_mojo_{model_id}.bin",
+                "compilation_time": 45.2,
+                "optimization_applied": ["vectorization", "loop_unrolling", "simd_optimization"],
+                "success": True
+            }
+            logger.info(f"Mock Mojo compilation initiated for {model_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Mojo compilation failed: {e}")
+            return {"error": str(e), "success": False}
+    
+    async def compile_to_max(model_id: str, target_device: str = "auto") -> Dict[str, Any]:
+        """Compile model to MAX intermediate representation."""
+        logger.info(f"Executing compile_to_max tool for model: {model_id} on device: {target_device}")
+        try:
+            # Mock implementation for now
+            # In a real scenario, this would involve calling MAX compilation tools
+            result = {
+                "model_id": model_id,
+                "target_device": target_device,
+                "status": "compilation_started",
+                "output_ir": f"mock_max_ir_{model_id}.max",
+                "graph_optimizations": ["operator_fusion", "memory_layout_optimization", "constant_folding"],
+                "estimated_speedup": "2.3x",
+                "success": True
+            }
+            logger.info(f"Mock MAX compilation initiated for {model_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Error compiling to MAX: {str(e)}")
+            return {"error": str(e), "success": False}
+
+    async def deploy_max_engine(model_id: str, target_hardware: str = "auto") -> Dict[str, Any]:
+        """Deploy model using MAX Engine for optimized inference."""
+        logger.info(f"Deploying {model_id} on MAX Engine targeting {target_hardware}")
+        try:
+            # Mock implementation for now
+            result = {
+                "model_id": model_id,
+                "target_hardware": target_hardware,
+                "status": "serving_started",
+                "endpoint_url": f"http://localhost:8000/v1/models/{model_id}/infer",
+                "serving_backend": "max_engine",
+                "allocated_memory_mb": 2048,
+                "concurrent_requests": 8,
+                "success": True
+            }
+            logger.info(f"Mock MAX Engine deployment initiated for {model_id}")
+            return result
+        except Exception as e:
+            logger.error(f"MAX deployment failed: {e}")
+            return {"error": str(e), "success": False}
+
+    async def serve_max_model(model_id: str, port: int = 8000) -> Dict[str, Any]:
+        """Serve a MAX model via an OpenAI-compatible endpoint."""
+        logger.info(f"Executing serve_max_model tool for model: {model_id} on port: {port}")
+        try:
+            # Mock implementation for now
+            # In a real scenario, this would involve starting a MAX serving process
+            result = {
+                "model_id": model_id,
+                "port": port,
+                "status": "serving_started",
+                "endpoint_url": f"http://localhost:{port}/v1/chat/completions",
+                "openai_compatible": True,
+                "max_concurrent_requests": 16,
+                "success": True
+            }
+            logger.info(f"Mock MAX serving initiated for {model_id} on port {port}")
+            return result
+        except Exception as e:
+            logger.error(f"Error serving MAX model: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def benchmark_modular_performance(model_id: str, workload_type: str = "inference") -> Dict[str, Any]:
+        """Benchmark model performance on Modular hardware."""
+        logger.info(f"Benchmarking {model_id} for {workload_type} on Modular hardware")
+        try:
+            # Mock implementation for now
+            result = {
+                "model_id": model_id,
+                "workload_type": workload_type,
+                "benchmark_results": {
+                    "throughput_tokens_per_sec": 1250.5,
+                    "latency_ms": {
+                        "p50": 12.3,
+                        "p95": 18.7,
+                        "p99": 25.1
+                    },
+                    "memory_usage_mb": 1024,
+                    "energy_consumption_watts": 45.2,
+                    "compute_utilization_percent": 87.5
+                },
+                "comparison_vs_baseline": {
+                    "speedup": "2.1x",
+                    "memory_reduction": "35%",
+                    "energy_efficiency": "40% better"
+                },
+                "success": True
+            }
+            logger.info(f"Mock Modular benchmarking completed for {model_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Modular benchmarking failed: {e}")
+            return {"error": str(e), "success": False}
+    
+    async def detect_modular_hardware(include_capabilities: bool = True) -> Dict[str, Any]:
+        """Detect available Modular hardware and capabilities."""
+        logger.info("Detecting Modular hardware capabilities")
+        try:
+            # Mock implementation for now
+            result = {
+                "mojo_available": True,
+                "max_engine_available": True,
+                "modular_version": "24.5.0",
+                "detected_devices": [
+                    {
+                        "type": "cpu",
+                        "name": "Intel Xeon E5-2690 v4",
+                        "cores": 16,
+                        "simd_width": 8,
+                        "supported_dtypes": ["float32", "float16", "int8"]
+                    },
+                    {
+                        "type": "gpu", 
+                        "name": "NVIDIA A100",
+                        "memory_gb": 80,
+                        "compute_capability": "8.0",
+                        "supported_dtypes": ["float32", "float16", "bfloat16", "int8", "int4"]
+                    }
+                ],
+                "capabilities": {
+                    "vectorization": True,
+                    "graph_optimization": True,
+                    "kernel_fusion": True,
+                    "mixed_precision": True,
+                    "dynamic_batching": True
+                } if include_capabilities else {},
+                "success": True
+            }
+            logger.info("Mock Modular hardware detection completed")
+            return result
+        except Exception as e:
+            logger.error(f"Hardware detection failed: {e}")
+            return {"error": str(e), "success": False}
+
+    # Register tools with proper schemas
+    server_instance.register_tool("compile_to_mojo", compile_to_mojo, 
+        "Compile model to Mojo for maximum performance", {
+            "type": "object",
+            "properties": {
+                "model_id": {"type": "string", "description": "Model identifier"},
+                "optimization_level": {"type": "string", "enum": ["O0", "O1", "O2", "O3"], "default": "O2", "description": "Optimization level (O0=none, O1=basic, O2=default, O3=aggressive)"}
+            },
+            "required": ["model_id"]
+        })
+
+    server_instance.register_tool("compile_to_max", compile_to_max, "Compile model to MAX intermediate representation", {
+        "type": "object",
+        "properties": {
+            "model_id": {"type": "string", "description": "ID of the model to compile"},
+            "target_device": {"type": "string", "description": "Target device for compilation (e.g., 'cpu', 'gpu', 'auto')", "default": "auto"}
+        },
+        "required": ["model_id"]
+    })
+    
+    server_instance.register_tool("deploy_max_engine", deploy_max_engine,
+        "Deploy model using MAX Engine for optimized inference", {
+            "type": "object", 
+            "properties": {
+                "model_id": {"type": "string", "description": "Model identifier"},
+                "target_hardware": {"type": "string", "description": "Target hardware (cpu, gpu, auto)", "default": "auto"}
+            },
+            "required": ["model_id"]
+        })
+
+    server_instance.register_tool("serve_max_model", serve_max_model, "Serve a MAX model via an OpenAI-compatible endpoint", {
+        "type": "object",
+        "properties": {
+            "model_id": {"type": "string", "description": "ID of the MAX model to serve"},
+            "port": {"type": "integer", "description": "Port to serve the model on", "default": 8000}
+        },
+        "required": ["model_id"]
+    })
+    
+    server_instance.register_tool("benchmark_modular_performance", benchmark_modular_performance,
+        "Benchmark model performance on Modular hardware", {
+            "type": "object",
+            "properties": {
+                "model_id": {"type": "string", "description": "Model identifier"},
+                "workload_type": {"type": "string", "enum": ["inference", "training", "mixed"], "default": "inference", "description": "Type of workload to benchmark"}
+            },
+            "required": ["model_id"]
+        })
+    
+    server_instance.register_tool("detect_modular_hardware", detect_modular_hardware,
+        "Detect available Modular hardware and capabilities", {
+            "type": "object",
+            "properties": {
+                "include_capabilities": {"type": "boolean", "default": True, "description": "Include detailed capability information"}
+            }
+        })
+    
+    logger.info("Registered Modular/MAX/Mojo tools")
+
 def register_vfs_tools(server_instance: MCPServer, accel: Any):
     """Register virtual filesystem tools."""
     # These are basic implementations since we don't have the actual VFS implementation
@@ -420,6 +637,7 @@ def register_all_tools(server_instance: MCPServer, accel: Any):
         register_hardware_tools(server_instance, accel)
         register_ipfs_tools(server_instance, accel)
         register_model_tools(server_instance, accel)
+        register_modular_tools(server_instance, accel) # Call the new Modular/MAX/Mojo tool registration
         register_vfs_tools(server_instance, accel)
         register_storage_tools(server_instance, accel)
         logger.info(f"Total tools registered: {len(server_instance.tools)}")
@@ -698,71 +916,21 @@ class MockIPFSAccelerate:
     async def init_endpoints(self, models: List[str]) -> Dict[str, Any]:
         """Initialize endpoints for models."""
         try:
-            import asyncio
-            result = asyncio.run(accel.init_endpoints(models))
+            # Mock implementation for endpoint initialization
+            result = {
+                "models": models,
+                "endpoints_initialized": len(models),
+                "local_endpoints": {model: f"http://localhost:800{i}" for i, model in enumerate(models, 1)},
+                "status": "initialized",
+                "success": True
+            }
+            logger.info(f"Mock endpoints initialized for models: {models}")
             return result
         except Exception as e:
             logger.error(f"Error in init_endpoints: {str(e)}")
-            return {"error": str(e)}
+            return {"error": str(e), "success": False}
     
     logger.info("Registered model tools")
-
-def register_vfs_tools(server_instance: MCPServer, accel: Any):
-    """Register virtual filesystem tools."""
-    # These are basic implementations since we don't have the actual VFS implementation
-    
-    # VFS List
-    def vfs_list(path="/"):
-        """List items in the virtual filesystem."""
-        try:
-            # Mock implementation
-            return {
-                "path": path,
-                "items": ["file1.txt", "file2.txt", "dir1/"],
-                "success": True
-            }
-        except Exception as e:
-            logger.error(f"Error in vfs_list: {str(e)}")
-            return {"error": str(e), "success": False}
-    
-    server_instance.register_tool("vfs_list", vfs_list, "List items in the virtual filesystem", {
-        "type": "object",
-        "properties": {
-            "path": {"type": "string", "description": "Path in the virtual filesystem"}
-        }
-    })
-    
-    logger.info("Registered VFS tools")
-
-def register_storage_tools(server_instance: MCPServer, accel: Any):
-    """Register storage-related tools."""
-    # These are basic implementations since we don't have the actual storage implementation
-    
-    # Create Storage
-    def create_storage(name, size):
-        """Create a new storage volume."""
-        try:
-            # Mock implementation
-            return {
-                "name": name,
-                "size": size,
-                "id": f"storage-{name}-{size}",
-                "success": True
-            }
-        except Exception as e:
-            logger.error(f"Error in create_storage: {str(e)}")
-            return {"error": str(e), "success": False}
-    
-    server_instance.register_tool("create_storage", create_storage, "Create a new storage volume", {
-        "type": "object",
-        "properties": {
-            "name": {"type": "string", "description": "Name of the storage volume"},
-            "size": {"type": "number", "description": "Size of the storage volume in GB"}
-        },
-        "required": ["name", "size"]
-    })
-    
-    logger.info("Registered storage tools")
 
 # --- End Tool Registration Functions ---
 
@@ -971,8 +1139,11 @@ async def initialize_endpoint(request: Request):
     try:
         # Parse the request body as JSON if it exists
         client_info = {}
+        req_id = None  # Default value for request ID
         if request.headers.get("content-length") and int(request.headers.get("content-length", "0")) > 0:
-            client_info = await request.json()
+            body = await request.json()
+            client_info = body.get("clientInfo", body)  # Handle both formats
+            req_id = body.get("id")  # Extract ID if present
 
         logger.info(f"Received HTTP initialize request: {client_info}")
 

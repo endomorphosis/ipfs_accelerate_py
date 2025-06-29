@@ -5,6 +5,7 @@ Skill implementation for vit with hardware platform support
 
 import os
 import sys
+from .mojo_max_support import MojoMaxTargetMixin
 import torch
 import numpy as np
 import logging
@@ -39,51 +40,19 @@ except ImportError:
 HAS_WEBNN = os.environ.get("WEBNN_AVAILABLE", "0") == "1"
 HAS_WEBGPU = os.environ.get("WEBGPU_AVAILABLE", "0") == "1"
 
-class VitSkill:
+class VitSkill(MojoMaxTargetMixin):
     """Skill for vit model with hardware platform support."""
     
     def __init__(self, model_id="google/vit-base-patch16-224", device=None):
         """Initialize the skill."""
+        super().__init__(model_id=model_id, device=device) # Pass kwargs to mixin
         self.model_id = model_id
-        self.device = device or self.get_default_device()
+        self.device = device or self.get_default_device_with_mojo_max()
         self.tokenizer = None
         self.processor = None
         self.model = None
         self.modality = "vision"
         logger.info(f"Initialized vit skill with device: {self.device}")
-    
-    def get_default_device(self):
-        """Get the best available device based on hardware availability."""
-        # Check for CUDA
-        if HAS_CUDA:
-            return "cuda"
-        
-        # Check for Apple Silicon
-        if HAS_MPS:
-            return "mps"
-        
-        # Check for ROCm (AMD)
-        if HAS_ROCM:
-            return "rocm"
-        
-        # Check for OpenVINO (Intel)
-        if HAS_OPENVINO:
-            return "openvino"
-        
-        # Check for Qualcomm QNN
-        if HAS_QNN:
-            return "qualcomm"
-        
-        # Check for WebNN
-        if HAS_WEBNN:
-            return "webnn"
-        
-        # Check for WebGPU
-        if HAS_WEBGPU:
-            return "webgpu"
-        
-        # Default to CPU
-        return "cpu"
     
     def load_model(self):
         """Load the model and tokenizer based on modality."""
@@ -109,7 +78,7 @@ class VitSkill:
                 self.model = AutoModel.from_pretrained(self.model_id)
             
             # Move to device
-            if self.device != "cpu":
+            if self.device not in ["cpu", "mojo_max", "max", "mojo"]:
                 self.model = self.model.to(self.device)
                 logger.info(f"Model loaded and moved to {self.device}")
             else:
@@ -117,6 +86,10 @@ class VitSkill:
     
     def process(self, text):
         """Process the input text and return the output."""
+        # Check for Mojo/MAX target
+        if self.device in ["mojo_max", "max", "mojo"]:
+            return self.process_with_mojo_max(text, self.model_id)
+        
         # Ensure model is loaded
         self.load_model()
         
@@ -127,7 +100,7 @@ class VitSkill:
             inputs = self.tokenizer(text, return_tensors="pt")
             
             # Move to device
-            if self.device != "cpu":
+            if self.device not in ["cpu", "mojo_max", "max", "mojo"]:
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
             # Run inference
@@ -149,7 +122,7 @@ class VitSkill:
             inputs = self.processor(text, return_tensors="pt")
             
             # Move to device
-            if self.device != "cpu":
+            if self.device not in ["cpu", "mojo_max", "max", "mojo"]:
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
             # Run inference

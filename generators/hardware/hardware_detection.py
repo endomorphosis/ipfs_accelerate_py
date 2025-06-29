@@ -95,6 +95,8 @@ def detect_hardware_with_comprehensive_checks() -> Dict[str, Any]:
         "qnn": False,
         "webnn": False,
         "webgpu": False,
+        "mojo": False,
+        "max": False,
         "system": detect_system_info(),
         "best_available": "cpu",
         "torch_device": "cpu"
@@ -108,9 +110,16 @@ def detect_hardware_with_comprehensive_checks() -> Dict[str, Any]:
     check_openvino(hardware_info)
     check_qnn(hardware_info)
     check_webnn_webgpu(hardware_info)
+    check_mojo_max(hardware_info)
     
     # Determine best available device
-    if hardware_info.get("cuda", False):
+    if hardware_info.get("max", False):
+        hardware_info["best_available"] = "max"
+        hardware_info["torch_device"] = "cpu"  # MAX can use CPU as fallback
+    elif hardware_info.get("mojo", False):
+        hardware_info["best_available"] = "mojo"
+        hardware_info["torch_device"] = "cpu"  # Mojo can use CPU as fallback
+    elif hardware_info.get("cuda", False):
         hardware_info["best_available"] = "cuda"
         hardware_info["torch_device"] = "cuda"
     elif hardware_info.get("mps", False):
@@ -345,6 +354,194 @@ def check_webnn_webgpu(hardware_info: Dict[str, Any]) -> None:
                 hardware_info["webgpu_info"] = {"type": "wgpu-py", "error": str(e)}
     except:
         pass
+
+def check_mojo_max(hardware_info: Dict[str, Any]) -> None:
+    """
+    Checks for Mojo and MAX availability
+    
+    Args:
+        hardware_info: Hardware information dictionary to update
+    """
+    import shutil
+    import subprocess
+    
+    # Check for Mojo
+    try:
+        # Check for Mojo executable in PATH
+        if shutil.which("mojo"):
+            try:
+                # Get Mojo version
+                version_output = subprocess.check_output(
+                    ["mojo", "--version"], universal_newlines=True, timeout=10
+                ).strip()
+                hardware_info["mojo"] = True
+                hardware_info["mojo_info"] = {
+                    "version": version_output,
+                    "executable_path": shutil.which("mojo"),
+                    "detection_method": "executable_in_path"
+                }
+                logger.info("Mojo detected via executable in PATH.")
+            except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                hardware_info["mojo"] = True
+                hardware_info["mojo_info"] = {
+                    "version": "unknown",
+                    "executable_path": shutil.which("mojo"),
+                    "detection_method": "executable_in_path"
+                }
+        
+        # Check for MOJO_HOME environment variable
+        elif "MOJO_HOME" in os.environ:
+            from pathlib import Path
+            mojo_path = Path(os.environ["MOJO_HOME"]) / "bin" / "mojo"
+            if mojo_path.exists():
+                try:
+                    version_output = subprocess.check_output(
+                        [str(mojo_path), "--version"], universal_newlines=True, timeout=10
+                    ).strip()
+                    hardware_info["mojo"] = True
+                    hardware_info["mojo_info"] = {
+                        "version": version_output,
+                        "mojo_home": os.environ["MOJO_HOME"],
+                        "executable_path": str(mojo_path),
+                        "detection_method": "mojo_home_env"
+                    }
+                    logger.info("Mojo detected via MOJO_HOME environment variable.")
+                except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    hardware_info["mojo"] = True
+                    hardware_info["mojo_info"] = {
+                        "version": "unknown",
+                        "mojo_home": os.environ["MOJO_HOME"],
+                        "executable_path": str(mojo_path),
+                        "detection_method": "mojo_home_env"
+                    }
+        
+        # Check for mojo Python package
+        elif importlib.util.find_spec("mojo") is not None:
+            try:
+                import mojo
+                hardware_info["mojo"] = True
+                hardware_info["mojo_info"] = {
+                    "python_package": True,
+                    "detection_method": "python_package",
+                    "version": getattr(mojo, '__version__', 'unknown')
+                }
+                logger.info("Mojo detected via Python package.")
+            except ImportError:
+                logger.debug("mojo Python package found but import failed.")
+                
+        # Check for USE_MOJO_MAX_TARGET environment variable
+        if os.environ.get("USE_MOJO_MAX_TARGET", "").lower() in ("1", "true", "yes"):
+            hardware_info["mojo"] = True
+            hardware_info["mojo_info"] = hardware_info.get("mojo_info", {})
+            hardware_info["mojo_info"]["environment_enabled"] = True
+            
+    except Exception as e:
+        logger.debug(f"Error detecting Mojo: {e}")
+    
+    # Check for MAX
+    try:
+        # Check for max executable in PATH
+        if shutil.which("max"):
+            try:
+                # Get MAX version
+                version_output = subprocess.check_output(
+                    ["max", "--version"], universal_newlines=True, timeout=10
+                ).strip()
+                hardware_info["max"] = True
+                hardware_info["max_info"] = {
+                    "version": version_output,
+                    "executable_path": shutil.which("max"),
+                    "detection_method": "executable_in_path"
+                }
+                logger.info("MAX detected via executable in PATH.")
+                
+                # Try to get MAX server capabilities
+                try:
+                    help_output = subprocess.check_output(
+                        ["max", "serve", "--help"], universal_newlines=True, timeout=10
+                    )
+                    hardware_info["max_info"]["has_server"] = True
+                    hardware_info["max_info"]["server_capabilities"] = {
+                        "openai_api": "openai" in help_output.lower(),
+                        "streaming": "stream" in help_output.lower(),
+                        "batch_processing": "batch" in help_output.lower()
+                    }
+                except:
+                    hardware_info["max_info"]["has_server"] = False
+                    
+            except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                hardware_info["max"] = True
+                hardware_info["max_info"] = {
+                    "version": "unknown",
+                    "executable_path": shutil.which("max"),
+                    "detection_method": "executable_in_path"
+                }
+        
+        # Check for MAX_HOME environment variable
+        elif "MAX_HOME" in os.environ:
+            from pathlib import Path
+            max_path = Path(os.environ["MAX_HOME"]) / "bin" / "max"
+            if max_path.exists():
+                try:
+                    version_output = subprocess.check_output(
+                        [str(max_path), "--version"], universal_newlines=True, timeout=10
+                    ).strip()
+                    hardware_info["max"] = True
+                    hardware_info["max_info"] = {
+                        "version": version_output,
+                        "max_home": os.environ["MAX_HOME"],
+                        "executable_path": str(max_path),
+                        "detection_method": "max_home_env"
+                    }
+                    logger.info("MAX detected via MAX_HOME environment variable.")
+                except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    hardware_info["max"] = True
+                    hardware_info["max_info"] = {
+                        "version": "unknown",
+                        "max_home": os.environ["MAX_HOME"],
+                        "executable_path": str(max_path),
+                        "detection_method": "max_home_env"
+                    }
+        
+        # Check for max Python package
+        elif importlib.util.find_spec("max") is not None:
+            try:
+                import max
+                hardware_info["max"] = True
+                max_info = {
+                    "python_package": True,
+                    "detection_method": "python_package",
+                    "version": getattr(max, '__version__', 'unknown')
+                }
+                
+                # Check for specific MAX modules
+                max_modules = {}
+                for module_name in ["max.engine", "max.graph", "max.nn", "max.dtype"]:
+                    if importlib.util.find_spec(module_name) is not None:
+                        max_modules[module_name.split('.')[-1]] = True
+                
+                max_info["available_modules"] = max_modules
+                max_info["capabilities"] = {
+                    "model_serving": "engine" in max_modules,
+                    "graph_optimization": "graph" in max_modules,
+                    "neural_networks": "nn" in max_modules,
+                    "data_types": "dtype" in max_modules,
+                    "python_api": True
+                }
+                
+                hardware_info["max_info"] = max_info
+                logger.info("MAX detected via Python package.")
+            except ImportError:
+                logger.debug("max Python package found but import failed.")
+                
+        # Check for USE_MOJO_MAX_TARGET environment variable
+        if os.environ.get("USE_MOJO_MAX_TARGET", "").lower() in ("1", "true", "yes"):
+            hardware_info["max"] = True
+            hardware_info["max_info"] = hardware_info.get("max_info", {})
+            hardware_info["max_info"]["environment_enabled"] = True
+            
+    except Exception as e:
+        logger.debug(f"Error detecting MAX: {e}")
 
 def is_hardware_simulated(hardware_type: str, hardware_info: Optional[Dict[str, Any]] = None) -> bool:
     """

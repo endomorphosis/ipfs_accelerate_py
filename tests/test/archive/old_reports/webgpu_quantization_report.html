@@ -1,0 +1,272 @@
+
+        <\!DOCTYPE html>
+        <html>
+        <head>
+            <title>WebGPU 4-bit Inference Test Results: llama-3-8b</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+                h1, h2, h3 { color: #333; }
+                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                tr:nth-child(even) { background-color: #f9f9f9; }
+                .chart-container { width: 100%; height: 400px; margin-bottom: 30px; }
+                .success { color: green; }
+                .warning { color: orange; }
+            </style>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        </head>
+        <body>
+            <h1>WebGPU 4-bit Inference Test Results</h1>
+            <p><strong>Model:</strong> llama-3-8b</p>
+            <p><strong>Date:</strong> 2025-03-07 00:18:58</p>
+            
+            <h2>Platform Comparison</h2>
+            <table>
+                <tr>
+                    <th>Platform</th>
+                    <th>Bits</th>
+                    <th>Avg. Time (ms)</th>
+                    <th>Memory Reduction</th>
+                    <th>Accuracy Loss</th>
+                </tr>
+        
+                <tr>
+                    <td>CPU</td>
+                    <td>4</td>
+                    <td>16.15</td>
+                    <td>25.0%</td>
+                    <td>2.5%</td>
+                </tr>
+            
+                <tr>
+                    <td>WEBGPU</td>
+                    <td>N/A</td>
+                    <td>0.00</td>
+                    <td>0.0%</td>
+                    <td>0.0%</td>
+                </tr>
+            
+            </table>
+            
+            <div class="chart-container">
+                <canvas id="performanceChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="memoryChart"></canvas>
+            </div>
+        
+            <h2>Precision Format Comparison</h2>
+            <table>
+                <tr>
+                    <th>Format</th>
+                    <th>Bits</th>
+                    <th>Time (ms)</th>
+                    <th>Memory Reduction</th>
+                    <th>Accuracy Loss</th>
+                    <th>Speedup vs FP16</th>
+                    <th>Efficiency Score</th>
+                </tr>
+            
+                    <tr>
+                        <td>fp16</td>
+                        <td>16</td>
+                        <td>30.10</td>
+                        <td>0.0%</td>
+                        <td>0.0%</td>
+                        <td>1.00x</td>
+                        <td>0.00</td>
+                    </tr>
+                
+                    <tr>
+                        <td>int8</td>
+                        <td>8</td>
+                        <td>25.15</td>
+                        <td>50.0%</td>
+                        <td>1.0%</td>
+                        <td>1.20x</td>
+                        <td>0.60</td>
+                    </tr>
+                
+                    <tr>
+                        <td>int4</td>
+                        <td>4</td>
+                        <td>50.11</td>
+                        <td>75.0%</td>
+                        <td>2.5%</td>
+                        <td>0.60x</td>
+                        <td>0.45</td>
+                    </tr>
+                
+                    <tr>
+                        <td>int2</td>
+                        <td>2</td>
+                        <td>15.15</td>
+                        <td>87.5%</td>
+                        <td>8.0%</td>
+                        <td>1.99x</td>
+                        <td>1.74</td>
+                    </tr>
+                
+            </table>
+            
+            <div class="chart-container">
+                <canvas id="precisionChart"></canvas>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Platform performance chart
+                    const perfCtx = document.getElementById('performanceChart').getContext('2d');
+                    const perfChart = new Chart(perfCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: [
+        'CPU','WEBGPU',
+                            ],
+                            datasets: [{
+                                label: 'Average Execution Time (ms)',
+                                data: [
+        16.15,0.00,
+                                ],
+                                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Performance Comparison Across Platforms'
+                                },
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Time (ms)'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Memory reduction chart
+                    const memCtx = document.getElementById('memoryChart').getContext('2d');
+                    const memChart = new Chart(memCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: [
+        'CPU','WEBGPU',
+                            ],
+                            datasets: [{
+                                label: 'Memory Reduction (%)',
+                                data: [
+        25.0,0.0,
+                                ],
+                                backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Memory Reduction Across Platforms'
+                                },
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100,
+                                    title: {
+                                        display: true,
+                                        text: 'Reduction (%)'
+                                    }
+                                }
+                            }
+                        }
+                    });
+        
+                    // Precision comparison chart
+                    const precCtx = document.getElementById('precisionChart').getContext('2d');
+                    const precChart = new Chart(precCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: [
+            'fp16','int8','int4','int2',
+                            ],
+                            datasets: [{
+                                label: 'Memory Reduction (%)',
+                                data: [
+            0.0,50.0,75.0,87.5,
+                                ],
+                                backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y'
+                            }, {
+                                label: 'Relative Speed vs FP16',
+                                data: [
+            1.00,1.20,0.60,1.99,
+                                ],
+                                backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y1'
+                            }, {
+                                label: 'Accuracy Loss (%)',
+                                data: [
+            0.0,1.0,2.5,8.0,
+                                ],
+                                backgroundColor: 'rgba(255, 205, 86, 0.5)',
+                                borderColor: 'rgba(255, 205, 86, 1)',
+                                borderWidth: 1,
+                                yAxisID: 'y1'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Precision Format Comparison'
+                                },
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100,
+                                    position: 'left',
+                                    title: {
+                                        display: true,
+                                        text: 'Memory Reduction (%)'
+                                    }
+                                },
+                                y1: {
+                                    beginAtZero: true,
+                                    max: 10,
+                                    position: 'right',
+                                    grid: {
+                                        drawOnChartArea: false
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Speedup / Accuracy Loss'
+                                    }
+                                }
+                            }
+                        }
+                    });
+            
+                });
+            </script>
+        </body>
+        </html>
+        

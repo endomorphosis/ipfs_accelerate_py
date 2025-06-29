@@ -50,4 +50,7 @@ test_output2
 test_outputs
 transformers_docs_build
 test/doc-builder
-ipfs_env
+*ipfs_env*
+# pixi environments
+.pixi
+*.egg-info

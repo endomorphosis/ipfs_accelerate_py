@@ -1,0 +1,551 @@
+name: Mojo CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, mojo_max_modular ]
+    paths:
+      - 'src/backends/modular_backend.py'
+      - 'templates/mojo/**'
+      - 'templates/max/**'
+      - 'final_mcp_server.py'
+      - 'tests/e2e/test_mojo_e2e.py'
+      - 'tests/test_modular_integration.py'
+      - 'test_huggingface_mojo_max_comprehensive.py' # Add this path
+      - '.github/workflows/mojo-ci-cd.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/backends/modular_backend.py'
+      - 'templates/mojo/**'
+      - 'templates/max/**'
+      - 'final_mcp_server.py'
+      - 'tests/e2e/test_mojo_e2e.py'
+      - 'tests/test_modular_integration.py'
+      - 'test_huggingface_mojo_max_comprehensive.py' # Add this path
+  schedule:
+    # Run daily at 2 AM UTC to catch regressions
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_level:
+        description: 'Test level to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - 'unit'
+          - 'integration'
+          - 'e2e'
+          - 'full'
+          - 'performance'
+      mojo_version:
+        description: 'Mojo version to test (if available)'
+        required: false
+        default: 'latest'
+        type: string
+
+env:
+  PYTHON_VERSION: '3.11'
+  MOJO_VERSION: ${{ github.event.inputs.mojo_version || 'latest' }}
+  TEST_TIMEOUT: 1800  # 30 minutes
+  PERFORMANCE_TIMEOUT: 3600  # 1 hour for performance tests
+
+jobs:
+  # Job 1: Setup and Environment Validation
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      mojo-available: ${{ steps.check-mojo.outputs.available }}
+      test-matrix: ${{ steps.setup-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install base dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov pytest-xdist aiohttp
+
+      - name: Check for Mojo installation
+        id: check-mojo
+        run: |
+          if command -v mojo &> /dev/null; then
+            echo "available=true" >> $GITHUB_OUTPUT
+            echo "✅ Mojo compiler found: $(mojo --version)"
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Mojo compiler not found - will run in mock mode"
+          fi
+
+      - name: Setup test matrix
+        id: setup-matrix
+        run: |
+          if [ "${{ github.event.inputs.test_level }}" = "unit" ]; then
+            matrix='["unit"]'
+          elif [ "${{ github.event.inputs.test_level }}" = "integration" ]; then
+            matrix='["integration"]'
+          elif [ "${{ github.event.inputs.test_level }}" = "e2e" ]; then
+            matrix='["e2e"]'
+          elif [ "${{ github.event.inputs.test_level }}" = "performance" ]; then
+            matrix='["performance"]'
+          else
+            matrix='["unit", "integration", "e2e"]'
+          fi
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+
+  # Job 2: Unit Tests
+  unit-tests:
+    needs: setup
+    if: contains(fromJson(needs.setup.outputs.test-matrix), 'unit')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+        test-group: ['compilation', 'deployment', 'integration']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov pytest-mock
+
+      - name: Run unit tests - ${{ matrix.test-group }}
+        run: |
+          if [ "${{ matrix.test-group }}" = "compilation" ]; then
+            pytest tests/test_modular_integration.py::TestModularBackendCompilation -v --cov=src/backends/modular_backend --cov-report=xml
+          elif [ "${{ matrix.test-group }}" = "deployment" ]; then
+            pytest tests/test_modular_integration.py::TestModularBackendDeployment -v --cov=src/backends/modular_backend --cov-report=xml
+          else
+            pytest tests/test_modular_integration.py::TestModularBackendIntegration -v --cov=src/backends/modular_backend --cov-report=xml
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unit-tests,${{ matrix.test-group }}
+          name: codecov-${{ matrix.python-version }}-${{ matrix.test-group }}
+
+  # Job 3: Integration Tests
+  integration-tests:
+    needs: setup
+    if: contains(fromJson(needs.setup.outputs.test-matrix), 'integration')
+    runs-on: ubuntu-latest
+    services:
+      # Mock IPFS service for testing
+      ipfs:
+        image: ipfs/go-ipfs:latest
+        ports:
+          - 5001:5001
+          - 8080:8080
+        options: --name ipfs-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov aiohttp
+
+      - name: Wait for IPFS to be ready
+        run: |
+          timeout 60 bash -c 'until curl -f http://localhost:5001/api/v0/id; do sleep 2; done'
+
+      - name: Start MCP Server
+        run: |
+          python final_mcp_server.py --host 127.0.0.1 --port 8004 --timeout 600 &
+          echo $! > mcp_server.pid
+          # Wait for server to start
+          timeout 60 bash -c 'until curl -f http://localhost:8004/health; do sleep 2; done'
+
+      - name: Run integration tests
+        run: |
+          pytest tests/test_modular_integration.py -v \
+            --cov=src/backends/modular_backend \
+            --cov=final_mcp_server \
+            --cov-report=xml \
+            --timeout=${{ env.TEST_TIMEOUT }}
+
+      - name: Stop MCP Server
+        if: always()
+        run: |
+          if [ -f mcp_server.pid ]; then
+            kill $(cat mcp_server.pid) || true
+            rm mcp_server.pid
+          fi
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: integration-test-results
+          path: |
+            pytest-report.xml
+            coverage.xml
+
+  # Job 4: End-to-End Tests
+  e2e-tests:
+    needs: setup
+    if: contains(fromJson(needs.setup.outputs.test-matrix), 'e2e')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-suite: ['compilation', 'deployment', 'performance', 'integration']
+    timeout-minutes: 45
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov aiohttp numpy
+
+      - name: Setup test environment
+        run: |
+          mkdir -p logs test-outputs
+          
+      - name: Run E2E tests - ${{ matrix.test-suite }}
+        id: e2e-tests
+        run: |
+          if [ "${{ matrix.test-suite }}" = "compilation" ]; then
+            pytest tests/e2e/test_mojo_e2e.py::TestMojoCompilation -v -s --tb=short --timeout=${{ env.TEST_TIMEOUT }}
+          elif [ "${{ matrix.test-suite }}" = "deployment" ]; then
+            pytest tests/e2e/test_mojo_e2e.py::TestMojoDeployment -v -s --tb=short --timeout=${{ env.TEST_TIMEOUT }}
+          elif [ "${{ matrix.test-suite }}" = "performance" ]; then
+            pytest tests/e2e/test_mojo_e2e.py::TestMojoPerformance -v -s --tb=short --timeout=${{ env.TEST_TIMEOUT }}
+          else
+            pytest tests/e2e/test_mojo_e2e.py::TestMojoIntegration -v -s --tb=short --timeout=${{ env.TEST_TIMEOUT }}
+          fi
+
+      - name: Collect test artifacts
+        if: always()
+        run: |
+          # Collect any generated test files
+          find . -name "*.log" -o -name "*test*.json" -o -name "*benchmark*.json" | head -20 | xargs -I {} cp {} test-outputs/ || true
+          
+          # Collect MCP server logs if available
+          if [ -f final_mcp_server.log ]; then
+            cp final_mcp_server.log test-outputs/
+          fi
+
+      - name: Upload E2E test artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: e2e-test-artifacts-${{ matrix.test-suite }}
+          path: |
+            test-outputs/
+            logs/
+
+  # Job 5: HuggingFace Model Compatibility Tests
+  huggingface-model-tests:
+    needs: setup
+    # Run on push/pull_request for relevant paths, or if test_level is e2e/full
+    if: |
+      github.event_name == 'push' || github.event_name == 'pull_request' ||
+      contains(fromJson(needs.setup.outputs.test-matrix), 'e2e') || contains(fromJson(needs.setup.outputs.test-matrix), 'full')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120 # Allow ample time for all models
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Ensure transformers is installed, though it should be in requirements.txt
+          pip install transformers
+
+      - name: Run HuggingFace Model Compatibility Tests
+        run: |
+          python test_huggingface_mojo_max_comprehensive.py --parallel --workers 8 --timeout 60 \
+            --output huggingface_mojo_max_test_results
+
+      - name: Upload HuggingFace Test Reports
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: huggingface-test-reports
+          path: |
+            huggingface_mojo_max_test_results_report.md
+            huggingface_mojo_max_test_results_detailed.json
+
+  # Job 6: Performance Tests (runs only on specific triggers)
+  performance-tests:
+    needs: setup
+    if: github.event.inputs.test_level == 'performance' || github.event.inputs.test_level == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-benchmark aiohttp numpy
+
+      - name: Run performance tests
+        run: |
+          pytest tests/e2e/test_mojo_e2e.py::TestMojoPerformance -v -s \
+            --tb=short \
+            --timeout=${{ env.PERFORMANCE_TIMEOUT }} \
+            --benchmark-only \
+            --benchmark-json=performance-results.json
+
+      - name: Analyze performance results
+        run: |
+          python -c "
+          import json
+          with open('performance-results.json') as f:
+              results = json.load(f)
+          
+          print('🚀 Performance Test Results:')
+          for benchmark in results.get('benchmarks', []):
+              name = benchmark['name']
+              stats = benchmark['stats']
+              print(f'  {name}:')
+              print(f'    Mean: {stats[\"mean\"]:.4f}s')
+              print(f'    Min:  {stats[\"min\"]:.4f}s')
+              print(f'    Max:  {stats[\"max\"]:.4f}s')
+              print()
+          "
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: performance-results.json
+
+  # Job 7: Security and Quality Checks
+  security-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety mypy black flake8
+
+      - name: Run security checks
+        run: |
+          # Bandit security check
+          bandit -r src/ final_mcp_server.py -f json -o bandit-report.json || true
+          
+          # Safety check for known vulnerabilities
+          safety check --json --output safety-report.json || true
+          
+          # Type checking
+          mypy src/ final_mcp_server.py --ignore-missing-imports || true
+
+      - name: Run code quality checks
+        run: |
+          # Black formatting check
+          black --check --diff src/ final_mcp_server.py || true
+          
+          # Flake8 linting
+          flake8 src/ final_mcp_server.py --max-line-length=100 --output-file=flake8-report.txt || true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+            flake8-report.txt
+
+  # Job 8: Mojo-specific validation (when Mojo is available)
+  mojo-validation:
+    needs: setup
+    if: true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Mojo SDK
+        run: |
+          # Placeholder: Replace with actual Mojo SDK installation steps
+          # Example: curl -sL https://get.modular.com/install.sh | sh
+          # Example: modular install mojo
+          echo "Installing Mojo SDK (placeholder)..."
+          # For demonstration, we'll assume Mojo is already in PATH or installed by a previous step
+          # In a real scenario, this would involve downloading and installing the Mojo SDK
+          # For now, we'll just ensure the 'mojo' command is available if it wasn't already.
+          # This step might be more complex depending on Modular's distribution method.
+
+      - name: Install Modular Python SDK
+        run: |
+          # Placeholder: Replace with actual Modular Python SDK installation steps
+          # Example: pip install modular-sdk
+          echo "Installing Modular Python SDK (placeholder)..."
+          # For demonstration, we'll assume the SDK is available via pip
+          pip install modular-sdk || echo "Modular SDK not found, continuing without it."
+
+      - name: Validate Mojo templates
+        run: |
+          # Validate Mojo template syntax
+          find templates/mojo/ -name "*.mojo" -exec echo "Validating {}" \; -exec mojo --check {} \;
+
+      - name: Compile sample Mojo code
+        run: |
+          # Test compilation of sample Mojo code
+          mojo build templates/mojo/optimized_inference.mojo -o test_inference || true
+
+      - name: Upload Mojo artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: mojo-validation-artifacts
+          path: |
+            test_inference*
+            *.log
+
+  # Job 9: Build and Deploy (on main branch)
+  build-deploy:
+    needs: [unit-tests, integration-tests, e2e-tests, security-checks, huggingface-model-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build distribution
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Create Docker image
+        run: |
+          docker build -t ipfs-accelerate-mojo:latest .
+          docker tag ipfs-accelerate-mojo:latest ipfs-accelerate-mojo:${{ github.sha }}
+
+      - name: Save Docker image
+        run: |
+          docker save ipfs-accelerate-mojo:latest | gzip > ipfs-accelerate-mojo.tar.gz
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            dist/
+            ipfs-accelerate-mojo.tar.gz
+
+  # Job 10: Notification and Reporting
+  report:
+    needs: [setup, unit-tests, integration-tests, e2e-tests, security-checks, huggingface-model-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Generate test report
+        run: |
+          echo "# Mojo CI/CD Pipeline Report" > report.md
+          echo "" >> report.md
+          echo "**Workflow:** ${{ github.workflow }}" >> report.md
+          echo "**Branch:** ${{ github.ref_name }}" >> report.md
+          echo "**Commit:** ${{ github.sha }}" >> report.md
+          echo "**Trigger:** ${{ github.event_name }}" >> report.md
+          echo "" >> report.md
+          
+          echo "## Job Results" >> report.md
+          echo "- Setup: ${{ needs.setup.result }}" >> report.md
+          echo "- Unit Tests: ${{ needs.unit-tests.result }}" >> report.md
+          echo "- Integration Tests: ${{ needs.integration-tests.result }}" >> report.md
+          echo "- E2E Tests: ${{ needs.e2e-tests.result }}" >> report.md
+          echo "- HuggingFace Model Tests: ${{ needs.huggingface-model-tests.result }}" >> report.md
+          echo "- Security Checks: ${{ needs.security-checks.result }}" >> report.md
+          echo "" >> report.md
+          
+          if [ -f performance-results/performance-results.json ]; then
+            echo "## Performance Results" >> report.md
+            echo "\`\`\`json" >> report.md
+            cat performance-results/performance-results.json >> report.md
+            echo "\`\`\`" >> report.md
+          fi
+
+          if [ -f huggingface-test-reports/huggingface_mojo_max_test_results_report.md ]; then
+            echo "## HuggingFace Model Compatibility Report" >> report.md
+            echo "\`\`\`markdown" >> report.md
+            cat huggingface-test-reports/huggingface_mojo_max_test_results_report.md >> report.md
+            echo "\`\`\`" >> report.md
+          fi
+
+      - name: Upload final report
+        uses: actions/upload-artifact@v3
+        with:
+          name: pipeline-report
+          path: report.md
+
+      - name: Notify on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        run: |
+          echo "Pipeline failed on main branch!"
+          echo "Check the logs and artifacts for details."
+          # Add actual notification logic here (Slack, email, etc.)

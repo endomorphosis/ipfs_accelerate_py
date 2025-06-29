@@ -1,0 +1,263 @@
+name: Build PR Documentation
+
+env:
+  DIFFUSERS_SLOW_IMPORT: yes
+
+on:
+  workflow_call:
+    inputs:
+      commit_sha:
+        required: true
+        type: string
+      package:
+        required: true
+        type: string
+        description: "Name of the GitHub repo."
+      package_name:
+        type: string
+        description: "Name of the Python package if it differs from repo name."
+      path_to_docs:
+        type: string
+      notebook_folder:
+        type: string
+      # supply --not_python_module for HF Course
+      additional_args:
+        type: string
+      languages:
+      # supply space-separated language codes
+        type: string
+      package_path:
+        type: string
+      install_rust:
+        type: boolean
+      install_libgl1:
+        type: boolean
+      # Command to execute before building the documentation
+      pre_command:
+        type: string
+      repo_owner:
+        type: string
+        default: 'huggingface'
+        description: "Owner of the repo to build documentation for. Defaults to 'huggingface'."
+      version_tag_suffix:
+        type: string
+        default: "src/"
+        description: "Suffix to add after the version tag (e.g. 1.3.0 or main) in the documentation links."
+      convert_notebooks:
+        type: boolean
+        description: "Convert notebooks to markdown files before building docs."
+      # Docker image to use for the build. Set custom_container="huggingface/transformers-doc-builder" if you need
+      # a complete install. Default to `""` which means CI will run on the runner directly.
+      custom_container:
+        type: string
+        default: ""
+        description: "Docker image to use for the build."
+    secrets:
+      hf_token:
+        required: true
+      token:
+        required: false
+
+jobs:
+  build_main_documentation:
+    runs-on: ubuntu-22.04
+    container:
+      ${{ inputs.custom_container }}
+    env:
+      UV_HTTP_TIMEOUT: 900 # max 15min to install deps (shouldn't take more than 5min)
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: 'huggingface/doc-builder'
+          path: doc-builder
+
+      - uses: actions/checkout@v4
+        with:
+          repository: '${{ inputs.repo_owner }}/${{ inputs.package }}'
+          path: ${{ inputs.package }}
+
+      - uses: actions/checkout@v4
+        if: inputs.notebook_folder != ''
+        with:
+          repository: 'huggingface/notebooks'
+          path: notebooks
+          token: ${{ secrets.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache-dependency-path: "kit/package-lock.json"
+
+      - name: Export ROOT_APT_GET ('apt-get' or 'sudo apt-get')
+        # Use `sudo` only if running on the base runner.
+        # When using a container, `sudo` is not needed (and not installed)
+        run: |
+          if [ -z "${{ inputs.custom_container }}" ]
+          then
+            echo "ROOT_APT_GET=sudo apt-get" >> $GITHUB_ENV
+          else
+            echo "ROOT_APT_GET=apt-get" >> $GITHUB_ENV
+          fi
+
+      - name: Export PIP_OR_UV ('pip' or 'uv pip')
+        # Use `uv` only if running on the base runner.
+        # When using a container, `pip` has already been used to installed existing deps
+        # and is therefore quicker to resolve (already have some cached stuff).
+        run: |
+          if [ -z "${{ inputs.custom_container }}" ]
+          then
+            echo "PIP_OR_UV=uv pip" >> $GITHUB_ENV
+          else
+            echo "PIP_OR_UV=pip" >> $GITHUB_ENV
+          fi
+
+      - name: Set env variables
+        run: |
+          if [ -z "${{ inputs.path_to_docs }}" ]
+          then
+            echo "doc_folder=${{ inputs.package }}/docs/source" >> $GITHUB_ENV
+            echo "path_to_docs not provided, defaulting to ${{ inputs.package }}/docs/source"
+          else
+            echo "doc_folder=${{ inputs.path_to_docs }}" >> $GITHUB_ENV
+          fi
+
+          if [ -z "${{ inputs.package_name }}" ];
+          then
+            echo "package_name=${{ inputs.package }}" >> $GITHUB_ENV
+          else
+            echo "package_name=${{ inputs.package_name }}" >> $GITHUB_ENV
+          fi
+
+      # Needed to upload zips to hf.co
+      - name: Install zip
+        # Use sudo only if running on the base runner.
+        # When using a container, `sudo` is not needed (and not installed).
+        run: $ROOT_APT_GET install -y zip
+
+      - name: Install libgl1
+        if: inputs.install_libgl1
+        run: $ROOT_APT_GET install -y libgl1
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        if: inputs.install_rust
+        with:
+          toolchain: stable
+
+      # Use venv in both cases
+      - name: Install uv
+        run: |
+          pip install -U uv
+          uv venv
+
+      - name: Setup environment
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          $PIP_OR_UV uninstall doc-builder
+          cd doc-builder
+          git pull origin main
+          $PIP_OR_UV install .
+          cd ..
+
+          if [[ -n "${{ inputs.package_path }}" ]]
+          then
+            cd ${{ inputs.package_path }}
+            $PIP_OR_UV install .[dev]
+          elif [[ "${{ inputs.additional_args }}" != *"--not_python_module"* ]];
+          then
+            cd ${{ inputs.package }}
+            $PIP_OR_UV install .[dev]
+          fi
+          cd ..
+
+      - name: Setup git
+        run: |
+          git config --global user.name "Hugging Face Doc Builder"
+          git config --global user.email docs@huggingface.co
+
+      - name: Create build directory
+        run: |
+          mkdir build_dir
+          mkdir build_dir/${{ env.package_name }}
+          cd build_dir/${{ env.package_name }}
+          wget https://huggingface.co/datasets/hf-doc-build/doc-build/raw/main/${{ env.package_name }}/_versions.yml
+
+      - name: Run pre-command
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          if [ ! -z "${{ inputs.pre_command }}" ]
+          then
+            bash -c "${{ inputs.pre_command }}"
+          fi
+
+      - name: Convert notebooks to markdown files
+        if: inputs.convert_notebooks
+        run: |
+          source .venv/bin/activate
+          branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+          remaining_part=$(echo "${{ env.doc_folder }}" | perl -pe 's|^[^/]+||')
+          remaining_part=${remaining_part%/}
+          echo https://colab.research.google.com/github/${{ inputs.repo_owner }}/${{ inputs.package }}/blob/$branch$remaining_part
+
+          doc-builder notebook-to-mdx ${{ env.doc_folder }} --open_notebook_prefix https://colab.research.google.com/github/${{ inputs.repo_owner }}/${{ inputs.package }}/blob/$branch$remaining_part
+
+      - name: Make documentation
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=6656
+        run: |
+          source .venv/bin/activate
+          echo "doc_folder has been set to ${{ env.doc_folder }}"
+          cd doc-builder
+          args="--build_dir ../build_dir --clean --html ${{ inputs.additional_args }} --repo_owner ${{ inputs.repo_owner }} --repo_name ${{ inputs.package }} --version_tag_suffix=${{ inputs.version_tag_suffix }}"
+
+          if [ ! -z "${{ inputs.notebook_folder }}" ];
+          then
+            args="$args --notebook_dir ../notebook_dir"
+          fi
+
+          if [ -z "${{ inputs.languages }}" ];
+          then
+            echo "languages not provided, defaulting to English"
+            doc-builder build ${{ env.package_name }} ../${{ env.doc_folder }} $args
+          else
+            IFS=', ' read -r -a langs <<< "${{ inputs.languages }}"
+            for lang in "${langs[@]}"
+            do
+                echo "Generating docs for language $lang"
+                doc-builder build ${{ env.package_name }} ../${{ env.doc_folder }}/$lang $args --language $lang
+            done
+          fi
+
+          cd ..
+
+      - name: Push to repositories
+        run: |
+          source .venv/bin/activate
+          cd build_dir
+          doc-builder push ${{ env.package_name }} --doc_build_repo_id "hf-doc-build/doc-build" --token "${{ secrets.hf_token }}" --commit_msg "Updated with commit ${{ inputs.commit_sha }} See: https://github.com/${{ inputs.repo_owner }}/${{ inputs.package }}/commit/${{ inputs.commit_sha }}" --n_retries 5 --upload_version_yml
+          cd ..
+
+          if [ -d "notebook_dir" ]
+          then
+            cd notebooks
+            git pull
+            cp -r ../notebook_dir/. ${{ inputs.notebook_folder }}
+            git status
+            if [[ `git status --porcelain` ]]; then
+              git add ${{ inputs.notebook_folder }}
+              git commit -m "Updated ${{ inputs.package }} doc notebooks with commit ${{ inputs.commit_sha }} \n\nSee: https://github.com/huggingface/${{ inputs.package }}/commit/${{ inputs.commit_sha }}"
+              git push origin main ||
+              (echo "Failed on the first try, rebasing and pushing again" && git pull --rebase && git push origin main) ||
+              (echo "Failed on the second try, rebasing and pushing again" && git pull --rebase && git push origin main)
+            else
+              echo "No diff in the notebooks."
+            fi
+            cd ..
+          else
+            echo "Notebooks creation was not enabled."
+          fi
+        shell: bash

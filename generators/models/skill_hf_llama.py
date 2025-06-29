@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Skill implementation for llama with hardware platform support
+Skill implementation for llama with hardware platform support including Mojo/MAX
 """
 
 import os
@@ -8,31 +8,19 @@ import sys
 import torch
 import numpy as np
 from transformers import AutoModel, AutoTokenizer, AutoConfig, AutoFeatureExtractor, AutoProcessor, AutoImageProcessor, AutoModelForImageClassification, AutoModelForAudioClassification, AutoModelForVideoClassification
+from .mojo_max_support import MojoMaxTargetMixin
 
-class LlamaSkill:
-    """Skill for llama model with hardware platform support."""
+class LlamaSkill(MojoMaxTargetMixin):
+    """Skill for llama model with hardware platform support including Mojo/MAX."""
     
     def __init__(self, model_id="TinyLlama/TinyLlama-1.1B-Chat-v1.0", device=None):
         """Initialize the skill."""
+        super().__init__(model_id=model_id, device=device) # Pass kwargs to mixin
         self.model_id = model_id
-        self.device = device or self.get_default_device()
+        self.device = device or self.get_default_device_with_mojo_max()
         self.tokenizer = None
         self.model = None
         
-    def get_default_device(self):
-        """Get the best available device."""
-        # Check for CUDA
-        if torch.cuda.is_available():
-            return "cuda"
-        
-        # Check for MPS (Apple Silicon)
-        if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
-            if torch.mps.is_available():
-                return "mps"
-        
-        # Default to CPU
-        return "cpu"
-    
     def load_model(self):
         """Load the model and tokenizer based on modality."""
         if self.model is None:
@@ -57,20 +45,24 @@ class LlamaSkill:
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move to device
-            if self.device != "cpu":
+            # Move to device (skip for Mojo/MAX targets)
+            if self.device not in ["cpu", "mojo_max", "max", "mojo"]:
                 self.model = self.model.to(self.device)
     
     def process(self, text):
         """Process the input text and return the output."""
-        # Ensure model is loaded
-        self.load_model()
-        
-        # Tokenize
-        inputs = self.tokenizer(text, return_tensors="pt")
+        # Check for Mojo/MAX target
+        if self.device in ["mojo_max", "max", "mojo"]:
+            return self.process_with_mojo_max(text, self.model_id)
+        else:
+            # Ensure model is loaded
+            self.load_model()
+            
+            # Tokenize
+            inputs = self.tokenizer(text, return_tensors="pt")
         
         # Move to device
-        if self.device != "cpu":
+        if self.device not in ["cpu", "mojo_max", "max", "mojo"]:
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
         
         # Run inference

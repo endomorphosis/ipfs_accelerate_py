@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Check for Mojo/MAX target environment variable
+if os.environ.get("USE_MOJO_MAX_TARGET", "").lower() in ("1", "true", "yes"):
+    target_backend = "mojo_max"
+
 
 """
 Generate Comprehensive Model Compatibility Matrix
