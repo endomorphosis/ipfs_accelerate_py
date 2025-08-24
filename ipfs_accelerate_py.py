@@ -21,25 +21,141 @@ class ipfs_accelerate_py:
     IPFS Accelerate Python Framework
     
     A comprehensive framework for hardware-accelerated machine learning inference
-    with support for:
-    - Multiple hardware platforms (CPU, CUDA, ROCm, MPS, OpenVINO, Qualcomm, WebNN, WebGPU)
-    - 300+ HuggingFace model types
-    - Distributed inference across IPFS network
-    - API integration with various providers
-    - Model acceleration and optimization
+    with IPFS network-based distribution and acceleration. This framework provides:
+    
+    **Core Features:**
+    - Multiple hardware platform support (CPU, CUDA, ROCm, MPS, OpenVINO, WebNN, WebGPU)
+    - 300+ HuggingFace model types compatibility
+    - Distributed inference across IPFS peer-to-peer network
+    - Browser-based client-side acceleration
+    - Automatic hardware detection and optimization
+    - Content-addressed model storage and caching
+    
+    **Hardware Support:**
+    - CPU optimization (x86, ARM with SIMD acceleration)
+    - NVIDIA CUDA with TensorRT optimization
+    - AMD ROCm for AMD GPUs
+    - Intel OpenVINO for CPU and Intel GPUs
+    - Apple Metal Performance Shaders for Apple Silicon
+    - Qualcomm acceleration for mobile/edge devices
+    - WebNN and WebGPU for browser-based inference
+    
+    **Model Support:**
+    - Text models: BERT, GPT, T5, RoBERTa, DistilBERT, ALBERT, etc.
+    - Vision models: ViT, ResNet, EfficientNet, CLIP, DETR, etc.
+    - Audio models: Whisper, Wav2Vec2, WavLM, etc.
+    - Multimodal models: CLIP, BLIP, LLaVA, etc.
+    
+    **IPFS Integration:**
+    - Content-addressed storage for models and results
+    - Efficient peer-to-peer model distribution
+    - Automatic caching and optimization
+    - Provider discovery and selection
+    - Fault tolerance and fallback mechanisms
+    
+    **Usage Examples:**
+    
+    Basic inference:
+    ```python
+    accelerator = ipfs_accelerate_py({}, {})
+    result = accelerator.process(
+        model="bert-base-uncased",
+        input_data={"input_ids": [101, 2054, 2003, 102]},
+        endpoint_type="text_embedding"
+    )
+    ```
+    
+    IPFS-accelerated inference:
+    ```python
+    result = await accelerator.accelerate_inference(
+        model="bert-base-uncased",
+        input_data={"input_ids": [101, 2054, 2003, 102]},
+        use_ipfs=True
+    )
+    ```
+    
+    Hardware-specific configuration:
+    ```python
+    config = {
+        "hardware": {
+            "prefer_cuda": True,
+            "precision": "fp16",
+            "mixed_precision": True
+        }
+    }
+    accelerator = ipfs_accelerate_py(config, {})
+    ```
     
     The framework provides unified interfaces for model inference across hardware
     platforms and networks, with automatic hardware detection, optimization,
-    and failover capabilities.
+    and failover capabilities for robust, scalable machine learning inference.
     """
     
     def __init__(self, resources=None, metadata=None):
         """
         Initialize the IPFS Accelerate Python framework.
         
+        Sets up the complete framework including hardware detection, resource management,
+        IPFS integration, and endpoint initialization for model inference.
+        
         Args:
-            resources (dict, optional): Dictionary containing resources. Defaults to None.
-            metadata (dict, optional): Dictionary containing metadata. Defaults to None.
+            resources (dict, optional): Dictionary containing configuration and resources.
+                Can include:
+                - "ipfs": IPFS configuration (gateway, local_node, timeout, etc.)
+                - "hardware": Hardware preferences (prefer_cuda, precision, etc.)
+                - "performance": Performance settings (caching, parallelism, etc.)
+                - "models": Model-specific configurations
+                - "endpoints": Custom endpoint configurations
+                Defaults to None (uses default configuration).
+                
+            metadata (dict, optional): Dictionary containing project metadata and context.
+                Can include:
+                - "project": Project name and description
+                - "version": Project version
+                - "environment": Deployment environment (dev, staging, prod)
+                - Custom metadata fields for tracking and organization
+                Defaults to None.
+        
+        Raises:
+            RuntimeError: If critical components fail to initialize
+            ImportError: If required dependencies are missing
+            
+        Example:
+            Basic initialization:
+            ```python
+            accelerator = ipfs_accelerate_py({}, {})
+            ```
+            
+            With hardware preferences:
+            ```python
+            config = {
+                "hardware": {
+                    "prefer_cuda": True,
+                    "precision": "fp16",
+                    "allow_openvino": True
+                }
+            }
+            accelerator = ipfs_accelerate_py(config, {})
+            ```
+            
+            With IPFS configuration:
+            ```python
+            config = {
+                "ipfs": {
+                    "gateway": "http://localhost:8080/ipfs/",
+                    "local_node": "http://localhost:5001",
+                    "timeout": 30
+                }
+            }
+            accelerator = ipfs_accelerate_py(config, {})
+            ```
+        
+        Notes:
+            - Hardware detection runs automatically during initialization
+            - IPFS connectivity is tested if configuration is provided
+            - Resource pools are initialized for optimal performance
+            - Template systems are set up for model management
+            - All initialization is logged for debugging purposes
         """
         # Initialize resources
         self.resources = resources if resources is not None else {}

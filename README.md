@@ -132,12 +132,20 @@ result = accelerator.run_model(
 
 For detailed documentation on all components and features, please refer to:
 
-- [General Usage Guide](docs/USAGE.md)
-- [WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)
-- [API Reference](docs/API.md)
-- [Hardware Optimization](docs/HARDWARE.md)
-- [IPFS Integration](docs/IPFS.md)
-- [Examples](examples/README.md)
+### Core Documentation
+- [Installation & Setup Guide](docs/INSTALLATION.md) - Complete installation and configuration guide
+- [General Usage Guide](docs/USAGE.md) - Comprehensive usage examples and patterns
+- [API Reference](docs/API.md) - Complete API documentation
+- [Architecture Overview](docs/ARCHITECTURE.md) - System architecture and design patterns
+
+### Specialized Guides
+- [Hardware Optimization](docs/HARDWARE.md) - Hardware-specific acceleration and optimization
+- [IPFS Integration](docs/IPFS.md) - IPFS network features and distributed inference
+- [WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md) - Browser-based acceleration
+- [Testing Guide](docs/TESTING.md) - Comprehensive testing framework and methodologies
+
+### Examples and Tutorials
+- [Examples](examples/README.md) - Practical examples and demos
 
 ## Browser Integration
 
@@ -221,11 +229,11 @@ with open("optimization_exports.zip", "wb") as f:
 
 The `examples` directory contains practical examples for various use cases:
 
-- [Basic Usage](examples/basic_usage.py)
-- [WebNN/WebGPU Demo](examples/demo_webnn_webgpu.py)
-- [Multi-Model Pipeline](examples/multi_model_pipeline.py)
-- [Hardware Benchmarking](examples/hardware_benchmark.py)
-- [IPFS Content Addressing](examples/ipfs_content_addressing.py)
+- [WebNN/WebGPU Demo](examples/demo_webnn_webgpu.py) - Browser-based acceleration with WebNN and WebGPU
+- [Transformers Integration](examples/transformers_example.py) - HuggingFace Transformers integration
+- [MCP Integration](examples/mcp_integration_example.py) - Model Control Protocol integration
+
+Additional examples are available in the benchmarks directory for performance testing and hardware optimization.
 
 ## License
 

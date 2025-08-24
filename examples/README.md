@@ -4,11 +4,15 @@ This directory contains example applications demonstrating the usage of IPFS Acc
 
 ## Available Examples
 
-### WebNN/WebGPU Integration
+### Core Examples
 
 - **[demo_webnn_webgpu.py](demo_webnn_webgpu.py)**: Demonstrates the WebNN/WebGPU integration with IPFS acceleration with support for various model types, browsers, and configurations.
 
-Usage:
+- **[transformers_example.py](transformers_example.py)**: Shows integration with HuggingFace Transformers library for text processing and model inference.
+
+- **[mcp_integration_example.py](mcp_integration_example.py)**: Example of Model Control Protocol (MCP) integration for advanced model management.
+
+Usage examples for the WebNN/WebGPU demo:
 ```bash
 # Run BERT with WebGPU in Chrome
 python demo_webnn_webgpu.py --model bert-base-uncased --platform webgpu --browser chrome
@@ -29,14 +33,13 @@ python demo_webnn_webgpu.py --model bert-base-uncased --platform webgpu --runs 5
 python demo_webnn_webgpu.py --model bert-base-uncased --platform webgpu --browser chrome --real-browser
 ```
 
-### Example Applications (Coming Soon)
+### Additional Examples
 
-The following examples are planned for future development:
+For more advanced examples, see:
 
-- **[multi_model_pipeline.py](multi_model_pipeline.py)**: Pipeline multiple models with shared tensors for efficient inference
-- **[ipfs_content_addressing.py](ipfs_content_addressing.py)**: Advanced IPFS content addressing for model storage and retrieval
-- **[hardware_benchmark.py](hardware_benchmark.py)**: Benchmark models across multiple hardware platforms
-- **[cross_browser_model_sharding.py](cross_browser_model_sharding.py)**: Distribute model components across multiple browsers
+- **[Benchmark Examples](../benchmarks/examples/)**: Hardware performance benchmarking and optimization
+- **[Generator Examples](../generators/)**: Model and test generation utilities
+- **[DuckDB API Examples](../duckdb_api/)**: Database integration and query optimization
 
 ## Getting Started
 
