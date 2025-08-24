@@ -33,4 +33,4 @@ pydub
 openai
 tiktoken
 open_clip_torch
-open_clip
+# open_clip
