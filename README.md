@@ -221,11 +221,11 @@ with open("optimization_exports.zip", "wb") as f:
 
 The `examples` directory contains practical examples for various use cases:
 
-- [Basic Usage](examples/basic_usage.py)
-- [WebNN/WebGPU Demo](examples/demo_webnn_webgpu.py)
-- [Multi-Model Pipeline](examples/multi_model_pipeline.py)
-- [Hardware Benchmarking](examples/hardware_benchmark.py)
-- [IPFS Content Addressing](examples/ipfs_content_addressing.py)
+- [WebNN/WebGPU Demo](examples/demo_webnn_webgpu.py) - Browser-based acceleration with WebNN and WebGPU
+- [Transformers Integration](examples/transformers_example.py) - HuggingFace Transformers integration
+- [MCP Integration](examples/mcp_integration_example.py) - Model Control Protocol integration
+
+Additional examples are available in the benchmarks directory for performance testing and hardware optimization.
 
 ## License
 
