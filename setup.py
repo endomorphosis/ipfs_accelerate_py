@@ -16,8 +16,15 @@ setup(
 	url="https://github.com/endomorphosis/ipfs_accelerate_py",
 	classifiers=[
 		"Programming Language :: Python :: 3",
+		"Programming Language :: Python :: 3.8", 
+		"Programming Language :: Python :: 3.9",
+		"Programming Language :: Python :: 3.10",
+		"Programming Language :: Python :: 3.11",
+		"Programming Language :: Python :: 3.12",
 		"License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
-		"Operating System :: POSIX :: Linux", 
+		"Operating System :: POSIX :: Linux",
+		"Operating System :: Microsoft :: Windows",
+		"Operating System :: MacOS",
 	],
 	python_requires=">=3.8",
 	keywords="machine learning, IPFS, hardware-acceleration, inference, distributed computing, WebGPU, WebNN",
@@ -29,10 +36,10 @@ setup(
 		'ipfs_model_manager_py',
 		'torch>=2.1',
 		'torchvision',
-		'numpy',
+		'numpy>=1.24.0',  # Ensure Python 3.12 compatibility
 		'torchtext',
-		'urllib3',
-		'requests',
+		'urllib3>=2.0.0',  # Updated for security and compatibility
+		'requests>=2.28.0',
 		'boto3',
 		'trio',
 		'InstructorEmbedding',
@@ -44,13 +51,13 @@ setup(
 		'optimum[exporters]',
 		'optimum[intel]',
 		'toml',
-		'pydantic',
+		'pydantic>=2.0.0',  # Updated for Python 3.12
 		'einops',
 		'timm',
-		'Pillow',
+		'Pillow>=10.0.0',  # Updated for Python 3.12 support
 		'multiformats',
 		'pydub',
-		'openai',
+		'openai>=1.0.0',
 		'tiktoken',
 		'open_clip_torch',
 		'librosa',
@@ -107,6 +114,11 @@ setup(
 			"fastmcp>=0.1.0",
 			"libp2p>=0.1.5",
 			"async-timeout>=4.0.0",
+		],
+	},
+	entry_points={
+		'console_scripts': [
+			'ipfs-accelerate=ipfs_accelerate_py.ipfs_cli:main',
 		],
 	}
 )
