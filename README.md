@@ -132,12 +132,20 @@ result = accelerator.run_model(
 
 For detailed documentation on all components and features, please refer to:
 
-- [General Usage Guide](docs/USAGE.md)
-- [WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)
-- [API Reference](docs/API.md)
-- [Hardware Optimization](docs/HARDWARE.md)
-- [IPFS Integration](docs/IPFS.md)
-- [Examples](examples/README.md)
+### Core Documentation
+- [Installation & Setup Guide](docs/INSTALLATION.md) - Complete installation and configuration guide
+- [General Usage Guide](docs/USAGE.md) - Comprehensive usage examples and patterns
+- [API Reference](docs/API.md) - Complete API documentation
+- [Architecture Overview](docs/ARCHITECTURE.md) - System architecture and design patterns
+
+### Specialized Guides
+- [Hardware Optimization](docs/HARDWARE.md) - Hardware-specific acceleration and optimization
+- [IPFS Integration](docs/IPFS.md) - IPFS network features and distributed inference
+- [WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md) - Browser-based acceleration
+- [Testing Guide](docs/TESTING.md) - Comprehensive testing framework and methodologies
+
+### Examples and Tutorials
+- [Examples](examples/README.md) - Practical examples and demos
 
 ## Browser Integration
 
