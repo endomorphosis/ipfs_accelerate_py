@@ -1,0 +1,53 @@
+# Alert rules for IPFS Accelerate Python production monitoring
+groups:
+  - name: ipfs-accelerate-py.rules
+    rules:
+      # High latency alert
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(request_duration_seconds_bucket[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+          description: "95th percentile latency is above 100ms for 2 minutes"
+      
+      # High error rate alert
+      - alert: HighErrorRate
+        expr: rate(requests_total{status=~"5.."}[5m]) / rate(requests_total[5m]) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% for 1 minute"
+      
+      # Service down alert
+      - alert: ServiceDown
+        expr: up{job="ipfs-accelerate-py"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service is down"
+          description: "IPFS Accelerate Python service is not responding"
+      
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (process_resident_memory_bytes / process_virtual_memory_bytes) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 80% for 5 minutes"
+      
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[1m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80% for 5 minutes"

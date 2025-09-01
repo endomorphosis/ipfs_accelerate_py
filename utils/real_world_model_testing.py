@@ -33,6 +33,13 @@ class ModelTestResult:
     model_size_mb: Optional[float] = None
     tokens_per_second: Optional[float] = None
     inference_details: Optional[Dict[str, Any]] = None
+    
+    @property
+    def throughput(self) -> float:
+        """Calculate throughput as samples per second."""
+        if self.latency_ms > 0:
+            return 1000.0 / self.latency_ms  # Convert ms to samples/second
+        return 0.0
 
 class RealWorldModelTester:
     """Test actual ML models with hardware detection and optimization."""
@@ -146,7 +153,23 @@ class RealWorldModelTester:
         """Run the actual model test with graceful fallback."""
         
         # Import with graceful fallback
-        from safe_imports import safe_import
+        try:
+            from .safe_imports import safe_import
+        except ImportError:
+            # Fallback for standalone execution
+            try:
+                import sys
+                import os
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from utils.safe_imports import safe_import
+            except ImportError:
+                # Ultimate fallback - create a simple safe_import function
+                def safe_import(module_name):
+                    try:
+                        import importlib
+                        return importlib.import_module(module_name)
+                    except ImportError:
+                        return None
         
         transformers = safe_import('transformers')
         torch = safe_import('torch')
