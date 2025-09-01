@@ -5,6 +5,8 @@ Model-Hardware Compatibility Manager
 This module provides enhanced rules for determining optimal hardware
 for different model types, including memory requirements, performance
 characteristics, and compatibility constraints.
+
+Enhanced with realistic performance modeling and detailed recommendations.
 """
 
 import logging
@@ -13,6 +15,19 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import re
+
+# Import performance modeling if available
+try:
+    from .performance_modeling import (
+        performance_simulator, 
+        PerformanceResult,
+        HardwareType,
+        PrecisionMode as PerfPrecisionMode
+    )
+    HAS_PERFORMANCE_MODELING = True
+except ImportError:
+    HAS_PERFORMANCE_MODELING = False
+    PerformanceResult = None
 
 logger = logging.getLogger(__name__)
 
@@ -625,6 +640,172 @@ class ModelHardwareCompatibility:
             },
             "notes": "Rough estimate based on model family and hardware profiles"
         }
+    
+    def get_detailed_performance_analysis(self, model_name: str, available_hardware: List[str]) -> Dict[str, Any]:
+        """
+        Get detailed performance analysis using enhanced performance modeling.
+        
+        Args:
+            model_name: Name of the model to analyze
+            available_hardware: List of available hardware options
+            
+        Returns:
+            Detailed performance analysis with realistic projections
+        """
+        if not HAS_PERFORMANCE_MODELING:
+            logger.warning("Performance modeling not available, falling back to basic estimates")
+            return self.get_optimal_hardware(model_name, available_hardware)
+            
+        try:
+            # Use the advanced performance simulator
+            recommendations = performance_simulator.get_optimal_configuration(
+                model_name, available_hardware, optimize_for="efficiency"
+            )
+            
+            best_hardware, performance_result, config_details = recommendations
+            
+            # Compare all options with detailed metrics
+            all_results = performance_simulator.compare_hardware_options(
+                model_name, available_hardware
+            )
+            
+            # Build comprehensive response
+            analysis = {
+                "model_name": model_name,
+                "recommended_hardware": best_hardware,
+                "performance_details": {
+                    "inference_time_ms": performance_result.inference_time_ms,
+                    "memory_usage_mb": performance_result.memory_usage_mb,
+                    "throughput_samples_per_sec": performance_result.throughput_samples_per_sec,
+                    "efficiency_score": performance_result.efficiency_score,
+                    "power_consumption_watts": performance_result.power_consumption_watts
+                },
+                "bottleneck": performance_result.bottleneck,
+                "optimization_recommendations": performance_result.recommendations,
+                "configuration_details": config_details,
+                "hardware_comparison": {}
+            }
+            
+            # Add comparison data for all hardware options
+            for hw_name, result in all_results.items():
+                analysis["hardware_comparison"][hw_name] = {
+                    "inference_time_ms": result.inference_time_ms,
+                    "memory_usage_mb": result.memory_usage_mb,
+                    "efficiency_score": result.efficiency_score,
+                    "relative_performance": f"{100 * performance_result.inference_time_ms / result.inference_time_ms:.0f}%" if result.inference_time_ms > 0 else "N/A",
+                    "bottleneck": result.bottleneck,
+                    "top_recommendation": result.recommendations[0] if result.recommendations else None
+                }
+                
+            # Add compatibility assessment from basic system
+            basic_recommendation = self.get_optimal_hardware(model_name, available_hardware)
+            analysis["compatibility_check"] = {
+                "basic_recommendation": basic_recommendation.get("recommended_hardware"),
+                "memory_requirements": basic_recommendation.get("memory_requirements", {}),
+                "confidence": basic_recommendation.get("confidence", "medium"),
+                "issues": basic_recommendation.get("issues", [])
+            }
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error in detailed performance analysis: {e}")
+            # Fall back to basic compatibility check
+            return self.get_optimal_hardware(model_name, available_hardware)
+            
+    def benchmark_model_across_hardware(
+        self, 
+        model_name: str, 
+        hardware_options: List[str],
+        batch_sizes: List[int] = [1, 4, 16],
+        optimize_for: str = "speed"
+    ) -> Dict[str, Any]:
+        """
+        Benchmark model performance across different hardware and batch sizes.
+        
+        Args:
+            model_name: Model to benchmark
+            hardware_options: Hardware platforms to test
+            batch_sizes: Different batch sizes to test
+            optimize_for: Optimization criteria ("speed", "memory", "power", "efficiency")
+            
+        Returns:
+            Comprehensive benchmarking results
+        """
+        if not HAS_PERFORMANCE_MODELING:
+            logger.warning("Performance modeling not available for benchmarking")
+            return {"error": "Performance modeling not available"}
+            
+        benchmark_results = {
+            "model_name": model_name,
+            "optimize_for": optimize_for,
+            "hardware_results": {},
+            "batch_size_analysis": {},
+            "optimal_configurations": {}
+        }
+        
+        try:
+            # Test each hardware option
+            for hardware in hardware_options:
+                hw_results = {}
+                
+                for batch_size in batch_sizes:
+                    result = performance_simulator.simulate_inference_performance(
+                        model_name, hardware, batch_size=batch_size
+                    )
+                    
+                    hw_results[f"batch_{batch_size}"] = {
+                        "inference_time_ms": result.inference_time_ms,
+                        "memory_usage_mb": result.memory_usage_mb,
+                        "throughput": result.throughput_samples_per_sec,
+                        "efficiency": result.efficiency_score,
+                        "power_watts": result.power_consumption_watts
+                    }
+                
+                benchmark_results["hardware_results"][hardware] = hw_results
+                
+                # Find optimal batch size for this hardware
+                if optimize_for == "speed":
+                    best_batch = min(hw_results.keys(), key=lambda b: hw_results[b]["inference_time_ms"])
+                elif optimize_for == "memory":
+                    best_batch = min(hw_results.keys(), key=lambda b: hw_results[b]["memory_usage_mb"])
+                else:  # efficiency
+                    best_batch = max(hw_results.keys(), key=lambda b: hw_results[b]["efficiency"])
+                    
+                benchmark_results["optimal_configurations"][hardware] = {
+                    "best_batch_size": best_batch,
+                    "performance": hw_results[best_batch]
+                }
+            
+            # Cross-hardware analysis for each batch size
+            for batch_size in batch_sizes:
+                batch_analysis = {}
+                
+                for hardware in hardware_options:
+                    if hardware in benchmark_results["hardware_results"]:
+                        batch_key = f"batch_{batch_size}"
+                        if batch_key in benchmark_results["hardware_results"][hardware]:
+                            perf_data = benchmark_results["hardware_results"][hardware][batch_key]
+                            batch_analysis[hardware] = perf_data
+                
+                if batch_analysis:
+                    # Find best hardware for this batch size
+                    if optimize_for == "speed":
+                        best_hw = min(batch_analysis.keys(), key=lambda h: batch_analysis[h]["inference_time_ms"])
+                    elif optimize_for == "memory":
+                        best_hw = min(batch_analysis.keys(), key=lambda h: batch_analysis[h]["memory_usage_mb"])
+                    else:  # efficiency
+                        best_hw = max(batch_analysis.keys(), key=lambda h: batch_analysis[h]["efficiency"])
+                    
+                    batch_analysis["recommended"] = best_hw
+                
+                benchmark_results["batch_size_analysis"][f"batch_{batch_size}"] = batch_analysis
+            
+            return benchmark_results
+            
+        except Exception as e:
+            logger.error(f"Error in benchmarking: {e}")
+            return {"error": str(e)}
 
 # Global instance
 compatibility_manager = ModelHardwareCompatibility()
@@ -641,6 +822,14 @@ def check_model_compatibility(model_name: str, hardware: str) -> Dict[str, Any]:
 def get_supported_models() -> List[str]:
     """Get list of supported model families."""
     return compatibility_manager.get_model_families()
+
+def get_detailed_performance_analysis(model_name: str, available_hardware: List[str]) -> Dict[str, Any]:
+    """Get detailed performance analysis with realistic projections."""
+    return compatibility_manager.get_detailed_performance_analysis(model_name, available_hardware)
+
+def benchmark_model_performance(model_name: str, hardware_options: List[str], **kwargs) -> Dict[str, Any]:
+    """Benchmark model performance across different hardware options."""
+    return compatibility_manager.benchmark_model_across_hardware(model_name, hardware_options, **kwargs)
 
 if __name__ == "__main__":
     # Demo the compatibility system
