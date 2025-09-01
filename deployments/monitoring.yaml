@@ -1,0 +1,13 @@
+grafana:
+  dashboards:
+    errors: Error tracking
+    health: Health and availability
+    performance: Performance metrics
+prometheus:
+  global:
+    scrape_interval: 15s
+  scrape_configs:
+  - job_name: ipfs-accelerate
+    static_configs:
+    - targets:
+      - localhost:8000

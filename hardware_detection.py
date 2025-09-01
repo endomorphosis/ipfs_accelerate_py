@@ -49,6 +49,30 @@ WEBNN = "webnn"
 WEBGPU = "webgpu"
 QUALCOMM = "qualcomm"
 
+# Import safe_imports for graceful dependency handling
+try:
+    from .utils.safe_imports import import_torch, safe_import
+except ImportError:
+    # Fallback if utils not available
+    def import_torch(optional=True):
+        try:
+            import torch
+            return torch
+        except ImportError:
+            if not optional:
+                raise
+            return None
+    
+    def safe_import(module_name, fallback=None, **kwargs):
+        try:
+            return __import__(module_name)
+        except ImportError:
+            return fallback
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+torch = import_torch(optional=True)
+HAS_TORCH = torch is not None
+
 class HardwareDetector:
     """
     Comprehensive hardware detection with detailed capabilities reporting.
@@ -248,7 +272,8 @@ class HardwareDetector:
         
         # For other platforms or if above method fails
         try:
-            import torch
+            if not HAS_TORCH:
+                return False
             if feature.lower() == "avx":
                 return torch.backends.cpu.supports_avx()
             elif feature.lower() == "avx2":
@@ -322,7 +347,9 @@ class HardwareDetector:
     def _detect_cuda(self):
         """Detect CUDA availability and capabilities"""
         try:
-            import torch
+            if not HAS_TORCH:
+                return {'available': False, 'reason': 'PyTorch not available'}
+                
             cuda_available = torch.cuda.is_available()
             
             if cuda_available:
@@ -394,7 +421,8 @@ class HardwareDetector:
     def _detect_rocm(self):
         """Detect AMD ROCm availability and capabilities"""
         try:
-            import torch
+            if not HAS_TORCH:
+                return {'available': False, 'reason': 'PyTorch not available'}
             
             # Check if PyTorch was built with ROCm
             is_rocm = False
@@ -451,7 +479,8 @@ class HardwareDetector:
             return
             
         try:
-            import torch
+            if not HAS_TORCH:
+                return {'available': False, 'reason': 'PyTorch not available'}
             
             # Check if PyTorch has MPS support
             has_mps_support = hasattr(torch.backends, "mps")
@@ -616,15 +645,16 @@ class HardwareDetector:
         
         # Check for ONNX export capabilities
         try:
-            import torch
-            import onnx
+            if not HAS_TORCH:
+                logger.debug("PyTorch not available, WebNN limited")
+            onnx = safe_import('onnx', optional=True)
             self._hardware_info[WEBNN] = True
             self._details[WEBNN] = {
                 "environment": "node",
                 "mode": "onnx_export",
                 "python_export_capability": {
-                    "torch": torch.__version__,
-                    "onnx": onnx.__version__
+                    "torch": torch.__version__ if torch and hasattr(torch, '__version__') else "not_available",
+                    "onnx": onnx.__version__ if onnx and hasattr(onnx, '__version__') else "not_available"
                 }
             }
             logger.info("WebNN support detected via Python ONNX export capabilities")
@@ -750,15 +780,16 @@ class HardwareDetector:
         
         # Check for ONNX export capabilities
         try:
-            import torch
-            import onnx
+            if not HAS_TORCH:
+                logger.debug("PyTorch not available, WebGPU export limited")
+            onnx = safe_import('onnx', optional=True)
             self._hardware_info[WEBGPU] = True
             self._details[WEBGPU] = {
                 "environment": "node",
                 "mode": "onnx_export",
                 "python_export_capability": {
-                    "torch": torch.__version__,
-                    "onnx": onnx.__version__
+                    "torch": torch.__version__ if torch and hasattr(torch, '__version__') else "not_available",
+                    "onnx": onnx.__version__ if onnx and hasattr(onnx, '__version__') else "not_available"
                 }
             }
             logger.info("WebGPU support detected via Python ONNX export capabilities")
@@ -870,6 +901,23 @@ class HardwareDetector:
         """Get detailed information about hardware capabilities"""
         return self._details
     
+    def get_hardware_info(self, hardware_type: str) -> Dict[str, Any]:
+        """Get detailed information about a specific hardware type"""
+        if hardware_type in self._details:
+            return self._details[hardware_type]
+        elif hardware_type in self._hardware_info:
+            return {
+                "available": self._hardware_info[hardware_type],
+                "type": hardware_type,
+                "details": "Hardware detection completed"
+            }
+        else:
+            return {
+                "available": False,
+                "type": hardware_type,
+                "error": f"Unknown hardware type: {hardware_type}"
+            }
+    
     def get_errors(self) -> Dict[str, str]:
         """Get errors that occurred during hardware detection"""
         return self._errors
@@ -924,8 +972,8 @@ class HardwareDetector:
         # Only add index for CUDA or ROCm devices
         if device == "cuda":
             try:
-                import torch
-                device_count = torch.cuda.device_count()
+                if HAS_TORCH:
+                    device_count = torch.cuda.device_count()
                 if device_count > 0:
                     # Ensure index is valid
                     if preferred_index >= 0 and preferred_index < device_count:
@@ -942,8 +990,8 @@ class HardwareDetector:
         # For ROCm devices we also add indices (ROCm uses CUDA API)
         elif self.is_available(ROCM) and device == "cuda":
             try:
-                import torch
-                device_count = torch.cuda.device_count()
+                if HAS_TORCH:
+                    device_count = torch.cuda.device_count()
                 if device_count > 0:
                     # Ensure index is valid
                     if preferred_index >= 0 and preferred_index < device_count:
@@ -1046,8 +1094,8 @@ class HardwareDetector:
             # For GPU hardware, add device index
             device_base = "cuda"  # Both CUDA and ROCm use "cuda" in PyTorch
             try:
-                import torch
-                device_count = torch.cuda.device_count()
+                if HAS_TORCH:
+                    device_count = torch.cuda.device_count()
                 if device_count > 0:
                     # Ensure index is valid
                     if preferred_index >= 0 and preferred_index < device_count:
@@ -1179,13 +1227,6 @@ def get_hardware_detection_code() -> str:
 import os
 import importlib.util
 
-# Try to import torch first (needed for CUDA/ROCm/MPS)
-try:
-    import torch
-    HAS_TORCH = True
-except ImportError:
-    HAS_TORCH = False
-
 # Initialize hardware capability flags
 HAS_CUDA = False
 HAS_ROCM = False
@@ -1197,7 +1238,11 @@ HAS_QUALCOMM = False
 
 # CUDA detection
 if HAS_TORCH:
-    HAS_CUDA = torch.cuda.is_available()
+    try:
+        HAS_CUDA = torch.cuda.is_available()
+    except Exception as e:
+        logger.debug(f"CUDA detection failed: {e}")
+        HAS_CUDA = False
     
     # ROCm detection
     if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
@@ -1237,7 +1282,7 @@ HAS_QUALCOMM = (
 
 # Hardware detection function for comprehensive hardware info
 def check_hardware():
-    """Check available hardware and return capabilities."""
+    '''Check available hardware and return capabilities.'''
     capabilities = {
         "cpu": True,
         "cuda": HAS_CUDA,
