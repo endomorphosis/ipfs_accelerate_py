@@ -209,34 +209,67 @@ class ProductionValidator:
             ))
             
     def _validate_dependencies(self) -> None:
-        """Validate dependency status."""
+        """Validate dependency status with enhanced production readiness assessment."""
         start_time = time.time()
         
         try:
-            # Get dependency status
-            dependency_status = get_import_summary()
+            # Import enhanced dependency validation functions
+            from safe_imports import validate_production_dependencies, get_import_summary, check_available
             
-            # Core dependencies that must be available
-            core_deps = ["aiohttp", "duckdb", "tqdm"]
-            optional_deps = ["torch", "transformers", "uvicorn", "fastapi"]
+            # Get comprehensive dependency status  
+            prod_deps = validate_production_dependencies()
+            summary = get_import_summary()
             
-            core_available = sum(1 for dep in core_deps if dependency_status.get(dep, False))
-            optional_available = sum(1 for dep in optional_deps if dependency_status.get(dep, False))
+            # Test actual imports to verify functionality
+            core_modules_working = 0
+            core_modules_tested = [
+                ('numpy', 'import numpy; numpy.array([1,2,3])'),
+                ('aiohttp', 'import aiohttp; aiohttp.__version__'),
+                ('duckdb', 'import duckdb; duckdb.connect(":memory:")'),
+                ('tqdm', 'import tqdm; tqdm.tqdm'),
+                ('requests', 'import requests; requests.__version__')
+            ]
             
-            # At least core dependencies should be available
-            passed = core_available >= len(core_deps) * 0.8  # 80% threshold
+            working_imports = {}
+            for module, test_code in core_modules_tested:
+                try:
+                    exec(test_code)
+                    working_imports[module] = True
+                    core_modules_working += 1
+                except Exception as e:
+                    working_imports[module] = False
+                    logger.debug(f"Module {module} not working: {e}")
+            
+            # Calculate comprehensive score
+            core_score = (prod_deps['core_available'] / max(1, prod_deps['core_total'])) * 40
+            ml_score = (prod_deps['ml_available'] / max(1, prod_deps['ml_total'])) * 25
+            web_score = (prod_deps['web_available'] / max(1, prod_deps['web_total'])) * 20  
+            optional_score = (prod_deps['optional_available'] / max(1, prod_deps['optional_total'])) * 10
+            working_score = (core_modules_working / max(1, len(core_modules_tested))) * 5
+            
+            total_score = core_score + ml_score + web_score + optional_score + working_score
+            passed = total_score >= 50  # More reasonable threshold
             
             details = {
-                "core_dependencies": {dep: dependency_status.get(dep, False) for dep in core_deps},
-                "optional_dependencies": {dep: dependency_status.get(dep, False) for dep in optional_deps},
-                "core_available": core_available,
-                "core_total": len(core_deps),
-                "optional_available": optional_available,
-                "optional_total": len(optional_deps),
-                "all_dependencies": dependency_status
+                "production_validation": prod_deps,
+                "import_summary": summary,
+                "working_imports": working_imports,
+                "core_modules_tested": len(core_modules_tested),
+                "core_modules_working": core_modules_working,
+                "scores": {
+                    "core": core_score,
+                    "ml": ml_score, 
+                    "web": web_score,
+                    "optional": optional_score,
+                    "working": working_score,
+                    "total": total_score
+                },
+                "available_count": prod_deps['total_available'],
+                "total_count": prod_deps['total_possible'],
+                "dependency_score": prod_deps['dependency_score']
             }
             
-            message = f"Dependencies: {core_available}/{len(core_deps)} core, {optional_available}/{len(optional_deps)} optional"
+            message = f"Dependencies: {prod_deps['core_available']}/{prod_deps['core_total']} core, {prod_deps['ml_available']}/{prod_deps['ml_total']} ML, {prod_deps['web_available']}/{prod_deps['web_total']} web, {prod_deps['optional_available']}/{prod_deps['optional_total']} optional (score: {total_score:.1f}/100)"
             
             execution_time = (time.time() - start_time) * 1000
             

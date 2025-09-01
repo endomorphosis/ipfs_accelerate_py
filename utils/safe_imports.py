@@ -343,6 +343,55 @@ def check_dependency_group(group_name: str) -> Dict[str, bool]:
     
     return results
 
+def get_production_dependencies() -> Dict[str, List[str]]:
+    """Get production dependency requirements for validation."""
+    return {
+        'core': ['numpy', 'duckdb', 'aiohttp', 'tqdm', 'psutil', 'requests'],
+        'ml': ['torch', 'transformers', 'onnx', 'onnxruntime'],
+        'web': ['fastapi', 'uvicorn', 'websockets'],
+        'optional': ['matplotlib', 'plotly', 'pandas', 'scikit-learn']
+    }
+
+def validate_production_dependencies() -> Dict[str, Any]:
+    """Validate dependencies for production readiness."""
+    deps = get_production_dependencies()
+    results = {
+        'core_available': 0,
+        'core_total': len(deps['core']),
+        'ml_available': 0, 
+        'ml_total': len(deps['ml']),
+        'web_available': 0,
+        'web_total': len(deps['web']),
+        'optional_available': 0,
+        'optional_total': len(deps['optional']),
+        'details': {}
+    }
+    
+    for category, modules in deps.items():
+        available_count = 0
+        category_details = {}
+        
+        for module in modules:
+            is_available = check_available(module)
+            category_details[module] = is_available
+            if is_available:
+                available_count += 1
+        
+        results[f'{category}_available'] = available_count
+        results['details'][category] = category_details
+    
+    # Calculate overall scores
+    total_available = (results['core_available'] + results['ml_available'] + 
+                      results['web_available'] + results['optional_available'])
+    total_possible = (results['core_total'] + results['ml_total'] + 
+                     results['web_total'] + results['optional_total'])
+    
+    results['total_available'] = total_available
+    results['total_possible'] = total_possible
+    results['dependency_score'] = (total_available / total_possible * 100) if total_possible > 0 else 0
+    
+    return results
+
 def print_dependency_status():
     """Print status of all dependencies."""
     print("\n🔍 Dependency Status Report")
@@ -355,6 +404,15 @@ def print_dependency_status():
         for dep_name, available in status.items():
             icon = "✅" if available else "❌"
             print(f"  {icon} {dep_name}")
+    
+    # Print production validation
+    prod_deps = validate_production_dependencies()
+    print(f"\n📊 Production Dependency Validation:")
+    print(f"  🔧 Core: {prod_deps['core_available']}/{prod_deps['core_total']}")
+    print(f"  🤖 ML: {prod_deps['ml_available']}/{prod_deps['ml_total']}")
+    print(f"  🌐 Web: {prod_deps['web_available']}/{prod_deps['web_total']}")
+    print(f"  📊 Optional: {prod_deps['optional_available']}/{prod_deps['optional_total']}")
+    print(f"  📈 Overall Score: {prod_deps['dependency_score']:.1f}%")
     
     # Print summary
     summary = get_import_summary()
