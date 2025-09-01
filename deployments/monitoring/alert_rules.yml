@@ -1,4 +1,4 @@
-# Alert rules for IPFS Accelerate Python production monitoring
+# Enhanced alert rules for IPFS Accelerate Python production monitoring
 groups:
   - name: ipfs-accelerate-py.rules
     rules:
@@ -51,3 +51,42 @@ groups:
         annotations:
           summary: "High CPU usage"
           description: "CPU usage is above 80% for 5 minutes"
+
+      # Model inference specific alerts
+      - alert: ModelInferenceLatencyHigh
+        expr: histogram_quantile(0.95, rate(model_inference_duration_seconds_bucket[5m])) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model inference latency is high"
+          description: "95th percentile inference latency is {{ $value }}s for model {{ $labels.model_name }}"
+
+      - alert: ModelLoadFailure
+        expr: increase(model_load_failures_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model loading failures detected"
+          description: "{{ $value }} model loading failures in the last 5 minutes"
+
+      # Performance degradation
+      - alert: ThroughputDrop
+        expr: rate(http_requests_total[5m]) < rate(http_requests_total[5m] offset 1h) * 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Throughput significantly decreased"
+          description: "Request throughput dropped by more than 50% compared to 1 hour ago"
+
+      # Disk space monitoring
+      - alert: DiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space is running low"
+          description: "Disk usage is {{ $value }}% on {{ $labels.instance }}"

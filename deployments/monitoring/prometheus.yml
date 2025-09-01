@@ -13,16 +13,33 @@ alerting:
           - alertmanager:9093
 
 scrape_configs:
+  # Application metrics
   - job_name: 'ipfs-accelerate-py'
     static_configs:
-      - targets: ['ipfs-accelerate-py:8000']
+      - targets: ['ipfs-accelerate-py:8000', 'app:8080']
     metrics_path: /metrics
     scrape_interval: 10s
     
+  # System metrics (if node_exporter is available)
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['node-exporter:9100']
+    scrape_interval: 15s
     
+  # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+
+  # Docker metrics (if available)
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
+    scrape_interval: 30s
+
+  # Additional application instances
+  - job_name: 'ipfs-accelerate-instances'
+    static_configs:
+      - targets: ['app1:8080', 'app2:8080', 'app3:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
