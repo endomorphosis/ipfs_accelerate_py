@@ -214,7 +214,7 @@ class ProductionValidator:
         
         try:
             # Import enhanced dependency validation functions
-            from safe_imports import validate_production_dependencies, get_import_summary, check_available
+            from .safe_imports import validate_production_dependencies, get_import_summary, check_available
             
             # Get comprehensive dependency status  
             prod_deps = validate_production_dependencies()
@@ -435,7 +435,11 @@ class ProductionValidator:
                 if hardware in available_hardware:
                     total_simulations += 1
                     try:
-                        result = simulate_model_performance(model, hardware, batch_size, precision)
+                        result = simulate_model_performance(
+                            model, hardware, 
+                            batch_size=batch_size, 
+                            precision=precision
+                        )
                         performance_results[f"{model}_{hardware}_{precision}"] = {
                             "inference_time_ms": result.inference_time_ms,
                             "memory_usage_mb": result.memory_usage_mb,
@@ -524,7 +528,10 @@ class ProductionValidator:
             try:
                 # Simulate multiple model loads
                 for i in range(5):
-                    simulate_model_performance("bert-base-uncased", "cpu", 1, "fp32")
+                    simulate_model_performance(
+                        "bert-base-uncased", "cpu", 
+                        batch_size=1, precision="fp32"
+                    )
                 checks.append(("memory_management", True, "Multiple simulations successful"))
             except Exception as e:
                 checks.append(("memory_management", False, f"Memory management issue: {e}"))

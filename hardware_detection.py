@@ -901,6 +901,23 @@ class HardwareDetector:
         """Get detailed information about hardware capabilities"""
         return self._details
     
+    def get_hardware_info(self, hardware_type: str) -> Dict[str, Any]:
+        """Get detailed information about a specific hardware type"""
+        if hardware_type in self._details:
+            return self._details[hardware_type]
+        elif hardware_type in self._hardware_info:
+            return {
+                "available": self._hardware_info[hardware_type],
+                "type": hardware_type,
+                "details": "Hardware detection completed"
+            }
+        else:
+            return {
+                "available": False,
+                "type": hardware_type,
+                "error": f"Unknown hardware type: {hardware_type}"
+            }
+    
     def get_errors(self) -> Dict[str, str]:
         """Get errors that occurred during hardware detection"""
         return self._errors
