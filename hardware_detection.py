@@ -1237,7 +1237,7 @@ HAS_QUALCOMM = (
 
 # Hardware detection function for comprehensive hardware info
 def check_hardware():
-    """Check available hardware and return capabilities."""
+    '''Check available hardware and return capabilities.'''
     capabilities = {
         "cpu": True,
         "cuda": HAS_CUDA,
