@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Sink AI Model Testing Interface</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- jQuery UI for autocomplete -->
+    <link href="https://code.jquery.com/ui/1.13.2/themes/ui-lightness/jquery-ui.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-brain"></i> Kitchen Sink AI Testing
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text">
+                    <i class="fas fa-robot"></i> AI Model Testing Interface
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <!-- Status Alert -->
+        <div id="status-alert" class="alert alert-info alert-dismissible fade show" role="alert">
+            <i class="fas fa-info-circle"></i>
+            <span id="status-message">Loading AI components...</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+
+        <!-- Main Tab Interface -->
+        <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="generation-tab" data-bs-toggle="tab" data-bs-target="#generation" type="button" role="tab">
+                    <i class="fas fa-pen"></i> Text Generation
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="classification-tab" data-bs-toggle="tab" data-bs-target="#classification" type="button" role="tab">
+                    <i class="fas fa-tags"></i> Classification
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="embeddings-tab" data-bs-toggle="tab" data-bs-target="#embeddings" type="button" role="tab">
+                    <i class="fas fa-vector-square"></i> Embeddings
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="recommendations-tab" data-bs-toggle="tab" data-bs-target="#recommendations" type="button" role="tab">
+                    <i class="fas fa-chart-line"></i> Recommendations
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="models-tab" data-bs-toggle="tab" data-bs-target="#models" type="button" role="tab">
+                    <i class="fas fa-database"></i> Models
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="mainTabContent">
+            <!-- Text Generation Tab -->
+            <div class="tab-pane fade show active" id="generation" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-pen"></i> Text Generation (Causal LM)</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="generation-form">
+                                    <div class="mb-3">
+                                        <label for="gen-model" class="form-label">Model</label>
+                                        <input type="text" class="form-control model-autocomplete" id="gen-model" placeholder="Type to search models...">
+                                        <div class="form-text">Leave empty for automatic model selection</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="gen-prompt" class="form-label">Text Prompt</label>
+                                        <textarea class="form-control" id="gen-prompt" rows="3" placeholder="Enter your text prompt...">Once upon a time</textarea>
+                                    </div>
+                                    
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label for="gen-max-length" class="form-label">Max Length: <span id="gen-max-length-value">100</span></label>
+                                            <input type="range" class="form-range" id="gen-max-length" min="10" max="500" value="100">
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label for="gen-temperature" class="form-label">Temperature: <span id="gen-temperature-value">0.7</span></label>
+                                            <input type="range" class="form-range" id="gen-temperature" min="0.1" max="2.0" step="0.1" value="0.7">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="gen-hardware" class="form-label">Hardware</label>
+                                        <select class="form-select" id="gen-hardware">
+                                            <option value="cpu">CPU</option>
+                                            <option value="cuda">CUDA</option>
+                                            <option value="mps">MPS (Apple Silicon)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-play"></i> Generate Text
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-file-text"></i> Generated Text</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="generation-result" class="result-area">
+                                    <p class="text-muted">Generated text will appear here...</p>
+                                </div>
+                                
+                                <div id="generation-metadata" class="metadata-area mt-3" style="display:none;">
+                                    <small class="text-muted">
+                                        Model: <span id="gen-model-used"></span><br>
+                                        Processing Time: <span id="gen-processing-time"></span>s<br>
+                                        Token Count: <span id="gen-token-count"></span>
+                                    </small>
+                                </div>
+                                
+                                <div class="feedback-area mt-3" style="display:none;">
+                                    <label class="form-label">Rate this result:</label>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-outline-danger btn-sm feedback-btn" data-score="0.2">👎</button>
+                                        <button type="button" class="btn btn-outline-warning btn-sm feedback-btn" data-score="0.5">😐</button>
+                                        <button type="button" class="btn btn-outline-success btn-sm feedback-btn" data-score="0.8">👍</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Text Classification Tab -->
+            <div class="tab-pane fade" id="classification" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-tags"></i> Text Classification</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="classification-form">
+                                    <div class="mb-3">
+                                        <label for="class-model" class="form-label">Model</label>
+                                        <input type="text" class="form-control model-autocomplete" id="class-model" placeholder="Type to search models...">
+                                        <div class="form-text">Leave empty for automatic model selection</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="class-text" class="form-label">Text to Classify</label>
+                                        <textarea class="form-control" id="class-text" rows="4" placeholder="Enter text to classify...">This product is amazing! I love it.</textarea>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="class-hardware" class="form-label">Hardware</label>
+                                        <select class="form-select" id="class-hardware">
+                                            <option value="cpu">CPU</option>
+                                            <option value="cuda">CUDA</option>
+                                            <option value="mps">MPS (Apple Silicon)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-play"></i> Classify Text
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-chart-bar"></i> Classification Results</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="classification-result" class="result-area">
+                                    <p class="text-muted">Classification results will appear here...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Embeddings Tab -->
+            <div class="tab-pane fade" id="embeddings" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-vector-square"></i> Text Embeddings</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="embeddings-form">
+                                    <div class="mb-3">
+                                        <label for="embed-model" class="form-label">Model</label>
+                                        <input type="text" class="form-control model-autocomplete" id="embed-model" placeholder="Type to search models...">
+                                        <div class="form-text">Leave empty for automatic model selection</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="embed-text" class="form-label">Text</label>
+                                        <textarea class="form-control" id="embed-text" rows="3" placeholder="Enter text to embed...">The quick brown fox jumps over the lazy dog.</textarea>
+                                    </div>
+                                    
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="embed-normalize" checked>
+                                        <label class="form-check-label" for="embed-normalize">
+                                            Normalize vectors
+                                        </label>
+                                    </div>
+                                    
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-play"></i> Generate Embeddings
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-chart-line"></i> Embedding Vector</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="embeddings-result" class="result-area">
+                                    <p class="text-muted">Embedding vector will appear here...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommendations Tab -->
+            <div class="tab-pane fade" id="recommendations" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-chart-line"></i> Model Recommendations</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="recommendations-form">
+                                    <div class="mb-3">
+                                        <label for="rec-task-type" class="form-label">Task Type</label>
+                                        <select class="form-select" id="rec-task-type">
+                                            <option value="generation">Text Generation</option>
+                                            <option value="classification">Text Classification</option>
+                                            <option value="embedding">Text Embedding</option>
+                                            <option value="qa">Question Answering</option>
+                                            <option value="translation">Translation</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="rec-hardware" class="form-label">Hardware</label>
+                                        <select class="form-select" id="rec-hardware">
+                                            <option value="cpu">CPU</option>
+                                            <option value="cuda">CUDA</option>
+                                            <option value="mps">MPS (Apple Silicon)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="rec-input-type" class="form-label">Input Type</label>
+                                        <select class="form-select" id="rec-input-type">
+                                            <option value="tokens">Tokens</option>
+                                            <option value="text">Text</option>
+                                            <option value="images">Images</option>
+                                            <option value="audio">Audio</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="rec-output-type" class="form-label">Output Type</label>
+                                        <select class="form-select" id="rec-output-type">
+                                            <option value="tokens">Tokens</option>
+                                            <option value="logits">Logits</option>
+                                            <option value="embeddings">Embeddings</option>
+                                            <option value="probabilities">Probabilities</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-search"></i> Get Recommendation
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-star"></i> Recommended Model</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="recommendations-result" class="result-area">
+                                    <p class="text-muted">Model recommendation will appear here...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Models Tab -->
+            <div class="tab-pane fade" id="models" role="tabpanel">
+                <div class="mt-3">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5><i class="fas fa-database"></i> Model Manager</h5>
+                            <button class="btn btn-outline-primary btn-sm" id="refresh-models">
+                                <i class="fas fa-sync"></i> Refresh
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <input type="text" class="form-control" id="model-search" placeholder="Search models...">
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-select" id="model-type-filter">
+                                        <option value="">All Types</option>
+                                        <option value="language_model">Language Model</option>
+                                        <option value="embedding_model">Embedding Model</option>
+                                        <option value="vision_model">Vision Model</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-select" id="model-arch-filter">
+                                        <option value="">All Architectures</option>
+                                        <option value="transformer">Transformer</option>
+                                        <option value="bert">BERT</option>
+                                        <option value="gpt">GPT</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div id="models-list" class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Model ID</th>
+                                            <th>Name</th>
+                                            <th>Type</th>
+                                            <th>Architecture</th>
+                                            <th>Tags</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="models-table-body">
+                                        <!-- Model rows will be inserted here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div class="mt-2">Processing...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
