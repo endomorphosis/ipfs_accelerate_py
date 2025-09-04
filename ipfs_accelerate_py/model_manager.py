@@ -549,7 +549,7 @@ class ModelManager:
         # Count by type and architecture
         for metadata in self.models.values():
             # Model type stats
-            type_name = metadata.model_type.value
+            type_name = metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type)
             stats["models_by_type"][type_name] = stats["models_by_type"].get(type_name, 0) + 1
             
             # Architecture stats
@@ -558,11 +558,11 @@ class ModelManager:
             
             # Input/Output type stats
             for inp in metadata.inputs:
-                input_type = inp.data_type.value
+                input_type = inp.data_type.value if hasattr(inp.data_type, 'value') else str(inp.data_type)
                 stats["common_input_types"][input_type] = stats["common_input_types"].get(input_type, 0) + 1
             
             for out in metadata.outputs:
-                output_type = out.data_type.value
+                output_type = out.data_type.value if hasattr(out.data_type, 'value') else str(out.data_type)
                 stats["common_output_types"][output_type] = stats["common_output_types"].get(output_type, 0) + 1
             
             # Config and inference code stats
