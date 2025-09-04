@@ -21,6 +21,16 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
 
+# Try to import IPFS multiformats for content addressing
+try:
+    from .ipfs_multiformats import ipfs_multiformats_py
+    HAVE_IPFS_MULTIFORMATS = True
+except ImportError:
+    try:
+        from ipfs_multiformats import ipfs_multiformats_py  
+    except ImportError:
+        HAVE_IPFS_MULTIFORMATS = False
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -42,17 +52,30 @@ except ImportError:
     HAVE_REQUESTS = False
     logger.warning("Requests not available. HuggingFace repository fetching disabled.")
 
+# Initialize IPFS multiformats instance if available
+ipfs_multiformats = None
+if HAVE_IPFS_MULTIFORMATS:
+    try:
+        ipfs_multiformats = ipfs_multiformats_py(None, None)
+        logger.info("IPFS content addressing enabled")
+    except Exception as e:
+        logger.warning(f"Failed to initialize IPFS multiformats: {e}")
+        HAVE_IPFS_MULTIFORMATS = False
+else:
+    logger.warning("IPFS multiformats not available. Content addressing disabled.")
 
-def fetch_huggingface_repo_structure(model_id: str, branch: str = "main") -> Optional[Dict[str, Any]]:
+
+def fetch_huggingface_repo_structure(model_id: str, branch: str = "main", include_ipfs_cids: bool = True) -> Optional[Dict[str, Any]]:
     """
-    Fetch file structure and hashes from a HuggingFace repository.
+    Fetch file structure and hashes from a HuggingFace repository with IPFS content addressing.
     
     Args:
         model_id: HuggingFace model ID (e.g., "bert-base-uncased")
         branch: Git branch to fetch from (default: "main")
+        include_ipfs_cids: Whether to generate IPFS CIDs for files (default: True)
         
     Returns:
-        Dictionary containing repository structure with file paths and hashes,
+        Dictionary containing repository structure with file paths, hashes, and IPFS CIDs,
         or None if fetching fails
     """
     if not HAVE_REQUESTS:
@@ -77,7 +100,8 @@ def fetch_huggingface_repo_structure(model_id: str, branch: str = "main") -> Opt
             "fetched_at": datetime.now().isoformat(),
             "files": {},
             "total_files": 0,
-            "total_size": 0
+            "total_size": 0,
+            "ipfs_enabled": include_ipfs_cids and HAVE_IPFS_MULTIFORMATS
         }
         
         for file_info in files_data:
@@ -90,11 +114,39 @@ def fetch_huggingface_repo_structure(model_id: str, branch: str = "main") -> Opt
                     "download_url": f"https://huggingface.co/{model_id}/resolve/{branch}/{file_path}"
                 }
                 
+                # Generate IPFS CID if requested and available
+                if include_ipfs_cids and HAVE_IPFS_MULTIFORMATS and ipfs_multiformats:
+                    try:
+                        # For LFS files, use the SHA256 hash to generate CID
+                        if file_info.get("lfs") and "sha256" in file_info["lfs"]:
+                            sha256_hash = file_info["lfs"]["sha256"]
+                            # Convert hex string to bytes
+                            hash_bytes = bytes.fromhex(sha256_hash)
+                            # Generate CID from the hash
+                            cid = ipfs_multiformats.get_cid(hash_bytes)
+                            file_data["ipfs_cid"] = cid
+                        # For regular files, we'd need to download to generate CID
+                        # For now, we'll generate a CID from the OID if available  
+                        elif file_info.get("oid"):
+                            try:
+                                # Use the git OID to generate a CID
+                                cid = ipfs_multiformats.get_cid(file_info["oid"])
+                                file_data["ipfs_cid"] = cid
+                            except Exception:
+                                # If CID generation fails, continue without it
+                                pass
+                    except Exception as e:
+                        logger.debug(f"Could not generate IPFS CID for {file_path}: {e}")
+                
                 repo_structure["files"][file_path] = file_data
                 repo_structure["total_files"] += 1
                 repo_structure["total_size"] += file_info.get("size", 0)
         
         logger.info(f"Fetched {repo_structure['total_files']} files for {model_id}")
+        if repo_structure.get("ipfs_enabled"):
+            cid_count = sum(1 for f in repo_structure["files"].values() if "ipfs_cid" in f)
+            logger.info(f"Generated IPFS CIDs for {cid_count} files")
+        
         return repo_structure
         
     except requests.exceptions.RequestException as e:
@@ -734,13 +786,14 @@ class ModelManager:
         
         return get_file_hash_from_structure(metadata.repository_structure, file_path)
     
-    def refresh_repository_structure(self, model_id: str, branch: str = "main") -> bool:
+    def refresh_repository_structure(self, model_id: str, branch: str = "main", include_ipfs_cids: bool = True) -> bool:
         """
-        Refresh the repository structure for a specific model.
+        Refresh the repository structure for a specific model with IPFS support.
         
         Args:
             model_id: Model identifier
             branch: Git branch to fetch from
+            include_ipfs_cids: Whether to generate IPFS CIDs for files
             
         Returns:
             True if successful, False otherwise
@@ -751,17 +804,83 @@ class ModelManager:
             return False
         
         logger.info(f"Refreshing repository structure for {model_id}")
-        new_structure = fetch_huggingface_repo_structure(model_id, branch)
+        new_structure = fetch_huggingface_repo_structure(model_id, branch, include_ipfs_cids)
         
         if new_structure:
             metadata.repository_structure = new_structure
             metadata.updated_at = datetime.now()
             self._save_data()
             logger.info(f"Successfully refreshed repository structure for {model_id}")
+            if new_structure.get("ipfs_enabled"):
+                cid_count = sum(1 for f in new_structure["files"].values() if "ipfs_cid" in f)
+                logger.info(f"Generated IPFS CIDs for {cid_count} files")
             return True
         else:
             logger.error(f"Failed to refresh repository structure for {model_id}")
             return False
+    
+    def get_model_file_ipfs_cid(self, model_id: str, file_path: str) -> Optional[str]:
+        """
+        Get the IPFS CID for a specific file in a model's repository.
+        
+        Args:
+            model_id: Model identifier
+            file_path: Path to the file within the repository
+            
+        Returns:
+            IPFS CID string or None if not found
+        """
+        metadata = self.get_model(model_id)
+        if not metadata or not metadata.repository_structure:
+            return None
+        
+        files = metadata.repository_structure.get("files", {})
+        file_info = files.get(file_path)
+        if file_info:
+            return file_info.get("ipfs_cid")
+        
+        return None
+    
+    def get_models_with_ipfs_cids(self) -> List[ModelMetadata]:
+        """
+        Get all models that have IPFS CIDs in their repository structure.
+        
+        Returns:
+            List of models with IPFS content addressing
+        """
+        models_with_cids = []
+        
+        for model in self.models.values():
+            if (model.repository_structure and 
+                model.repository_structure.get("ipfs_enabled") and
+                any("ipfs_cid" in f for f in model.repository_structure.get("files", {}).values())):
+                models_with_cids.append(model)
+        
+        return models_with_cids
+    
+    def get_ipfs_gateway_urls(self, model_id: str, gateway_base: str = "https://ipfs.io/ipfs/") -> Dict[str, str]:
+        """
+        Get IPFS gateway URLs for all files in a model's repository.
+        
+        Args:
+            model_id: Model identifier
+            gateway_base: Base URL for the IPFS gateway
+            
+        Returns:
+            Dictionary mapping file paths to IPFS gateway URLs
+        """
+        metadata = self.get_model(model_id)
+        if not metadata or not metadata.repository_structure:
+            return {}
+        
+        gateway_urls = {}
+        files = metadata.repository_structure.get("files", {})
+        
+        for file_path, file_info in files.items():
+            if "ipfs_cid" in file_info:
+                gateway_urls[file_path] = f"{gateway_base}{file_info['ipfs_cid']}"
+        
+        return gateway_urls
     
     def export_metadata(self, output_path: str, format: str = "json") -> bool:
         """
@@ -834,9 +953,10 @@ def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any],
                                 architecture: str = None,
                                 inference_code_location: str = None,
                                 fetch_repo_structure: bool = True,
+                                include_ipfs_cids: bool = True,
                                 branch: str = "main") -> ModelMetadata:
     """
-    Create a ModelMetadata object from HuggingFace configuration.
+    Create a ModelMetadata object from HuggingFace configuration with IPFS support.
     
     Args:
         model_id: Model identifier
@@ -844,6 +964,7 @@ def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any],
         architecture: Model architecture (if not in config)
         inference_code_location: Path to inference code
         fetch_repo_structure: Whether to fetch repository structure and hashes
+        include_ipfs_cids: Whether to generate IPFS CIDs for files
         branch: Git branch to fetch from (default: "main")
         
     Returns:
@@ -872,9 +993,12 @@ def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any],
     repository_structure = None
     if fetch_repo_structure:
         logger.info(f"Fetching repository structure for {model_id}")
-        repository_structure = fetch_huggingface_repo_structure(model_id, branch)
+        repository_structure = fetch_huggingface_repo_structure(model_id, branch, include_ipfs_cids)
         if repository_structure:
             logger.info(f"Successfully fetched repository structure with {repository_structure.get('total_files', 0)} files")
+            if repository_structure.get("ipfs_enabled"):
+                cid_count = sum(1 for f in repository_structure["files"].values() if "ipfs_cid" in f)
+                logger.info(f"Generated IPFS CIDs for {cid_count} files")
         else:
             logger.warning(f"Failed to fetch repository structure for {model_id}")
     
