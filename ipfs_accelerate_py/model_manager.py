@@ -34,6 +34,119 @@ except ImportError:
     HAVE_DUCKDB = False
     logger.warning("DuckDB not available. Using JSON storage backend.")
 
+# Try to import requests for HuggingFace API access
+try:
+    import requests
+    HAVE_REQUESTS = True
+except ImportError:
+    HAVE_REQUESTS = False
+    logger.warning("Requests not available. HuggingFace repository fetching disabled.")
+
+
+def fetch_huggingface_repo_structure(model_id: str, branch: str = "main") -> Optional[Dict[str, Any]]:
+    """
+    Fetch file structure and hashes from a HuggingFace repository.
+    
+    Args:
+        model_id: HuggingFace model ID (e.g., "bert-base-uncased")
+        branch: Git branch to fetch from (default: "main")
+        
+    Returns:
+        Dictionary containing repository structure with file paths and hashes,
+        or None if fetching fails
+    """
+    if not HAVE_REQUESTS:
+        logger.warning("Cannot fetch HuggingFace repo structure: requests library not available")
+        return None
+    
+    try:
+        # HuggingFace API endpoint for repository files
+        api_url = f"https://huggingface.co/api/models/{model_id}/tree/{branch}"
+        
+        logger.info(f"Fetching repository structure for {model_id} from branch {branch}")
+        
+        response = requests.get(api_url, timeout=30)
+        response.raise_for_status()
+        
+        files_data = response.json()
+        
+        # Process the file structure
+        repo_structure = {
+            "model_id": model_id,
+            "branch": branch,
+            "fetched_at": datetime.now().isoformat(),
+            "files": {},
+            "total_files": 0,
+            "total_size": 0
+        }
+        
+        for file_info in files_data:
+            if file_info.get("type") == "file":
+                file_path = file_info.get("path", "")
+                file_data = {
+                    "size": file_info.get("size", 0),
+                    "lfs": file_info.get("lfs", {}),
+                    "oid": file_info.get("oid", ""),
+                    "download_url": f"https://huggingface.co/{model_id}/resolve/{branch}/{file_path}"
+                }
+                
+                repo_structure["files"][file_path] = file_data
+                repo_structure["total_files"] += 1
+                repo_structure["total_size"] += file_info.get("size", 0)
+        
+        logger.info(f"Fetched {repo_structure['total_files']} files for {model_id}")
+        return repo_structure
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error fetching HuggingFace repo structure for {model_id}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching HuggingFace repo structure for {model_id}: {e}")
+        return None
+
+
+def get_file_hash_from_structure(repo_structure: Dict[str, Any], file_path: str) -> Optional[str]:
+    """
+    Get the hash/OID for a specific file from repository structure.
+    
+    Args:
+        repo_structure: Repository structure from fetch_huggingface_repo_structure
+        file_path: Path to the file
+        
+    Returns:
+        File hash/OID or None if not found
+    """
+    if not repo_structure or "files" not in repo_structure:
+        return None
+    
+    file_info = repo_structure["files"].get(file_path)
+    if file_info:
+        return file_info.get("oid")
+    
+    return None
+
+
+def list_files_by_extension(repo_structure: Dict[str, Any], extension: str) -> List[str]:
+    """
+    List all files with a specific extension from repository structure.
+    
+    Args:
+        repo_structure: Repository structure from fetch_huggingface_repo_structure
+        extension: File extension to search for (e.g., ".py", ".json")
+        
+    Returns:
+        List of file paths with the specified extension
+    """
+    if not repo_structure or "files" not in repo_structure:
+        return []
+    
+    matching_files = []
+    for file_path in repo_structure["files"].keys():
+        if file_path.endswith(extension):
+            matching_files.append(file_path)
+    
+    return sorted(matching_files)
+
 
 class ModelType(Enum):
     """Enumeration of supported model types."""
@@ -88,6 +201,7 @@ class ModelMetadata:
     source_url: Optional[str] = None
     license: Optional[str] = None
     description: str = ""
+    repository_structure: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -191,6 +305,7 @@ class ModelManager:
                     source_url VARCHAR,
                     license VARCHAR,
                     description TEXT,
+                    repository_structure JSON,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
                 )
@@ -230,7 +345,7 @@ class ModelManager:
                 
                 # Parse JSON fields
                 for json_field in ['inputs', 'outputs', 'huggingface_config', 'supported_backends', 
-                                 'hardware_requirements', 'performance_metrics', 'tags']:
+                                 'hardware_requirements', 'performance_metrics', 'tags', 'repository_structure']:
                     if row_dict[json_field]:
                         row_dict[json_field] = json.loads(row_dict[json_field])
                 
@@ -308,7 +423,7 @@ class ModelManager:
                 
                 # Convert other complex fields to JSON
                 for json_field in ['huggingface_config', 'supported_backends', 
-                                 'hardware_requirements', 'performance_metrics', 'tags']:
+                                 'hardware_requirements', 'performance_metrics', 'tags', 'repository_structure']:
                     if data[json_field] is not None:
                         data[json_field] = json.dumps(data[json_field])
                 
@@ -320,7 +435,7 @@ class ModelManager:
                 
                 # Insert or update
                 self.con.execute("""
-                    INSERT OR REPLACE INTO model_metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO model_metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, tuple(data.values()))
             
             logger.info(f"Saved {len(self.models)} models to database")
@@ -543,7 +658,9 @@ class ModelManager:
             "common_input_types": {},
             "common_output_types": {},
             "models_with_hf_config": 0,
-            "models_with_inference_code": 0
+            "models_with_inference_code": 0,
+            "models_with_repo_structure": 0,
+            "total_tracked_files": 0
         }
         
         # Count by type and architecture
@@ -570,8 +687,81 @@ class ModelManager:
                 stats["models_with_hf_config"] += 1
             if metadata.inference_code_location:
                 stats["models_with_inference_code"] += 1
+            if metadata.repository_structure:
+                stats["models_with_repo_structure"] += 1
+                stats["total_tracked_files"] += metadata.repository_structure.get("total_files", 0)
         
         return stats
+    
+    def get_models_with_file(self, file_pattern: str) -> List[ModelMetadata]:
+        """
+        Get models that contain files matching a pattern in their repository structure.
+        
+        Args:
+            file_pattern: Pattern to match against file paths (case-insensitive)
+            
+        Returns:
+            List of ModelMetadata objects
+        """
+        results = []
+        pattern_lower = file_pattern.lower()
+        
+        for metadata in self.models.values():
+            if not metadata.repository_structure or "files" not in metadata.repository_structure:
+                continue
+            
+            for file_path in metadata.repository_structure["files"].keys():
+                if pattern_lower in file_path.lower():
+                    results.append(metadata)
+                    break  # Found at least one matching file
+        
+        return results
+    
+    def get_model_file_hash(self, model_id: str, file_path: str) -> Optional[str]:
+        """
+        Get the hash for a specific file in a model's repository.
+        
+        Args:
+            model_id: Model identifier
+            file_path: Path to the file
+            
+        Returns:
+            File hash/OID or None if not found
+        """
+        metadata = self.get_model(model_id)
+        if not metadata or not metadata.repository_structure:
+            return None
+        
+        return get_file_hash_from_structure(metadata.repository_structure, file_path)
+    
+    def refresh_repository_structure(self, model_id: str, branch: str = "main") -> bool:
+        """
+        Refresh the repository structure for a specific model.
+        
+        Args:
+            model_id: Model identifier
+            branch: Git branch to fetch from
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        metadata = self.get_model(model_id)
+        if not metadata:
+            logger.error(f"Model not found: {model_id}")
+            return False
+        
+        logger.info(f"Refreshing repository structure for {model_id}")
+        new_structure = fetch_huggingface_repo_structure(model_id, branch)
+        
+        if new_structure:
+            metadata.repository_structure = new_structure
+            metadata.updated_at = datetime.now()
+            self._save_data()
+            logger.info(f"Successfully refreshed repository structure for {model_id}")
+            return True
+        else:
+            logger.error(f"Failed to refresh repository structure for {model_id}")
+            return False
     
     def export_metadata(self, output_path: str, format: str = "json") -> bool:
         """
@@ -642,7 +832,9 @@ class ModelManager:
 # Convenience functions for common operations
 def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any], 
                                 architecture: str = None,
-                                inference_code_location: str = None) -> ModelMetadata:
+                                inference_code_location: str = None,
+                                fetch_repo_structure: bool = True,
+                                branch: str = "main") -> ModelMetadata:
     """
     Create a ModelMetadata object from HuggingFace configuration.
     
@@ -651,6 +843,8 @@ def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any],
         hf_config: HuggingFace model configuration
         architecture: Model architecture (if not in config)
         inference_code_location: Path to inference code
+        fetch_repo_structure: Whether to fetch repository structure and hashes
+        branch: Git branch to fetch from (default: "main")
         
     Returns:
         ModelMetadata object
@@ -674,6 +868,19 @@ def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any],
     inputs = [IOSpec(name="input_ids", data_type=DataType.TOKENS, description="Tokenized input")]
     outputs = [IOSpec(name="logits", data_type=DataType.LOGITS, description="Model output logits")]
     
+    # Fetch repository structure if requested
+    repository_structure = None
+    if fetch_repo_structure:
+        logger.info(f"Fetching repository structure for {model_id}")
+        repository_structure = fetch_huggingface_repo_structure(model_id, branch)
+        if repository_structure:
+            logger.info(f"Successfully fetched repository structure with {repository_structure.get('total_files', 0)} files")
+        else:
+            logger.warning(f"Failed to fetch repository structure for {model_id}")
+    
+    # Build source URL
+    source_url = f"https://huggingface.co/{model_id}"
+    
     return ModelMetadata(
         model_id=model_id,
         model_name=model_name,
@@ -682,7 +889,9 @@ def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any],
         inputs=inputs,
         outputs=outputs,
         huggingface_config=hf_config,
-        inference_code_location=inference_code_location
+        inference_code_location=inference_code_location,
+        repository_structure=repository_structure,
+        source_url=source_url
     )
 
 

@@ -26,13 +26,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     from ipfs_accelerate_py.model_manager import (
         ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
-        create_model_from_huggingface, get_default_model_manager
+        create_model_from_huggingface, get_default_model_manager,
+        fetch_huggingface_repo_structure, get_file_hash_from_structure,
+        list_files_by_extension
     )
 except ImportError:
     # Direct import if package import fails
     from model_manager import (
         ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
-        create_model_from_huggingface, get_default_model_manager
+        create_model_from_huggingface, get_default_model_manager,
+        fetch_huggingface_repo_structure, get_file_hash_from_structure,
+        list_files_by_extension
     )
 
 
@@ -463,6 +467,233 @@ class TestModelMetadata(unittest.TestCase):
         self.assertEqual(io_spec.dtype, "float32")
         self.assertEqual(io_spec.description, "Test embedding tensor")
         self.assertTrue(io_spec.optional)
+
+
+class TestRepositoryStructure(unittest.TestCase):
+    """Test cases for HuggingFace repository structure functionality."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.json_path = os.path.join(self.temp_dir, "test_models.json")
+        
+        # Create mock repository structure
+        self.mock_repo_structure = {
+            "model_id": "test-model",
+            "branch": "main",
+            "fetched_at": datetime.now().isoformat(),
+            "files": {
+                "config.json": {
+                    "size": 665,
+                    "lfs": {},
+                    "oid": "6e3c55a11b8e2e30a4fdbee5b1fb8e28c2c4b8f0",
+                    "download_url": "https://huggingface.co/test-model/resolve/main/config.json"
+                },
+                "pytorch_model.bin": {
+                    "size": 503382240,
+                    "lfs": {
+                        "size": 503382240,
+                        "sha256": "7cb18dc9bafbfcf74629a4b760af1b160957a83e",
+                        "pointer_size": 135
+                    },
+                    "oid": "7cb18dc9bafbfcf74629a4b760af1b160957a83e",
+                    "download_url": "https://huggingface.co/test-model/resolve/main/pytorch_model.bin"
+                },
+                "tokenizer.json": {
+                    "size": 1356917,
+                    "lfs": {},
+                    "oid": "b70400ec13e62b577e6ac83a7e8c176f923b0e6d",
+                    "download_url": "https://huggingface.co/test-model/resolve/main/tokenizer.json"
+                },
+                "README.md": {
+                    "size": 4321,
+                    "lfs": {},
+                    "oid": "9e7c4b5b8fb9c1234567890abcdef1234567890a",
+                    "download_url": "https://huggingface.co/test-model/resolve/main/README.md"
+                },
+                "training_code.py": {
+                    "size": 12345,
+                    "lfs": {},
+                    "oid": "a1b2c3d4e5f67890abcdef1234567890abcdef12",
+                    "download_url": "https://huggingface.co/test-model/resolve/main/training_code.py"
+                }
+            },
+            "total_files": 5,
+            "total_size": 505758687
+        }
+    
+    def tearDown(self):
+        """Clean up test fixtures."""
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+    
+    def test_get_file_hash_from_structure(self):
+        """Test getting file hash from repository structure."""
+        # Test existing file
+        hash_value = get_file_hash_from_structure(self.mock_repo_structure, "config.json")
+        self.assertEqual(hash_value, "6e3c55a11b8e2e30a4fdbee5b1fb8e28c2c4b8f0")
+        
+        # Test non-existent file
+        hash_value = get_file_hash_from_structure(self.mock_repo_structure, "nonexistent.txt")
+        self.assertIsNone(hash_value)
+        
+        # Test with None structure
+        hash_value = get_file_hash_from_structure(None, "config.json")
+        self.assertIsNone(hash_value)
+        
+        # Test with empty structure
+        hash_value = get_file_hash_from_structure({}, "config.json")
+        self.assertIsNone(hash_value)
+    
+    def test_list_files_by_extension(self):
+        """Test listing files by extension from repository structure."""
+        # Test JSON files
+        json_files = list_files_by_extension(self.mock_repo_structure, ".json")
+        self.assertIn("config.json", json_files)
+        self.assertIn("tokenizer.json", json_files)
+        self.assertEqual(len(json_files), 2)
+        
+        # Test Python files
+        py_files = list_files_by_extension(self.mock_repo_structure, ".py")
+        self.assertIn("training_code.py", py_files)
+        self.assertEqual(len(py_files), 1)
+        
+        # Test markdown files
+        md_files = list_files_by_extension(self.mock_repo_structure, ".md")
+        self.assertIn("README.md", md_files)
+        self.assertEqual(len(md_files), 1)
+        
+        # Test non-existent extension
+        txt_files = list_files_by_extension(self.mock_repo_structure, ".txt")
+        self.assertEqual(len(txt_files), 0)
+        
+        # Test with None structure
+        files = list_files_by_extension(None, ".json")
+        self.assertEqual(len(files), 0)
+        
+        # Test with empty structure
+        files = list_files_by_extension({}, ".json")
+        self.assertEqual(len(files), 0)
+    
+    def test_model_with_repository_structure(self):
+        """Test ModelMetadata with repository structure."""
+        metadata = ModelMetadata(
+            model_id="test/model-with-repo",
+            model_name="test-model-with-repo",
+            model_type=ModelType.LANGUAGE_MODEL,
+            architecture="TestArchitecture",
+            inputs=[IOSpec(name="input", data_type=DataType.TEXT)],
+            outputs=[IOSpec(name="output", data_type=DataType.TEXT)],
+            repository_structure=self.mock_repo_structure
+        )
+        
+        self.assertIsNotNone(metadata.repository_structure)
+        self.assertEqual(metadata.repository_structure["total_files"], 5)
+        self.assertEqual(metadata.repository_structure["model_id"], "test-model")
+    
+    def test_model_manager_repository_methods(self):
+        """Test ModelManager methods for repository structure."""
+        with ModelManager(storage_path=self.json_path, use_database=False) as manager:
+            # Create model with repository structure
+            metadata = ModelMetadata(
+                model_id="test/repo-model",
+                model_name="test-repo-model",
+                model_type=ModelType.LANGUAGE_MODEL,
+                architecture="TestArchitecture",
+                inputs=[IOSpec(name="input", data_type=DataType.TEXT)],
+                outputs=[IOSpec(name="output", data_type=DataType.TEXT)],
+                repository_structure=self.mock_repo_structure
+            )
+            
+            # Add model
+            success = manager.add_model(metadata)
+            self.assertTrue(success)
+            
+            # Test get_model_file_hash
+            file_hash = manager.get_model_file_hash("test/repo-model", "config.json")
+            self.assertEqual(file_hash, "6e3c55a11b8e2e30a4fdbee5b1fb8e28c2c4b8f0")
+            
+            # Test with non-existent model
+            file_hash = manager.get_model_file_hash("nonexistent/model", "config.json")
+            self.assertIsNone(file_hash)
+            
+            # Test with non-existent file
+            file_hash = manager.get_model_file_hash("test/repo-model", "nonexistent.txt")
+            self.assertIsNone(file_hash)
+            
+            # Test get_models_with_file
+            models_with_config = manager.get_models_with_file("config.json")
+            self.assertEqual(len(models_with_config), 1)
+            self.assertEqual(models_with_config[0].model_id, "test/repo-model")
+            
+            models_with_python = manager.get_models_with_file(".py")
+            self.assertEqual(len(models_with_python), 1)
+            
+            models_with_nonexistent = manager.get_models_with_file("nonexistent.file")
+            self.assertEqual(len(models_with_nonexistent), 0)
+            
+            # Test statistics
+            stats = manager.get_stats()
+            self.assertEqual(stats["models_with_repo_structure"], 1)
+            self.assertEqual(stats["total_tracked_files"], 5)
+    
+    def test_create_model_from_huggingface_with_repo_structure(self):
+        """Test creating model from HuggingFace config with repository structure options."""
+        hf_config = {
+            "architectures": ["GPT2LMHeadModel"],
+            "model_type": "gpt2",
+            "vocab_size": 50257
+        }
+        
+        # Test without fetching repository structure
+        model_without_repo = create_model_from_huggingface(
+            model_id="test-model",
+            hf_config=hf_config,
+            fetch_repo_structure=False
+        )
+        
+        self.assertIsNone(model_without_repo.repository_structure)
+        self.assertEqual(model_without_repo.source_url, "https://huggingface.co/test-model")
+        
+        # Test with fetching repository structure (will fail gracefully without internet)
+        model_with_repo_attempt = create_model_from_huggingface(
+            model_id="test-model-2",
+            hf_config=hf_config,
+            fetch_repo_structure=True
+        )
+        
+        # Should fail gracefully and return None for repository_structure without internet
+        self.assertIsNone(model_with_repo_attempt.repository_structure)
+        self.assertEqual(model_with_repo_attempt.source_url, "https://huggingface.co/test-model-2")
+    
+    def test_repository_structure_persistence(self):
+        """Test that repository structure is properly saved and loaded."""
+        with ModelManager(storage_path=self.json_path, use_database=False) as manager:
+            # Create and add model with repository structure
+            metadata = ModelMetadata(
+                model_id="test/persistence-model",
+                model_name="test-persistence-model",
+                model_type=ModelType.LANGUAGE_MODEL,
+                architecture="TestArchitecture",
+                inputs=[IOSpec(name="input", data_type=DataType.TEXT)],
+                outputs=[IOSpec(name="output", data_type=DataType.TEXT)],
+                repository_structure=self.mock_repo_structure
+            )
+            
+            manager.add_model(metadata)
+        
+        # Create new manager instance and verify data is loaded
+        with ModelManager(storage_path=self.json_path, use_database=False) as manager2:
+            loaded_model = manager2.get_model("test/persistence-model")
+            
+            self.assertIsNotNone(loaded_model)
+            self.assertIsNotNone(loaded_model.repository_structure)
+            self.assertEqual(loaded_model.repository_structure["total_files"], 5)
+            self.assertEqual(loaded_model.repository_structure["model_id"], "test-model")
+            
+            # Verify file hash lookup still works
+            file_hash = manager2.get_model_file_hash("test/persistence-model", "config.json")
+            self.assertEqual(file_hash, "6e3c55a11b8e2e30a4fdbee5b1fb8e28c2c4b8f0")
 
 
 if __name__ == "__main__":

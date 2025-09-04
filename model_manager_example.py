@@ -87,7 +87,7 @@ def demonstrate_basic_usage():
         if manager.add_model(custom_model):
             print(f"✓ Successfully added custom model: {custom_model.model_id}")
         
-        # Create a model from HuggingFace config
+        # Create a model from HuggingFace config with repository structure
         hf_config = {
             "architectures": ["GPT2LMHeadModel"],
             "model_type": "gpt2",
@@ -99,10 +99,12 @@ def demonstrate_basic_usage():
             "n_head": 12
         }
         
+        print("\n🔍 Fetching HuggingFace repository structure...")
         gpt2_model = create_model_from_huggingface(
-            model_id="gpt2-medium",
+            model_id="gpt2",  # Use a smaller model for demo
             hf_config=hf_config,
-            inference_code_location="/path/to/gpt2_inference.py"
+            inference_code_location="/path/to/gpt2_inference.py",
+            fetch_repo_structure=True  # Enable repository structure fetching
         )
         gpt2_model.tags.extend(["text-generation", "autoregressive"])
         gpt2_model.performance_metrics = {
@@ -112,6 +114,35 @@ def demonstrate_basic_usage():
         
         manager.add_model(gpt2_model)
         print(f"✓ Successfully added HuggingFace model: {gpt2_model.model_id}")
+        
+        # Demonstrate repository structure features
+        if gpt2_model.repository_structure:
+            repo_info = gpt2_model.repository_structure
+            print(f"\n📁 Repository Structure Information:")
+            print(f"   - Total files: {repo_info.get('total_files', 0)}")
+            print(f"   - Total size: {repo_info.get('total_size', 0):,} bytes")
+            print(f"   - Branch: {repo_info.get('branch', 'unknown')}")
+            
+            # Show some example files and their hashes
+            files = repo_info.get('files', {})
+            example_files = list(files.keys())[:5]
+            print(f"   - Example files:")
+            for file_path in example_files:
+                file_info = files[file_path]
+                print(f"     * {file_path} (size: {file_info.get('size', 0):,} bytes, hash: {file_info.get('oid', 'unknown')[:8]}...)")
+            
+            # Test repository queries
+            print(f"\n🔍 Repository Query Examples:")
+            config_hash = manager.get_model_file_hash("gpt2", "config.json")
+            print(f"   - config.json hash: {config_hash}")
+            
+            models_with_config = manager.get_models_with_file("config.json")
+            print(f"   - Models with config.json: {len(models_with_config)}")
+            
+            models_with_py = manager.get_models_with_file(".py")
+            print(f"   - Models with Python files: {len(models_with_py)}")
+        else:
+            print(f"⚠️  Repository structure not available (may need internet connection)")
         
         # Retrieve and display models
         print(f"\nTotal models: {len(manager.list_models())}")
@@ -228,7 +259,25 @@ def demonstrate_statistics():
         print("\nCommon output types:")
         for output_type, count in stats['common_output_types'].items():
             print(f"  - {output_type}: {count}")
-
+        
+        print(f"\nRepository Structure Statistics:")
+        print(f"  - Models with HuggingFace config: {stats.get('models_with_hf_config', 0)}")
+        print(f"  - Models with inference code: {stats.get('models_with_inference_code', 0)}")
+        print(f"  - Models with repository structure: {stats.get('models_with_repo_structure', 0)}")
+        print(f"  - Total tracked files: {stats.get('total_tracked_files', 0):,}")
+        
+        # Test repository-specific queries if any models have repo structures
+        if stats.get('models_with_repo_structure', 0) > 0:
+            print(f"\nRepository File Examples:")
+            models_with_config = manager.get_models_with_file("config.json")
+            print(f"  - Models with config.json: {len(models_with_config)}")
+            
+            models_with_readme = manager.get_models_with_file("README")
+            print(f"  - Models with README files: {len(models_with_readme)}")
+            
+            models_with_python = manager.get_models_with_file(".py")
+            print(f"  - Models with Python files: {len(models_with_python)}")
+        
 
 def demonstrate_model_pipeline():
     """Demonstrate creating a model processing pipeline."""
