@@ -689,3 +689,601 @@ def create_model_from_huggingface(model_id: str, hf_config: Dict[str, Any],
 def get_default_model_manager() -> ModelManager:
     """Get a default model manager instance."""
     return ModelManager()
+
+
+# Try to import sentence transformers for vector embeddings
+try:
+    from sentence_transformers import SentenceTransformer
+    HAVE_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAVE_SENTENCE_TRANSFORMERS = False
+    logger.warning("SentenceTransformers not available. Vector search disabled.")
+
+# Try to import numpy for vector operations
+try:
+    import numpy as np
+    HAVE_NUMPY = True
+except ImportError:
+    HAVE_NUMPY = False
+    logger.warning("NumPy not available. Vector operations disabled.")
+
+
+@dataclass
+class DocumentEntry:
+    """Represents a document entry in the vector index."""
+    file_path: str
+    content: str
+    embedding: Optional[List[float]] = None
+    title: str = ""
+    section: str = ""
+    created_at: Optional[datetime] = None
+
+
+@dataclass
+class SearchResult:
+    """Represents a search result from the vector index."""
+    document: DocumentEntry
+    similarity_score: float
+    matched_section: str = ""
+
+
+class VectorDocumentationIndex:
+    """
+    Vector index for searching through README and documentation files.
+    
+    This class creates embeddings of all README.md files in the repository
+    and provides semantic search capabilities.
+    """
+    
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2", storage_path: Optional[str] = None):
+        """
+        Initialize the vector documentation index.
+        
+        Args:
+            model_name: Name of the sentence transformer model to use
+            storage_path: Path to store the index (JSON file)
+        """
+        self.model_name = model_name
+        self.storage_path = storage_path or "documentation_index.json"
+        self.documents: List[DocumentEntry] = []
+        self.model = None
+        
+        if HAVE_SENTENCE_TRANSFORMERS:
+            try:
+                self.model = SentenceTransformer(model_name)
+                logger.info(f"Loaded SentenceTransformer model: {model_name}")
+            except Exception as e:
+                logger.error(f"Failed to load SentenceTransformer model: {e}")
+        else:
+            logger.warning("SentenceTransformers not available. Vector search will not work.")
+    
+    def index_all_readmes(self, root_path: Optional[str] = None) -> int:
+        """
+        Index all README.md files in the repository.
+        
+        Args:
+            root_path: Root path to search for README files
+            
+        Returns:
+            Number of documents indexed
+        """
+        if not self.model or not HAVE_NUMPY:
+            logger.error("Cannot index documents: missing dependencies")
+            return 0
+        
+        root_path = root_path or os.getcwd()
+        readme_files = []
+        
+        # Find all README.md files
+        for root, dirs, files in os.walk(root_path):
+            for file in files:
+                if file.lower() in ['readme.md', 'readme.txt', 'readme.rst']:
+                    readme_files.append(os.path.join(root, file))
+        
+        logger.info(f"Found {len(readme_files)} README files")
+        
+        # Process each README file
+        indexed_count = 0
+        for file_path in readme_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Split content into sections for better granular search
+                sections = self._split_content_into_sections(content)
+                
+                for section_title, section_content in sections:
+                    if len(section_content.strip()) < 50:  # Skip very short sections
+                        continue
+                    
+                    # Create embedding
+                    embedding = self.model.encode(section_content).tolist()
+                    
+                    # Create document entry
+                    doc_entry = DocumentEntry(
+                        file_path=os.path.relpath(file_path, root_path),
+                        content=section_content,
+                        embedding=embedding,
+                        title=os.path.basename(file_path),
+                        section=section_title,
+                        created_at=datetime.now()
+                    )
+                    
+                    self.documents.append(doc_entry)
+                    indexed_count += 1
+                    
+            except Exception as e:
+                logger.error(f"Failed to index {file_path}: {e}")
+        
+        logger.info(f"Successfully indexed {indexed_count} document sections")
+        
+        # Save index to disk
+        self.save_index()
+        
+        return indexed_count
+    
+    def _split_content_into_sections(self, content: str) -> List[Tuple[str, str]]:
+        """Split markdown content into logical sections."""
+        sections = []
+        lines = content.split('\n')
+        current_section = ""
+        current_title = "Introduction"
+        
+        for line in lines:
+            if line.startswith('#'):
+                # Save previous section
+                if current_section.strip():
+                    sections.append((current_title, current_section.strip()))
+                
+                # Start new section
+                current_title = line.strip('#').strip()
+                current_section = ""
+            else:
+                current_section += line + '\n'
+        
+        # Add final section
+        if current_section.strip():
+            sections.append((current_title, current_section.strip()))
+        
+        return sections
+    
+    def search(self, query: str, top_k: int = 5, min_similarity: float = 0.3) -> List[SearchResult]:
+        """
+        Search for documents similar to the query.
+        
+        Args:
+            query: Search query
+            top_k: Number of top results to return
+            min_similarity: Minimum similarity score threshold
+            
+        Returns:
+            List of search results sorted by similarity
+        """
+        if not self.model or not HAVE_NUMPY:
+            logger.error("Cannot search: missing dependencies")
+            return []
+        
+        if not self.documents:
+            logger.warning("No documents indexed. Run index_all_readmes() first.")
+            return []
+        
+        # Create query embedding
+        query_embedding = self.model.encode(query)
+        
+        # Calculate similarities
+        results = []
+        for doc in self.documents:
+            if doc.embedding is None:
+                continue
+            
+            # Calculate cosine similarity
+            similarity = np.dot(query_embedding, doc.embedding) / (
+                np.linalg.norm(query_embedding) * np.linalg.norm(doc.embedding)
+            )
+            
+            if similarity >= min_similarity:
+                results.append(SearchResult(
+                    document=doc,
+                    similarity_score=float(similarity),
+                    matched_section=doc.section
+                ))
+        
+        # Sort by similarity and return top_k
+        results.sort(key=lambda x: x.similarity_score, reverse=True)
+        return results[:top_k]
+    
+    def save_index(self):
+        """Save the index to disk."""
+        try:
+            # Convert to JSON-serializable format
+            data = {
+                'model_name': self.model_name,
+                'documents': []
+            }
+            
+            for doc in self.documents:
+                doc_data = asdict(doc)
+                if doc_data['created_at']:
+                    doc_data['created_at'] = doc_data['created_at'].isoformat()
+                data['documents'].append(doc_data)
+            
+            with open(self.storage_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            logger.info(f"Saved index with {len(self.documents)} documents to {self.storage_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save index: {e}")
+    
+    def load_index(self) -> bool:
+        """Load the index from disk."""
+        try:
+            if not os.path.exists(self.storage_path):
+                logger.info("No existing index found")
+                return False
+            
+            with open(self.storage_path, 'r') as f:
+                data = json.load(f)
+            
+            self.model_name = data.get('model_name', self.model_name)
+            self.documents = []
+            
+            for doc_data in data.get('documents', []):
+                if doc_data.get('created_at'):
+                    doc_data['created_at'] = datetime.fromisoformat(doc_data['created_at'])
+                
+                self.documents.append(DocumentEntry(**doc_data))
+            
+            logger.info(f"Loaded index with {len(self.documents)} documents from {self.storage_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load index: {e}")
+            return False
+
+
+@dataclass
+class BanditArm:
+    """Represents an arm in the multi-armed bandit (a model option)."""
+    model_id: str
+    total_reward: float = 0.0
+    num_trials: int = 0
+    alpha: float = 1.0  # Beta distribution parameter
+    beta: float = 1.0   # Beta distribution parameter
+    
+    @property
+    def average_reward(self) -> float:
+        """Calculate average reward for this arm."""
+        return self.total_reward / max(self.num_trials, 1)
+    
+    @property
+    def confidence_bound(self) -> float:
+        """Calculate upper confidence bound."""
+        if self.num_trials == 0:
+            return float('inf')
+        
+        import math
+        confidence = math.sqrt(2 * math.log(self.num_trials + 1) / self.num_trials)
+        return self.average_reward + confidence
+
+
+@dataclass
+class RecommendationContext:
+    """Context information for model recommendations."""
+    task_type: Optional[str] = None
+    hardware: Optional[str] = None
+    input_type: Optional[DataType] = None
+    output_type: Optional[DataType] = None
+    performance_requirements: Optional[Dict[str, Any]] = None
+    user_id: Optional[str] = None
+    
+    def to_key(self) -> str:
+        """Convert context to a string key for grouping."""
+        return f"{self.task_type}_{self.hardware}_{self.input_type}_{self.output_type}"
+
+
+@dataclass
+class ModelRecommendation:
+    """Represents a model recommendation with confidence."""
+    model_id: str
+    confidence_score: float
+    predicted_performance: Optional[Dict[str, float]] = None
+    reasoning: Optional[str] = None
+
+
+class BanditModelRecommender:
+    """
+    Multi-armed bandit algorithm for model recommendation.
+    
+    This class uses bandit algorithms to learn which models work best
+    for different contexts based on user feedback.
+    """
+    
+    def __init__(self, 
+                 algorithm: str = "thompson_sampling",
+                 model_manager: Optional[ModelManager] = None,
+                 storage_path: Optional[str] = None):
+        """
+        Initialize the bandit model recommender.
+        
+        Args:
+            algorithm: Bandit algorithm to use ('ucb', 'thompson_sampling', 'epsilon_greedy')
+            model_manager: Model manager instance
+            storage_path: Path to store bandit data
+        """
+        self.algorithm = algorithm
+        self.model_manager = model_manager or ModelManager()
+        self.storage_path = storage_path or "bandit_data.json"
+        
+        # Context-specific bandit arms
+        self.bandit_arms: Dict[str, Dict[str, BanditArm]] = {}
+        self.global_trial_count = 0
+        
+        # Algorithm parameters
+        self.epsilon = 0.1  # For epsilon-greedy
+        
+        # Load existing data
+        self.load_bandit_data()
+    
+    def recommend_model(self, context: RecommendationContext) -> Optional[ModelRecommendation]:
+        """
+        Recommend a model based on the given context using bandit algorithm.
+        
+        Args:
+            context: Context for the recommendation
+            
+        Returns:
+            Model recommendation or None if no suitable models found
+        """
+        # Get compatible models from model manager
+        compatible_models = self._get_compatible_models(context)
+        
+        if not compatible_models:
+            logger.warning("No compatible models found for context")
+            return None
+        
+        context_key = context.to_key()
+        
+        # Initialize arms for this context if needed
+        if context_key not in self.bandit_arms:
+            self.bandit_arms[context_key] = {}
+        
+        for model_id in compatible_models:
+            if model_id not in self.bandit_arms[context_key]:
+                self.bandit_arms[context_key][model_id] = BanditArm(model_id=model_id)
+        
+        # Select model using bandit algorithm
+        selected_model_id = self._select_arm(context_key)
+        
+        if not selected_model_id:
+            return None
+        
+        # Get confidence score
+        arm = self.bandit_arms[context_key][selected_model_id]
+        confidence_score = min(arm.average_reward * 1.2, 1.0)  # Cap at 1.0
+        
+        return ModelRecommendation(
+            model_id=selected_model_id,
+            confidence_score=confidence_score,
+            reasoning=f"Selected using {self.algorithm} algorithm with {arm.num_trials} trials"
+        )
+    
+    def provide_feedback(self, 
+                        model_id: str, 
+                        feedback_score: float, 
+                        context: RecommendationContext):
+        """
+        Provide feedback on a model recommendation.
+        
+        Args:
+            model_id: ID of the recommended model
+            feedback_score: Feedback score (0.0 to 1.0, where 1.0 is best)
+            context: Context in which the model was used
+        """
+        context_key = context.to_key()
+        
+        if context_key not in self.bandit_arms:
+            self.bandit_arms[context_key] = {}
+        
+        if model_id not in self.bandit_arms[context_key]:
+            self.bandit_arms[context_key][model_id] = BanditArm(model_id=model_id)
+        
+        arm = self.bandit_arms[context_key][model_id]
+        
+        # Update arm statistics
+        arm.total_reward += feedback_score
+        arm.num_trials += 1
+        
+        # Update beta distribution parameters for Thompson sampling
+        if feedback_score > 0.5:
+            arm.alpha += 1
+        else:
+            arm.beta += 1
+        
+        self.global_trial_count += 1
+        
+        # Save updated data
+        self.save_bandit_data()
+        
+        logger.info(f"Updated feedback for {model_id}: avg_reward={arm.average_reward:.3f}, trials={arm.num_trials}")
+    
+    def _get_compatible_models(self, context: RecommendationContext) -> List[str]:
+        """Get list of models compatible with the given context."""
+        try:
+            # Start with all models
+            all_models = self.model_manager.list_models()
+            compatible = []
+            
+            for model in all_models:
+                # Check input/output compatibility
+                if context.input_type:
+                    if not any(inp.data_type == context.input_type for inp in model.inputs):
+                        continue
+                
+                if context.output_type:
+                    if not any(out.data_type == context.output_type for out in model.outputs):
+                        continue
+                
+                # Check hardware compatibility
+                if context.hardware:
+                    if model.supported_backends and context.hardware not in model.supported_backends:
+                        continue
+                
+                compatible.append(model.model_id)
+            
+            return compatible
+            
+        except Exception as e:
+            logger.error(f"Error getting compatible models: {e}")
+            return []
+    
+    def _select_arm(self, context_key: str) -> Optional[str]:
+        """Select an arm using the configured bandit algorithm."""
+        arms = self.bandit_arms.get(context_key, {})
+        
+        if not arms:
+            return None
+        
+        if self.algorithm == "ucb":
+            return self._select_ucb(arms)
+        elif self.algorithm == "thompson_sampling":
+            return self._select_thompson_sampling(arms)
+        elif self.algorithm == "epsilon_greedy":
+            return self._select_epsilon_greedy(arms)
+        else:
+            logger.error(f"Unknown bandit algorithm: {self.algorithm}")
+            return None
+    
+    def _select_ucb(self, arms: Dict[str, BanditArm]) -> str:
+        """Select arm using Upper Confidence Bound algorithm."""
+        best_arm = None
+        best_ucb = -float('inf')
+        
+        for model_id, arm in arms.items():
+            ucb = arm.confidence_bound
+            
+            if ucb > best_ucb:
+                best_ucb = ucb
+                best_arm = model_id
+        
+        return best_arm
+    
+    def _select_thompson_sampling(self, arms: Dict[str, BanditArm]) -> str:
+        """Select arm using Thompson Sampling algorithm."""
+        if not HAVE_NUMPY:
+            # Fallback to UCB if numpy not available
+            return self._select_ucb(arms)
+        
+        best_arm = None
+        best_sample = -1
+        
+        for model_id, arm in arms.items():
+            # Sample from beta distribution
+            sample = np.random.beta(arm.alpha, arm.beta)
+            
+            if sample > best_sample:
+                best_sample = sample
+                best_arm = model_id
+        
+        return best_arm
+    
+    def _select_epsilon_greedy(self, arms: Dict[str, BanditArm]) -> str:
+        """Select arm using Epsilon-Greedy algorithm."""
+        import random
+        
+        # Explore with probability epsilon
+        if random.random() < self.epsilon:
+            return random.choice(list(arms.keys()))
+        
+        # Exploit: select arm with highest average reward
+        best_arm = None
+        best_reward = -1
+        
+        for model_id, arm in arms.items():
+            if arm.average_reward > best_reward:
+                best_reward = arm.average_reward
+                best_arm = model_id
+        
+        return best_arm
+    
+    def save_bandit_data(self):
+        """Save bandit data to disk."""
+        try:
+            data = {
+                'algorithm': self.algorithm,
+                'global_trial_count': self.global_trial_count,
+                'epsilon': self.epsilon,
+                'bandit_arms': {}
+            }
+            
+            for context_key, arms in self.bandit_arms.items():
+                data['bandit_arms'][context_key] = {}
+                for model_id, arm in arms.items():
+                    data['bandit_arms'][context_key][model_id] = asdict(arm)
+            
+            with open(self.storage_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            logger.info(f"Saved bandit data to {self.storage_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save bandit data: {e}")
+    
+    def load_bandit_data(self) -> bool:
+        """Load bandit data from disk."""
+        try:
+            if not os.path.exists(self.storage_path):
+                logger.info("No existing bandit data found")
+                return False
+            
+            with open(self.storage_path, 'r') as f:
+                data = json.load(f)
+            
+            self.algorithm = data.get('algorithm', self.algorithm)
+            self.global_trial_count = data.get('global_trial_count', 0)
+            self.epsilon = data.get('epsilon', self.epsilon)
+            
+            self.bandit_arms = {}
+            for context_key, arms_data in data.get('bandit_arms', {}).items():
+                self.bandit_arms[context_key] = {}
+                for model_id, arm_data in arms_data.items():
+                    self.bandit_arms[context_key][model_id] = BanditArm(**arm_data)
+            
+            logger.info(f"Loaded bandit data from {self.storage_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load bandit data: {e}")
+            return False
+    
+    def get_performance_report(self) -> Dict[str, Any]:
+        """Get a performance report of the bandit algorithm."""
+        report = {
+            'algorithm': self.algorithm,
+            'total_trials': self.global_trial_count,
+            'contexts': {}
+        }
+        
+        for context_key, arms in self.bandit_arms.items():
+            context_report = {
+                'total_arms': len(arms),
+                'total_trials': sum(arm.num_trials for arm in arms.values()),
+                'best_model': None,
+                'best_average_reward': -1,
+                'arms': {}
+            }
+            
+            for model_id, arm in arms.items():
+                context_report['arms'][model_id] = {
+                    'average_reward': arm.average_reward,
+                    'num_trials': arm.num_trials,
+                    'confidence_bound': arm.confidence_bound
+                }
+                
+                if arm.average_reward > context_report['best_average_reward']:
+                    context_report['best_average_reward'] = arm.average_reward
+                    context_report['best_model'] = model_id
+            
+            report['contexts'][context_key] = context_report
+        
+        return report
