@@ -225,6 +225,7 @@ class DataType(Enum):
 
 
 @dataclass
+@dataclass
 class IOSpec:
     """Specification for model input or output."""
     name: str
@@ -1300,6 +1301,7 @@ class BanditArm:
         return self.average_reward + confidence
 
 
+@dataclass
 @dataclass
 class RecommendationContext:
     """Context information for model recommendations."""

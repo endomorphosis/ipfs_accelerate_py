@@ -219,7 +219,7 @@ class KitchenSinkApp:
                         hardware=hardware,
                         input_type=DataType(input_type),
                         output_type=DataType(output_type),
-                        requirements=data.get('requirements', {})
+                        performance_requirements=data.get('requirements', {})
                     )
                 except:
                     # Fallback if DataType enum doesn't work
@@ -228,7 +228,7 @@ class KitchenSinkApp:
                         hardware=hardware,
                         input_type=input_type,
                         output_type=output_type,
-                        requirements=data.get('requirements', {})
+                        performance_requirements=data.get('requirements', {})
                     )
                 
                 recommendation = self.bandit_recommender.recommend_model(context)
@@ -433,8 +433,8 @@ class KitchenSinkApp:
                     "architecture": "transformer",
                     "description": "Small GPT-2 model for text generation",
                     "tags": ["generation", "transformer", "openai"],
-                    "input_spec": IOSpec(data_type=DataType.TOKENS, shape=[-1], description="Input tokens"),
-                    "output_spec": IOSpec(data_type=DataType.LOGITS, shape=[-1, 50257], description="Token logits")
+                    "inputs": [IOSpec(name="input_ids", data_type=DataType.TOKENS, shape=(-1,), description="Input tokens")],
+                    "outputs": [IOSpec(name="logits", data_type=DataType.LOGITS, shape=(-1, 50257), description="Token logits")]
                 },
                 {
                     "model_id": "bert-base-uncased", 
@@ -443,8 +443,8 @@ class KitchenSinkApp:
                     "architecture": "bert",
                     "description": "BERT model for masked language modeling and classification",
                     "tags": ["classification", "bert", "google"],
-                    "input_spec": IOSpec(data_type=DataType.TOKENS, shape=[-1], description="Input tokens"),
-                    "output_spec": IOSpec(data_type=DataType.LOGITS, shape=[-1, 768], description="Hidden states")
+                    "inputs": [IOSpec(name="input_ids", data_type=DataType.TOKENS, shape=(-1,), description="Input tokens")],
+                    "outputs": [IOSpec(name="hidden_states", data_type=DataType.LOGITS, shape=(-1, 768), description="Hidden states")]
                 }
             ]
             
@@ -464,7 +464,9 @@ class KitchenSinkApp:
                         "model_type": ModelType.LANGUAGE_MODEL,
                         "architecture": "transformer",
                         "description": "Small GPT-2 model for text generation",
-                        "tags": ["generation", "transformer", "openai"]
+                        "tags": ["generation", "transformer", "openai"],
+                        "inputs": [IOSpec(name="input_ids", data_type=DataType.TOKENS, shape=(-1,), description="Input tokens")],
+                        "outputs": [IOSpec(name="logits", data_type=DataType.LOGITS, shape=(-1, 50257), description="Token logits")]
                     },
                     {
                         "model_id": "bert-base-uncased", 
@@ -472,7 +474,9 @@ class KitchenSinkApp:
                         "model_type": ModelType.LANGUAGE_MODEL,
                         "architecture": "bert",
                         "description": "BERT model for masked language modeling and classification", 
-                        "tags": ["classification", "bert", "google"]
+                        "tags": ["classification", "bert", "google"],
+                        "inputs": [IOSpec(name="input_ids", data_type=DataType.TOKENS, shape=(-1,), description="Input tokens")],
+                        "outputs": [IOSpec(name="hidden_states", data_type=DataType.LOGITS, shape=(-1, 768), description="Hidden states")]
                     }
                 ]
                 
