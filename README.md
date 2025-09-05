@@ -631,8 +631,3 @@ python examples/complete_implementation_demo.py
 - **Competitive Advantage** - Advanced ML acceleration capabilities
 - **Future-Proof Architecture** - Extensible design for emerging hardware and models
 
----
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
