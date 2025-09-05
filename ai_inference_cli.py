@@ -35,12 +35,17 @@ logger = logging.getLogger("ai_inference_cli")
 
 # Import the MCP server for processing
 sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'tools'))
 try:
     from comprehensive_mcp_server import ComprehensiveMCPServer
     HAVE_MCP_SERVER = True
 except ImportError as e:
-    HAVE_MCP_SERVER = False
-    logger.error(f"Could not import MCP server: {e}")
+    try:
+        from tools.comprehensive_mcp_server import ComprehensiveMCPServer
+        HAVE_MCP_SERVER = True
+    except ImportError as e2:
+        HAVE_MCP_SERVER = False
+        logger.error(f"Could not import MCP server: {e2}")
 
 class AIInferenceCLI:
     """Comprehensive AI Inference CLI Tool."""
