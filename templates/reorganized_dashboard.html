@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPFS Accelerate AI - Modular Dashboard</title>
+    
+    <!-- External Dependencies -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    
+    <style>
+        :root {
+            /* Color System */
+            --primary-50: #eff6ff;
+            --primary-100: #dbeafe;
+            --primary-500: #3b82f6;
+            --primary-600: #2563eb;
+            --primary-700: #1d4ed8;
+            --primary-900: #1e3a8a;
+            
+            --secondary-50: #faf5ff;
+            --secondary-500: #8b5cf6;
+            --secondary-600: #7c3aed;
+            
+            --accent-50: #ecfeff;
+            --accent-500: #06b6d4;
+            --accent-600: #0891b2;
+            
+            --success-50: #f0fdf4;
+            --success-500: #22c55e;
+            --success-600: #16a34a;
+            
+            --warning-50: #fefce8;
+            --warning-500: #eab308;
+            --warning-600: #ca8a04;
+            
+            --error-50: #fef2f2;
+            --error-500: #ef4444;
+            --error-600: #dc2626;
+            
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            
+            /* Design Tokens */
+            --border-radius-sm: 6px;
+            --border-radius: 8px;
+            --border-radius-lg: 12px;
+            --border-radius-xl: 16px;
+            --border-radius-2xl: 24px;
+            
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+            
+            /* Spacing Scale */
+            --space-1: 0.25rem;
+            --space-2: 0.5rem;
+            --space-3: 0.75rem;
+            --space-4: 1rem;
+            --space-5: 1.25rem;
+            --space-6: 1.5rem;
+            --space-8: 2rem;
+            --space-10: 2.5rem;
+            --space-12: 3rem;
+            --space-16: 4rem;
+            --space-20: 5rem;
+            
+            /* Typography */
+            --font-size-xs: 0.75rem;
+            --font-size-sm: 0.875rem;
+            --font-size-base: 1rem;
+            --font-size-lg: 1.125rem;
+            --font-size-xl: 1.25rem;
+            --font-size-2xl: 1.5rem;
+            --font-size-3xl: 1.875rem;
+            --font-size-4xl: 2.25rem;
+            --font-size-5xl: 3rem;
+            
+            /* Light Theme */
+            --bg-primary: var(--gray-50);
+            --bg-secondary: white;
+            --bg-tertiary: var(--gray-100);
+            --text-primary: var(--gray-900);
+            --text-secondary: var(--gray-600);
+            --text-tertiary: var(--gray-500);
+            --border-primary: var(--gray-200);
+            --border-secondary: var(--gray-300);
+        }
+
+        [data-bs-theme="dark"] {
+            --bg-primary: var(--gray-900);
+            --bg-secondary: var(--gray-800);
+            --bg-tertiary: var(--gray-700);
+            --text-primary: var(--gray-50);
+            --text-secondary: var(--gray-300);
+            --text-tertiary: var(--gray-400);
+            --border-primary: var(--gray-700);
+            --border-secondary: var(--gray-600);
+        }
+
+        /* Base Styles */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Layout Components */
+        .dashboard-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .dashboard-header {
+            background: linear-gradient(135deg, var(--primary-600) 0%, var(--secondary-600) 100%);
+            color: white;
+            padding: var(--space-6) 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .dashboard-nav {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-primary);
+            padding: var(--space-4) 0;
+            position: sticky;
+            top: 80px;
+            z-index: 999;
+        }
+
+        .dashboard-main {
+            flex: 1;
+            display: flex;
+            gap: var(--space-6);
+            padding: var(--space-6);
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .dashboard-sidebar {
+            width: 300px;
+            flex-shrink: 0;
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius-xl);
+            padding: var(--space-6);
+            border: 1px solid var(--border-primary);
+            height: fit-content;
+            position: sticky;
+            top: 160px;
+        }
+
+        .dashboard-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-6);
+        }
+
+        /* Component Styles */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: var(--border-radius-lg);
+            padding: var(--space-4);
+            margin-top: var(--space-4);
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--font-size-sm);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: var(--success-500);
+        }
+
+        .status-dot.disconnected {
+            background: var(--error-500);
+        }
+
+        .module-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--space-6);
+        }
+
+        .module-card {
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius-xl);
+            padding: var(--space-6);
+            border: 1px solid var(--border-primary);
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .module-card:hover {
+            border-color: var(--primary-500);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .module-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-4);
+        }
+
+        .module-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .module-icon {
+            width: 24px;
+            height: 24px;
+            color: var(--primary-500);
+        }
+
+        .module-badge {
+            background: var(--primary-100);
+            color: var(--primary-700);
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--border-radius);
+            font-size: var(--font-size-xs);
+            font-weight: 500;
+        }
+
+        [data-bs-theme="dark"] .module-badge {
+            background: var(--primary-900);
+            color: var(--primary-300);
+        }
+
+        .module-content {
+            margin-bottom: var(--space-4);
+        }
+
+        .module-description {
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+            margin-bottom: var(--space-4);
+        }
+
+        .form-group {
+            margin-bottom: var(--space-4);
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: var(--space-2);
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: var(--font-size-sm);
+        }
+
+        .form-control-modern {
+            width: 100%;
+            padding: var(--space-3);
+            border: 1px solid var(--border-secondary);
+            border-radius: var(--border-radius);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: var(--font-size-sm);
+            transition: all 0.2s ease;
+        }
+
+        .form-control-modern:focus {
+            outline: none;
+            border-color: var(--primary-500);
+            box-shadow: 0 0 0 3px var(--primary-100);
+        }
+
+        [data-bs-theme="dark"] .form-control-modern:focus {
+            box-shadow: 0 0 0 3px var(--primary-900);
+        }
+
+        .btn-modern {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-3) var(--space-4);
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .btn-primary-modern {
+            background: var(--primary-500);
+            color: white;
+        }
+
+        .btn-primary-modern:hover {
+            background: var(--primary-600);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary-modern {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary-modern:hover {
+            background: var(--gray-300);
+        }
+
+        [data-bs-theme="dark"] .btn-secondary-modern {
+            background: var(--gray-700);
+            color: var(--gray-200);
+        }
+
+        [data-bs-theme="dark"] .btn-secondary-modern:hover {
+            background: var(--gray-600);
+        }
+
+        .result-container {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--space-4);
+            margin-top: var(--space-4);
+            position: relative;
+            min-height: 60px;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-bottom: var(--space-3);
+            font-weight: 600;
+            color: var(--primary-500);
+            font-size: var(--font-size-sm);
+        }
+
+        .loading-spinner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: var(--border-radius-lg);
+            z-index: 10;
+        }
+
+        [data-bs-theme="dark"] .loading-spinner {
+            background: rgba(31, 41, 55, 0.9);
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border-primary);
+            border-top: 2px solid var(--primary-500);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Sidebar Components */
+        .sidebar-section {
+            margin-bottom: var(--space-6);
+        }
+
+        .sidebar-title {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            margin-bottom: var(--space-4);
+            color: var(--text-primary);
+        }
+
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-3);
+            background: var(--bg-tertiary);
+            border-radius: var(--border-radius);
+            margin-bottom: var(--space-2);
+        }
+
+        .metric-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: var(--primary-500);
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: var(--space-4);
+            right: var(--space-4);
+            z-index: 1000;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--space-3);
+            cursor: pointer;
+            box-shadow: var(--shadow-md);
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.05);
+        }
+
+        /* Navigation Tabs */
+        .nav-tabs-modern {
+            border: none;
+            display: flex;
+            gap: var(--space-2);
+            background: var(--bg-tertiary);
+            padding: var(--space-2);
+            border-radius: var(--border-radius-lg);
+        }
+
+        .nav-tabs-modern .nav-link {
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            padding: var(--space-3) var(--space-4);
+            border-radius: var(--border-radius);
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .nav-tabs-modern .nav-link.active {
+            background: var(--bg-secondary);
+            color: var(--primary-500);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .nav-tabs-modern .nav-link:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .dashboard-main {
+                flex-direction: column;
+                gap: var(--space-4);
+                padding: var(--space-4);
+            }
+
+            .dashboard-sidebar {
+                width: 100%;
+                position: static;
+            }
+
+            .module-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Notification System */
+        .notification-container {
+            position: fixed;
+            top: var(--space-16);
+            right: var(--space-4);
+            z-index: 1050;
+            max-width: 400px;
+        }
+
+        .notification {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--space-4);
+            margin-bottom: var(--space-3);
+            box-shadow: var(--shadow-lg);
+            animation: slideInRight 0.3s ease;
+            position: relative;
+        }
+
+        .notification.success {
+            border-left: 4px solid var(--success-500);
+        }
+
+        .notification.error {
+            border-left: 4px solid var(--error-500);
+        }
+
+        .notification.info {
+            border-left: 4px solid var(--primary-500);
+        }
+
+        .notification.warning {
+            border-left: 4px solid var(--warning-500);
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Charts */
+        .chart-container {
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--space-4);
+            border: 1px solid var(--border-primary);
+        }
+
+        /* Code Display */
+        .code-block {
+            background: var(--gray-900);
+            color: var(--gray-100);
+            padding: var(--space-4);
+            border-radius: var(--border-radius);
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: var(--font-size-sm);
+            overflow-x: auto;
+        }
+
+        /* Utility Classes */
+        .text-xs { font-size: var(--font-size-xs); }
+        .text-sm { font-size: var(--font-size-sm); }
+        .text-lg { font-size: var(--font-size-lg); }
+        .text-xl { font-size: var(--font-size-xl); }
+        .text-2xl { font-size: var(--font-size-2xl); }
+        .text-3xl { font-size: var(--font-size-3xl); }
+
+        .font-medium { font-weight: 500; }
+        .font-semibold { font-weight: 600; }
+        .font-bold { font-weight: 700; }
+
+        .text-primary { color: var(--text-primary); }
+        .text-secondary { color: var(--text-secondary); }
+        .text-tertiary { color: var(--text-tertiary); }
+
+        .bg-primary { background: var(--bg-primary); }
+        .bg-secondary { background: var(--bg-secondary); }
+        .bg-tertiary { background: var(--bg-tertiary); }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="container-fluid">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h1 class="text-3xl font-bold mb-2">IPFS Accelerate AI Platform</h1>
+                        <p class="text-lg opacity-90 mb-0">Advanced modular AI inference with portable SDK integration</p>
+                    </div>
+                    <div class="col-auto">
+                        <div class="status-bar">
+                            <div class="status-item">
+                                <div class="status-dot connected" id="connection-dot"></div>
+                                <span id="connection-status">Connected</span>
+                            </div>
+                            <div class="status-item">
+                                <i class="fas fa-microchip me-1"></i>
+                                <span id="model-count">0</span> Models
+                            </div>
+                            <div class="status-item">
+                                <i class="fas fa-clock me-1"></i>
+                                <span id="uptime">00:00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="dashboard-nav">
+            <div class="container-fluid">
+                <ul class="nav nav-tabs-modern" id="mainTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="modules-tab" data-bs-toggle="tab" 
+                                data-bs-target="#modules" type="button" role="tab">
+                            <i class="fas fa-cubes me-2"></i>AI Modules
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="playground-tab" data-bs-toggle="tab" 
+                                data-bs-target="#playground" type="button" role="tab">
+                            <i class="fas fa-play me-2"></i>Playground
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="analytics-tab" data-bs-toggle="tab" 
+                                data-bs-target="#analytics" type="button" role="tab">
+                            <i class="fas fa-chart-line me-2"></i>Analytics
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="system-tab" data-bs-toggle="tab" 
+                                data-bs-target="#system" type="button" role="tab">
+                            <i class="fas fa-server me-2"></i>System
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="dashboard-main">
+            <!-- Sidebar -->
+            <aside class="dashboard-sidebar">
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">System Status</h3>
+                    <div class="metric-item">
+                        <span class="metric-label">Server Status</span>
+                        <span class="metric-value" id="server-status">Online</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Active Requests</span>
+                        <span class="metric-value" id="active-requests">0</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Total Requests</span>
+                        <span class="metric-value" id="total-requests">0</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Average Latency</span>
+                        <span class="metric-value" id="avg-latency">0ms</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">Hardware Info</h3>
+                    <div id="hardware-info">
+                        <div class="metric-item">
+                            <span class="metric-label">CPU</span>
+                            <span class="metric-value" id="cpu-info">Loading...</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Memory</span>
+                            <span class="metric-value" id="memory-info">Loading...</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">GPU</span>
+                            <span class="metric-value" id="gpu-info">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3 class="sidebar-title">Quick Actions</h3>
+                    <button class="btn-modern btn-primary-modern w-100 mb-2" onclick="dashboard.refreshData()">
+                        <i class="fas fa-sync-alt"></i>
+                        Refresh Data
+                    </button>
+                    <button class="btn-modern btn-secondary-modern w-100 mb-2" onclick="dashboard.exportLogs()">
+                        <i class="fas fa-download"></i>
+                        Export Logs
+                    </button>
+                    <button class="btn-modern btn-secondary-modern w-100" onclick="dashboard.showHelp()">
+                        <i class="fas fa-question-circle"></i>
+                        Help & Docs
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Content Area -->
+            <div class="dashboard-content">
+                <div class="tab-content" id="mainTabContent">
+                    <!-- AI Modules Tab -->
+                    <div class="tab-pane fade show active" id="modules" role="tabpanel">
+                        <div class="module-grid" id="ai-modules">
+                            <!-- Modules will be dynamically loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Playground Tab -->
+                    <div class="tab-pane fade" id="playground" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="module-card">
+                                    <div class="module-header">
+                                        <div class="module-title">
+                                            <i class="fas fa-flask module-icon"></i>
+                                            Test Workspace
+                                        </div>
+                                    </div>
+                                    <div class="module-content">
+                                        <div class="form-group">
+                                            <label class="form-label">Select AI Module</label>
+                                            <select class="form-control-modern" id="playground-module">
+                                                <option value="">Choose a module...</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Input Data</label>
+                                            <textarea class="form-control-modern" rows="4" id="playground-input" 
+                                                      placeholder="Enter your input data..."></textarea>
+                                        </div>
+                                        <button class="btn-modern btn-primary-modern" onclick="dashboard.runPlaygroundTest()">
+                                            <i class="fas fa-play"></i>
+                                            Run Test
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="module-card">
+                                    <div class="module-header">
+                                        <div class="module-title">
+                                            <i class="fas fa-code module-icon"></i>
+                                            SDK Code Generator
+                                        </div>
+                                    </div>
+                                    <div class="module-content">
+                                        <p class="module-description">Generate portable SDK code for any module:</p>
+                                        <div class="form-group">
+                                            <label class="form-label">Language</label>
+                                            <select class="form-control-modern" id="sdk-language">
+                                                <option value="javascript">JavaScript</option>
+                                                <option value="python">Python</option>
+                                                <option value="curl">cURL</option>
+                                            </select>
+                                        </div>
+                                        <button class="btn-modern btn-primary-modern" onclick="dashboard.generateSDKCode()">
+                                            <i class="fas fa-code"></i>
+                                            Generate Code
+                                        </button>
+                                        <div class="result-container" id="sdk-code-result" style="display: none;">
+                                            <div class="result-header">
+                                                <i class="fas fa-code"></i>
+                                                Generated SDK Code
+                                            </div>
+                                            <pre class="code-block" id="sdk-code-content"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Tab -->
+                    <div class="tab-pane fade" id="analytics" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="chart-container">
+                                    <h4 class="font-semibold mb-4">Performance Metrics</h4>
+                                    <canvas id="performance-chart" width="400" height="200"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="chart-container">
+                                    <h4 class="font-semibold mb-4">Request Distribution</h4>
+                                    <canvas id="requests-chart" width="400" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="chart-container">
+                                    <h4 class="font-semibold mb-4">System Resources</h4>
+                                    <canvas id="system-chart" width="800" height="300"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Tab -->
+                    <div class="tab-pane fade" id="system" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="module-card">
+                                    <div class="module-header">
+                                        <div class="module-title">
+                                            <i class="fas fa-cogs module-icon"></i>
+                                            System Configuration
+                                        </div>
+                                    </div>
+                                    <div class="module-content">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label class="form-label">Log Level</label>
+                                                    <select class="form-control-modern" id="log-level">
+                                                        <option value="DEBUG">Debug</option>
+                                                        <option value="INFO" selected>Info</option>
+                                                        <option value="WARNING">Warning</option>
+                                                        <option value="ERROR">Error</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label class="form-label">Request Timeout (ms)</label>
+                                                    <input type="number" class="form-control-modern" id="request-timeout" value="30000">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button class="btn-modern btn-primary-modern" onclick="dashboard.updateSystemConfig()">
+                                            <i class="fas fa-save"></i>
+                                            Save Configuration
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="module-card">
+                                    <div class="module-header">
+                                        <div class="module-title">
+                                            <i class="fas fa-download module-icon"></i>
+                                            Export Data
+                                        </div>
+                                    </div>
+                                    <div class="module-content">
+                                        <p class="module-description">Export system data and logs:</p>
+                                        <button class="btn-modern btn-secondary-modern w-100 mb-2" onclick="dashboard.exportMetrics()">
+                                            <i class="fas fa-chart-bar"></i>
+                                            Export Metrics
+                                        </button>
+                                        <button class="btn-modern btn-secondary-modern w-100 mb-2" onclick="dashboard.exportLogs()">
+                                            <i class="fas fa-file-alt"></i>
+                                            Export Logs
+                                        </button>
+                                        <button class="btn-modern btn-secondary-modern w-100" onclick="dashboard.exportConfig()">
+                                            <i class="fas fa-cog"></i>
+                                            Export Config
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Theme Toggle -->
+    <button class="theme-toggle" onclick="dashboard.toggleTheme()">
+        <i class="fas fa-moon" id="theme-icon"></i>
+    </button>
+
+    <!-- Notification Container -->
+    <div class="notification-container" id="notification-container"></div>
+
+    <!-- External Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Portable SDK -->
+    <script src="/static/js/portable-mcp-sdk.js"></script>
+    
+    <!-- Reorganized Dashboard Script -->
+    <script src="/static/js/reorganized-dashboard.js"></script>
+</body>
+</html>

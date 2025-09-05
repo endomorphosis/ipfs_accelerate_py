@@ -67,6 +67,12 @@ class MCPJSONRPCServer:
         
         # Available JSON-RPC methods
         self.methods = {
+            # Core System Methods (required by portable SDK)
+            "ping": self._ping,
+            "get_server_info": self._get_server_info,
+            "get_available_methods": self._get_available_methods,
+            "get_models": self._get_models,
+            
             # Model Management
             "list_models": self._list_models,
             "get_model": self._get_model,
@@ -77,44 +83,58 @@ class MCPJSONRPCServer:
             # Text Processing
             "generate_text": self._generate_text,
             "classify_text": self._classify_text,
+            "get_text_embedding": self._get_text_embedding,
             "generate_embeddings": self._generate_embeddings,
             "fill_mask": self._fill_mask,
             "translate_text": self._translate_text,
             "summarize_text": self._summarize_text,
             "answer_question": self._answer_question,
+            "analyze_sentiment": self._analyze_sentiment,
+            "extract_entities": self._extract_entities,
             
             # Audio Processing
             "transcribe_audio": self._transcribe_audio,
             "classify_audio": self._classify_audio,
             "synthesize_speech": self._synthesize_speech,
             "generate_audio": self._generate_audio,
+            "denoise_audio": self._denoise_audio,
             
             # Vision Processing
             "classify_image": self._classify_image,
             "detect_objects": self._detect_objects,
             "segment_image": self._segment_image,
             "generate_image": self._generate_image,
+            "caption_image": self._caption_image,
+            "enhance_image": self._enhance_image,
+            
+            # Code Processing
+            "generate_code": self._generate_code,
+            "complete_code": self._complete_code,
+            "explain_code": self._explain_code,
+            "debug_code": self._debug_code,
+            "optimize_code": self._optimize_code,
             
             # Multimodal Processing
             "generate_image_caption": self._generate_image_caption,
+            "visual_question_answering": self._visual_question_answering,
             "answer_visual_question": self._answer_visual_question,
+            "multimodal_chat": self._multimodal_chat,
+            "multimodal_analysis": self._multimodal_analysis,
             "process_document": self._process_document,
             
             # Specialized
             "predict_timeseries": self._predict_timeseries,
-            "generate_code": self._generate_code,
             "process_tabular_data": self._process_tabular_data,
             
-            # System and Hardware Methods
+            # System and Hardware Methods (enhanced for ipfs_accelerate_py integration)
             "get_hardware_info": self._get_hardware_info,
             "get_system_metrics": self._get_system_metrics,
             "analyze_emotion": self._analyze_emotion,
             "extract_topics": self._extract_topics,
             "extract_text_from_image": self._extract_text_from_image,
             
-            # System
-            "list_methods": self._list_methods,
-            "get_server_info": self._get_server_info,
+            # Legacy aliases
+            "list_methods": self._get_available_methods,
         }
         
         logger.info(f"JSON-RPC server initialized with {len(self.methods)} methods")
@@ -156,16 +176,20 @@ class MCPJSONRPCServer:
         
         @self.app.get("/")
         async def root():
-            """Root endpoint - serve the enhanced dashboard."""
+            """Root endpoint - serve the reorganized dashboard."""
             try:
                 import os
                 from fastapi.responses import FileResponse
                 templates_path = os.path.join(os.path.dirname(__file__), "templates")
-                # Try enhanced dashboard first, fallback to original
+                # Priority: reorganized > enhanced > original
+                reorganized_path = os.path.join(templates_path, "reorganized_dashboard.html")
                 enhanced_path = os.path.join(templates_path, "enhanced_dashboard.html")
                 original_path = os.path.join(templates_path, "sdk_dashboard.html")
                 
-                if os.path.exists(enhanced_path):
+                if os.path.exists(reorganized_path):
+                    logger.info("Serving reorganized modular dashboard")
+                    return FileResponse(reorganized_path)
+                elif os.path.exists(enhanced_path):
                     logger.info("Serving enhanced dashboard")
                     return FileResponse(enhanced_path)
                 elif os.path.exists(original_path):
@@ -177,24 +201,27 @@ class MCPJSONRPCServer:
             # Fallback to API information
             return {
                 "name": "IPFS Accelerate AI - MCP Server",
-                "version": "1.0.0",
+                "version": "2.0.0",
                 "jsonrpc": "2.0",
                 "methods": list(self.methods.keys()),
                 "endpoint": "/jsonrpc",
-                "dashboard": "Enhanced AI Dashboard with ipfs_accelerate_py integration"
+                "dashboard": "Reorganized Modular AI Dashboard with portable SDK and enhanced ipfs_accelerate_py integration"
             }
         
         @self.app.get("/dashboard")
         async def dashboard():
-            """Dashboard endpoint - serve enhanced dashboard."""
+            """Dashboard endpoint - serve reorganized dashboard."""
             try:
                 import os
                 from fastapi.responses import FileResponse
                 templates_path = os.path.join(os.path.dirname(__file__), "templates")
+                reorganized_path = os.path.join(templates_path, "reorganized_dashboard.html")
                 enhanced_path = os.path.join(templates_path, "enhanced_dashboard.html")
                 original_path = os.path.join(templates_path, "sdk_dashboard.html")
                 
-                if os.path.exists(enhanced_path):
+                if os.path.exists(reorganized_path):
+                    return FileResponse(reorganized_path)
+                elif os.path.exists(enhanced_path):
                     return FileResponse(enhanced_path)
                 elif os.path.exists(original_path):
                     return FileResponse(original_path)
@@ -761,6 +788,224 @@ class MCPJSONRPCServer:
                 }
             ],
             "model_used": model_id or "ocr-model",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _ping(self, params: Dict) -> str:
+        """Ping the server to check if it's alive."""
+        return "pong"
+
+    async def _get_available_methods(self, params: Dict) -> List[str]:
+        """Get list of available JSON-RPC methods."""
+        return list(self.methods.keys())
+
+    async def _get_models(self, params: Dict) -> List[Dict]:
+        """Get list of available models (alias for list_models)."""
+        return await self._list_models(params)
+
+    async def _get_text_embedding(self, params: Dict) -> Dict:
+        """Get text embeddings (alias for generate_embeddings)."""
+        return await self._generate_embeddings(params)
+
+    async def _analyze_sentiment(self, params: Dict) -> Dict:
+        """Analyze sentiment of text."""
+        text = params.get("text", "")
+        if not text:
+            raise JSONRPCError(-32602, "Invalid params", "text is required")
+
+        # Mock sentiment analysis - replace with actual model
+        import random
+        sentiments = ["positive", "negative", "neutral"]
+        sentiment = random.choice(sentiments)
+        confidence = round(random.uniform(0.7, 0.95), 3)
+
+        return {
+            "sentiment": sentiment,
+            "confidence": confidence,
+            "scores": {
+                "positive": round(random.uniform(0, 1), 3),
+                "negative": round(random.uniform(0, 1), 3),
+                "neutral": round(random.uniform(0, 1), 3)
+            },
+            "text": text,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _extract_entities(self, params: Dict) -> Dict:
+        """Extract named entities from text."""
+        text = params.get("text", "")
+        entity_types = params.get("entity_types", [])
+        
+        if not text:
+            raise JSONRPCError(-32602, "Invalid params", "text is required")
+
+        # Mock entity extraction - replace with actual model
+        entities = [
+            {
+                "text": "example entity",
+                "label": "PERSON",
+                "start": 0,
+                "end": 14,
+                "confidence": 0.95
+            }
+        ]
+
+        return {
+            "entities": entities,
+            "text": text,
+            "entity_types": entity_types,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _denoise_audio(self, params: Dict) -> Dict:
+        """Denoise audio data."""
+        audio_data = params.get("audio_data", "")
+        if not audio_data:
+            raise JSONRPCError(-32602, "Invalid params", "audio_data is required")
+
+        # Mock denoising - replace with actual model
+        return {
+            "denoised_audio": "[Denoised audio data would be returned here]",
+            "noise_reduction_db": 12.5,
+            "sample_rate": 44100,
+            "duration": 5.2,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _caption_image(self, params: Dict) -> Dict:
+        """Generate image caption (alias for generate_image_caption)."""
+        return await self._generate_image_caption(params)
+
+    async def _enhance_image(self, params: Dict) -> Dict:
+        """Enhance image quality."""
+        image_data = params.get("image_data", "")
+        options = params.get("options", {})
+        
+        if not image_data:
+            raise JSONRPCError(-32602, "Invalid params", "image_data is required")
+
+        # Mock enhancement - replace with actual model
+        return {
+            "enhanced_image": "[Enhanced image data would be returned here]",
+            "enhancement_type": options.get("type", "auto"),
+            "improvements": {
+                "sharpness": "+15%",
+                "brightness": "+5%",
+                "contrast": "+10%"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _complete_code(self, params: Dict) -> Dict:
+        """Complete code snippet."""
+        code = params.get("code", "")
+        language = params.get("language", "python")
+        
+        if not code:
+            raise JSONRPCError(-32602, "Invalid params", "code is required")
+
+        # Mock code completion - replace with actual model
+        completion = f"\n    # Completed code for {language}\n    return result"
+        
+        return {
+            "completed_code": code + completion,
+            "original_code": code,
+            "language": language,
+            "completion_suggestions": [completion],
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _explain_code(self, params: Dict) -> Dict:
+        """Explain what code does."""
+        code = params.get("code", "")
+        language = params.get("language", "python")
+        
+        if not code:
+            raise JSONRPCError(-32602, "Invalid params", "code is required")
+
+        # Mock explanation - replace with actual model
+        return {
+            "explanation": f"This {language} code appears to perform a specific function.",
+            "code": code,
+            "language": language,
+            "complexity": "medium",
+            "key_concepts": ["variables", "functions", "control flow"],
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _debug_code(self, params: Dict) -> Dict:
+        """Debug code and suggest fixes."""
+        code = params.get("code", "")
+        error = params.get("error", "")
+        language = params.get("language", "python")
+        
+        if not code:
+            raise JSONRPCError(-32602, "Invalid params", "code is required")
+
+        # Mock debugging - replace with actual model
+        return {
+            "fixed_code": code,
+            "error_analysis": error,
+            "suggested_fixes": ["Check variable names", "Verify syntax"],
+            "language": language,
+            "confidence": 0.85,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _optimize_code(self, params: Dict) -> Dict:
+        """Optimize code for performance."""
+        code = params.get("code", "")
+        language = params.get("language", "python")
+        
+        if not code:
+            raise JSONRPCError(-32602, "Invalid params", "code is required")
+
+        # Mock optimization - replace with actual model
+        return {
+            "optimized_code": code,
+            "original_code": code,
+            "optimizations": ["Removed redundant loops", "Improved algorithm"],
+            "performance_gain": "15%",
+            "language": language,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _visual_question_answering(self, params: Dict) -> Dict:
+        """Answer questions about images (alias for answer_visual_question)."""
+        return await self._answer_visual_question(params)
+
+    async def _multimodal_chat(self, params: Dict) -> Dict:
+        """Multimodal chat with text and images."""
+        messages = params.get("messages", [])
+        image_data = params.get("image_data")
+        
+        if not messages:
+            raise JSONRPCError(-32602, "Invalid params", "messages is required")
+
+        # Mock multimodal chat - replace with actual model
+        return {
+            "response": "I can see the image and understand your question. Here's my response...",
+            "messages": messages,
+            "has_image": bool(image_data),
+            "confidence": 0.88,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _multimodal_analysis(self, params: Dict) -> Dict:
+        """Analyze multimodal data."""
+        data = params.get("data", "")
+        data_type = params.get("data_type", "auto")
+        
+        if not data:
+            raise JSONRPCError(-32602, "Invalid params", "data is required")
+
+        # Mock analysis - replace with actual model
+        return {
+            "analysis": "Multimodal analysis results...",
+            "data_type": data_type,
+            "detected_modalities": ["text", "image"],
+            "insights": ["Key insight 1", "Key insight 2"],
+            "confidence": 0.92,
             "timestamp": datetime.now().isoformat()
         }
 
