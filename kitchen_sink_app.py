@@ -393,6 +393,303 @@ class KitchenSinkApp:
                 logger.error(f"Error submitting feedback: {e}")
                 return jsonify({"error": str(e)}), 500
         
+        # Additional Advanced Inference Endpoints
+        @self.app.route('/api/inference/transcribe', methods=['POST'])
+        def transcribe_audio():
+            """Transcribe audio to text."""
+            try:
+                data = request.get_json()
+                audio_data = data.get('audio_data', '')
+                model_id = data.get('model_id')
+                language = data.get('language')
+                task = data.get('task', 'transcribe')
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock transcription result
+                transcription = f"[Mock transcription from {model_id or 'auto-selected'}] This is the transcribed text from the audio input."
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "transcription": transcription,
+                    "language": language or "en",
+                    "confidence": 0.89,
+                    "segments": [
+                        {"start": 0.0, "end": 2.5, "text": "This is the transcribed"},
+                        {"start": 2.5, "end": 5.0, "text": "text from the audio input."}
+                    ],
+                    "model_used": model_id or "auto-selected",
+                    "task": task,
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in audio transcription: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route('/api/inference/classify_image', methods=['POST'])
+        def classify_image():
+            """Classify images."""
+            try:
+                data = request.get_json()
+                image_data = data.get('image_data', '')
+                model_id = data.get('model_id')
+                top_k = data.get('top_k', 5)
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock image classification results
+                predictions = [
+                    {"label": "cat", "score": 0.85},
+                    {"label": "dog", "score": 0.12},
+                    {"label": "bird", "score": 0.03}
+                ][:top_k]
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "predictions": predictions,
+                    "model_used": model_id or "auto-selected",
+                    "inference_confidence": 0.85,
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in image classification: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route('/api/inference/detect_objects', methods=['POST'])
+        def detect_objects():
+            """Detect objects in images."""
+            try:
+                data = request.get_json()
+                image_data = data.get('image_data', '')
+                model_id = data.get('model_id')
+                confidence_threshold = data.get('confidence_threshold', 0.5)
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock object detection results
+                detections = [
+                    {
+                        "label": "person",
+                        "confidence": 0.92,
+                        "bbox": [100, 100, 200, 300]
+                    },
+                    {
+                        "label": "car",
+                        "confidence": 0.78,
+                        "bbox": [300, 150, 500, 250]
+                    }
+                ]
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "detections": detections,
+                    "model_used": model_id or "auto-selected",
+                    "inference_confidence": 0.85,
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in object detection: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route('/api/inference/caption_image', methods=['POST'])
+        def generate_image_caption():
+            """Generate captions for images."""
+            try:
+                data = request.get_json()
+                image_data = data.get('image_data', '')
+                model_id = data.get('model_id')
+                max_length = data.get('max_length', 50)
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock image captioning result
+                caption = f"A detailed description of the image generated by {model_id or 'auto-selected'} showing various objects and scenes."
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "caption": caption,
+                    "model_used": model_id or "auto-selected",
+                    "inference_confidence": 0.88,
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in image captioning: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route('/api/inference/visual_qa', methods=['POST'])
+        def answer_visual_question():
+            """Answer questions about images."""
+            try:
+                data = request.get_json()
+                image_data = data.get('image_data', '')
+                question = data.get('question', '')
+                model_id = data.get('model_id')
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock visual QA result
+                answer = f"Based on the image analysis by {model_id or 'auto-selected'}, the answer to your question is provided here."
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "answer": answer,
+                    "question": question,
+                    "model_used": model_id or "auto-selected",
+                    "inference_confidence": 0.87,
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in visual question answering: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route('/api/inference/synthesize_speech', methods=['POST'])
+        def synthesize_speech():
+            """Synthesize speech from text."""
+            try:
+                data = request.get_json()
+                text = data.get('text', '')
+                model_id = data.get('model_id')
+                speaker = data.get('speaker')
+                language = data.get('language', 'en')
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock speech synthesis result
+                audio_url = f"mock://synthesized_{hash(text)}.wav"
+                duration = len(text) * 0.1
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "status": "synthesized",
+                    "audio_url": audio_url,
+                    "duration": duration,
+                    "sample_rate": 22050,
+                    "model_used": model_id or "auto-selected",
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in speech synthesis: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route('/api/inference/translate', methods=['POST'])
+        def translate_text():
+            """Translate text between languages."""
+            try:
+                data = request.get_json()
+                text = data.get('text', '')
+                source_language = data.get('source_language', 'en')
+                target_language = data.get('target_language', 'es')
+                model_id = data.get('model_id')
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock translation result
+                translated_text = f"[Translation by {model_id or 'auto-selected'}] This is the translated version of the input text."
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "translated_text": translated_text,
+                    "source_language": source_language,
+                    "target_language": target_language,
+                    "model_used": model_id or "auto-selected",
+                    "inference_confidence": 0.91,
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in text translation: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route('/api/inference/summarize', methods=['POST'])
+        def summarize_text():
+            """Summarize text."""
+            try:
+                data = request.get_json()
+                text = data.get('text', '')
+                model_id = data.get('model_id')
+                max_length = data.get('max_length', 150)
+                min_length = data.get('min_length', 30)
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock summarization result
+                summary = f"[Summary by {model_id or 'auto-selected'}] This is a concise summary of the input text highlighting the key points."
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "summary": summary,
+                    "model_used": model_id or "auto-selected",
+                    "inference_confidence": 0.86,
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in text summarization: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route('/api/inference/classify_audio', methods=['POST'])
+        def classify_audio():
+            """Classify audio content."""
+            try:
+                data = request.get_json()
+                audio_data = data.get('audio_data', '')
+                model_id = data.get('model_id')
+                top_k = data.get('top_k', 5)
+                hardware = data.get('hardware', 'cpu')
+                
+                start_time = datetime.now()
+                
+                # Mock audio classification results
+                predictions = [
+                    {"label": "music", "score": 0.78},
+                    {"label": "speech", "score": 0.15},
+                    {"label": "noise", "score": 0.07}
+                ][:top_k]
+                
+                end_time = datetime.now()
+                processing_time = (end_time - start_time).total_seconds()
+                
+                return jsonify({
+                    "predictions": predictions,
+                    "model_used": model_id or "auto-selected",
+                    "inference_confidence": 0.78,
+                    "processing_time": processing_time
+                })
+                
+            except Exception as e:
+                logger.error(f"Error in audio classification: {e}")
+                return jsonify({"error": str(e)}), 500
+        
         # HuggingFace search endpoints
         @self.app.route('/api/hf/search', methods=['POST'])
         def search_huggingface():
