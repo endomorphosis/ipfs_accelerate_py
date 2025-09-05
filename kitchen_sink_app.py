@@ -27,6 +27,7 @@ try:
         RecommendationContext, create_model_from_huggingface
     )
     from ipfs_mcp.ai_model_server import create_ai_model_server
+    from huggingface_search_engine import HuggingFaceModelSearchEngine
     HAVE_MODEL_MANAGER = True
 except ImportError as e:
     HAVE_MODEL_MANAGER = False
@@ -56,11 +57,14 @@ class KitchenSinkApp:
                 model_manager_path="./kitchen_sink_models.db",
                 bandit_storage_path="./kitchen_sink_bandit.json"
             )
+            # Initialize HuggingFace search engine
+            self.hf_search_engine = HuggingFaceModelSearchEngine(self.model_manager)
             logger.info("AI components initialized")
         else:
             self.model_manager = None
             self.bandit_recommender = None
             self.ai_server = None
+            self.hf_search_engine = None
             logger.warning("AI components not available - running in demo mode")
         
         # Setup routes
@@ -387,6 +391,201 @@ class KitchenSinkApp:
                 
             except Exception as e:
                 logger.error(f"Error submitting feedback: {e}")
+                return jsonify({"error": str(e)}), 500
+        
+        # HuggingFace search endpoints
+        @self.app.route('/api/hf/search', methods=['POST'])
+        def search_huggingface():
+            """Search HuggingFace models."""
+            try:
+                data = request.get_json()
+                query = data.get('query', '')
+                limit = int(data.get('limit', 20))
+                task_filter = data.get('task_filter', '')
+                sort_by = data.get('sort_by', 'downloads')
+                
+                if not self.hf_search_engine:
+                    return jsonify({"error": "HuggingFace search not available", "models": []}), 503
+                
+                # Build filter dict
+                filter_dict = {}
+                if task_filter:
+                    filter_dict['pipeline_tag'] = task_filter
+                
+                # Search models
+                models = self.hf_search_engine.search_huggingface_models(
+                    query=query,
+                    limit=limit,
+                    filter_dict=filter_dict,
+                    sort=sort_by
+                )
+                
+                # Convert to response format
+                model_list = []
+                for model in models:
+                    model_dict = {
+                        "model_id": model.model_id,
+                        "model_name": model.model_name,
+                        "author": model.author,
+                        "description": model.description[:200] + "..." if len(model.description) > 200 else model.description,
+                        "tags": model.tags[:5],  # Limit tags for UI
+                        "pipeline_tag": model.pipeline_tag,
+                        "library_name": model.library_name,
+                        "downloads": model.downloads,
+                        "likes": model.likes,
+                        "license": model.license,
+                        "last_modified": model.last_modified
+                    }
+                    model_list.append(model_dict)
+                
+                return jsonify({
+                    "models": model_list,
+                    "total": len(model_list),
+                    "query": query,
+                    "filters": filter_dict
+                })
+                
+            except Exception as e:
+                logger.error(f"Error searching HuggingFace: {e}")
+                return jsonify({"error": str(e), "models": []}), 500
+        
+        @self.app.route('/api/hf/model/<path:model_id>')
+        def get_huggingface_model_details(model_id):
+            """Get detailed information about a specific HuggingFace model."""
+            try:
+                if not self.hf_search_engine:
+                    return jsonify({"error": "HuggingFace search not available"}), 503
+                
+                # Get detailed model info
+                model_info = self.hf_search_engine.get_detailed_model_info(
+                    model_id, include_repo_structure=True
+                )
+                
+                if not model_info:
+                    return jsonify({"error": "Model not found"}), 404
+                
+                # Convert to response format
+                response = {
+                    "model_id": model_info.model_id,
+                    "model_name": model_info.model_name,
+                    "author": model_info.author,
+                    "description": model_info.description,
+                    "tags": model_info.tags,
+                    "pipeline_tag": model_info.pipeline_tag,
+                    "library_name": model_info.library_name,
+                    "language": model_info.language,
+                    "license": model_info.license,
+                    "downloads": model_info.downloads,
+                    "likes": model_info.likes,
+                    "created_at": model_info.created_at,
+                    "last_modified": model_info.last_modified,
+                    "config": model_info.config,
+                    "siblings": model_info.siblings
+                }
+                
+                # Add repository structure info if available
+                if model_info.repository_structure:
+                    repo = model_info.repository_structure
+                    response["repository"] = {
+                        "total_files": repo.get("total_files", 0),
+                        "total_size": repo.get("total_size", 0),
+                        "ipfs_enabled": repo.get("ipfs_enabled", False),
+                        "main_files": [f for f in repo.get("files", {}).keys() 
+                                     if f.endswith(('.json', '.bin', '.safetensors', '.py', '.md'))][:10]
+                    }
+                
+                # Add IPFS CIDs if available
+                if model_info.ipfs_cids:
+                    response["ipfs_cids"] = model_info.ipfs_cids
+                
+                return jsonify(response)
+                
+            except Exception as e:
+                logger.error(f"Error getting model details for {model_id}: {e}")
+                return jsonify({"error": str(e)}), 500
+        
+        @self.app.route('/api/hf/add-to-manager', methods=['POST'])
+        def add_hf_model_to_manager():
+            """Add a HuggingFace model to the local model manager."""
+            try:
+                data = request.get_json()
+                model_id = data.get('model_id')
+                
+                if not model_id:
+                    return jsonify({"error": "model_id is required"}), 400
+                
+                if not self.hf_search_engine:
+                    return jsonify({"error": "HuggingFace search not available"}), 503
+                
+                # Get model info
+                model_info = self.hf_search_engine.get_detailed_model_info(
+                    model_id, include_repo_structure=True
+                )
+                
+                if not model_info:
+                    return jsonify({"error": "Model not found"}), 404
+                
+                # Add to model manager
+                success = self.hf_search_engine.add_model_to_manager(model_info)
+                
+                if success:
+                    return jsonify({
+                        "success": True,
+                        "message": f"Model {model_id} added to manager",
+                        "model_id": model_id
+                    })
+                else:
+                    return jsonify({"error": "Failed to add model to manager"}), 500
+                
+            except Exception as e:
+                logger.error(f"Error adding model to manager: {e}")
+                return jsonify({"error": str(e)}), 500
+        
+        @self.app.route('/api/hf/popular/<task>')
+        def get_popular_models_by_task(task):
+            """Get popular models for a specific task."""
+            try:
+                limit = int(request.args.get('limit', 10))
+                
+                if not self.hf_search_engine:
+                    return jsonify({"error": "HuggingFace search not available", "models": []}), 503
+                
+                models = self.hf_search_engine.get_popular_models(
+                    limit=limit, task_filter=task
+                )
+                
+                # Convert to response format
+                model_list = []
+                for model in models:
+                    model_dict = {
+                        "model_id": model.model_id,
+                        "model_name": model.model_name,
+                        "author": model.author,
+                        "downloads": model.downloads,
+                        "likes": model.likes,
+                        "pipeline_tag": model.pipeline_tag,
+                        "description": model.description[:100] + "..." if len(model.description) > 100 else model.description
+                    }
+                    model_list.append(model_dict)
+                
+                return jsonify({"models": model_list, "task": task})
+                
+            except Exception as e:
+                logger.error(f"Error getting popular models for {task}: {e}")
+                return jsonify({"error": str(e), "models": []}), 500
+        
+        @self.app.route('/api/hf/stats')
+        def get_hf_search_stats():
+            """Get HuggingFace search engine statistics."""
+            try:
+                if not self.hf_search_engine:
+                    return jsonify({"error": "HuggingFace search not available"}), 503
+                
+                stats = self.hf_search_engine.get_statistics()
+                return jsonify(stats)
+                
+            except Exception as e:
+                logger.error(f"Error getting HF search stats: {e}")
                 return jsonify({"error": str(e)}), 500
     
     def _get_demo_models(self):

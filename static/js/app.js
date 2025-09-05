@@ -21,6 +21,7 @@ class KitchenSinkApp {
         this.setupModelManager();
         this.setupKeyboardShortcuts();
         this.setupNotificationSystem();
+        this.setupHuggingFaceBrowser();
         
         // Load initial data
         this.loadModels();
@@ -874,6 +875,398 @@ class KitchenSinkApp {
             </div>
         `);
     }
+
+    // HuggingFace Browser functionality
+    setupHuggingFaceBrowser() {
+        console.log('Setting up HuggingFace browser...');
+        
+        // Search button handler
+        $('#hf-search-btn').on('click', () => {
+            this.searchHuggingFaceModels();
+        });
+        
+        // Enter key search
+        $('#hf-search-query').on('keypress', (e) => {
+            if (e.which === 13) {
+                this.searchHuggingFaceModels();
+            }
+        });
+        
+        // Quick search buttons
+        $('.hf-quick-search').on('click', (e) => {
+            const $btn = $(e.currentTarget);
+            const query = $btn.data('query');
+            const task = $btn.data('task');
+            
+            $('#hf-search-query').val(query);
+            $('#hf-task-filter').val(task);
+            this.searchHuggingFaceModels();
+        });
+        
+        // Task links in sidebar
+        $('.hf-task-link').on('click', (e) => {
+            const task = $(e.currentTarget).data('task');
+            $('#hf-task-filter').val(task);
+            $('#hf-search-query').val('');
+            this.searchHuggingFaceModels();
+        });
+        
+        // Add to manager button
+        $('#hf-add-to-manager').on('click', () => {
+            this.addHuggingFaceModelToManager();
+        });
+        
+        // Load initial stats
+        this.loadHuggingFaceStats();
+    }
+    
+    async searchHuggingFaceModels() {
+        console.log('Searching HuggingFace models...');
+        
+        const query = $('#hf-search-query').val().trim();
+        const taskFilter = $('#hf-task-filter').val();
+        const sortBy = $('#hf-sort-by').val();
+        const limit = 20;
+        
+        // Show loading
+        $('#hf-search-results').html(`
+            <div class="text-center p-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Searching HuggingFace Hub...</p>
+            </div>
+        `);
+        
+        try {
+            const response = await fetch('/api/hf/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: query,
+                    task_filter: taskFilter,
+                    sort_by: sortBy,
+                    limit: limit
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.displayHuggingFaceResults(data.models);
+                this.updateHuggingFaceStats(data.total);
+                this.showNotification(`Found ${data.models.length} models`, 'success');
+            } else {
+                throw new Error(data.error || 'Search failed');
+            }
+            
+        } catch (error) {
+            console.error('HuggingFace search error:', error);
+            $('#hf-search-results').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Error searching models: ${error.message}
+                </div>
+            `);
+            this.showNotification(`Search failed: ${error.message}`, 'error');
+        }
+    }
+    
+    displayHuggingFaceResults(models) {
+        if (!models || models.length === 0) {
+            $('#hf-search-results').html(`
+                <div class="text-center text-muted p-4">
+                    <i class="fas fa-search fa-3x mb-3"></i>
+                    <p>No models found</p>
+                    <p class="small">Try adjusting your search criteria</p>
+                </div>
+            `);
+            return;
+        }
+        
+        let html = `
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Task</th>
+                        <th>Downloads</th>
+                        <th>Likes</th>
+                        <th>License</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        models.forEach(model => {
+            const downloads = model.downloads ? model.downloads.toLocaleString() : '0';
+            const likes = model.likes ? model.likes.toLocaleString() : '0';
+            const description = model.description ? 
+                (model.description.length > 100 ? model.description.substring(0, 100) + '...' : model.description) : 
+                'No description available';
+            
+            html += `
+                <tr class="hf-model-row" data-model-id="${model.model_id}">
+                    <td>
+                        <div>
+                            <strong>${model.model_id}</strong>
+                            <br>
+                            <small class="text-muted">${description}</small>
+                            <br>
+                            <div class="mt-1">
+                                ${model.tags.slice(0, 3).map(tag => 
+                                    `<span class="badge bg-secondary me-1">${tag}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        ${model.pipeline_tag ? 
+                            `<span class="badge bg-primary">${model.pipeline_tag}</span>` : 
+                            '<span class="text-muted">Unknown</span>'
+                        }
+                    </td>
+                    <td>${downloads}</td>
+                    <td>${likes}</td>
+                    <td>
+                        ${model.license ? 
+                            `<span class="badge bg-info">${model.license}</span>` : 
+                            '<span class="text-muted">Unknown</span>'
+                        }
+                    </td>
+                    <td>
+                        <button class="btn btn-outline-primary btn-sm hf-view-details" data-model-id="${model.model_id}">
+                            <i class="fas fa-eye"></i> Details
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table>';
+        $('#hf-search-results').html(html);
+        
+        // Add click handlers for details buttons
+        $('.hf-view-details').on('click', (e) => {
+            const modelId = $(e.currentTarget).data('model-id');
+            this.loadHuggingFaceModelDetails(modelId);
+        });
+        
+        // Add click handlers for model rows
+        $('.hf-model-row').on('click', (e) => {
+            if (!$(e.target).hasClass('btn') && !$(e.target).closest('.btn').length) {
+                const modelId = $(e.currentTarget).data('model-id');
+                this.loadHuggingFaceModelDetails(modelId);
+            }
+        });
+    }
+    
+    async loadHuggingFaceModelDetails(modelId) {
+        console.log('Loading model details for:', modelId);
+        
+        try {
+            // Show loading in details panel
+            $('#hf-model-details').show();
+            $('#hf-model-info').html(`
+                <div class="text-center">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="small mt-2">Loading model details...</p>
+                </div>
+            `);
+            
+            const response = await fetch(`/api/hf/model/${encodeURIComponent(modelId)}`);
+            const model = await response.json();
+            
+            if (response.ok) {
+                this.displayHuggingFaceModelDetails(model);
+                this.currentHfModel = model;
+            } else {
+                throw new Error(model.error || 'Failed to load model details');
+            }
+            
+        } catch (error) {
+            console.error('Error loading model details:', error);
+            $('#hf-model-info').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Error loading details: ${error.message}
+                </div>
+            `);
+        }
+    }
+    
+    displayHuggingFaceModelDetails(model) {
+        const formatNumber = (num) => num ? num.toLocaleString() : '0';
+        const formatDate = (dateStr) => {
+            if (!dateStr) return 'Unknown';
+            try {
+                return new Date(dateStr).toLocaleDateString();
+            } catch {
+                return 'Unknown';
+            }
+        };
+        
+        let html = `
+            <div class="model-details">
+                <h6>${model.model_id}</h6>
+                <p class="text-muted small">${model.description || 'No description available'}</p>
+                
+                <div class="details-section">
+                    <strong>Author:</strong> ${model.author || 'Unknown'}<br>
+                    <strong>Task:</strong> ${model.pipeline_tag ? 
+                        `<span class="badge bg-primary">${model.pipeline_tag}</span>` : 
+                        'Unknown'}<br>
+                    <strong>Library:</strong> ${model.library_name || 'Unknown'}<br>
+                    <strong>License:</strong> ${model.license ? 
+                        `<span class="badge bg-info">${model.license}</span>` : 
+                        'Unknown'}
+                </div>
+                
+                <div class="details-section mt-3">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="border rounded p-2">
+                                <div class="h6 mb-0">${formatNumber(model.downloads)}</div>
+                                <small class="text-muted">Downloads</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2">
+                                <div class="h6 mb-0">${formatNumber(model.likes)}</div>
+                                <small class="text-muted">Likes</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        `;
+        
+        // Add repository information if available
+        if (model.repository) {
+            html += `
+                <div class="details-section mt-3">
+                    <strong>Repository:</strong><br>
+                    <small>
+                        Files: ${model.repository.total_files}<br>
+                        Size: ${this.formatBytes(model.repository.total_size)}<br>
+                        IPFS: ${model.repository.ipfs_enabled ? '✅ Enabled' : '❌ Disabled'}
+                    </small>
+                </div>
+            `;
+        }
+        
+        // Add tags
+        if (model.tags && model.tags.length > 0) {
+            html += `
+                <div class="details-section mt-3">
+                    <strong>Tags:</strong><br>
+                    <div class="mt-1">
+                        ${model.tags.slice(0, 10).map(tag => 
+                            `<span class="badge bg-secondary me-1 mb-1">${tag}</span>`
+                        ).join('')}
+                        ${model.tags.length > 10 ? 
+                            `<span class="text-muted small">+${model.tags.length - 10} more</span>` : 
+                            ''
+                        }
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Add dates
+        html += `
+            <div class="details-section mt-3">
+                <strong>Dates:</strong><br>
+                <small>
+                    Created: ${formatDate(model.created_at)}<br>
+                    Modified: ${formatDate(model.last_modified)}
+                </small>
+            </div>
+        `;
+        
+        html += '</div>';
+        
+        $('#hf-model-info').html(html);
+    }
+    
+    async addHuggingFaceModelToManager() {
+        if (!this.currentHfModel) {
+            this.showNotification('No model selected', 'warning');
+            return;
+        }
+        
+        const modelId = this.currentHfModel.model_id;
+        
+        try {
+            // Show loading on button
+            const $btn = $('#hf-add-to-manager');
+            const originalText = $btn.html();
+            $btn.html('<i class="fas fa-spinner fa-spin"></i> Adding...');
+            $btn.prop('disabled', true);
+            
+            const response = await fetch('/api/hf/add-to-manager', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model_id: modelId
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.showNotification(`Model ${modelId} added to manager successfully!`, 'success');
+                // Refresh the models list
+                this.loadModels();
+            } else {
+                throw new Error(data.error || 'Failed to add model');
+            }
+            
+        } catch (error) {
+            console.error('Error adding model to manager:', error);
+            this.showNotification(`Failed to add model: ${error.message}`, 'error');
+        } finally {
+            // Restore button
+            const $btn = $('#hf-add-to-manager');
+            $btn.html('<i class="fas fa-plus"></i> Add to Model Manager');
+            $btn.prop('disabled', false);
+        }
+    }
+    
+    async loadHuggingFaceStats() {
+        try {
+            const response = await fetch('/api/hf/stats');
+            const stats = await response.json();
+            
+            if (response.ok) {
+                $('#hf-cached-models').text(stats.total_models || 0);
+                // Calculate cache coverage (example)
+                const coverage = Math.min((stats.total_models || 0) / 100 * 100, 100);
+                $('#hf-cache-progress').css('width', `${coverage}%`);
+            }
+        } catch (error) {
+            console.log('Could not load HF stats:', error);
+        }
+    }
+    
+    updateHuggingFaceStats(totalResults) {
+        $('#hf-total-results').text(totalResults || 0);
+    }
+    
+    formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+}
 }
 
 // Utility functions
