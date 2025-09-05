@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Sink AI Model Testing Interface - SDK Edition</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        .nav-pills .nav-link.active {
+            background: linear-gradient(45deg, #007bff, #6c757d);
+        }
+        .card {
+            transition: all 0.3s ease;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .model-autocomplete {
+            position: relative;
+        }
+        .server-status {
+            font-weight: bold;
+        }
+        .server-status.connected {
+            color: #28a745;
+        }
+        .server-status.disconnected {
+            color: #dc3545;
+        }
+        .feature-highlight {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="row">
+            <div class="col-12">
+                <div class="feature-highlight text-center">
+                    <h1><i class="fas fa-robot"></i> Kitchen Sink AI Model Testing Interface</h1>
+                    <p class="mb-2">SDK Edition - Powered by JSON-RPC MCP Server</p>
+                    <div id="server-info">
+                        <strong>Status:</strong> <span class="server-status">Connecting...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Navigation -->
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-list"></i> Inference Categories</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist">
+                            <button class="nav-link active" id="v-pills-text-generation-tab" data-bs-toggle="pill" data-bs-target="#v-pills-text-generation" type="button" role="tab">
+                                <i class="fas fa-pen"></i> Text Generation
+                            </button>
+                            <button class="nav-link" id="v-pills-text-classification-tab" data-bs-toggle="pill" data-bs-target="#v-pills-text-classification" type="button" role="tab">
+                                <i class="fas fa-tags"></i> Text Classification
+                            </button>
+                            <button class="nav-link" id="v-pills-text-embeddings-tab" data-bs-toggle="pill" data-bs-target="#v-pills-text-embeddings" type="button" role="tab">
+                                <i class="fas fa-vector-square"></i> Text Embeddings
+                            </button>
+                            <button class="nav-link" id="v-pills-audio-processing-tab" data-bs-toggle="pill" data-bs-target="#v-pills-audio-processing" type="button" role="tab">
+                                <i class="fas fa-microphone"></i> Audio Processing
+                            </button>
+                            <button class="nav-link" id="v-pills-vision-models-tab" data-bs-toggle="pill" data-bs-target="#v-pills-vision-models" type="button" role="tab">
+                                <i class="fas fa-eye"></i> Vision Models
+                            </button>
+                            <button class="nav-link" id="v-pills-multimodal-tab" data-bs-toggle="pill" data-bs-target="#v-pills-multimodal" type="button" role="tab">
+                                <i class="fas fa-layer-group"></i> Multimodal
+                            </button>
+                            <button class="nav-link" id="v-pills-specialized-tab" data-bs-toggle="pill" data-bs-target="#v-pills-specialized" type="button" role="tab">
+                                <i class="fas fa-cogs"></i> Specialized
+                            </button>
+                            <button class="nav-link" id="v-pills-recommendations-tab" data-bs-toggle="pill" data-bs-target="#v-pills-recommendations" type="button" role="tab">
+                                <i class="fas fa-lightbulb"></i> Recommendations
+                            </button>
+                            <button class="nav-link" id="v-pills-model-manager-tab" data-bs-toggle="pill" data-bs-target="#v-pills-model-manager" type="button" role="tab">
+                                <i class="fas fa-database"></i> Model Manager
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6><i class="fas fa-info-circle"></i> System Info</h6>
+                    </div>
+                    <div class="card-body">
+                        <small>
+                            <strong>Models Loaded:</strong> <span class="model-count">0</span><br>
+                            <strong>Protocol:</strong> JSON-RPC 2.0<br>
+                            <strong>SDK Version:</strong> 1.0.0
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="col-md-9">
+                <div class="tab-content" id="v-pills-tabContent">
+                    
+                    <!-- Text Generation -->
+                    <div class="tab-pane fade show active" id="v-pills-text-generation" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-pen"></i> Text Generation (Causal Language Modeling)</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="text-generation-form">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <div class="mb-3">
+                                                <label for="text-prompt" class="form-label">Prompt</label>
+                                                <textarea class="form-control" id="text-prompt" name="prompt" rows="3" placeholder="Enter your text prompt here..." required></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3 model-autocomplete">
+                                                <label for="text-model" class="form-label">Model (optional)</label>
+                                                <input type="text" class="form-control" id="text-model" name="model" placeholder="Auto-select or type model name">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="mb-3">
+                                                <label for="max-length" class="form-label">Max Length</label>
+                                                <input type="range" class="form-range" id="max-length" name="max_length" min="10" max="500" value="100">
+                                                <output for="max-length">100</output>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3">
+                                                <label for="temperature" class="form-label">Temperature</label>
+                                                <input type="range" class="form-range" id="temperature" name="temperature" min="0.1" max="2.0" step="0.1" value="0.7">
+                                                <output for="temperature">0.7</output>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3">
+                                                <label>&nbsp;</label>
+                                                <button type="submit" class="btn btn-primary d-block w-100">
+                                                    <i class="fas fa-magic"></i> Generate Text
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div id="text-generation-result" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Text Classification -->
+                    <div class="tab-pane fade" id="v-pills-text-classification" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-tags"></i> Text Classification</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="text-classification-form">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <div class="mb-3">
+                                                <label for="classification-text" class="form-label">Text to Classify</label>
+                                                <textarea class="form-control" id="classification-text" name="text" rows="3" placeholder="Enter text for classification..." required></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3 model-autocomplete">
+                                                <label for="classification-model" class="form-label">Model (optional)</label>
+                                                <input type="text" class="form-control" id="classification-model" name="model" placeholder="Auto-select or type model name">
+                                            </div>
+                                            <button type="submit" class="btn btn-primary w-100">
+                                                <i class="fas fa-search"></i> Classify Text
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div id="text-classification-result" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Text Embeddings -->
+                    <div class="tab-pane fade" id="v-pills-text-embeddings" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-vector-square"></i> Text Embeddings</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="text-embeddings-form">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <div class="mb-3">
+                                                <label for="embeddings-text" class="form-label">Text to Embed</label>
+                                                <textarea class="form-control" id="embeddings-text" name="text" rows="3" placeholder="Enter text to generate embeddings..." required></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3 model-autocomplete">
+                                                <label for="embeddings-model" class="form-label">Model (optional)</label>
+                                                <input type="text" class="form-control" id="embeddings-model" name="model" placeholder="Auto-select or type model name">
+                                            </div>
+                                            <button type="submit" class="btn btn-primary w-100">
+                                                <i class="fas fa-calculator"></i> Generate Embeddings
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div id="text-embeddings-result" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio Processing -->
+                    <div class="tab-pane fade" id="v-pills-audio-processing" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-microphone"></i> Audio Processing</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="audio-transcription-form">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <div class="mb-3">
+                                                <label for="audio-file" class="form-label">Audio File</label>
+                                                <input type="file" class="form-control" id="audio-file" name="audio_file" accept="audio/*" required>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3 model-autocomplete">
+                                                <label for="audio-model" class="form-label">Model (optional)</label>
+                                                <input type="text" class="form-control" id="audio-model" name="model" placeholder="Auto-select or type model name">
+                                            </div>
+                                            <button type="submit" class="btn btn-primary w-100">
+                                                <i class="fas fa-file-audio"></i> Transcribe Audio
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div id="audio-transcription-result" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Vision Models -->
+                    <div class="tab-pane fade" id="v-pills-vision-models" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-eye"></i> Vision Models</h5>
+                            </div>
+                            <div class="card-body">
+                                <ul class="nav nav-tabs mb-3" id="vision-tabs" role="tablist">
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link active" id="image-classification-tab" data-bs-toggle="tab" data-bs-target="#image-classification" type="button" role="tab">Classification</button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="image-generation-tab" data-bs-toggle="tab" data-bs-target="#image-generation" type="button" role="tab">Generation</button>
+                                    </li>
+                                </ul>
+                                
+                                <div class="tab-content" id="vision-tabs-content">
+                                    <!-- Image Classification -->
+                                    <div class="tab-pane fade show active" id="image-classification" role="tabpanel">
+                                        <form id="image-classification-form">
+                                            <div class="row">
+                                                <div class="col-md-8">
+                                                    <div class="mb-3">
+                                                        <label for="image-file" class="form-label">Image File</label>
+                                                        <input type="file" class="form-control" id="image-file" name="image_file" accept="image/*" required>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mb-3 model-autocomplete">
+                                                        <label for="image-classification-model" class="form-label">Model (optional)</label>
+                                                        <input type="text" class="form-control" id="image-classification-model" name="model" placeholder="Auto-select or type model name">
+                                                    </div>
+                                                    <button type="submit" class="btn btn-primary w-100">
+                                                        <i class="fas fa-image"></i> Classify Image
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                        <div id="image-classification-result" class="mt-3"></div>
+                                    </div>
+                                    
+                                    <!-- Image Generation -->
+                                    <div class="tab-pane fade" id="image-generation" role="tabpanel">
+                                        <form id="image-generation-form">
+                                            <div class="row">
+                                                <div class="col-md-8">
+                                                    <div class="mb-3">
+                                                        <label for="image-prompt" class="form-label">Image Prompt</label>
+                                                        <textarea class="form-control" id="image-prompt" name="prompt" rows="3" placeholder="Describe the image you want to generate..." required></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="mb-3 model-autocomplete">
+                                                        <label for="image-generation-model" class="form-label">Model (optional)</label>
+                                                        <input type="text" class="form-control" id="image-generation-model" name="model" placeholder="Auto-select or type model name">
+                                                    </div>
+                                                    <div class="row">
+                                                        <div class="col-6">
+                                                            <div class="mb-3">
+                                                                <label for="image-width" class="form-label">Width</label>
+                                                                <input type="number" class="form-control" id="image-width" name="width" value="512" min="128" max="1024" step="64">
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-6">
+                                                            <div class="mb-3">
+                                                                <label for="image-height" class="form-label">Height</label>
+                                                                <input type="number" class="form-control" id="image-height" name="height" value="512" min="128" max="1024" step="64">
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button type="submit" class="btn btn-primary w-100">
+                                                        <i class="fas fa-paint-brush"></i> Generate Image
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                        <div id="image-generation-result" class="mt-3"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Multimodal -->
+                    <div class="tab-pane fade" id="v-pills-multimodal" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-layer-group"></i> Multimodal Processing</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted">Visual Question Answering, Image Captioning, and Document Understanding</p>
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> Multimodal features will be added in the next iteration.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Specialized -->
+                    <div class="tab-pane fade" id="v-pills-specialized" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-cogs"></i> Specialized Tools</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="code-generation-form">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <div class="mb-3">
+                                                <label for="code-description" class="form-label">Code Description</label>
+                                                <textarea class="form-control" id="code-description" name="description" rows="3" placeholder="Describe the code you want to generate..." required></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3">
+                                                <label for="code-language" class="form-label">Language</label>
+                                                <select class="form-select" id="code-language" name="language">
+                                                    <option value="python">Python</option>
+                                                    <option value="javascript">JavaScript</option>
+                                                    <option value="java">Java</option>
+                                                    <option value="cpp">C++</option>
+                                                    <option value="go">Go</option>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3 model-autocomplete">
+                                                <label for="code-model" class="form-label">Model (optional)</label>
+                                                <input type="text" class="form-control" id="code-model" name="model" placeholder="Auto-select or type model name">
+                                            </div>
+                                            <button type="submit" class="btn btn-primary w-100">
+                                                <i class="fas fa-code"></i> Generate Code
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div id="code-generation-result" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Model Recommendations -->
+                    <div class="tab-pane fade" id="v-pills-recommendations" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-lightbulb"></i> AI Model Recommendations</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="model-recommendations-form">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="task-type" class="form-label">Task Type</label>
+                                                <select class="form-select" id="task-type" name="task_type" required>
+                                                    <option value="text_generation">Text Generation</option>
+                                                    <option value="text_classification">Text Classification</option>
+                                                    <option value="text_embedding">Text Embedding</option>
+                                                    <option value="image_classification">Image Classification</option>
+                                                    <option value="audio_transcription">Audio Transcription</option>
+                                                    <option value="code_generation">Code Generation</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="input-type" class="form-label">Input Type</label>
+                                                <select class="form-select" id="input-type" name="input_type" required>
+                                                    <option value="text">Text</option>
+                                                    <option value="image">Image</option>
+                                                    <option value="audio">Audio</option>
+                                                    <option value="multimodal">Multimodal</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <i class="fas fa-magic"></i> Get Recommendations
+                                    </button>
+                                </form>
+                                <div id="model-recommendations-result" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Model Manager -->
+                    <div class="tab-pane fade" id="v-pills-model-manager" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-database"></i> Model Manager</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="model-search-form" class="mb-3">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <div class="mb-3">
+                                                <label for="search-query" class="form-label">Search Models</label>
+                                                <input type="text" class="form-control" id="search-query" name="search_query" placeholder="Search for models...">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3">
+                                                <label for="search-limit" class="form-label">Limit</label>
+                                                <input type="number" class="form-control" id="search-limit" name="limit" value="10" min="1" max="100">
+                                            </div>
+                                            <button type="submit" class="btn btn-primary w-100">
+                                                <i class="fas fa-search"></i> Search Models
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div id="model-search-result" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery for easier DOM manipulation -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Our MCP SDK -->
+    <script src="/static/js/mcp-sdk.js"></script>
+    <!-- Our Kitchen Sink SDK App -->
+    <script src="/static/js/kitchen-sink-sdk.js"></script>
+</body>
+</html>
