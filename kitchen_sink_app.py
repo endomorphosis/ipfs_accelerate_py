@@ -171,16 +171,22 @@ class KitchenSinkApp:
                     "architecture": model.architecture,
                     "description": model.description,
                     "tags": model.tags,
-                    "input_spec": {
-                        "data_type": model.input_spec.data_type.value if hasattr(model.input_spec.data_type, 'value') else str(model.input_spec.data_type),
-                        "shape": model.input_spec.shape,
-                        "description": model.input_spec.description
-                    } if model.input_spec else None,
-                    "output_spec": {
-                        "data_type": model.output_spec.data_type.value if hasattr(model.output_spec.data_type, 'value') else str(model.output_spec.data_type),
-                        "shape": model.output_spec.shape,
-                        "description": model.output_spec.description
-                    } if model.output_spec else None,
+                    "inputs": [
+                        {
+                            "name": inp.name,
+                            "data_type": inp.data_type.value if hasattr(inp.data_type, 'value') else str(inp.data_type),
+                            "shape": getattr(inp, 'shape', None),
+                            "description": getattr(inp, 'description', '')
+                        } for inp in (model.inputs or [])
+                    ],
+                    "outputs": [
+                        {
+                            "name": out.name,
+                            "data_type": out.data_type.value if hasattr(out.data_type, 'value') else str(out.data_type),
+                            "shape": getattr(out, 'shape', None), 
+                            "description": getattr(out, 'description', '')
+                        } for out in (model.outputs or [])
+                    ],
                     "created_at": model.created_at.isoformat() if model.created_at else None
                 }
                 

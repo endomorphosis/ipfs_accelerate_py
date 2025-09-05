@@ -1450,27 +1450,62 @@ class BanditModelRecommender:
             compatible = []
             
             for model in all_models:
-                # Check input/output compatibility
-                if context.input_type:
-                    if not any(inp.data_type == context.input_type for inp in model.inputs):
-                        continue
+                # More flexible compatibility check
+                is_compatible = True
                 
-                if context.output_type:
-                    if not any(out.data_type == context.output_type for out in model.outputs):
-                        continue
+                # Check input/output compatibility if specified and models have detailed specs
+                if context.input_type and hasattr(context.input_type, 'value'):
+                    input_type_str = context.input_type.value if hasattr(context.input_type, 'value') else str(context.input_type)
+                    if model.inputs and input_type_str not in ['tokens', 'text']:
+                        if not any(hasattr(inp.data_type, 'value') and inp.data_type.value == input_type_str for inp in model.inputs):
+                            # If no exact match but it's a language model and we want tokens/text, allow it
+                            if model.model_type == ModelType.LANGUAGE_MODEL and input_type_str in ['tokens', 'text']:
+                                pass  # Allow language models for text/token inputs
+                            else:
+                                is_compatible = False
                 
-                # Check hardware compatibility
-                if context.hardware:
-                    if model.supported_backends and context.hardware not in model.supported_backends:
-                        continue
+                # For basic compatibility, just check task type compatibility
+                if context.task_type:
+                    task_lower = context.task_type.lower()
+                    if task_lower == 'generation':
+                        # GPT-style models good for generation
+                        if 'gpt' in model.model_id.lower() or 'llama' in model.model_id.lower():
+                            is_compatible = True
+                        elif model.model_type == ModelType.LANGUAGE_MODEL:
+                            is_compatible = True
+                    elif task_lower == 'classification':
+                        # BERT-style models good for classification  
+                        if 'bert' in model.model_id.lower() or 'roberta' in model.model_id.lower():
+                            is_compatible = True
+                        elif model.model_type == ModelType.LANGUAGE_MODEL:
+                            is_compatible = True
+                    elif task_lower == 'embedding':
+                        # Any language model can provide embeddings
+                        if model.model_type == ModelType.LANGUAGE_MODEL:
+                            is_compatible = True
                 
-                compatible.append(model.model_id)
+                # If no specific constraints, include all models
+                if not context.task_type and not context.input_type and not context.output_type:
+                    is_compatible = True
+                
+                if is_compatible:
+                    compatible.append(model.model_id)
+            
+            # If no models found with strict matching, return all models as fallback
+            if not compatible:
+                logger.info("No strictly compatible models found, returning all available models")
+                compatible = [model.model_id for model in all_models]
             
             return compatible
             
         except Exception as e:
             logger.error(f"Error getting compatible models: {e}")
-            return []
+            # Return all models as fallback
+            try:
+                all_models = self.model_manager.list_models()
+                return [model.model_id for model in all_models]
+            except:
+                return []
     
     def _select_arm(self, context_key: str) -> Optional[str]:
         """Select an arm using the configured bandit algorithm."""

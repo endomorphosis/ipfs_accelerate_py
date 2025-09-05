@@ -28,8 +28,8 @@ def start_kitchen_sink_server():
         print("✅ Kitchen Sink App created successfully")
         
         # Run the server
-        print("🌐 Starting web server on http://127.0.0.1:8080")
-        kitchen_sink.run(host='127.0.0.1', port=8080, debug=False)
+        print("🌐 Starting web server on http://127.0.0.1:8090")
+        kitchen_sink.run(host='127.0.0.1', port=8090, debug=False)
         
     except Exception as e:
         print(f"❌ Error starting server: {e}")
@@ -41,11 +41,11 @@ def open_browser():
     """Open the browser to the kitchen sink interface."""
     time.sleep(2)  # Wait for server to start
     try:
-        webbrowser.open('http://127.0.0.1:8080')
+        webbrowser.open('http://127.0.0.1:8090')
         print("🌐 Opened browser to Kitchen Sink interface")
     except:
         print("⚠️ Could not open browser automatically")
-        print("📝 Please open http://127.0.0.1:8080 in your browser")
+        print("📝 Please open http://127.0.0.1:8090 in your browser")
 
 def demo_features():
     """Print demo features and instructions."""
