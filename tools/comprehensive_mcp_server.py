@@ -82,8 +82,7 @@ class ComprehensiveMCPServer:
         # Create the MCP server if available
         if HAVE_FASTMCP:
             self.mcp = FastMCP(
-                name="Comprehensive AI Model Manager",
-                description="Complete AI inference platform supporting 211+ model types with intelligent recommendations"
+                name="Comprehensive AI Model Manager"
             )
             self._register_all_tools()
         else:
@@ -977,11 +976,51 @@ if __name__ == "__main__":
     )
     
     if HAVE_FASTMCP or hasattr(server, 'mcp'):
-        asyncio.run(server.run(
-            transport=args.transport,
-            host=args.host,
-            port=args.port
-        ))
+        try:
+            # Try to get existing event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If loop is already running, run in a new thread
+                    import threading
+                    
+                    def run_server():
+                        try:
+                            new_loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(new_loop)
+                            new_loop.run_until_complete(server.run(
+                                transport=args.transport,
+                                host=args.host,
+                                port=args.port
+                            ))
+                        except Exception as e:
+                            logger.error(f"Server thread error: {e}")
+                        finally:
+                            new_loop.close()
+                    
+                    thread = threading.Thread(target=run_server)
+                    thread.start()
+                    thread.join()
+                else:
+                    # Event loop exists but not running
+                    asyncio.run(server.run(
+                        transport=args.transport,
+                        host=args.host,
+                        port=args.port
+                    ))
+            except RuntimeError as e:
+                if "no current event loop" in str(e).lower() or "no running event loop" in str(e).lower():
+                    # No event loop, create one
+                    asyncio.run(server.run(
+                        transport=args.transport,
+                        host=args.host,
+                        port=args.port
+                    ))
+                else:
+                    raise
+        except Exception as e:
+            logger.error(f"Failed to run server: {e}")
+            raise
     else:
         print("🔧 Installing dependencies and setting up comprehensive server...")
         print("✅ Comprehensive model support initialized")

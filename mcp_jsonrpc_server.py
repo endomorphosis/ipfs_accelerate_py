@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import our comprehensive MCP server
-from comprehensive_mcp_server import ComprehensiveMCPServer
+from tools.comprehensive_mcp_server import ComprehensiveMCPServer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -115,6 +115,16 @@ class MCPJSONRPCServer:
     def _setup_routes(self):
         """Setup FastAPI routes."""
         
+        # Mount static files
+        try:
+            import os
+            static_path = os.path.join(os.path.dirname(__file__), "static")
+            if os.path.exists(static_path):
+                self.app.mount("/static", StaticFiles(directory=static_path), name="static")
+                logger.info(f"Mounted static files from {static_path}")
+        except Exception as e:
+            logger.warning(f"Could not mount static files: {e}")
+        
         @self.app.post("/jsonrpc")
         async def jsonrpc_endpoint(request: Request):
             """Handle JSON-RPC 2.0 requests."""
@@ -139,7 +149,18 @@ class MCPJSONRPCServer:
         
         @self.app.get("/")
         async def root():
-            """Root endpoint with server information."""
+            """Root endpoint - serve the dashboard."""
+            try:
+                import os
+                from fastapi.responses import FileResponse
+                templates_path = os.path.join(os.path.dirname(__file__), "templates")
+                index_path = os.path.join(templates_path, "sdk_dashboard.html")
+                if os.path.exists(index_path):
+                    return FileResponse(index_path)
+            except Exception as e:
+                logger.warning(f"Could not serve dashboard: {e}")
+            
+            # Fallback to API information
             return {
                 "name": "MCP JSON-RPC Server",
                 "version": "1.0.0",
@@ -147,6 +168,22 @@ class MCPJSONRPCServer:
                 "methods": list(self.methods.keys()),
                 "endpoint": "/jsonrpc"
             }
+        
+        @self.app.get("/dashboard")
+        async def dashboard():
+            """Dashboard endpoint."""
+            try:
+                import os
+                from fastapi.responses import FileResponse
+                templates_path = os.path.join(os.path.dirname(__file__), "templates")
+                dashboard_path = os.path.join(templates_path, "sdk_dashboard.html")
+                if os.path.exists(dashboard_path):
+                    return FileResponse(dashboard_path)
+            except Exception as e:
+                logger.warning(f"Could not serve dashboard: {e}")
+            
+            return {"error": "Dashboard not found"}
+        
         
         # Serve static files
         try:
@@ -472,4 +509,17 @@ def run_server(host: str = "127.0.0.1", port: int = 8000):
     uvicorn.run(app, host=host, port=port)
 
 if __name__ == "__main__":
-    run_server()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="MCP JSON-RPC Server")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    
+    args = parser.parse_args()
+    
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    
+    logger.info(f"Starting MCP JSON-RPC server on {args.host}:{args.port}")
+    run_server(host=args.host, port=args.port)
