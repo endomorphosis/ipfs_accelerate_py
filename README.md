@@ -217,6 +217,29 @@ python -c "from utils.enterprise_validation import EnterpriseValidation; print(f
 python examples/complete_implementation_demo.py
 ```
 
+### **Platform-Specific Notes**
+
+#### **Windows 10/11 Compatibility**
+- **Python 3.12**: Full compatibility verified
+- **GPU Drivers**: Ensure latest NVIDIA/AMD drivers for WebGPU support
+- **Edge WebNN**: Best performance with Microsoft Edge for WebNN acceleration
+- **Path Handling**: Automatic cross-platform path normalization
+- **Dependencies**: All major dependencies support Windows natively
+
+#### **Common Windows Issues & Solutions**
+```bash
+# For dependency installation issues
+pip install --upgrade pip setuptools wheel
+
+# For WebNN/WebGPU browser issues  
+# Ensure Edge is updated: Settings > About Microsoft Edge
+# Chrome requires: chrome://flags/#enable-unsafe-webgpu
+
+# For path-related issues, use forward slashes or pathlib:
+from pathlib import Path
+model_path = Path("models") / "model.bin"
+```
+
 ## 💡 **Quick Start Examples**
 
 ### **Basic ML Acceleration**
@@ -370,6 +393,8 @@ optimizations = optimizer.analyze_system_performance()
 
 ## 📚 **Comprehensive Documentation**
 
+> **📖 [Complete Documentation Index](docs/INDEX.md)** - Central navigation for all documentation
+
 ### **🎯 Core Documentation**
 - **[Installation & Setup Guide](docs/INSTALLATION.md)** - Complete installation, configuration, and troubleshooting
 - **[Enterprise Usage Guide](docs/USAGE.md)** - Advanced usage patterns, optimization, and best practices  
@@ -379,7 +404,8 @@ optimizations = optimizer.analyze_system_performance()
 ### **🏗️ Specialized Enterprise Guides**
 - **[Hardware Optimization](docs/HARDWARE.md)** - Advanced hardware-specific acceleration and optimization techniques
 - **[IPFS Network Integration](docs/IPFS.md)** - Advanced IPFS features, provider optimization, and distributed inference
-- **[WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)** - Enterprise browser-based acceleration with monitoring
+- **[WebNN/WebGPU Integration](docs/WEBNN_WEBGPU_README.md)** - Enterprise browser-based acceleration with monitoring
+- **[MCP Integration](mcp/README.md)** - Model Control Protocol for advanced model management and automation
 - **[Testing & Validation Framework](docs/TESTING.md)** - Comprehensive testing methodologies and enterprise validation
 
 ### **📖 Implementation & Deployment**
@@ -511,15 +537,19 @@ monitor.setup_enterprise_alerting({
 
 ```python
 # Export comprehensive optimization recommendations
-from test.optimization_recommendation.optimization_exporter import OptimizationExporter
-
-exporter = OptimizationExporter(output_dir="./enterprise_optimizations")
-export_result = exporter.export_optimization(
-    model_name="bert-base-uncased",
-    hardware_platform="cuda",
-    include_deployment_scripts=True,
-    include_monitoring_config=True
-)
+# Note: This is an advanced feature - for basic usage see examples/
+try:
+    from test.optimization_recommendation.optimization_exporter import OptimizationExporter
+    
+    exporter = OptimizationExporter(output_dir="./enterprise_optimizations")
+    export_result = exporter.export_optimization(
+        model_name="bert-base-uncased",
+        hardware_platform="cuda",
+        include_deployment_scripts=True,
+        include_monitoring_config=True
+    )
+except ImportError:
+    print("Optimization exporter requires development installation with test dependencies")
 
 # Create enterprise deployment package
 enterprise_package = exporter.create_enterprise_archive(export_result)
