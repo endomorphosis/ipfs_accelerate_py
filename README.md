@@ -128,9 +128,9 @@ report = tester.run_comprehensive_integration_test()
 **Complete production readiness assessment**
 
 ```python
-from utils.enterprise_validation import EnterpriseValidation
+from utils.enterprise_validation import EnterpriseValidator
 
-validator = EnterpriseValidation()
+validator = EnterpriseValidator()
 score = validator.calculate_enterprise_score()
 
 # Enterprise readiness metrics:
@@ -211,7 +211,7 @@ docker-compose up -f deployments/production/docker-compose.yml
 
 ```bash
 # Verify installation and run enterprise validation
-python -c "from utils.enterprise_validation import EnterpriseValidation; print(f'Score: {EnterpriseValidation().calculate_enterprise_score()}/100')"
+python -c "from utils.enterprise_validation import EnterpriseValidator; print(f'Score: {EnterpriseValidator().calculate_enterprise_score()}/100')"
 
 # Run complete implementation demonstration
 python examples/complete_implementation_demo.py
@@ -245,10 +245,13 @@ model_path = Path("models") / "model.bin"
 ### **Basic ML Acceleration**
 
 ```python
-from ipfs_accelerate_py import ipfs_accelerate_py
+import ipfs_accelerate_py
 
 # Initialize with automatic hardware detection
-accelerator = ipfs_accelerate_py({}, {})
+accelerator = ipfs_accelerate_py.ipfs_accelerate_py({}, {})
+
+# Alternative: Use WebNN/WebGPU accelerator (works without full dependencies)
+# accelerator = ipfs_accelerate_py.get_accelerator(enable_ipfs=True)
 
 # Get optimal hardware backend for a model with detailed analysis
 optimal_backend = accelerator.get_optimal_backend("bert-base-uncased", "text_embedding")
@@ -346,8 +349,8 @@ print(f"Optimization score: {result['optimization_metrics']}")
 ### **Enterprise Configuration & Monitoring**
 
 ```python
-from ipfs_accelerate_py import ipfs_accelerate_py
-from utils.enterprise_validation import EnterpriseValidation
+import ipfs_accelerate_py
+from utils.enterprise_validation import EnterpriseValidator
 from utils.performance_optimization import PerformanceOptimizer
 
 # Enterprise configuration with monitoring
@@ -379,10 +382,10 @@ config = {
 }
 
 # Initialize enterprise accelerator
-accelerator = ipfs_accelerate_py(config, {})
+accelerator = ipfs_accelerate_py.ipfs_accelerate_py(config, {})
 
 # Run enterprise validation
-validator = EnterpriseValidation()
+validator = EnterpriseValidator()
 enterprise_score = validator.calculate_enterprise_score()
 print(f"Enterprise readiness: {enterprise_score}/100")
 
