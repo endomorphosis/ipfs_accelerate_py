@@ -7,14 +7,15 @@ IPFS Accelerate functionality to language models through the Model Context Proto
 import logging
 from typing import Optional, Dict, Any, List
 
-# Import FastMCP
+# Import FastMCP with graceful fallback
 try:
     from fastmcp import FastMCP
-except ImportError:
-    raise ImportError(
-        "FastMCP is required for MCP server functionality. "
-        "Install it with: pip install fastmcp"
-    )
+    HAVE_FASTMCP = True
+except ImportError as e:
+    HAVE_FASTMCP = False
+    FastMCP = None
+    print(f"⚠️ FastMCP not available: {e}")
+    print("📝 Server will run in mock mode for development purposes")
 
 # Import IPFS Accelerate
 from ipfs_accelerate_py import ipfs_accelerate_py
@@ -43,6 +44,19 @@ def create_mcp_server(
         Configured FastMCP server instance
     """
     global _mcp_server_instance
+    
+    if not HAVE_FASTMCP:
+        logger.warning("FastMCP not available, creating mock server for development")
+        # Return a simple mock object for development
+        class MockMCPServer:
+            def __init__(self):
+                self.name = name
+                self.description = description
+                self.metadata = {}
+            def run(self, **kwargs):
+                print(f"Mock MCP Server '{self.name}' would run here")
+                print("Install FastMCP for full functionality")
+        return MockMCPServer()
     
     # Create a new server if one doesn't exist
     if _mcp_server_instance is None:
@@ -90,18 +104,24 @@ def _register_core_components(mcp: FastMCP) -> None:
         from .resources.system_info import register_system_resources
         from .resources.model_info import register_model_resources
         from .prompts import setup_prompts
-    
-    # Register all components
-    register_hardware_tools(mcp)
-    register_inference_tools(mcp)
-    register_system_resources(mcp)
-    register_model_resources(mcp)
-    setup_prompts(mcp)
-    
-    logger.info("Core MCP components registered")
-    
-    # Add server metadata
-    mcp.metadata.update({
-        "version": "0.1.0",
-        "type": "IPFS Accelerate MCP Server",
-    })
+        
+        # Register all components
+        register_hardware_tools(mcp)
+        register_inference_tools(mcp)
+        register_system_resources(mcp)
+        register_model_resources(mcp)
+        setup_prompts(mcp)
+        
+        logger.info("Core MCP components registered")
+        
+        # Add server metadata
+        mcp.metadata.update({
+            "version": "0.1.0",
+            "type": "IPFS Accelerate MCP Server",
+        })
+        
+    except ImportError as e:
+        logger.warning(f"Some MCP components could not be imported: {e}")
+    except Exception as e:
+        logger.error(f"Error registering MCP components: {e}")
+        raise

@@ -4,6 +4,48 @@
 
 A comprehensive enterprise-grade Python framework for **hardware-accelerated machine learning inference** with **IPFS network-based distribution**, **advanced performance modeling**, and **real-time optimization**. Achieving **90.0/100 overall score** with **100% component success rate**.
 
+## 🔧 **Quick Start - CLI Usage**
+
+After installation, use the `ipfs_accelerate` command for AI inference:
+
+```bash
+# Install the package
+pip install ipfs_accelerate_py
+
+# Text generation
+ipfs_accelerate text generate --prompt "Hello world" --max-length 50
+
+# Text classification  
+ipfs_accelerate text classify --text "I love this product" --model-id "bert-base-uncased"
+
+# Audio transcription
+ipfs_accelerate audio transcribe --audio-file "speech.wav"
+
+# Image classification
+ipfs_accelerate vision classify --image-file "cat.jpg"
+
+# Multimodal image captioning
+ipfs_accelerate multimodal caption --image-file "scene.jpg"
+
+# Code generation
+ipfs_accelerate specialized code --prompt "Create a function to sort a list"
+
+# List available models
+ipfs_accelerate system list-models
+
+# Get system information
+ipfs_accelerate system available-types
+```
+
+### **CLI Command Structure**
+```bash
+ipfs_accelerate [GLOBAL_OPTIONS] CATEGORY COMMAND [COMMAND_OPTIONS]
+```
+
+**Categories:** text, audio, vision, multimodal, specialized, system  
+**Global Options:** `--model-id`, `--hardware`, `--output-format`, `--verbose`  
+**Output Formats:** json, text, pretty
+
 ---
 
 ## 🌟 **Advanced Enterprise Features**
