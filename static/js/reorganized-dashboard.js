@@ -791,14 +791,19 @@ curl -X POST http://localhost:8003/jsonrpc \\
     createModelCard(model) {
         const card = document.createElement('div');
         card.className = 'model-result-card';
-        card.onclick = () => this.showModelDetails(model.id);
-
+        
         const tagsHtml = model.tags?.slice(0, 3).map(tag => {
             let className = 'model-tag';
             if (tag === model.pipeline_tag) className += ' pipeline';
             if (tag === model.library_name) className += ' library';
             return `<span class="${className}">${tag}</span>`;
         }).join('') || '';
+
+        // Create unique IDs for this model card
+        const modelSafeId = model.full_name.replace(/[^a-zA-Z0-9]/g, '_');
+        const downloadBtnId = `download-btn-${modelSafeId}`;
+        const progressId = `progress-${modelSafeId}`;
+        const statusId = `status-${modelSafeId}`;
 
         card.innerHTML = `
             <div class="model-result-header">
@@ -810,7 +815,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
                     ${(model.search_score * 100).toFixed(0)}%
                 </div>
             </div>
-            <div class="model-description">
+            <div class="model-description" onclick="dashboard.showModelDetails('${model.id}')" style="cursor: pointer;">
                 ${model.description || 'No description available'}
             </div>
             <div class="model-tags">
@@ -830,7 +835,46 @@ curl -X POST http://localhost:8003/jsonrpc \\
                     <span>${this.formatDate(model.last_modified)}</span>
                 </div>
             </div>
+            
+            <!-- Model Status and Actions -->
+            <div class="model-actions mt-3">
+                <div class="model-status mb-2" id="${statusId}">
+                    <small class="text-muted">Checking status...</small>
+                </div>
+                
+                <!-- Download Progress Bar (hidden by default) -->
+                <div class="download-progress mb-2" id="${progressId}" style="display: none;">
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <small class="text-muted">Downloading... <span class="progress-text">0%</span></small>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                            id="${downloadBtnId}" 
+                            onclick="dashboard.downloadModel('${model.full_name}', '${downloadBtnId}', '${progressId}', '${statusId}')">
+                        <i class="fas fa-download"></i>
+                        <span class="btn-text">Download</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" 
+                            onclick="dashboard.testModelInference('${model.full_name}', '${model.pipeline_tag || 'text-generation'}')"
+                            disabled id="inference-btn-${modelSafeId}">
+                        <i class="fas fa-play"></i>
+                        Test
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-info" 
+                            onclick="dashboard.showModelDetails('${model.id}')">
+                        <i class="fas fa-info-circle"></i>
+                        Details
+                    </button>
+                </div>
+            </div>
         `;
+
+        // Check model download status after creating the card
+        setTimeout(() => this.checkModelStatus(model.full_name, statusId, downloadBtnId, `inference-btn-${modelSafeId}`), 100);
 
         return card;
     }
@@ -869,6 +913,10 @@ curl -X POST http://localhost:8003/jsonrpc \\
         // Create and show a modal with detailed model information
         const modal = document.createElement('div');
         modal.className = 'modal fade';
+        
+        const modelSafeId = model.full_name.replace(/[^a-zA-Z0-9]/g, '_');
+        const modalStatusId = `modal-status-${modelSafeId}`;
+        
         modal.innerHTML = `
             <div class="modal-dialog modal-lg">
                 <div class="modal-content">
@@ -901,13 +949,42 @@ curl -X POST http://localhost:8003/jsonrpc \\
                                 ${model.tags?.map(tag => `<span class="model-tag">${tag}</span>`).join('') || 'No tags'}
                             </div>
                         </div>
+                        
+                        <!-- Model Status and Actions Section -->
+                        <div class="mb-3">
+                            <h6>Model Status</h6>
+                            <div class="alert alert-info" id="${modalStatusId}">
+                                <i class="fas fa-spinner fa-spin"></i> Checking model status...
+                            </div>
+                        </div>
+                        
+                        <!-- Download and Inference Controls -->
+                        <div class="mb-3">
+                            <h6>Actions</h6>
+                            <div class="btn-group w-100 mb-2" role="group">
+                                <button type="button" class="btn btn-outline-primary" id="modal-download-btn-${modelSafeId}"
+                                        onclick="dashboard.downloadModelFromModal('${model.full_name}', '${modalStatusId}', '${modelSafeId}')">
+                                    <i class="fas fa-download"></i> Download Model
+                                </button>
+                                <button type="button" class="btn btn-outline-success" id="modal-inference-btn-${modelSafeId}"
+                                        onclick="dashboard.testModelInference('${model.full_name}', '${model.pipeline_tag || 'text-generation'}')" disabled>
+                                    <i class="fas fa-play"></i> Test Inference
+                                </button>
+                            </div>
+                            <div class="btn-group w-100" role="group">
+                                <button type="button" class="btn btn-outline-info" 
+                                        onclick="window.open('https://huggingface.co/${model.full_name}', '_blank')">
+                                    <i class="fas fa-external-link-alt"></i> View on HuggingFace
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" 
+                                        onclick="dashboard.showDownloadedModels()">
+                                    <i class="fas fa-list"></i> Manage Downloads
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn-modern btn-secondary-modern" data-bs-dismiss="modal">Close</button>
-                        <button type="button" class="btn-modern btn-primary-modern" onclick="window.open('https://huggingface.co/${model.full_name}', '_blank')">
-                            <i class="fas fa-external-link-alt"></i>
-                            View on HuggingFace
-                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             </div>
@@ -916,6 +993,15 @@ curl -X POST http://localhost:8003/jsonrpc \\
         document.body.appendChild(modal);
         const bsModal = new bootstrap.Modal(modal);
         bsModal.show();
+
+        // Check model status after modal is shown
+        setTimeout(() => this.checkModalModelStatus(model.full_name, modalStatusId, modelSafeId), 100);
+
+        // Clean up modal when hidden
+        modal.addEventListener('hidden.bs.modal', () => {
+            document.body.removeChild(modal);
+        });
+    }
 
         // Clean up modal when hidden
         modal.addEventListener('hidden.bs.modal', () => {
@@ -1096,6 +1182,588 @@ curl -X POST http://localhost:8003/jsonrpc \\
         document.getElementById('model-search-input').value = suggestion;
         document.getElementById('search-suggestions').style.display = 'none';
         this.searchModels();
+    }
+
+    // ===== MODEL DOWNLOAD AND INFERENCE METHODS =====
+
+    async checkModelStatus(modelId, statusElementId, downloadBtnId, inferenceBtnId) {
+        """Check if a model is downloaded and update UI accordingly."""
+        try {
+            const response = await this.sdk.call('get_model_download_info', {
+                model_id: modelId
+            });
+
+            const statusElement = document.getElementById(statusElementId);
+            const downloadBtn = document.getElementById(downloadBtnId);
+            const inferenceBtn = document.getElementById(inferenceBtnId);
+
+            if (response.success) {
+                const info = response.download_info;
+                
+                if (info.is_downloaded) {
+                    // Model is downloaded
+                    statusElement.innerHTML = `<small class="text-success"><i class="fas fa-check-circle"></i> Downloaded</small>`;
+                    downloadBtn.innerHTML = `<i class="fas fa-trash"></i> <span class="btn-text">Remove</span>`;
+                    downloadBtn.className = 'btn btn-sm btn-outline-danger';
+                    downloadBtn.onclick = () => this.removeModel(modelId, downloadBtnId, statusElementId, inferenceBtnId);
+                    
+                    if (inferenceBtn) {
+                        inferenceBtn.disabled = false;
+                        inferenceBtn.title = 'Test inference with this model';
+                    }
+                } else if (info.active_downloads && info.active_downloads.length > 0) {
+                    // Model is being downloaded
+                    const download = info.active_downloads[0];
+                    statusElement.innerHTML = `<small class="text-info"><i class="fas fa-spinner fa-spin"></i> Downloading (${download.progress}%)</small>`;
+                    downloadBtn.disabled = true;
+                    downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span class="btn-text">Downloading</span>`;
+                    
+                    // Start polling for download progress
+                    this.pollDownloadProgress(download.download_id, modelId, statusElementId, downloadBtnId, inferenceBtnId);
+                } else {
+                    // Model is not downloaded
+                    statusElement.innerHTML = `<small class="text-muted"><i class="fas fa-cloud"></i> Not downloaded</small>`;
+                    downloadBtn.innerHTML = `<i class="fas fa-download"></i> <span class="btn-text">Download</span>`;
+                    downloadBtn.className = 'btn btn-sm btn-outline-primary';
+                    downloadBtn.disabled = false;
+                    
+                    if (inferenceBtn) {
+                        inferenceBtn.disabled = true;
+                        inferenceBtn.title = 'Download model first to test inference';
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Could not check model status:', error);
+            const statusElement = document.getElementById(statusElementId);
+            if (statusElement) {
+                statusElement.innerHTML = `<small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Status unknown</small>`;
+            }
+        }
+    }
+
+    async downloadModel(modelId, downloadBtnId, progressId, statusElementId) {
+        """Download a HuggingFace model."""
+        try {
+            this.notifications.show(`Starting download of ${modelId}...`, 'info');
+            
+            const downloadBtn = document.getElementById(downloadBtnId);
+            const statusElement = document.getElementById(statusElementId);
+            
+            // Update UI to show download starting
+            downloadBtn.disabled = true;
+            downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span class="btn-text">Starting...</span>`;
+            statusElement.innerHTML = `<small class="text-info"><i class="fas fa-spinner fa-spin"></i> Starting download...</small>`;
+
+            const response = await this.sdk.call('download_huggingface_model', {
+                model_id: modelId,
+                download_type: 'snapshot'
+            });
+
+            if (response.success) {
+                if (response.already_downloaded) {
+                    this.notifications.show(`${modelId} is already downloaded!`, 'success');
+                    // Refresh status
+                    this.checkModelStatus(modelId, statusElementId, downloadBtnId, `inference-btn-${modelId.replace(/[^a-zA-Z0-9]/g, '_')}`);
+                } else {
+                    this.notifications.show(`Download started for ${modelId}`, 'success');
+                    // Start polling for progress
+                    this.pollDownloadProgress(response.download_id, modelId, statusElementId, downloadBtnId, `inference-btn-${modelId.replace(/[^a-zA-Z0-9]/g, '_')}`);
+                }
+            } else {
+                throw new Error(response.error || 'Download failed');
+            }
+        } catch (error) {
+            console.error('Download failed:', error);
+            this.notifications.show(`Download failed: ${error.message}`, 'error');
+            
+            // Reset download button
+            const downloadBtn = document.getElementById(downloadBtnId);
+            if (downloadBtn) {
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = `<i class="fas fa-download"></i> <span class="btn-text">Download</span>`;
+            }
+        }
+    }
+
+    async pollDownloadProgress(downloadId, modelId, statusElementId, downloadBtnId, inferenceBtnId) {
+        """Poll download progress and update UI."""
+        const pollInterval = setInterval(async () => {
+            try {
+                const response = await this.sdk.call('get_download_status', {
+                    download_id: downloadId
+                });
+
+                if (response.success) {
+                    const status = response.download_status;
+                    const statusElement = document.getElementById(statusElementId);
+                    const downloadBtn = document.getElementById(downloadBtnId);
+
+                    if (status.status === 'completed') {
+                        // Download completed
+                        clearInterval(pollInterval);
+                        this.notifications.show(`${modelId} downloaded successfully!`, 'success');
+                        
+                        // Refresh model status
+                        this.checkModelStatus(modelId, statusElementId, downloadBtnId, inferenceBtnId);
+                        
+                    } else if (status.status === 'failed') {
+                        // Download failed
+                        clearInterval(pollInterval);
+                        this.notifications.show(`Download failed: ${status.error}`, 'error');
+                        
+                        if (statusElement) {
+                            statusElement.innerHTML = `<small class="text-danger"><i class="fas fa-exclamation-circle"></i> Download failed</small>`;
+                        }
+                        if (downloadBtn) {
+                            downloadBtn.disabled = false;
+                            downloadBtn.innerHTML = `<i class="fas fa-download"></i> <span class="btn-text">Retry</span>`;
+                        }
+                        
+                    } else {
+                        // Download in progress
+                        const progress = status.progress || 0;
+                        
+                        if (statusElement) {
+                            statusElement.innerHTML = `<small class="text-info"><i class="fas fa-spinner fa-spin"></i> Downloading (${progress}%)</small>`;
+                        }
+                        if (downloadBtn) {
+                            downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span class="btn-text">${progress}%</span>`;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Error polling download progress:', error);
+                clearInterval(pollInterval);
+            }
+        }, 2000); // Poll every 2 seconds
+    }
+
+    async removeModel(modelId, downloadBtnId, statusElementId, inferenceBtnId) {
+        """Remove a downloaded model."""
+        if (!confirm(`Are you sure you want to remove ${modelId}? This will delete all downloaded files.`)) {
+            return;
+        }
+
+        try {
+            this.notifications.show(`Removing ${modelId}...`, 'info');
+
+            const response = await this.sdk.call('remove_downloaded_model', {
+                model_id: modelId,
+                confirm: true
+            });
+
+            if (response.success) {
+                this.notifications.show(`${modelId} removed successfully`, 'success');
+                
+                // Refresh model status
+                this.checkModelStatus(modelId, statusElementId, downloadBtnId, inferenceBtnId);
+            } else {
+                throw new Error(response.error || 'Failed to remove model');
+            }
+        } catch (error) {
+            console.error('Failed to remove model:', error);
+            this.notifications.show(`Failed to remove model: ${error.message}`, 'error');
+        }
+    }
+
+    async testModelInference(modelId, taskType) {
+        """Test inference with a downloaded model."""
+        try {
+            // Show loading modal
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Test Inference: ${modelId}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Input Text:</label>
+                                <textarea class="form-control" id="inference-input" rows="3" 
+                                    placeholder="Enter your test input here...">Hello, how are you?</textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Task Type:</label>
+                                <select class="form-control" id="inference-task">
+                                    <option value="text-generation" ${taskType === 'text-generation' ? 'selected' : ''}>Text Generation</option>
+                                    <option value="text-classification" ${taskType === 'text-classification' ? 'selected' : ''}>Text Classification</option>
+                                    <option value="question-answering" ${taskType === 'question-answering' ? 'selected' : ''}>Question Answering</option>
+                                    <option value="summarization" ${taskType === 'summarization' ? 'selected' : ''}>Summarization</option>
+                                    <option value="translation" ${taskType === 'translation' ? 'selected' : ''}>Translation</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <button class="btn btn-primary" onclick="dashboard.runInference('${modelId}')">
+                                    <i class="fas fa-play"></i> Run Inference
+                                </button>
+                            </div>
+                            <div id="inference-result" style="display: none;">
+                                <hr>
+                                <h6>Result:</h6>
+                                <div class="alert alert-success" id="inference-output"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            const bsModal = new bootstrap.Modal(modal);
+            bsModal.show();
+
+            // Clean up modal when hidden
+            modal.addEventListener('hidden.bs.modal', () => {
+                document.body.removeChild(modal);
+            });
+
+        } catch (error) {
+            console.error('Failed to open inference test:', error);
+            this.notifications.show(`Failed to open inference test: ${error.message}`, 'error');
+        }
+    }
+
+    async runInference(modelId) {
+        """Run inference with the model."""
+        try {
+            const inputText = document.getElementById('inference-input').value;
+            const taskType = document.getElementById('inference-task').value;
+
+            if (!inputText.trim()) {
+                this.notifications.show('Please enter some input text', 'warning');
+                return;
+            }
+
+            // Show loading in result area
+            const resultDiv = document.getElementById('inference-result');
+            const outputDiv = document.getElementById('inference-output');
+            
+            resultDiv.style.display = 'block';
+            outputDiv.className = 'alert alert-info';
+            outputDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running inference...';
+
+            const response = await this.sdk.call('test_model_inference', {
+                model_id: modelId,
+                input_text: inputText,
+                task: taskType,
+                max_length: 100,
+                temperature: 0.7
+            });
+
+            if (response.success) {
+                const result = response.inference_result;
+                
+                outputDiv.className = 'alert alert-success';
+                outputDiv.innerHTML = `
+                    <div><strong>Output:</strong> ${result.output}</div>
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            Confidence: ${(result.confidence * 100).toFixed(1)}% | 
+                            Processing Time: ${result.processing_time_ms}ms | 
+                            Engine: ${result.inference_engine}
+                        </small>
+                    </div>
+                `;
+                
+                this.notifications.show('Inference completed successfully!', 'success');
+            } else {
+                throw new Error(response.error || 'Inference failed');
+            }
+        } catch (error) {
+            console.error('Inference failed:', error);
+            
+            const outputDiv = document.getElementById('inference-output');
+            if (outputDiv) {
+                outputDiv.className = 'alert alert-danger';
+                outputDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> Error: ${error.message}`;
+            }
+            
+            this.notifications.show(`Inference failed: ${error.message}`, 'error');
+        }
+    }
+
+    async checkModalModelStatus(modelId, statusElementId, modelSafeId) {
+        """Check model status in the modal and update UI."""
+        try {
+            const response = await this.sdk.call('get_model_download_info', {
+                model_id: modelId
+            });
+
+            const statusElement = document.getElementById(statusElementId);
+            const downloadBtn = document.getElementById(`modal-download-btn-${modelSafeId}`);
+            const inferenceBtn = document.getElementById(`modal-inference-btn-${modelSafeId}`);
+
+            if (response.success) {
+                const info = response.download_info;
+                
+                if (info.is_downloaded) {
+                    // Model is downloaded
+                    statusElement.className = 'alert alert-success';
+                    statusElement.innerHTML = `
+                        <i class="fas fa-check-circle"></i> 
+                        <strong>Downloaded</strong><br>
+                        <small>Size: ${(info.size_mb || 0).toFixed(1)} MB | Downloaded: ${new Date(info.downloaded_at).toLocaleDateString()}</small>
+                    `;
+                    
+                    if (downloadBtn) {
+                        downloadBtn.innerHTML = '<i class="fas fa-trash"></i> Remove Model';
+                        downloadBtn.className = 'btn btn-outline-danger';
+                        downloadBtn.onclick = () => this.removeModelFromModal(modelId, statusElementId, modelSafeId);
+                    }
+                    
+                    if (inferenceBtn) {
+                        inferenceBtn.disabled = false;
+                    }
+                } else if (info.active_downloads && info.active_downloads.length > 0) {
+                    // Model is being downloaded
+                    const download = info.active_downloads[0];
+                    statusElement.className = 'alert alert-info';
+                    statusElement.innerHTML = `
+                        <i class="fas fa-spinner fa-spin"></i> 
+                        <strong>Downloading (${download.progress}%)</strong><br>
+                        <small>Download in progress...</small>
+                    `;
+                    
+                    if (downloadBtn) {
+                        downloadBtn.disabled = true;
+                        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+                    }
+                } else {
+                    // Model is not downloaded
+                    statusElement.className = 'alert alert-warning';
+                    statusElement.innerHTML = `
+                        <i class="fas fa-cloud"></i> 
+                        <strong>Not Downloaded</strong><br>
+                        <small>Download this model to test inference locally</small>
+                    `;
+                    
+                    if (downloadBtn) {
+                        downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download Model';
+                        downloadBtn.className = 'btn btn-outline-primary';
+                        downloadBtn.disabled = false;
+                    }
+                    
+                    if (inferenceBtn) {
+                        inferenceBtn.disabled = true;
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Could not check modal model status:', error);
+            const statusElement = document.getElementById(statusElementId);
+            if (statusElement) {
+                statusElement.className = 'alert alert-secondary';
+                statusElement.innerHTML = `
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    <strong>Status Unknown</strong><br>
+                    <small>Could not determine model download status</small>
+                `;
+            }
+        }
+    }
+
+    async downloadModelFromModal(modelId, statusElementId, modelSafeId) {
+        """Download model from the modal interface."""
+        try {
+            const statusElement = document.getElementById(statusElementId);
+            const downloadBtn = document.getElementById(`modal-download-btn-${modelSafeId}`);
+            
+            // Update UI
+            statusElement.className = 'alert alert-info';
+            statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <strong>Starting download...</strong>';
+            
+            if (downloadBtn) {
+                downloadBtn.disabled = true;
+                downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+            }
+
+            const response = await this.sdk.call('download_huggingface_model', {
+                model_id: modelId,
+                download_type: 'snapshot'
+            });
+
+            if (response.success) {
+                if (response.already_downloaded) {
+                    this.notifications.show(`${modelId} is already downloaded!`, 'success');
+                } else {
+                    this.notifications.show(`Download started for ${modelId}`, 'success');
+                }
+                
+                // Refresh modal status
+                setTimeout(() => this.checkModalModelStatus(modelId, statusElementId, modelSafeId), 1000);
+            } else {
+                throw new Error(response.error || 'Download failed');
+            }
+        } catch (error) {
+            console.error('Modal download failed:', error);
+            this.notifications.show(`Download failed: ${error.message}`, 'error');
+            
+            // Reset status
+            const statusElement = document.getElementById(statusElementId);
+            if (statusElement) {
+                statusElement.className = 'alert alert-danger';
+                statusElement.innerHTML = `<i class="fas fa-exclamation-circle"></i> <strong>Download Failed</strong><br><small>${error.message}</small>`;
+            }
+        }
+    }
+
+    async removeModelFromModal(modelId, statusElementId, modelSafeId) {
+        """Remove model from the modal interface."""
+        if (!confirm(`Are you sure you want to remove ${modelId}?`)) {
+            return;
+        }
+
+        try {
+            const response = await this.sdk.call('remove_downloaded_model', {
+                model_id: modelId,
+                confirm: true
+            });
+
+            if (response.success) {
+                this.notifications.show(`${modelId} removed successfully`, 'success');
+                // Refresh modal status
+                this.checkModalModelStatus(modelId, statusElementId, modelSafeId);
+            } else {
+                throw new Error(response.error || 'Failed to remove model');
+            }
+        } catch (error) {
+            console.error('Failed to remove model from modal:', error);
+            this.notifications.show(`Failed to remove model: ${error.message}`, 'error');
+        }
+    }
+
+    async showDownloadedModels() {
+        """Show a modal with all downloaded models."""
+        try {
+            const response = await this.sdk.call('list_downloaded_models', {
+                include_details: true
+            });
+
+            if (!response.success) {
+                throw new Error(response.error || 'Failed to load downloaded models');
+            }
+
+            const models = response.models || [];
+            
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Downloaded Models (${models.length})</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            ${models.length === 0 ? `
+                                <div class="text-center py-5">
+                                    <i class="fas fa-download fa-3x text-muted mb-3"></i>
+                                    <h5 class="text-muted">No models downloaded yet</h5>
+                                    <p class="text-muted">Download models from the Model Hub to see them here.</p>
+                                </div>
+                            ` : `
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Model</th>
+                                                <th>Size</th>
+                                                <th>Downloaded</th>
+                                                <th>Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${models.map(model => `
+                                                <tr>
+                                                    <td>
+                                                        <strong>${model.model_id}</strong><br>
+                                                        <small class="text-muted">${model.model_name}</small>
+                                                    </td>
+                                                    <td>${(model.actual_size_mb || 0).toFixed(1)} MB</td>
+                                                    <td>${new Date(model.downloaded_at).toLocaleDateString()}</td>
+                                                    <td>
+                                                        ${model.exists ? 
+                                                            '<span class="badge bg-success">Available</span>' : 
+                                                            '<span class="badge bg-danger">Missing</span>'
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <div class="btn-group btn-group-sm">
+                                                            <button class="btn btn-outline-success" 
+                                                                    onclick="dashboard.testModelInference('${model.model_id}', 'text-generation')"
+                                                                    ${!model.exists ? 'disabled' : ''}>
+                                                                <i class="fas fa-play"></i> Test
+                                                            </button>
+                                                            <button class="btn btn-outline-danger" 
+                                                                    onclick="dashboard.removeDownloadedModel('${model.model_id}')">
+                                                                <i class="fas fa-trash"></i> Remove
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-primary" onclick="dashboard.refreshDownloadedModels()">
+                                <i class="fas fa-sync"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            const bsModal = new bootstrap.Modal(modal);
+            bsModal.show();
+
+            // Clean up modal when hidden
+            modal.addEventListener('hidden.bs.modal', () => {
+                document.body.removeChild(modal);
+            });
+
+        } catch (error) {
+            console.error('Failed to show downloaded models:', error);
+            this.notifications.show(`Failed to load downloaded models: ${error.message}`, 'error');
+        }
+    }
+
+    async removeDownloadedModel(modelId) {
+        """Remove a downloaded model from the management interface."""
+        if (!confirm(`Are you sure you want to remove ${modelId}? This will delete all downloaded files.`)) {
+            return;
+        }
+
+        try {
+            const response = await this.sdk.call('remove_downloaded_model', {
+                model_id: modelId,
+                confirm: true
+            });
+
+            if (response.success) {
+                this.notifications.show(`${modelId} removed successfully`, 'success');
+                // Refresh the downloaded models modal
+                this.showDownloadedModels();
+            } else {
+                throw new Error(response.error || 'Failed to remove model');
+            }
+        } catch (error) {
+            console.error('Failed to remove downloaded model:', error);
+            this.notifications.show(`Failed to remove model: ${error.message}`, 'error');
+        }
+    }
+
+    async refreshDownloadedModels() {
+        """Refresh the downloaded models modal."""
+        this.showDownloadedModels();
     }
 }
 }

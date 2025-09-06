@@ -695,6 +695,78 @@
             gap: var(--space-1);
         }
 
+        /* Model Action Styles */
+        .model-actions {
+            border-top: 1px solid var(--border-primary);
+            padding-top: var(--space-3);
+        }
+
+        .model-status {
+            font-size: var(--font-size-sm);
+        }
+
+        .download-progress {
+            margin-bottom: var(--space-2);
+        }
+
+        .download-progress .progress {
+            background-color: var(--bg-tertiary);
+            border-radius: var(--border-radius);
+            overflow: hidden;
+        }
+
+        .download-progress .progress-bar {
+            background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+            transition: width 0.3s ease;
+        }
+
+        .model-actions .btn-group .btn {
+            font-size: var(--font-size-xs);
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--border-radius-sm);
+        }
+
+        .model-actions .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Modal Action Styles */
+        .modal .alert {
+            margin-bottom: var(--space-3);
+        }
+
+        .modal .btn-group .btn {
+            font-size: var(--font-size-sm);
+            padding: var(--space-2) var(--space-3);
+        }
+
+        /* Status Indicators */
+        .status-downloaded {
+            color: var(--success-600);
+        }
+
+        .status-downloading {
+            color: var(--primary-600);
+        }
+
+        .status-not-downloaded {
+            color: var(--gray-500);
+        }
+
+        .status-error {
+            color: var(--error-600);
+        }
+
+        /* Interactive Model Cards */
+        .model-result-card .model-description {
+            transition: color 0.2s ease;
+        }
+
+        .model-result-card .model-description:hover {
+            color: var(--primary-600);
+        }
+
         .pagination-container {
             display: flex;
             justify-content: center;
