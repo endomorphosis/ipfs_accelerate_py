@@ -128,9 +128,9 @@ report = tester.run_comprehensive_integration_test()
 **Complete production readiness assessment**
 
 ```python
-from utils.enterprise_validation import EnterpriseValidation
+from utils.enterprise_validation import EnterpriseValidator
 
-validator = EnterpriseValidation()
+validator = EnterpriseValidator()
 score = validator.calculate_enterprise_score()
 
 # Enterprise readiness metrics:
@@ -211,10 +211,33 @@ docker-compose up -f deployments/production/docker-compose.yml
 
 ```bash
 # Verify installation and run enterprise validation
-python -c "from utils.enterprise_validation import EnterpriseValidation; print(f'Score: {EnterpriseValidation().calculate_enterprise_score()}/100')"
+python -c "from utils.enterprise_validation import EnterpriseValidator; print(f'Score: {EnterpriseValidator().calculate_enterprise_score()}/100')"
 
 # Run complete implementation demonstration
 python examples/complete_implementation_demo.py
+```
+
+### **Platform-Specific Notes**
+
+#### **Windows 10/11 Compatibility**
+- **Python 3.12**: Full compatibility verified
+- **GPU Drivers**: Ensure latest NVIDIA/AMD drivers for WebGPU support
+- **Edge WebNN**: Best performance with Microsoft Edge for WebNN acceleration
+- **Path Handling**: Automatic cross-platform path normalization
+- **Dependencies**: All major dependencies support Windows natively
+
+#### **Common Windows Issues & Solutions**
+```bash
+# For dependency installation issues
+pip install --upgrade pip setuptools wheel
+
+# For WebNN/WebGPU browser issues  
+# Ensure Edge is updated: Settings > About Microsoft Edge
+# Chrome requires: chrome://flags/#enable-unsafe-webgpu
+
+# For path-related issues, use forward slashes or pathlib:
+from pathlib import Path
+model_path = Path("models") / "model.bin"
 ```
 
 ## 💡 **Quick Start Examples**
@@ -222,10 +245,13 @@ python examples/complete_implementation_demo.py
 ### **Basic ML Acceleration**
 
 ```python
-from ipfs_accelerate_py import ipfs_accelerate_py
+import ipfs_accelerate_py
 
 # Initialize with automatic hardware detection
-accelerator = ipfs_accelerate_py({}, {})
+accelerator = ipfs_accelerate_py.ipfs_accelerate_py({}, {})
+
+# Alternative: Use WebNN/WebGPU accelerator (works without full dependencies)
+# accelerator = ipfs_accelerate_py.get_accelerator(enable_ipfs=True)
 
 # Get optimal hardware backend for a model with detailed analysis
 optimal_backend = accelerator.get_optimal_backend("bert-base-uncased", "text_embedding")
@@ -323,8 +349,8 @@ print(f"Optimization score: {result['optimization_metrics']}")
 ### **Enterprise Configuration & Monitoring**
 
 ```python
-from ipfs_accelerate_py import ipfs_accelerate_py
-from utils.enterprise_validation import EnterpriseValidation
+import ipfs_accelerate_py
+from utils.enterprise_validation import EnterpriseValidator
 from utils.performance_optimization import PerformanceOptimizer
 
 # Enterprise configuration with monitoring
@@ -356,10 +382,10 @@ config = {
 }
 
 # Initialize enterprise accelerator
-accelerator = ipfs_accelerate_py(config, {})
+accelerator = ipfs_accelerate_py.ipfs_accelerate_py(config, {})
 
 # Run enterprise validation
-validator = EnterpriseValidation()
+validator = EnterpriseValidator()
 enterprise_score = validator.calculate_enterprise_score()
 print(f"Enterprise readiness: {enterprise_score}/100")
 
@@ -370,6 +396,8 @@ optimizations = optimizer.analyze_system_performance()
 
 ## 📚 **Comprehensive Documentation**
 
+> **📖 [Complete Documentation Index](docs/INDEX.md)** - Central navigation for all documentation
+
 ### **🎯 Core Documentation**
 - **[Installation & Setup Guide](docs/INSTALLATION.md)** - Complete installation, configuration, and troubleshooting
 - **[Enterprise Usage Guide](docs/USAGE.md)** - Advanced usage patterns, optimization, and best practices  
@@ -379,7 +407,8 @@ optimizations = optimizer.analyze_system_performance()
 ### **🏗️ Specialized Enterprise Guides**
 - **[Hardware Optimization](docs/HARDWARE.md)** - Advanced hardware-specific acceleration and optimization techniques
 - **[IPFS Network Integration](docs/IPFS.md)** - Advanced IPFS features, provider optimization, and distributed inference
-- **[WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)** - Enterprise browser-based acceleration with monitoring
+- **[WebNN/WebGPU Integration](docs/WEBNN_WEBGPU_README.md)** - Enterprise browser-based acceleration with monitoring
+- **[MCP Integration](mcp/README.md)** - Model Control Protocol for advanced model management and automation
 - **[Testing & Validation Framework](docs/TESTING.md)** - Comprehensive testing methodologies and enterprise validation
 
 ### **📖 Implementation & Deployment**
@@ -511,15 +540,19 @@ monitor.setup_enterprise_alerting({
 
 ```python
 # Export comprehensive optimization recommendations
-from test.optimization_recommendation.optimization_exporter import OptimizationExporter
-
-exporter = OptimizationExporter(output_dir="./enterprise_optimizations")
-export_result = exporter.export_optimization(
-    model_name="bert-base-uncased",
-    hardware_platform="cuda",
-    include_deployment_scripts=True,
-    include_monitoring_config=True
-)
+# Note: This is an advanced feature - for basic usage see examples/
+try:
+    from test.optimization_recommendation.optimization_exporter import OptimizationExporter
+    
+    exporter = OptimizationExporter(output_dir="./enterprise_optimizations")
+    export_result = exporter.export_optimization(
+        model_name="bert-base-uncased",
+        hardware_platform="cuda",
+        include_deployment_scripts=True,
+        include_monitoring_config=True
+    )
+except ImportError:
+    print("Optimization exporter requires development installation with test dependencies")
 
 # Create enterprise deployment package
 enterprise_package = exporter.create_enterprise_archive(export_result)
