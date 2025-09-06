@@ -728,15 +728,17 @@ class ModuleManager {
 
     async loadModules() {
         try {
-            // Define available modules based on SDK capabilities
+            // Comprehensive set of AI modules organized by category
             this.modules = [
+                // Text Processing Modules
                 {
                     id: 'text-generation',
                     name: 'Text Generation',
                     category: 'text',
                     description: 'Generate human-like text from prompts',
                     method: 'generate_text',
-                    params: ['prompt', 'max_length', 'temperature']
+                    params: ['prompt', 'max_length', 'temperature'],
+                    placeholder: 'Write a story about...'
                 },
                 {
                     id: 'text-classification',
@@ -744,15 +746,37 @@ class ModuleManager {
                     category: 'text',
                     description: 'Classify text into predefined categories',
                     method: 'classify_text',
-                    params: ['text', 'labels']
+                    params: ['text', 'labels'],
+                    placeholder: 'emotion'
                 },
+                {
+                    id: 'sentiment-analysis',
+                    name: 'Sentiment Analysis',
+                    category: 'text',
+                    description: 'Analyze sentiment and emotions in text',
+                    method: 'analyze_sentiment',
+                    params: ['text'],
+                    placeholder: 'I love this product!'
+                },
+                {
+                    id: 'text-embedding',
+                    name: 'Text Embeddings',
+                    category: 'text',
+                    description: 'Generate vector embeddings for text',
+                    method: 'get_text_embedding',
+                    params: ['text'],
+                    placeholder: 'machine learning is amazing'
+                },
+
+                // Vision Processing Modules
                 {
                     id: 'image-classification',
                     name: 'Image Classification',
                     category: 'vision',
                     description: 'Classify images and identify objects',
                     method: 'classify_image',
-                    params: ['image_data']
+                    params: ['image_data'],
+                    placeholder: 'image_data'
                 },
                 {
                     id: 'object-detection',
@@ -760,31 +784,122 @@ class ModuleManager {
                     category: 'vision',
                     description: 'Detect and locate objects in images',
                     method: 'detect_objects',
-                    params: ['image_data']
+                    params: ['image_data'],
+                    placeholder: 'image_data'
                 },
+                {
+                    id: 'image-generation',
+                    name: 'Image Generation',
+                    category: 'vision',
+                    description: 'Generate images from text descriptions',
+                    method: 'generate_image',
+                    params: ['prompt', 'style'],
+                    placeholder: 'A beautiful sunset over mountains'
+                },
+                {
+                    id: 'image-caption',
+                    name: 'Image Captioning',
+                    category: 'vision',
+                    description: 'Generate captions for images',
+                    method: 'caption_image',
+                    params: ['image_data'],
+                    placeholder: 'image_data'
+                },
+
+                // Audio Processing Modules
                 {
                     id: 'speech-to-text',
                     name: 'Speech to Text',
                     category: 'audio',
                     description: 'Transcribe audio to text',
                     method: 'transcribe_audio',
-                    params: ['audio_data', 'language']
+                    params: ['audio_data', 'language'],
+                    placeholder: 'audio_data/speech'
                 },
+                {
+                    id: 'text-to-speech',
+                    name: 'Text to Speech',
+                    category: 'audio',
+                    description: 'Generate speech from text',
+                    method: 'synthesize_speech',
+                    params: ['text', 'voice'],
+                    placeholder: 'Hello, this is a test message'
+                },
+                {
+                    id: 'audio-classification',
+                    name: 'Audio Classification',
+                    category: 'audio',
+                    description: 'Classify audio content and sounds',
+                    method: 'classify_audio',
+                    params: ['audio_data'],
+                    placeholder: 'audio_data'
+                },
+
+                // Code Processing Modules
                 {
                     id: 'code-generation',
                     name: 'Code Generation',
                     category: 'code',
                     description: 'Generate code from natural language',
                     method: 'generate_code',
-                    params: ['prompt', 'language']
+                    params: ['prompt', 'language'],
+                    placeholder: 'Create a Python function to sort a list'
                 },
+                {
+                    id: 'code-completion',
+                    name: 'Code Completion',
+                    category: 'code',
+                    description: 'Complete partial code snippets',
+                    method: 'complete_code',
+                    params: ['code', 'language'],
+                    placeholder: 'def fibonacci(n):'
+                },
+                {
+                    id: 'code-explanation',
+                    name: 'Code Explanation',
+                    category: 'code',
+                    description: 'Explain what code does in natural language',
+                    method: 'explain_code',
+                    params: ['code', 'language'],
+                    placeholder: 'for i in range(10): print(i)'
+                },
+                {
+                    id: 'code-debugging',
+                    name: 'Code Debugging',
+                    category: 'code',
+                    description: 'Find and fix bugs in code',
+                    method: 'debug_code',
+                    params: ['code', 'language'],
+                    placeholder: 'def add(a, b): return a + c'
+                },
+
+                // Multimodal Processing Modules
                 {
                     id: 'visual-qa',
                     name: 'Visual Q&A',
                     category: 'multimodal',
                     description: 'Answer questions about images',
                     method: 'visual_question_answering',
-                    params: ['image_data', 'question']
+                    params: ['image_data', 'question'],
+                    placeholder: 'What do you see in this image?'
+                },
+                {
+                    id: 'multimodal-chat',
+                    name: 'Multimodal Chat',
+                    category: 'multimodal',
+                    description: 'Chat with AI about images and text',
+                    method: 'multimodal_chat',
+                    params: ['messages', 'context'],
+                    placeholder: 'Describe this image and tell me a story about it'
+                },
+                {
+                    id: 'document-processing',
+                    name: 'Document Processing',
+                    category: 'multimodal',
+                    description: 'Extract and analyze document content',
+                    method: 'process_document',
+                    params: ['document_data'],
+                    placeholder: 'document_data'
                 }
             ];
 
@@ -801,6 +916,10 @@ class ModuleManager {
 
         container.innerHTML = '';
 
+        // Create a comprehensive organized layout
+        const wrapper = document.createElement('div');
+        wrapper.className = 'modules-wrapper';
+        
         // Group modules by category
         const grouped = this.getGroupedModules();
 
@@ -808,11 +927,36 @@ class ModuleManager {
             const category = this.categories[categoryId];
             if (!category) return;
 
+            // Create category section
+            const categorySection = document.createElement('div');
+            categorySection.className = 'category-section';
+            
+            // Category header
+            const categoryHeader = document.createElement('div');
+            categoryHeader.className = 'category-header';
+            categoryHeader.innerHTML = `
+                <div class="category-title">
+                    <i class="${category.icon}" style="color: ${category.color}"></i>
+                    <h3>${category.name}</h3>
+                    <span class="module-count">${modules.length} modules</span>
+                </div>
+            `;
+            categorySection.appendChild(categoryHeader);
+
+            // Modules grid for this category
+            const modulesGrid = document.createElement('div');
+            modulesGrid.className = 'modules-grid';
+            
             modules.forEach(module => {
                 const moduleCard = this.createModuleCard(module, category);
-                container.appendChild(moduleCard);
+                modulesGrid.appendChild(moduleCard);
             });
+            
+            categorySection.appendChild(modulesGrid);
+            wrapper.appendChild(categorySection);
         });
+
+        container.appendChild(wrapper);
     }
 
     createModuleCard(module, category) {
@@ -824,7 +968,9 @@ class ModuleManager {
                     <i class="${category.icon} module-icon" style="color: ${category.color}"></i>
                     ${module.name}
                 </div>
-                <div class="module-badge">${category.name}</div>
+                <div class="module-badge" style="background-color: ${category.color}20; color: ${category.color}">
+                    ${category.name}
+                </div>
             </div>
             <div class="module-content">
                 <p class="module-description">${module.description}</p>
@@ -838,18 +984,62 @@ class ModuleManager {
                     <label class="form-label">Test Input:</label>
                     <textarea class="form-control-modern" rows="2" 
                               id="${module.id}-input" 
-                              placeholder="Enter test data..."></textarea>
+                              placeholder="${module.placeholder || 'Enter test data...'}"></textarea>
                 </div>
-                <button class="btn-modern btn-primary-modern" 
-                        onclick="dashboard.modules.testModule('${module.id}')">
-                    <i class="fas fa-play"></i>
-                    Test Module
-                </button>
+                <div class="module-actions">
+                    <button class="btn-modern btn-primary-modern" 
+                            onclick="dashboard.modules.testModule('${module.id}')">
+                        <i class="fas fa-play"></i>
+                        Test Module
+                    </button>
+                    <button class="btn-modern btn-secondary-modern" 
+                            onclick="dashboard.modules.getModuleHelp('${module.id}')">
+                        <i class="fas fa-question-circle"></i>
+                        Help
+                    </button>
+                </div>
             </div>
             <div class="result-container" id="${module.id}-result" style="display: none;"></div>
         `;
 
         return card;
+    }
+
+    getGroupedModules() {
+        return this.modules.reduce((acc, module) => {
+            if (!acc[module.category]) {
+                acc[module.category] = [];
+            }
+            acc[module.category].push(module);
+            return acc;
+        }, {});
+    }
+
+    async getModuleHelp(moduleId) {
+        const module = this.modules.find(m => m.id === moduleId);
+        if (!module) return;
+
+        const helpContent = `
+            <div class="help-content">
+                <h5>${module.name}</h5>
+                <p><strong>Description:</strong> ${module.description}</p>
+                <p><strong>Method:</strong> ${module.method}</p>
+                <p><strong>Parameters:</strong> ${module.params.join(', ')}</p>
+                <p><strong>Example:</strong> ${module.placeholder}</p>
+            </div>
+        `;
+
+        // Show help in a modal or notification
+        const notification = {
+            type: 'info',
+            title: 'Module Help',
+            message: helpContent,
+            duration: 10000
+        };
+        
+        if (window.dashboard && window.dashboard.notifications) {
+            window.dashboard.notifications.show(notification.message, notification.type);
+        }
     }
 
     async testModule(moduleId, input = null) {
