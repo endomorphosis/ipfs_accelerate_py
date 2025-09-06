@@ -22,6 +22,9 @@ import uvicorn
 # Import our comprehensive MCP server
 from tools.comprehensive_mcp_server import ComprehensiveMCPServer
 
+# Import HuggingFace model search service
+from tools.huggingface_model_search import get_hf_search_service
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -132,6 +135,13 @@ class MCPJSONRPCServer:
             "analyze_emotion": self._analyze_emotion,
             "extract_topics": self._extract_topics,
             "extract_text_from_image": self._extract_text_from_image,
+            
+            # HuggingFace Model Search Methods
+            "search_huggingface_models": self._search_huggingface_models,
+            "get_huggingface_model_details": self._get_huggingface_model_details,
+            "get_model_search_suggestions": self._get_model_search_suggestions,
+            "get_model_search_stats": self._get_model_search_stats,
+            "initialize_model_search": self._initialize_model_search,
             
             # Legacy aliases
             "list_methods": self._get_available_methods,
@@ -1008,6 +1018,211 @@ class MCPJSONRPCServer:
             "confidence": 0.92,
             "timestamp": datetime.now().isoformat()
         }
+
+    # ============================================
+    # HUGGINGFACE MODEL SEARCH METHODS
+    # ============================================
+
+    async def _search_huggingface_models(self, params: Dict) -> Dict:
+        """
+        Search HuggingFace models with vector and BM25 search capabilities.
+        
+        Parameters:
+        - query (str): Search query
+        - search_type (str): "vector", "bm25", or "hybrid" (default: "hybrid")
+        - filters (dict): Filters to apply (task, library, language, author, etc.)
+        - sort_by (str): Sort field ("relevance", "downloads", "likes", "date", "name")
+        - sort_order (str): "asc" or "desc" (default: "desc")
+        - offset (int): Results offset for pagination (default: 0)
+        - limit (int): Maximum results to return (default: 20)
+        """
+        try:
+            query = params.get("query", "")
+            search_type = params.get("search_type", "hybrid")
+            filters = params.get("filters", {})
+            sort_by = params.get("sort_by", "relevance")
+            sort_order = params.get("sort_order", "desc")
+            offset = params.get("offset", 0)
+            limit = params.get("limit", 20)
+            
+            # Validate parameters
+            if limit > 100:
+                limit = 100
+            if offset < 0:
+                offset = 0
+            
+            # Get search service
+            search_service = await get_hf_search_service()
+            
+            # Perform search
+            results = await search_service.search_models(
+                query=query,
+                search_type=search_type,
+                filters=filters,
+                sort_by=sort_by,
+                sort_order=sort_order,
+                offset=offset,
+                limit=limit
+            )
+            
+            return {
+                "success": True,
+                "timestamp": datetime.now().isoformat(),
+                **results
+            }
+            
+        except Exception as e:
+            logger.error(f"HuggingFace model search failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "results": [],
+                "total": 0,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _get_huggingface_model_details(self, params: Dict) -> Dict:
+        """
+        Get detailed information about a specific HuggingFace model.
+        
+        Parameters:
+        - model_id (str): The HuggingFace model ID (e.g., "bert-base-uncased")
+        """
+        try:
+            model_id = params.get("model_id")
+            if not model_id:
+                raise JSONRPCError(-32602, "Invalid params", "model_id is required")
+            
+            # Get search service
+            search_service = await get_hf_search_service()
+            
+            # Get model details
+            model_details = await search_service.get_model_details(model_id)
+            
+            if not model_details:
+                return {
+                    "success": False,
+                    "error": f"Model '{model_id}' not found",
+                    "timestamp": datetime.now().isoformat()
+                }
+            
+            return {
+                "success": True,
+                "model": model_details,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except JSONRPCError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get model details: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _get_model_search_suggestions(self, params: Dict) -> Dict:
+        """
+        Get search suggestions based on partial query.
+        
+        Parameters:
+        - query (str): Partial search query
+        - limit (int): Maximum suggestions to return (default: 10)
+        """
+        try:
+            query = params.get("query", "")
+            limit = params.get("limit", 10)
+            
+            if limit > 50:
+                limit = 50
+            
+            # Get search service
+            search_service = await get_hf_search_service()
+            
+            # Get suggestions
+            suggestions = await search_service.get_search_suggestions(query, limit)
+            
+            return {
+                "success": True,
+                "suggestions": suggestions,
+                "query": query,
+                "count": len(suggestions),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get search suggestions: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "suggestions": [],
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _get_model_search_stats(self, params: Dict) -> Dict:
+        """
+        Get statistics about the model search index.
+        """
+        try:
+            # Get search service
+            search_service = await get_hf_search_service()
+            
+            # Get statistics
+            stats = search_service.get_search_stats()
+            
+            return {
+                "success": True,
+                "stats": stats,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get search stats: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _initialize_model_search(self, params: Dict) -> Dict:
+        """
+        Initialize or refresh the model search index.
+        
+        Parameters:
+        - force_rebuild (bool): Force rebuild of indices even if cache is valid
+        """
+        try:
+            force_rebuild = params.get("force_rebuild", False)
+            
+            # Get search service
+            search_service = await get_hf_search_service()
+            
+            if force_rebuild:
+                # Force rebuild indices
+                await search_service._rebuild_indices()
+                message = "Model search indices rebuilt successfully"
+            else:
+                # Regular initialization
+                success = await search_service.initialize()
+                message = "Model search initialized successfully" if success else "Model search initialization failed"
+            
+            stats = search_service.get_search_stats()
+            
+            return {
+                "success": True,
+                "message": message,
+                "stats": stats,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize model search: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
 
     async def _call_ipfs_accelerate_model(self, task: str, params: Dict) -> Optional[Dict]:
         """Call ipfs_accelerate_py model for actual inference."""

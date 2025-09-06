@@ -158,6 +158,9 @@ class ReorganizedDashboard {
         
         // Setup playground
         this.setupPlayground();
+        
+        // Initialize Model Hub search functionality
+        this.setupModelSearch();
     }
 
     // ============================================
@@ -702,6 +705,399 @@ curl -X POST http://localhost:8003/jsonrpc \\
             console.warn('Could not load dashboard state:', error);
         }
     }
+
+    // ============================================
+    // MODEL HUB FUNCTIONALITY
+    // ============================================
+
+    async searchModels() {
+        const query = document.getElementById('model-search-input').value.trim();
+        const searchType = document.getElementById('search-type').value;
+        
+        if (!query) {
+            this.notifications.show('Please enter a search query', 'warning');
+            return;
+        }
+
+        this.showLoadingState();
+        
+        try {
+            const filters = this.getCurrentFilters();
+            const sortBy = document.getElementById('sort-by')?.value || 'relevance';
+            
+            const results = await this.sdk.call('search_huggingface_models', {
+                query: query,
+                search_type: searchType,
+                filters: filters,
+                sort_by: sortBy,
+                limit: 20,
+                offset: 0
+            });
+
+            this.displaySearchResults(results);
+            this.updateSearchStats();
+        } catch (error) {
+            console.error('Model search failed:', error);
+            this.notifications.show('Model search failed: ' + error.message, 'error');
+        } finally {
+            this.hideLoadingState();
+        }
+    }
+
+    getCurrentFilters() {
+        return {
+            task: document.getElementById('filter-task')?.value || '',
+            library: document.getElementById('filter-library')?.value || '',
+            language: document.getElementById('filter-language')?.value || '',
+            min_downloads: parseInt(document.getElementById('filter-downloads')?.value) || 0
+        };
+    }
+
+    displaySearchResults(response) {
+        const resultsContainer = document.getElementById('search-results');
+        const headerContainer = document.getElementById('search-results-header');
+        const noResultsMessage = document.getElementById('no-results-message');
+        
+        if (!response.success || response.results.length === 0) {
+            headerContainer.style.display = 'none';
+            noResultsMessage.style.display = 'block';
+            resultsContainer.innerHTML = '';
+            return;
+        }
+
+        // Hide no results message
+        noResultsMessage.style.display = 'none';
+        headerContainer.style.display = 'block';
+
+        // Update search info
+        document.getElementById('search-results-count').textContent = 
+            `${response.total} results found`;
+        document.getElementById('search-time').textContent = 
+            `in ${response.search_time_ms}ms`;
+
+        // Clear previous results
+        resultsContainer.innerHTML = '';
+
+        // Display results
+        response.results.forEach(model => {
+            const card = this.createModelCard(model);
+            resultsContainer.appendChild(card);
+        });
+
+        // Update pagination if needed
+        this.updatePagination(response);
+    }
+
+    createModelCard(model) {
+        const card = document.createElement('div');
+        card.className = 'model-result-card';
+        card.onclick = () => this.showModelDetails(model.id);
+
+        const tagsHtml = model.tags?.slice(0, 3).map(tag => {
+            let className = 'model-tag';
+            if (tag === model.pipeline_tag) className += ' pipeline';
+            if (tag === model.library_name) className += ' library';
+            return `<span class="${className}">${tag}</span>`;
+        }).join('') || '';
+
+        card.innerHTML = `
+            <div class="model-result-header">
+                <div>
+                    <div class="model-title">${model.full_name}</div>
+                    <div class="model-author">by ${model.author}</div>
+                </div>
+                <div class="model-score">
+                    ${(model.search_score * 100).toFixed(0)}%
+                </div>
+            </div>
+            <div class="model-description">
+                ${model.description || 'No description available'}
+            </div>
+            <div class="model-tags">
+                ${tagsHtml}
+            </div>
+            <div class="model-stats">
+                <div class="model-stat">
+                    <i class="fas fa-download"></i>
+                    <span>${this.formatNumber(model.downloads)}</span>
+                </div>
+                <div class="model-stat">
+                    <i class="fas fa-heart"></i>
+                    <span>${this.formatNumber(model.likes)}</span>
+                </div>
+                <div class="model-stat">
+                    <i class="fas fa-clock"></i>
+                    <span>${this.formatDate(model.last_modified)}</span>
+                </div>
+            </div>
+        `;
+
+        return card;
+    }
+
+    formatNumber(num) {
+        if (!num) return '0';
+        if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+        return num.toString();
+    }
+
+    formatDate(dateStr) {
+        if (!dateStr) return 'Unknown';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString();
+    }
+
+    async showModelDetails(modelId) {
+        try {
+            const response = await this.sdk.call('get_huggingface_model_details', {
+                model_id: modelId
+            });
+
+            if (response.success && response.model) {
+                this.displayModelModal(response.model);
+            } else {
+                this.notifications.show('Could not load model details', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to load model details:', error);
+            this.notifications.show('Failed to load model details', 'error');
+        }
+    }
+
+    displayModelModal(model) {
+        // Create and show a modal with detailed model information
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">${model.full_name}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <h6>Description</h6>
+                            <p>${model.description || 'No description available'}</p>
+                        </div>
+                        <div class="mb-3">
+                            <h6>Statistics</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>Downloads:</strong> ${this.formatNumber(model.downloads)}
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Likes:</strong> ${this.formatNumber(model.likes)}
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Task:</strong> ${model.pipeline_tag}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <h6>Tags</h6>
+                            <div class="model-tags">
+                                ${model.tags?.map(tag => `<span class="model-tag">${tag}</span>`).join('') || 'No tags'}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn-modern btn-secondary-modern" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn-modern btn-primary-modern" onclick="window.open('https://huggingface.co/${model.full_name}', '_blank')">
+                            <i class="fas fa-external-link-alt"></i>
+                            View on HuggingFace
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        // Clean up modal when hidden
+        modal.addEventListener('hidden.bs.modal', () => {
+            document.body.removeChild(modal);
+        });
+    }
+
+    showAdvancedFilters() {
+        document.getElementById('advanced-filters').style.display = 'block';
+    }
+
+    hideAdvancedFilters() {
+        document.getElementById('advanced-filters').style.display = 'none';
+    }
+
+    applyFilters() {
+        this.searchModels();
+        this.hideAdvancedFilters();
+    }
+
+    clearFilters() {
+        document.getElementById('filter-task').value = '';
+        document.getElementById('filter-library').value = '';
+        document.getElementById('filter-language').value = '';
+        document.getElementById('filter-downloads').value = '';
+        this.hideAdvancedFilters();
+    }
+
+    sortResults() {
+        this.searchModels();
+    }
+
+    async loadPopularModels() {
+        this.showLoadingState();
+        
+        try {
+            const results = await this.sdk.call('search_huggingface_models', {
+                query: '',
+                search_type: 'hybrid',
+                sort_by: 'downloads',
+                limit: 20,
+                offset: 0
+            });
+
+            this.displaySearchResults(results);
+        } catch (error) {
+            console.error('Failed to load popular models:', error);
+            this.notifications.show('Failed to load popular models', 'error');
+        } finally {
+            this.hideLoadingState();
+        }
+    }
+
+    showLoadingState() {
+        const resultsContainer = document.getElementById('search-results');
+        resultsContainer.innerHTML = `
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div class="mt-3">Searching models...</div>
+            </div>
+        `;
+    }
+
+    hideLoadingState() {
+        // Loading state will be replaced by results
+    }
+
+    updatePagination(response) {
+        // Implement pagination logic if needed
+        const paginationContainer = document.getElementById('pagination-container');
+        if (response.total > response.limit) {
+            paginationContainer.style.display = 'block';
+            // Add pagination buttons logic here
+        } else {
+            paginationContainer.style.display = 'none';
+        }
+    }
+
+    async updateSearchStats() {
+        try {
+            const response = await this.sdk.call('get_model_search_stats');
+            if (response.success) {
+                this.displaySearchStats(response.stats);
+            }
+        } catch (error) {
+            console.warn('Could not load search stats:', error);
+        }
+    }
+
+    displaySearchStats(stats) {
+        const statsContainer = document.getElementById('search-stats-content');
+        const statsSection = document.getElementById('search-stats-section');
+        
+        if (!stats || stats.total_models === 0) {
+            statsSection.style.display = 'none';
+            return;
+        }
+
+        statsSection.style.display = 'block';
+        statsContainer.innerHTML = `
+            <div class="row">
+                <div class="col-md-4 text-center">
+                    <h4>${this.formatNumber(stats.total_models)}</h4>
+                    <p class="text-muted">Total Models</p>
+                </div>
+                <div class="col-md-4 text-center">
+                    <h4>${stats.has_vector_index ? 'Yes' : 'No'}</h4>
+                    <p class="text-muted">Vector Search</p>
+                </div>
+                <div class="col-md-4 text-center">
+                    <h4>${stats.has_bm25_index ? 'Yes' : 'No'}</h4>
+                    <p class="text-muted">Keyword Search</p>
+                </div>
+            </div>
+            ${stats.top_tasks ? `
+                <div class="mt-4">
+                    <h6>Popular Tasks</h6>
+                    <div class="model-tags">
+                        ${Object.entries(stats.top_tasks).slice(0, 10).map(([task, count]) => 
+                            `<span class="model-tag">${task} (${count})</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            ` : ''}
+        `;
+    }
+
+    // Setup search input with suggestions
+    setupModelSearch() {
+        const searchInput = document.getElementById('model-search-input');
+        const suggestionsContainer = document.getElementById('search-suggestions');
+
+        if (searchInput) {
+            let debounceTimer;
+            
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(async () => {
+                    const query = e.target.value.trim();
+                    if (query.length >= 2) {
+                        await this.showSearchSuggestions(query);
+                    } else {
+                        suggestionsContainer.style.display = 'none';
+                    }
+                }, 300);
+            });
+
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.searchModels();
+                }
+            });
+        }
+    }
+
+    async showSearchSuggestions(query) {
+        try {
+            const response = await this.sdk.call('get_model_search_suggestions', {
+                query: query,
+                limit: 8
+            });
+
+            if (response.success && response.suggestions.length > 0) {
+                const suggestionsContainer = document.getElementById('search-suggestions');
+                suggestionsContainer.innerHTML = response.suggestions.map(suggestion => 
+                    `<div class="suggestion-item" onclick="dashboard.selectSuggestion('${suggestion}')">${suggestion}</div>`
+                ).join('');
+                suggestionsContainer.style.display = 'block';
+            }
+        } catch (error) {
+            console.warn('Failed to get suggestions:', error);
+        }
+    }
+
+    selectSuggestion(suggestion) {
+        document.getElementById('model-search-input').value = suggestion;
+        document.getElementById('search-suggestions').style.display = 'none';
+        this.searchModels();
+    }
+}
 }
 
 // ============================================
