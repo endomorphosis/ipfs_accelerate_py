@@ -18,7 +18,8 @@ class ReorganizedDashboard {
     constructor() {
         // Initialize portable SDK with optimized configuration
         this.sdk = PortableMCP.createPreset('development', {
-            endpoint: 'http://localhost:8005/jsonrpc',
+            // Use a relative endpoint so it works regardless of host/port
+            endpoint: '/jsonrpc',
             enableLogging: true
         });
 
@@ -1003,11 +1004,6 @@ curl -X POST http://localhost:8003/jsonrpc \\
         });
     }
 
-        // Clean up modal when hidden
-        modal.addEventListener('hidden.bs.modal', () => {
-            document.body.removeChild(modal);
-        });
-    }
 
     showAdvancedFilters() {
         document.getElementById('advanced-filters').style.display = 'block';
@@ -1187,7 +1183,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     // ===== MODEL DOWNLOAD AND INFERENCE METHODS =====
 
     async checkModelStatus(modelId, statusElementId, downloadBtnId, inferenceBtnId) {
-        """Check if a model is downloaded and update UI accordingly."""
+        // Check if a model is downloaded and update UI accordingly.
         try {
             const response = await this.sdk.call('get_model_download_info', {
                 model_id: modelId
@@ -1243,7 +1239,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async downloadModel(modelId, downloadBtnId, progressId, statusElementId) {
-        """Download a HuggingFace model."""
+        // Download a HuggingFace model.
         try {
             this.notifications.show(`Starting download of ${modelId}...`, 'info');
             
@@ -1287,7 +1283,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async pollDownloadProgress(downloadId, modelId, statusElementId, downloadBtnId, inferenceBtnId) {
-        """Poll download progress and update UI."""
+        // Poll download progress and update UI.
         const pollInterval = setInterval(async () => {
             try {
                 const response = await this.sdk.call('get_download_status', {
@@ -1340,7 +1336,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async removeModel(modelId, downloadBtnId, statusElementId, inferenceBtnId) {
-        """Remove a downloaded model."""
+        // Remove a downloaded model.
         if (!confirm(`Are you sure you want to remove ${modelId}? This will delete all downloaded files.`)) {
             return;
         }
@@ -1368,7 +1364,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async testModelInference(modelId, taskType) {
-        """Test inference with a downloaded model."""
+        // Test inference with a downloaded model.
         try {
             // Show loading modal
             const modal = document.createElement('div');
@@ -1427,7 +1423,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async runInference(modelId) {
-        """Run inference with the model."""
+        // Run inference with the model.
         try {
             const inputText = document.getElementById('inference-input').value;
             const taskType = document.getElementById('inference-task').value;
@@ -1486,7 +1482,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async checkModalModelStatus(modelId, statusElementId, modelSafeId) {
-        """Check model status in the modal and update UI."""
+        // Check model status in the modal and update UI.
         try {
             const response = await this.sdk.call('get_model_download_info', {
                 model_id: modelId
@@ -1566,7 +1562,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async downloadModelFromModal(modelId, statusElementId, modelSafeId) {
-        """Download model from the modal interface."""
+        // Download model from the modal interface.
         try {
             const statusElement = document.getElementById(statusElementId);
             const downloadBtn = document.getElementById(`modal-download-btn-${modelSafeId}`);
@@ -1611,7 +1607,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async removeModelFromModal(modelId, statusElementId, modelSafeId) {
-        """Remove model from the modal interface."""
+        // Remove model from the modal interface.
         if (!confirm(`Are you sure you want to remove ${modelId}?`)) {
             return;
         }
@@ -1636,7 +1632,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async showDownloadedModels() {
-        """Show a modal with all downloaded models."""
+        // Show a modal with all downloaded models.
         try {
             const response = await this.sdk.call('list_downloaded_models', {
                 include_details: true
@@ -1737,7 +1733,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async removeDownloadedModel(modelId) {
-        """Remove a downloaded model from the management interface."""
+        // Remove a downloaded model from the management interface.
         if (!confirm(`Are you sure you want to remove ${modelId}? This will delete all downloaded files.`)) {
             return;
         }
@@ -1762,10 +1758,9 @@ curl -X POST http://localhost:8003/jsonrpc \\
     }
 
     async refreshDownloadedModels() {
-        """Refresh the downloaded models modal."""
+        // Refresh the downloaded models modal.
         this.showDownloadedModels();
     }
-}
 }
 
 // ============================================

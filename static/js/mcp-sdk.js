@@ -112,7 +112,14 @@ class MCPClient {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
-                return await response.json();
+                // Attempt to parse JSON robustly; log if empty/truncated
+                const text = await response.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    console.error('Failed to parse JSON response:', e, 'Raw:', text?.slice(0, 200));
+                    throw e;
+                }
                 
             } catch (error) {
                 lastError = error;

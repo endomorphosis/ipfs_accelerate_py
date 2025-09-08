@@ -202,7 +202,15 @@
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
-                    const result = await response.json();
+                    // Parse JSON more defensively to surface truncated responses
+                    const text = await response.text();
+                    let result;
+                    try {
+                        result = JSON.parse(text);
+                    } catch (e) {
+                        console.error('[PortableMCPSDK] Failed to parse JSON response:', e, 'Raw:', text?.slice(0, 200));
+                        throw e;
+                    }
                     
                     // Update metrics
                     const latency = Date.now() - startTime;
