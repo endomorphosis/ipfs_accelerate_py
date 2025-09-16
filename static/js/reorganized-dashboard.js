@@ -726,7 +726,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
             const filters = this.getCurrentFilters();
             const sortBy = document.getElementById('sort-by')?.value || 'relevance';
             
-            const results = await this.sdk.call('search_huggingface_models', {
+            const results = await this.sdk.request('search_huggingface_models', {
                 query: query,
                 search_type: searchType,
                 filters: filters,
