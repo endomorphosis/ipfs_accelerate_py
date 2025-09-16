@@ -910,6 +910,179 @@
             overflow-x: auto;
         }
 
+        /* Queue Monitor Styles */
+        .metric-card {
+            background: var(--bg-secondary);
+            padding: var(--space-4);
+            border-radius: var(--border-radius-lg);
+            text-align: center;
+            border: 1px solid var(--border-primary);
+            transition: all 0.2s ease;
+        }
+
+        .metric-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .metric-value {
+            font-size: var(--font-size-3xl);
+            font-weight: 700;
+            color: var(--primary-600);
+            line-height: 1;
+            margin-bottom: var(--space-2);
+        }
+
+        .metric-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .queue-filter-controls {
+            display: flex;
+            gap: var(--space-3);
+            align-items: center;
+        }
+
+        .queue-filter-controls select {
+            min-width: 120px;
+        }
+
+        .endpoint-queue-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--space-4);
+            margin-bottom: var(--space-4);
+            transition: all 0.2s ease;
+        }
+
+        .endpoint-queue-card:hover {
+            box-shadow: var(--shadow-md);
+            border-color: var(--primary-300);
+        }
+
+        .endpoint-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: var(--space-3);
+        }
+
+        .endpoint-name {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .endpoint-type {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            margin-left: var(--space-2);
+        }
+
+        .endpoint-status {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .status-badge {
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--border-radius);
+            font-size: var(--font-size-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.active {
+            background: var(--success-50);
+            color: var(--success-600);
+        }
+
+        .status-badge.idle {
+            background: var(--warning-50);
+            color: var(--warning-600);
+        }
+
+        .status-badge.offline {
+            background: var(--error-50);
+            color: var(--error-600);
+        }
+
+        .endpoint-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: var(--space-3);
+            margin-bottom: var(--space-3);
+        }
+
+        .endpoint-metric {
+            text-align: center;
+        }
+
+        .endpoint-metric-value {
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+            color: var(--primary-600);
+            line-height: 1;
+        }
+
+        .endpoint-metric-label {
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+            margin-top: var(--space-1);
+        }
+
+        .current-task {
+            background: var(--bg-tertiary);
+            border-radius: var(--border-radius);
+            padding: var(--space-3);
+            margin-top: var(--space-3);
+        }
+
+        .current-task-header {
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--space-2);
+        }
+
+        .current-task-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: var(--space-2);
+            font-size: var(--font-size-sm);
+        }
+
+        .current-task-info span {
+            color: var(--text-secondary);
+        }
+
+        .current-task-info strong {
+            color: var(--text-primary);
+        }
+
+        .model-types {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+            margin-top: var(--space-2);
+        }
+
+        .model-type-tag {
+            background: var(--primary-50);
+            color: var(--primary-600);
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--border-radius);
+            font-size: var(--font-size-xs);
+            font-weight: 500;
+        }
+
         /* Utility Classes */
         .text-xs { font-size: var(--font-size-xs); }
         .text-sm { font-size: var(--font-size-sm); }
@@ -988,6 +1161,12 @@
                         <button class="nav-link" id="analytics-tab" data-bs-toggle="tab" 
                                 data-bs-target="#analytics" type="button" role="tab">
                             <i class="fas fa-chart-line me-2"></i>Analytics
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="queue-monitor-tab" data-bs-toggle="tab" 
+                                data-bs-target="#queue-monitor" type="button" role="tab">
+                            <i class="fas fa-tasks me-2"></i>Queue Monitor
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -1330,6 +1509,118 @@
                                 <div class="chart-container">
                                     <h4 class="font-semibold mb-4">System Resources</h4>
                                     <canvas id="system-chart" width="800" height="300"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Queue Monitor Tab -->
+                    <div class="tab-pane fade" id="queue-monitor" role="tabpanel">
+                        <div class="row">
+                            <!-- Queue Overview -->
+                            <div class="col-md-12 mb-4">
+                                <div class="module-card">
+                                    <div class="module-header">
+                                        <div class="module-title">
+                                            <i class="fas fa-tasks module-icon"></i>
+                                            Global Queue Status
+                                        </div>
+                                        <button class="btn-modern btn-primary-modern btn-sm" onclick="dashboard.refreshQueueStatus()">
+                                            <i class="fas fa-sync-alt"></i>
+                                            Refresh
+                                        </button>
+                                    </div>
+                                    <div class="module-content">
+                                        <div class="row">
+                                            <div class="col-md-3">
+                                                <div class="metric-card">
+                                                    <div class="metric-value" id="total-queue-size">0</div>
+                                                    <div class="metric-label">Total Queue Size</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="metric-card">
+                                                    <div class="metric-value" id="processing-tasks">0</div>
+                                                    <div class="metric-label">Processing</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="metric-card">
+                                                    <div class="metric-value" id="completed-tasks">0</div>
+                                                    <div class="metric-label">Completed</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="metric-card">
+                                                    <div class="metric-value" id="failed-tasks">0</div>
+                                                    <div class="metric-label">Failed</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint Queues -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="module-card">
+                                    <div class="module-header">
+                                        <div class="module-title">
+                                            <i class="fas fa-server module-icon"></i>
+                                            Endpoint Queues
+                                        </div>
+                                        <div class="queue-filter-controls">
+                                            <select class="form-control-modern" id="endpoint-type-filter">
+                                                <option value="all">All Endpoints</option>
+                                                <option value="local_gpu">Local GPU</option>
+                                                <option value="libp2p_peer">libp2p Peers</option>
+                                                <option value="api_provider">API Providers</option>
+                                            </select>
+                                            <select class="form-control-modern" id="status-filter">
+                                                <option value="all">All Status</option>
+                                                <option value="active">Active</option>
+                                                <option value="idle">Idle</option>
+                                                <option value="offline">Offline</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="module-content">
+                                        <div id="endpoint-queues-container">
+                                            <!-- Endpoint queue cards will be dynamically loaded here -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Queue History Chart -->
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <div class="module-card">
+                                    <div class="module-header">
+                                        <div class="module-title">
+                                            <i class="fas fa-chart-area module-icon"></i>
+                                            Queue Size Trends
+                                        </div>
+                                    </div>
+                                    <div class="module-content">
+                                        <canvas id="queue-trend-chart" width="400" height="200"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="module-card">
+                                    <div class="module-header">
+                                        <div class="module-title">
+                                            <i class="fas fa-chart-pie module-icon"></i>
+                                            Model Type Distribution
+                                        </div>
+                                    </div>
+                                    <div class="module-content">
+                                        <canvas id="model-type-chart" width="400" height="200"></canvas>
+                                    </div>
                                 </div>
                             </div>
                         </div>

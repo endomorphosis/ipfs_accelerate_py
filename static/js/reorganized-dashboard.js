@@ -198,6 +198,28 @@ class ReorganizedDashboard {
         document.addEventListener('click', () => {
             this.performance.userInteractions++;
         });
+
+        // Queue monitor filter event listeners
+        setTimeout(() => {
+            const endpointTypeFilter = document.getElementById('endpoint-type-filter');
+            const statusFilter = document.getElementById('status-filter');
+            
+            if (endpointTypeFilter) {
+                endpointTypeFilter.addEventListener('change', () => {
+                    if (this.state.currentTab === 'queue-monitor') {
+                        this.refreshQueueStatus();
+                    }
+                });
+            }
+            
+            if (statusFilter) {
+                statusFilter.addEventListener('change', () => {
+                    if (this.state.currentTab === 'queue-monitor') {
+                        this.refreshQueueStatus();
+                    }
+                });
+            }
+        }, 100); // Small delay to ensure elements are loaded
     }
 
     setupKeyboardShortcuts() {
@@ -217,6 +239,10 @@ class ReorganizedDashboard {
                         this.switchTab('analytics');
                         break;
                     case '4':
+                        e.preventDefault();
+                        this.switchTab('queue-monitor');
+                        break;
+                    case '5':
                         e.preventDefault();
                         this.switchTab('system');
                         break;
@@ -344,6 +370,9 @@ class ReorganizedDashboard {
                 break;
             case 'analytics':
                 this.analytics.refresh();
+                break;
+            case 'queue-monitor':
+                this.refreshQueueStatus();
                 break;
             case 'system':
                 this.system.refresh();
@@ -632,7 +661,8 @@ curl -X POST http://localhost:8003/jsonrpc \\
                 <li><kbd>Ctrl/Cmd + 1</kbd> - Switch to Modules</li>
                 <li><kbd>Ctrl/Cmd + 2</kbd> - Switch to Playground</li>
                 <li><kbd>Ctrl/Cmd + 3</kbd> - Switch to Analytics</li>
-                <li><kbd>Ctrl/Cmd + 4</kbd> - Switch to System</li>
+                <li><kbd>Ctrl/Cmd + 4</kbd> - Switch to Queue Monitor</li>
+                <li><kbd>Ctrl/Cmd + 5</kbd> - Switch to System</li>
                 <li><kbd>Ctrl/Cmd + R</kbd> - Refresh Data</li>
                 <li><kbd>Ctrl/Cmd + D</kbd> - Toggle Theme</li>
             </ul>
@@ -640,6 +670,7 @@ curl -X POST http://localhost:8003/jsonrpc \\
             <ul>
                 <li>Real-time metrics and monitoring</li>
                 <li>Modular AI inference components</li>
+                <li>Queue monitoring with endpoint breakdown</li>
                 <li>Portable SDK code generation</li>
                 <li>Hardware detection and system monitoring</li>
                 <li>Advanced analytics and charting</li>
@@ -647,6 +678,256 @@ curl -X POST http://localhost:8003/jsonrpc \\
         `;
         
         this.notifications.show(helpContent, 'info', 10000);
+    }
+
+    // ============================================
+    // QUEUE MONITORING METHODS
+    // ============================================
+
+    async refreshQueueStatus() {
+        try {
+            console.log('🔄 Refreshing queue status...');
+            
+            const queueStatus = await this.sdk.request('get_queue_status');
+            const queueHistory = await this.sdk.request('get_queue_history');
+            
+            if (queueStatus.status === 'success') {
+                this.updateQueueOverview(queueStatus);
+                this.updateEndpointQueues(queueStatus.endpoint_queues);
+            }
+            
+            if (queueHistory.status === 'success') {
+                this.updateQueueCharts(queueHistory);
+            }
+            
+            this.notifications.show('🔄 Queue status refreshed', 'success');
+            
+        } catch (error) {
+            console.error('❌ Queue status refresh failed:', error);
+            this.notifications.show(`❌ Queue refresh failed: ${error.message}`, 'error');
+        }
+    }
+
+    updateQueueOverview(queueData) {
+        const global = queueData.global_queue;
+        
+        document.getElementById('total-queue-size').textContent = global.total_tasks || 0;
+        document.getElementById('processing-tasks').textContent = global.processing_tasks || 0;
+        document.getElementById('completed-tasks').textContent = global.completed_tasks || 0;
+        document.getElementById('failed-tasks').textContent = global.failed_tasks || 0;
+    }
+
+    updateEndpointQueues(endpointQueues) {
+        const container = document.getElementById('endpoint-queues-container');
+        if (!container) return;
+        
+        const typeFilter = document.getElementById('endpoint-type-filter')?.value || 'all';
+        const statusFilter = document.getElementById('status-filter')?.value || 'all';
+        
+        let html = '';
+        
+        Object.entries(endpointQueues).forEach(([endpointId, endpoint]) => {
+            // Apply filters
+            if (typeFilter !== 'all' && endpoint.endpoint_type !== typeFilter) return;
+            if (statusFilter !== 'all' && endpoint.status !== statusFilter) return;
+            
+            html += this.renderEndpointCard(endpointId, endpoint);
+        });
+        
+        container.innerHTML = html || '<div class="text-center text-secondary p-4">No endpoints match the current filters</div>';
+    }
+
+    renderEndpointCard(endpointId, endpoint) {
+        const statusClass = endpoint.status;
+        const currentTask = endpoint.current_task;
+        
+        let deviceInfo = '';
+        if (endpoint.endpoint_type === 'local_gpu') {
+            deviceInfo = `<span class="endpoint-type">Device: ${endpoint.device}</span>`;
+        } else if (endpoint.endpoint_type === 'libp2p_peer') {
+            deviceInfo = `<span class="endpoint-type">Peer: ${endpoint.peer_id?.substring(0, 12)}...</span>`;
+        } else if (endpoint.endpoint_type === 'api_provider') {
+            deviceInfo = `<span class="endpoint-type">Provider: ${endpoint.provider} (${endpoint.key_name})</span>`;
+        }
+        
+        let additionalMetrics = '';
+        if (endpoint.network_latency !== undefined) {
+            additionalMetrics += `
+                <div class="endpoint-metric">
+                    <div class="endpoint-metric-value">${endpoint.network_latency}ms</div>
+                    <div class="endpoint-metric-label">Network Latency</div>
+                </div>
+            `;
+        }
+        if (endpoint.rate_limit_remaining !== undefined) {
+            additionalMetrics += `
+                <div class="endpoint-metric">
+                    <div class="endpoint-metric-value">${endpoint.rate_limit_remaining}</div>
+                    <div class="endpoint-metric-label">Rate Limit</div>
+                </div>
+            `;
+        }
+        
+        let currentTaskHtml = '';
+        if (currentTask) {
+            currentTaskHtml = `
+                <div class="current-task">
+                    <div class="current-task-header">Current Task</div>
+                    <div class="current-task-info">
+                        <div><span>Task ID:</span> <strong>${currentTask.task_id}</strong></div>
+                        <div><span>Model:</span> <strong>${currentTask.model}</strong></div>
+                        <div><span>Type:</span> <strong>${currentTask.task_type}</strong></div>
+                        <div><span>ETA:</span> <strong>${currentTask.estimated_completion}</strong></div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        const modelTypeTags = endpoint.model_types.map(type => 
+            `<span class="model-type-tag">${type}</span>`
+        ).join('');
+        
+        return `
+            <div class="endpoint-queue-card">
+                <div class="endpoint-header">
+                    <div>
+                        <div class="endpoint-name">${endpointId}</div>
+                        ${deviceInfo}
+                    </div>
+                    <div class="endpoint-status">
+                        <span class="status-badge ${statusClass}">${endpoint.status}</span>
+                    </div>
+                </div>
+                
+                <div class="endpoint-metrics">
+                    <div class="endpoint-metric">
+                        <div class="endpoint-metric-value">${endpoint.queue_size}</div>
+                        <div class="endpoint-metric-label">Queue Size</div>
+                    </div>
+                    <div class="endpoint-metric">
+                        <div class="endpoint-metric-value">${endpoint.processing}</div>
+                        <div class="endpoint-metric-label">Processing</div>
+                    </div>
+                    <div class="endpoint-metric">
+                        <div class="endpoint-metric-value">${endpoint.avg_processing_time.toFixed(1)}s</div>
+                        <div class="endpoint-metric-label">Avg Time</div>
+                    </div>
+                    ${additionalMetrics}
+                </div>
+                
+                <div class="model-types">
+                    ${modelTypeTags}
+                </div>
+                
+                ${currentTaskHtml}
+            </div>
+        `;
+    }
+
+    updateQueueCharts(historyData) {
+        this.updateQueueTrendChart(historyData.time_series);
+        this.updateModelTypeChart(historyData.model_type_stats);
+    }
+
+    updateQueueTrendChart(timeSeries) {
+        const ctx = document.getElementById('queue-trend-chart');
+        if (!ctx) return;
+        
+        // Destroy existing chart if it exists
+        if (this.queueTrendChart) {
+            this.queueTrendChart.destroy();
+        }
+        
+        const labels = timeSeries.timestamps.map(ts => 
+            new Date(ts * 1000).toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })
+        );
+        
+        this.queueTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Queue Size',
+                        data: timeSeries.queue_sizes,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Processing',
+                        data: timeSeries.processing_tasks,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    }
+                }
+            }
+        });
+    }
+
+    updateModelTypeChart(modelTypeStats) {
+        const ctx = document.getElementById('model-type-chart');
+        if (!ctx) return;
+        
+        // Destroy existing chart if it exists
+        if (this.modelTypeChart) {
+            this.modelTypeChart.destroy();
+        }
+        
+        const labels = Object.keys(modelTypeStats);
+        const data = Object.values(modelTypeStats).map(stat => stat.total_requests);
+        const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
+        
+        this.modelTypeChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels.map(label => label.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())),
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
     }
 
     async updateSystemConfig() {
