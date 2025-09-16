@@ -23,22 +23,27 @@ except ImportError:
         # Fall back to mock implementation
         from mcp.mock_mcp import FastMCP
 
-# Try to import ipfs_kit_py
+import os
+
+# Try to import ipfs_kit_py (tolerate any import error) and allow disabling via env
 try:
-    import ipfs_kit_py
+    if os.environ.get("MCP_DISABLE_IPFS", "0") == "1":
+        raise ImportError("IPFS disabled by environment")
+
+    import ipfs_kit_py  # noqa: F401
     # Check if IPFSApi is available
     try:
-        from ipfs_kit_py import IPFSApi
+        from ipfs_kit_py import IPFSApi  # type: ignore
         ipfs_api_available = True
-    except ImportError:
-        logger.warning("IPFSApi not available in ipfs_kit_py")
+    except Exception:
+        logger.warning("IPFSApi not available in ipfs_kit_py; falling back to mock")
         ipfs_api_available = False
     
     ipfs_kit_available = True
-except ImportError:
+except Exception as e:
     ipfs_kit_available = False
     ipfs_api_available = False
-    logger.warning("ipfs_kit_py not available. Using mock implementations.")
+    logger.warning(f"ipfs_kit_py not available or failed to import ({e!s}). Using mock implementations.")
 
 # Import the mock IPFS client
 from mcp.tools.mock_ipfs import MockIPFSClient

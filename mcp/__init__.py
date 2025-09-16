@@ -35,14 +35,14 @@ except ImportError:
     logger.warning("FastMCP import failed, falling back to mock implementation")
     logger.warning("Using mock MCP implementation")
 
-# Check for ipfs_kit_py
+# Check for ipfs_kit_py (tolerate any import error)
 try:
-    import ipfs_kit_py
+    import ipfs_kit_py  # noqa: F401
     ipfs_kit_available = True
     logger.info("IPFS Kit available")
-except ImportError:
+except Exception as e:
     ipfs_kit_available = False
-    logger.warning("IPFS Kit not available, some functionality will be limited")
+    logger.warning(f"IPFS Kit not available or failed to import ({e!s}); some functionality will be limited")
 
 # Import key modules for easy access
 from mcp.types import IPFSAccelerateContext

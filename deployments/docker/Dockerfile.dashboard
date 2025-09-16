@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY requirements.txt ./requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install flask \
+ && if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+
+COPY . .
+
+EXPOSE 8080
+
+CMD ["python", "-c", "from utils.performance_dashboard import PerformanceDashboard; PerformanceDashboard(port=8080).start_dashboard()"]

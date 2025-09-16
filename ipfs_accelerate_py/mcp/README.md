@@ -31,6 +31,23 @@ python -m ipfs_accelerate_py.mcp.server --debug
 
 By default, the server will run at http://localhost:8000/mcp.
 
+### External Access
+
+To expose the MCP API beyond localhost, bind to all interfaces and optionally configure CORS for browser clients:
+
+```bash
+python -m ipfs_accelerate_py.mcp.server --host 0.0.0.0 --port 8000 --debug
+```
+
+For browser-based apps calling this API from a different origin, set allowed origins (comma-separated) via `MCP_CORS_ORIGINS`:
+
+```bash
+export MCP_CORS_ORIGINS="https://yourapp.example.com,https://another.example"
+python -m ipfs_accelerate_py.mcp.server --host 0.0.0.0 --port 8000
+```
+
+If using a cloud VM, also open the port in your firewall/security group.
+
 ### Using the Client
 
 Connect to the server using Python requests:

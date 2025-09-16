@@ -1,0 +1,36 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# System deps for building crypto libs (libp2p -> fastecdsa) and git for VCS installs
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    build-essential \
+    libgmp-dev \
+    git \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copy only dependency files first for better cache
+COPY mcp/requirements-mcp.txt ./mcp/requirements-mcp.txt
+COPY requirements.txt ./requirements.txt
+COPY pyproject.toml setup.py ./
+
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install -r mcp/requirements-mcp.txt fastapi uvicorn \
+ && if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+
+# Copy source
+COPY . .
+
+ENV MCP_CORS_ORIGINS="*" \
+    FULL_IPFS=1 \
+    IPFS_ACCEL_SKIP_CORE=0 \
+    MCP_DISABLE_IPFS=0
+
+EXPOSE 8000
+
+CMD ["python", "-m", "ipfs_accelerate_py.mcp.server", "--host", "0.0.0.0", "--port", "8000", "--debug"]

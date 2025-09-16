@@ -22,9 +22,15 @@ try:
 except ImportError:
     install_depends = None
 
-try:
-    from .ipfs_accelerate import ipfs_accelerate_py as original_ipfs_accelerate_py
-except ImportError:
+import os
+
+# Optionally skip importing the heavy core (avoids ipfs_kit_py import at import-time)
+if os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") != "1":
+    try:
+        from .ipfs_accelerate import ipfs_accelerate_py as original_ipfs_accelerate_py
+    except ImportError:
+        original_ipfs_accelerate_py = None
+else:
     original_ipfs_accelerate_py = None
 
 try:
@@ -42,27 +48,39 @@ try:
 except ImportError:
     config = None
 
-# Import WebNN/WebGPU integration
-try:
-    from .webnn_webgpu_integration import (
-        accelerate_with_browser,
-        WebNNWebGPUAccelerator,
-        get_accelerator
-    )
-    webnn_webgpu_available = True
-except ImportError:
+SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
+
+# Import WebNN/WebGPU integration (skip when core is disabled)
+if not SKIP_CORE:
+    try:
+        from .webnn_webgpu_integration import (
+            accelerate_with_browser,
+            WebNNWebGPUAccelerator,
+            get_accelerator
+        )
+        webnn_webgpu_available = True
+    except ImportError:
+        webnn_webgpu_available = False
+        
+        # Create stubs if not available
+        def accelerate_with_browser(*args, **kwargs):
+            raise NotImplementedError("WebNN/WebGPU integration is not available")
+        
+        def get_accelerator(*args, **kwargs):
+            raise NotImplementedError("WebNN/WebGPU integration is not available")
+        
+        class WebNNWebGPUAccelerator:
+            def __init__(self, *args, **kwargs):
+                raise NotImplementedError("WebNN/WebGPU integration is not available")
+else:
     webnn_webgpu_available = False
-    
-    # Create stubs if not available
     def accelerate_with_browser(*args, **kwargs):
-        raise NotImplementedError("WebNN/WebGPU integration is not available")
-    
+        raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
     def get_accelerator(*args, **kwargs):
-        raise NotImplementedError("WebNN/WebGPU integration is not available")
-    
+        raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
     class WebNNWebGPUAccelerator:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError("WebNN/WebGPU integration is not available")
+            raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
 
 # Import Model Manager
 try:

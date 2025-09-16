@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.api
+    environment:
+      - MCP_CORS_ORIGINS=${MCP_CORS_ORIGINS:-*}
+      - FULL_IPFS=${FULL_IPFS:-0}
+      - IPFS_ACCEL_SKIP_CORE=${IPFS_ACCEL_SKIP_CORE:-0}
+      - MCP_DISABLE_IPFS=${MCP_DISABLE_IPFS:-0}
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.dashboard
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  reverse-proxy:
+    image: caddy:2
+    depends_on:
+      - api
+      - dashboard
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_DOMAIN=${SITE_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

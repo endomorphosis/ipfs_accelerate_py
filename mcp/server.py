@@ -34,14 +34,14 @@ except ImportError:
 # Import the IPFS context
 from mcp.types import IPFSAccelerateContext
 
-# Try to import ipfs_kit_py
+# Try to import ipfs_kit_py (be tolerant to any import error)
 try:
     import ipfs_kit_py
     from ipfs_kit_py import IPFSApi
     ipfs_available = True
-except ImportError:
+except Exception as e:
     ipfs_available = False
-    logger.warning("ipfs_kit_py not available, some functionality will be limited")
+    logger.warning(f"ipfs_kit_py not available or failed to import ({e!s}); some functionality will be limited")
 
 
 def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:

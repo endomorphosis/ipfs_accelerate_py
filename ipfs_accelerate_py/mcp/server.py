@@ -362,6 +362,24 @@ class IPFSAccelerateMCPServer:
                 
                 self._using_fastmcp = False
             
+            # Enable CORS for external API consumers (configurable via MCP_CORS_ORIGINS)
+            try:
+                from fastapi.middleware.cors import CORSMiddleware
+
+                allowed = os.getenv("MCP_CORS_ORIGINS", "*")
+                allow_origins = [o.strip() for o in allowed.split(",") if o.strip()] or ["*"]
+
+                self.fastapi_app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=allow_origins,
+                    allow_credentials=True,
+                    allow_methods=["*"],
+                    allow_headers=["*"],
+                )
+                logger.info(f"CORS enabled for MCP API (origins: {allow_origins})")
+            except Exception as e:
+                logger.warning(f"CORS not enabled (missing dependency or error): {e}")
+
             # Register tools
             self._register_tools()
             
