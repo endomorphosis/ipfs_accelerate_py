@@ -23,6 +23,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+# Set up logging first
+logger = logging.getLogger(__name__)
+
 # Import our comprehensive MCP server
 from tools.comprehensive_mcp_server import ComprehensiveMCPServer
 
