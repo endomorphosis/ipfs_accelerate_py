@@ -142,70 +142,114 @@ class IPFSAccelerateCLI:
         logger.info("Starting MCP Server Dashboard...")
         
         try:
-            # Look for dashboard servers in the test directory
-            dashboard_paths = [
-                "/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/test/duckdb_api/distributed_testing/load_balancer/monitoring/dashboard_server.py",
-                "/home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py/test/duckdb_api/distributed_testing/dashboard_server.py"
-            ]
+            # Always use the simple dashboard since dependencies aren't available
+            logger.info("Using simple dashboard implementation")
+            self._create_simple_dashboard(args)
             
-            dashboard_path = None
-            for path in dashboard_paths:
-                if os.path.exists(path):
-                    dashboard_path = path
-                    break
-            
-            if dashboard_path:
-                # Start dashboard server
-                cmd = [
-                    sys.executable, dashboard_path,
-                    "--host", args.dashboard_host,
-                    "--port", str(args.dashboard_port),
-                    "--coordinator-url", f"http://{args.host}:{args.port}"
-                ]
-                
-                self.dashboard_process = subprocess.Popen(cmd)
-                logger.info(f"Dashboard started at http://{args.dashboard_host}:{args.dashboard_port}")
-                
-                # Open in browser if requested
-                if args.open_browser:
-                    time.sleep(2)  # Give server time to start
-                    webbrowser.open(f"http://{args.dashboard_host}:{args.dashboard_port}")
-            else:
-                logger.warning("Dashboard server not found, creating simple status page")
-                # Create a simple status endpoint
-                self._create_simple_dashboard(args)
-                
+            # Keep the dashboard running
+            if hasattr(args, 'keep_running') and args.keep_running:
+                try:
+                    while True:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    logger.info("Dashboard stopped by user")
+                    
         except Exception as e:
             logger.error(f"Error starting dashboard: {e}")
     
     def _create_simple_dashboard(self, args):
         """Create a simple dashboard status page"""
         try:
-            from http.server import HTTPServer, SimpleHTTPRequestHandler
+            from http.server import HTTPServer, BaseHTTPRequestHandler
             import threading
+            import json
             
-            class DashboardHandler(SimpleHTTPRequestHandler):
+            class DashboardHandler(BaseHTTPRequestHandler):
                 def do_GET(self):
                     if self.path == '/':
-                        self.send_response(200)
+                        self.send_response(200)  
                         self.send_header('Content-type', 'text/html')
                         self.end_headers()
                         
                         html = f"""
                         <!DOCTYPE html>
                         <html>
-                        <head><title>IPFS Accelerate MCP Dashboard</title></head>
+                        <head>
+                            <title>IPFS Accelerate MCP Dashboard</title>
+                            <style>
+                                body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                                .status {{ color: green; font-weight: bold; }}
+                                .section {{ margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
+                                .metric {{ margin: 10px 0; }}
+                                .refresh {{ margin: 20px 0; }}
+                            </style>
+                            <script>
+                                function refreshData() {{
+                                    fetch('/api/status')
+                                        .then(response => response.json())
+                                        .then(data => {{
+                                            document.getElementById('timestamp').textContent = new Date(data.timestamp * 1000).toLocaleString();
+                                            document.getElementById('uptime').textContent = Math.round(data.uptime) + 's';
+                                            document.getElementById('core_available').textContent = data.core_available ? 'Yes' : 'No';
+                                        }})
+                                        .catch(error => console.log('Error:', error));
+                                }}
+                                
+                                setInterval(refreshData, 5000);
+                                window.onload = refreshData;
+                            </script>
+                        </head>
                         <body>
-                        <h1>IPFS Accelerate MCP Server</h1>
-                        <p>Status: <span style="color: green;">Running</span></p>
-                        <p>Server: <a href="http://{args.host}:{args.port}">http://{args.host}:{args.port}</a></p>
-                        <p>Started: {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
+                        <h1>🚀 IPFS Accelerate MCP Server Dashboard</h1>
+                        
+                        <div class="section">
+                            <h2>Server Status</h2>
+                            <div class="metric">Status: <span class="status">Running</span></div>
+                            <div class="metric">Server: <a href="http://{args.host}:{args.port}">http://{args.host}:{args.port}</a></div>
+                            <div class="metric">Started: {time.strftime('%Y-%m-%d %H:%M:%S')}</div>
+                            <div class="metric">Last Updated: <span id="timestamp">Loading...</span></div>
+                        </div>
+                        
+                        <div class="section">
+                            <h2>System Information</h2>
+                            <div class="metric">Uptime: <span id="uptime">Loading...</span></div>
+                            <div class="metric">Core Available: <span id="core_available">Loading...</span></div>
+                        </div>
+                        
+                        <div class="section">
+                            <h2>Available Commands</h2>
+                            <div class="metric">• Text Generation: <code>ipfs-accelerate inference generate --prompt "Hello world"</code></div>
+                            <div class="metric">• List Models: <code>ipfs-accelerate models list</code></div>
+                            <div class="metric">• Network Status: <code>ipfs-accelerate network status</code></div>
+                            <div class="metric">• Add File: <code>ipfs-accelerate files add /path/to/file</code></div>
+                        </div>
+                        
+                        <div class="refresh">
+                            <button onclick="refreshData()">🔄 Refresh Data</button>
+                        </div>
                         </body>
                         </html>
                         """
                         self.wfile.write(html.encode())
+                        
+                    elif self.path == '/api/status':
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        # Get status from shared core
+                        status_data = shared_core.get_status()
+                        self.wfile.write(json.dumps(status_data).encode())
+                        
                     else:
-                        super().do_GET()
+                        self.send_response(404)
+                        self.end_headers()
+                        self.wfile.write(b'Not Found')
+                
+                def log_message(self, format, *args):
+                    # Suppress request logs
+                    pass
             
             server = HTTPServer((args.dashboard_host, args.dashboard_port), DashboardHandler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -377,6 +421,7 @@ def create_parser():
     dashboard_parser.add_argument("--dashboard-host", default="localhost", help="Dashboard host")
     dashboard_parser.add_argument("--dashboard-port", type=int, default=8001, help="Dashboard port")
     dashboard_parser.add_argument("--open-browser", action="store_true", help="Open dashboard in browser")
+    dashboard_parser.add_argument("--keep-running", action="store_true", help="Keep dashboard running (for testing)")
     
     # MCP status command
     status_parser = mcp_subparsers.add_parser("status", help="Check MCP server status")
