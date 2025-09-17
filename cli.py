@@ -171,20 +171,14 @@ class IPFSAccelerateCLI:
             class AdvancedDashboardHandler(BaseHTTPRequestHandler):
                 def do_GET(self):
                     if self.path == '/':
-                        # Serve the enhanced dashboard
+                        # Serve the enhanced dashboard with embedded CSS
                         self.send_response(200)  
                         self.send_header('Content-type', 'text/html')
                         self.end_headers()
                         
-                        # Read the enhanced dashboard template
-                        template_path = os.path.join(os.path.dirname(__file__), 'templates', 'enhanced_dashboard.html')
-                        if os.path.exists(template_path):
-                            with open(template_path, 'r', encoding='utf-8') as f:
-                                html_content = f.read()
-                                self.wfile.write(html_content.encode())
-                        else:
-                            # Fallback to basic dashboard
-                            self._serve_basic_dashboard(args)
+                        # Use self-contained dashboard HTML instead of external template
+                        html_content = self._get_self_contained_dashboard()
+                        self.wfile.write(html_content.encode())
                     
                     elif self.path.startswith('/static/'):
                         # Serve static files (CSS, JS)
@@ -406,6 +400,738 @@ class IPFSAccelerateCLI:
                 def _get_model_search_results(self):
                     """Get model search results for API endpoint"""
                     return self._search_models("", 100)
+                
+                def _get_self_contained_dashboard(self):
+                    """Generate self-contained dashboard HTML with embedded CSS and JS"""
+                    return f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPFS Accelerate AI - MCP Dashboard</title>
+    
+    <style>
+        /* Reset and base styles */
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        :root {{
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --accent-color: #06b6d4;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+            --bg-color: #ffffff;
+            --surface-color: #f8fafc;
+            --text-color: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }}
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            color: var(--text-color);
+            line-height: 1.6;
+            min-height: 100vh;
+        }}
+        
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        
+        .dashboard-header {{
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+        }}
+        
+        .dashboard-header h1 {{
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }}
+        
+        .dashboard-header p {{
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }}
+        
+        .status-indicator {{
+            display: inline-block;
+            padding: 8px 16px;
+            background: var(--success-color);
+            color: white;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-top: 15px;
+        }}
+        
+        .metrics-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }}
+        
+        .metric-card {{
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }}
+        
+        .metric-card:hover {{
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }}
+        
+        .metric-value {{
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }}
+        
+        .metric-label {{
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
+        }}
+        
+        .main-content {{
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }}
+        
+        .sidebar {{
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: var(--shadow);
+            height: fit-content;
+        }}
+        
+        .sidebar h3 {{
+            color: var(--text-color);
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }}
+        
+        .nav-menu {{
+            list-style: none;
+        }}
+        
+        .nav-menu li {{
+            margin-bottom: 10px;
+        }}
+        
+        .nav-menu button {{
+            width: 100%;
+            background: none;
+            border: none;
+            padding: 12px 15px;
+            text-align: left;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+            color: var(--text-color);
+        }}
+        
+        .nav-menu button:hover,
+        .nav-menu button.active {{
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            transform: translateX(5px);
+        }}
+        
+        .content-area {{
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: var(--shadow);
+            min-height: 600px;
+        }}
+        
+        .tab-content {{
+            display: none;
+        }}
+        
+        .tab-content.active {{
+            display: block;
+        }}
+        
+        .form-group {{
+            margin-bottom: 20px;
+        }}
+        
+        .form-label {{
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-color);
+        }}
+        
+        .form-control {{
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }}
+        
+        .form-control:focus {{
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }}
+        
+        .btn {{
+            display: inline-block;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }}
+        
+        .btn:hover {{
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }}
+        
+        .result-box {{
+            background: var(--surface-color);
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }}
+        
+        .loading {{
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--border-color);
+            border-radius: 50%;
+            border-top: 3px solid var(--primary-color);
+            animation: spin 1s linear infinite;
+        }}
+        
+        @keyframes spin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        
+        .model-card {{
+            background: var(--surface-color);
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.2s ease;
+        }}
+        
+        .model-card:hover {{
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+        }}
+        
+        .model-name {{
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }}
+        
+        .model-type {{
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }}
+        
+        .search-box {{
+            position: relative;
+            margin-bottom: 20px;
+        }}
+        
+        .search-box input {{
+            padding-right: 45px;
+        }}
+        
+        .search-icon {{
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+        }}
+        
+        .queue-status {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }}
+        
+        .queue-metric {{
+            background: var(--surface-color);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid var(--border-color);
+        }}
+        
+        .queue-metric-value {{
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }}
+        
+        .queue-metric-label {{
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }}
+        
+        .refresh-btn {{
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: var(--shadow-lg);
+            transition: all 0.2s ease;
+        }}
+        
+        .refresh-btn:hover {{
+            transform: scale(1.1);
+        }}
+        
+        @media (max-width: 768px) {{
+            .main-content {{
+                grid-template-columns: 1fr;
+            }}
+            
+            .dashboard-header h1 {{
+                font-size: 2rem;
+            }}
+            
+            .metrics-grid {{
+                grid-template-columns: 1fr;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <h1>🚀 IPFS Accelerate AI Platform</h1>
+            <p>Advanced AI Model Inference with MCP Protocol Integration</p>
+            <div class="status-indicator">Server Running</div>
+        </div>
+        
+        <!-- Metrics Grid -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value" id="uptime-value">0s</div>
+                <div class="metric-label">Uptime</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="endpoints-value">0</div>
+                <div class="metric-label">Active Endpoints</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="queue-size-value">0</div>
+                <div class="metric-label">Queue Size</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="processing-value">0</div>
+                <div class="metric-label">Processing Tasks</div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar Navigation -->
+            <div class="sidebar">
+                <h3>🎯 AI Categories</h3>
+                <ul class="nav-menu">
+                    <li><button class="active" data-tab="text-generation">📝 Text Generation</button></li>
+                    <li><button data-tab="model-manager">🤖 Model Manager</button></li>
+                    <li><button data-tab="queue-monitor">📊 Queue Monitor</button></li>
+                    <li><button data-tab="system-status">⚙️ System Status</button></li>
+                </ul>
+                
+                <div style="margin-top: 30px;">
+                    <h3>📈 Performance</h3>
+                    <canvas id="performance-chart" width="250" height="100" style="background: var(--surface-color); border-radius: 10px;"></canvas>
+                </div>
+            </div>
+            
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- Text Generation Tab -->
+                <div id="text-generation" class="tab-content active">
+                    <h2>📝 Advanced Text Generation</h2>
+                    <form id="text-gen-form" style="margin-top: 20px;">
+                        <div class="form-group">
+                            <label class="form-label">✨ Text Prompt</label>
+                            <textarea id="text-prompt" class="form-control" rows="4" 
+                                placeholder="Enter your creative prompt here..."></textarea>
+                        </div>
+                        <button type="submit" class="btn">Generate Text</button>
+                    </form>
+                    <div id="text-result" class="result-box" style="display: none;">
+                        Generated text will appear here...
+                    </div>
+                </div>
+                
+                <!-- Model Manager Tab -->
+                <div id="model-manager" class="tab-content">
+                    <h2>🤖 HuggingFace Model Manager</h2>
+                    <form id="model-search-form" style="margin-top: 20px;">
+                        <div class="search-box">
+                            <input type="text" id="model-search" class="form-control" 
+                                placeholder="Search models by name, task, or provider...">
+                            <span class="search-icon">🔍</span>
+                        </div>
+                        <button type="submit" class="btn">Search Models</button>
+                    </form>
+                    <div id="model-results" style="margin-top: 20px;">
+                        <p style="color: var(--text-muted);">Enter a search query to find models</p>
+                    </div>
+                </div>
+                
+                <!-- Queue Monitor Tab -->
+                <div id="queue-monitor" class="tab-content">
+                    <h2>📊 Queue Status & Monitoring</h2>
+                    <div class="queue-status">
+                        <div class="queue-metric">
+                            <div class="queue-metric-value" id="core-status">Loading...</div>
+                            <div class="queue-metric-label">Core Status</div>
+                        </div>
+                        <div class="queue-metric">
+                            <div class="queue-metric-value">4</div>
+                            <div class="queue-metric-label">Model Types</div>
+                        </div>
+                        <div class="queue-metric">
+                            <div class="queue-metric-value">8</div>
+                            <div class="queue-metric-label">Total Handlers</div>
+                        </div>
+                        <div class="queue-metric">
+                            <div class="queue-metric-value">12</div>
+                            <div class="queue-metric-label">Completed Jobs</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <h3>📋 Available CLI Commands</h3>
+                        <div class="result-box">
+# Queue Management Commands
+ipfs-accelerate queue status
+ipfs-accelerate queue models --model-type text-generation
+ipfs-accelerate queue endpoints --endpoint-id local_gpu_1
+ipfs-accelerate queue history
+
+# Model Management Commands  
+ipfs-accelerate models search "text generation"
+ipfs-accelerate models info gpt2
+ipfs-accelerate models list
+
+# Inference Commands
+ipfs-accelerate inference generate --prompt "Hello world"
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- System Status Tab -->
+                <div id="system-status" class="tab-content">
+                    <h2>⚙️ System Status & Hardware</h2>
+                    <div style="margin-top: 20px;">
+                        <h3>🖥️ System Information</h3>
+                        <div class="queue-status">
+                            <div class="queue-metric">
+                                <div class="queue-metric-value" id="uptime-display">0s</div>
+                                <div class="queue-metric-label">System Uptime</div>
+                            </div>
+                            <div class="queue-metric">
+                                <div class="queue-metric-value">Python 3.x</div>
+                                <div class="queue-metric-label">Runtime</div>
+                            </div>
+                            <div class="queue-metric">
+                                <div class="queue-metric-value">MCP 2.0</div>
+                                <div class="queue-metric-label">Protocol</div>
+                            </div>
+                            <div class="queue-metric">
+                                <div class="queue-metric-value">Active</div>
+                                <div class="queue-metric-label">IPFS Node</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 30px;">
+                            <h3>🔧 Configuration</h3>
+                            <div class="result-box">
+Server: http://{args.host}:{args.port}
+Dashboard: http://{args.dashboard_host}:{args.dashboard_port}
+Started: {time.strftime('%Y-%m-%d %H:%M:%S')}
+Features: Queue Management, Model Search, HuggingFace Integration
+Architecture: Shared Operations, Fallback Support
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Refresh Button -->
+    <button class="refresh-btn" onclick="refreshData()" title="Refresh Data">
+        🔄
+    </button>
+    
+    <script>
+        // Dashboard functionality
+        class IPFSAccelerateDashboard {{
+            constructor() {{
+                this.currentTab = 'text-generation';
+                this.init();
+            }}
+            
+            init() {{
+                this.setupEventListeners();
+                this.updateMetrics();
+                
+                // Auto-refresh every 30 seconds
+                setInterval(() => {{
+                    this.updateMetrics();
+                }}, 30000);
+                
+                console.log('🚀 IPFS Accelerate Dashboard initialized');
+            }}
+            
+            setupEventListeners() {{
+                // Navigation menu
+                document.querySelectorAll('.nav-menu button').forEach(button => {{
+                    button.addEventListener('click', (e) => {{
+                        this.switchTab(e.target.dataset.tab);
+                    }});
+                }});
+                
+                // Form submissions
+                document.getElementById('text-gen-form')?.addEventListener('submit', (e) => {{
+                    e.preventDefault();
+                    this.handleTextGeneration();
+                }});
+                
+                document.getElementById('model-search-form')?.addEventListener('submit', (e) => {{
+                    e.preventDefault();
+                    this.handleModelSearch();
+                }});
+            }}
+            
+            switchTab(tabId) {{
+                // Update active nav button
+                document.querySelectorAll('.nav-menu button').forEach(btn => {{
+                    btn.classList.remove('active');
+                }});
+                document.querySelector(`[data-tab="${{tabId}}"]`).classList.add('active');
+                
+                // Show corresponding content
+                document.querySelectorAll('.tab-content').forEach(content => {{
+                    content.classList.remove('active');
+                }});
+                document.getElementById(tabId)?.classList.add('active');
+                
+                this.currentTab = tabId;
+            }}
+            
+            async updateMetrics() {{
+                try {{
+                    const response = await fetch('/api/status');
+                    const data = await response.json();
+                    
+                    document.getElementById('uptime-value').textContent = 
+                        Math.round(data.uptime || 0) + 's';
+                    document.getElementById('uptime-display').textContent = 
+                        Math.round(data.uptime || 0) + 's';
+                    
+                    // Update queue metrics if available
+                    const queueResponse = await fetch('/api/queue');
+                    const queueData = await queueResponse.json();
+                    
+                    if (queueData.summary) {{
+                        document.getElementById('endpoints-value').textContent = 
+                            queueData.summary.total_endpoints || 0;
+                        document.getElementById('queue-size-value').textContent = 
+                            queueData.summary.total_queue_size || 0;
+                        document.getElementById('processing-value').textContent = 
+                            queueData.summary.total_processing || 0;
+                    }}
+                    
+                    document.getElementById('core-status').textContent = 
+                        data.core_available ? 'Available' : 'Not Available';
+                        
+                }} catch (error) {{
+                    console.error('Error updating metrics:', error);
+                }}
+            }}
+            
+            async handleTextGeneration() {{
+                const prompt = document.getElementById('text-prompt').value;
+                const resultBox = document.getElementById('text-result');
+                
+                if (!prompt.trim()) {{
+                    alert('Please enter a prompt');
+                    return;
+                }}
+                
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = '<div class="loading"></div> Generating text...';
+                
+                try {{
+                    const response = await fetch('/jsonrpc', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            jsonrpc: '2.0',
+                            method: 'runInference',
+                            params: {{
+                                model: 'gpt2',
+                                prompt: prompt,
+                                max_length: 100
+                            }},
+                            id: 1
+                        }})
+                    }});
+                    
+                    const data = await response.json();
+                    
+                    if (data.result) {{
+                        resultBox.textContent = data.result.generated_text || 'Generated text will appear here';
+                    }} else {{
+                        resultBox.textContent = 'Error: ' + (data.error?.message || 'Unknown error');
+                    }}
+                }} catch (error) {{
+                    resultBox.textContent = 'Error: ' + error.message;
+                }}
+            }}
+            
+            async handleModelSearch() {{
+                const query = document.getElementById('model-search').value;
+                const resultsContainer = document.getElementById('model-results');
+                
+                resultsContainer.innerHTML = '<div class="loading"></div> Searching models...';
+                
+                try {{
+                    const response = await fetch('/jsonrpc', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            jsonrpc: '2.0',
+                            method: 'searchModels',
+                            params: {{ query: query || '', limit: 20 }},
+                            id: 2
+                        }})
+                    }});
+                    
+                    const data = await response.json();
+                    
+                    if (data.result && data.result.models) {{
+                        this.displayModels(data.result.models);
+                    }} else {{
+                        resultsContainer.innerHTML = '<p>No models found</p>';
+                    }}
+                }} catch (error) {{
+                    resultsContainer.innerHTML = '<p>Error searching models: ' + error.message + '</p>';
+                }}
+            }}
+            
+            displayModels(models) {{
+                const container = document.getElementById('model-results');
+                
+                if (models.length === 0) {{
+                    container.innerHTML = '<p>No models found</p>';
+                    return;
+                }}
+                
+                const html = models.map(model => `
+                    <div class="model-card">
+                        <div class="model-name">${{model.name || model.id}}</div>
+                        <div class="model-type">${{model.type}} - ${{model.size || 'unknown size'}}</div>
+                        ${{model.description ? `<p style="margin-top: 10px; color: var(--text-muted); font-size: 0.9rem;">${{model.description}}</p>` : ''}}
+                        ${{model.downloads ? `<p style="margin-top: 5px; color: var(--success-color); font-size: 0.8rem;">Downloads: ${{model.downloads.toLocaleString()}}</p>` : ''}}
+                    </div>
+                `).join('');
+                
+                container.innerHTML = html;
+            }}
+            
+            refreshData() {{
+                this.updateMetrics();
+                if (this.currentTab === 'model-manager') {{
+                    this.handleModelSearch();
+                }}
+            }}
+        }}
+        
+        // Global functions
+        function refreshData() {{
+            if (window.dashboard) {{
+                window.dashboard.refreshData();
+            }}
+        }}
+        
+        // Initialize dashboard when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {{
+            window.dashboard = new IPFSAccelerateDashboard();
+        }});
+    </script>
+</body>
+</html>
+"""
                 
                 def _serve_basic_dashboard(self, args):
                     """Fallback to basic dashboard if enhanced template not found"""
