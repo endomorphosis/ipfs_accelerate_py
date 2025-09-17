@@ -25,13 +25,20 @@ except ImportError:
         # Fall back to mock implementation
         from mcp.mock_mcp import FastMCP, Context
 
-# Import from the types module
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from mcp.types import IPFSAccelerateContext
+# Import shared operations
+try:
+    from ...shared import SharedCore, FileOperations
+    shared_core = SharedCore()
+    file_ops = FileOperations(shared_core)
+    HAVE_SHARED = True
+except ImportError as e:
+    logger.warning(f"Shared operations not available: {e}")
+    HAVE_SHARED = False
+    shared_core = None
+    file_ops = None
 
-# Import the get_ipfs_client function from tools module
-from mcp.tools import get_ipfs_client
+# Import the get_ipfs_client function from tools module for fallback
+from . import get_ipfs_client
 
 
 async def get_ipfs_client_async(ctx: Context) -> Any:
@@ -56,6 +63,44 @@ def register_files_tools(mcp: FastMCP) -> None:
     Args:
         mcp: The FastMCP server instance to register tools with
     """
+    
+    @mcp.tool()
+    async def add_file_shared(path: str, ctx: Context, pin: bool = True) -> Dict[str, Any]:
+        """Add a file to IPFS using shared operations.
+        
+        Args:
+            path: Path to the file to add
+            ctx: MCP context
+            pin: Whether to pin the file
+            
+        Returns:
+            Dictionary with result information
+        """
+        await ctx.info(f"Adding file using shared operations: {path}")
+        
+        try:
+            # Use shared operations if available
+            if HAVE_SHARED and file_ops:
+                result = file_ops.add_file(path, pin=pin)
+                await ctx.info(f"File added via shared operations: {result.get('cid', 'no CID')}")
+                return result
+            else:
+                await ctx.error("Shared operations not available")
+                return {
+                    "error": "Shared operations not available",
+                    "path": path,
+                    "success": False,
+                    "fallback_needed": True
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in add_file_shared: {str(e)}")
+            await ctx.error(f"Failed to add file: {str(e)}")
+            return {
+                "error": str(e),
+                "path": path,
+                "success": False
+            }
     
     @mcp.tool()
     async def ipfs_add_file(path: str, ctx: Context, wrap_with_directory: bool = False) -> Dict[str, Any]:

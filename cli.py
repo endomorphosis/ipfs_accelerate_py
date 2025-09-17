@@ -393,6 +393,7 @@ def create_parser():
     generate_parser.add_argument("--prompt", required=True, help="Input prompt")
     generate_parser.add_argument("--max-length", type=int, default=100, help="Maximum length")
     generate_parser.add_argument("--temperature", type=float, default=0.7, help="Temperature")
+    generate_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
     
     # Files commands
     files_parser = subparsers.add_parser("files", help="IPFS file operations")
@@ -401,6 +402,7 @@ def create_parser():
     # Files add command
     add_parser = files_subparsers.add_parser("add", help="Add file to IPFS")
     add_parser.add_argument("file_path", help="Path to file to add")
+    add_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
     
     # Models commands
     models_parser = subparsers.add_parser("models", help="Model management")
@@ -408,6 +410,7 @@ def create_parser():
     
     # Models list command
     list_parser = models_subparsers.add_parser("list", help="List available models")
+    list_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
     
     # Network commands
     network_parser = subparsers.add_parser("network", help="Network operations")
@@ -415,6 +418,7 @@ def create_parser():
     
     # Network status command
     net_status_parser = network_subparsers.add_parser("status", help="Check network status")
+    net_status_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
     
     return parser
 
