@@ -233,6 +233,11 @@ class HuggingFaceHubScanner:
                 processed_count += len(batch)
                 self.scan_stats['models_processed'] = processed_count
                 
+                # Call progress callback if provided
+                if hasattr(self, 'progress_callback') and self.progress_callback:
+                    current_model = batch[-1].get('id', 'unknown') if batch else 'unknown'
+                    self.progress_callback(processed_count, len(models_list), current_model)
+                
                 # Save progress periodically
                 if processed_count % save_progress_every == 0:
                     self._save_scan_progress()
@@ -250,6 +255,79 @@ class HuggingFaceHubScanner:
             self._generate_scan_report()
         
         return self.scan_stats
+    
+    def scan_hub(self, 
+                 limit: Optional[int] = None,
+                 task_filter: Optional[str] = None,
+                 save_progress: bool = True,
+                 progress_callback: Optional[callable] = None) -> Dict[str, Any]:
+        """
+        Comprehensive hub scan that integrates with model manager and provides progress callbacks.
+        This is the main entry point used by scraper scripts.
+        
+        Args:
+            limit: Maximum number of models to scan (None for all)
+            task_filter: Filter by task type (e.g., 'text-generation')  
+            save_progress: Whether to save progress periodically
+            progress_callback: Callback function(processed, total, current_model)
+            
+        Returns:
+            Dictionary with comprehensive scan results and statistics
+        """
+        logger.info(f"Starting comprehensive HuggingFace Hub scan (limit: {limit})")
+        
+        # Set up progress tracking
+        self.progress_callback = progress_callback
+        save_every = 50 if save_progress else 0
+        
+        # Run the core scanning
+        core_results = self.scan_all_models(
+            limit=limit,
+            task_filter=task_filter,
+            save_progress_every=save_every
+        )
+        
+        # Generate comprehensive results including model manager statistics
+        comprehensive_results = {
+            'total_processed': core_results.get('models_processed', 0),
+            'total_cached': len(self.model_cache) if hasattr(self, 'model_cache') else 0,
+            'task_distribution': self._get_task_distribution(),
+            'architecture_distribution': self._get_architecture_distribution(),
+            'scan_duration': (core_results.get('end_time', datetime.now()) - 
+                            core_results.get('start_time', datetime.now())).total_seconds(),
+            'model_manager_count': len(self.model_manager.list_models()) if self.model_manager else 0,
+            'errors': core_results.get('errors', 0),
+            'raw_stats': core_results
+        }
+        
+        return comprehensive_results
+    
+    def _get_task_distribution(self) -> Dict[str, int]:
+        """Get distribution of models by task type from model manager."""
+        if not self.model_manager:
+            return {}
+        
+        task_counts = {}
+        for model in self.model_manager.list_models():
+            # Extract task from metadata
+            metadata = model.metadata or {}
+            hf_info = metadata.get('huggingface_info', {})
+            task = hf_info.get('pipeline_tag', 'unknown')
+            task_counts[task] = task_counts.get(task, 0) + 1
+        
+        return task_counts
+    
+    def _get_architecture_distribution(self) -> Dict[str, int]:
+        """Get distribution of models by architecture from model manager."""
+        if not self.model_manager:
+            return {}
+        
+        arch_counts = {}
+        for model in self.model_manager.list_models():
+            arch = model.architecture or 'unknown'
+            arch_counts[arch] = arch_counts.get(arch, 0) + 1
+        
+        return arch_counts
     
     def _get_all_models_list(self, 
                             limit: Optional[int] = None,
@@ -545,10 +623,9 @@ class HuggingFaceHubScanner:
             # Register with bandit recommender
             context = RecommendationContext(
                 task_type=detailed_info.pipeline_tag or "unknown",
-                input_type="text",  # Default assumption
-                output_type="text",
-                hardware_constraint="cpu",
-                performance_preference="balanced"
+                input_type=DataType.TEXT,  # Default assumption
+                output_type=DataType.TEXT,
+                hardware="cpu"
             )
             
             # Add model as a bandit arm with initial performance estimates
@@ -572,12 +649,26 @@ class HuggingFaceHubScanner:
         outputs = [IOSpec(name="output", data_type=DataType.TEXT, description="Model output")]
         
         # Create extended metadata with performance and compatibility info
-        extended_metadata = {
-            'huggingface_info': asdict(detailed_info),
-            'performance_data': asdict(performance_data),
-            'hardware_compatibility': asdict(compatibility_data),
+        performance_metrics = {
+            'inference_time_ms': performance_data.inference_time_ms,
+            'throughput_tokens_per_sec': performance_data.throughput_tokens_per_sec,
+            'memory_usage_mb': performance_data.memory_usage_mb,
+            'gpu_memory_mb': performance_data.gpu_memory_mb,
+            'benchmark_scores': performance_data.benchmark_scores,
             'scan_timestamp': datetime.now().isoformat()
         }
+        
+        hardware_requirements = performance_data.hardware_requirements or {}
+        hardware_requirements.update({
+            'cpu_compatible': compatibility_data.cpu_compatible,
+            'gpu_compatible': compatibility_data.gpu_compatible,
+            'min_ram_gb': compatibility_data.min_ram_gb,
+            'min_vram_gb': compatibility_data.min_vram_gb,
+            'supported_accelerators': compatibility_data.supported_accelerators
+        })
+        
+        tags = detailed_info.tags or []
+        tags.extend([f"downloads:{detailed_info.downloads}", f"likes:{detailed_info.likes}"])
         
         return ModelMetadata(
             model_id=detailed_info.model_id,
@@ -588,40 +679,48 @@ class HuggingFaceHubScanner:
             outputs=outputs,
             huggingface_config=detailed_info.config or {},
             source_url=f"https://huggingface.co/{detailed_info.model_id}",
-            metadata=extended_metadata
+            performance_metrics=performance_metrics,
+            hardware_requirements=hardware_requirements,
+            tags=tags
         )
     
     def _map_pipeline_tag_to_model_type(self, pipeline_tag: Optional[str]) -> ModelType:
         """Map HuggingFace pipeline tag to ModelType enum."""
         if not pipeline_tag:
-            return ModelType.UNKNOWN
+            return ModelType.LANGUAGE_MODEL
         
         tag_lower = pipeline_tag.lower()
         
         if 'text-generation' in tag_lower or 'text2text-generation' in tag_lower:
-            return ModelType.TEXT_GENERATION
+            return ModelType.DECODER_ONLY
         elif 'text-classification' in tag_lower or 'sentiment-analysis' in tag_lower:
-            return ModelType.TEXT_CLASSIFICATION
+            return ModelType.ENCODER_ONLY
         elif 'question-answering' in tag_lower:
-            return ModelType.QUESTION_ANSWERING
+            return ModelType.ENCODER_ONLY
         elif 'summarization' in tag_lower:
-            return ModelType.TEXT_SUMMARIZATION
+            return ModelType.ENCODER_DECODER
         elif 'translation' in tag_lower:
-            return ModelType.TEXT_TRANSLATION
+            return ModelType.ENCODER_DECODER
+        elif 'fill-mask' in tag_lower:
+            return ModelType.ENCODER_ONLY
         elif 'image-classification' in tag_lower:
-            return ModelType.IMAGE_CLASSIFICATION
+            return ModelType.VISION_MODEL
         elif 'object-detection' in tag_lower:
-            return ModelType.OBJECT_DETECTION
+            return ModelType.VISION_MODEL
         elif 'image-to-text' in tag_lower:
-            return ModelType.IMAGE_CAPTIONING
+            return ModelType.MULTIMODAL
         elif 'text-to-image' in tag_lower:
-            return ModelType.TEXT_TO_IMAGE
+            return ModelType.MULTIMODAL
         elif 'automatic-speech-recognition' in tag_lower:
-            return ModelType.SPEECH_RECOGNITION
+            return ModelType.AUDIO_MODEL
         elif 'text-to-speech' in tag_lower:
-            return ModelType.TEXT_TO_SPEECH
+            return ModelType.AUDIO_MODEL
+        elif 'sentence-similarity' in tag_lower or 'feature-extraction' in tag_lower:
+            return ModelType.EMBEDDING_MODEL
+        elif 'zero-shot' in tag_lower:
+            return ModelType.MULTIMODAL
         else:
-            return ModelType.UNKNOWN
+            return ModelType.LANGUAGE_MODEL
     
     def _calculate_initial_reward(self, 
                                  detailed_info: HuggingFaceModelInfo,
