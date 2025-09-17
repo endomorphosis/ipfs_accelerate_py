@@ -140,13 +140,13 @@ class IPFSAccelerateCLI:
             return 1
     
     def run_mcp_dashboard(self, args):
-        """Start MCP server dashboard"""
-        logger.info("Starting MCP Server Dashboard...")
+        """Start MCP server dashboard with advanced features"""
+        logger.info("Starting Advanced MCP Server Dashboard with HuggingFace Model Manager...")
         
         try:
-            # Always use the simple dashboard since dependencies aren't available
-            logger.info("Using simple dashboard implementation")
-            self._create_simple_dashboard(args)
+            # Use the advanced dashboard with model manager
+            logger.info("Using advanced dashboard with HuggingFace model manager and test fixtures")
+            self._create_advanced_dashboard(args)
             
             # Keep the dashboard running
             if hasattr(args, 'keep_running') and args.keep_running:
@@ -158,9 +158,301 @@ class IPFSAccelerateCLI:
                     
         except Exception as e:
             logger.error(f"Error starting dashboard: {e}")
+            logger.info("Falling back to simple dashboard")
+            self._create_simple_dashboard(args)
+    
+    def _create_advanced_dashboard(self, args):
+        """Create the advanced enterprise dashboard with HuggingFace model manager"""
+        try:
+            from http.server import HTTPServer, BaseHTTPRequestHandler
+            import threading
+            import json
+            
+            class AdvancedDashboardHandler(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    if self.path == '/':
+                        # Serve the enhanced dashboard
+                        self.send_response(200)  
+                        self.send_header('Content-type', 'text/html')
+                        self.end_headers()
+                        
+                        # Read the enhanced dashboard template
+                        template_path = os.path.join(os.path.dirname(__file__), 'templates', 'enhanced_dashboard.html')
+                        if os.path.exists(template_path):
+                            with open(template_path, 'r', encoding='utf-8') as f:
+                                html_content = f.read()
+                                self.wfile.write(html_content.encode())
+                        else:
+                            # Fallback to basic dashboard
+                            self._serve_basic_dashboard(args)
+                    
+                    elif self.path.startswith('/static/'):
+                        # Serve static files (CSS, JS)
+                        file_path = self.path[1:]  # Remove leading /
+                        full_path = os.path.join(os.path.dirname(__file__), file_path)
+                        
+                        if os.path.exists(full_path):
+                            self.send_response(200)
+                            
+                            # Set content type based on file extension
+                            if file_path.endswith('.js'):
+                                self.send_header('Content-type', 'application/javascript')
+                            elif file_path.endswith('.css'):
+                                self.send_header('Content-type', 'text/css')
+                            else:
+                                self.send_header('Content-type', 'text/plain')
+                            
+                            self.end_headers()
+                            
+                            with open(full_path, 'rb') as f:
+                                self.wfile.write(f.read())
+                        else:
+                            self.send_response(404)
+                            self.end_headers()
+                            
+                    elif self.path == '/api/status':
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        # Get comprehensive status including hardware info
+                        status_data = shared_core.get_status()
+                        
+                        # Add hardware detection if available
+                        try:
+                            from .hardware_detection import HardwareDetector
+                            hw_detector = HardwareDetector()
+                            hardware_info = hw_detector.detect_all()
+                            status_data['hardware'] = hardware_info
+                        except Exception:
+                            status_data['hardware'] = {"error": "Hardware detection not available"}
+                        
+                        self.wfile.write(json.dumps(status_data).encode())
+                    
+                    elif self.path == '/api/queue':
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        # Get queue status from shared operations
+                        if queue_ops:
+                            queue_data = queue_ops.get_queue_status()
+                        else:
+                            queue_data = {"error": "Queue operations not available"}
+                        
+                        self.wfile.write(json.dumps(queue_data).encode())
+                    
+                    elif self.path == '/api/models/search':
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        # Get model search results
+                        models_data = self._get_model_search_results()
+                        self.wfile.write(json.dumps(models_data).encode())
+                    
+                    elif self.path == '/jsonrpc':
+                        # Handle JSON-RPC requests for advanced features
+                        self._handle_jsonrpc_request()
+                    
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+                        self.wfile.write(b'Not Found')
+                
+                def do_POST(self):
+                    if self.path == '/jsonrpc':
+                        self._handle_jsonrpc_request()
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+                
+                def _handle_jsonrpc_request(self):
+                    """Handle JSON-RPC requests for MCP compatibility"""
+                    try:
+                        content_length = int(self.headers.get('Content-Length', 0))
+                        if content_length > 0:
+                            request_data = self.rfile.read(content_length).decode('utf-8')
+                            request_json = json.loads(request_data)
+                        else:
+                            request_json = {}
+                        
+                        # Process JSON-RPC request
+                        response = self._process_jsonrpc(request_json)
+                        
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        self.wfile.write(json.dumps(response).encode())
+                        
+                    except Exception as e:
+                        logger.error(f"JSON-RPC error: {e}")
+                        error_response = {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32603, "message": str(e)},
+                            "id": None
+                        }
+                        
+                        self.send_response(500)
+                        self.send_header('Content-type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        self.wfile.write(json.dumps(error_response).encode())
+                
+                def _process_jsonrpc(self, request):
+                    """Process JSON-RPC requests using shared operations"""
+                    method = request.get('method', '')
+                    params = request.get('params', {})
+                    request_id = request.get('id')
+                    
+                    try:
+                        if method == 'searchModels':
+                            query = params.get('query', '')
+                            limit = params.get('limit', 50)
+                            result = self._search_models(query, limit)
+                        
+                        elif method == 'getQueueStatus':
+                            result = queue_ops.get_queue_status() if queue_ops else {"error": "Queue ops not available"}
+                        
+                        elif method == 'getModelDetails':
+                            model_id = params.get('model_id', '')
+                            result = self._get_model_details(model_id)
+                        
+                        elif method == 'runInference':
+                            result = self._run_inference(params)
+                        
+                        else:
+                            raise Exception(f"Unknown method: {method}")
+                        
+                        return {
+                            "jsonrpc": "2.0",
+                            "result": result,
+                            "id": request_id
+                        }
+                        
+                    except Exception as e:
+                        return {
+                            "jsonrpc": "2.0", 
+                            "error": {"code": -32603, "message": str(e)},
+                            "id": request_id
+                        }
+                
+                def _search_models(self, query, limit):
+                    """Search models using HuggingFace model manager if available"""
+                    try:
+                        # Try to use the HuggingFace model search
+                        from .tools.huggingface_model_search import HuggingFaceModelSearch
+                        
+                        searcher = HuggingFaceModelSearch()
+                        results = searcher.search(query, limit=limit)
+                        
+                        return {
+                            "models": results,
+                            "total": len(results),
+                            "query": query,
+                            "source": "huggingface"
+                        }
+                        
+                    except Exception as e:
+                        logger.warning(f"HuggingFace search not available: {e}")
+                        
+                        # Fallback to basic model list
+                        if model_ops:
+                            model_result = model_ops.list_models()
+                            models = model_result.get('models', [])
+                            
+                            # Simple text search
+                            if query:
+                                filtered = []
+                                query_lower = query.lower()
+                                for model in models:
+                                    model_text = json.dumps(model).lower()
+                                    if query_lower in model_text:
+                                        filtered.append(model)
+                                models = filtered[:limit]
+                            
+                            return {
+                                "models": models,
+                                "total": len(models),
+                                "query": query,
+                                "source": "fallback"
+                            }
+                        
+                        return {"models": [], "total": 0, "query": query, "source": "none"}
+                
+                def _get_model_details(self, model_id):
+                    """Get detailed model information"""
+                    if model_ops:
+                        return model_ops.get_model_info(model_id)
+                    return {"error": "Model operations not available"}
+                
+                def _run_inference(self, params):
+                    """Run inference using shared operations"""
+                    if inference_ops:
+                        return inference_ops.run_text_generation(
+                            model=params.get('model', 'gpt2'),
+                            prompt=params.get('prompt', ''),
+                            max_length=params.get('max_length', 100),
+                            temperature=params.get('temperature', 0.7)
+                        )
+                    return {"error": "Inference operations not available"}
+                
+                def _get_model_search_results(self):
+                    """Get model search results for API endpoint"""
+                    return self._search_models("", 100)
+                
+                def _serve_basic_dashboard(self, args):
+                    """Fallback to basic dashboard if enhanced template not found"""
+                    html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>IPFS Accelerate MCP Dashboard</title>
+                        <style>
+                            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                            .status {{ color: green; font-weight: bold; }}
+                            .section {{ margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
+                        </style>
+                    </head>
+                    <body>
+                        <h1>🚀 IPFS Accelerate MCP Server Dashboard</h1>
+                        <div class="section">
+                            <h2>Status</h2>
+                            <p>Status: <span class="status">Running</span></p>
+                            <p>Enhanced dashboard template not found. Using fallback.</p>
+                        </div>
+                    </body>
+                    </html>
+                    """
+                    self.wfile.write(html.encode())
+                
+                def log_message(self, format, *args):
+                    # Suppress request logs
+                    pass
+            
+            server = HTTPServer((args.dashboard_host, args.dashboard_port), AdvancedDashboardHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            
+            logger.info(f"Advanced dashboard with model manager started at http://{args.dashboard_host}:{args.dashboard_port}")
+            
+            if args.open_browser:
+                time.sleep(1)
+                webbrowser.open(f"http://{args.dashboard_host}:{args.dashboard_port}")
+                
+        except Exception as e:
+            logger.error(f"Error creating advanced dashboard: {e}")
+            # Fallback to simple dashboard
+            self._create_simple_dashboard(args)
     
     def _create_simple_dashboard(self, args):
-        """Create a simple dashboard status page"""
+        """Create a simple fallback dashboard"""
         try:
             from http.server import HTTPServer, BaseHTTPRequestHandler
             import threading
@@ -215,7 +507,7 @@ class IPFSAccelerateCLI:
                             </script>
                         </head>
                         <body>
-                        <h1>🚀 IPFS Accelerate MCP Server Dashboard</h1>
+                        <h1>🚀 IPFS Accelerate MCP Server Dashboard (Fallback)</h1>
                         
                         <div class="section">
                             <h2>Server Status</h2>
@@ -378,11 +670,15 @@ class IPFSAccelerateCLI:
         return 0
     
     def run_models_list(self, args):
-        """List available models"""
+        """List available models with enhanced search capability"""
         logger.info("Listing available models")
         
         if model_ops:
-            result = model_ops.list_models()
+            if hasattr(args, 'search') and args.search:
+                # Use search functionality if available
+                result = model_ops.search_models(args.search)
+            else:
+                result = model_ops.list_models()
         else:
             result = {"error": "Model operations not available", "fallback": True}
         
@@ -394,12 +690,135 @@ class IPFSAccelerateCLI:
                 return 1
             else:
                 models = result.get('models', [])
-                print(f"✅ Available models ({len(models)}):")
+                search_query = result.get('query', '')
+                source = result.get('source', 'local')
+                
+                if search_query:
+                    print(f"🔍 Search results for '{search_query}' (source: {source}):")
+                else:
+                    print(f"✅ Available models ({len(models)}) from {source}:")
+                
                 for model in models:
                     if isinstance(model, dict):
-                        print(f"  - {model.get('id', 'unknown')} ({model.get('type', 'unknown type')})")
+                        name = model.get('name', model.get('id', 'unknown'))
+                        model_type = model.get('type', 'unknown type')
+                        size = model.get('size', '')
+                        downloads = model.get('downloads', 0)
+                        
+                        size_str = f" ({size})" if size else ""
+                        downloads_str = f" [{downloads:,} downloads]" if downloads > 0 else ""
+                        
+                        print(f"  - {name}{size_str} ({model_type}){downloads_str}")
+                        
+                        # Show description if available
+                        if model.get('description'):
+                            print(f"    {model['description'][:80]}{'...' if len(model.get('description', '')) > 80 else ''}")
                     else:
                         print(f"  - {model}")
+        
+        return 0
+    
+    def run_models_search(self, args):
+        """Search models using HuggingFace or fallback"""
+        logger.info(f"Searching models for: {args.query}")
+        
+        if model_ops:
+            result = model_ops.search_models(args.query, limit=args.limit)
+        else:
+            result = {"error": "Model operations not available", "fallback": True}
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                print(f"❌ Error: {result['error']}")
+                return 1
+            else:
+                models = result.get('models', [])
+                query = result.get('query', args.query)
+                source = result.get('source', 'local')
+                total = result.get('total', len(models))
+                
+                print(f"🔍 Found {total} models matching '{query}' (source: {source})")
+                
+                for model in models:
+                    if isinstance(model, dict):
+                        name = model.get('name', model.get('id', 'unknown'))
+                        model_type = model.get('type', 'unknown type')
+                        size = model.get('size', '')
+                        downloads = model.get('downloads', 0)
+                        
+                        size_str = f" ({size})" if size else ""
+                        downloads_str = f" [{downloads:,} downloads]" if downloads > 0 else ""
+                        
+                        print(f"  🤖 {name}{size_str} - {model_type}{downloads_str}")
+                        
+                        # Show description if available
+                        if model.get('description'):
+                            desc = model['description']
+                            print(f"     📝 {desc[:100]}{'...' if len(desc) > 100 else ''}")
+                    else:
+                        print(f"  - {model}")
+        
+        return 0
+    
+    def run_models_info(self, args):
+        """Get detailed model information"""
+        logger.info(f"Getting model info for: {args.model_id}")
+        
+        if model_ops:
+            result = model_ops.get_model_info(args.model_id)
+        else:
+            result = {"error": "Model operations not available", "fallback": True}
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                print(f"❌ Error: {result['error']}")
+                return 1
+            else:
+                # Display detailed model information
+                model_id = result.get('id', args.model_id)
+                name = result.get('name', model_id)
+                model_type = result.get('type', 'unknown')
+                
+                print(f"🤖 Model Information: {name}")
+                print("=" * 50)
+                print(f"ID: {model_id}")
+                print(f"Type: {model_type}")
+                print(f"Size: {result.get('size', 'unknown')}")
+                print(f"Provider: {result.get('provider', 'unknown')}")
+                
+                if result.get('downloads'):
+                    print(f"Downloads: {result['downloads']:,}")
+                
+                if result.get('description'):
+                    print(f"\nDescription:\n{result['description']}")
+                
+                # Show detailed info if available
+                detailed = result.get('detailed_info', {})
+                if detailed:
+                    print(f"\n📊 Technical Details:")
+                    if detailed.get('architecture'):
+                        print(f"Architecture: {detailed['architecture']}")
+                    if detailed.get('parameters'):
+                        print(f"Parameters: {detailed['parameters']}")
+                    
+                    capabilities = detailed.get('capabilities', [])
+                    if capabilities:
+                        print(f"Capabilities: {', '.join(capabilities)}")
+                    
+                    hw_req = detailed.get('hardware_requirements', {})
+                    if hw_req:
+                        print(f"\n💻 Hardware Requirements:")
+                        print(f"Min RAM: {hw_req.get('min_ram', 'unknown')}")
+                        print(f"Recommended RAM: {hw_req.get('recommended_ram', 'unknown')}")
+                        print(f"GPU: {hw_req.get('gpu', 'unknown')}")
+                    
+                    tasks = detailed.get('supported_tasks', [])
+                    if tasks:
+                        print(f"\n🎯 Supported Tasks: {', '.join(tasks)}")
         
         return 0
     
@@ -751,6 +1170,18 @@ def create_parser():
     # Models list command
     list_parser = models_subparsers.add_parser("list", help="List available models")
     list_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
+    list_parser.add_argument("--search", help="Search models by query")
+    
+    # Models search command
+    search_parser = models_subparsers.add_parser("search", help="Search models")
+    search_parser.add_argument("query", help="Search query")
+    search_parser.add_argument("--limit", type=int, default=50, help="Maximum results")
+    search_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
+    
+    # Models info command
+    info_parser = models_subparsers.add_parser("info", help="Get detailed model information")
+    info_parser.add_argument("model_id", help="Model ID to get information about")
+    info_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
     
     # Network commands
     network_parser = subparsers.add_parser("network", help="Network operations")
@@ -829,6 +1260,10 @@ def main():
         elif args.command == "models":
             if args.models_command == "list":
                 return cli.run_models_list(args)
+            elif args.models_command == "search":
+                return cli.run_models_search(args)
+            elif args.models_command == "info":
+                return cli.run_models_info(args)
             else:
                 parser.print_help()
                 return 1

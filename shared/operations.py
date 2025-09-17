@@ -181,21 +181,79 @@ class ModelOperations:
         self.core = shared_core
         
     def list_models(self, **kwargs) -> Dict[str, Any]:
-        """List available models"""
+        """List available models with enhanced metadata"""
         
         result = self.core.safe_call("list_models", **kwargs)
         
-        # If the core method doesn't exist, provide a fallback
+        # Enhanced fallback with more realistic models
         if result.get("error") and "not available" in result["error"]:
             result = {
                 "models": [
-                    {"id": "gpt2", "type": "text-generation", "size": "small"},
-                    {"id": "bert-base-uncased", "type": "text-classification", "size": "base"},
-                    {"id": "distilbert-base-uncased", "type": "text-classification", "size": "small"},
-                    {"id": "t5-small", "type": "text2text-generation", "size": "small"},
-                    {"id": "sentence-transformers/all-MiniLM-L6-v2", "type": "feature-extraction", "size": "small"}
+                    {
+                        "id": "gpt2",
+                        "name": "GPT-2",
+                        "type": "text-generation",
+                        "size": "small",
+                        "provider": "huggingface",
+                        "downloads": 1250000,
+                        "description": "GPT-2 is a large-scale unsupervised language model"
+                    },
+                    {
+                        "id": "bert-base-uncased",
+                        "name": "BERT Base Uncased",
+                        "type": "text-classification",
+                        "size": "base",
+                        "provider": "huggingface",
+                        "downloads": 2100000,
+                        "description": "BERT model pre-trained on English text"
+                    },
+                    {
+                        "id": "distilbert-base-uncased",
+                        "name": "DistilBERT Base Uncased",
+                        "type": "text-classification",
+                        "size": "small",
+                        "provider": "huggingface",
+                        "downloads": 890000,
+                        "description": "Distilled version of BERT"
+                    },
+                    {
+                        "id": "t5-small",
+                        "name": "T5 Small",
+                        "type": "text2text-generation",
+                        "size": "small",
+                        "provider": "huggingface",
+                        "downloads": 540000,
+                        "description": "Text-to-Text Transfer Transformer"
+                    },
+                    {
+                        "id": "sentence-transformers/all-MiniLM-L6-v2",
+                        "name": "All MiniLM L6 v2",
+                        "type": "feature-extraction",
+                        "size": "small",
+                        "provider": "huggingface",
+                        "downloads": 1850000,
+                        "description": "Sentence embedding model"
+                    },
+                    {
+                        "id": "microsoft/DialoGPT-medium",
+                        "name": "DialoGPT Medium",
+                        "type": "text-generation",
+                        "size": "medium", 
+                        "provider": "huggingface",
+                        "downloads": 320000,
+                        "description": "Conversational AI model"
+                    },
+                    {
+                        "id": "facebook/bart-large-cnn",
+                        "name": "BART Large CNN",
+                        "type": "summarization",
+                        "size": "large",
+                        "provider": "huggingface",
+                        "downloads": 780000,
+                        "description": "BART model fine-tuned for summarization"
+                    }
                 ],
-                "count": 5,
+                "count": 7,
                 "fallback": True,
                 "success": True
             }
@@ -206,13 +264,92 @@ class ModelOperations:
         
         return result
     
+    def search_models(self, query: str, limit: int = 50, **kwargs) -> Dict[str, Any]:
+        """Search models using HuggingFace hub or fallback search"""
+        
+        try:
+            # Try to use HuggingFace model search if available
+            from ..tools.huggingface_model_search import HuggingFaceModelSearch
+            
+            searcher = HuggingFaceModelSearch()
+            results = searcher.search(query, limit=limit)
+            
+            return {
+                "models": results,
+                "total": len(results),
+                "query": query,
+                "source": "huggingface",
+                "success": True,
+                "operation": "search_models"
+            }
+            
+        except Exception as e:
+            logger.warning(f"HuggingFace search not available: {e}")
+            
+            # Fallback to simple text search on local model list
+            models_result = self.list_models(**kwargs)
+            models = models_result.get('models', [])
+            
+            # Simple text search
+            if query:
+                filtered = []
+                query_lower = query.lower()
+                for model in models:
+                    # Search in model id, name, description, and type
+                    searchable_text = f"{model.get('id', '')} {model.get('name', '')} {model.get('description', '')} {model.get('type', '')}".lower()
+                    if query_lower in searchable_text:
+                        filtered.append(model)
+                models = filtered[:limit]
+            
+            return {
+                "models": models,
+                "total": len(models),
+                "query": query,
+                "source": "fallback",
+                "success": True,
+                "operation": "search_models"
+            }
+    
     def get_model_info(self, model_id: str, **kwargs) -> Dict[str, Any]:
-        """Get information about a specific model"""
+        """Get detailed information about a specific model"""
         
         if not self.core.validate_model_id(model_id):
             return {"error": "Invalid model ID", "model_id": model_id}
         
         result = self.core.safe_call("get_model_info", model_id, **kwargs)
+        
+        # Enhanced fallback with detailed model information
+        if result.get("error") and "not available" in result["error"]:
+            # Try to find model in our enhanced list
+            models_result = self.list_models(**kwargs)
+            models = models_result.get('models', [])
+            
+            model_info = None
+            for model in models:
+                if model.get('id') == model_id:
+                    model_info = model
+                    break
+            
+            if model_info:
+                # Add more detailed information
+                result = {
+                    **model_info,
+                    "detailed_info": {
+                        "architecture": self._get_model_architecture(model_id),
+                        "parameters": self._get_model_parameters(model_id),
+                        "capabilities": self._get_model_capabilities(model_id),
+                        "hardware_requirements": self._get_hardware_requirements(model_id),
+                        "supported_tasks": self._get_supported_tasks(model_id)
+                    },
+                    "fallback": True,
+                    "success": True
+                }
+            else:
+                result = {
+                    "error": f"Model {model_id} not found",
+                    "model_id": model_id,
+                    "success": False
+                }
         
         result.update({
             "operation": "get_model_info",
@@ -220,6 +357,71 @@ class ModelOperations:
         })
         
         return result
+    
+    def _get_model_architecture(self, model_id: str) -> str:
+        """Get model architecture information"""
+        arch_map = {
+            "gpt2": "Transformer Decoder",
+            "bert-base-uncased": "Transformer Encoder",
+            "distilbert-base-uncased": "Distilled Transformer Encoder",
+            "t5-small": "Encoder-Decoder Transformer",
+            "sentence-transformers/all-MiniLM-L6-v2": "Sentence Transformer",
+            "microsoft/DialoGPT-medium": "Transformer Decoder",
+            "facebook/bart-large-cnn": "Encoder-Decoder Transformer"
+        }
+        return arch_map.get(model_id, "Unknown Architecture")
+    
+    def _get_model_parameters(self, model_id: str) -> str:
+        """Get model parameter count"""
+        param_map = {
+            "gpt2": "124M",
+            "bert-base-uncased": "110M",
+            "distilbert-base-uncased": "66M",
+            "t5-small": "60M",
+            "sentence-transformers/all-MiniLM-L6-v2": "22M",
+            "microsoft/DialoGPT-medium": "345M",
+            "facebook/bart-large-cnn": "406M"
+        }
+        return param_map.get(model_id, "Unknown")
+    
+    def _get_model_capabilities(self, model_id: str) -> List[str]:
+        """Get model capabilities"""
+        cap_map = {
+            "gpt2": ["text-generation", "completion", "creative-writing"],
+            "bert-base-uncased": ["text-classification", "token-classification", "question-answering"],
+            "distilbert-base-uncased": ["text-classification", "sentiment-analysis"],
+            "t5-small": ["text2text-generation", "summarization", "translation"],
+            "sentence-transformers/all-MiniLM-L6-v2": ["sentence-embedding", "semantic-search", "similarity"],
+            "microsoft/DialoGPT-medium": ["conversational-ai", "chat", "dialogue"],
+            "facebook/bart-large-cnn": ["summarization", "text-generation"]
+        }
+        return cap_map.get(model_id, ["unknown"])
+    
+    def _get_hardware_requirements(self, model_id: str) -> Dict[str, str]:
+        """Get hardware requirements"""
+        req_map = {
+            "gpt2": {"min_ram": "2GB", "recommended_ram": "4GB", "gpu": "Optional"},
+            "bert-base-uncased": {"min_ram": "2GB", "recommended_ram": "4GB", "gpu": "Optional"},
+            "distilbert-base-uncased": {"min_ram": "1GB", "recommended_ram": "2GB", "gpu": "Optional"},
+            "t5-small": {"min_ram": "1GB", "recommended_ram": "2GB", "gpu": "Optional"},
+            "sentence-transformers/all-MiniLM-L6-v2": {"min_ram": "1GB", "recommended_ram": "2GB", "gpu": "Optional"},
+            "microsoft/DialoGPT-medium": {"min_ram": "4GB", "recommended_ram": "8GB", "gpu": "Recommended"},
+            "facebook/bart-large-cnn": {"min_ram": "4GB", "recommended_ram": "8GB", "gpu": "Recommended"}
+        }
+        return req_map.get(model_id, {"min_ram": "Unknown", "recommended_ram": "Unknown", "gpu": "Unknown"})
+    
+    def _get_supported_tasks(self, model_id: str) -> List[str]:
+        """Get supported tasks for the model"""
+        task_map = {
+            "gpt2": ["text-generation"],
+            "bert-base-uncased": ["fill-mask", "text-classification", "token-classification"],
+            "distilbert-base-uncased": ["fill-mask", "text-classification"],
+            "t5-small": ["text2text-generation"],
+            "sentence-transformers/all-MiniLM-L6-v2": ["feature-extraction"],
+            "microsoft/DialoGPT-medium": ["text-generation"],
+            "facebook/bart-large-cnn": ["summarization"]
+        }
+        return task_map.get(model_id, ["unknown"])
     
     def download_model(self, model_id: str, **kwargs) -> Dict[str, Any]:
         """Download a model"""
