@@ -630,7 +630,7 @@ class HuggingFaceHubScanner:
             
             # Add model as a bandit arm with initial performance estimates
             initial_reward = self._calculate_initial_reward(detailed_info, performance_data)
-            self.bandit_recommender.update_reward(context, model_id, initial_reward)
+            self.bandit_recommender.provide_feedback(model_id, initial_reward, context)
             
         except Exception as e:
             logger.error(f"Error adding model {model_id} to manager: {e}")
@@ -810,6 +810,35 @@ class HuggingFaceHubScanner:
                 return 'jax'
         
         return 'pytorch'  # Default assumption
+    
+    def _convert_api_response_to_model_info(self, model_data: Dict[str, Any]) -> Optional[HuggingFaceModelInfo]:
+        """Convert HuggingFace API response to HuggingFaceModelInfo object."""
+        try:
+            model_id = model_data.get('id', model_data.get('modelId', ''))
+            if not model_id:
+                return None
+            
+            return HuggingFaceModelInfo(
+                model_id=model_id,
+                model_name=model_data.get('name', model_id),
+                description=model_data.get('description', ''),
+                pipeline_tag=model_data.get('pipeline_tag', model_data.get('pipelineTag', '')),
+                library_name=model_data.get('library_name', model_data.get('libraryName', 'transformers')),
+                tags=model_data.get('tags', []),
+                downloads=model_data.get('downloads', 0),
+                likes=model_data.get('likes', 0),
+                created_at=model_data.get('created_at', model_data.get('createdAt', '')),
+                last_modified=model_data.get('last_modified', model_data.get('lastModified', '')),
+                private=model_data.get('private', False),
+                gated=model_data.get('gated', False),
+                config=model_data.get('config', {}),
+                model_size_mb=self._estimate_model_size(model_data),
+                architecture=self._extract_architecture(model_data),
+                framework=self._extract_framework(model_data)
+            )
+        except Exception as e:
+            logger.debug(f"Error converting API response for model {model_data}: {e}")
+            return None
     
     def _save_scan_progress(self) -> None:
         """Save current scan progress to disk."""
