@@ -81,6 +81,51 @@ ipfs-accelerate files add /path/to/file.txt
 ipfs-accelerate files add /path/to/file.txt --output-json
 ```
 
+### Queue Management
+
+#### View Overall Queue Status
+```bash
+# Show comprehensive queue status
+ipfs-accelerate queue status
+
+# Get queue status as JSON
+ipfs-accelerate queue status --output-json
+```
+
+#### View Queue Performance History
+```bash
+# Show queue performance trends
+ipfs-accelerate queue history
+
+# Get history as JSON
+ipfs-accelerate queue history --output-json
+```
+
+#### View Queues by Model Type
+```bash
+# Show all model type queues
+ipfs-accelerate queue models
+
+# Filter by specific model type
+ipfs-accelerate queue models --model-type text-generation
+ipfs-accelerate queue models --model-type embedding
+
+# Get model queues as JSON
+ipfs-accelerate queue models --output-json
+```
+
+#### View Endpoint Details
+```bash
+# Show all endpoint details
+ipfs-accelerate queue endpoints
+
+# Get details for specific endpoint
+ipfs-accelerate queue endpoints --endpoint-id local_gpu_1
+
+# Get endpoint details as JSON
+ipfs-accelerate queue endpoints --output-json
+```
+
 ### Model Management
 
 #### List Available Models
@@ -120,20 +165,49 @@ ipfs-accelerate mcp status
 # 4. List available models
 ipfs-accelerate models list
 
-# 5. Generate some text
+# 5. Check queue status
+ipfs-accelerate queue status
+
+# 6. View queues by model type
+ipfs-accelerate queue models --model-type text-generation
+
+# 7. Generate some text
 ipfs-accelerate inference generate \
   --prompt "The future of AI is" \
   --max-length 100
 
-# 6. Check network status
+# 8. Check network status
 ipfs-accelerate network status
 
-# 7. Add a file to IPFS
+# 9. Add a file to IPFS
 echo "Hello IPFS!" > hello.txt
 ipfs-accelerate files add hello.txt
 
-# 8. Clean up
+# 10. Monitor endpoint performance
+ipfs-accelerate queue history
+
+# 11. Clean up
 rm hello.txt
+```
+
+### Queue Management Workflow
+
+```bash
+# Monitor overall queue health
+ipfs-accelerate queue status
+
+# Check specific model type performance
+ipfs-accelerate queue models --model-type text-generation
+
+# Get detailed endpoint information
+ipfs-accelerate queue endpoints --endpoint-id local_gpu_1
+
+# View historical performance trends
+ipfs-accelerate queue history
+
+# Export queue data for analysis
+ipfs-accelerate queue status --output-json > queue_status.json
+ipfs-accelerate queue history --output-json > queue_history.json
 ```
 
 ### JSON Output Example
@@ -168,11 +242,13 @@ The MCP dashboard provides:
 
 - Real-time server status monitoring
 - System information display
+- **Queue status monitoring with endpoint details**
+- **Model type queue breakdowns**
 - Available commands reference
 - Auto-refreshing data every 5 seconds
-- REST API endpoint (`/api/status`) for programmatic access
+- REST API endpoints (`/api/status`, `/api/queue`) for programmatic access
 
-![Dashboard Screenshot](https://github.com/user-attachments/assets/872b7ca3-90d6-496f-b538-255247735526)
+![Dashboard Screenshot](https://github.com/user-attachments/assets/2e11a4a7-d08c-493b-b61b-6c2897f4b0a8)
 
 ## Architecture
 

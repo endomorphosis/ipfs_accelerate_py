@@ -40,7 +40,7 @@ logger = logging.getLogger("ipfs_accelerate_cli")
 # Import shared functionality
 try:
     from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
-    from .shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations
+    from .shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations
     HAVE_CORE = True
 except ImportError as e:
     logger.warning(f"Core modules not available: {e}")
@@ -49,7 +49,7 @@ except ImportError as e:
         import sys
         import os
         sys.path.append(os.path.dirname(__file__))
-        from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations
+        from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations
         from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
         HAVE_CORE = True
     except ImportError as e2:
@@ -70,12 +70,14 @@ if HAVE_CORE:
     file_ops = FileOperations(shared_core)
     model_ops = ModelOperations(shared_core)
     network_ops = NetworkOperations(shared_core)
+    queue_ops = QueueOperations(shared_core)
 else:
     shared_core = SharedCore()
     inference_ops = None
     file_ops = None
     model_ops = None
     network_ops = None
+    queue_ops = None
 
 class IPFSAccelerateCLI:
     """Main CLI class for IPFS Accelerate"""
@@ -192,7 +194,20 @@ class IPFSAccelerateCLI:
                                             document.getElementById('uptime').textContent = Math.round(data.uptime) + 's';
                                             document.getElementById('core_available').textContent = data.core_available ? 'Yes' : 'No';
                                         }})
-                                        .catch(error => console.log('Error:', error));
+                                        .catch(error => console.log('Status error:', error));
+                                    
+                                    // Fetch queue status
+                                    fetch('/api/queue')
+                                        .then(response => response.json())
+                                        .then(data => {{
+                                            if (data.summary) {{
+                                                document.getElementById('total_endpoints').textContent = data.summary.total_endpoints || 0;
+                                                document.getElementById('active_endpoints').textContent = data.summary.active_endpoints || 0;
+                                                document.getElementById('total_queue_size').textContent = data.summary.total_queue_size || 0;
+                                                document.getElementById('processing_tasks').textContent = data.summary.total_processing || 0;
+                                            }}
+                                        }})
+                                        .catch(error => console.log('Queue error:', error));
                                 }}
                                 
                                 setInterval(refreshData, 5000);
@@ -222,6 +237,17 @@ class IPFSAccelerateCLI:
                             <div class="metric">• List Models: <code>ipfs-accelerate models list</code></div>
                             <div class="metric">• Network Status: <code>ipfs-accelerate network status</code></div>
                             <div class="metric">• Add File: <code>ipfs-accelerate files add /path/to/file</code></div>
+                            <div class="metric">• Queue Status: <code>ipfs-accelerate queue status</code></div>
+                            <div class="metric">• Queue by Model: <code>ipfs-accelerate queue models --model-type text-generation</code></div>
+                            <div class="metric">• Endpoint Details: <code>ipfs-accelerate queue endpoints</code></div>
+                        </div>
+                        
+                        <div class="section">
+                            <h2>Queue Status</h2>
+                            <div class="metric">Total Endpoints: <span id="total_endpoints">Loading...</span></div>
+                            <div class="metric">Active Endpoints: <span id="active_endpoints">Loading...</span></div>
+                            <div class="metric">Total Queue Size: <span id="total_queue_size">Loading...</span></div>
+                            <div class="metric">Processing Tasks: <span id="processing_tasks">Loading...</span></div>
                         </div>
                         
                         <div class="refresh">
@@ -241,6 +267,20 @@ class IPFSAccelerateCLI:
                         # Get status from shared core
                         status_data = shared_core.get_status()
                         self.wfile.write(json.dumps(status_data).encode())
+                    
+                    elif self.path == '/api/queue':
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        # Get queue status from shared operations
+                        if queue_ops:
+                            queue_data = queue_ops.get_queue_status()
+                        else:
+                            queue_data = {"error": "Queue operations not available"}
+                        
+                        self.wfile.write(json.dumps(queue_data).encode())
                         
                     else:
                         self.send_response(404)
@@ -385,6 +425,261 @@ class IPFSAccelerateCLI:
                 print(f"   Connected peers: {peers}")
         
         return 0
+    
+    def run_queue_status(self, args):
+        """Show queue status for all endpoints"""
+        logger.info("Getting queue status")
+        
+        if queue_ops:
+            result = queue_ops.get_queue_status()
+        else:
+            result = {"error": "Queue operations not available", "fallback": True}
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                print(f"❌ Error: {result['error']}")
+                return 1
+            else:
+                self._display_queue_status(result)
+        
+        return 0
+    
+    def run_queue_history(self, args):
+        """Show queue performance history"""
+        logger.info("Getting queue history")
+        
+        if queue_ops:
+            result = queue_ops.get_queue_history()
+        else:
+            result = {"error": "Queue operations not available", "fallback": True}
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                print(f"❌ Error: {result['error']}")
+                return 1
+            else:
+                self._display_queue_history(result)
+        
+        return 0
+    
+    def run_queue_models(self, args):
+        """Show queues by model type"""
+        logger.info(f"Getting model queues{' for ' + args.model_type if args.model_type else ''}")
+        
+        if queue_ops:
+            result = queue_ops.get_model_queues(model_type=args.model_type)
+        else:
+            result = {"error": "Queue operations not available", "fallback": True}
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                print(f"❌ Error: {result['error']}")
+                return 1
+            else:
+                self._display_model_queues(result, args.model_type)
+        
+        return 0
+    
+    def run_queue_endpoints(self, args):
+        """Show endpoint details"""
+        logger.info(f"Getting endpoint details{' for ' + args.endpoint_id if args.endpoint_id else ''}")
+        
+        if queue_ops:
+            result = queue_ops.get_endpoint_details(endpoint_id=args.endpoint_id)
+        else:
+            result = {"error": "Queue operations not available", "fallback": True}
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                print(f"❌ Error: {result['error']}")
+                return 1
+            else:
+                self._display_endpoint_details(result, args.endpoint_id)
+        
+        return 0
+    
+    def _display_queue_status(self, result):
+        """Display queue status in human-readable format"""
+        print("📊 Queue Status Summary")
+        print("=" * 50)
+        
+        # Global queue stats
+        global_queue = result.get('global_queue', {})
+        print(f"🌐 Global Queue:")
+        print(f"   Total tasks: {global_queue.get('total_tasks', 0)}")
+        print(f"   Pending: {global_queue.get('pending_tasks', 0)}")
+        print(f"   Processing: {global_queue.get('processing_tasks', 0)}")
+        print(f"   Completed: {global_queue.get('completed_tasks', 0)}")
+        print(f"   Failed: {global_queue.get('failed_tasks', 0)}")
+        
+        # Summary
+        summary = result.get('summary', {})
+        if summary:
+            print(f"\n📈 Summary:")
+            print(f"   Total endpoints: {summary.get('total_endpoints', 0)}")
+            print(f"   Active endpoints: {summary.get('active_endpoints', 0)}")
+            print(f"   Total queue size: {summary.get('total_queue_size', 0)}")
+            print(f"   Total processing: {summary.get('total_processing', 0)}")
+            
+            endpoint_types = summary.get('endpoint_types', {})
+            if endpoint_types:
+                print(f"   Endpoint types:")
+                for ep_type, count in endpoint_types.items():
+                    print(f"     - {ep_type}: {count}")
+        
+        # Endpoint details
+        endpoint_queues = result.get('endpoint_queues', {})
+        if endpoint_queues:
+            print(f"\n🖥️  Endpoint Details:")
+            for endpoint_id, endpoint in endpoint_queues.items():
+                status_icon = "🟢" if endpoint.get('status') == 'active' else "🟡" if endpoint.get('status') == 'idle' else "🔴"
+                print(f"   {status_icon} {endpoint_id} ({endpoint.get('endpoint_type', 'unknown')})")
+                print(f"      Queue: {endpoint.get('queue_size', 0)}, Processing: {endpoint.get('processing', 0)}")
+                print(f"      Models: {', '.join(endpoint.get('model_types', []))}")
+                if endpoint.get('current_task'):
+                    task = endpoint['current_task']
+                    print(f"      Current: {task.get('model', 'unknown')} ({task.get('task_type', 'unknown')})")
+    
+    def _display_queue_history(self, result):
+        """Display queue history in human-readable format"""
+        print("📈 Queue Performance History")
+        print("=" * 50)
+        
+        # Model type statistics
+        model_stats = result.get('model_type_stats', {})
+        if model_stats:
+            print("🤖 Model Type Statistics:")
+            for model_type, stats in model_stats.items():
+                print(f"   {model_type}:")
+                print(f"      Requests: {stats.get('total_requests', 0)}")
+                print(f"      Avg time: {stats.get('avg_time', 0):.1f}s")
+                print(f"      Success rate: {stats.get('success_rate', 0):.1f}%")
+        
+        # Endpoint performance
+        endpoint_perf = result.get('endpoint_performance', {})
+        if endpoint_perf:
+            print(f"\n🎯 Endpoint Performance:")
+            for endpoint_id, perf in endpoint_perf.items():
+                print(f"   {endpoint_id}:")
+                print(f"      Uptime: {perf.get('uptime', 0):.1f}%")
+                print(f"      Success rate: {perf.get('success_rate', 0):.1f}%")
+                print(f"      Avg response: {perf.get('avg_response_time', 0):.1f}s")
+        
+        # Time series data summary
+        time_series = result.get('time_series', {})
+        if time_series and time_series.get('queue_sizes'):
+            recent_queue = time_series['queue_sizes'][-1] if time_series['queue_sizes'] else 0
+            recent_processing = time_series['processing_tasks'][-1] if time_series['processing_tasks'] else 0
+            print(f"\n⏰ Current Status:")
+            print(f"   Queue size: {recent_queue}")
+            print(f"   Processing: {recent_processing}")
+    
+    def _display_model_queues(self, result, model_type):
+        """Display model-specific queue information"""
+        if model_type:
+            print(f"🤖 Queue Status for Model Type: {model_type}")
+            print("=" * 50)
+            
+            matching_endpoints = result.get('matching_endpoints', {})
+            if not matching_endpoints:
+                print(f"❌ No endpoints found for model type '{model_type}'")
+                return
+            
+            print(f"📊 Summary:")
+            print(f"   Matching endpoints: {result.get('total_matching', 0)}")
+            print(f"   Total queue size: {result.get('total_queue_size', 0)}")
+            print(f"   Total processing: {result.get('total_processing', 0)}")
+            
+            print(f"\n🖥️  Endpoints:")
+            for endpoint_id, endpoint in matching_endpoints.items():
+                status_icon = "🟢" if endpoint.get('status') == 'active' else "🟡" if endpoint.get('status') == 'idle' else "🔴"
+                print(f"   {status_icon} {endpoint_id}")
+                print(f"      Type: {endpoint.get('endpoint_type', 'unknown')}")
+                print(f"      Queue: {endpoint.get('queue_size', 0)}, Processing: {endpoint.get('processing', 0)}")
+        else:
+            print("🤖 Queue Status by Model Type")
+            print("=" * 50)
+            
+            model_type_queues = result.get('model_type_queues', {})
+            if not model_type_queues:
+                print("❌ No model type queues found")
+                return
+            
+            for mt, queue_info in model_type_queues.items():
+                endpoints = queue_info.get('endpoints', [])
+                total_queue = queue_info.get('total_queue', 0)
+                total_processing = queue_info.get('total_processing', 0)
+                
+                print(f"\n📋 {mt}:")
+                print(f"   Endpoints: {len(endpoints)}")
+                print(f"   Total queue: {total_queue}")
+                print(f"   Total processing: {total_processing}")
+                
+                # Show top endpoints
+                for endpoint in endpoints[:3]:  # Show first 3
+                    status_icon = "🟢" if endpoint.get('status') == 'active' else "🟡" if endpoint.get('status') == 'idle' else "🔴"
+                    print(f"     {status_icon} {endpoint.get('endpoint_id', 'unknown')}: queue={endpoint.get('queue_size', 0)}")
+    
+    def _display_endpoint_details(self, result, endpoint_id):
+        """Display detailed endpoint information"""
+        if endpoint_id:
+            print(f"🖥️  Endpoint Details: {endpoint_id}")
+            print("=" * 50)
+            
+            details = result.get('details', {})
+            if not details:
+                print("❌ No details found")
+                return
+            
+            print(f"Type: {details.get('endpoint_type', 'unknown')}")
+            print(f"Status: {details.get('status', 'unknown')}")
+            print(f"Queue size: {details.get('queue_size', 0)}")
+            print(f"Processing: {details.get('processing', 0)}")
+            print(f"Avg processing time: {details.get('avg_processing_time', 0):.1f}s")
+            print(f"Model types: {', '.join(details.get('model_types', []))}")
+            
+            if details.get('device'):
+                print(f"Device: {details['device']}")
+            if details.get('peer_id'):
+                print(f"Peer ID: {details['peer_id']}")
+            if details.get('provider'):
+                print(f"Provider: {details['provider']}")
+            if details.get('network_latency'):
+                print(f"Network latency: {details['network_latency']}ms")
+            
+            current_task = details.get('current_task')
+            if current_task:
+                print(f"\n🔄 Current Task:")
+                print(f"   Task ID: {current_task.get('task_id', 'unknown')}")
+                print(f"   Model: {current_task.get('model', 'unknown')}")
+                print(f"   Type: {current_task.get('task_type', 'unknown')}")
+                print(f"   Estimated completion: {current_task.get('estimated_completion', 'unknown')}")
+            
+        else:
+            print("🖥️  All Endpoints")
+            print("=" * 50)
+            
+            endpoints = result.get('endpoints', {})
+            if not endpoints:
+                print("❌ No endpoints found")
+                return
+            
+            print(f"Total endpoints: {result.get('total_endpoints', 0)}")
+            
+            for endpoint_id, endpoint in endpoints.items():
+                status_icon = "🟢" if endpoint.get('status') == 'active' else "🟡" if endpoint.get('status') == 'idle' else "🔴"
+                print(f"\n{status_icon} {endpoint_id}")
+                print(f"   Type: {endpoint.get('endpoint_type', 'unknown')}")
+                print(f"   Queue: {endpoint.get('queue_size', 0)}, Processing: {endpoint.get('processing', 0)}")
+                print(f"   Models: {', '.join(endpoint.get('model_types', []))}")
 
 
 def create_parser():
@@ -465,6 +760,28 @@ def create_parser():
     net_status_parser = network_subparsers.add_parser("status", help="Check network status")
     net_status_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
     
+    # Queue commands
+    queue_parser = subparsers.add_parser("queue", help="Queue management and monitoring")
+    queue_subparsers = queue_parser.add_subparsers(dest="queue_command", help="Queue commands")
+    
+    # Queue status command
+    queue_status_parser = queue_subparsers.add_parser("status", help="Show overall queue status")
+    queue_status_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
+    
+    # Queue history command
+    queue_history_parser = queue_subparsers.add_parser("history", help="Show queue performance history")
+    queue_history_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
+    
+    # Queue models command
+    queue_models_parser = queue_subparsers.add_parser("models", help="Show queues by model type")
+    queue_models_parser.add_argument("--model-type", help="Filter by specific model type")
+    queue_models_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
+    
+    # Queue endpoints command
+    queue_endpoints_parser = queue_subparsers.add_parser("endpoints", help="Show endpoint details")
+    queue_endpoints_parser.add_argument("--endpoint-id", help="Get details for specific endpoint")
+    queue_endpoints_parser.add_argument("--output-json", action="store_true", help="Output as JSON")
+    
     return parser
 
 
@@ -519,6 +836,19 @@ def main():
         elif args.command == "network":
             if args.network_command == "status":
                 return cli.run_network_status(args)
+            else:
+                parser.print_help()
+                return 1
+        
+        elif args.command == "queue":
+            if args.queue_command == "status":
+                return cli.run_queue_status(args)
+            elif args.queue_command == "history":
+                return cli.run_queue_history(args)
+            elif args.queue_command == "models":
+                return cli.run_queue_models(args)
+            elif args.queue_command == "endpoints":
+                return cli.run_queue_endpoints(args)
             else:
                 parser.print_help()
                 return 1

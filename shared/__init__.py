@@ -6,12 +6,13 @@ the CLI interface and the MCP server to ensure consistency.
 """
 
 from .core import SharedCore
-from .operations import InferenceOperations, FileOperations, ModelOperations, NetworkOperations
+from .operations import InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations
 
 __all__ = [
     "SharedCore",
     "InferenceOperations", 
     "FileOperations",
     "ModelOperations",
-    "NetworkOperations"
+    "NetworkOperations",
+    "QueueOperations"
 ]

@@ -22,12 +22,13 @@ except ImportError:
 
 # Import shared operations
 try:
-    from ...shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations
+    from ...shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations
     shared_core = SharedCore()
     inference_ops = InferenceOperations(shared_core)
     file_ops = FileOperations(shared_core) 
     model_ops = ModelOperations(shared_core)
     network_ops = NetworkOperations(shared_core)
+    queue_ops = QueueOperations(shared_core)
     HAVE_SHARED = True
 except ImportError as e:
     logger.warning(f"Shared operations not available: {e}")
@@ -37,6 +38,7 @@ except ImportError as e:
     file_ops = None
     model_ops = None
     network_ops = None
+    queue_ops = None
 
 def register_shared_tools(mcp: FastMCP) -> None:
     """Register tools that use shared operations with the MCP server."""
@@ -280,6 +282,155 @@ def register_shared_tools(mcp: FastMCP) -> None:
             return {
                 "error": str(e),
                 "tool": "get_system_status",
+                "timestamp": time.time()
+            }
+    
+    # Queue management tools using shared operations
+    @mcp.tool()
+    def get_queue_status() -> Dict[str, Any]:
+        """
+        Get comprehensive queue status for all endpoints and model types
+        
+        Returns:
+            Dictionary with queue status information broken down by model type and endpoint handler
+        """
+        try:
+            result = queue_ops.get_queue_status()
+            result["tool"] = "get_queue_status"
+            result["timestamp"] = time.time()
+            return result
+        except Exception as e:
+            logger.error(f"Error in get_queue_status: {e}")
+            return {
+                "error": str(e),
+                "tool": "get_queue_status",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def get_queue_history() -> Dict[str, Any]:
+        """
+        Get queue performance history and trends
+        
+        Returns:
+            Dictionary with historical queue metrics
+        """
+        try:
+            result = queue_ops.get_queue_history()
+            result["tool"] = "get_queue_history"
+            result["timestamp"] = time.time()
+            return result
+        except Exception as e:
+            logger.error(f"Error in get_queue_history: {e}")
+            return {
+                "error": str(e),
+                "tool": "get_queue_history",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def get_model_queues(model_type: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get queue status filtered by model type
+        
+        Args:
+            model_type: Optional model type to filter by (e.g., 'text-generation', 'embedding')
+            
+        Returns:
+            Dictionary with model-specific queue information
+        """
+        try:
+            result = queue_ops.get_model_queues(model_type=model_type)
+            result["tool"] = "get_model_queues"
+            result["timestamp"] = time.time()
+            return result
+        except Exception as e:
+            logger.error(f"Error in get_model_queues: {e}")
+            return {
+                "error": str(e),
+                "model_type": model_type,
+                "tool": "get_model_queues",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def get_endpoint_details(endpoint_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get detailed information about specific endpoint(s)
+        
+        Args:
+            endpoint_id: Optional endpoint ID to get details for
+            
+        Returns:
+            Dictionary with endpoint details
+        """
+        try:
+            result = queue_ops.get_endpoint_details(endpoint_id=endpoint_id)
+            result["tool"] = "get_endpoint_details"
+            result["timestamp"] = time.time()
+            return result
+        except Exception as e:
+            logger.error(f"Error in get_endpoint_details: {e}")
+            return {
+                "error": str(e),
+                "endpoint_id": endpoint_id,
+                "tool": "get_endpoint_details",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def get_endpoint_handlers_by_model(model_type: str) -> Dict[str, Any]:
+        """
+        Get all endpoint handlers that support a specific model type
+        
+        Args:
+            model_type: Model type to search for (e.g., 'text-generation', 'image-generation')
+            
+        Returns:
+            Dictionary with matching endpoint handlers
+        """
+        try:
+            # Get model queues for the specific type
+            result = queue_ops.get_model_queues(model_type=model_type)
+            
+            if result.get("error"):
+                return result
+            
+            matching_endpoints = result.get('matching_endpoints', {})
+            
+            # Transform the data to focus on endpoint handlers
+            handlers = {}
+            for endpoint_id, endpoint in matching_endpoints.items():
+                handlers[endpoint_id] = {
+                    "handler_type": endpoint.get('endpoint_type', 'unknown'),
+                    "status": endpoint.get('status', 'unknown'),
+                    "queue_capacity": endpoint.get('queue_size', 0),
+                    "current_processing": endpoint.get('processing', 0),
+                    "avg_processing_time": endpoint.get('avg_processing_time', 0),
+                    "supported_models": endpoint.get('model_types', []),
+                    "device_info": endpoint.get('device', endpoint.get('peer_id', endpoint.get('provider', 'unknown')))
+                }
+            
+            formatted_result = {
+                "model_type": model_type,
+                "endpoint_handlers": handlers,
+                "total_handlers": len(handlers),
+                "active_handlers": len([h for h in handlers.values() if h["status"] == "active"]),
+                "total_queue_capacity": sum(h["queue_capacity"] for h in handlers.values()),
+                "total_processing": sum(h["current_processing"] for h in handlers.values()),
+                "success": True,
+                "tool": "get_endpoint_handlers_by_model",
+                "timestamp": time.time()
+            }
+            
+            return formatted_result
+            
+        except Exception as e:
+            logger.error(f"Error in get_endpoint_handlers_by_model: {e}")
+            return {
+                "error": str(e),
+                "model_type": model_type,
+                "tool": "get_endpoint_handlers_by_model",
                 "timestamp": time.time()
             }
     
