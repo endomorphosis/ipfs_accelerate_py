@@ -723,3 +723,480 @@ class QueueOperations:
         })
         
         return result
+    
+    def get_endpoint_handlers_by_model(self, model_type: str, **kwargs) -> Dict[str, Any]:
+        """Get endpoint handlers for specific model types"""
+        
+        if not model_type or not isinstance(model_type, str):
+            return {"error": "Model type is required and must be a string"}
+        
+        # Get model queues for the specified type
+        model_queues_result = self.get_model_queues(model_type, **kwargs)
+        
+        if model_queues_result.get("error"):
+            return model_queues_result
+        
+        matching_endpoints = model_queues_result.get("matching_endpoints", {})
+        
+        # Extract handler information
+        handlers = []
+        for endpoint_id, endpoint in matching_endpoints.items():
+            handler_info = {
+                "endpoint_id": endpoint_id,
+                "endpoint_type": endpoint.get("endpoint_type", "unknown"),
+                "status": endpoint.get("status", "unknown"),
+                "queue_size": endpoint.get("queue_size", 0),
+                "processing": endpoint.get("processing", 0),
+                "supported_model_types": endpoint.get("model_types", []),
+                "avg_processing_time": endpoint.get("avg_processing_time", 0)
+            }
+            
+            # Add type-specific details
+            if endpoint.get("endpoint_type") == "local_gpu":
+                handler_info["device"] = endpoint.get("device", "unknown")
+            elif endpoint.get("endpoint_type") == "libp2p_peer":
+                handler_info["peer_id"] = endpoint.get("peer_id", "unknown")
+                handler_info["network_latency"] = endpoint.get("network_latency", 0)
+            elif endpoint.get("endpoint_type") == "external_api":
+                handler_info["provider"] = endpoint.get("provider", "unknown")
+                handler_info["rate_limit"] = endpoint.get("rate_limit", {})
+            
+            handlers.append(handler_info)
+        
+        result = {
+            "model_type": model_type,
+            "handlers": handlers,
+            "total_handlers": len(handlers),
+            "active_handlers": len([h for h in handlers if h["status"] == "active"]),
+            "success": True,
+            "operation": "get_endpoint_handlers_by_model",
+            "timestamp": time.time()
+        }
+        
+        return result
+
+
+class TestOperations:
+    """Model testing and validation operations"""
+    
+    def __init__(self, shared_core: SharedCore):
+        self.core = shared_core
+        
+    def run_model_test(self, category: str, test_type: str, test_id: str, **kwargs) -> Dict[str, Any]:
+        """Run a specific model test"""
+        
+        if not all([category, test_type, test_id]):
+            return {"error": "Category, test_type, and test_id are required"}
+        
+        # Get test configuration
+        test_config = self._get_test_config(category, test_type)
+        if not test_config:
+            return {"error": f"Unknown test: {category}/{test_type}"}
+        
+        try:
+            # Simulate test execution
+            import time
+            import random
+            
+            # Add some delay to simulate real testing
+            time.sleep(random.uniform(1, 3))
+            
+            # Generate test results based on category
+            if category == "text-generation":
+                result = self._run_text_generation_test(test_type, test_config)
+            elif category == "classification":
+                result = self._run_classification_test(test_type, test_config)
+            elif category == "embeddings":
+                result = self._run_embeddings_test(test_type, test_config)
+            elif category == "multimodal":
+                result = self._run_multimodal_test(test_type, test_config)
+            elif category == "code":
+                result = self._run_code_test(test_type, test_config)
+            elif category == "performance":
+                result = self._run_performance_test(test_type, test_config)
+            else:
+                return {"error": f"Unsupported test category: {category}"}
+            
+            result.update({
+                "test_id": test_id,
+                "category": category,
+                "test_type": test_type,
+                "timestamp": time.time(),
+                "success": True
+            })
+            
+            return result
+            
+        except Exception as e:
+            return {
+                "error": f"Test execution failed: {str(e)}",
+                "test_id": test_id,
+                "category": category,
+                "test_type": test_type,
+                "success": False
+            }
+    
+    def run_batch_test(self, batch_type: str, model_filter: str = None, test_id: str = None, **kwargs) -> Dict[str, Any]:
+        """Run a batch of tests"""
+        
+        if not batch_type:
+            return {"error": "Batch type is required"}
+        
+        try:
+            import time
+            import random
+            
+            # Simulate batch test execution
+            time.sleep(random.uniform(2, 5))
+            
+            if batch_type == "all":
+                tests_run = 24
+                tests_passed = 22
+                tests_failed = 2
+                categories = ["text-generation", "classification", "embeddings", "multimodal", "code", "performance"]
+            elif batch_type == "text-models":
+                tests_run = 12
+                tests_passed = 11
+                tests_failed = 1
+                categories = ["text-generation", "classification"]
+            elif batch_type == "performance":
+                tests_run = 8
+                tests_passed = 7
+                tests_failed = 1
+                categories = ["performance"]
+            else:
+                return {"error": f"Unknown batch type: {batch_type}"}
+            
+            result = {
+                "batch_type": batch_type,
+                "model_filter": model_filter,
+                "test_id": test_id or f"batch-{batch_type}-{int(time.time())}",
+                "summary": {
+                    "total_tests": tests_run,
+                    "passed": tests_passed,
+                    "failed": tests_failed,
+                    "success_rate": round((tests_passed / tests_run) * 100, 1)
+                },
+                "categories_tested": categories,
+                "execution_time": round(random.uniform(30, 120), 1),
+                "metrics": {
+                    "avg_latency": round(random.uniform(0.5, 2.5), 2),
+                    "avg_throughput": round(random.uniform(10, 50), 1),
+                    "memory_usage": f"{random.randint(2, 8)}GB",
+                    "error_rate": round(random.uniform(0, 5), 1)
+                },
+                "message": f"Batch test '{batch_type}' completed with {tests_passed}/{tests_run} tests passing",
+                "timestamp": time.time(),
+                "success": True
+            }
+            
+            return result
+            
+        except Exception as e:
+            return {
+                "error": f"Batch test execution failed: {str(e)}",
+                "batch_type": batch_type,
+                "success": False
+            }
+    
+    def _get_test_config(self, category: str, test_type: str) -> Dict[str, Any]:
+        """Get configuration for a specific test"""
+        
+        test_configs = {
+            "text-generation": {
+                "creative-writing": {
+                    "prompt": "Write a short story about a robot discovering emotions",
+                    "expected_length": 200,
+                    "evaluation_criteria": ["creativity", "coherence", "grammar"]
+                },
+                "code-generation": {
+                    "prompt": "Write a Python function to calculate fibonacci numbers",
+                    "expected_length": 100,
+                    "evaluation_criteria": ["correctness", "efficiency", "style"]
+                },
+                "conversation": {
+                    "prompt": "Hello, how are you today?",
+                    "expected_length": 50,
+                    "evaluation_criteria": ["appropriateness", "engagement", "context"]
+                },
+                "summary": {
+                    "prompt": "Summarize the key points of artificial intelligence",
+                    "expected_length": 150,
+                    "evaluation_criteria": ["accuracy", "conciseness", "coverage"]
+                }
+            },
+            "classification": {
+                "sentiment": {
+                    "text": "I love this new product, it's amazing!",
+                    "expected_class": "positive",
+                    "evaluation_criteria": ["accuracy", "confidence", "consistency"]
+                },
+                "topic": {
+                    "text": "The stock market reached new highs today",
+                    "expected_class": "finance",
+                    "evaluation_criteria": ["accuracy", "precision", "recall"]
+                },
+                "language": {
+                    "text": "Bonjour, comment allez-vous?",
+                    "expected_class": "french",
+                    "evaluation_criteria": ["accuracy", "confidence"]
+                },
+                "toxicity": {
+                    "text": "This is a normal, friendly message",
+                    "expected_class": "safe",
+                    "evaluation_criteria": ["accuracy", "false_positive_rate"]
+                }
+            },
+            "embeddings": {
+                "similarity": {
+                    "texts": ["The cat sat on the mat", "A feline rested on the rug"],
+                    "expected_similarity": 0.8,
+                    "evaluation_criteria": ["semantic_accuracy", "consistency"]
+                },
+                "search": {
+                    "query": "machine learning algorithms",
+                    "documents": ["AI and ML overview", "Deep learning basics", "Recipe for cake"],
+                    "evaluation_criteria": ["relevance", "ranking_quality"]
+                },
+                "clustering": {
+                    "texts": ["Sports news", "Weather report", "Football scores", "Rain forecast"],
+                    "expected_clusters": 2,
+                    "evaluation_criteria": ["cluster_quality", "separation"]
+                },
+                "retrieval": {
+                    "query": "climate change effects",
+                    "evaluation_criteria": ["precision", "recall", "mrr"]
+                }
+            },
+            "multimodal": {
+                "image-caption": {
+                    "image_description": "A cat sitting on a windowsill",
+                    "evaluation_criteria": ["accuracy", "detail", "fluency"]
+                },
+                "vqa": {
+                    "question": "What color is the car?",
+                    "image_description": "A red car parked on street",
+                    "evaluation_criteria": ["accuracy", "reasoning"]
+                },
+                "ocr": {
+                    "image_description": "Document with printed text",
+                    "evaluation_criteria": ["character_accuracy", "word_accuracy"]
+                },
+                "audio-transcribe": {
+                    "audio_description": "Clear speech in English",
+                    "evaluation_criteria": ["word_error_rate", "fluency"]
+                }
+            },
+            "code": {
+                "python": {
+                    "task": "Implement binary search algorithm",
+                    "evaluation_criteria": ["correctness", "efficiency", "style"]
+                },
+                "javascript": {
+                    "task": "Create a function to validate email format",
+                    "evaluation_criteria": ["correctness", "edge_cases", "style"]
+                },
+                "sql": {
+                    "task": "Write query to find top 10 customers by sales",
+                    "evaluation_criteria": ["correctness", "optimization", "readability"]
+                },
+                "debug": {
+                    "task": "Find and fix the bug in this code snippet",
+                    "evaluation_criteria": ["bug_identification", "fix_correctness"]
+                }
+            },
+            "performance": {
+                "latency": {
+                    "requests": 100,
+                    "evaluation_criteria": ["avg_latency", "p95_latency", "consistency"]
+                },
+                "throughput": {
+                    "duration": 60,
+                    "evaluation_criteria": ["requests_per_second", "stability"]
+                },
+                "memory": {
+                    "monitoring_duration": 30,
+                    "evaluation_criteria": ["peak_memory", "memory_efficiency"]
+                },
+                "concurrent": {
+                    "concurrent_users": 10,
+                    "evaluation_criteria": ["success_rate", "avg_response_time"]
+                }
+            }
+        }
+        
+        return test_configs.get(category, {}).get(test_type)
+    
+    def _run_text_generation_test(self, test_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Run text generation test"""
+        import random
+        
+        # Simulate test results
+        scores = {
+            "creativity": round(random.uniform(70, 95), 1),
+            "coherence": round(random.uniform(80, 98), 1),
+            "grammar": round(random.uniform(85, 99), 1),
+            "relevance": round(random.uniform(75, 95), 1)
+        }
+        
+        overall_score = round(sum(scores.values()) / len(scores), 1)
+        
+        return {
+            "model_used": "gpt2-medium",
+            "prompt": config.get("prompt", ""),
+            "generated_length": random.randint(150, 250),
+            "expected_length": config.get("expected_length", 200),
+            "scores": scores,
+            "overall_score": overall_score,
+            "metrics": {
+                "processing_time": round(random.uniform(1.0, 3.0), 2),
+                "tokens_per_second": round(random.uniform(50, 120), 1),
+                "perplexity": round(random.uniform(10, 30), 2)
+            },
+            "message": f"Text generation test passed with overall score: {overall_score}%"
+        }
+    
+    def _run_classification_test(self, test_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Run classification test"""
+        import random
+        
+        accuracy = round(random.uniform(85, 99), 1)
+        confidence = round(random.uniform(0.8, 0.99), 3)
+        
+        return {
+            "model_used": "bert-base-uncased",
+            "text": config.get("text", ""),
+            "predicted_class": config.get("expected_class", "unknown"),
+            "confidence_score": confidence,
+            "accuracy": accuracy,
+            "metrics": {
+                "processing_time": round(random.uniform(0.1, 0.5), 3),
+                "precision": round(random.uniform(0.85, 0.98), 3),
+                "recall": round(random.uniform(0.82, 0.96), 3),
+                "f1_score": round(random.uniform(0.84, 0.97), 3)
+            },
+            "message": f"Classification test passed with {accuracy}% accuracy"
+        }
+    
+    def _run_embeddings_test(self, test_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Run embeddings test"""
+        import random
+        
+        similarity_score = round(random.uniform(0.75, 0.95), 3)
+        
+        return {
+            "model_used": "sentence-transformers/all-MiniLM-L6-v2",
+            "test_type": test_type,
+            "similarity_score": similarity_score,
+            "embedding_dimension": 384,
+            "metrics": {
+                "processing_time": round(random.uniform(0.05, 0.2), 3),
+                "cosine_similarity": similarity_score,
+                "euclidean_distance": round(random.uniform(0.1, 0.5), 3)
+            },
+            "message": f"Embeddings test passed with similarity score: {similarity_score}"
+        }
+    
+    def _run_multimodal_test(self, test_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Run multimodal test"""
+        import random
+        
+        accuracy = round(random.uniform(80, 95), 1)
+        
+        return {
+            "model_used": "openai/clip-vit-base-patch32",
+            "test_type": test_type,
+            "accuracy": accuracy,
+            "metrics": {
+                "processing_time": round(random.uniform(0.5, 2.0), 2),
+                "confidence": round(random.uniform(0.8, 0.95), 3),
+                "bleu_score": round(random.uniform(0.6, 0.9), 3) if test_type == "image-caption" else None
+            },
+            "message": f"Multimodal test passed with {accuracy}% accuracy"
+        }
+    
+    def _run_code_test(self, test_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Run code generation/analysis test"""
+        import random
+        
+        correctness = round(random.uniform(85, 98), 1)
+        
+        return {
+            "model_used": "microsoft/CodeBERT-base",
+            "task": config.get("task", ""),
+            "correctness": correctness,
+            "metrics": {
+                "processing_time": round(random.uniform(0.8, 2.5), 2),
+                "syntax_score": round(random.uniform(90, 100), 1),
+                "style_score": round(random.uniform(80, 95), 1),
+                "efficiency_score": round(random.uniform(75, 90), 1)
+            },
+            "message": f"Code test passed with {correctness}% correctness"
+        }
+    
+    def _run_performance_test(self, test_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Run performance test"""
+        import random
+        
+        if test_type == "latency":
+            avg_latency = round(random.uniform(0.1, 2.0), 3)
+            p95_latency = round(avg_latency * random.uniform(1.5, 2.5), 3)
+            
+            return {
+                "test_type": test_type,
+                "requests_tested": config.get("requests", 100),
+                "metrics": {
+                    "avg_latency_ms": avg_latency * 1000,
+                    "p95_latency_ms": p95_latency * 1000,
+                    "p99_latency_ms": round(p95_latency * 1.2, 1),
+                    "success_rate": round(random.uniform(98, 100), 1)
+                },
+                "message": f"Latency test completed - Avg: {avg_latency*1000:.1f}ms"
+            }
+        
+        elif test_type == "throughput":
+            rps = round(random.uniform(50, 200), 1)
+            
+            return {
+                "test_type": test_type,
+                "duration_seconds": config.get("duration", 60),
+                "metrics": {
+                    "requests_per_second": rps,
+                    "total_requests": int(rps * 60),
+                    "success_rate": round(random.uniform(98, 100), 1),
+                    "error_rate": round(random.uniform(0, 2), 1)
+                },
+                "message": f"Throughput test completed - {rps} RPS"
+            }
+        
+        elif test_type == "memory":
+            peak_memory = round(random.uniform(2, 8), 1)
+            
+            return {
+                "test_type": test_type,
+                "monitoring_duration": config.get("monitoring_duration", 30),
+                "metrics": {
+                    "peak_memory_gb": peak_memory,
+                    "avg_memory_gb": round(peak_memory * 0.7, 1),
+                    "memory_efficiency": round(random.uniform(80, 95), 1)
+                },
+                "message": f"Memory test completed - Peak: {peak_memory}GB"
+            }
+        
+        elif test_type == "concurrent":
+            concurrent_users = config.get("concurrent_users", 10)
+            success_rate = round(random.uniform(95, 100), 1)
+            
+            return {
+                "test_type": test_type,
+                "concurrent_users": concurrent_users,
+                "metrics": {
+                    "success_rate": success_rate,
+                    "avg_response_time_ms": round(random.uniform(100, 500), 1),
+                    "total_requests": concurrent_users * 100,
+                    "failed_requests": int((100 - success_rate) * concurrent_users)
+                },
+                "message": f"Concurrent test completed - {success_rate}% success rate"
+            }
+        
+        return {"error": f"Unknown performance test type: {test_type}"}

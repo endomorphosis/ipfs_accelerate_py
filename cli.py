@@ -40,7 +40,7 @@ logger = logging.getLogger("ipfs_accelerate_cli")
 # Import shared functionality
 try:
     from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
-    from .shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations
+    from .shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
     HAVE_CORE = True
 except ImportError as e:
     logger.warning(f"Core modules not available: {e}")
@@ -49,7 +49,7 @@ except ImportError as e:
         import sys
         import os
         sys.path.append(os.path.dirname(__file__))
-        from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations
+        from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
         from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
         HAVE_CORE = True
     except ImportError as e2:
@@ -71,6 +71,7 @@ if HAVE_CORE:
     model_ops = ModelOperations(shared_core)
     network_ops = NetworkOperations(shared_core)
     queue_ops = QueueOperations(shared_core)
+    test_ops = TestOperations(shared_core)
 else:
     shared_core = SharedCore()
     inference_ops = None
@@ -78,6 +79,7 @@ else:
     model_ops = None
     network_ops = None
     queue_ops = None
+    test_ops = None
 
 class IPFSAccelerateCLI:
     """Main CLI class for IPFS Accelerate"""
@@ -320,6 +322,18 @@ class IPFSAccelerateCLI:
                         
                         elif method == 'runInference':
                             result = self._run_inference(params)
+                        
+                        elif method == 'runModelTest':
+                            category = params.get('category', '')
+                            test_type = params.get('test_type', '')
+                            test_id = params.get('test_id', '')
+                            result = test_ops.run_model_test(category, test_type, test_id) if test_ops else {"error": "Test ops not available"}
+                        
+                        elif method == 'runBatchTest':
+                            batch_type = params.get('batch_type', '')
+                            model_filter = params.get('model_filter', '')
+                            test_id = params.get('test_id', '')
+                            result = test_ops.run_batch_test(batch_type, model_filter, test_id) if test_ops else {"error": "Test ops not available"}
                         
                         else:
                             raise Exception(f"Unknown method: {method}")
@@ -749,6 +763,175 @@ class IPFSAccelerateCLI:
             transform: scale(1.1);
         }}
         
+        .test-categories {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }}
+        
+        .test-category-card {{
+            background: var(--surface-color);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            transition: all 0.3s ease;
+        }}
+        
+        .test-category-card:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.2);
+            border-color: rgba(139, 92, 246, 0.4);
+        }}
+        
+        .test-category-card h3 {{
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }}
+        
+        .test-category-card p {{
+            color: var(--text-muted);
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }}
+        
+        .test-scenarios {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }}
+        
+        .test-btn {{
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }}
+        
+        .test-btn:hover {{
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }}
+        
+        .test-btn:active {{
+            transform: translateY(0);
+        }}
+        
+        .test-running {{
+            background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+            animation: pulse 2s infinite;
+        }}
+        
+        .test-completed {{
+            background: linear-gradient(135deg, #10b981, #059669) !important;
+        }}
+        
+        .test-failed {{
+            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+        }}
+        
+        @keyframes pulse {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.7; }}
+        }}
+        
+        .test-result-item {{
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid var(--primary-color);
+        }}
+        
+        .test-result-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }}
+        
+        .test-result-title {{
+            font-weight: 600;
+            color: var(--text-color);
+        }}
+        
+        .test-result-status {{
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }}
+        
+        .status-success {{
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }}
+        
+        .status-running {{
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }}
+        
+        .status-failed {{
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }}
+        
+        .test-result-details {{
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }}
+        
+        .test-metrics {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }}
+        
+        .test-metric {{
+            text-align: center;
+            background: rgba(139, 92, 246, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+        }}
+        
+        .test-metric-value {{
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--primary-color);
+        }}
+        
+        .test-metric-label {{
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 5px;
+        }}
+        
+        .loading-spinner {{
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(139, 92, 246, 0.3);
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }}
+        
+        @keyframes spin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        
         @media (max-width: 768px) {{
             .main-content {{
                 grid-template-columns: 1fr;
@@ -801,6 +984,7 @@ class IPFSAccelerateCLI:
                 <ul class="nav-menu">
                     <li><button class="active" data-tab="text-generation">📝 Text Generation</button></li>
                     <li><button data-tab="model-manager">🤖 Model Manager</button></li>
+                    <li><button data-tab="model-testing">🧪 Model Testing</button></li>
                     <li><button data-tab="queue-monitor">📊 Queue Monitor</button></li>
                     <li><button data-tab="system-status">⚙️ System Status</button></li>
                 </ul>
@@ -842,6 +1026,110 @@ class IPFSAccelerateCLI:
                     </form>
                     <div id="model-results" style="margin-top: 20px;">
                         <p style="color: var(--text-muted);">Enter a search query to find models</p>
+                    </div>
+                </div>
+                
+                <!-- Model Testing Tab -->
+                <div id="model-testing" class="tab-content">
+                    <h2>🧪 Model Testing & Validation</h2>
+                    <p style="color: var(--text-muted); margin-bottom: 30px;">Test different categories of AI models with predefined test cases and validation scenarios.</p>
+                    
+                    <!-- Test Categories -->
+                    <div class="test-categories">
+                        <div class="test-category-card">
+                            <h3>📝 Text Generation Models</h3>
+                            <p>Test language models with creative writing, code generation, and conversation prompts.</p>
+                            <div class="test-scenarios">
+                                <button class="test-btn" onclick="dashboard.runTest('text-generation', 'creative-writing')">Creative Writing Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('text-generation', 'code-generation')">Code Generation Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('text-generation', 'conversation')">Conversational Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('text-generation', 'summary')">Text Summary Test</button>
+                            </div>
+                        </div>
+                        
+                        <div class="test-category-card">
+                            <h3>🔍 Classification & Analysis</h3>
+                            <p>Test models for sentiment analysis, text classification, and content analysis.</p>
+                            <div class="test-scenarios">
+                                <button class="test-btn" onclick="dashboard.runTest('classification', 'sentiment')">Sentiment Analysis Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('classification', 'topic')">Topic Classification Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('classification', 'language')">Language Detection Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('classification', 'toxicity')">Content Safety Test</button>
+                            </div>
+                        </div>
+                        
+                        <div class="test-category-card">
+                            <h3>🧮 Embedding Models</h3>
+                            <p>Test vector embedding models for similarity, search, and semantic understanding.</p>
+                            <div class="test-scenarios">
+                                <button class="test-btn" onclick="dashboard.runTest('embeddings', 'similarity')">Text Similarity Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('embeddings', 'search')">Semantic Search Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('embeddings', 'clustering')">Document Clustering Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('embeddings', 'retrieval')">Information Retrieval Test</button>
+                            </div>
+                        </div>
+                        
+                        <div class="test-category-card">
+                            <h3>🎨 Multimodal Models</h3>
+                            <p>Test models that handle multiple input types like text, images, and audio.</p>
+                            <div class="test-scenarios">
+                                <button class="test-btn" onclick="dashboard.runTest('multimodal', 'image-caption')">Image Captioning Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('multimodal', 'vqa')">Visual Q&A Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('multimodal', 'ocr')">OCR & Text Extract Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('multimodal', 'audio-transcribe')">Audio Transcription Test</button>
+                            </div>
+                        </div>
+                        
+                        <div class="test-category-card">
+                            <h3>💻 Code Generation Models</h3>
+                            <p>Test specialized coding models for different programming languages and tasks.</p>
+                            <div class="test-scenarios">
+                                <button class="test-btn" onclick="dashboard.runTest('code', 'python')">Python Code Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('code', 'javascript')">JavaScript Code Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('code', 'sql')">SQL Query Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('code', 'debug')">Code Debug Test</button>
+                            </div>
+                        </div>
+                        
+                        <div class="test-category-card">
+                            <h3>⚡ Performance Testing</h3>
+                            <p>Test model performance, latency, throughput, and resource utilization.</p>
+                            <div class="test-scenarios">
+                                <button class="test-btn" onclick="dashboard.runTest('performance', 'latency')">Latency Benchmark</button>
+                                <button class="test-btn" onclick="dashboard.runTest('performance', 'throughput')">Throughput Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('performance', 'memory')">Memory Usage Test</button>
+                                <button class="test-btn" onclick="dashboard.runTest('performance', 'concurrent')">Concurrent Load Test</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Test Results -->
+                    <div style="margin-top: 40px;">
+                        <h3>📊 Test Results</h3>
+                        <div id="test-results" class="result-box" style="min-height: 200px; display: block;">
+                            <div style="text-align: center; color: var(--text-muted); padding: 50px;">
+                                <p>🚀 Select a test scenario above to start testing models</p>
+                                <p style="font-size: 0.9rem; margin-top: 10px;">Test results will show model performance, accuracy metrics, and detailed analysis.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Batch Testing -->
+                    <div style="margin-top: 30px;">
+                        <h3>🔄 Batch Testing</h3>
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                            <button class="btn" onclick="dashboard.runBatchTest('all')">Run All Tests</button>
+                            <button class="btn" onclick="dashboard.runBatchTest('text-models')">Test Text Models</button>
+                            <button class="btn" onclick="dashboard.runBatchTest('performance')">Performance Suite</button>
+                            <select id="batch-model-filter" class="form-control" style="width: 200px;">
+                                <option value="">All Available Models</option>
+                                <option value="text-generation">Text Generation Only</option>
+                                <option value="classification">Classification Only</option>
+                                <option value="embeddings">Embeddings Only</option>
+                                <option value="multimodal">Multimodal Only</option>
+                                <option value="code">Code Models Only</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
                 
@@ -1107,6 +1395,228 @@ Architecture: Shared Operations, Fallback Support
                 `).join('');
                 
                 container.innerHTML = html;
+            }}
+            
+            async runTest(category, testType) {{
+                const testId = `${{category}}-${{testType}}-${{Date.now()}}`;
+                const button = event?.target;
+                
+                if (button) {{
+                    button.classList.add('test-running');
+                    button.disabled = true;
+                    const originalText = button.textContent;
+                    button.innerHTML = '<span class="loading-spinner"></span> Running...';
+                }}
+                
+                // Add test result container
+                this.addTestResult(testId, category, testType, 'running');
+                
+                try {{
+                    const response = await fetch('/jsonrpc', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            jsonrpc: '2.0',
+                            method: 'runModelTest',
+                            params: {{ 
+                                category: category, 
+                                test_type: testType,
+                                test_id: testId
+                            }},
+                            id: 3
+                        }})
+                    }});
+                    
+                    const data = await response.json();
+                    
+                    if (data.result) {{
+                        this.updateTestResult(testId, 'success', data.result);
+                        if (button) {{
+                            button.classList.remove('test-running');
+                            button.classList.add('test-completed');
+                            button.innerHTML = '✅ Completed';
+                        }}
+                    }} else {{
+                        this.updateTestResult(testId, 'failed', {{ error: data.error?.message || 'Test failed' }});
+                        if (button) {{
+                            button.classList.remove('test-running');
+                            button.classList.add('test-failed');
+                            button.innerHTML = '❌ Failed';
+                        }}
+                    }}
+                }} catch (error) {{
+                    this.updateTestResult(testId, 'failed', {{ error: error.message }});
+                    if (button) {{
+                        button.classList.remove('test-running');
+                        button.classList.add('test-failed');
+                        button.innerHTML = '❌ Error';
+                    }}
+                }}
+                
+                // Reset button after 3 seconds
+                if (button) {{
+                    setTimeout(() => {{
+                        button.disabled = false;
+                        button.classList.remove('test-completed', 'test-failed');
+                        button.innerHTML = button.getAttribute('data-original-text') || 'Run Test';
+                    }}, 3000);
+                }}
+            }}
+            
+            addTestResult(testId, category, testType, status) {{
+                const container = document.getElementById('test-results');
+                const testName = this.getTestDisplayName(category, testType);
+                
+                // Clear the default message if this is the first test
+                if (container.children.length === 1 && container.innerHTML.includes('Select a test scenario')) {{
+                    container.innerHTML = '';
+                }}
+                
+                const resultDiv = document.createElement('div');
+                resultDiv.id = `result-${{testId}}`;
+                resultDiv.className = 'test-result-item';
+                resultDiv.innerHTML = `
+                    <div class="test-result-header">
+                        <div class="test-result-title">${{testName}}</div>
+                        <div class="test-result-status status-${{status}}">
+                            ${{status === 'running' ? 'Running...' : status.toUpperCase()}}
+                        </div>
+                    </div>
+                    <div class="test-result-details">
+                        ${{status === 'running' ? 
+                            '<div class="loading-spinner"></div> Test is running, please wait...' : 
+                            'Initializing test...'}}
+                    </div>
+                `;
+                
+                container.appendChild(resultDiv);
+                resultDiv.scrollIntoView({{ behavior: 'smooth' }});
+            }}
+            
+            updateTestResult(testId, status, result) {{
+                const resultElement = document.getElementById(`result-${{testId}}`);
+                if (!resultElement) return;
+                
+                const statusElement = resultElement.querySelector('.test-result-status');
+                const detailsElement = resultElement.querySelector('.test-result-details');
+                
+                statusElement.className = `test-result-status status-${{status}}`;
+                statusElement.textContent = status === 'success' ? 'PASSED' : 'FAILED';
+                
+                if (status === 'success' && result) {{
+                    const metricsHtml = result.metrics ? `
+                        <div class="test-metrics">
+                            ${{Object.entries(result.metrics).map(([key, value]) => `
+                                <div class="test-metric">
+                                    <div class="test-metric-value">${{value}}</div>
+                                    <div class="test-metric-label">${{key.replace('_', ' ').toUpperCase()}}</div>
+                                </div>
+                            `).join('')}}
+                        </div>
+                    ` : '';
+                    
+                    detailsElement.innerHTML = `
+                        <div>✅ Test completed successfully</div>
+                        ${{result.message ? `<div style="margin-top: 10px;">${{result.message}}</div>` : ''}}
+                        ${{result.model_used ? `<div style="margin-top: 5px; font-style: italic;">Model: ${{result.model_used}}</div>` : ''}}
+                        ${{metricsHtml}}
+                    `;
+                }} else if (status === 'failed') {{
+                    detailsElement.innerHTML = `
+                        <div>❌ Test failed: ${{result.error || 'Unknown error'}}</div>
+                        ${{result.details ? `<div style="margin-top: 10px; color: var(--text-muted);">${{result.details}}</div>` : ''}}
+                    `;
+                }}
+            }}
+            
+            getTestDisplayName(category, testType) {{
+                const testNames = {{
+                    'text-generation': {{
+                        'creative-writing': '📝 Creative Writing Test',
+                        'code-generation': '💻 Code Generation Test',
+                        'conversation': '💬 Conversational Test',
+                        'summary': '📄 Text Summary Test'
+                    }},
+                    'classification': {{
+                        'sentiment': '😊 Sentiment Analysis Test',
+                        'topic': '🏷️ Topic Classification Test',
+                        'language': '🌍 Language Detection Test',
+                        'toxicity': '🛡️ Content Safety Test'
+                    }},
+                    'embeddings': {{
+                        'similarity': '🔗 Text Similarity Test',
+                        'search': '🔍 Semantic Search Test',
+                        'clustering': '🎯 Document Clustering Test',
+                        'retrieval': '📚 Information Retrieval Test'
+                    }},
+                    'multimodal': {{
+                        'image-caption': '🖼️ Image Captioning Test',
+                        'vqa': '❓ Visual Q&A Test',
+                        'ocr': '📖 OCR & Text Extract Test',
+                        'audio-transcribe': '🎵 Audio Transcription Test'
+                    }},
+                    'code': {{
+                        'python': '🐍 Python Code Test',
+                        'javascript': '🟨 JavaScript Code Test',
+                        'sql': '🗃️ SQL Query Test',
+                        'debug': '🐛 Code Debug Test'
+                    }},
+                    'performance': {{
+                        'latency': '⚡ Latency Benchmark',
+                        'throughput': '🚀 Throughput Test',
+                        'memory': '💾 Memory Usage Test',
+                        'concurrent': '⚖️ Concurrent Load Test'
+                    }}
+                }};
+                
+                return testNames[category]?.[testType] || `${{category}} - ${{testType}}`;
+            }}
+            
+            async runBatchTest(batchType) {{
+                const filterValue = document.getElementById('batch-model-filter')?.value;
+                const button = event?.target;
+                
+                if (button) {{
+                    button.disabled = true;
+                    const originalText = button.textContent;
+                    button.innerHTML = '<span class="loading-spinner"></span> Running Batch...';
+                    
+                    setTimeout(() => {{
+                        button.disabled = false;
+                        button.textContent = originalText;
+                    }}, 5000);
+                }}
+                
+                // Add batch test result
+                const batchId = `batch-${{batchType}}-${{Date.now()}}`;
+                this.addTestResult(batchId, 'batch', batchType, 'running');
+                
+                try {{
+                    const response = await fetch('/jsonrpc', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            jsonrpc: '2.0',
+                            method: 'runBatchTest',
+                            params: {{ 
+                                batch_type: batchType,
+                                model_filter: filterValue,
+                                test_id: batchId
+                            }},
+                            id: 4
+                        }})
+                    }});
+                    
+                    const data = await response.json();
+                    
+                    if (data.result) {{
+                        this.updateTestResult(batchId, 'success', data.result);
+                    }} else {{
+                        this.updateTestResult(batchId, 'failed', {{ error: data.error?.message || 'Batch test failed' }});
+                    }}
+                }} catch (error) {{
+                    this.updateTestResult(batchId, 'failed', {{ error: error.message }});
+                }}
             }}
             
             refreshData() {{
