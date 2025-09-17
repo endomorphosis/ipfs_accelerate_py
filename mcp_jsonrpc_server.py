@@ -17,6 +17,18 @@ from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 from pathlib import Path
 
+# Best-effort ensure minimal server deps when allowed
+try:
+    from ipfs_accelerate_py.utils.auto_install import ensure_packages
+    ensure_packages({
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        # optional but commonly used in this server
+        "huggingface_hub": "huggingface_hub",
+    })
+except Exception:
+    pass
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,8 +38,8 @@ import uvicorn
 # Set up logging first
 logger = logging.getLogger(__name__)
 
-# Import our comprehensive MCP server
-from tools.comprehensive_mcp_server import ComprehensiveMCPServer
+# Defer importing the comprehensive MCP server to avoid heavy deps at import-time
+ComprehensiveMCPServer = None  # will be imported lazily in __init__
 
 # Import HuggingFace model search service
 from tools.huggingface_model_search import get_hf_search_service
@@ -43,6 +55,8 @@ except ImportError:
 
 # Try to import ipfs_accelerate_py model manager
 try:
+    # Avoid importing heavy core components when only model manager is needed
+    os.environ.setdefault("IPFS_ACCEL_SKIP_CORE", "1")
     from ipfs_accelerate_py.model_manager import ModelManager
     HAVE_MODEL_MANAGER = True
 except ImportError:
@@ -217,8 +231,12 @@ class MCPJSONRPCServer:
             allow_headers=["*"],
         )
         
-        # Initialize the comprehensive MCP server
+        # Initialize the comprehensive MCP server (optional)
         try:
+            global ComprehensiveMCPServer
+            if ComprehensiveMCPServer is None:
+                from tools.comprehensive_mcp_server import ComprehensiveMCPServer as _CMS
+                ComprehensiveMCPServer = _CMS
             self.mcp_server = ComprehensiveMCPServer()
             logger.info("MCP server initialized successfully")
         except Exception as e:

@@ -20,6 +20,17 @@ logging.basicConfig(
 logger = logging.getLogger("ipfs_accelerate_mcp")
 
 # Import for external use
+try:
+    # Ensure minimal deps if allowed
+    from ipfs_accelerate_py.utils.auto_install import ensure_packages
+    ensure_packages({
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        "fastmcp": "fastmcp",
+    })
+except Exception:
+    pass
+
 from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
 
 def create_server(

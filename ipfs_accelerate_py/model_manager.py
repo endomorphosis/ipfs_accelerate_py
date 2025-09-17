@@ -28,8 +28,18 @@ try:
 except ImportError:
     try:
         from ipfs_multiformats import ipfs_multiformats_py  
+        HAVE_IPFS_MULTIFORMATS = True
     except ImportError:
-        HAVE_IPFS_MULTIFORMATS = False
+        # Attempt auto-install of missing optional deps when allowed
+        try:
+            from .utils.auto_install import ensure_packages
+            ensure_packages({
+                "multiformats": "multiformats",
+            })
+            from ipfs_multiformats import ipfs_multiformats_py  # retry after install
+            HAVE_IPFS_MULTIFORMATS = True
+        except Exception:
+            HAVE_IPFS_MULTIFORMATS = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -41,16 +51,29 @@ try:
     import duckdb
     HAVE_DUCKDB = True
 except ImportError:
-    HAVE_DUCKDB = False
-    logger.warning("DuckDB not available. Using JSON storage backend.")
+    # Attempt auto-install
+    try:
+        from .utils.auto_install import ensure_packages
+        ensure_packages(["duckdb"])
+        import duckdb  # retry
+        HAVE_DUCKDB = True
+    except Exception:
+        HAVE_DUCKDB = False
+        logger.warning("DuckDB not available. Using JSON storage backend.")
 
 # Try to import requests for HuggingFace API access
 try:
     import requests
     HAVE_REQUESTS = True
 except ImportError:
-    HAVE_REQUESTS = False
-    logger.warning("Requests not available. HuggingFace repository fetching disabled.")
+    try:
+        from .utils.auto_install import ensure_packages
+        ensure_packages(["requests"])  # retry
+        import requests
+        HAVE_REQUESTS = True
+    except Exception:
+        HAVE_REQUESTS = False
+        logger.warning("Requests not available. HuggingFace repository fetching disabled.")
 
 # Initialize IPFS multiformats instance if available
 ipfs_multiformats = None
@@ -1030,16 +1053,28 @@ try:
     from sentence_transformers import SentenceTransformer
     HAVE_SENTENCE_TRANSFORMERS = True
 except ImportError:
-    HAVE_SENTENCE_TRANSFORMERS = False
-    logger.warning("SentenceTransformers not available. Vector search disabled.")
+    try:
+        from .utils.auto_install import ensure_packages
+        ensure_packages({"sentence_transformers": "sentence-transformers"})
+        from sentence_transformers import SentenceTransformer  # retry
+        HAVE_SENTENCE_TRANSFORMERS = True
+    except Exception:
+        HAVE_SENTENCE_TRANSFORMERS = False
+        logger.warning("SentenceTransformers not available. Vector search disabled.")
 
 # Try to import numpy for vector operations
 try:
     import numpy as np
     HAVE_NUMPY = True
 except ImportError:
-    HAVE_NUMPY = False
-    logger.warning("NumPy not available. Vector operations disabled.")
+    try:
+        from .utils.auto_install import ensure_packages
+        ensure_packages(["numpy"])  # retry
+        import numpy as np
+        HAVE_NUMPY = True
+    except Exception:
+        HAVE_NUMPY = False
+        logger.warning("NumPy not available. Vector operations disabled.")
 
 
 @dataclass

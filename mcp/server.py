@@ -20,6 +20,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Best-effort ensure minimal deps when allowed
+try:
+    from ipfs_accelerate_py.utils.auto_install import ensure_packages
+    ensure_packages({
+        "fastmcp": "fastmcp",
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+    })
+except Exception:
+    pass
+
 # Try imports with fallbacks
 try:
     # Try to import FastMCP if available

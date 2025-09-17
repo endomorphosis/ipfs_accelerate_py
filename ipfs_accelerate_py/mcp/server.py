@@ -18,6 +18,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ipfs_accelerate_mcp.server")
 
+# Ensure minimal runtime dependencies when allowed
+try:
+    from ..utils.auto_install import ensure_packages
+    ensure_packages({
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        # FastMCP is optional; try to make it available if user permits
+        "fastmcp": "fastmcp",
+    })
+except Exception:
+    # Best-effort; server can still run in standalone mode
+    pass
+
 class StandaloneMCP:
     """
     Standalone MCP Implementation
@@ -108,6 +121,26 @@ class StandaloneMCP:
         }
         
         logger.debug(f"Registered prompt: {name}")
+
+    def access_resource(self, uri: str, **kwargs) -> Any:
+        """
+        Access a registered resource by URI.
+
+        This helper mirrors FastMCP's access_resource to provide a common API
+        for tools that query resources. It calls the registered function with
+        any provided keyword arguments.
+        """
+        resource = self.resources.get(uri)
+        if not resource:
+            return None
+        try:
+            func = resource.get("function")
+            if callable(func):
+                return func(**kwargs) if kwargs else func()
+        except Exception as e:
+            logger.error(f"Error accessing resource {uri}: {e}
+{traceback.format_exc()}")
+        return None
     
     def create_fastapi_app(
         self,

@@ -22,14 +22,37 @@ def register_all_tools(mcp: Any) -> None:
     logger.debug("Registering all tools with MCP server")
     
     try:
-        # Import tools
+        # Always register hardware tools (supports both Standalone and FastMCP styles)
         from ipfs_accelerate_py.mcp.tools.hardware import register_hardware_tools
-        
-        # Register tools
         register_hardware_tools(mcp)
-        
+
+        # If FastMCP-style decorators are available, register decorator-based tool modules
+        if hasattr(mcp, "tool"):
+            try:
+                from ipfs_accelerate_py.mcp.tools.inference import register_tools as register_inference_tools
+                register_inference_tools(mcp)
+                logger.debug("Registered inference tools")
+            except Exception as e:
+                logger.warning(f"Inference tools not registered: {e}")
+
+            try:
+                from ipfs_accelerate_py.mcp.tools.endpoints import register_tools as register_endpoint_tools
+                register_endpoint_tools(mcp)
+                logger.debug("Registered endpoint tools")
+            except Exception as e:
+                logger.warning(f"Endpoint tools not registered: {e}")
+
+            try:
+                from ipfs_accelerate_py.mcp.tools.status import register_tools as register_status_tools
+                register_status_tools(mcp)
+                logger.debug("Registered status tools")
+            except Exception as e:
+                logger.warning(f"Status tools not registered: {e}")
+        else:
+            logger.warning("FastMCP decorators not available; only hardware tools registered in standalone mode")
+
         logger.debug("All tools registered with MCP server")
-    
+
     except Exception as e:
         logger.error(f"Error registering tools with MCP server: {e}")
         raise
