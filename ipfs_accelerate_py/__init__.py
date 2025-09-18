@@ -82,23 +82,28 @@ else:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
 
-# Import Model Manager
-try:
-    from .model_manager import (
-        ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
-        create_model_from_huggingface, get_default_model_manager
-    )
-    model_manager_available = True
-except ImportError:
+# Import Model Manager (skip by default to avoid heavy optional deps at import time)
+if os.environ.get("IPFS_ACCEL_IMPORT_EAGER", "0") == "1":
+    try:
+        from .model_manager import (
+            ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
+            create_model_from_huggingface, get_default_model_manager
+        )
+        model_manager_available = True
+    except ImportError:
+        model_manager_available = False
+        def get_default_model_manager(*args, **kwargs):
+            raise NotImplementedError("Model Manager is not available")
+        class ModelManager:
+            def __init__(self, *args, **kwargs):
+                raise NotImplementedError("Model Manager is not available")
+else:
     model_manager_available = False
-    
-    # Create stubs if not available
     def get_default_model_manager(*args, **kwargs):
-        raise NotImplementedError("Model Manager is not available")
-    
+        raise NotImplementedError("Model Manager is not imported by default. Set IPFS_ACCEL_IMPORT_EAGER=1 to enable.")
     class ModelManager:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError("Model Manager is not available")
+            raise NotImplementedError("Model Manager is not imported by default. Set IPFS_ACCEL_IMPORT_EAGER=1 to enable.")
 
 # Import our new implementation
 try:
