@@ -23,11 +23,15 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
 ]
-dynamic = ["dependencies"]
+dynamic = ["dependencies", "optional-dependencies"]
 
 [project.urls]
 Homepage = "https://github.com/endomorphosis/ipfs_accelerate_py"
 Issues = "https://github.com/endomorphosis/ipfs_accelerate_py/issues"
+
+[project.scripts]
+ipfs_accelerate = "ipfs_accelerate_py.ai_inference_cli:main"
+ipfs-accelerate = "ipfs_accelerate_py.cli_entry:main"
 
 [tool.setuptools]
 package-dir = {"" = "."}
@@ -37,6 +41,10 @@ package-dir = {"" = "."}
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
+optional-dependencies.minimal = ["aiohttp>=3.8.1", "duckdb>=0.7.0", "ipfshttpclient>=0.8.0a2", "websockets>=10.1", "tqdm>=4.64.0", "numpy>=1.23.0"]
+optional-dependencies.full = ["torch>=2.1", "transformers>=4.46", "uvicorn>=0.27.0", "fastapi>=0.110.0", "sentence_transformers", "ipfs_transformers_py", "ipfs_model_manager_py"]
+optional-dependencies.testing = ["pytest>=8.0.0", "pytest-timeout>=2.4.0", "pytest-cov>=4.0.0"]
+optional-dependencies.mcp = ["fastmcp>=0.1.0", "libp2p>=0.1.5", "async-timeout>=4.0.0"]
 
 [tool.setuptools.packages.find]
 include = ["ipfs_accelerate_py*"]

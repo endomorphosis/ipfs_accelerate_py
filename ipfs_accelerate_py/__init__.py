@@ -140,12 +140,19 @@ export = {
     "model_manager_available": model_manager_available
 }
 
+# Add CLI entry point for package access
+try:
+    from .cli_entry import main as cli_main
+    export["cli_main"] = cli_main
+except ImportError:
+    cli_main = None
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
     'install_depends', 'worker', 'ipfs_multiformats_py',
     'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
-    'model_manager_available'
+    'model_manager_available', 'cli_main'
 ]
 
 # Package version
