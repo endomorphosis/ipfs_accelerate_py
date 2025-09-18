@@ -40,7 +40,7 @@ logger = logging.getLogger("ipfs_accelerate_cli")
 # Import shared functionality
 try:
     from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
-    from .shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+    from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
     HAVE_CORE = True
 except ImportError as e:
     logger.warning(f"Core modules not available: {e}")
@@ -141,6 +141,45 @@ class IPFSAccelerateCLI:
             logger.error(f"Error starting MCP server: {e}")
             return 1
     
+    def run_mcp_status(self, args):
+        """Check MCP server status"""
+        import requests
+        
+        try:
+            url = f"http://{args.host}:{args.port}/health"
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 200:
+                status_data = response.json()
+                if hasattr(args, 'output_json') and args.output_json:
+                    print(json.dumps(status_data, indent=2))
+                else:
+                    print(f"✅ MCP Server Status: {status_data.get('status', 'Running')}")
+                    print(f"   Server: http://{args.host}:{args.port}")
+                    print(f"   Uptime: {status_data.get('uptime', 'Unknown')}")
+                return 0
+            else:
+                if hasattr(args, 'output_json') and args.output_json:
+                    print(json.dumps({"status": "error", "message": f"HTTP {response.status_code}"}))
+                else:
+                    print(f"❌ MCP Server Error: HTTP {response.status_code}")
+                return 1
+                
+        except requests.exceptions.ConnectionError:
+            if hasattr(args, 'output_json') and args.output_json:
+                print(json.dumps({"status": "offline", "message": "Connection refused"}))
+            else:
+                print(f"❌ MCP Server Status: Offline (Connection refused)")
+                print(f"   Attempted: http://{args.host}:{args.port}")
+            return 1
+        except Exception as e:
+            logger.error(f"Error checking server status: {e}")
+            if hasattr(args, 'output_json') and args.output_json:
+                print(json.dumps({"status": "error", "message": str(e)}))
+            else:
+                print(f"❌ Error checking server status: {e}")
+            return 1
+
     def run_mcp_dashboard(self, args):
         """Start MCP server dashboard with advanced features"""
         logger.info("Starting Advanced MCP Server Dashboard with HuggingFace Model Manager...")
@@ -1861,3 +1900,94 @@ class IPFSAccelerateCLI:
         except Exception as e:
             logger.error(f"Error creating advanced dashboard: {e}")
             raise
+
+
+def main():
+    """Main entry point for the CLI"""
+    try:
+        # Create argument parser
+        parser = argparse.ArgumentParser(
+            description="IPFS Accelerate CLI - Unified interface for AI inference and IPFS operations",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
+Examples:
+  ipfs-accelerate mcp start --dashboard --open-browser
+  ipfs-accelerate mcp status
+  ipfs-accelerate inference generate --prompt "Hello world"
+  ipfs-accelerate models list --output-json
+  ipfs-accelerate queue status
+  ipfs-accelerate network status
+            """
+        )
+        
+        # Add global arguments
+        parser.add_argument('--output-json', action='store_true', help='Output results in JSON format')
+        parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+        
+        # Create subparsers for different command categories
+        subparsers = parser.add_subparsers(dest='command', help='Available commands')
+        
+        # MCP commands
+        mcp_parser = subparsers.add_parser('mcp', help='MCP server management')
+        mcp_subparsers = mcp_parser.add_subparsers(dest='mcp_command', help='MCP commands')
+        
+        # MCP start command
+        start_parser = mcp_subparsers.add_parser('start', help='Start MCP server')
+        start_parser.add_argument('--name', default='ipfs-accelerate', help='Server name')
+        start_parser.add_argument('--host', default='localhost', help='Host to bind to')
+        start_parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
+        start_parser.add_argument('--dashboard', action='store_true', help='Enable web dashboard')
+        start_parser.add_argument('--open-browser', action='store_true', help='Open browser automatically')
+        start_parser.add_argument('--keep-running', action='store_true', help='Keep server running')
+        
+        # MCP dashboard command
+        dashboard_parser = mcp_subparsers.add_parser('dashboard', help='Start dashboard only')
+        dashboard_parser.add_argument('--host', default='localhost', help='Host to bind to')
+        dashboard_parser.add_argument('--port', type=int, default=8001, help='Port to bind to')
+        dashboard_parser.add_argument('--open-browser', action='store_true', help='Open browser automatically')
+        
+        # MCP status command
+        status_parser = mcp_subparsers.add_parser('status', help='Check MCP server status')
+        status_parser.add_argument('--host', default='localhost', help='Server host')
+        status_parser.add_argument('--port', type=int, default=8000, help='Server port')
+        
+        # Parse arguments
+        args = parser.parse_args()
+        
+        # Set debug logging if requested
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+            logger.setLevel(logging.DEBUG)
+        
+        # Handle commands
+        if not args.command:
+            parser.print_help()
+            return 0
+            
+        cli = IPFSAccelerateCLI()
+        
+        if args.command == 'mcp':
+            if args.mcp_command == 'start':
+                return cli.run_mcp_start(args)
+            elif args.mcp_command == 'dashboard':
+                return cli.run_mcp_dashboard(args)
+            elif args.mcp_command == 'status':
+                return cli.run_mcp_status(args)
+            else:
+                mcp_parser.print_help()
+                return 1
+        else:
+            parser.print_help()
+            return 1
+            
+    except KeyboardInterrupt:
+        logger.info("CLI interrupted by user")
+        return 0
+    except Exception as e:
+        logger.error(f"CLI error: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
