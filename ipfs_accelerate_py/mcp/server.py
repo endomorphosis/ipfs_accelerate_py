@@ -138,8 +138,8 @@ class StandaloneMCP:
             if callable(func):
                 return func(**kwargs) if kwargs else func()
         except Exception as e:
-            logger.error(f"Error accessing resource {uri}: {e}
-{traceback.format_exc()}")
+            logger.error(f"Error accessing resource {uri}: {e}")
+            logger.debug(traceback.format_exc())
         return None
     
     def create_fastapi_app(

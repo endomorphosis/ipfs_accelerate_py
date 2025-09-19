@@ -2,6 +2,7 @@
 Inference Tools for IPFS Accelerate MCP Server
 
 This module provides MCP tools for running inference with machine learning models.
+Uses shared operations for consistency with CLI.
 """
 
 import os
@@ -14,10 +15,20 @@ from typing import Dict, List, Any, Optional, Union
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.inference")
 
-# Store the IPFS Accelerate instance for use by the tools
-_ipfs_instance = None
+# Import shared operations
+try:
+    from ....shared import SharedCore, InferenceOperations
+    shared_core = SharedCore()
+    inference_ops = InferenceOperations(shared_core)
+    HAVE_SHARED = True
+except ImportError as e:
+    logger.warning(f"Shared operations not available: {e}")
+    HAVE_SHARED = False
+    shared_core = None
+    inference_ops = None
 
-def set_ipfs_instance(ipfs_instance) -> None:
+def register_tools(mcp):
+    """Register inference-related tools with the MCP server"""
     """
     Set the IPFS Accelerate instance
     

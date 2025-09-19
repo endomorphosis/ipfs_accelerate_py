@@ -185,6 +185,7 @@ setup(
 	entry_points={
 		'console_scripts': [
 			'ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main',
+			'ipfs-accelerate=ipfs_accelerate_py.cli_entry:main',
 		],
 	}
 )

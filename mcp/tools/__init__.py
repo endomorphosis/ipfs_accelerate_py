@@ -60,8 +60,9 @@ def register_all_tools(mcp: FastMCP) -> None:
     # List of tool modules to import
     tool_modules = [
         "acceleration",
-        "ipfs_files",
-        "ipfs_network"
+        "ipfs_files", 
+        "ipfs_network",
+        "shared_tools"
     ]
     
     # Track registered tool modules
@@ -80,7 +81,11 @@ def register_all_tools(mcp: FastMCP) -> None:
             module = importlib.import_module(f"mcp.tools.{module_name}")
             
             # Register tools from the module
-            register_function = getattr(module, f"register_{module_name.replace('ipfs_', '')}_tools", None)
+            if module_name == "shared_tools":
+                register_function = getattr(module, "register_shared_tools", None)
+            else:
+                register_function = getattr(module, f"register_{module_name.replace('ipfs_', '')}_tools", None)
+                
             if register_function:
                 register_function(mcp)
                 registered_modules.add(module_name)
