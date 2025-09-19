@@ -37,49 +37,80 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ipfs_accelerate_cli")
 
-# Import shared functionality
-try:
-    from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
-    from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
-    HAVE_CORE = True
-except ImportError as e:
-    logger.warning(f"Core modules not available: {e}")
-    try:
-        # Try alternative import paths
-        import sys
-        import os
-        sys.path.append(os.path.dirname(__file__))
-        from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
-        from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
-        HAVE_CORE = True
-    except ImportError as e2:
-        logger.warning(f"Alternative import also failed: {e2}")
-        HAVE_CORE = False
-        
-        # Fallback shared core for when imports fail
-        class SharedCore:
-            def __init__(self):
-                pass
-            def get_status(self):
-                return {"error": "Core not available", "fallback": True}
+# Defer heavy imports until needed - global variables for lazy loading
+HAVE_CORE = None
+shared_core = None
+inference_ops = None
+file_ops = None
+model_ops = None
+network_ops = None
+queue_ops = None
+test_ops = None
+IPFSAccelerateMCPServer = None
 
-# Global shared core instance
-if HAVE_CORE:
-    shared_core = SharedCore()
-    inference_ops = InferenceOperations(shared_core)
-    file_ops = FileOperations(shared_core)
-    model_ops = ModelOperations(shared_core)
-    network_ops = NetworkOperations(shared_core)
-    queue_ops = QueueOperations(shared_core)
-    test_ops = TestOperations(shared_core)
-else:
-    shared_core = SharedCore()
-    inference_ops = None
-    file_ops = None
-    model_ops = None
-    network_ops = None
-    queue_ops = None
-    test_ops = None
+def _load_heavy_imports():
+    """Load heavy imports only when needed for actual command execution"""
+    global HAVE_CORE, shared_core, inference_ops, file_ops, model_ops, network_ops, queue_ops, test_ops, IPFSAccelerateMCPServer
+    
+    if HAVE_CORE is not None:
+        return  # Already loaded
+    
+    try:
+        from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+        from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+        
+        IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
+        HAVE_CORE = True
+        
+        # Initialize core components
+        shared_core = SharedCore()
+        inference_ops = InferenceOperations(shared_core)
+        file_ops = FileOperations(shared_core)
+        model_ops = ModelOperations(shared_core)
+        network_ops = NetworkOperations(shared_core)
+        queue_ops = QueueOperations(shared_core)
+        test_ops = TestOperations(shared_core)
+        
+    except ImportError as e:
+        logger.warning(f"Core modules not available: {e}")
+        try:
+            # Try alternative import paths
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+            from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+            
+            IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
+            HAVE_CORE = True
+            
+            # Initialize core components
+            shared_core = SharedCore()
+            inference_ops = InferenceOperations(shared_core)
+            file_ops = FileOperations(shared_core)
+            model_ops = ModelOperations(shared_core)
+            network_ops = NetworkOperations(shared_core)
+            queue_ops = QueueOperations(shared_core)
+            test_ops = TestOperations(shared_core)
+            
+        except ImportError as e2:
+            logger.warning(f"Alternative import also failed: {e2}")
+            HAVE_CORE = False
+            
+            # Fallback shared core for when imports fail
+            class SharedCore:
+                def __init__(self):
+                    pass
+                def get_status(self):
+                    return {"error": "Core not available", "fallback": True}
+            
+            shared_core = SharedCore()
+            inference_ops = None
+            file_ops = None
+            model_ops = None
+            network_ops = None
+            queue_ops = None
+            test_ops = None
 
 class IPFSAccelerateCLI:
     """Main CLI class for IPFS Accelerate"""
@@ -110,6 +141,9 @@ class IPFSAccelerateCLI:
     def run_mcp_start(self, args):
         """Start MCP server"""
         logger.info("Starting IPFS Accelerate MCP Server...")
+        
+        # Load heavy imports only when needed
+        _load_heavy_imports()
         
         try:
             if HAVE_CORE:
@@ -183,6 +217,9 @@ class IPFSAccelerateCLI:
     def run_mcp_dashboard(self, args):
         """Start MCP server dashboard with advanced features"""
         logger.info("Starting Advanced MCP Server Dashboard with HuggingFace Model Manager...")
+        
+        # Load heavy imports only when needed
+        _load_heavy_imports()
         
         try:
             # Use the advanced dashboard with model manager

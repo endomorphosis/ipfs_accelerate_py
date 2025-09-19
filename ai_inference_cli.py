@@ -33,19 +33,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ai_inference_cli")
 
-# Import the MCP server for processing
-sys.path.append(os.path.dirname(__file__))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'tools'))
-try:
-    from comprehensive_mcp_server import ComprehensiveMCPServer
-    HAVE_MCP_SERVER = True
-except ImportError as e:
+# Defer heavy imports until needed
+HAVE_MCP_SERVER = None
+ComprehensiveMCPServer = None
+
+def _load_heavy_imports():
+    """Load heavy imports only when needed for actual command execution"""
+    global HAVE_MCP_SERVER, ComprehensiveMCPServer
+    
+    if HAVE_MCP_SERVER is not None:
+        return  # Already loaded
+    
+    # Import the MCP server for processing
+    sys.path.append(os.path.dirname(__file__))
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'tools'))
     try:
-        from tools.comprehensive_mcp_server import ComprehensiveMCPServer
+        from comprehensive_mcp_server import ComprehensiveMCPServer as _ComprehensiveMCPServer
+        ComprehensiveMCPServer = _ComprehensiveMCPServer
         HAVE_MCP_SERVER = True
-    except ImportError as e2:
-        HAVE_MCP_SERVER = False
-        logger.error(f"Could not import MCP server: {e2}")
+    except ImportError as e:
+        try:
+            from tools.comprehensive_mcp_server import ComprehensiveMCPServer as _ComprehensiveMCPServer
+            ComprehensiveMCPServer = _ComprehensiveMCPServer
+            HAVE_MCP_SERVER = True
+        except ImportError as e2:
+            HAVE_MCP_SERVER = False
+            logger.error(f"Could not import MCP server: {e2}")
 
 class AIInferenceCLI:
     """Comprehensive AI Inference CLI Tool."""
@@ -53,12 +66,7 @@ class AIInferenceCLI:
     def __init__(self):
         """Initialize the CLI tool."""
         self.server = None
-        if HAVE_MCP_SERVER:
-            try:
-                self.server = ComprehensiveMCPServer()
-                logger.info("MCP server initialized for CLI operations")
-            except Exception as e:
-                logger.error(f"Failed to initialize MCP server: {e}")
+        self._server_initialized = False
         
         # Define all available inference types and their parameters
         self.inference_types = {
@@ -100,6 +108,20 @@ class AIInferenceCLI:
                 'available-types': self._system_available_types,
             }
         }
+    
+    def _ensure_server_initialized(self):
+        """Ensure the MCP server is initialized when needed."""
+        if not self._server_initialized:
+            _load_heavy_imports()  # Load heavy imports first
+            
+            if HAVE_MCP_SERVER:
+                try:
+                    self.server = ComprehensiveMCPServer()
+                    logger.info("MCP server initialized for CLI operations")
+                except Exception as e:
+                    logger.error(f"Failed to initialize MCP server: {e}")
+            
+            self._server_initialized = True
     
     def create_parser(self) -> argparse.ArgumentParser:
         """Create the argument parser for the CLI."""
@@ -377,6 +399,8 @@ Examples:
     
     def _perform_inference(self, task_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """Perform inference using the MCP server."""
+        self._ensure_server_initialized()
+        
         if not self.server:
             return {
                 "error": "MCP server not available",
@@ -698,6 +722,8 @@ Examples:
     # System commands implementations
     def _system_list_models(self, args) -> Dict[str, Any]:
         """List available models."""
+        self._ensure_server_initialized()
+        
         if not self.server:
             return {"error": "MCP server not available", "models": []}
         
@@ -732,6 +758,8 @@ Examples:
     
     def _system_recommend_model(self, args) -> Dict[str, Any]:
         """Get model recommendations."""
+        self._ensure_server_initialized()
+        
         if not self.server:
             return {"error": "MCP server not available"}
         
@@ -773,6 +801,8 @@ Examples:
     
     def _system_get_stats(self, args) -> Dict[str, Any]:
         """Get system statistics."""
+        self._ensure_server_initialized()
+        
         if not self.server:
             return {"error": "MCP server not available"}
         
@@ -801,6 +831,8 @@ Examples:
     
     def _system_available_types(self, args) -> Dict[str, Any]:
         """List available model types."""
+        self._ensure_server_initialized()
+        
         if not self.server:
             return {"error": "MCP server not available"}
         
