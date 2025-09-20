@@ -2421,22 +2421,22 @@ Examples:
         # MCP start command
         start_parser = mcp_subparsers.add_parser('start', help='Start MCP server')
         start_parser.add_argument('--name', default='ipfs-accelerate', help='Server name')
-        start_parser.add_argument('--host', default='localhost', help='Host to bind to')
-        start_parser.add_argument('--port', type=int, default=3000, help='Port to bind to (default: 3000)')
+        start_parser.add_argument('--host', default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
+        start_parser.add_argument('--port', type=int, default=9000, help='Port to bind to (default: 9000)')
         start_parser.add_argument('--dashboard', action='store_true', help='Enable web dashboard')
         start_parser.add_argument('--open-browser', action='store_true', help='Open browser automatically')
         start_parser.add_argument('--keep-running', action='store_true', help='Keep server running')
         
         # MCP dashboard command
         dashboard_parser = mcp_subparsers.add_parser('dashboard', help='Start dashboard only')
-        dashboard_parser.add_argument('--host', default='localhost', help='Host to bind to')
-        dashboard_parser.add_argument('--port', type=int, default=8001, help='Port to bind to')
+        dashboard_parser.add_argument('--host', default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
+        dashboard_parser.add_argument('--port', type=int, default=9000, help='Port to bind to (default: 9000)')
         dashboard_parser.add_argument('--open-browser', action='store_true', help='Open browser automatically')
         
         # MCP status command
         status_parser = mcp_subparsers.add_parser('status', help='Check MCP server status')
-        status_parser.add_argument('--host', default='localhost', help='Server host')
-        status_parser.add_argument('--port', type=int, default=3000, help='Server port (default: 3000)')
+        status_parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
+        status_parser.add_argument('--port', type=int, default=9000, help='Server port (default: 9000)')
         
         # Parse arguments
         args = parser.parse_args()

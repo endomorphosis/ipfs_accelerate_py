@@ -1839,7 +1839,7 @@ def create_app() -> FastAPI:
     server = MCPJSONRPCServer()
     return server.app
 
-def run_server(host: str = "127.0.0.1", port: int = 8000):
+def run_server(host: str = "0.0.0.0", port: int = 9000):
     """Run the JSON-RPC server."""
     app = create_app()
     uvicorn.run(app, host=host, port=port)
@@ -1848,8 +1848,8 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="MCP JSON-RPC Server")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=9000, help="Port to bind to (default: 9000)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     
     args = parser.parse_args()
