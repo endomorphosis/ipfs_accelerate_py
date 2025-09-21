@@ -481,6 +481,24 @@ class IPFSAccelerateCLI:
             background: #f39c12;
             color: white;
         }}
+        .required {{
+            color: #e74c3c;
+        }}
+        .file-input {{
+            border: 2px dashed #ecf0f1;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }}
+        .file-input:hover {{
+            border-color: #3498db;
+        }}
+        .file-input.has-file {{
+            border-color: #27ae60;
+            background-color: #f8fff8;
+        }}
         
         @media (max-width: 768px) {{
             .container {{ padding: 10px; }}
@@ -626,22 +644,42 @@ class IPFSAccelerateCLI:
                     <h3>🤖 AI Inference Testing</h3>
                     <div class="form-group">
                         <label>Inference Type:</label>
-                        <select class="form-control" id="inference-type">
-                            <option value="text">Text Generation</option>
-                            <option value="classification">Text Classification</option>
-                            <option value="embeddings">Text Embeddings</option>
-                            <option value="translation">Translation</option>
-                            <option value="summarization">Summarization</option>
-                            <option value="audio">Audio Transcription</option>
-                            <option value="vision">Image Classification</option>
-                            <option value="multimodal">Visual Q&A</option>
+                        <select class="form-control" id="inference-type" onchange="updateInferenceForm()">
+                            <option value="text-generate">Text Generation</option>
+                            <option value="text-classify">Text Classification</option>
+                            <option value="text-embeddings">Text Embeddings</option>
+                            <option value="text-translate">Translation</option>
+                            <option value="text-summarize">Summarization</option>
+                            <option value="text-question">Question Answering</option>
+                            <option value="audio-transcribe">Audio Transcription</option>
+                            <option value="audio-classify">Audio Classification</option>
+                            <option value="vision-classify">Image Classification</option>
+                            <option value="vision-detect">Object Detection</option>
+                            <option value="multimodal-caption">Image Captioning</option>
+                            <option value="multimodal-vqa">Visual Q&A</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>Input Text/Prompt:</label>
-                        <textarea class="form-control" id="inference-input" rows="4" 
-                                  placeholder="Enter your text, prompt, or question here..."></textarea>
+                    
+                    <!-- Dynamic form fields will be populated here -->
+                    <div id="dynamic-fields">
+                        <!-- Text Generation Fields (default) -->
+                        <div class="form-group">
+                            <label>Prompt: <span class="required">*</span></label>
+                            <textarea class="form-control" id="prompt" rows="4" 
+                                      placeholder="Enter your text generation prompt..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Max Length:</label>
+                            <input type="number" class="form-control" id="max-length" 
+                                   placeholder="100" min="1" max="2048">
+                        </div>
+                        <div class="form-group">
+                            <label>Temperature:</label>
+                            <input type="number" class="form-control" id="temperature" 
+                                   placeholder="0.7" min="0" max="2" step="0.1">
+                        </div>
                     </div>
+                    
                     <div class="form-group">
                         <label>Model ID (optional):</label>
                         <input type="text" class="form-control" id="model-id" 
@@ -1064,13 +1102,177 @@ class IPFSAccelerateCLI:
         }}
         
         // AI Inference functions
+        function updateInferenceForm() {{
+            const inferenceType = document.getElementById('inference-type').value;
+            const dynamicFields = document.getElementById('dynamic-fields');
+            
+            // Define form configurations for each inference type
+            const formConfigs = {{
+                'text-generate': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'prompt', label: 'Prompt', required: true, placeholder: 'Enter your text generation prompt...', rows: 4 }},
+                        {{ type: 'number', id: 'max-length', label: 'Max Length', placeholder: '100', min: 1, max: 2048 }},
+                        {{ type: 'number', id: 'temperature', label: 'Temperature', placeholder: '0.7', min: 0, max: 2, step: 0.1 }},
+                        {{ type: 'number', id: 'top-p', label: 'Top-p', placeholder: '0.9', min: 0, max: 1, step: 0.1 }},
+                        {{ type: 'number', id: 'top-k', label: 'Top-k', placeholder: '50', min: 1, max: 100 }}
+                    ]
+                }},
+                'text-classify': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'text', label: 'Text to Classify', required: true, placeholder: 'Enter text to classify...', rows: 3 }},
+                        {{ type: 'number', id: 'top-k', label: 'Top-k Results', placeholder: '5', min: 1, max: 10 }}
+                    ]
+                }},
+                'text-embeddings': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'text', label: 'Text for Embeddings', required: true, placeholder: 'Enter text to generate embeddings...', rows: 3 }}
+                    ]
+                }},
+                'text-translate': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'text', label: 'Text to Translate', required: true, placeholder: 'Enter text to translate...', rows: 3 }},
+                        {{ type: 'text', id: 'source-lang', label: 'Source Language', placeholder: 'auto (auto-detect)' }},
+                        {{ type: 'text', id: 'target-lang', label: 'Target Language', required: true, placeholder: 'e.g., es, fr, de' }}
+                    ]
+                }},
+                'text-summarize': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'text', label: 'Text to Summarize', required: true, placeholder: 'Enter long text to summarize...', rows: 6 }},
+                        {{ type: 'number', id: 'max-length', label: 'Max Summary Length', placeholder: '150', min: 10, max: 500 }}
+                    ]
+                }},
+                'text-question': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'context', label: 'Context', required: true, placeholder: 'Enter context text...', rows: 4 }},
+                        {{ type: 'text', id: 'question', label: 'Question', required: true, placeholder: 'Enter your question...' }}
+                    ]
+                }},
+                'audio-transcribe': {{
+                    fields: [
+                        {{ type: 'file', id: 'audio-file', label: 'Audio File', required: true, accept: 'audio/*' }},
+                        {{ type: 'text', id: 'language', label: 'Language', placeholder: 'auto (auto-detect)' }},
+                        {{ type: 'select', id: 'task', label: 'Task', options: [['transcribe', 'Transcribe'], ['translate', 'Translate to English']] }}
+                    ]
+                }},
+                'audio-classify': {{
+                    fields: [
+                        {{ type: 'file', id: 'audio-file', label: 'Audio File', required: true, accept: 'audio/*' }},
+                        {{ type: 'number', id: 'top-k', label: 'Top-k Results', placeholder: '5', min: 1, max: 10 }}
+                    ]
+                }},
+                'vision-classify': {{
+                    fields: [
+                        {{ type: 'file', id: 'image-file', label: 'Image File', required: true, accept: 'image/*' }},
+                        {{ type: 'number', id: 'top-k', label: 'Top-k Results', placeholder: '5', min: 1, max: 10 }}
+                    ]
+                }},
+                'vision-detect': {{
+                    fields: [
+                        {{ type: 'file', id: 'image-file', label: 'Image File', required: true, accept: 'image/*' }},
+                        {{ type: 'number', id: 'confidence-threshold', label: 'Confidence Threshold', placeholder: '0.5', min: 0, max: 1, step: 0.1 }}
+                    ]
+                }},
+                'multimodal-caption': {{
+                    fields: [
+                        {{ type: 'file', id: 'image-file', label: 'Image File', required: true, accept: 'image/*' }},
+                        {{ type: 'number', id: 'max-length', label: 'Max Caption Length', placeholder: '50', min: 10, max: 200 }}
+                    ]
+                }},
+                'multimodal-vqa': {{
+                    fields: [
+                        {{ type: 'file', id: 'image-file', label: 'Image File', required: true, accept: 'image/*' }},
+                        {{ type: 'text', id: 'question', label: 'Question', required: true, placeholder: 'What question do you want to ask about this image?' }}
+                    ]
+                }}
+            }};
+            
+            // Generate form fields
+            const config = formConfigs[inferenceType];
+            if (!config) return;
+            
+            let formHTML = '';
+            config.fields.forEach(field => {{
+                const requiredStar = field.required ? '<span class="required">*</span>' : '';
+                const requiredAttr = field.required ? 'required' : '';
+                
+                formHTML += `<div class="form-group">`;
+                formHTML += `<label>${{field.label}}: ${{requiredStar}}</label>`;
+                
+                if (field.type === 'textarea') {{
+                    formHTML += `<textarea class="form-control" id="${{field.id}}" rows="${{field.rows || 3}}" 
+                                          placeholder="${{field.placeholder || ''}}" ${{requiredAttr}}></textarea>`;
+                }} else if (field.type === 'file') {{
+                    formHTML += `<div class="file-input" onclick="document.getElementById('${{field.id}}').click()">
+                                   <input type="file" id="${{field.id}}" accept="${{field.accept || ''}}" 
+                                          style="display: none;" onchange="handleFileSelect(this)" ${{requiredAttr}}>
+                                   <div id="${{field.id}}-display">📁 Click to select ${{field.label.toLowerCase()}}</div>
+                                 </div>`;
+                }} else if (field.type === 'select') {{
+                    formHTML += `<select class="form-control" id="${{field.id}}" ${{requiredAttr}}>`;
+                    if (field.options) {{
+                        field.options.forEach(option => {{
+                            formHTML += `<option value="${{option[0]}}">${{option[1]}}</option>`;
+                        }});
+                    }}
+                    formHTML += `</select>`;
+                }} else {{
+                    const stepAttr = field.step ? `step="${{field.step}}"` : '';
+                    const minAttr = field.min !== undefined ? `min="${{field.min}}"` : '';
+                    const maxAttr = field.max !== undefined ? `max="${{field.max}}"` : '';
+                    formHTML += `<input type="${{field.type}}" class="form-control" id="${{field.id}}" 
+                                        placeholder="${{field.placeholder || ''}}" ${{requiredAttr}} 
+                                        ${{stepAttr}} ${{minAttr}} ${{maxAttr}}>`;
+                }}
+                
+                formHTML += `</div>`;
+            }});
+            
+            dynamicFields.innerHTML = formHTML;
+        }}
+        
+        function handleFileSelect(input) {{
+            const display = document.getElementById(input.id + '-display');
+            const fileInput = document.getElementById(input.id);
+            const container = fileInput.parentElement;
+            
+            if (input.files.length > 0) {{
+                display.textContent = `✅ Selected: ${{input.files[0].name}}`;
+                container.classList.add('has-file');
+            }} else {{
+                display.textContent = `📁 Click to select ${{input.id.replace('-', ' ')}}`;
+                container.classList.remove('has-file');
+            }}
+        }}
+        
         async function runInference() {{
             const inferenceType = document.getElementById('inference-type').value;
-            const inputText = document.getElementById('inference-input').value;
             const modelId = document.getElementById('model-id').value;
             
-            if (!inputText.trim()) {{
-                alert('Please enter some input text');
+            // Collect form data based on current inference type
+            const formData = {{}};
+            const dynamicFields = document.getElementById('dynamic-fields');
+            const inputs = dynamicFields.querySelectorAll('input, textarea, select');
+            
+            let hasRequiredFields = true;
+            
+            inputs.forEach(input => {{
+                if (input.type === 'file') {{
+                    if (input.files.length > 0) {{
+                        formData[input.id] = input.files[0];
+                    }} else if (input.required) {{
+                        hasRequiredFields = false;
+                    }}
+                }} else {{
+                    if (input.value.trim()) {{
+                        formData[input.id] = input.value.trim();
+                    }} else if (input.required) {{
+                        hasRequiredFields = false;
+                    }}
+                }}
+            }});
+            
+            if (!hasRequiredFields) {{
+                alert('Please fill in all required fields (marked with *)');
                 return;
             }}
             
@@ -1080,45 +1282,19 @@ class IPFSAccelerateCLI:
             
             addLog(`Starting ${{inferenceType}} inference`);
             
-            // Simulate inference call
+            // Simulate inference call with appropriate response based on type
             try {{
-                const requestData = {{
-                    type: inferenceType,
-                    input: inputText,
-                    model_id: modelId || null
-                }};
-                
-                // Mock inference results
                 setTimeout(() => {{
                     const endTime = Date.now();
                     const duration = endTime - startTime;
                     
-                    let mockResult;
-                    switch(inferenceType) {{
-                        case 'text':
-                            mockResult = `Generated text: "${{inputText}} and this is the AI-generated continuation of the text with relevant context and information."`;
-                            break;
-                        case 'classification':
-                            mockResult = `Classification: POSITIVE (confidence: 0.92)\\nSentiment analysis shows positive sentiment with high confidence.`;
-                            break;
-                        case 'embeddings':
-                            mockResult = `Embeddings generated: 768-dimensional vector\\n[0.1234, -0.5678, 0.9012, ...] (showing first 3 of 768 dimensions)`;
-                            break;
-                        case 'translation':
-                            mockResult = `Translation to Spanish: "Hola mundo y este es el texto traducido automáticamente."`;
-                            break;
-                        case 'summarization':
-                            mockResult = `Summary: The main points of the input text focus on key concepts and important information, condensed into this brief overview.`;
-                            break;
-                        default:
-                            mockResult = `${{inferenceType}} result: Processed input successfully with mock AI model.`;
-                    }}
+                    let mockResult = generateMockResult(inferenceType, formData);
                     
                     resultsArea.textContent = mockResult;
                     document.getElementById('inference-time').textContent = `${{duration}}ms`;
                     document.getElementById('model-used').textContent = modelId || 'auto-selected';
                     addLog(`Inference completed in ${{duration}}ms`);
-                }}, 1000 + Math.random() * 2000); // Simulate 1-3 second processing time
+                }}, 1000 + Math.random() * 2000);
                 
             }} catch (error) {{
                 resultsArea.textContent = `Error: ${{error.message}}`;
@@ -1126,17 +1302,64 @@ class IPFSAccelerateCLI:
             }}
         }}
         
+        function generateMockResult(inferenceType, formData) {{
+            switch(inferenceType) {{
+                case 'text-generate':
+                    return `Generated text: "${{formData.prompt || 'Sample prompt'}} and this is the AI-generated continuation with relevant context and creative elaboration."`;
+                case 'text-classify':
+                    return `Classification Results:\\n• POSITIVE (confidence: 0.92)\\n• NEUTRAL (confidence: 0.06)\\n• NEGATIVE (confidence: 0.02)`;
+                case 'text-embeddings':
+                    return `Embeddings generated: 768-dimensional vector\\n[0.1234, -0.5678, 0.9012, ...] (showing first 3 of 768 dimensions)\\nVector magnitude: 1.0`;
+                case 'text-translate':
+                    return `Translation (${{formData['source-lang'] || 'auto'}} → ${{formData['target-lang'] || 'target'}}):\\n"${{formData.text || 'Hello world'}}" → "Translated text result"`;
+                case 'text-summarize':
+                    return `Summary:\\nThe main points of the input text focus on key concepts and important information, condensed into this brief overview while preserving essential meaning.`;
+                case 'text-question':
+                    return `Answer: Based on the provided context, the answer to "${{formData.question || 'your question'}}" is a comprehensive response derived from the contextual information.`;
+                case 'audio-transcribe':
+                    return `Transcription:\\n"This is the transcribed text from the audio file. The speech recognition system has processed the audio and converted it to text."\\nLanguage: ${{formData.language || 'auto-detected'}}`;
+                case 'audio-classify':
+                    return `Audio Classification:\\n• Music (confidence: 0.85)\\n• Speech (confidence: 0.12)\\n• Ambient (confidence: 0.03)`;
+                case 'vision-classify':
+                    return `Image Classification:\\n• Cat (confidence: 0.89)\\n• Animal (confidence: 0.78)\\n• Pet (confidence: 0.65)\\n• Mammal (confidence: 0.58)`;
+                case 'vision-detect':
+                    return `Object Detection:\\n• Person (bbox: [50, 100, 200, 300], confidence: 0.92)\\n• Car (bbox: [300, 150, 450, 250], confidence: 0.88)\\n• Tree (bbox: [10, 50, 100, 400], confidence: 0.75)`;
+                case 'multimodal-caption':
+                    return `Image Caption:\\n"A detailed caption describing the contents of the image, including objects, people, scenery, and contextual information."`;
+                case 'multimodal-vqa':
+                    return `Visual Question Answering:\\nQuestion: "${{formData.question || 'What is in this image?'}}"\\nAnswer: Based on the visual analysis of the image, the answer provides specific details about what can be observed.`;
+                default:
+                    return `${{inferenceType}} result: Processed input successfully with mock AI model.`;
+            }}
+        }}
+        
         function clearInferenceResults() {{
-            document.getElementById('inference-results').textContent = 'Ready to run inference...\\n\\nTry these examples:\\n• Text: "Explain quantum computing"\\n• Classification: "This product is amazing!"\\n• Translation: "Hello world" → Spanish\\n• Summarization: Long article text';
+            document.getElementById('inference-results').textContent = 'Ready to run inference...\\n\\nSelect an inference type above and fill in the required parameters to get started.';
             document.getElementById('inference-time').textContent = '-';
             document.getElementById('model-used').textContent = '-';
+            
+            // Clear dynamic form fields
+            const dynamicFields = document.getElementById('dynamic-fields');
+            const inputs = dynamicFields.querySelectorAll('input, textarea, select');
+            inputs.forEach(input => {{
+                if (input.type === 'file') {{
+                    input.value = '';
+                    handleFileSelect(input);
+                }} else {{
+                    input.value = '';
+                }}
+            }});
         }}
         
         function runInferenceTest() {{
             // Switch to inference tab and run a test
             showTab('inference');
-            document.getElementById('inference-input').value = 'This is a test of the AI inference system';
-            setTimeout(() => runInference(), 500);
+            document.getElementById('inference-type').value = 'text-generate';
+            updateInferenceForm();
+            setTimeout(() => {{
+                document.getElementById('prompt').value = 'Explain the concept of artificial intelligence in simple terms';
+                runInference();
+            }}, 500);
         }}
         
         // Performance monitoring
@@ -1254,6 +1477,9 @@ class IPFSAccelerateCLI:
             // Set up periodic updates
             setInterval(updateUptime, 1000);
             setInterval(refreshPerformance, 30000);
+            
+            // Initialize inference form
+            updateInferenceForm();
             
             // Initial data load
             setTimeout(() => {{
