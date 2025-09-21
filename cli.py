@@ -657,10 +657,18 @@ class IPFSAccelerateCLI:
                             <option value="text-question">Question Answering</option>
                             <option value="audio-transcribe">Audio Transcription</option>
                             <option value="audio-classify">Audio Classification</option>
+                            <option value="audio-synthesize">Speech Synthesis (TTS)</option>
+                            <option value="audio-generate">Audio Generation</option>
                             <option value="vision-classify">Image Classification</option>
                             <option value="vision-detect">Object Detection</option>
+                            <option value="vision-segment">Image Segmentation</option>
+                            <option value="vision-generate">Image Generation</option>
                             <option value="multimodal-caption">Image Captioning</option>
                             <option value="multimodal-vqa">Visual Q&A</option>
+                            <option value="multimodal-document">Document Processing</option>
+                            <option value="specialized-code">Code Generation</option>
+                            <option value="specialized-timeseries">Time Series Forecasting</option>
+                            <option value="specialized-tabular">Tabular Data Processing</option>
                         </select>
                     </div>
                     
@@ -1169,6 +1177,22 @@ class IPFSAccelerateCLI:
                         {{ type: 'number', id: 'top-k', label: 'Top-k Results', placeholder: '5', min: 1, max: 10 }}
                     ]
                 }},
+                'audio-synthesize': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'text', label: 'Text to Synthesize', required: true, placeholder: 'Enter text to convert to speech...', rows: 3 }},
+                        {{ type: 'text', id: 'speaker', label: 'Speaker Voice', placeholder: 'default (optional)' }},
+                        {{ type: 'text', id: 'language', label: 'Language', placeholder: 'en (optional)' }},
+                        {{ type: 'text', id: 'output-file', label: 'Output File', placeholder: 'speech.wav (optional)' }}
+                    ]
+                }},
+                'audio-generate': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'prompt', label: 'Audio Generation Prompt', required: true, placeholder: 'Describe the audio you want to generate...', rows: 3 }},
+                        {{ type: 'number', id: 'duration', label: 'Duration (seconds)', placeholder: '10', min: 1, max: 300 }},
+                        {{ type: 'number', id: 'sample-rate', label: 'Sample Rate', placeholder: '16000', min: 8000, max: 48000 }},
+                        {{ type: 'text', id: 'output-file', label: 'Output File', placeholder: 'generated_audio.wav (optional)' }}
+                    ]
+                }},
                 'vision-classify': {{
                     fields: [
                         {{ type: 'file', id: 'image-file', label: 'Image File', required: true, accept: 'image/*' }},
@@ -1181,6 +1205,22 @@ class IPFSAccelerateCLI:
                         {{ type: 'number', id: 'confidence-threshold', label: 'Confidence Threshold', placeholder: '0.5', min: 0, max: 1, step: 0.1 }}
                     ]
                 }},
+                'vision-segment': {{
+                    fields: [
+                        {{ type: 'file', id: 'image-file', label: 'Image File', required: true, accept: 'image/*' }},
+                        {{ type: 'text', id: 'segment-type', label: 'Segmentation Type', placeholder: 'semantic, instance, or panoptic' }}
+                    ]
+                }},
+                'vision-generate': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'prompt', label: 'Image Generation Prompt', required: true, placeholder: 'Describe the image you want to generate...', rows: 3 }},
+                        {{ type: 'number', id: 'width', label: 'Image Width', placeholder: '512', min: 64, max: 2048 }},
+                        {{ type: 'number', id: 'height', label: 'Image Height', placeholder: '512', min: 64, max: 2048 }},
+                        {{ type: 'number', id: 'steps', label: 'Inference Steps', placeholder: '20', min: 1, max: 100 }},
+                        {{ type: 'number', id: 'guidance-scale', label: 'Guidance Scale', placeholder: '7.5', min: 1, max: 20, step: 0.5 }},
+                        {{ type: 'text', id: 'output-file', label: 'Output File', placeholder: 'generated_image.png (optional)' }}
+                    ]
+                }},
                 'multimodal-caption': {{
                     fields: [
                         {{ type: 'file', id: 'image-file', label: 'Image File', required: true, accept: 'image/*' }},
@@ -1191,6 +1231,33 @@ class IPFSAccelerateCLI:
                     fields: [
                         {{ type: 'file', id: 'image-file', label: 'Image File', required: true, accept: 'image/*' }},
                         {{ type: 'text', id: 'question', label: 'Question', required: true, placeholder: 'What question do you want to ask about this image?' }}
+                    ]
+                }},
+                'multimodal-document': {{
+                    fields: [
+                        {{ type: 'file', id: 'document-file', label: 'Document File', required: true, accept: '.pdf,.doc,.docx,.txt' }},
+                        {{ type: 'text', id: 'query', label: 'Document Query', required: true, placeholder: 'What do you want to know about this document?' }}
+                    ]
+                }},
+                'specialized-code': {{
+                    fields: [
+                        {{ type: 'textarea', id: 'prompt', label: 'Code Generation Prompt', required: true, placeholder: 'Describe the code you want to generate...', rows: 4 }},
+                        {{ type: 'text', id: 'language', label: 'Programming Language', placeholder: 'python, javascript, java, etc.' }},
+                        {{ type: 'number', id: 'max-length', label: 'Max Code Length', placeholder: '500', min: 50, max: 2000 }},
+                        {{ type: 'text', id: 'output-file', label: 'Output File', placeholder: 'generated_code.py (optional)' }}
+                    ]
+                }},
+                'specialized-timeseries': {{
+                    fields: [
+                        {{ type: 'file', id: 'data-file', label: 'Time Series Data File', required: true, accept: '.json,.csv' }},
+                        {{ type: 'number', id: 'forecast-horizon', label: 'Forecast Horizon', placeholder: '10', min: 1, max: 1000 }}
+                    ]
+                }},
+                'specialized-tabular': {{
+                    fields: [
+                        {{ type: 'file', id: 'data-file', label: 'Tabular Data File', required: true, accept: '.csv,.json,.xlsx' }},
+                        {{ type: 'text', id: 'task', label: 'Processing Task', placeholder: 'classification, regression, analysis, etc.' }},
+                        {{ type: 'text', id: 'target-column', label: 'Target Column', placeholder: 'Name of the target column (optional)' }}
                     ]
                 }}
             }};
@@ -1329,14 +1396,30 @@ class IPFSAccelerateCLI:
                     return `Transcription:\\n"This is the transcribed text from the audio file. The speech recognition system has processed the audio and converted it to text."\\nLanguage: ${{formData.language || 'auto-detected'}}`;
                 case 'audio-classify':
                     return `Audio Classification:\\n• Music (confidence: 0.85)\\n• Speech (confidence: 0.12)\\n• Ambient (confidence: 0.03)`;
+                case 'audio-synthesize':
+                    return `Speech Synthesis Completed:\\nText: "${{formData.text || 'Sample text'}}"\\nSpeaker: ${{formData.speaker || 'default'}}\\nLanguage: ${{formData.language || 'en'}}\\nOutput: ${{formData['output-file'] || 'speech.wav'}}`;
+                case 'audio-generate':
+                    return `Audio Generation Completed:\\nPrompt: "${{formData.prompt || 'Sample audio prompt'}}"\\nDuration: ${{formData.duration || '10'}} seconds\\nSample Rate: ${{formData['sample-rate'] || '16000'}} Hz\\nOutput: ${{formData['output-file'] || 'generated_audio.wav'}}`;
                 case 'vision-classify':
                     return `Image Classification:\\n• Cat (confidence: 0.89)\\n• Animal (confidence: 0.78)\\n• Pet (confidence: 0.65)\\n• Mammal (confidence: 0.58)`;
                 case 'vision-detect':
                     return `Object Detection:\\n• Person (bbox: [50, 100, 200, 300], confidence: 0.92)\\n• Car (bbox: [300, 150, 450, 250], confidence: 0.88)\\n• Tree (bbox: [10, 50, 100, 400], confidence: 0.75)`;
+                case 'vision-segment':
+                    return `Image Segmentation (${{formData['segment-type'] || 'semantic'}}):\\nSegments detected: 5\\n• Background: 45.2% of image\\n• Object 1: 23.8% of image\\n• Object 2: 18.5% of image\\n• Other segments: 12.5% of image`;
+                case 'vision-generate':
+                    return `Image Generation Completed:\\nPrompt: "${{formData.prompt || 'Sample image prompt'}}"\\nDimensions: ${{formData.width || '512'}}x${{formData.height || '512'}}\\nSteps: ${{formData.steps || '20'}}\\nGuidance Scale: ${{formData['guidance-scale'] || '7.5'}}\\nOutput: ${{formData['output-file'] || 'generated_image.png'}}`;
                 case 'multimodal-caption':
                     return `Image Caption:\\n"A detailed caption describing the contents of the image, including objects, people, scenery, and contextual information."`;
                 case 'multimodal-vqa':
                     return `Visual Question Answering:\\nQuestion: "${{formData.question || 'What is in this image?'}}"\\nAnswer: Based on the visual analysis of the image, the answer provides specific details about what can be observed.`;
+                case 'multimodal-document':
+                    return `Document Processing:\\nQuery: "${{formData.query || 'Sample query'}}"\\nAnswer: Based on the document analysis, here is the relevant information extracted from the document that addresses your query.`;
+                case 'specialized-code':
+                    return `Code Generation (${{formData.language || 'python'}}):\\n\`\`\`${{formData.language || 'python'}}\\n# Generated code based on: "${{formData.prompt || 'sample prompt'}}"\\n\\ndef example_function():\\n    # Implementation here\\n    return "Generated code"\\n\`\`\``;
+                case 'specialized-timeseries':
+                    return `Time Series Forecasting:\\nForecast Horizon: ${{formData['forecast-horizon'] || '10'}} steps\\nModel: AutoML Time Series\\nPredicted Values: [42.3, 43.1, 44.2, 45.0, ...]\\nConfidence Intervals: ±2.1 average\\nMAE: 1.87, RMSE: 2.43`;
+                case 'specialized-tabular':
+                    return `Tabular Data Processing:\\nTask: ${{formData.task || 'analysis'}}\\nDataset Shape: (1000, 15)\\nTarget Column: ${{formData['target-column'] || 'auto-detected'}}\\nModel Accuracy: 94.2%\\nTop Features: feature_1, feature_3, feature_7`;
                 default:
                     return `${{inferenceType}} result: Processed input successfully with mock AI model.`;
             }}
