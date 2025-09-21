@@ -174,6 +174,10 @@ class IPFSAccelerateCLI:
             def do_GET(self):
                 if self.path == '/' or self.path == '/dashboard':
                     self._serve_dashboard()
+                elif self.path == '/favicon.ico':
+                    # Avoid 404 for favicon requests
+                    self.send_response(204)
+                    self.end_headers()
                 elif self.path.startswith('/api/mcp/'):
                     self._handle_mcp_api()
                 elif self.path.startswith('/api/models/'):
@@ -1079,27 +1083,32 @@ class IPFSAccelerateCLI:
         }}
         
         // Queue management functions
-        async function refreshQueue() {{
+        function setText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        }
+
+        async function refreshQueue() {
             const result = await makeApiCall('/api/queue/status');
-            if (result && !result.error) {{
-                document.getElementById('pending-jobs').textContent = result.pending_jobs || 0;
-                document.getElementById('pending-jobs-detail').textContent = result.pending_jobs || 0;
-                document.getElementById('completed-jobs').textContent = result.completed_jobs || 0;
-                document.getElementById('active-workers').textContent = result.workers || 1;
-                document.getElementById('active-workers-detail').textContent = result.workers || 1;
+            if (result && !result.error) {
+                setText('pending-jobs', result.pending_jobs || 0);
+                setText('pending-jobs-detail', result.pending_jobs || 0);
+                setText('completed-jobs', result.completed_jobs || 0);
+                setText('active-workers', result.workers || 1);
+                setText('active-workers-detail', result.workers || 1);
                 addLog('Queue status refreshed');
-            }}
-        }}
+            }
+        }
         
-        async function clearQueue() {{
-            if (confirm('Are you sure you want to clear the queue?')) {{
+        async function clearQueue() {
+            if (confirm('Are you sure you want to clear the queue?')) {
                 addLog('Queue cleared');
-                // Reset queue displays
-                document.getElementById('pending-jobs').textContent = '0';
-                document.getElementById('pending-jobs-detail').textContent = '0';
-                document.getElementById('completed-jobs').textContent = '0';
-            }}
-        }}
+                // Reset queue displays (null-safe)
+                setText('pending-jobs', '0');
+                setText('pending-jobs-detail', '0');
+                setText('completed-jobs', '0');
+            }
+        }
         
         // AI Inference functions
         function updateInferenceForm() {{
@@ -1599,6 +1608,10 @@ class IPFSAccelerateCLI:
                         # Use self-contained dashboard HTML instead of external template
                         html_content = self._get_self_contained_dashboard()
                         self.wfile.write(html_content.encode())
+                    elif self.path == '/favicon.ico':
+                        # Avoid 404 for favicon requests
+                        self.send_response(204)
+                        self.end_headers()
                     
                     elif self.path.startswith('/static/'):
                         # Serve static files (CSS, JS)
