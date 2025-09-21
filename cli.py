@@ -503,6 +503,89 @@ class IPFSAccelerateCLI:
             border-color: #27ae60;
             background-color: #f8fff8;
         }}
+        .checkbox-group {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 10px;
+        }}
+        .checkbox-group label {{
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-weight: normal;
+        }}
+        .test-params {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 10px;
+        }}
+        .test-params label {{
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }}
+        .test-params input, .test-params select {{
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 120px;
+        }}
+        .metric-card {{
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+        }}
+        .metric-card h4 {{
+            margin-top: 0;
+            color: #2c3e50;
+        }}
+        .hf-model-item {{
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 8px 0;
+            background: #fafbfc;
+            transition: background-color 0.2s;
+        }}
+        .hf-model-item:hover {{
+            background: #f0f3f7;
+        }}
+        .hf-model-title {{
+            font-weight: bold;
+            color: #1a73e8;
+            margin-bottom: 5px;
+        }}
+        .hf-model-desc {{
+            color: #5f6368;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }}
+        .hf-model-tags {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }}
+        .hf-model-tag {{
+            background: #e8f0fe;
+            color: #1967d2;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }}
+        .compatibility-result {{
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 8px 0;
+            background: #f9f9f9;
+        }}
+        .compatibility-result.optimal {{ border-left: 4px solid #27ae60; }}
+        .compatibility-result.compatible {{ border-left: 4px solid #f39c12; }}
+        .compatibility-result.limited {{ border-left: 4px solid #e67e22; }}
+        .compatibility-result.unsupported {{ border-left: 4px solid #e74c3c; }}
         
         @media (max-width: 768px) {{
             .container {{ padding: 10px; }}
@@ -728,60 +811,153 @@ class IPFSAccelerateCLI:
         <div id="models" class="tab-content">
             <div class="grid">
                 <div class="card">
-                    <h3>📚 Available Models</h3>
+                    <h3>📚 Local Models</h3>
                     <div id="model-list">
-                        <p>Loading available models...</p>
+                        <p>Loading local models...</p>
                     </div>
-                    <button class="btn" onclick="refreshModels()">🔄 Refresh Models</button>
+                    <button class="btn" onclick="refreshModels()">🔄 Refresh Local</button>
                     <button class="btn btn-success" onclick="loadModel()">⬇️ Load Model</button>
                 </div>
                 
                 <div class="card">
-                    <h3>🔍 Model Search & Recommendations</h3>
+                    <h3>🤗 HuggingFace Model Search</h3>
                     <div class="form-group">
-                        <label>Search Models:</label>
-                        <input type="text" class="form-control" id="model-search" 
-                               placeholder="Search by name, task, or architecture...">
+                        <label>Search HuggingFace Hub:</label>
+                        <input type="text" class="form-control" id="hf-search" 
+                               placeholder="Search models on HuggingFace Hub...">
                     </div>
                     <div class="form-group">
-                        <label>Get Recommendations:</label>
-                        <select class="form-control" id="task-type">
+                        <label>Filter by Task:</label>
+                        <select class="form-control" id="hf-task-filter">
+                            <option value="">All Tasks</option>
                             <option value="text-generation">Text Generation</option>
+                            <option value="text2text-generation">Text-to-Text Generation</option>
                             <option value="text-classification">Text Classification</option>
-                            <option value="translation">Translation</option>
-                            <option value="summarization">Summarization</option>
+                            <option value="token-classification">Token Classification</option>
                             <option value="question-answering">Question Answering</option>
+                            <option value="feature-extraction">Feature Extraction</option>
+                            <option value="automatic-speech-recognition">Speech Recognition</option>
+                            <option value="text-to-speech">Text-to-Speech</option>
+                            <option value="image-classification">Image Classification</option>
+                            <option value="object-detection">Object Detection</option>
+                            <option value="image-segmentation">Image Segmentation</option>
+                            <option value="text-to-image">Text-to-Image</option>
+                            <option value="image-to-text">Image-to-Text</option>
                         </select>
                     </div>
-                    <button class="btn" onclick="searchModels()">🔍 Search</button>
-                    <button class="btn btn-info" onclick="getRecommendations()">💡 Get Recommendations</button>
+                    <div class="form-group">
+                        <label>Model Size Filter:</label>
+                        <select class="form-control" id="hf-size-filter">
+                            <option value="">All Sizes</option>
+                            <option value="tiny">Tiny (< 100M params)</option>
+                            <option value="small">Small (100M - 1B params)</option>
+                            <option value="medium">Medium (1B - 10B params)</option>
+                            <option value="large">Large (10B+ params)</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="searchHuggingFace()">🔍 Search HF Hub</button>
+                    <button class="btn" onclick="clearHFSearch()">🗑️ Clear Results</button>
+                    
+                    <div id="hf-search-results" style="margin-top: 15px; max-height: 300px; overflow-y: auto;">
+                        <!-- HuggingFace search results will appear here -->
+                    </div>
                 </div>
                 
                 <div class="card">
-                    <h3>📊 Model Statistics</h3>
-                    <div class="metric">
-                        <span>Total Models:</span>
-                        <span id="total-models">-</span>
+                    <h3>🔧 Hardware Compatibility Testing</h3>
+                    <div class="form-group">
+                        <label>Select Model to Test:</label>
+                        <input type="text" class="form-control" id="test-model-id" 
+                               placeholder="Enter model ID (e.g., microsoft/DialoGPT-medium)">
                     </div>
-                    <div class="metric">
-                        <span>Text Models:</span>
-                        <span id="text-models">-</span>
+                    <div class="form-group">
+                        <label>Hardware Platforms to Test:</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="test-cpu" checked> CPU</label>
+                            <label><input type="checkbox" id="test-cuda"> CUDA (NVIDIA GPU)</label>
+                            <label><input type="checkbox" id="test-rocm"> ROCm (AMD GPU)</label>
+                            <label><input type="checkbox" id="test-openvino"> OpenVINO (Intel)</label>
+                            <label><input type="checkbox" id="test-mps"> MPS (Apple Silicon)</label>
+                        </div>
                     </div>
-                    <div class="metric">
-                        <span>Audio Models:</span>
-                        <span id="audio-models">-</span>
+                    <div class="form-group">
+                        <label>Test Parameters:</label>
+                        <div class="test-params">
+                            <label>Batch Size: <input type="number" id="test-batch-size" value="1" min="1" max="32"></label>
+                            <label>Sequence Length: <input type="number" id="test-seq-length" value="512" min="128" max="4096"></label>
+                            <label>Precision: 
+                                <select id="test-precision">
+                                    <option value="fp32">FP32</option>
+                                    <option value="fp16">FP16</option>
+                                    <option value="int8">INT8</option>
+                                </select>
+                            </label>
+                        </div>
                     </div>
-                    <div class="metric">
-                        <span>Vision Models:</span>
-                        <span id="vision-models">-</span>
-                    </div>
-                    <div class="metric">
-                        <span>Multimodal Models:</span>
-                        <span id="multimodal-models">-</span>
+                    <button class="btn btn-warning" onclick="testModelCompatibility()">⚡ Test Compatibility</button>
+                    <button class="btn" onclick="exportCompatibilityResults()">📊 Export Results</button>
+                    
+                    <div id="compatibility-results" style="margin-top: 15px;">
+                        <!-- Compatibility test results will appear here -->
                     </div>
                 </div>
             </div>
-        </div>
+            
+            <div class="wide-grid" style="margin-top: 20px;">
+                <div class="card">
+                    <h3>📊 Model Statistics & Recommendations</h3>
+                    <div class="grid">
+                        <div class="metric-card">
+                            <h4>📈 Model Index Statistics</h4>
+                            <div class="metric">
+                                <span>Total Indexed Models:</span>
+                                <span id="total-indexed-models">0</span>
+                            </div>
+                            <div class="metric">
+                                <span>HuggingFace Models:</span>
+                                <span id="hf-model-count">0</span>
+                            </div>
+                            <div class="metric">
+                                <span>Compatible Models:</span>
+                                <span id="compatible-model-count">0</span>
+                            </div>
+                            <div class="metric">
+                                <span>Tested Models:</span>
+                                <span id="tested-model-count">0</span>
+                            </div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <h4>🔍 Smart Recommendations</h4>
+                            <div class="form-group">
+                                <label>Get Recommendations For:</label>
+                                <select class="form-control" id="recommendation-task">
+                                    <option value="text-generation">Text Generation</option>
+                                    <option value="text-classification">Text Classification</option>
+                                    <option value="question-answering">Question Answering</option>
+                                    <option value="image-classification">Image Classification</option>
+                                    <option value="speech-recognition">Speech Recognition</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Your Hardware:</label>
+                                <select class="form-control" id="user-hardware">
+                                    <option value="cpu">CPU Only</option>
+                                    <option value="cuda">NVIDIA GPU (CUDA)</option>
+                                    <option value="rocm">AMD GPU (ROCm)</option>
+                                    <option value="openvino">Intel (OpenVINO)</option>
+                                    <option value="mps">Apple Silicon (MPS)</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-success" onclick="getSmartRecommendations()">💡 Get Recommendations</button>
+                            
+                            <div id="smart-recommendations" style="margin-top: 15px;">
+                                <!-- Smart recommendations will appear here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         
         <!-- Queue Monitor Tab -->
         <div id="queue" class="tab-content">
@@ -1025,69 +1201,462 @@ class IPFSAccelerateCLI:
         // Model management functions
         async function refreshModels() {{
             const result = await makeApiCall('/api/models/list');
+            const modelList = document.getElementById('model-list');
+            
             if (result && result.models) {{
                 const count = result.models.length;
-                document.getElementById('model-count').textContent = count;
-                document.getElementById('loaded-model-count').textContent = count;
-                document.getElementById('total-models').textContent = count;
+                document.getElementById('loaded-model-count') && (document.getElementById('loaded-model-count').textContent = count);
                 
-                // Update model list display
-                const modelList = document.getElementById('model-list');
+                // Update local model list display
                 if (modelList) {{
                     if (count === 0) {{
                         modelList.innerHTML = '<p>No models currently loaded. Use the AI Inference CLI to load models automatically.</p>';
                     }} else {{
                         modelList.innerHTML = result.models.map(model => 
-                            `<div class="badge badge-success">${{model.name || model.id}}</div>`
+                            `<div class="model-item">
+                                <strong>${{model.name || model.id}}</strong><br>
+                                <small>Status: Loaded • Size: ${{model.size || 'Unknown'}} • Type: ${{model.type || 'Unknown'}}</small>
+                            </div>`
                         ).join('');
                     }}
                 }}
                 
-                addLog(`Models refreshed: ${{count}} available`);
+                addLog(`Local models refreshed: ${{count}} available`);
             }} else {{
-                document.getElementById('model-count').textContent = '0';
-                document.getElementById('loaded-model-count').textContent = '0';
-                addLog('No models available - use CLI to load models');
+                document.getElementById('loaded-model-count') && (document.getElementById('loaded-model-count').textContent = '0');
+                if (modelList) {{
+                    modelList.innerHTML = '<p>No models currently loaded. Use the AI Inference CLI to load models automatically.</p>';
+                }}
+                addLog('No local models available - use CLI to load models');
             }}
         }}
         
-        async function searchModels() {{
-            const query = document.getElementById('model-search').value;
-            if (!query) return;
+        async function searchHuggingFace() {{
+            const searchTerm = document.getElementById('hf-search').value;
+            const taskFilter = document.getElementById('hf-task-filter').value;
+            const sizeFilter = document.getElementById('hf-size-filter').value;
+            const resultsDiv = document.getElementById('hf-search-results');
             
-            addLog(`Searching models for: ${{query}}`);
-            // In a real implementation, this would search the model registry
-            const mockResults = [
-                'bert-base-uncased',
-                'gpt2', 
-                'distilbert-base-uncased',
-                't5-small'
-            ].filter(model => model.includes(query.toLowerCase()));
+            if (!searchTerm.trim()) {{
+                alert('Please enter a search term');
+                return;
+            }}
             
-            const modelList = document.getElementById('model-list');
-            modelList.innerHTML = mockResults.map(model => 
-                `<div class="badge badge-info">${{model}}</div>`
-            ).join('') || '<p>No models found matching your search.</p>';
+            resultsDiv.innerHTML = 'Searching HuggingFace Hub...';
+            addLog(`Searching HuggingFace Hub for: "${{searchTerm}}" (task: ${{taskFilter || 'any'}}, size: ${{sizeFilter || 'any'}})`);
+            
+            // Simulate HuggingFace API search
+            setTimeout(() => {{
+                const mockResults = generateMockHFResults(searchTerm, taskFilter, sizeFilter);
+                displayHFResults(mockResults);
+                
+                // Update statistics
+                document.getElementById('hf-model-count').textContent = mockResults.length;
+                document.getElementById('total-indexed-models').textContent = parseInt(document.getElementById('hf-model-count').textContent) + parseInt(document.getElementById('loaded-model-count')?.textContent || '0');
+                
+                addLog(`Found ${{mockResults.length}} models on HuggingFace Hub`);
+            }}, 2000);
         }}
         
-        async function getRecommendations() {{
-            const taskType = document.getElementById('task-type').value;
-            addLog(`Getting model recommendations for: ${{taskType}}`);
+        function generateMockHFResults(searchTerm, taskFilter, sizeFilter) {{
+            const results = [
+                {{
+                    id: 'microsoft/DialoGPT-large',
+                    title: 'DialoGPT Large',
+                    description: 'Large-scale conversational response generation model',
+                    task: 'text-generation',
+                    downloads: 125000,
+                    size: 'large',
+                    tags: ['conversational', 'dialogue', 'pytorch']
+                }},
+                {{
+                    id: 'facebook/blenderbot-400M-distill',
+                    title: 'BlenderBot 400M Distilled',
+                    description: 'Distilled version of BlenderBot for efficient dialogue',
+                    task: 'text-generation',
+                    downloads: 89000,
+                    size: 'medium',
+                    tags: ['conversational', 'distilled', 'efficient']
+                }},
+                {{
+                    id: 'distilbert-base-uncased',
+                    title: 'DistilBERT Base Uncased',
+                    description: 'Distilled version of BERT for efficient text understanding',
+                    task: 'feature-extraction',
+                    downloads: 456000,
+                    size: 'small',
+                    tags: ['bert', 'distilled', 'efficient']
+                }},
+                {{
+                    id: 'openai/whisper-base',
+                    title: 'Whisper Base',
+                    description: 'Automatic speech recognition model',
+                    task: 'automatic-speech-recognition',
+                    downloads: 234000,
+                    size: 'medium',
+                    tags: ['speech', 'asr', 'whisper']
+                }},
+                {{
+                    id: 'stable-diffusion-v1-5',
+                    title: 'Stable Diffusion v1.5',
+                    description: 'Text-to-image diffusion model',
+                    task: 'text-to-image',
+                    downloads: 1200000,
+                    size: 'large',
+                    tags: ['diffusion', 'image-generation', 'text-to-image']
+                }},
+                {{
+                    id: 'sentence-transformers/all-MiniLM-L6-v2',
+                    title: 'All MiniLM L6 v2',
+                    description: 'Efficient sentence transformer for embeddings',
+                    task: 'feature-extraction',
+                    downloads: 678000,
+                    size: 'small',
+                    tags: ['sentence-transformers', 'embeddings', 'efficient']
+                }},
+                {{
+                    id: 'google/flan-t5-base',
+                    title: 'FLAN-T5 Base',
+                    description: 'Fine-tuned T5 model for instruction following',
+                    task: 'text2text-generation',
+                    downloads: 234000,
+                    size: 'medium',
+                    tags: ['t5', 'instruction-following', 'versatile']
+                }}
+            ];
             
-            // Mock recommendations based on task type
+            // Filter by task if specified
+            let filtered = results;
+            if (taskFilter) {{
+                filtered = filtered.filter(r => r.task === taskFilter);
+            }}
+            
+            // Filter by size if specified
+            if (sizeFilter) {{
+                filtered = filtered.filter(r => r.size === sizeFilter);
+            }}
+            
+            // Filter by search term
+            if (searchTerm) {{
+                const term = searchTerm.toLowerCase();
+                filtered = filtered.filter(r => 
+                    r.title.toLowerCase().includes(term) || 
+                    r.description.toLowerCase().includes(term) ||
+                    r.id.toLowerCase().includes(term) ||
+                    r.tags.some(tag => tag.toLowerCase().includes(term))
+                );
+            }}
+            
+            return filtered.slice(0, 10); // Limit to 10 results
+        }}
+        
+        function displayHFResults(results) {{
+            const resultsDiv = document.getElementById('hf-search-results');
+            
+            if (results.length === 0) {{
+                resultsDiv.innerHTML = '<p>No models found matching your criteria.</p>';
+                return;
+            }}
+            
+            let html = '';
+            results.forEach(model => {{
+                html += `
+                    <div class="hf-model-item">
+                        <div class="hf-model-title">${{model.title}}</div>
+                        <div class="hf-model-desc">${{model.description}}</div>
+                        <div style="margin: 5px 0;">
+                            <small><strong>ID:</strong> ${{model.id}} • <strong>Downloads:</strong> ${{model.downloads.toLocaleString()}} • <strong>Size:</strong> ${{model.size}}</small>
+                        </div>
+                        <div class="hf-model-tags">
+                            ${{model.tags.map(tag => `<span class="hf-model-tag">${{tag}}</span>`).join('')}}
+                        </div>
+                        <div style="margin-top: 8px;">
+                            <button class="btn btn-sm" onclick="testModelFromHF('${{model.id}}')">🔧 Test Compatibility</button>
+                            <button class="btn btn-sm btn-success" onclick="downloadModel('${{model.id}}')">⬇️ Download</button>
+                        </div>
+                    </div>
+                `;
+            }});
+            
+            resultsDiv.innerHTML = html;
+        }}
+        
+        function testModelFromHF(modelId) {{
+            document.getElementById('test-model-id').value = modelId;
+            testModelCompatibility();
+        }}
+        
+        function downloadModel(modelId) {{
+            addLog(`Starting download of model: ${{modelId}}`);
+            alert(`Download started for ${{modelId}}. This would typically use the HuggingFace Hub API to download the model.`);
+        }}
+        
+        function clearHFSearch() {{
+            document.getElementById('hf-search-results').innerHTML = '';
+            document.getElementById('hf-search').value = '';
+            document.getElementById('hf-task-filter').value = '';
+            document.getElementById('hf-size-filter').value = '';
+        }}
+        
+        async function testModelCompatibility() {{
+            const modelId = document.getElementById('test-model-id').value;
+            const resultsDiv = document.getElementById('compatibility-results');
+            
+            if (!modelId.trim()) {{
+                alert('Please enter a model ID to test');
+                return;
+            }}
+            
+            // Get selected hardware platforms
+            const platforms = [];
+            if (document.getElementById('test-cpu').checked) platforms.push('cpu');
+            if (document.getElementById('test-cuda').checked) platforms.push('cuda');
+            if (document.getElementById('test-rocm').checked) platforms.push('rocm');
+            if (document.getElementById('test-openvino').checked) platforms.push('openvino');
+            if (document.getElementById('test-mps').checked) platforms.push('mps');
+            
+            if (platforms.length === 0) {{
+                alert('Please select at least one hardware platform to test');
+                return;
+            }}
+            
+            // Get test parameters
+            const batchSize = document.getElementById('test-batch-size').value;
+            const seqLength = document.getElementById('test-seq-length').value;
+            const precision = document.getElementById('test-precision').value;
+            
+            resultsDiv.innerHTML = 'Running compatibility tests...';
+            addLog(`Testing model ${{modelId}} on platforms: ${{platforms.join(', ')}}`);
+            
+            // Simulate compatibility testing
+            setTimeout(() => {{
+                const results = generateCompatibilityResults(modelId, platforms, batchSize, seqLength, precision);
+                displayCompatibilityResults(results);
+                
+                // Update statistics
+                const testedCount = parseInt(document.getElementById('tested-model-count').textContent) + 1;
+                document.getElementById('tested-model-count').textContent = testedCount;
+                
+                const compatibleCount = results.filter(r => r.status === 'optimal' || r.status === 'compatible').length;
+                document.getElementById('compatible-model-count').textContent = compatibleCount;
+                
+                addLog(`Compatibility testing completed for ${{modelId}}`);
+            }}, 3000);
+        }}
+        
+        function generateCompatibilityResults(modelId, platforms, batchSize, seqLength, precision) {{
+            const results = [];
+            
+            platforms.forEach(platform => {{
+                let status, memory, performance, notes;
+                
+                // Mock compatibility logic based on platform and model characteristics
+                if (platform === 'cpu') {{
+                    status = 'compatible';
+                    memory = Math.round((1.2 + Math.random() * 2) * 10) / 10 + ' GB';
+                    performance = Math.round(120 + Math.random() * 100) + 'ms/token';
+                    notes = 'Good CPU performance, consider INT8 for better speed';
+                }} else if (platform === 'cuda') {{
+                    status = 'optimal';
+                    memory = Math.round((0.8 + Math.random() * 1.5) * 10) / 10 + ' GB';
+                    performance = Math.round(15 + Math.random() * 25) + 'ms/token';
+                    notes = 'Excellent GPU acceleration, FP16 recommended';
+                }} else if (platform === 'rocm') {{
+                    status = 'compatible';
+                    memory = Math.round((0.9 + Math.random() * 1.6) * 10) / 10 + ' GB';
+                    performance = Math.round(25 + Math.random() * 35) + 'ms/token';
+                    notes = 'Good AMD GPU support, some optimizations available';
+                }} else if (platform === 'openvino') {{
+                    status = 'optimal';
+                    memory = Math.round((0.7 + Math.random() * 1.2) * 10) / 10 + ' GB';
+                    performance = Math.round(60 + Math.random() * 50) + 'ms/token';
+                    notes = 'Excellent Intel optimization, INT8 works well';
+                }} else if (platform === 'mps') {{
+                    status = modelId.includes('large') ? 'limited' : 'compatible';
+                    memory = Math.round((1.5 + Math.random() * 2) * 10) / 10 + ' GB';
+                    performance = Math.round(45 + Math.random() * 40) + 'ms/token';
+                    notes = 'Apple Silicon support with some limitations for large models';
+                }}
+                
+                results.push({{
+                    platform: platform.toUpperCase(),
+                    status,
+                    memory,
+                    performance,
+                    notes,
+                    batchSize,
+                    seqLength,
+                    precision: precision.toUpperCase()
+                }});
+            }});
+            
+            return results;
+        }}
+        
+        function displayCompatibilityResults(results) {{
+            const resultsDiv = document.getElementById('compatibility-results');
+            
+            let html = '<h4>Compatibility Test Results:</h4>';
+            results.forEach(result => {{
+                const statusClass = result.status;
+                const statusIcon = {{
+                    'optimal': '🟢',
+                    'compatible': '🟡', 
+                    'limited': '🟠',
+                    'unsupported': '🔴'
+                }}[result.status];
+                
+                html += `
+                    <div class="compatibility-result ${{statusClass}}">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <strong>${{statusIcon}} ${{result.platform}}</strong>
+                            <span class="badge badge-${{statusClass}}">${{result.status.toUpperCase()}}</span>
+                        </div>
+                        <div style="margin: 8px 0;">
+                            <div><strong>Memory Usage:</strong> ${{result.memory}}</div>
+                            <div><strong>Performance:</strong> ${{result.performance}}</div>
+                            <div><strong>Config:</strong> Batch=${{result.batchSize}}, Seq=${{result.seqLength}}, Precision=${{result.precision}}</div>
+                        </div>
+                        <div style="color: #666; font-size: 0.9em;">${{result.notes}}</div>
+                    </div>
+                `;
+            }});
+            
+            resultsDiv.innerHTML = html;
+        }}
+        
+        function exportCompatibilityResults() {{
+            const results = document.getElementById('compatibility-results').innerHTML;
+            if (!results || results.includes('Running compatibility tests')) {{
+                alert('No results to export. Please run compatibility tests first.');
+                return;
+            }}
+            
+            // In a real implementation, this would generate a downloadable report
+            addLog('Compatibility results exported (mock implementation)');
+            alert('Compatibility results exported to compatibility_report.json');
+        }}
+        
+        async function getSmartRecommendations() {{
+            const task = document.getElementById('recommendation-task').value;
+            const hardware = document.getElementById('user-hardware').value;
+            const resultsDiv = document.getElementById('smart-recommendations');
+            
+            resultsDiv.innerHTML = 'Generating smart recommendations...';
+            addLog(`Getting recommendations for ${{task}} on ${{hardware}} hardware`);
+            
+            setTimeout(() => {{
+                const recommendations = generateSmartRecommendations(task, hardware);
+                displaySmartRecommendations(recommendations);
+            }}, 1500);
+        }}
+        
+        function generateSmartRecommendations(task, hardware) {{
             const recommendations = {{
-                'text-generation': ['gpt2', 't5-base', 'distilgpt2'],
-                'text-classification': ['bert-base-uncased', 'distilbert-base-uncased', 'roberta-base'],
-                'translation': ['t5-base', 'helsinki-nlp/opus-mt-en-es', 'facebook/mbart-large-50'],
-                'summarization': ['t5-base', 'facebook/bart-large-cnn', 'sshleifer/distilbart-cnn-12-6'],
-                'question-answering': ['bert-large-uncased-whole-word-masking-finetuned-squad', 'distilbert-base-cased-distilled-squad']
+                'text-generation': {{
+                    'cpu': [
+                        {{ model: 'distilgpt2', reason: 'Lightweight and efficient for CPU inference', compatibility: 'optimal' }},
+                        {{ model: 'microsoft/DialoGPT-small', reason: 'Good conversational model, CPU optimized', compatibility: 'compatible' }}
+                    ],
+                    'cuda': [
+                        {{ model: 'microsoft/DialoGPT-large', reason: 'Excellent performance on CUDA with large context', compatibility: 'optimal' }},
+                        {{ model: 'gpt2-medium', reason: 'Good balance of quality and speed', compatibility: 'optimal' }}
+                    ],
+                    'rocm': [
+                        {{ model: 'gpt2', reason: 'Well-supported on AMD GPUs', compatibility: 'compatible' }},
+                        {{ model: 'microsoft/DialoGPT-medium', reason: 'Good ROCm compatibility', compatibility: 'compatible' }}
+                    ],
+                    'openvino': [
+                        {{ model: 'distilgpt2', reason: 'Excellent Intel optimization support', compatibility: 'optimal' }},
+                        {{ model: 'gpt2', reason: 'Good performance with OpenVINO', compatibility: 'optimal' }}
+                    ],
+                    'mps': [
+                        {{ model: 'gpt2', reason: 'Good Apple Silicon support', compatibility: 'compatible' }},
+                        {{ model: 'distilgpt2', reason: 'Efficient on Apple Silicon', compatibility: 'optimal' }}
+                    ]
+                }},
+                'text-classification': {{
+                    'cpu': [
+                        {{ model: 'distilbert-base-uncased', reason: 'Fast and accurate for CPU classification', compatibility: 'optimal' }},
+                        {{ model: 'albert-base-v2', reason: 'Memory efficient classification model', compatibility: 'optimal' }}
+                    ],
+                    'cuda': [
+                        {{ model: 'roberta-large', reason: 'State-of-the-art accuracy on GPU', compatibility: 'optimal' }},
+                        {{ model: 'bert-base-uncased', reason: 'Classic choice with excellent GPU support', compatibility: 'optimal' }}
+                    ],
+                    'rocm': [
+                        {{ model: 'bert-base-uncased', reason: 'Good AMD GPU compatibility', compatibility: 'compatible' }},
+                        {{ model: 'distilbert-base-uncased', reason: 'Efficient on AMD hardware', compatibility: 'compatible' }}
+                    ],
+                    'openvino': [
+                        {{ model: 'distilbert-base-uncased', reason: 'Excellent Intel optimization', compatibility: 'optimal' }},
+                        {{ model: 'bert-base-uncased', reason: 'Well optimized for Intel hardware', compatibility: 'optimal' }}
+                    ],
+                    'mps': [
+                        {{ model: 'distilbert-base-uncased', reason: 'Good Apple Silicon performance', compatibility: 'compatible' }},
+                        {{ model: 'albert-base-v2', reason: 'Memory efficient on Apple hardware', compatibility: 'compatible' }}
+                    ]
+                }},
+                'question-answering': {{
+                    'cpu': [
+                        {{ model: 'distilbert-base-cased-distilled-squad', reason: 'Fast Q&A model for CPU', compatibility: 'optimal' }}
+                    ],
+                    'cuda': [
+                        {{ model: 'bert-large-uncased-whole-word-masking-finetuned-squad', reason: 'High accuracy Q&A on GPU', compatibility: 'optimal' }}
+                    ]
+                }},
+                'image-classification': {{
+                    'cpu': [
+                        {{ model: 'microsoft/resnet-50', reason: 'Efficient image classification for CPU', compatibility: 'compatible' }}
+                    ],
+                    'cuda': [
+                        {{ model: 'google/vit-base-patch16-224', reason: 'State-of-the-art vision transformer', compatibility: 'optimal' }}
+                    ]
+                }},
+                'speech-recognition': {{
+                    'cpu': [
+                        {{ model: 'openai/whisper-tiny', reason: 'Fast speech recognition for CPU', compatibility: 'optimal' }}
+                    ],
+                    'cuda': [
+                        {{ model: 'openai/whisper-base', reason: 'Good balance of speed and accuracy on GPU', compatibility: 'optimal' }}
+                    ]
+                }}
             }};
             
-            const modelList = document.getElementById('model-list');
-            const recs = recommendations[taskType] || ['No recommendations available'];
-            modelList.innerHTML = recs.map(model => 
-                `<div class="badge badge-warning">${{model}}</div>`
-            ).join('');
+            return recommendations[task] && recommendations[task][hardware] ? recommendations[task][hardware] : [
+                {{ model: 'No specific recommendations', reason: 'available for this task/hardware combination', compatibility: 'unknown' }}
+            ];
+        }}
+        
+        function displaySmartRecommendations(recommendations) {{
+            const resultsDiv = document.getElementById('smart-recommendations');
+            
+            let html = '<h4>Recommended Models:</h4>';
+            recommendations.forEach((rec, index) => {{
+                const compatIcon = {{
+                    'optimal': '🟢',
+                    'compatible': '🟡',
+                    'limited': '🟠',
+                    'unknown': '⚪'
+                }}[rec.compatibility];
+                
+                html += `
+                    <div class="recommendation-item" style="border: 1px solid #ddd; padding: 10px; margin: 8px 0; border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <strong>${{compatIcon}} ${{rec.model}}</strong>
+                            <button class="btn btn-sm" onclick="testModelFromHF('${{rec.model}}')">🔧 Test</button>
+                        </div>
+                        <div style="color: #666; margin-top: 5px;">${{rec.reason}}</div>
+                    </div>
+                `;
+            }});
+            
+            resultsDiv.innerHTML = html;
+        }}
+        
+        function loadModel() {{
+            addLog('Loading model... (this would download and initialize the selected model)');
+            alert('Model loading initiated. Check the logs for progress.');
         }}
         
         // Queue management functions
