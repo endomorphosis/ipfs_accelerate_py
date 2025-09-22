@@ -627,13 +627,13 @@ class IPFSAccelerateCLI:
         </div>
         
         <div class="nav-tabs">
-            <button class="nav-tab active" onclick="showTab('overview')">🏠 Overview</button>
-            <button class="nav-tab" onclick="showTab('inference')">🤖 AI Inference</button>
-            <button class="nav-tab" onclick="showTab('models')">📚 Model Manager</button>
-            <button class="nav-tab" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
-            <button class="nav-tab" onclick="showTab('queue')">📊 Queue Monitor</button>
-            <button class="nav-tab" onclick="showTab('tools')">🔧 MCP Tools</button>
-            <button class="nav-tab" onclick="showTab('logs')">📝 System Logs</button>
+            <button class="nav-tab active" onclick="showTab('overview', this)">🏠 Overview</button>
+            <button class="nav-tab" onclick="showTab('inference', this)">🤖 AI Inference</button>
+            <button class="nav-tab" onclick="showTab('models', this)">📚 Model Manager</button>
+            <button class="nav-tab" onclick="showTab('coverage', this)">🎯 Coverage Analysis</button>
+            <button class="nav-tab" onclick="showTab('queue', this)">📊 Queue Monitor</button>
+            <button class="nav-tab" onclick="showTab('tools', this)">🔧 MCP Tools</button>
+            <button class="nav-tab" onclick="showTab('logs', this)">📝 System Logs</button>
         </div>
         
         <!-- Overview Tab -->
@@ -1199,9 +1199,10 @@ class IPFSAccelerateCLI:
         let requestCount = 0;
         
         // Tab functionality
-        function showTab(tabName) {{
+        function showTab(tabName, el) {{
             // Hide all tab contents
             const tabContents = document.querySelectorAll('.tab-content');
+<<<<<<< Updated upstream
             tabContents.forEach(tab => {{
                 if (tab) tab.classList.remove('active');
             }});
@@ -1223,6 +1224,25 @@ class IPFSAccelerateCLI:
             // Add active class to selected nav tab
             if (event && event.target) {{
                 event.target.classList.add('active');
+=======
+            tabContents.forEach(t => t.classList.remove('active'));
+
+            // Remove active class from all nav tabs
+            const navTabs = document.querySelectorAll('.nav-tab');
+            navTabs.forEach(t => t.classList.remove('active'));
+
+            // Show selected tab content (guard if missing)
+            const target = document.getElementById(tabName);
+            if (target && target.classList) {{
+                target.classList.add('active');
+            }} else {{
+                console.warn('Tab content not found for', tabName);
+            }}
+
+            // Add active class to selected nav tab (guard if missing)
+            if (el && el.classList) {{
+                el.classList.add('active');
+>>>>>>> Stashed changes
             }}
         }}
         
