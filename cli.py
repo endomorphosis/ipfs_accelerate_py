@@ -1202,29 +1202,6 @@ class IPFSAccelerateCLI:
         function showTab(tabName, el) {{
             // Hide all tab contents
             const tabContents = document.querySelectorAll('.tab-content');
-<<<<<<< Updated upstream
-            tabContents.forEach(tab => {{
-                if (tab) tab.classList.remove('active');
-            }});
-            
-            // Remove active class from all nav tabs
-            const navTabs = document.querySelectorAll('.nav-tab');
-            navTabs.forEach(tab => {{
-                if (tab) tab.classList.remove('active');
-            }});
-            
-            // Show selected tab content
-            const targetTab = document.getElementById(tabName);
-            if (targetTab) {{
-                targetTab.classList.add('active');
-            }} else {{
-                console.error('Tab not found:', tabName);
-            }}
-            
-            // Add active class to selected nav tab
-            if (event && event.target) {{
-                event.target.classList.add('active');
-=======
             tabContents.forEach(t => t.classList.remove('active'));
 
             // Remove active class from all nav tabs
@@ -1242,7 +1219,6 @@ class IPFSAccelerateCLI:
             // Add active class to selected nav tab (guard if missing)
             if (el && el.classList) {{
                 el.classList.add('active');
->>>>>>> Stashed changes
             }}
         }}
         
