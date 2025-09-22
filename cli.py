@@ -1461,7 +1461,16 @@ class IPFSAccelerateCLI:
         
         function testModelFromHF(modelId) {{
             // Auto-populate the model ID in the compatibility testing section
-            document.getElementById('test-model-id').value = modelId;
+            const modelInput = document.getElementById('test-model-id');
+            if (modelInput) {{
+                modelInput.value = modelId;
+            }}
+            
+            // Also try alternative input IDs that might exist
+            const altInput = document.getElementById('compatibility-model');
+            if (altInput) {{
+                altInput.value = modelId;
+            }}
             
             // Automatically start the compatibility test
             testModelCompatibility();
@@ -1469,28 +1478,141 @@ class IPFSAccelerateCLI:
             addLog(`Starting compatibility test for HuggingFace model: ${{modelId}}`);
         }}
         
-        // Coverage Analysis Functions
-        function refreshCoverageMatrix() {{
-            addLog('Refreshing coverage analysis matrix...');
-            // Implementation for coverage matrix refresh
+        function displayHFResults(results) {{
+            const resultsDiv = document.getElementById('hf-search-results');
+            
+            if (!results || results.length === 0) {{
+                resultsDiv.innerHTML = '<p>No models found. Try a different search term.</p>';
+                return;
+            }}
+            
+            let html = '';
+            results.forEach(model => {{
+                html += `
+                    <div class="model-result" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                        <div class="model-title" style="font-weight: bold; font-size: 1.1em; margin-bottom: 5px;">${{model.title || model.id}}</div>
+                        <div class="model-description" style="color: #666; margin-bottom: 10px;">${{model.description || 'No description available'}}</div>
+                        <div class="model-meta" style="margin-bottom: 10px;">
+                            <strong>ID:</strong> ${{model.id}} • 
+                            <strong>Downloads:</strong> ${{model.downloads?.toLocaleString() || 'N/A'}} • 
+                            <strong>Size:</strong> ${{model.size || 'unknown'}}
+                        </div>
+                        <div class="model-tags" style="margin-bottom: 10px;">
+                            ${{(model.tags || []).map(tag => `<span class="tag" style="background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px;">${{tag}}</span>`).join('')}}
+                        </div>
+                        <div class="model-actions">
+                            <button class="btn btn-sm" onclick="testModelFromHF('${{model.id}}')" style="background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 4px; margin-right: 5px; cursor: pointer;">🔧 Test Compatibility</button>
+                            <button class="btn btn-sm btn-secondary" onclick="downloadModel('${{model.id}}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">⬇️ Download</button>
+                        </div>
+                    </div>
+                `;
+            }});
+            
+            resultsDiv.innerHTML = html;
         }}
         
-        function exportParquetData() {{
-            addLog('Exporting parquet data...');
-            // Create download link for parquet file
-            const today = new Date().toISOString().slice(0, 10);
-            const filename = `benchmark_results_${{today}}.parquet`;
-            addLog(`Parquet data export initiated: ${{filename}}`);
+        function displayCompatibilityResults(results) {{
+            const resultsDiv = document.getElementById('compatibility-results');
+            
+            if (!results || results.length === 0) {{
+                resultsDiv.innerHTML = '<p>No test results available.</p>';
+                return;
+            }}
+            
+            let html = '<h4>Compatibility Test Results:</h4>';
+            results.forEach(result => {{
+                const statusIcon = {{
+                    'optimal': '🟢',
+                    'compatible': '🟡', 
+                    'limited': '🟠',
+                    'unsupported': '🔴'
+                }}[result.status] || '❓';
+                
+                html += `
+                    <div class="compatibility-result" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                        <div class="result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <strong>${{statusIcon}} ${{result.platform}}</strong>
+                            <span class="status-badge" style="background: ${{result.status === 'optimal' ? '#28a745' : result.status === 'compatible' ? '#ffc107' : result.status === 'limited' ? '#fd7e14' : '#dc3545'}}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">${{result.status.toUpperCase()}}</span>
+                        </div>
+                        <div class="result-details" style="margin-bottom: 10px;">
+                            <div class="detail-item" style="margin-bottom: 5px;">
+                                <strong>Memory Usage:</strong> ${{result.memory}}
+                            </div>
+                            <div class="detail-item" style="margin-bottom: 5px;">
+                                <strong>Performance:</strong> ${{result.performance}}
+                            </div>
+                            <div class="detail-item" style="margin-bottom: 5px;">
+                                <strong>Config:</strong> Batch=${{result.batch_size}}, Seq=${{result.seq_length}}, Precision=${{result.precision}}
+                            </div>
+                        </div>
+                        <div class="result-notes" style="color: #666; font-style: italic;">${{result.notes}}</div>
+                    </div>
+                `;
+            }});
+            
+            resultsDiv.innerHTML = html;
         }}
         
-        function backupParquetData() {{
-            addLog('Creating parquet data backup...');
-            // Implementation for data backup
+        function downloadModel(modelId) {{
+            addLog(`Download initiated for model: ${{modelId}}`);
+            alert(`Model download feature will be implemented. Model ID: ${{modelId}}`);
         }}
         
-        function analyzeTrends() {{
-            addLog('Analyzing performance trends...');
-            // Implementation for trend analysis
+        async function getRecommendations() {{
+            const taskType = document.getElementById('recommendation-task')?.value || 'text-generation';
+            const hardware = document.getElementById('recommendation-hardware')?.value || 'cpu';
+            
+            addLog(`Getting recommendations for task: ${{taskType}}, hardware: ${{hardware}}`);
+            
+            // Enhanced recommendations based on task and hardware
+            const recommendationMap = {{
+                'text-generation': [
+                    {{ id: 'microsoft/DialoGPT-medium', title: 'DialoGPT Medium', reason: 'Excellent for conversational AI', confidence: '92%' }},
+                    {{ id: 'distilgpt2', title: 'DistilGPT-2', reason: 'Lightweight and fast text generation', confidence: '88%' }}
+                ],
+                'text-classification': [
+                    {{ id: 'distilbert-base-uncased', title: 'DistilBERT Base', reason: 'Optimized for classification tasks', confidence: '94%' }},
+                    {{ id: 'roberta-base', title: 'RoBERTa Base', reason: 'High accuracy for text classification', confidence: '90%' }}
+                ],
+                'question-answering': [
+                    {{ id: 'distilbert-base-cased-distilled-squad', title: 'DistilBERT QA', reason: 'Specialized for question answering', confidence: '96%' }},
+                    {{ id: 'bert-large-uncased-whole-word-masking-finetuned-squad', title: 'BERT Large QA', reason: 'High performance Q&A model', confidence: '93%' }}
+                ]
+            }};
+            
+            const recommendations = recommendationMap[taskType] || recommendationMap['text-generation'];
+            
+            // Try to find existing recommendations container
+            let recommendationsDiv = document.getElementById('smart-recommendations-results');
+            if (!recommendationsDiv) {{
+                recommendationsDiv = document.createElement('div');
+                recommendationsDiv.id = 'smart-recommendations-results';
+                recommendationsDiv.style.marginTop = '15px';
+            }}
+            
+            let html = '<h4>💡 Smart Recommendations:</h4>';
+            recommendations.forEach(rec => {{
+                html += `
+                    <div class="recommendation-item" style="border: 1px solid #007bff; padding: 12px; margin: 8px 0; border-radius: 6px; background: #f8f9ff;">
+                        <div class="rec-title" style="font-weight: bold; color: #007bff; margin-bottom: 5px;">${{rec.title}}</div>
+                        <div class="rec-reason" style="margin-bottom: 5px;">${{rec.reason}}</div>
+                        <div class="rec-confidence" style="color: #28a745; font-size: 0.9em; margin-bottom: 8px;">Confidence: ${{rec.confidence}}</div>
+                        <button class="btn btn-sm" onclick="testModelFromHF('${{rec.id}}')" style="background: #007bff; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">🧪 Test Model</button>
+                    </div>
+                `;
+            }});
+            
+            recommendationsDiv.innerHTML = html;
+            
+            // Find the best place to append recommendations
+            const targetContainer = document.querySelector('.smart-recommendations') || 
+                                  document.querySelector('[id*="recommendation"]') ||
+                                  document.querySelector('.model-statistics') ||
+                                  document.getElementById('models');
+            
+            if (targetContainer && !document.getElementById('smart-recommendations-results')) {{
+                targetContainer.appendChild(recommendationsDiv);
+            }}
         }}
         
             const resultsDiv = document.getElementById('hf-search-results');
@@ -2598,7 +2720,27 @@ class IPFSAccelerateCLI:
                         test_results = self._test_model_compatibility(model_id, platforms, batch_size, seq_length, precision)
                         self.wfile.write(json.dumps(test_results).encode())
                     
-                    elif self.path == '/jsonrpc':
+                    elif self.path.startswith('/api/coverage'):
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        # Generate coverage analysis data
+                        coverage_data = self._get_coverage_analysis()
+                        self.wfile.write(json.dumps(coverage_data).encode())
+                    
+                    elif self.path.startswith('/api/parquet/export'):
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/octet-stream')
+                        self.send_header('Content-Disposition', 'attachment; filename="benchmark_results.parquet"')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        
+                        # Export parquet data
+                        parquet_data = self._export_parquet_data()
+                        self.wfile.write(parquet_data)
+                    
                         # Handle JSON-RPC requests for advanced features
                         self._handle_jsonrpc_request()
                     
