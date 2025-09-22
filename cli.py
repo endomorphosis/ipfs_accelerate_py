@@ -275,7 +275,7 @@ class IPFSAccelerateCLI:
             
             def _get_integrated_dashboard_html(self):
                 """Get the enhanced integrated dashboard HTML with all MCP features"""
-                return f"""
+                return fr"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1332,38 +1332,38 @@ class IPFSAccelerateCLI:
             
             if (!searchTerm.trim()) {{
                 alert('Please enter a search term');
-                return;
-            }}
-            
-            resultsDiv.innerHTML = 'Searching HuggingFace Hub...';
-            addLog(`Searching HuggingFace Hub for: "${{searchTerm}}" (task: ${{taskFilter || 'any'}}, size: ${{sizeFilter || 'any'}})`);
-            
-            try {{
-                // Make real API call to backend for HuggingFace search
-                const params = new URLSearchParams({{
-                    query: searchTerm,
-                    task: taskFilter || '',
-                    size: sizeFilter || ''
-                }});
+                if (resultsDiv) {{ resultsDiv.innerHTML = ''; }}
+            }} else {{
+                resultsDiv.innerHTML = 'Searching HuggingFace Hub...';
+                addLog(`Searching HuggingFace Hub for: "${{searchTerm}}" (task: ${{taskFilter || 'any'}}, size: ${{sizeFilter || 'any'}})`);
                 
-                const response = await fetch(`/api/models/search?${{params}}`);
-                const data = await response.json();
-                
-                if (data.error) {{
-                    throw new Error(data.error);
+                try {{
+                    // Make real API call to backend for HuggingFace search
+                    const params = new URLSearchParams({{
+                        query: searchTerm,
+                        task: taskFilter || '',
+                        size: sizeFilter || ''
+                    }});
+                    
+                    const response = await fetch(`/api/models/search?${{params}}`);
+                    const data = await response.json();
+                    
+                    if (data.error) {{
+                        throw new Error(data.error);
+                    }}
+                    
+                    displayHFResults(data.models || []);
+                    
+                    // Update statistics
+                    document.getElementById('hf-model-count').textContent = data.models ? data.models.length : 0;
+                    document.getElementById('total-indexed-models').textContent = parseInt(document.getElementById('hf-model-count').textContent) + parseInt(document.getElementById('loaded-model-count')?.textContent || '0');
+                    
+                    addLog(`Found ${{data.models ? data.models.length : 0}} models on HuggingFace Hub (source: ${{data.source || 'unknown'}})`);
+                }} catch (error) {{
+                    console.error('HuggingFace search error:', error);
+                    resultsDiv.innerHTML = `<div class="error">Search failed: ${{error.message}}</div>`;
+                    addLog(`HuggingFace search failed: ${{error.message}}`);
                 }}
-                
-                displayHFResults(data.models || []);
-                
-                // Update statistics
-                document.getElementById('hf-model-count').textContent = data.models ? data.models.length : 0;
-                document.getElementById('total-indexed-models').textContent = parseInt(document.getElementById('hf-model-count').textContent) + parseInt(document.getElementById('loaded-model-count')?.textContent || '0');
-                
-                addLog(`Found ${{data.models ? data.models.length : 0}} models on HuggingFace Hub (source: ${{data.source || 'unknown'}})`);
-            }} catch (error) {{
-                console.error('HuggingFace search error:', error);
-                resultsDiv.innerHTML = `<div class="error">Search failed: ${{error.message}}</div>`;
-                addLog(`HuggingFace search failed: ${{error.message}}`);
             }}
         }}
         
@@ -1483,32 +1483,31 @@ class IPFSAccelerateCLI:
             
             if (!results || results.length === 0) {{
                 resultsDiv.innerHTML = '<p>No models found. Try a different search term.</p>';
-                return;
+            }} else {{
+                let html = '';
+                results.forEach(model => {{
+                    html += `
+                        <div class="model-result" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                            <div class="model-title" style="font-weight: bold; font-size: 1.1em; margin-bottom: 5px;">${{model.title || model.id}}</div>
+                            <div class="model-description" style="color: #666; margin-bottom: 10px;">${{model.description || 'No description available'}}</div>
+                            <div class="model-meta" style="margin-bottom: 10px;">
+                                <strong>ID:</strong> ${{model.id}} • 
+                                <strong>Downloads:</strong> ${{model.downloads?.toLocaleString() || 'N/A'}} • 
+                                <strong>Size:</strong> ${{model.size || 'unknown'}}
+                            </div>
+                            <div class="model-tags" style="margin-bottom: 10px;">
+                                ${{(model.tags || []).map(tag => `<span class="tag" style="background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px;">${{tag}}</span>`).join('')}}
+                            </div>
+                            <div class="model-actions">
+                                <button class="btn btn-sm" onclick="testModelFromHF('${{model.id}}')" style="background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 4px; margin-right: 5px; cursor: pointer;">🔧 Test Compatibility</button>
+                                <button class="btn btn-sm btn-secondary" onclick="downloadModel('${{model.id}}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">⬇️ Download</button>
+                            </div>
+                        </div>
+                    `;
+                }});
+                
+                resultsDiv.innerHTML = html;
             }}
-            
-            let html = '';
-            results.forEach(model => {{
-                html += `
-                    <div class="model-result" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
-                        <div class="model-title" style="font-weight: bold; font-size: 1.1em; margin-bottom: 5px;">${{model.title || model.id}}</div>
-                        <div class="model-description" style="color: #666; margin-bottom: 10px;">${{model.description || 'No description available'}}</div>
-                        <div class="model-meta" style="margin-bottom: 10px;">
-                            <strong>ID:</strong> ${{model.id}} • 
-                            <strong>Downloads:</strong> ${{model.downloads?.toLocaleString() || 'N/A'}} • 
-                            <strong>Size:</strong> ${{model.size || 'unknown'}}
-                        </div>
-                        <div class="model-tags" style="margin-bottom: 10px;">
-                            ${{(model.tags || []).map(tag => `<span class="tag" style="background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px;">${{tag}}</span>`).join('')}}
-                        </div>
-                        <div class="model-actions">
-                            <button class="btn btn-sm" onclick="testModelFromHF('${{model.id}}')" style="background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 4px; margin-right: 5px; cursor: pointer;">🔧 Test Compatibility</button>
-                            <button class="btn btn-sm btn-secondary" onclick="downloadModel('${{model.id}}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">⬇️ Download</button>
-                        </div>
-                    </div>
-                `;
-            }});
-            
-            resultsDiv.innerHTML = html;
         }}
         
         function displayCompatibilityResults(results) {{
@@ -1516,41 +1515,40 @@ class IPFSAccelerateCLI:
             
             if (!results || results.length === 0) {{
                 resultsDiv.innerHTML = '<p>No test results available.</p>';
-                return;
-            }}
-            
-            let html = '<h4>Compatibility Test Results:</h4>';
-            results.forEach(result => {{
-                const statusIcon = {{
-                    'optimal': '🟢',
-                    'compatible': '🟡', 
-                    'limited': '🟠',
-                    'unsupported': '🔴'
-                }}[result.status] || '❓';
+            }} else {{
+                let html = '<h4>Compatibility Test Results:</h4>';
+                results.forEach(result => {{
+                    const statusIcon = {{
+                        'optimal': '🟢',
+                        'compatible': '🟡', 
+                        'limited': '🟠',
+                        'unsupported': '🔴'
+                    }}[result.status] || '❓';
+                    
+                    html += `
+                        <div class="compatibility-result" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                            <div class="result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <strong>${{statusIcon}} ${{result.platform}}</strong>
+                                <span class="status-badge" style="background: ${{result.status === 'optimal' ? '#28a745' : result.status === 'compatible' ? '#ffc107' : result.status === 'limited' ? '#fd7e14' : '#dc3545'}}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">${{result.status.toUpperCase()}}</span>
+                            </div>
+                            <div class="result-details" style="margin-bottom: 10px;">
+                                <div class="detail-item" style="margin-bottom: 5px;">
+                                    <strong>Memory Usage:</strong> ${{result.memory}}
+                                </div>
+                                <div class="detail-item" style="margin-bottom: 5px;">
+                                    <strong>Performance:</strong> ${{result.performance}}
+                                </div>
+                                <div class="detail-item" style="margin-bottom: 5px;">
+                                    <strong>Config:</strong> Batch=${{result.batch_size}}, Seq=${{result.seq_length}}, Precision=${{result.precision}}
+                                </div>
+                            </div>
+                            <div class="result-notes" style="color: #666; font-style: italic;">${{result.notes}}</div>
+                        </div>
+                    `;
+                }});
                 
-                html += `
-                    <div class="compatibility-result" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px;">
-                        <div class="result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <strong>${{statusIcon}} ${{result.platform}}</strong>
-                            <span class="status-badge" style="background: ${{result.status === 'optimal' ? '#28a745' : result.status === 'compatible' ? '#ffc107' : result.status === 'limited' ? '#fd7e14' : '#dc3545'}}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">${{result.status.toUpperCase()}}</span>
-                        </div>
-                        <div class="result-details" style="margin-bottom: 10px;">
-                            <div class="detail-item" style="margin-bottom: 5px;">
-                                <strong>Memory Usage:</strong> ${{result.memory}}
-                            </div>
-                            <div class="detail-item" style="margin-bottom: 5px;">
-                                <strong>Performance:</strong> ${{result.performance}}
-                            </div>
-                            <div class="detail-item" style="margin-bottom: 5px;">
-                                <strong>Config:</strong> Batch=${{result.batch_size}}, Seq=${{result.seq_length}}, Precision=${{result.precision}}
-                            </div>
-                        </div>
-                        <div class="result-notes" style="color: #666; font-style: italic;">${{result.notes}}</div>
-                    </div>
-                `;
-            }});
-            
-            resultsDiv.innerHTML = html;
+                resultsDiv.innerHTML = html;
+            }}
         }}
         
         function downloadModel(modelId) {{
@@ -1615,35 +1613,6 @@ class IPFSAccelerateCLI:
             }}
         }}
         
-            const resultsDiv = document.getElementById('hf-search-results');
-            
-            if (results.length === 0) {{
-                resultsDiv.innerHTML = '<p>No models found matching your criteria.</p>';
-                return;
-            }}
-            
-            let html = '';
-            results.forEach(model => {{
-                html += `
-                    <div class="hf-model-item">
-                        <div class="hf-model-title">${{model.title}}</div>
-                        <div class="hf-model-desc">${{model.description}}</div>
-                        <div style="margin: 5px 0;">
-                            <small><strong>ID:</strong> ${{model.id}} • <strong>Downloads:</strong> ${{model.downloads.toLocaleString()}} • <strong>Size:</strong> ${{model.size}}</small>
-                        </div>
-                        <div class="hf-model-tags">
-                            ${{model.tags.map(tag => `<span class="hf-model-tag">${{tag}}</span>`).join('')}}
-                        </div>
-                        <div style="margin-top: 8px;">
-                            <button class="btn btn-sm" onclick="testModelFromHF('${{model.id}}')">🔧 Test Compatibility</button>
-                            <button class="btn btn-sm btn-success" onclick="downloadModel('${{model.id}}')">⬇️ Download</button>
-                        </div>
-                    </div>
-                `;
-            }});
-            
-            resultsDiv.innerHTML = html;
-        }}
         
         function testModelFromHF(modelId) {{
             document.getElementById('test-model-id').value = modelId;
@@ -2516,14 +2485,33 @@ class IPFSAccelerateCLI:
                 """
         
         # Start the integrated server
-        server = HTTPServer((args.host, args.port), IntegratedMCPHandler)
+        # Try to bind server; if port is busy, try the next few ports
+        try:
+            server = HTTPServer((args.host, args.port), IntegratedMCPHandler)
+            bound_port = args.port
+        except OSError as e:
+            if getattr(e, 'errno', None) == 98:  # Address already in use
+                fallback_port = args.port
+                server = None
+                for p in range(args.port + 1, args.port + 11):
+                    try:
+                        server = HTTPServer((args.host, p), IntegratedMCPHandler)
+                        bound_port = p
+                        logger.warning(f"Port {args.port} in use. Falling back to port {p}.")
+                        break
+                    except OSError:
+                        continue
+                if server is None:
+                    raise
+            else:
+                raise
         
-        logger.info(f"Integrated MCP Server + Dashboard started at http://{args.host}:{args.port}")
-        logger.info("Dashboard accessible at http://{args.host}:{args.port}/dashboard")
+        logger.info(f"Integrated MCP Server + Dashboard started at http://{args.host}:{bound_port}")
+        logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
         
         if args.open_browser:
             import webbrowser
-            webbrowser.open(f"http://{args.host}:{args.port}")
+            webbrowser.open(f"http://{args.host}:{bound_port}")
         
         try:
             server.serve_forever()
