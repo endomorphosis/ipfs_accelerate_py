@@ -169,33 +169,34 @@ class IPFSAccelerateCLI:
         logger.info(f"Starting integrated MCP server on port {args.port}")
         logger.info("Integrated components: MCP Server, Web Dashboard, Model Manager, Queue Monitor")
         
-        # Create the integrated dashboard handler
-        class IntegratedMCPHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path == '/' or self.path == '/dashboard':
-                    self._serve_dashboard()
-                elif self.path == '/favicon.ico':
-                    # Avoid 404 for favicon requests
-                    self.send_response(204)
-                    self.end_headers()
-                elif self.path.startswith('/api/mcp/'):
-                    self._handle_mcp_api()
-                elif self.path.startswith('/api/models/'):
-                    self._handle_model_api()
-                elif self.path.startswith('/api/queue/'):
-                    self._handle_queue_api()
-                elif self.path.startswith('/static/'):
-                    self._serve_static()
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-            
-            def do_POST(self):
-                if self.path.startswith('/api/'):
-                    self._handle_post_api()
-                else:
-                    self.send_response(404)
-                    self.end_headers()
+        try:
+            # Create the integrated dashboard handler
+            class IntegratedMCPHandler(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    if self.path == '/' or self.path == '/dashboard':
+                        self._serve_dashboard()
+                    elif self.path == '/favicon.ico':
+                        # Avoid 404 for favicon requests
+                        self.send_response(204)
+                        self.end_headers()
+                    elif self.path.startswith('/api/mcp/'):
+                        self._handle_mcp_api()
+                    elif self.path.startswith('/api/models/'):
+                        self._handle_model_api()
+                    elif self.path.startswith('/api/queue/'):
+                        self._handle_queue_api()
+                    elif self.path.startswith('/static/'):
+                        self._serve_static()
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+                
+                def do_POST(self):
+                    if self.path.startswith('/api/'):
+                        self._handle_post_api()
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
             
             def _serve_dashboard(self):
                 """Serve the integrated dashboard"""
