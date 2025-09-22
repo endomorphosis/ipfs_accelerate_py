@@ -175,6 +175,29 @@ class IPFSAccelerateCLI:
                 def do_GET(self):
                     if self.path == '/' or self.path == '/dashboard':
                         self._serve_dashboard()
+                    elif self.path == '/health':
+                        # Simple health check endpoint
+                        try:
+                            self.send_response(200)
+                            self.send_header('Content-type', 'application/json')
+                            self.end_headers()
+                            # Report the actual bound host/port
+                            try:
+                                bound_host = self.server.server_address[0]
+                                bound_port = getattr(self.server, 'server_port', None)
+                            except Exception:
+                                bound_host = args.host
+                                bound_port = args.port
+                            payload = {
+                                "status": "ok",
+                                "server": "IPFS Accelerate MCP (integrated)",
+                                "host": bound_host,
+                                "port": bound_port
+                            }
+                            self.wfile.write(json.dumps(payload).encode())
+                        except Exception:
+                            self.send_response(500)
+                            self.end_headers()
                     elif self.path == '/favicon.ico':
                         # Avoid 404 for favicon requests
                         self.send_response(204)
@@ -541,27 +564,53 @@ class IPFSAccelerateCLI:
                 response = {"status": "received", "message": "API endpoint not yet implemented"}
                 self.wfile.write(json.dumps(response).encode())
             
-            # Removed embedded HTML method - now using template files
-            
-            # Start the dashboard server
-            port = getattr(args, 'port', 8001)
-            host = getattr(args, 'host', 'localhost')
-            
-            server = HTTPServer((host, port), AdvancedDashboardHandler)
-            
-            logger.info(f"Advanced MCP Dashboard started at http://{host}:{port}")
-            logger.info("Dashboard features: HuggingFace model manager, queue monitoring, model testing")
-            
+            # Bind helper functions as methods on the handler class
+            IntegratedMCPHandler._serve_dashboard = _serve_dashboard
+            IntegratedMCPHandler._handle_mcp_api = _handle_mcp_api
+            IntegratedMCPHandler._handle_model_api = _handle_model_api
+            IntegratedMCPHandler._handle_model_search = _handle_model_search
+            IntegratedMCPHandler._handle_model_test = _handle_model_test
+            IntegratedMCPHandler._handle_queue_api = _handle_queue_api
+            IntegratedMCPHandler._serve_static = _serve_static
+            IntegratedMCPHandler._handle_post_api = _handle_post_api
+
+            # Bind and start the integrated HTTP server
+            try:
+                server = HTTPServer((args.host, args.port), IntegratedMCPHandler)
+                bound_port = args.port
+            except OSError as e:
+                # Address in use: try next 10 ports
+                if getattr(e, 'errno', None) == 98:
+                    server = None
+                    for p in range(args.port + 1, args.port + 11):
+                        try:
+                            server = HTTPServer((args.host, p), IntegratedMCPHandler)
+                            bound_port = p
+                            logger.warning(f"Port {args.port} in use. Falling back to port {p}.")
+                            break
+                        except OSError:
+                            continue
+                    if server is None:
+                        raise
+                else:
+                    raise
+
+            logger.info(f"Integrated MCP Server + Dashboard started at http://{args.host}:{bound_port}")
+            logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
+
             if getattr(args, 'open_browser', False):
                 import webbrowser
-                webbrowser.open(f"http://{host}:{port}")
-            
-            # Start server in a separate thread to keep it non-blocking
-            import threading
-            server_thread = threading.Thread(target=server.serve_forever, daemon=True)
-            server_thread.start()
-            
-            return server
+                webbrowser.open(f"http://{args.host}:{bound_port}")
+
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                logger.info("Server shutdown requested")
+                server.shutdown()
+                return 0
+            except Exception as e:
+                logger.error(f"Server error: {e}")
+                return 1
             
         except Exception as e:
             logger.error(f"Error creating advanced dashboard: {e}")

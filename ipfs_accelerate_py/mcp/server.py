@@ -7,6 +7,7 @@ This module provides the MCP server for IPFS Accelerate.
 import os
 import sys
 import json
+import json
 import logging
 import argparse
 from typing import Dict, Any, Optional, List, Union, Callable
@@ -314,8 +315,8 @@ class IPFSAccelerateMCPServer:
     
     def __init__(
         self,
-        name: str = "ipfs-accelerate",
-        host: str = "localhost",
+    name: str = "ipfs-accelerate",
+    host: str = "0.0.0.0",
         port: int = 8000,
         mount_path: str = "/mcp",
         debug: bool = False
@@ -358,12 +359,25 @@ class IPFSAccelerateMCPServer:
         
         try:
             # Try to import FastMCP
-            try:
-                from fastmcp import FastMCP
-                
+            def _import_fastmcp_site_first():
+                original = list(sys.path)
+                try:
+                    site_paths = [p for p in original if ('site-packages' in p or 'dist-packages' in p)]
+                    other_paths = [p for p in original if p not in site_paths]
+                    # Prioritize site-packages before repo root to avoid local mcp shadowing
+                    sys.path[:] = site_paths + other_paths
+                    import importlib
+                    return importlib.import_module('fastmcp')
+                except Exception:
+                    return None
+                finally:
+                    sys.path[:] = original
+
+            fm = _import_fastmcp_site_first()
+            if fm is not None and hasattr(fm, 'FastMCP'):
+                FastMCP = getattr(fm, 'FastMCP')
                 # Create FastMCP instance
                 self.mcp = FastMCP(name=self.name)
-                
                 # Create FastAPI app
                 self.fastapi_app = self.mcp.create_fastapi_app(
                     title="IPFS Accelerate MCP API",
@@ -373,12 +387,9 @@ class IPFSAccelerateMCPServer:
                     redoc_url="/redoc",
                     mount_path=self.mount_path
                 )
-                
-                # Use FastMCP implementation
                 logger.info("Using FastMCP implementation")
                 self._using_fastmcp = True
-            
-            except ImportError:
+            else:
                 # Use standalone implementation
                 logger.warning("FastMCP not available, using standalone implementation")
                 self.mcp = StandaloneMCP(name=self.name)
@@ -554,7 +565,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="IPFS Accelerate MCP Server")
     
     parser.add_argument("--name", default="ipfs-accelerate", help="Name of the server")
-    parser.add_argument("--host", default="localhost", help="Host to bind the server to")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind the server to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
     parser.add_argument("--mount-path", default="/mcp", help="Path to mount the server at")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
