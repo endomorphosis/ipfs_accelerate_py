@@ -151,7 +151,7 @@ async def run_server(
     name: str = "IPFS Accelerate MCP",
     description: str = "MCP server for IPFS Accelerate",
     transport: str = "stdio",
-    host: str = "127.0.0.1",
+    host: str = "0.0.0.0",
     port: int = 8000,
     debug: bool = False
 ) -> None:
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     parser.add_argument("--name", default="IPFS Accelerate MCP", help="Server name")
     parser.add_argument("--description", default="", help="Server description")
     parser.add_argument("--transport", default="stdio", choices=["stdio", "sse"], help="Transport type")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to for network transports")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to for network transports")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to for network transports")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     

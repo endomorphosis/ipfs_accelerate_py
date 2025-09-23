@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPFS Accelerate MCP Server Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>🚀 IPFS Accelerate MCP Server</h1>
+            <p>Comprehensive AI Inference • Model Management • Performance Monitoring</p>
+        </div>
+    </div>
+
+    <div class="server-status">
+        <div class="status-item">
+            <div class="status-indicator running"></div>
+            <div class="status-label">Server Status</div>
+        </div>
+        <div class="status-item">
+            <div class="status-value" id="server-port">3001</div>
+            <div class="status-label">Port</div>
+        </div>
+        <div class="status-item">
+            <div class="status-value" id="active-connections">1</div>
+            <div class="status-label">Active Connections</div>
+        </div>
+        <div class="status-item">
+            <div class="status-value" id="uptime">6s</div>
+            <div class="status-label">Uptime</div>
+        </div>
+        <div class="status-item">
+            <div class="status-value" id="total-requests">3</div>
+            <div class="status-label">Total Requests</div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-button active" onclick="showTab('overview')">🏠 Overview</button>
+        <button class="tab-button" onclick="showTab('ai-inference')">🤖 AI Inference</button>
+        <button class="tab-button" onclick="showTab('model-manager')">🎛️ Model Manager</button>
+        <button class="tab-button" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
+        <button class="tab-button" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
+        <button class="tab-button" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
+        <button class="tab-button" onclick="showTab('system-logs')">📝 System Logs</button>
+    </div>
+
+    <!-- Overview Tab -->
+    <div id="overview" class="tab-content active">
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>🔧 MCP Server Status</h3>
+                <div class="status-grid">
+                    <div class="status-row">
+                        <span>Status:</span>
+                        <span class="status-running">Running</span>
+                    </div>
+                    <div class="status-row">
+                        <span>Transport:</span>
+                        <span>HTTP + WebSocket</span>
+                    </div>
+                    <div class="status-row">
+                        <span>Available Tools:</span>
+                        <span>15</span>
+                    </div>
+                    <div class="status-row">
+                        <span>API Version:</span>
+                        <span>v1.0.0</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="refreshServerStatus()">🔄 Refresh Status</button>
+            </div>
+
+            <div class="card">
+                <h3>🤖 AI Capabilities</h3>
+                <div class="capabilities-grid">
+                    <div class="capability-item">
+                        <span>Text Processing:</span>
+                        <span class="status-active">Active</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Audio Processing:</span>
+                        <span class="status-active">Active</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Vision Processing:</span>
+                        <span class="status-active">Active</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Multimodal:</span>
+                        <span class="status-active">Active</span>
+                    </div>
+                </div>
+                <button class="btn btn-success" onclick="testInference()">⚡ Test Inference</button>
+            </div>
+
+            <div class="card">
+                <h3>📚 Model Information</h3>
+                <div class="model-info">
+                    <div class="info-row">
+                        <span>Loaded Models:</span>
+                        <span id="loaded-models-count">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Available Models:</span>
+                        <span id="available-models-count">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Storage Backend:</span>
+                        <span>JSON + Vector Index</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Cache Status:</span>
+                        <span class="status-enabled">Enabled</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="viewModels()">📋 View Models</button>
+            </div>
+
+            <div class="card">
+                <h3>📊 Performance Metrics</h3>
+                <div class="metrics-grid">
+                    <div class="metric-item">
+                        <span>CPU Usage:</span>
+                        <span>17%</span>
+                    </div>
+                    <div class="metric-item">
+                        <span>Memory Usage:</span>
+                        <span>26%</span>
+                    </div>
+                    <div class="metric-item">
+                        <span>Queue Length:</span>
+                        <span id="queue-length">0</span>
+                    </div>
+                    <div class="metric-item">
+                        <span>Avg Response Time:</span>
+                        <span>584ms</span>
+                    </div>
+                </div>
+                <button class="btn btn-info" onclick="refreshMetrics()">📊 Refresh Metrics</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Inference Tab -->
+    <div id="ai-inference" class="tab-content">
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>🤖 AI Inference Testing</h3>
+                <div class="inference-form">
+                    <label for="inference-type">Inference Type:</label>
+                    <select id="inference-type" onchange="updateInferenceForm()">
+                        <option value="text-generate">Text Generation</option>
+                        <option value="text-classify">Text Classification</option>
+                        <option value="text-embeddings">Text Embeddings</option>
+                        <option value="text-translate">Translation</option>
+                        <option value="text-summarize">Summarization</option>
+                        <option value="text-question">Question Answering</option>
+                        <option value="audio-transcribe">Audio Transcription</option>
+                        <option value="audio-classify">Audio Classification</option>
+                        <option value="audio-generate">Audio Generation</option>
+                        <option value="audio-synthesize">Speech Synthesis (TTS)</option>
+                        <option value="image-classify">Image Classification</option>
+                        <option value="image-detect">Object Detection</option>
+                        <option value="image-segment">Image Segmentation</option>
+                        <option value="image-generate">Image Generation</option>
+                        <option value="multimodal-caption">Image Captioning</option>
+                        <option value="multimodal-vqa">Visual Q&A</option>
+                        <option value="multimodal-document">Document Processing</option>
+                        <option value="specialized-code">Code Generation</option>
+                        <option value="specialized-timeseries">Time Series Forecasting</option>
+                        <option value="specialized-tabular">Tabular Data Processing</option>
+                    </select>
+
+                    <div id="dynamic-fields">
+                        <!-- Dynamic form fields will be populated here -->
+                    </div>
+
+                    <label for="model-id">Model ID (optional):</label>
+                    <input type="text" id="model-id" placeholder="Leave empty for auto-selection">
+
+                    <div class="button-group">
+                        <button class="btn btn-success" onclick="runInference()">⚡ Run Inference</button>
+                        <button class="btn btn-secondary" onclick="clearInferenceForm()">🗑️ Clear</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🎯 Inference Results</h3>
+                <div id="inference-results" class="results-container">
+                    <p>Ready to run inference...</p>
+                    <p>Try these examples:</p>
+                    <ul>
+                        <li>Text: "Explain quantum computing"</li>
+                        <li>Classification: "This product is amazing!"</li>
+                        <li>Translation: "Hello world" → Spanish</li>
+                        <li>Summarization: Long article text</li>
+                    </ul>
+                </div>
+                <div class="results-info">
+                    <div class="info-row">
+                        <span>Execution Time:</span>
+                        <span id="execution-time">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Model Used:</span>
+                        <span id="model-used">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Model Manager Tab -->
+    <div id="model-manager" class="tab-content">
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>📚 Available Models</h3>
+                <p>No models currently loaded. Use the AI Inference CLI to load models automatically.</p>
+                <div class="button-group">
+                    <button class="btn btn-info" onclick="refreshModels()">🔄 Refresh Models</button>
+                    <button class="btn btn-success" onclick="loadModel()">⬇️ Load Model</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🔍 🤗 HuggingFace Model Search</h3>
+                <div class="search-form">
+                    <label for="hf-search">Search HuggingFace Hub:</label>
+                    <input type="text" id="hf-search" placeholder="Enter model name (e.g., bert, gpt2, llama)">
+                    
+                    <label for="task-filter">Filter by Task:</label>
+                    <select id="task-filter">
+                        <option value="">All Tasks</option>
+                        <option value="text-generation">Text Generation</option>
+                        <option value="text-classification">Text Classification</option>
+                        <option value="question-answering">Question Answering</option>
+                        <option value="summarization">Summarization</option>
+                        <option value="translation">Translation</option>
+                        <option value="text2text-generation">Text-to-Text Generation</option>
+                        <option value="fill-mask">Fill Mask</option>
+                        <option value="token-classification">Token Classification</option>
+                        <option value="sentence-similarity">Sentence Similarity</option>
+                        <option value="image-classification">Image Classification</option>
+                        <option value="object-detection">Object Detection</option>
+                        <option value="automatic-speech-recognition">Speech Recognition</option>
+                        <option value="audio-classification">Audio Classification</option>
+                    </select>
+                    
+                    <label for="size-filter">Model Size Filter:</label>
+                    <select id="size-filter">
+                        <option value="">All Sizes</option>
+                        <option value="tiny">Tiny (&lt;100M params)</option>
+                        <option value="small">Small (100M-1B params)</option>
+                        <option value="medium">Medium (1B-10B params)</option>
+                        <option value="large">Large (&gt;10B params)</option>
+                    </select>
+
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="searchHuggingFace()">🔍 Search HF Hub</button>
+                        <button class="btn btn-secondary" onclick="clearHFResults()">🗑️ Clear Results</button>
+                    </div>
+                </div>
+
+                <div id="hf-search-results" class="search-results">
+                    <!-- HuggingFace search results will appear here -->
+                </div>
+
+                <div class="search-stats">
+                    <div class="stat-item">
+                        <span>Total Indexed Models:</span>
+                        <span id="total-indexed">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>HuggingFace Models:</span>
+                        <span id="hf-models-count">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Compatible Models:</span>
+                        <span id="compatible-models">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Tested Models:</span>
+                        <span id="tested-models">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🔧 Hardware Compatibility Testing</h3>
+                <div class="compatibility-form">
+                    <label for="test-model-id">Model to Test:</label>
+                    <input type="text" id="test-model-id" placeholder="Enter model ID from search results">
+                    
+                    <label>Hardware Platforms:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" id="test-cpu" checked> CPU</label>
+                        <label><input type="checkbox" id="test-cuda"> CUDA (NVIDIA)</label>
+                        <label><input type="checkbox" id="test-rocm"> ROCm (AMD)</label>
+                        <label><input type="checkbox" id="test-openvino"> OpenVINO (Intel)</label>
+                        <label><input type="checkbox" id="test-mps"> MPS (Apple Silicon)</label>
+                        <label><input type="checkbox" id="test-webgpu"> WebGPU</label>
+                        <label><input type="checkbox" id="test-directml"> DirectML</label>
+                        <label><input type="checkbox" id="test-onnx"> ONNX Runtime</label>
+                    </div>
+                    
+                    <div class="test-config">
+                        <label for="batch-size">Batch Size:</label>
+                        <input type="number" id="batch-size" value="1" min="1" max="32">
+                        
+                        <label for="seq-length">Sequence Length:</label>
+                        <input type="number" id="seq-length" value="512" min="1" max="2048">
+                        
+                        <label for="precision">Precision:</label>
+                        <select id="precision">
+                            <option value="FP32">FP32</option>
+                            <option value="FP16">FP16</option>
+                            <option value="INT8">INT8</option>
+                            <option value="INT4">INT4</option>
+                        </select>
+                        
+                        <label for="iterations">Test Iterations:</label>
+                        <input type="number" id="iterations" value="10" min="1" max="100">
+                    </div>
+                    
+                    <button class="btn btn-warning" onclick="testModelCompatibility()">🔧 Test Compatibility</button>
+                </div>
+
+                <div id="compatibility-results" class="compatibility-results">
+                    <!-- Compatibility test results will appear here -->
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>💡 Smart Recommendations</h3>
+                <div class="recommendations-form">
+                    <label for="rec-task">Task Type:</label>
+                    <select id="rec-task">
+                        <option value="text-generation">Text Generation</option>
+                        <option value="text-classification">Text Classification</option>
+                        <option value="question-answering">Question Answering</option>
+                        <option value="image-classification">Image Classification</option>
+                        <option value="speech-recognition">Speech Recognition</option>
+                    </select>
+                    
+                    <label for="rec-hardware">Hardware Platform:</label>
+                    <select id="rec-hardware">
+                        <option value="cpu">CPU</option>
+                        <option value="cuda">CUDA (NVIDIA)</option>
+                        <option value="rocm">ROCm (AMD)</option>
+                        <option value="openvino">OpenVINO (Intel)</option>
+                        <option value="mps">MPS (Apple Silicon)</option>
+                    </select>
+                    
+                    <button class="btn btn-info" onclick="getSmartRecommendations()">💡 Get Recommendations</button>
+                </div>
+                
+                <div id="smart-recommendations" class="recommendations-results">
+                    <!-- Smart recommendations will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Queue Monitor Tab -->
+    <div id="queue-monitor" class="tab-content">
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>📊 Queue Status</h3>
+                <div class="queue-stats">
+                    <div class="stat-row">
+                        <span>Pending Jobs:</span>
+                        <span id="pending-jobs-detail">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Running Jobs:</span>
+                        <span id="running-jobs">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Completed Jobs:</span>
+                        <span id="completed-jobs-detail">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Failed Jobs:</span>
+                        <span id="failed-jobs">0</span>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-info" onclick="refreshQueue()">🔄 Refresh Queue</button>
+                    <button class="btn btn-warning" onclick="clearQueue()">🗑️ Clear Queue</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>👥 Worker Management</h3>
+                <div class="worker-stats">
+                    <div class="stat-row">
+                        <span>Active Workers:</span>
+                        <span id="active-workers-detail">1</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Worker Pool Size:</span>
+                        <span id="worker-pool-size">4</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Average Job Time:</span>
+                        <span id="avg-job-time">-</span>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-success" onclick="addWorker()">➕ Add Worker</button>
+                    <button class="btn btn-warning" onclick="removeWorker()">➖ Remove Worker</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📈 Queue Analytics</h3>
+                <div class="analytics-stats">
+                    <div class="stat-row">
+                        <span>Jobs/Hour:</span>
+                        <span id="jobs-per-hour">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Success Rate:</span>
+                        <span id="success-rate">100%</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Peak Queue Size:</span>
+                        <span id="peak-queue-size">0</span>
+                    </div>
+                </div>
+                <button class="btn btn-info" onclick="exportQueueStats()">📊 Export Stats</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MCP Tools Tab -->
+    <div id="mcp-tools" class="tab-content">
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>🔧 Available MCP Tools</h3>
+                <div class="tools-grid">
+                    <span class="tool-tag">text_generation</span>
+                    <span class="tool-tag">text_classification</span>
+                    <span class="tool-tag">text_embeddings</span>
+                    <span class="tool-tag">audio_transcription</span>
+                    <span class="tool-tag">image_classification</span>
+                    <span class="tool-tag">visual_qa</span>
+                    <span class="tool-tag">model_search</span>
+                    <span class="tool-tag">model_recommend</span>
+                    <span class="tool-tag">queue_status</span>
+                    <span class="tool-tag">performance_stats</span>
+                </div>
+                <button class="btn btn-info" onclick="refreshTools()">🔄 Refresh Tools</button>
+            </div>
+
+            <div class="card">
+                <h3>🌐 API Endpoints</h3>
+                <div class="endpoints-list">
+                    <div class="endpoint-item">
+                        <span class="endpoint-method">GET</span>
+                        <span class="endpoint-path">/api/mcp/*</span>
+                        <span>MCP Server</span>
+                    </div>
+                    <div class="endpoint-item">
+                        <span class="endpoint-method">POST</span>
+                        <span class="endpoint-path">/api/models/*</span>
+                        <span>Models API</span>
+                    </div>
+                    <div class="endpoint-item">
+                        <span class="endpoint-method">GET</span>
+                        <span class="endpoint-path">/api/queue/*</span>
+                        <span>Queue API</span>
+                    </div>
+                    <div class="endpoint-item">
+                        <span class="endpoint-method">POST</span>
+                        <span class="endpoint-path">/api/inference/*</span>
+                        <span>Inference API</span>
+                    </div>
+                </div>
+                <button class="btn btn-success" onclick="testAPIs()">⚡ Test APIs</button>
+            </div>
+
+            <div class="card">
+                <h3>⚙️ Server Configuration</h3>
+                <div class="config-grid">
+                    <div class="config-row">
+                        <span>Max Queue Size:</span>
+                        <span>1000</span>
+                    </div>
+                    <div class="config-row">
+                        <span>Request Timeout:</span>
+                        <span>30s</span>
+                    </div>
+                    <div class="config-row">
+                        <span>Cache TTL:</span>
+                        <span>3600s</span>
+                    </div>
+                    <div class="config-row">
+                        <span>Log Level:</span>
+                        <span>INFO</span>
+                    </div>
+                </div>
+                <button class="btn btn-warning" onclick="editConfig()">⚙️ Edit Config</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Coverage Analysis Tab -->
+    <div id="coverage" class="tab-content">
+        <div class="dashboard-grid">
+            <div class="card full-width">
+                <h3>🎯 Model-Hardware Coverage Matrix</h3>
+                <div class="coverage-matrix">
+                    <table class="coverage-table">
+                        <thead>
+                            <tr>
+                                <th>Model</th>
+                                <th>CPU</th>
+                                <th>CUDA</th>
+                                <th>ROCm</th>
+                                <th>OpenVINO</th>
+                                <th>MPS</th>
+                                <th>WebGPU</th>
+                                <th>DirectML</th>
+                                <th>ONNX</th>
+                            </tr>
+                        </thead>
+                        <tbody id="coverage-matrix-body">
+                            <!-- Coverage matrix data will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="coverage-legend">
+                    <span class="legend-item"><span class="status-tested">✅</span> Tested</span>
+                    <span class="legend-item"><span class="status-not-tested">❌</span> Not Tested</span>
+                    <span class="legend-item"><span class="status-warning">⚠️</span> Warning</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📊 Coverage Statistics</h3>
+                <div class="coverage-stats">
+                    <div class="stat-row">
+                        <span>Total Models Tested:</span>
+                        <span id="total-models-tested">247</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Hardware Platforms:</span>
+                        <span id="hardware-platforms">8</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Coverage Percentage:</span>
+                        <span id="coverage-percentage">73%</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Last Test Date:</span>
+                        <span id="last-test-date">-</span>
+                    </div>
+                </div>
+                <button class="btn btn-info" onclick="refreshCoverageMatrix()">🔄 Refresh Matrix</button>
+            </div>
+
+            <div class="card">
+                <h3>💾 Parquet Data Management</h3>
+                <div class="parquet-info">
+                    <div class="info-row">
+                        <span>Data File:</span>
+                        <span id="parquet-file">benchmark_results_2024-01-15.parquet</span>
+                    </div>
+                    <div class="info-row">
+                        <span>File Size:</span>
+                        <span id="parquet-size">2.4 MB</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Records:</span>
+                        <span id="parquet-records">1,847</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Last Updated:</span>
+                        <span id="parquet-updated">2024-01-15 14:23:17</span>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="exportParquetData()">📊 Export Data</button>
+                    <button class="btn btn-success" onclick="backupParquetData()">💾 Backup Data</button>
+                    <button class="btn btn-info" onclick="analyzeTrends()">📈 Analyze Trends</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🎯 Gap Analysis & Recommendations</h3>
+                <div class="gap-analysis">
+                    <div class="analysis-item">
+                        <span class="gap-priority high">High Priority:</span>
+                        <span>Test Llama models on WebGPU (0% coverage)</span>
+                    </div>
+                    <div class="analysis-item">
+                        <span class="gap-priority medium">Medium Priority:</span>
+                        <span>Expand BERT testing on DirectML (12% coverage)</span>
+                    </div>
+                    <div class="analysis-item">
+                        <span class="gap-priority low">Low Priority:</span>
+                        <span>Complete GPT-2 variants on MPS (67% coverage)</span>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-warning" onclick="testMissingPlatforms()">🔧 Test Missing Platforms</button>
+                    <button class="btn btn-success" onclick="autoFillCriticalGaps()">⚡ Auto-Fill Critical Gaps</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Logs Tab -->
+    <div id="system-logs" class="tab-content">
+        <div class="dashboard-grid">
+            <div class="card full-width">
+                <h3>📝 System Logs</h3>
+                <div class="logs-container">
+                    <div id="log-output" class="log-output">
+                        <div class="log-entry">2024-01-15 14:23:45 - INFO - MCP Server started on port 3001</div>
+                        <div class="log-entry">2024-01-15 14:23:46 - INFO - AI inference capabilities initialized</div>
+                        <div class="log-entry">2024-01-15 14:23:47 - INFO - Model manager ready</div>
+                        <div class="log-entry">2024-01-15 14:23:48 - INFO - Queue monitor active</div>
+                        <div class="log-entry">2024-01-15 14:23:49 - INFO - Web dashboard accessible at http://localhost:3001</div>
+                    </div>
+                </div>
+                <div class="logs-controls">
+                    <button class="btn btn-info" onclick="refreshLogs()">🔄 Refresh</button>
+                    <button class="btn btn-warning" onclick="clearLogs()">🗑️ Clear</button>
+                    <button class="btn btn-success" onclick="downloadLogs()">⬇️ Download</button>
+                    <label>
+                        <input type="checkbox" id="auto-refresh" checked> Auto-refresh
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

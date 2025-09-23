@@ -26,14 +26,14 @@ def main():
     # Define command-line arguments
     parser.add_argument(
         "--host", 
-        default="127.0.0.1", 
-        help="Host address to bind (default: 127.0.0.1)"
+        default="0.0.0.0", 
+        help="Host address to bind (default: 0.0.0.0)"
     )
     parser.add_argument(
         "--port", 
         type=int, 
-        default=8000, 
-        help="Port to listen on (default: 8000)"
+        default=9000, 
+        help="Port to listen on (default: 9000)"
     )
     parser.add_argument(
         "--log-level", 
