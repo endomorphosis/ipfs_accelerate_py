@@ -12,10 +12,14 @@ import subprocess
 import sys
 import time
 import random
+import threading
+import queue
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +50,22 @@ class EnhancedMCPDashboard:
             'avg_processing_time': 0,
             'success_rate': 0.95
         }
+        
+        # Initialize workflow management
+        self._active_workflows = {}
+        self._workflow_templates = self._load_workflow_templates()
+        self._job_queue = queue.Queue()
+        self._worker_threads = []
+        
+        # Initialize scheduler
+        self._scheduler = BackgroundScheduler(
+            executors={'default': ThreadPoolExecutor(20)},
+            job_defaults={'coalesce': False, 'max_instances': 3}
+        )
+        self._scheduler.start()
+        
+        # Start worker threads
+        self._start_worker_threads()
         
         self._setup_routes()
         logger.info(f"Enhanced MCP Dashboard initialized on {host}:{port}")
@@ -93,9 +113,277 @@ class EnhancedMCPDashboard:
             total_count = len(self._processing_history)
             self._performance_metrics['success_rate'] = success_count / total_count if total_count > 0 else 1.0
         
-        # Keep only last 1000 operations to prevent memory bloat
-        if len(self._processing_history) > 1000:
-            self._processing_history = self._processing_history[-1000:]
+    def _load_workflow_templates(self):
+        """Load predefined workflow templates."""
+        return {
+            'data_ingestion_pipeline': {
+                'name': 'Data Ingestion Pipeline',
+                'description': 'Complete pipeline for ingesting and processing datasets',
+                'steps': [
+                    {'type': 'load_dataset', 'params': {'source_type': 'ipfs'}},
+                    {'type': 'validate_data', 'params': {'validation_level': 'comprehensive'}},
+                    {'type': 'process_data', 'params': {'processing_type': 'text_processing'}},
+                    {'type': 'export_results', 'params': {'format': 'json'}}
+                ]
+            },
+            'caselaw_analysis_workflow': {
+                'name': 'Legal Document Analysis',
+                'description': 'Specialized workflow for legal document processing',
+                'steps': [
+                    {'type': 'load_dataset', 'params': {'source_type': 'huggingface'}},
+                    {'type': 'process_data', 'params': {'processing_type': 'caselaw_analysis'}},
+                    {'type': 'generate_report', 'params': {'report_type': 'legal_summary'}}
+                ]
+            },
+            'performance_monitoring': {
+                'name': 'Performance Monitoring Workflow',
+                'description': 'Continuous monitoring and reporting of system performance',
+                'steps': [
+                    {'type': 'collect_metrics', 'params': {'interval': 300}},
+                    {'type': 'analyze_performance', 'params': {'threshold_check': True}},
+                    {'type': 'generate_alerts', 'params': {'alert_level': 'warning'}}
+                ]
+            }
+        }
+    
+    def _start_worker_threads(self):
+        """Start background worker threads for job processing."""
+        num_workers = 3
+        for i in range(num_workers):
+            worker = threading.Thread(target=self._job_worker, daemon=True)
+            worker.start()
+            self._worker_threads.append(worker)
+        logger.info(f"Started {num_workers} worker threads")
+    
+    def _job_worker(self):
+        """Worker thread function for processing jobs."""
+        while True:
+            try:
+                job = self._job_queue.get(timeout=1)
+                if job is None:
+                    break
+                
+                job_id = job['id']
+                job_type = job['type']
+                job_params = job.get('params', {})
+                
+                logger.info(f"Processing job {job_id} of type {job_type}")
+                
+                # Update job status
+                self._active_workflows[job_id]['status'] = 'processing'
+                self._active_workflows[job_id]['started_at'] = datetime.now().isoformat()
+                
+                # Process the job based on type
+                try:
+                    result = self._execute_job(job_type, job_params)
+                    self._active_workflows[job_id]['status'] = 'completed'
+                    self._active_workflows[job_id]['result'] = result
+                    self._active_workflows[job_id]['completed_at'] = datetime.now().isoformat()
+                except Exception as e:
+                    self._active_workflows[job_id]['status'] = 'failed'
+                    self._active_workflows[job_id]['error'] = str(e)
+                    self._active_workflows[job_id]['failed_at'] = datetime.now().isoformat()
+                    logger.error(f"Job {job_id} failed: {e}")
+                
+                self._job_queue.task_done()
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"Worker thread error: {e}")
+    
+    def _execute_job(self, job_type, params):
+        """Execute a specific job type."""
+        if job_type == 'load_dataset':
+            return self._load_dataset(params.get('source_type'), params.get('source_path'), params)
+        elif job_type == 'process_data':
+            return self._process_dataset(params.get('processing_type'), params.get('dataset_id'), params)
+        elif job_type == 'validate_data':
+            return self._validate_dataset(params.get('dataset_id'), params.get('validation_level'))
+        elif job_type == 'collect_metrics':
+            return self._collect_system_metrics()
+        else:
+            raise ValueError(f"Unknown job type: {job_type}")
+    
+    def _validate_dataset(self, dataset_id, validation_level='basic'):
+        """Validate a loaded dataset."""
+        # Simulate dataset validation
+        time.sleep(random.uniform(2, 5))
+        
+        validation_results = {
+            'dataset_id': dataset_id,
+            'validation_level': validation_level,
+            'total_records': random.randint(5000, 50000),
+            'valid_records': random.randint(4500, 49000),
+            'invalid_records': random.randint(50, 500),
+            'data_quality_score': round(random.uniform(0.85, 0.98), 3),
+            'schema_compliance': round(random.uniform(0.90, 1.0), 3),
+            'completeness_score': round(random.uniform(0.88, 0.99), 3),
+            'validation_time': f"{random.uniform(2, 5):.1f}s"
+        }
+        
+        return validation_results
+    
+    def _collect_system_metrics(self):
+        """Collect current system metrics."""
+        try:
+            import psutil
+            
+            metrics = {
+                'timestamp': datetime.now().isoformat(),
+                'cpu_percent': psutil.cpu_percent(interval=1),
+                'memory_percent': psutil.virtual_memory().percent,
+                'disk_percent': psutil.disk_usage('/').percent,
+                'active_processes': len(psutil.pids()),
+                'network_io': psutil.net_io_counters()._asdict(),
+                'disk_io': psutil.disk_io_counters()._asdict() if psutil.disk_io_counters() else {}
+            }
+            
+            return metrics
+        except ImportError:
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'cpu_percent': random.uniform(20, 80),
+                'memory_percent': random.uniform(40, 70),
+                'disk_percent': random.uniform(30, 60),
+                'note': 'Simulated metrics - psutil not available'
+            }
+    
+    def _load_workflow_templates(self):
+        """Load predefined workflow templates."""
+        return {
+            'data_ingestion_pipeline': {
+                'name': 'Data Ingestion Pipeline',
+                'description': 'Complete pipeline for ingesting and processing datasets',
+                'steps': [
+                    {'type': 'load_dataset', 'params': {'source_type': 'ipfs'}},
+                    {'type': 'validate_data', 'params': {'validation_level': 'comprehensive'}},
+                    {'type': 'process_data', 'params': {'processing_type': 'text_processing'}},
+                    {'type': 'export_results', 'params': {'format': 'json'}}
+                ]
+            },
+            'caselaw_analysis_workflow': {
+                'name': 'Legal Document Analysis',
+                'description': 'Specialized workflow for legal document processing',
+                'steps': [
+                    {'type': 'load_dataset', 'params': {'source_type': 'huggingface'}},
+                    {'type': 'process_data', 'params': {'processing_type': 'caselaw_analysis'}},
+                    {'type': 'generate_report', 'params': {'report_type': 'legal_summary'}}
+                ]
+            },
+            'performance_monitoring': {
+                'name': 'Performance Monitoring Workflow',
+                'description': 'Continuous monitoring and reporting of system performance',
+                'steps': [
+                    {'type': 'collect_metrics', 'params': {'interval': 300}},
+                    {'type': 'analyze_performance', 'params': {'threshold_check': True}},
+                    {'type': 'generate_alerts', 'params': {'alert_level': 'warning'}}
+                ]
+            }
+        }
+    
+    def _start_worker_threads(self):
+        """Start background worker threads for job processing."""
+        num_workers = 3
+        for i in range(num_workers):
+            worker = threading.Thread(target=self._job_worker, daemon=True)
+            worker.start()
+            self._worker_threads.append(worker)
+        logger.info(f"Started {num_workers} worker threads")
+    
+    def _job_worker(self):
+        """Worker thread function for processing jobs."""
+        while True:
+            try:
+                job = self._job_queue.get(timeout=1)
+                if job is None:
+                    break
+                
+                job_id = job['id']
+                job_type = job['type']
+                job_params = job.get('params', {})
+                
+                logger.info(f"Processing job {job_id} of type {job_type}")
+                
+                # Update job status
+                self._active_workflows[job_id]['status'] = 'processing'
+                self._active_workflows[job_id]['started_at'] = datetime.now().isoformat()
+                
+                # Process the job based on type
+                try:
+                    result = self._execute_job(job_type, job_params)
+                    self._active_workflows[job_id]['status'] = 'completed'
+                    self._active_workflows[job_id]['result'] = result
+                    self._active_workflows[job_id]['completed_at'] = datetime.now().isoformat()
+                except Exception as e:
+                    self._active_workflows[job_id]['status'] = 'failed'
+                    self._active_workflows[job_id]['error'] = str(e)
+                    self._active_workflows[job_id]['failed_at'] = datetime.now().isoformat()
+                    logger.error(f"Job {job_id} failed: {e}")
+                
+                self._job_queue.task_done()
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"Worker thread error: {e}")
+    
+    def _execute_job(self, job_type, params):
+        """Execute a specific job type."""
+        if job_type == 'load_dataset':
+            return self._load_dataset(params.get('source_type'), params.get('source_path'), params)
+        elif job_type == 'process_data':
+            return self._process_dataset(params.get('processing_type'), params.get('dataset_id'), params)
+        elif job_type == 'validate_data':
+            return self._validate_dataset(params.get('dataset_id'), params.get('validation_level'))
+        elif job_type == 'collect_metrics':
+            return self._collect_system_metrics()
+        else:
+            raise ValueError(f"Unknown job type: {job_type}")
+    
+    def _validate_dataset(self, dataset_id, validation_level='basic'):
+        """Validate a loaded dataset."""
+        # Simulate dataset validation
+        time.sleep(random.uniform(2, 5))
+        
+        validation_results = {
+            'dataset_id': dataset_id,
+            'validation_level': validation_level,
+            'total_records': random.randint(5000, 50000),
+            'valid_records': random.randint(4500, 49000),
+            'invalid_records': random.randint(50, 500),
+            'data_quality_score': round(random.uniform(0.85, 0.98), 3),
+            'schema_compliance': round(random.uniform(0.90, 1.0), 3),
+            'completeness_score': round(random.uniform(0.88, 0.99), 3),
+            'validation_time': f"{random.uniform(2, 5):.1f}s"
+        }
+        
+        return validation_results
+    
+    def _collect_system_metrics(self):
+        """Collect current system metrics."""
+        try:
+            import psutil
+            
+            metrics = {
+                'timestamp': datetime.now().isoformat(),
+                'cpu_percent': psutil.cpu_percent(interval=1),
+                'memory_percent': psutil.virtual_memory().percent,
+                'disk_percent': psutil.disk_usage('/').percent,
+                'active_processes': len(psutil.pids()),
+                'network_io': psutil.net_io_counters()._asdict(),
+                'disk_io': psutil.disk_io_counters()._asdict() if psutil.disk_io_counters() else {}
+            }
+            
+            return metrics
+        except ImportError:
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'cpu_percent': random.uniform(20, 80),
+                'memory_percent': random.uniform(40, 70),
+                'disk_percent': random.uniform(30, 60),
+                'note': 'Simulated metrics - psutil not available'
+            }
     
     def _setup_routes(self):
         """Setup Flask routes."""
@@ -206,6 +494,64 @@ class EnhancedMCPDashboard:
                     'memory': {'percent': random.uniform(40, 70)},
                     'disk': {'percent': random.uniform(30, 60)}
                 })
+                
+        @self.app.route('/api/mcp/workflows', methods=['GET'])
+        def get_workflows():
+            """Get available workflow templates and active workflows."""
+            return jsonify({
+                'templates': self._workflow_templates,
+                'active': self._active_workflows,
+                'queue_size': self._job_queue.qsize()
+            })
+        
+        @self.app.route('/api/mcp/workflows/create', methods=['POST'])
+        def create_workflow():
+            """Create and start a new workflow."""
+            data = request.get_json()
+            template_name = data.get('template')
+            custom_params = data.get('params', {})
+            
+            if template_name not in self._workflow_templates:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Unknown workflow template: {template_name}'
+                }), 400
+            
+            # Create workflow instance
+            workflow_id = f"workflow_{int(time.time())}_{random.randint(1000, 9999)}"
+            template = self._workflow_templates[template_name]
+            
+            workflow = {
+                'id': workflow_id,
+                'template': template_name,
+                'name': template['name'],
+                'description': template['description'],
+                'status': 'queued',
+                'created_at': datetime.now().isoformat(),
+                'steps': template['steps'].copy(),
+                'custom_params': custom_params,
+                'progress': 0,
+                'current_step': 0
+            }
+            
+            self._active_workflows[workflow_id] = workflow
+            
+            # Queue the workflow steps
+            for i, step in enumerate(template['steps']):
+                job = {
+                    'id': f"{workflow_id}_step_{i}",
+                    'workflow_id': workflow_id,
+                    'step_index': i,
+                    'type': step['type'],
+                    'params': {**step['params'], **custom_params}
+                }
+                self._job_queue.put(job)
+            
+            return jsonify({
+                'status': 'success',
+                'workflow_id': workflow_id,
+                'message': f'Workflow "{template["name"]}" created and queued'
+            })
         
         @self.app.route('/api/mcp/test-suite/run', methods=['POST'])
         def run_test_suite():
@@ -1048,6 +1394,11 @@ class EnhancedMCPDashboard:
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="workflows-tab" data-bs-toggle="tab" data-bs-target="#workflows" type="button">
+                    <i class="fas fa-project-diagram me-2"></i>Workflows
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="analytics-tab" data-bs-toggle="tab" data-bs-target="#analytics" type="button">
                     <i class="fas fa-chart-line me-2"></i>Analytics
                 </button>
@@ -1162,6 +1513,80 @@ class EnhancedMCPDashboard:
                         </div>
                         <div class="col-md-6">
                             <div id="processResults" class="result-panel"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Workflows Panel -->
+            <div class="tab-pane fade" id="workflows" role="tabpanel">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h3 class="panel-title">
+                            <i class="fas fa-project-diagram text-primary"></i>
+                            Workflow Management
+                        </h3>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Available Workflow Templates</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="workflowTemplates">
+                                        <div class="workflow-template mb-3 p-3 border rounded">
+                                            <h6>Data Ingestion Pipeline</h6>
+                                            <p class="text-muted mb-2">Complete pipeline for ingesting and processing datasets</p>
+                                            <button class="btn btn-sm btn-primary" onclick="createWorkflow('data_ingestion_pipeline')">
+                                                <i class="fas fa-play me-1"></i>Start Workflow
+                                            </button>
+                                        </div>
+                                        <div class="workflow-template mb-3 p-3 border rounded">
+                                            <h6>Legal Document Analysis</h6>
+                                            <p class="text-muted mb-2">Specialized workflow for legal document processing</p>
+                                            <button class="btn btn-sm btn-primary" onclick="createWorkflow('caselaw_analysis_workflow')">
+                                                <i class="fas fa-play me-1"></i>Start Workflow
+                                            </button>
+                                        </div>
+                                        <div class="workflow-template mb-3 p-3 border rounded">
+                                            <h6>Performance Monitoring</h6>
+                                            <p class="text-muted mb-2">Continuous monitoring and reporting of system performance</p>
+                                            <button class="btn btn-sm btn-primary" onclick="createWorkflow('performance_monitoring')">
+                                                <i class="fas fa-play me-1"></i>Start Workflow
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Active Workflows</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="activeWorkflows">
+                                        <p class="text-muted">No active workflows</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Workflow Execution History</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="workflowHistory" style="max-height: 400px; overflow-y: auto;">
+                                        <p class="text-muted">No workflow history available</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1858,6 +2283,63 @@ class EnhancedMCPDashboard:
             }}
         }}
         
+        // Workflow management functions
+        async function createWorkflow(templateName) {{
+            try {{
+                const response = await fetch('/api/mcp/workflows/create', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json'}},
+                    body: JSON.stringify({{template: templateName}})
+                }});
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {{
+                    alert(`Workflow created successfully: ${{result.workflow_id}}`);
+                    updateActiveWorkflows();
+                }} else {{
+                    alert(`Failed to create workflow: ${{result.message}}`);
+                }}
+            }} catch (error) {{
+                alert(`Error creating workflow: ${{error.message}}`);
+            }}
+        }}
+        
+        async function updateActiveWorkflows() {{
+            try {{
+                const response = await fetch('/api/mcp/workflows');
+                const data = await response.json();
+                
+                const activeElement = document.getElementById('activeWorkflows');
+                if (activeElement) {{
+                    if (Object.keys(data.active).length === 0) {{
+                        activeElement.innerHTML = '<p class="text-muted">No active workflows</p>';
+                    }} else {{
+                        activeElement.innerHTML = Object.values(data.active).map(workflow => `
+                            <div class="workflow-item mb-3 p-3 border rounded">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <h6>${{workflow.name}}</h6>
+                                        <p class="text-muted mb-1">${{workflow.description}}</p>
+                                        <small class="text-info">Created: ${{new Date(workflow.created_at).toLocaleString()}}</small>
+                                    </div>
+                                    <span class="badge bg-${{workflow.status === 'completed' ? 'success' : workflow.status === 'failed' ? 'danger' : workflow.status === 'processing' ? 'primary' : 'secondary'}}">
+                                        ${{workflow.status.toUpperCase()}}
+                                    </span>
+                                </div>
+                                <div class="progress mt-2" style="height: 6px;">
+                                    <div class="progress-bar" role="progressbar" style="width: ${{workflow.progress || 0}}%"></div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }}
+                }}
+            }} catch (error) {{
+                console.error('Failed to update active workflows:', error);
+            }}
+        }}
+        
+        // Enhanced monitoring functions
         function updateUptime() {{
             const uptimeElement = document.getElementById('uptime');
             if (uptimeElement) {{
@@ -1867,6 +2349,9 @@ class EnhancedMCPDashboard:
                 const seconds = currentTime % 60;
                 uptimeElement.textContent = `${{hours}}h ${{minutes}}m ${{seconds}}s`;
             }}
+            
+            // Update workflows
+            updateActiveWorkflows();
         }}
     </script>
 </body>
