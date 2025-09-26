@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""
+IPFS Datasets CLI Tool
+
+This CLI tool provides dataset processing capabilities using IPFS, Hugging Face,
+Parquet, and CAR files through a comprehensive MCP dashboard interface.
+
+Usage:
+    ipfs-datasets mcp start               # Start MCP server dashboard
+    ipfs-datasets mcp status              # Check MCP server status  
+    ipfs-datasets mcp logs                # View server logs
+    ipfs-datasets --help                  # Show help for all commands
+"""
+
+import sys
+import os
+import subprocess
+from pathlib import Path
+
+def get_project_python():
+    """Get the appropriate Python interpreter."""
+    project_root = Path(__file__).parent
+    venv_python = project_root / ".venv" / "bin" / "python"
+    
+    if venv_python.exists():
+        return str(venv_python)
+    return sys.executable
+
+def main():
+    """Main entry point for ipfs-datasets CLI."""
+    # Get the project root directory
+    project_root = Path(__file__).parent
+    
+    # Use the enhanced dataset CLI module
+    cli_module = project_root / "ipfs_datasets_cli.py"
+    
+    if not cli_module.exists():
+        print(f"Error: CLI module not found at {cli_module}")
+        sys.exit(1)
+    
+    # Get appropriate Python interpreter
+    python_exe = get_project_python()
+    
+    # Pass all arguments to the enhanced CLI
+    try:
+        subprocess.run([python_exe, str(cli_module)] + sys.argv[1:], check=True)
+    except subprocess.CalledProcessError as e:
+        sys.exit(e.returncode)
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
