@@ -710,7 +710,16 @@ function refreshServerStatus() {
 }
 
 function refreshModels() {
-    alert('Refreshing model list...');
+    fetch('/api/models/search?query=')
+        .then(response => response.json())
+        .then(data => {
+            console.log('Models refreshed:', data);
+            alert(`Found ${data.total || 0} models`);
+        })
+        .catch(error => {
+            console.error('Error refreshing models:', error);
+            alert('Failed to refresh model list');
+        });
 }
 
 function loadModel() {
@@ -734,12 +743,39 @@ function refreshMetrics() {
 
 // Queue Functions
 function refreshQueue() {
-    alert('Refreshing queue status...');
+    fetch('/api/queue/status')
+        .then(response => response.json())
+        .then(data => {
+            // Update queue status display
+            const pendingElem = document.querySelector('[id*="pending"]');
+            const runningElem = document.querySelector('[id*="running"]');
+            const completedElem = document.querySelector('[id*="completed"]');
+            const failedElem = document.querySelector('[id*="failed"]');
+            
+            if (pendingElem) pendingElem.textContent = data.pending || 0;
+            if (runningElem) runningElem.textContent = data.running || 0;
+            if (completedElem) completedElem.textContent = data.completed || 0;
+            if (failedElem) failedElem.textContent = data.failed || 0;
+            
+            console.log('Queue refreshed:', data);
+        })
+        .catch(error => {
+            console.error('Error refreshing queue:', error);
+        });
 }
 
 function clearQueue() {
     if (confirm('Are you sure you want to clear the queue?')) {
-        alert('Queue cleared');
+        fetch('/api/queue/clear', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                alert('Queue cleared successfully');
+                refreshQueue();
+            })
+            .catch(error => {
+                console.error('Error clearing queue:', error);
+                alert('Failed to clear queue');
+            });
     }
 }
 
@@ -759,11 +795,28 @@ function exportQueueStats() {
 
 // MCP Tools Functions
 function refreshTools() {
-    alert('Refreshing MCP tools list...');
+    fetch('/api/mcp/tools')
+        .then(response => response.json())
+        .then(data => {
+            console.log('MCP Tools refreshed:', data);
+            alert(`Found ${data.total} MCP tools available`);
+        })
+        .catch(error => {
+            console.error('Error refreshing tools:', error);
+            alert('Failed to refresh tools');
+        });
 }
 
 function testAPIs() {
-    alert('Testing API endpoints...');
+    fetch('/api/mcp/status')
+        .then(response => response.json())
+        .then(data => {
+            alert(`API Test Successful!\nStatus: ${data.status}\nTools Available: ${data.tools_available || 'N/A'}`);
+        })
+        .catch(error => {
+            console.error('Error testing APIs:', error);
+            alert('API test failed');
+        });
 }
 
 function editConfig() {
@@ -772,23 +825,54 @@ function editConfig() {
 
 // Logs Functions
 function refreshLogs() {
-    const logOutput = document.getElementById('log-output');
-    if (logOutput) {
-        const newEntry = `<div class="log-entry">${new Date().toISOString()} - INFO - Dashboard refreshed</div>`;
-        logOutput.innerHTML += newEntry;
-        logOutput.scrollTop = logOutput.scrollHeight;
-    }
+    fetch('/api/mcp/logs?limit=100')
+        .then(response => response.json())
+        .then(data => {
+            const logOutput = document.getElementById('log-output');
+            if (logOutput && data.logs) {
+                // Clear existing logs and add new ones
+                logOutput.innerHTML = '';
+                data.logs.forEach(log => {
+                    const logEntry = document.createElement('div');
+                    logEntry.className = 'log-entry';
+                    logEntry.textContent = `${log.timestamp} - ${log.level} - ${log.message}`;
+                    logOutput.appendChild(logEntry);
+                });
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing logs:', error);
+            // Fallback to adding a new entry
+            const logOutput = document.getElementById('log-output');
+            if (logOutput) {
+                const newEntry = `<div class="log-entry">${new Date().toISOString()} - INFO - Dashboard refreshed</div>`;
+                logOutput.innerHTML += newEntry;
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
+        });
 }
 
 function clearLogs() {
-    const logOutput = document.getElementById('log-output');
-    if (logOutput && confirm('Clear all logs?')) {
-        logOutput.innerHTML = '';
+    if (confirm('Clear all logs?')) {
+        fetch('/api/mcp/logs/clear', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                const logOutput = document.getElementById('log-output');
+                if (logOutput) {
+                    logOutput.innerHTML = '';
+                }
+                alert('Logs cleared successfully');
+            })
+            .catch(error => {
+                console.error('Error clearing logs:', error);
+                alert('Failed to clear logs');
+            });
     }
 }
 
 function downloadLogs() {
-    alert('Downloading system logs...');
+    window.location.href = '/api/mcp/logs/download';
 }
 
 // Auto-refresh functionality
