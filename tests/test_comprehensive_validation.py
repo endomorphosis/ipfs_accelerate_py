@@ -9,6 +9,11 @@ This test validates:
 4. End-to-end workflow with Playwright verification
 
 As requested: First verify backend tools, then GUI integration.
+
+REQUIREMENTS:
+    pip install flask flask-cors requests
+    # Optional for Playwright tests:
+    pip install playwright && playwright install chromium
 """
 
 import sys
@@ -24,6 +29,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 print("\n" + "="*80)
 print("COMPREHENSIVE HUGGINGFACE WORKFLOW VALIDATION")
 print("="*80)
+print("\nℹ️  Prerequisites: pip install flask flask-cors requests")
+print("ℹ️  For Playwright: pip install playwright && playwright install chromium")
 
 # ============================================================================
 # PHASE 1: Test Backend MCP Server Tools
@@ -53,6 +60,22 @@ def test_phase1_backend_tools():
         
         return True, scanner
         
+    except ImportError as e:
+        if 'aiohttp' in str(e):
+            print(f"   ⚠️ aiohttp not available (optional dependency)")
+            print("   💡 Install for async operations: pip install aiohttp")
+            print("   ℹ️  Backend will use synchronous fallback")
+            # Try to import anyway to test the fallback
+            try:
+                from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
+                scanner = HuggingFaceHubScanner()
+                return True, scanner
+            except Exception as e2:
+                print(f"   ❌ Even with fallback, scanner failed: {e2}")
+                return False, None
+        else:
+            print(f"   ❌ Backend scanner failed: {e}")
+            return False, None
     except Exception as e:
         print(f"   ❌ Backend scanner failed: {e}")
         import traceback

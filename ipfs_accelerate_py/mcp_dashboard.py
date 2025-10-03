@@ -8,8 +8,18 @@ AI and GraphRAG services, including the Caselaw GraphRAG system.
 import os
 import logging
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request, send_from_directory
-from flask_cors import CORS
+
+# Try to import Flask (required for dashboard)
+try:
+    from flask import Flask, render_template, jsonify, request, send_from_directory
+    from flask_cors import CORS
+    HAVE_FLASK = True
+except ImportError:
+    HAVE_FLASK = False
+    print("ERROR: Flask is required for the MCP Dashboard")
+    print("Install with: pip install flask flask-cors")
+    import sys
+    sys.exit(1)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
