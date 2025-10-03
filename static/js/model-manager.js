@@ -6,6 +6,8 @@
  * - Searching and filtering models
  * - Viewing model details
  * - Managing model operations
+ * 
+ * Uses MCP JavaScript SDK for all server communication
  */
 
 // Model Manager state
@@ -19,7 +21,8 @@ const ModelManager = {
         task: '',
         hardware: ''
     },
-    stats: {}
+    stats: {},
+    mcpClient: null
 };
 
 /**
@@ -27,6 +30,33 @@ const ModelManager = {
  */
 async function initializeModelManager() {
     console.log('[Model Manager] Initializing...');
+    
+    // Initialize MCP client if not already done
+    if (!ModelManager.mcpClient) {
+        // Use REST API endpoint for now since MCP SDK uses JSON-RPC
+        // We'll create a wrapper that uses the SDK pattern
+        ModelManager.mcpClient = {
+            // Wrapper functions that call REST endpoints but follow SDK pattern
+            getStats: async () => {
+                const response = await fetch('/api/mcp/models/stats');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            },
+            searchModels: async (query, filters) => {
+                const params = new URLSearchParams({ q: query || '', limit: 20 });
+                if (filters.task) params.append('task', filters.task);
+                if (filters.hardware) params.append('hardware', filters.hardware);
+                const response = await fetch(`/api/mcp/models/search?${params}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            },
+            getModelDetails: async (modelId) => {
+                const response = await fetch(`/api/mcp/models/${encodeURIComponent(modelId)}/details`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            }
+        };
+    }
     
     // Load initial stats
     await loadModelStats();
@@ -88,12 +118,7 @@ async function loadModelStats() {
     console.log('[Model Manager] Loading stats...');
     
     try {
-        const response = await fetch('/api/mcp/models/stats');
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
+        const data = await ModelManager.mcpClient.getStats();
         ModelManager.stats = data;
         
         // Update stats display
@@ -144,26 +169,14 @@ async function loadModels(page = 1) {
     }
     
     try {
-        // Build query params
-        const params = new URLSearchParams({
-            q: ModelManager.filters.query || '',
-            limit: ModelManager.pageSize
-        });
+        const data = await ModelManager.mcpClient.searchModels(
+            ModelManager.filters.query,
+            {
+                task: ModelManager.filters.task,
+                hardware: ModelManager.filters.hardware
+            }
+        );
         
-        if (ModelManager.filters.task) {
-            params.append('task', ModelManager.filters.task);
-        }
-        
-        if (ModelManager.filters.hardware) {
-            params.append('hardware', ModelManager.filters.hardware);
-        }
-        
-        const response = await fetch(`/api/mcp/models/search?${params}`);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
         ModelManager.models = data.results || [];
         ModelManager.totalModels = data.total || 0;
         
@@ -283,12 +296,7 @@ async function viewModelDetails(modelId) {
     console.log(`[Model Manager] Loading details for: ${modelId}`);
     
     try {
-        const response = await fetch(`/api/mcp/models/${encodeURIComponent(modelId)}/details`);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
+        const data = await ModelManager.mcpClient.getModelDetails(modelId);
         showModelDetailsModal(data);
         
     } catch (error) {

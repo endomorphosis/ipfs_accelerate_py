@@ -6,6 +6,33 @@ let searchResults = [];
 let compatibilityResults = [];
 let autoRefreshInterval = null;
 
+// Utility function for user notifications
+function showToast(message, type = 'info', duration = 3000) {
+    console.log(`[Dashboard] ${type.toUpperCase()}: ${message}`);
+    // Create a simple toast notification
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#10b981' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+    `;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 // Tab Management
 function showTab(tabName) {
     // Hide all tab contents
@@ -455,7 +482,9 @@ function testModelFromHF(modelId) {
 }
 
 function downloadModel(modelId) {
-    alert(`Starting download for model: ${modelId}`);
+    console.log(`[Dashboard] Downloading model: ${modelId}`);
+    showToast(`Model download initiated: ${modelId}`, 'info');
+    // TODO: Implement actual download via MCP SDK
 }
 
 function clearHFResults() {
@@ -490,7 +519,7 @@ function testModelCompatibility() {
     const resultsDiv = document.getElementById('compatibility-results');
     
     if (!modelId) {
-        alert('Please enter a model ID to test');
+        showToast('Please enter a model ID to test', 'warning');
         return;
     }
     
@@ -511,7 +540,7 @@ function testModelCompatibility() {
     });
     
     if (platforms.length === 0) {
-        alert('Please select at least one hardware platform to test');
+        showToast('Please select at least one hardware platform to test', 'warning');
         return;
     }
     
@@ -678,7 +707,7 @@ function refreshCoverageMatrix() {
 }
 
 function exportParquetData() {
-    alert('Exporting parquet data to benchmark_results_2024-01-15.parquet');
+    console.log('[Dashboard] Exporting parquet data'); showToast('Exporting parquet data', 'info');
 }
 
 function backupParquetData() {
