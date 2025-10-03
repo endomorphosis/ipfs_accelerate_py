@@ -148,35 +148,44 @@ class IPFSAccelerateCLI:
         # Always enable dashboard integration
         args.dashboard = True
         
+        # Preferred path: Flask-based dashboard if available
         try:
-            # Use the proper MCPDashboard class instead of custom HTTP server
-            from ipfs_accelerate_py.mcp_dashboard import MCPDashboard
-            
+            from ipfs_accelerate_py.mcp_dashboard import MCPDashboard  # requires Flask
+
             logger.info(f"Starting MCP Dashboard on port {args.port}")
             dashboard = MCPDashboard(port=args.port, host=args.host)
-            
+
             # Open browser if requested
-            if hasattr(args, 'open_browser') and args.open_browser:
-                import time
-                import threading
-                import webbrowser
+            if getattr(args, 'open_browser', False):
+                import time, threading, webbrowser
                 def open_browser_delayed():
                     time.sleep(2)
-                    webbrowser.open(f"http://{args.host}:{args.port}/mcp")
+                    webbrowser.open(f"http://{args.host}:{args.port}/dashboard")
                 threading.Thread(target=open_browser_delayed, daemon=True).start()
-            
-            # Run the dashboard (blocking call)
+
             dashboard.run(debug=False)
             return 0
-                
+
+        except ModuleNotFoundError as e:
+            # If Flask or its deps are missing, fall back automatically
+            if e.name == 'flask':
+                logger.warning("Flask not installed; falling back to integrated HTTP dashboard")
+                return self._start_integrated_mcp_server(args)
+            # Otherwise, re-raise to the generic handler
+            raise
         except KeyboardInterrupt:
             logger.info("MCP server stopped by user")
             return 0
         except Exception as e:
             logger.error(f"Error starting MCP server: {e}")
-            import traceback
-            traceback.print_exc()
-            return 1
+            # Best-effort fallback to integrated HTTP server
+            try:
+                logger.info("Falling back to integrated HTTP dashboard")
+                return self._start_integrated_mcp_server(args)
+            except Exception as e2:
+                logger.error(f"Integrated dashboard also failed: {e2}")
+                import traceback; traceback.print_exc()
+                return 1
     
     def _start_integrated_mcp_server(self, args):
         """Start the integrated MCP server with dashboard, model manager, and queue monitoring"""
