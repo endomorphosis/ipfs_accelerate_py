@@ -149,14 +149,33 @@ class IPFSAccelerateCLI:
         args.dashboard = True
         
         try:
-            # Start the integrated server with dashboard on the same port
-            return self._start_integrated_mcp_server(args)
+            # Use the proper MCPDashboard class instead of custom HTTP server
+            from ipfs_accelerate_py.mcp_dashboard import MCPDashboard
+            
+            logger.info(f"Starting MCP Dashboard on port {args.port}")
+            dashboard = MCPDashboard(port=args.port, host=args.host)
+            
+            # Open browser if requested
+            if hasattr(args, 'open_browser') and args.open_browser:
+                import time
+                import threading
+                import webbrowser
+                def open_browser_delayed():
+                    time.sleep(2)
+                    webbrowser.open(f"http://{args.host}:{args.port}/mcp")
+                threading.Thread(target=open_browser_delayed, daemon=True).start()
+            
+            # Run the dashboard (blocking call)
+            dashboard.run(debug=False)
+            return 0
                 
         except KeyboardInterrupt:
             logger.info("MCP server stopped by user")
             return 0
         except Exception as e:
             logger.error(f"Error starting MCP server: {e}")
+            import traceback
+            traceback.print_exc()
             return 1
     
     def _start_integrated_mcp_server(self, args):
