@@ -416,48 +416,75 @@ function searchHuggingFace() {
     // Show loading state
     resultsDiv.innerHTML = '<div class="spinner"></div>Searching HuggingFace Hub...';
     
-    // Make API call to search models
-    fetch(`/api/models/search?query=${encodeURIComponent(query)}&task=${taskFilter}&size=${sizeFilter}`)
-        .then(response => response.json())
+    // Build query parameters - use MCP API endpoint
+    const params = new URLSearchParams({
+        q: query,
+        limit: '20'
+    });
+    
+    if (taskFilter) {
+        params.append('task', taskFilter);
+    }
+    
+    console.log(`[Dashboard] Searching HuggingFace with query: ${query}, task: ${taskFilter}`);
+    
+    // Make API call to search models using MCP endpoint
+    fetch(`/api/mcp/models/search?${params}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
+            console.log(`[Dashboard] Search results:`, data);
             displayHFResults(data);
             updateSearchStats(data);
         })
         .catch(error => {
-            console.error('Search error:', error);
-            resultsDiv.innerHTML = '<p>Search failed. Please try again.</p>';
+            console.error('[Dashboard] Search error:', error);
+            resultsDiv.innerHTML = `<p>Search failed: ${error.message}. Please try again.</p>`;
+            showToast('Search failed', 'error');
         });
 }
 
 function displayHFResults(data) {
     const resultsDiv = document.getElementById('hf-search-results');
-    if (!resultsDiv || !data.models || data.models.length === 0) {
-        if (resultsDiv) {
-            resultsDiv.innerHTML = '<p>No models found. Try a different search term.</p>';
-        }
+    
+    // Handle the MCP API response structure
+    const models = data.results || data.models || [];
+    
+    if (!resultsDiv) {
+        return;
+    }
+    
+    if (models.length === 0) {
+        resultsDiv.innerHTML = '<p>No models found. Try a different search term.</p>';
         return;
     }
     
     let html = '';
-    data.models.forEach(model => {
+    models.forEach(modelData => {
+        // Handle both direct model objects and wrapped model objects
+        const model = modelData.model_info || modelData;
+        const modelId = modelData.model_id || model.id || model.model_id;
+        
         html += `
             <div class="model-result">
                 <div class="model-header">
-                    <div class="model-title">${model.title || model.id}</div>
+                    <div class="model-title">${model.model_name || model.title || modelId}</div>
                     <div class="model-actions">
-                        <button class="btn btn-sm btn-warning" onclick="testModelFromHF('${model.id}')">🔧 Test</button>
-                        <button class="btn btn-sm btn-success" onclick="downloadModel('${model.id}')">⬇️ Download</button>
+                        <button class="btn btn-sm btn-warning" onclick="testModelFromHF('${modelId}')">🔧 Test</button>
+                        <button class="btn btn-sm btn-success" onclick="downloadModel('${modelId}')">⬇️ Download</button>
                     </div>
                 </div>
                 <div class="model-meta">
                     <span>📊 ${model.downloads || 0} downloads</span>
-                    <span>📏 ${model.size || 'Unknown'} size</span>
-                    <span>🏷️ ${model.task || 'General'}</span>
+                    <span>💙 ${model.likes || 0} likes</span>
+                    <span>🏷️ ${model.pipeline_tag || model.task || 'General'}</span>
                 </div>
                 <div class="model-description">${model.description || 'No description available'}</div>
-                <div class="model-tags">
-                    ${(model.tags || []).map(tag => `<span class="tag">${tag}</span>`).join('')}
-                </div>
+                ${model.architecture ? `<div class="model-architecture">Architecture: ${model.architecture}</div>` : ''}
             </div>
         `;
     });
@@ -483,8 +510,40 @@ function testModelFromHF(modelId) {
 
 function downloadModel(modelId) {
     console.log(`[Dashboard] Downloading model: ${modelId}`);
-    showToast(`Model download initiated: ${modelId}`, 'info');
-    // TODO: Implement actual download via MCP SDK
+    showToast(`Initiating download for: ${modelId}`, 'info');
+    
+    // Call the MCP API to download the model
+    fetch('/api/mcp/models/download', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model_id: modelId
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log(`[Dashboard] Download response:`, data);
+        if (data.status === 'success') {
+            showToast(`✓ Model ${modelId} downloaded successfully`, 'success');
+            // Refresh the models list in Model Browser tab
+            if (typeof loadModels === 'function') {
+                loadModels();
+            }
+        } else {
+            showToast(`Download failed: ${data.message || 'Unknown error'}`, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('[Dashboard] Download error:', error);
+        showToast(`Download failed: ${error.message}`, 'error');
+    });
 }
 
 function clearHFResults() {
@@ -507,10 +566,14 @@ function updateSearchStats(data) {
     const compatibleSpan = document.getElementById('compatible-models');
     const testedSpan = document.getElementById('tested-models');
     
-    if (data.models && data.models.length > 0) {
-        if (totalIndexedSpan) totalIndexedSpan.textContent = data.models.length;
-        if (hfModelsSpan) hfModelsSpan.textContent = data.models.length;
-    }
+    // Handle MCP API response structure
+    const models = data.results || data.models || [];
+    const total = data.total || models.length;
+    
+    if (totalIndexedSpan) totalIndexedSpan.textContent = total;
+    if (hfModelsSpan) hfModelsSpan.textContent = models.length;
+    if (compatibleSpan) compatibleSpan.textContent = models.filter(m => m.compatibility).length;
+    if (testedSpan) testedSpan.textContent = models.filter(m => m.performance).length;
 }
 
 // Hardware Compatibility Testing
