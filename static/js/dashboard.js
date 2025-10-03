@@ -53,6 +53,11 @@ function initializeTab(tabName) {
         case 'model-manager':
             refreshModels();
             break;
+        case 'model-browser':
+            if (typeof initializeModelManager === 'function') {
+                initializeModelManager();
+            }
+            break;
         case 'queue-monitor':
             refreshQueue();
             break;
