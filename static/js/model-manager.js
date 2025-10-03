@@ -44,11 +44,17 @@ async function initializeModelManager() {
             },
             searchModels: async (query, filters) => {
                 const params = new URLSearchParams({ q: query || '', limit: 20 });
-                if (filters.task) params.append('task', filters.task);
-                if (filters.hardware) params.append('hardware', filters.hardware);
+                if (filters && filters.task) params.append('task', filters.task);
+                if (filters && filters.hardware) params.append('hardware', filters.hardware);
+                
+                console.log('[Model Manager] Fetching models with params:', params.toString());
                 const response = await fetch(`/api/mcp/models/search?${params}`);
+                console.log('[Model Manager] Search response status:', response.status);
+                
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                return await response.json();
+                const data = await response.json();
+                console.log('[Model Manager] Search response data:', data);
+                return data;
             },
             getModelDetails: async (modelId) => {
                 const response = await fetch(`/api/mcp/models/${encodeURIComponent(modelId)}/details`);
@@ -183,7 +189,8 @@ async function loadModels(page = 1) {
         // Display models
         displayModels(data.results, data.fallback);
         
-        console.log(`[Model Manager] Loaded ${data.results.length} models`);
+        const resultsCount = data.results ? data.results.length : 0;
+        console.log(`[Model Manager] Loaded ${resultsCount} models`);
     } catch (error) {
         console.error('[Model Manager] Error loading models:', error);
         if (modelsList) {
@@ -205,7 +212,19 @@ function displayModels(models, isFallback = false) {
     const modelsList = document.getElementById('mm-models-list');
     if (!modelsList) return;
     
-    if (!models || models.length === 0) {
+    // Handle undefined or null models
+    if (!models || !Array.isArray(models)) {
+        console.warn('[Model Manager] Invalid models data received:', models);
+        modelsList.innerHTML = `
+            <div class="alert alert-warning">
+                <h5>No models data</h5>
+                <p>The server response did not contain model information. Please try refreshing.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    if (models.length === 0) {
         modelsList.innerHTML = `
             <div class="alert alert-info">
                 <h5>No models found</h5>
