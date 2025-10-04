@@ -17,13 +17,21 @@ import time
 import logging
 import requests
 import asyncio
-import aiohttp
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Set
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+
+# Try to import aiohttp (optional for async operations)
+try:
+    import aiohttp
+    HAVE_AIOHTTP = True
+except ImportError:
+    HAVE_AIOHTTP = False
+    logger = logging.getLogger(__name__)
+    logger.warning("aiohttp not available - async operations disabled")
 
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))

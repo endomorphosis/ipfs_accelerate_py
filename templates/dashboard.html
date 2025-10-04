@@ -40,7 +40,8 @@
     <div class="tabs">
         <button class="tab-button active" onclick="showTab('overview')">🏠 Overview</button>
         <button class="tab-button" onclick="showTab('ai-inference')">🤖 AI Inference</button>
-        <button class="tab-button" onclick="showTab('model-manager')">🎛️ Model Manager</button>
+        <button class="tab-button" onclick="showTab('model-manager')">🔍 HF Search</button>
+        <button class="tab-button" onclick="showTab('model-browser')">📚 Model Browser</button>
         <button class="tab-button" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
         <button class="tab-button" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
         <button class="tab-button" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
@@ -365,6 +366,90 @@
         </div>
     </div>
 
+    <!-- Model Browser Tab -->
+    <div id="model-browser" class="tab-content">
+        <div class="dashboard-grid">
+            <!-- Statistics Cards -->
+            <div class="card full-width">
+                <h3>📊 Model Manager Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="mm-total-models">0</div>
+                        <div class="stat-label">Total Models</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="mm-perf-models">0</div>
+                        <div class="stat-label">With Performance Data</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="mm-compat-models">0</div>
+                        <div class="stat-label">With Compatibility Data</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search and Filter Section -->
+            <div class="card full-width">
+                <h3>🔍 Browse and Search Models</h3>
+                <div class="search-controls">
+                    <div class="search-input-group">
+                        <input type="text" id="mm-search-input" 
+                               placeholder="Search models by name, description, or architecture..." 
+                               class="search-input">
+                        <button class="btn btn-primary" id="mm-search-btn">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button class="btn btn-secondary" id="mm-refresh-btn">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <div class="filter-item">
+                            <label for="mm-task-filter">Task Type:</label>
+                            <select id="mm-task-filter" class="filter-select">
+                                <option value="">All Tasks</option>
+                                <option value="text-generation">Text Generation</option>
+                                <option value="text-classification">Text Classification</option>
+                                <option value="question-answering">Question Answering</option>
+                                <option value="summarization">Summarization</option>
+                                <option value="translation">Translation</option>
+                                <option value="fill-mask">Fill Mask</option>
+                                <option value="token-classification">Token Classification</option>
+                                <option value="sentence-similarity">Sentence Similarity</option>
+                                <option value="image-classification">Image Classification</option>
+                                <option value="object-detection">Object Detection</option>
+                                <option value="automatic-speech-recognition">Speech Recognition</option>
+                                <option value="audio-classification">Audio Classification</option>
+                            </select>
+                        </div>
+                        
+                        <div class="filter-item">
+                            <label for="mm-hardware-filter">Hardware:</label>
+                            <select id="mm-hardware-filter" class="filter-select">
+                                <option value="">All Hardware</option>
+                                <option value="cpu">CPU</option>
+                                <option value="gpu">GPU</option>
+                                <option value="mps">MPS (Apple Silicon)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Models List -->
+            <div class="card full-width">
+                <h3>📚 Available Models</h3>
+                <div id="mm-models-list" class="models-list">
+                    <div class="loading-spinner">
+                        <div class="spinner"></div>
+                        Loading models...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Queue Monitor Tab -->
     <div id="queue-monitor" class="tab-content">
         <div class="dashboard-grid">
@@ -641,6 +726,8 @@
         </div>
     </div>
 
+    <script src="/static/js/mcp-sdk.js"></script>
     <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/model-manager.js"></script>
 </body>
 </html>

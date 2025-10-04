@@ -8,8 +8,18 @@ AI and GraphRAG services, including the Caselaw GraphRAG system.
 import os
 import logging
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request
-from flask_cors import CORS
+
+# Try to import Flask (required for dashboard)
+try:
+    from flask import Flask, render_template, jsonify, request, send_from_directory
+    from flask_cors import CORS
+    HAVE_FLASK = True
+except ImportError:
+    HAVE_FLASK = False
+    print("ERROR: Flask is required for the MCP Dashboard")
+    print("Install with: pip install flask flask-cors")
+    import sys
+    sys.exit(1)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +37,12 @@ class MCPDashboard:
         """
         self.port = port
         self.host = host
-        self.app = Flask(__name__)
+        
+        # Set up Flask with proper template and static folders
+        template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates')
+        static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
+        
+        self.app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
         CORS(self.app)
         
         self._setup_routes()
@@ -36,10 +51,16 @@ class MCPDashboard:
     def _setup_routes(self):
         """Setup Flask routes."""
         
+        @self.app.route('/')
         @self.app.route('/mcp')
         def mcp_dashboard():
             """Main MCP dashboard."""
-            return self._render_mcp_template()
+            return render_template('dashboard.html')
+        
+        @self.app.route('/dashboard')
+        def dashboard():
+            """Alternative dashboard route."""
+            return render_template('dashboard.html')
         
         @self.app.route('/mcp/graphrag')
         def graphrag():
@@ -88,6 +109,11 @@ class MCPDashboard:
         def models():
             """Model discovery and search page."""
             return self._render_model_discovery_template()
+        
+        @self.app.route('/static/<path:filename>')
+        def serve_static(filename):
+            """Serve static files."""
+            return send_from_directory(self.app.static_folder, filename)
         
         @self.app.route('/api/mcp/models/search')
         def search_models():
