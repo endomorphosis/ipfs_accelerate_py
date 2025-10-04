@@ -3,6 +3,7 @@ websockets>=10.1
 aiohttp>=3.8.1
 duckdb>=0.7.0
 ipfshttpclient>=0.8.0
+urllib3<2  # compatibility with ipfshttpclient
 
 # Browser automation options - one of these is required for real browser mode
 # Choose the one that works best for your platform
