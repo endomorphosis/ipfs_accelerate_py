@@ -43,6 +43,7 @@
         <button class="tab-button" onclick="showTab('model-manager')">🔍 HF Search</button>
         <button class="tab-button" onclick="showTab('model-browser')">📚 Model Browser</button>
         <button class="tab-button" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
+        <button class="tab-button" onclick="showTab('workflow-management')">⚡ Workflow Management</button>
         <button class="tab-button" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
         <button class="tab-button" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
         <button class="tab-button" onclick="showTab('system-logs')">📝 System Logs</button>
@@ -518,6 +519,70 @@
                     </div>
                 </div>
                 <button class="btn btn-info" onclick="exportQueueStats()">📊 Export Stats</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workflow Management Tab -->
+    <div id="workflow-management" class="tab-content">
+        <div class="dashboard-grid">
+            <div class="card full-width">
+                <h3>⚡ Workflow Management</h3>
+                <p class="text-muted">Manage and monitor AI inference workflows</p>
+                <button class="btn btn-primary" onclick="refreshWorkflows()">🔄 Refresh Workflows</button>
+                <button class="btn btn-success" onclick="createWorkflow()">➕ Create Workflow</button>
+            </div>
+
+            <div class="card full-width">
+                <h3>📋 Active Workflows</h3>
+                <div id="workflows-list">
+                    <div class="workflow-item">
+                        <div class="workflow-header">
+                            <h4>Loading workflows...</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📊 Workflow Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="total-workflows">-</div>
+                        <div class="stat-label">Total Workflows</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="running-workflows">-</div>
+                        <div class="stat-label">Running</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="completed-workflows">-</div>
+                        <div class="stat-label">Completed</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🎯 Performance Optimization</h3>
+                <div class="performance-metrics">
+                    <div class="metric-row">
+                        <span>Average Processing Time:</span>
+                        <strong id="avg-processing-time">-</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Success Rate:</span>
+                        <strong id="success-rate">-</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Queue Throughput:</span>
+                        <strong id="queue-throughput">-</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Resource Utilization:</span>
+                        <strong id="resource-utilization">-</strong>
+                    </div>
+                </div>
+                <button class="btn btn-info" onclick="optimizePerformance()">⚡ Optimize</button>
             </div>
         </div>
     </div>
