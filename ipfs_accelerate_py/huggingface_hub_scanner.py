@@ -33,6 +33,14 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("aiohttp not available - async operations disabled")
 
+# Try to import huggingface_hub (for better API access)
+try:
+    from huggingface_hub import HfApi
+    HAVE_HUGGINGFACE_HUB = True
+except ImportError:
+    HAVE_HUGGINGFACE_HUB = False
+    logger.warning("huggingface_hub not available - using direct API calls")
+
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -981,11 +989,15 @@ class HuggingFaceHubScanner:
                      task_filter: Optional[str] = None,
                      hardware_filter: Optional[str] = None,
                      limit: int = 20) -> List[Dict[str, Any]]:
-        """Search for models with comprehensive filtering."""
+        """Search for models with comprehensive filtering.
+        
+        If cache is empty or has insufficient results, fetches from HuggingFace API.
+        """
         results = []
         
         query_lower = query.lower()
         
+        # First, search in local cache
         for model_id, info in self.model_cache.items():
             score = 0
             
@@ -1024,9 +1036,122 @@ class HuggingFaceHubScanner:
                 
                 results.append(result)
         
+        # If cache is empty or insufficient results, fetch from API
+        if len(results) < limit:
+            logger.info(f"Cache has {len(results)} results, fetching from HuggingFace API")
+            api_results = self._search_huggingface_api(query, task_filter, limit)
+            
+            # Convert API results to our format and add to results
+            for api_model in api_results:
+                model_id = api_model.get('id', '')
+                if model_id and model_id not in [r['model_id'] for r in results]:
+                    # Create HuggingFaceModelInfo from API data
+                    model_info = self._convert_api_model_to_info(api_model)
+                    
+                    # Add to cache
+                    self.model_cache[model_id] = model_info
+                    
+                    # Create result
+                    result = {
+                        'model_id': model_id,
+                        'score': 1,  # API results are considered relevant
+                        'model_info': asdict(model_info)
+                    }
+                    results.append(result)
+            
+            # Save updated cache
+            self._save_scan_progress()
+        
         # Sort by score and limit
         results.sort(key=lambda x: x['score'], reverse=True)
         return results[:limit]
+    
+    def _search_huggingface_api(self, query: str, task_filter: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+        """Search HuggingFace API for models.
+        
+        Uses huggingface_hub library if available, otherwise falls back to direct API calls.
+        """
+        # Try using huggingface_hub library first (more robust)
+        if HAVE_HUGGINGFACE_HUB:
+            try:
+                api = HfApi()
+                # Use pipeline_tag as filter if provided
+                models_iterator = api.list_models(
+                    search=query,
+                    limit=limit,
+                    sort="downloads",
+                    direction=-1,
+                    filter=task_filter if task_filter else None
+                )
+                
+                # Convert to list and then to dict format
+                models = []
+                for model in models_iterator:
+                    model_dict = {
+                        'id': model.modelId,
+                        'author': model.author or '',
+                        'downloads': getattr(model, 'downloads', 0) or 0,
+                        'likes': getattr(model, 'likes', 0) or 0,
+                        'tags': model.tags or [],
+                        'pipeline_tag': getattr(model, 'pipeline_tag', None),
+                        'library_name': getattr(model, 'library_name', None),
+                        'created_at': str(model.createdAt) if hasattr(model, 'createdAt') and model.createdAt else '',
+                        'lastModified': str(model.lastModified) if hasattr(model, 'lastModified') and model.lastModified else '',
+                        'private': getattr(model, 'private', False),
+                        'gated': getattr(model, 'gated', False),
+                    }
+                    models.append(model_dict)
+                
+                logger.info(f"Retrieved {len(models)} models from HuggingFace Hub API (via huggingface_hub) for query '{query}'")
+                return models
+            except Exception as e:
+                logger.warning(f"Error using huggingface_hub library: {e}, falling back to direct API")
+        
+        # Fallback to direct API call
+        url = "https://huggingface.co/api/models"
+        params = {
+            'search': query,
+            'limit': limit,
+            'sort': 'downloads',
+            'direction': -1
+        }
+        
+        if task_filter:
+            params['filter'] = task_filter
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            models = response.json()
+            logger.info(f"Retrieved {len(models)} models from HuggingFace API (direct) for query '{query}'")
+            return models
+        except Exception as e:
+            logger.error(f"Error searching HuggingFace API: {e}")
+            return []
+    
+    def _convert_api_model_to_info(self, api_model: Dict[str, Any]) -> HuggingFaceModelInfo:
+        """Convert API model data to HuggingFaceModelInfo."""
+        model_id = api_model.get('id', '')
+        tags = api_model.get('tags', [])
+        
+        return HuggingFaceModelInfo(
+            model_id=model_id,
+            model_name=model_id.split('/')[-1] if '/' in model_id else model_id,
+            description=api_model.get('description', '') or '',
+            pipeline_tag=api_model.get('pipeline_tag', '') or '',
+            library_name=api_model.get('library_name', '') or '',
+            tags=tags,
+            downloads=api_model.get('downloads', 0) or 0,
+            likes=api_model.get('likes', 0) or 0,
+            created_at=api_model.get('created_at', '') or '',
+            last_modified=api_model.get('lastModified', '') or '',
+            private=api_model.get('private', False),
+            gated=api_model.get('gated', False),
+            config=api_model.get('config'),
+            model_size_mb=None,
+            architecture=None,
+            framework=None
+        )
 
 
 def main():
