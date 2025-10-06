@@ -741,15 +741,117 @@ class IPFSAccelerateCLI:
             
             def _handle_post_api(self):
                 """Handle POST API requests"""
-                content_length = int(self.headers.get('Content-Length', 0))
-                post_data = self.rfile.read(content_length)
-                
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                
-                response = {"status": "received", "message": "API endpoint not yet implemented"}
-                self.wfile.write(json.dumps(response).encode())
+                try:
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    post_data = self.rfile.read(content_length)
+                    data = json.loads(post_data.decode('utf-8')) if post_data else {}
+                    
+                    # Route based on the path
+                    if '/api/mcp/models/download' in self.path or '/api/models/download' in self.path:
+                        self._handle_model_download(data)
+                    elif '/api/mcp/models/test' in self.path or '/api/models/test' in self.path:
+                        self._handle_model_test_post(data)
+                    else:
+                        # Default stub response for unimplemented endpoints
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {"status": "received", "message": "API endpoint not yet implemented"}
+                        self.wfile.write(json.dumps(response).encode())
+                        
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {"status": "error", "message": str(e)}
+                    self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_download(self, data):
+                """Handle model download POST request"""
+                try:
+                    model_id = data.get('model_id')
+                    if not model_id:
+                        self.send_response(400)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {"status": "error", "message": "model_id is required"}
+                        self.wfile.write(json.dumps(response).encode())
+                        return
+                    
+                    logger.info(f"Download request for model: {model_id}")
+                    
+                    # Try to use the HuggingFace scanner
+                    try:
+                        from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
+                        scanner = HuggingFaceHubScanner(cache_dir="./mcp_model_cache")
+                        result = scanner.download_model(model_id)
+                        
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps(result).encode())
+                        
+                    except ImportError as e:
+                        logger.warning(f"HuggingFaceHubScanner not available: {e}")
+                        # Fallback to simulated download
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {
+                            "status": "success",
+                            "model_id": model_id,
+                            "download_path": f"./models/{model_id}",
+                            "message": f"Model {model_id} download initiated (simulated)"
+                        }
+                        self.wfile.write(json.dumps(response).encode())
+                        
+                except Exception as e:
+                    logger.error(f"Error handling download: {e}")
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {"status": "error", "message": str(e)}
+                    self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_test_post(self, data):
+                """Handle model test POST request"""
+                try:
+                    model_id = data.get('model_id')
+                    hardware = data.get('hardware', 'cpu')
+                    test_prompt = data.get('test_prompt', 'Hello, world!')
+                    
+                    if not model_id:
+                        self.send_response(400)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {"status": "error", "message": "model_id is required"}
+                        self.wfile.write(json.dumps(response).encode())
+                        return
+                    
+                    logger.info(f"Test request for model: {model_id} on {hardware}")
+                    
+                    # For now, return a stub response for inference
+                    # Real implementation would load and run the model
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {
+                        "status": "success",
+                        "model_id": model_id,
+                        "hardware": hardware,
+                        "test_prompt": test_prompt,
+                        "result": "Model inference not yet implemented. Download functionality is available.",
+                        "message": "Test completed (inference stub)"
+                    }
+                    self.wfile.write(json.dumps(response).encode())
+                    
+                except Exception as e:
+                    logger.error(f"Error handling test: {e}")
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {"status": "error", "message": str(e)}
+                    self.wfile.write(json.dumps(response).encode())
             
             # Bind helper functions as methods on the handler class
             IntegratedMCPHandler._serve_dashboard = _serve_dashboard
@@ -761,6 +863,8 @@ class IPFSAccelerateCLI:
             IntegratedMCPHandler._handle_queue_api = _handle_queue_api
             IntegratedMCPHandler._serve_static = _serve_static
             IntegratedMCPHandler._handle_post_api = _handle_post_api
+            IntegratedMCPHandler._handle_model_download = _handle_model_download
+            IntegratedMCPHandler._handle_model_test_post = _handle_model_test_post
 
             # Bind and start the integrated HTTP server
             try:
