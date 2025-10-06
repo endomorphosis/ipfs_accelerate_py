@@ -269,6 +269,8 @@ class IPFSAccelerateCLI:
                         # Avoid 404 for favicon requests
                         self.send_response(204)
                         self.end_headers()
+                    elif self.path.startswith('/api/mcp/models/'):
+                        self._handle_model_api()
                     elif self.path.startswith('/api/mcp/'):
                         self._handle_mcp_api()
                     elif self.path.startswith('/api/models/'):
@@ -334,6 +336,8 @@ class IPFSAccelerateCLI:
                     # Handle different model API endpoints
                     if '/search' in self.path:
                         self._handle_model_search(query_params)
+                    elif '/stats' in self.path:
+                        self._handle_model_stats()
                     elif '/test' in self.path:
                         self._handle_model_test(query_params)
                     else:
@@ -353,9 +357,9 @@ class IPFSAccelerateCLI:
             
             def _handle_model_search(self, query_params):
                 """Handle HuggingFace model search"""
-                query = query_params.get('query', [''])[0].lower()
+                query = query_params.get('q', [''])[0].lower()  # Changed from 'query' to 'q'
                 task = query_params.get('task', [''])[0]
-                size = query_params.get('size', [''])[0]
+                hardware = query_params.get('hardware', [''])[0]  # Changed from 'size' to 'hardware'
                 
                 # Enhanced fallback database with realistic models
                 model_database = [
@@ -365,7 +369,12 @@ class IPFSAccelerateCLI:
                         "description": "Large-scale conversational response generation model trained on 147M dialogues",
                         "task": "text-generation",
                         "downloads": 125000,
+                        "likes": 2300,
                         "size": "large",
+                        "architecture": "GPT-2",
+                        "parameters": "774M",
+                        "memory_gb": 1.4,
+                        "throughput": 45,
                         "tags": ["conversational", "dialogue", "pytorch"]
                     },
                     {
@@ -374,7 +383,12 @@ class IPFSAccelerateCLI:
                         "description": "Medium-scale conversational response generation model",
                         "task": "text-generation",
                         "downloads": 89000,
+                        "likes": 1800,
                         "size": "medium",
+                        "architecture": "GPT-2",
+                        "parameters": "354M",
+                        "memory_gb": 0.7,
+                        "throughput": 62,
                         "tags": ["conversational", "dialogue", "pytorch"]
                     },
                     {
@@ -383,7 +397,12 @@ class IPFSAccelerateCLI:
                         "description": "Fine-tuned version of Llama 2 7B for chat conversations",
                         "task": "text-generation", 
                         "downloads": 1800000,
+                        "likes": 45000,
                         "size": "large",
+                        "architecture": "LLaMA",
+                        "parameters": "7B",
+                        "memory_gb": 13.5,
+                        "throughput": 28,
                         "tags": ["llama", "chat", "conversational"]
                     },
                     {
@@ -392,7 +411,12 @@ class IPFSAccelerateCLI:
                         "description": "Fine-tuned version of Llama 2 13B for chat conversations",
                         "task": "text-generation",
                         "downloads": 950000,
-                        "size": "large", 
+                        "likes": 25000,
+                        "size": "large",
+                        "architecture": "LLaMA",
+                        "parameters": "13B",
+                        "memory_gb": 25.0,
+                        "throughput": 18,
                         "tags": ["llama", "chat", "conversational"]
                     },
                     {
@@ -401,7 +425,12 @@ class IPFSAccelerateCLI:
                         "description": "Code Llama model fine-tuned for Python code generation",
                         "task": "code-generation",
                         "downloads": 850000,
+                        "likes": 12000,
                         "size": "large",
+                        "architecture": "LLaMA",
+                        "parameters": "7B",
+                        "memory_gb": 13.5,
+                        "throughput": 32,
                         "tags": ["llama", "code", "python"]
                     },
                     {
@@ -410,7 +439,12 @@ class IPFSAccelerateCLI:
                         "description": "Base BERT model, uncased version for text understanding",
                         "task": "text-classification",
                         "downloads": 2100000,
+                        "likes": 25000,
                         "size": "medium",
+                        "architecture": "BERT",
+                        "parameters": "110M",
+                        "memory_gb": 0.4,
+                        "throughput": 120,
                         "tags": ["bert", "base", "uncased"]
                     },
                     {
@@ -419,7 +453,12 @@ class IPFSAccelerateCLI:
                         "description": "Distilled version of BERT base model, faster inference",
                         "task": "text-classification",
                         "downloads": 1500000,
+                        "likes": 18000,
                         "size": "small",
+                        "architecture": "DistilBERT",
+                        "parameters": "66M",
+                        "memory_gb": 0.3,
+                        "throughput": 180,
                         "tags": ["distilbert", "base", "uncased"]
                     },
                     {
@@ -428,7 +467,12 @@ class IPFSAccelerateCLI:
                         "description": "OpenAI's GPT-2 model for text generation",
                         "task": "text-generation",
                         "downloads": 3200000,
+                        "likes": 35000,
                         "size": "medium",
+                        "architecture": "GPT-2",
+                        "parameters": "124M",
+                        "memory_gb": 0.5,
+                        "throughput": 85,
                         "tags": ["gpt2", "openai", "generation"]
                     },
                     {
@@ -437,7 +481,12 @@ class IPFSAccelerateCLI:
                         "description": "Medium version of OpenAI's GPT-2 model",
                         "task": "text-generation", 
                         "downloads": 1900000,
+                        "likes": 22000,
                         "size": "medium",
+                        "architecture": "GPT-2",
+                        "parameters": "354M",
+                        "memory_gb": 1.4,
+                        "throughput": 53,
                         "tags": ["gpt2", "openai", "generation"]
                     },
                     {
@@ -446,7 +495,12 @@ class IPFSAccelerateCLI:
                         "description": "Large version of OpenAI's GPT-2 model",
                         "task": "text-generation",
                         "downloads": 1200000,
-                        "size": "large", 
+                        "likes": 18000,
+                        "size": "large",
+                        "architecture": "GPT-2",
+                        "parameters": "774M",
+                        "memory_gb": 3.2,
+                        "throughput": 35,
                         "tags": ["gpt2", "openai", "generation"]
                     }
                 ]
@@ -463,22 +517,88 @@ class IPFSAccelerateCLI:
                     # Check task filter
                     task_match = not task or task == 'all' or model['task'] == task
                     
-                    # Check size filter  
-                    size_match = not size or size == 'all' or model['size'] == size
+                    # Check hardware filter (simplified check)
+                    hardware_match = True
+                    if hardware and hardware != 'all':
+                        if hardware == 'cpu':
+                            hardware_match = model['size'] in ['small', 'medium']  # CPU can handle smaller models
+                        elif hardware == 'gpu':
+                            hardware_match = True  # GPU can handle all models
                     
-                    if query_match and task_match and size_match:
-                        filtered_models.append(model)
+                    if query_match and task_match and hardware_match:
+                        # Transform to expected format
+                        formatted_model = {
+                            "model_id": model['id'],
+                            "model_info": {
+                                "model_name": model['title'],
+                                "description": model['description'],
+                                "pipeline_tag": model['task'],
+                                "downloads": model['downloads'],
+                                "likes": model.get('likes', 0),
+                                "architecture": model.get('architecture', 'Unknown')
+                            },
+                            "performance": {
+                                "parameters": model.get('parameters', ''),
+                                "memory_gb": model.get('memory_gb', 1.0),
+                                "throughput_tokens_per_sec": model.get('throughput', 50)
+                            },
+                            "compatibility": {
+                                "supports_cpu": True,
+                                "supports_gpu": model['size'] != 'large',
+                                "supports_mps": True,
+                                "min_ram_gb": 2 if model['size'] == 'small' else 4 if model['size'] == 'medium' else 8,
+                                "recommended_hardware": "GPU" if model['size'] == 'large' else "CPU"
+                            }
+                        }
+                        filtered_models.append(formatted_model)
                 
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
                 
                 response = {
-                    "models": filtered_models,
+                    "results": filtered_models,
                     "total": len(filtered_models),
-                    "source": "fallback_database"
+                    "query": query,
+                    "fallback": True,
+                    "message": "Using integrated fallback model database"
                 }
                 self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_stats(self):
+                """Handle model statistics"""
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                
+                # Mock statistics based on the model database
+                stats = {
+                    "total_cached_models": 10,
+                    "models_with_performance": 10,
+                    "models_with_compatibility": 10,
+                    "architecture_distribution": {
+                        "GPT-2": 4,
+                        "LLaMA": 3,
+                        "BERT": 1,
+                        "DistilBERT": 1,
+                        "Unknown": 1
+                    },
+                    "task_distribution": {
+                        "text-generation": 7,
+                        "text-classification": 2,
+                        "code-generation": 1
+                    },
+                    "popular_models": [
+                        {"model_id": "gpt2", "downloads": 3200000},
+                        {"model_id": "bert-base-uncased", "downloads": 2100000},
+                        {"model_id": "gpt2-medium", "downloads": 1900000},
+                        {"model_id": "meta-llama/Llama-2-7b-chat-hf", "downloads": 1800000},
+                        {"model_id": "distilbert-base-uncased", "downloads": 1500000}
+                    ],
+                    "fallback": True,
+                    "message": "Using integrated fallback statistics"
+                }
+                self.wfile.write(json.dumps(stats).encode())
             
             def _handle_model_test(self, query_params):
                 """Handle model compatibility testing"""
@@ -636,6 +756,7 @@ class IPFSAccelerateCLI:
             IntegratedMCPHandler._handle_mcp_api = _handle_mcp_api
             IntegratedMCPHandler._handle_model_api = _handle_model_api
             IntegratedMCPHandler._handle_model_search = _handle_model_search
+            IntegratedMCPHandler._handle_model_stats = _handle_model_stats
             IntegratedMCPHandler._handle_model_test = _handle_model_test
             IntegratedMCPHandler._handle_queue_api = _handle_queue_api
             IntegratedMCPHandler._serve_static = _serve_static
