@@ -1152,6 +1152,144 @@ class HuggingFaceHubScanner:
             architecture=None,
             framework=None
         )
+    
+    def download_model(self, model_id: str, download_dir: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Download a model from HuggingFace Hub.
+        
+        Args:
+            model_id: Model ID to download (e.g., 'bert-base-uncased')
+            download_dir: Optional directory to download to (defaults to cache_dir/models)
+            
+        Returns:
+            Dictionary with download status and information
+        """
+        logger.info(f"Downloading model: {model_id}")
+        
+        # Set download directory
+        if download_dir is None:
+            download_dir = self.cache_dir / "models" / model_id.replace('/', '_')
+        else:
+            download_dir = Path(download_dir)
+        
+        download_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # Try using huggingface_hub library if available
+            if HAVE_HUGGINGFACE_HUB:
+                try:
+                    from huggingface_hub import snapshot_download
+                    
+                    logger.info(f"Using huggingface_hub to download {model_id}")
+                    download_path = snapshot_download(
+                        repo_id=model_id,
+                        cache_dir=str(download_dir),
+                        resume_download=True
+                    )
+                    
+                    # Calculate download size
+                    total_size = 0
+                    for root, dirs, files in os.walk(download_path):
+                        for file in files:
+                            total_size += os.path.getsize(os.path.join(root, file))
+                    
+                    size_gb = total_size / (1024 ** 3)
+                    
+                    logger.info(f"Model {model_id} downloaded successfully to {download_path}")
+                    
+                    return {
+                        'status': 'success',
+                        'model_id': model_id,
+                        'download_path': str(download_path),
+                        'size_gb': round(size_gb, 2),
+                        'message': f'Model {model_id} downloaded successfully'
+                    }
+                    
+                except Exception as e:
+                    logger.error(f"Error downloading with huggingface_hub: {e}")
+                    # Fall through to manual download attempt
+            
+            # Fallback: Manual download using requests
+            logger.info(f"Attempting manual download for {model_id}")
+            
+            # Get model info first
+            model_url = f"https://huggingface.co/api/models/{model_id}"
+            response = requests.get(model_url, timeout=10)
+            response.raise_for_status()
+            model_data = response.json()
+            
+            # Get siblings (files in the model)
+            siblings = model_data.get('siblings', [])
+            if not siblings:
+                return {
+                    'status': 'error',
+                    'model_id': model_id,
+                    'message': 'No files found for this model'
+                }
+            
+            # Download key files (config, model weights, tokenizer)
+            downloaded_files = []
+            total_size = 0
+            
+            for sibling in siblings:
+                filename = sibling.get('rfilename', '')
+                
+                # Download important files
+                if any(filename.endswith(ext) for ext in ['.json', '.bin', '.safetensors', '.txt', '.model']):
+                    file_url = f"https://huggingface.co/{model_id}/resolve/main/{filename}"
+                    file_path = download_dir / filename
+                    
+                    # Create subdirectories if needed
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    try:
+                        logger.info(f"Downloading {filename}...")
+                        file_response = requests.get(file_url, timeout=60, stream=True)
+                        file_response.raise_for_status()
+                        
+                        with open(file_path, 'wb') as f:
+                            for chunk in file_response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                                    total_size += len(chunk)
+                        
+                        downloaded_files.append(filename)
+                        logger.info(f"Downloaded {filename}")
+                        
+                    except Exception as e:
+                        logger.warning(f"Failed to download {filename}: {e}")
+            
+            if downloaded_files:
+                size_gb = total_size / (1024 ** 3)
+                return {
+                    'status': 'success',
+                    'model_id': model_id,
+                    'download_path': str(download_dir),
+                    'size_gb': round(size_gb, 2),
+                    'files_downloaded': len(downloaded_files),
+                    'message': f'Model {model_id} downloaded ({len(downloaded_files)} files)'
+                }
+            else:
+                return {
+                    'status': 'error',
+                    'model_id': model_id,
+                    'message': 'Failed to download any files'
+                }
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error downloading model: {e}")
+            return {
+                'status': 'error',
+                'model_id': model_id,
+                'message': f'Network error: {str(e)}'
+            }
+        except Exception as e:
+            logger.error(f"Error downloading model {model_id}: {e}")
+            return {
+                'status': 'error',
+                'model_id': model_id,
+                'message': f'Download failed: {str(e)}'
+            }
 
 
 def main():
