@@ -166,9 +166,9 @@ class IPFSAccelerateCLI:
             dashboard.run(debug=False)
             return 0
 
-        except ModuleNotFoundError as e:
+        except (ImportError, ModuleNotFoundError) as e:
             # If Flask or its deps are missing, fall back automatically
-            if e.name == 'flask':
+            if 'flask' in str(e).lower() or 'Flask' in str(e):
                 logger.warning("Flask not installed; falling back to integrated HTTP dashboard")
                 return self._start_integrated_mcp_server(args)
             # Otherwise, re-raise to the generic handler
@@ -186,6 +186,45 @@ class IPFSAccelerateCLI:
                 logger.error(f"Integrated dashboard also failed: {e2}")
                 import traceback; traceback.print_exc()
                 return 1
+    
+    def run_mcp_dashboard(self, args):
+        """Start MCP dashboard only"""
+        # Dashboard command is the same as start with dashboard enabled
+        args.dashboard = True
+        return self.run_mcp_start(args)
+    
+    def run_mcp_status(self, args):
+        """Check MCP server status"""
+        logger.info(f"Checking MCP server status at {args.host}:{args.port}")
+        
+        import urllib.request
+        import json
+        
+        try:
+            # Try to connect to the health endpoint
+            url = f"http://{args.host}:{args.port}/health"
+            logger.debug(f"Checking health endpoint: {url}")
+            
+            with urllib.request.urlopen(url, timeout=5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode())
+                    logger.info("✓ MCP server is running")
+                    logger.info(f"  Status: {data.get('status', 'unknown')}")
+                    logger.info(f"  Host: {data.get('host', 'unknown')}")
+                    logger.info(f"  Port: {data.get('port', 'unknown')}")
+                    logger.info(f"  Server: {data.get('server', 'unknown')}")
+                    return 0
+                else:
+                    logger.error(f"✗ MCP server returned status {response.status}")
+                    return 1
+                    
+        except urllib.error.URLError as e:
+            logger.error(f"✗ MCP server is not responding at {args.host}:{args.port}")
+            logger.error(f"  Error: {e}")
+            return 1
+        except Exception as e:
+            logger.error(f"✗ Error checking MCP server status: {e}")
+            return 1
     
     def _start_integrated_mcp_server(self, args):
         """Start the integrated MCP server with dashboard, model manager, and queue monitoring"""
