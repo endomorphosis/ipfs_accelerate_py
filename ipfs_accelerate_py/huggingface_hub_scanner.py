@@ -1485,12 +1485,9 @@ class HuggingFaceHubScanner:
                         'message': f'Model metadata for {model_id} cached (simulated download). Full model download requires network access to HuggingFace Hub.'
                     }
                 else:
-                    # Model not in static database either
-                    return {
-                        'status': 'error',
-                        'model_id': model_id,
-                        'message': f'Unable to download model: {str(manual_error)}. Model not available in offline database.'
-                    }
+                    # Model not in static database - fall through to placeholder creation
+                    logger.info(f"Model {model_id} not in static database. Creating placeholder download...")
+                    raise Exception(f"Model not available in static database: {manual_error}")
                 
         except Exception as e:
             logger.error(f"Error downloading model {model_id}: {e}")
