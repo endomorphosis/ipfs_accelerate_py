@@ -16,10 +16,13 @@ try:
     HAVE_FLASK = True
 except ImportError:
     HAVE_FLASK = False
-    print("ERROR: Flask is required for the MCP Dashboard")
-    print("Install with: pip install flask flask-cors")
-    import sys
-    sys.exit(1)
+    # Don't exit immediately - let the caller handle the missing Flask
+    Flask = None
+    render_template = None
+    jsonify = None
+    request = None
+    send_from_directory = None
+    CORS = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +38,9 @@ class MCPDashboard:
             port: Port to run on
             host: Host to bind to
         """
+        if not HAVE_FLASK:
+            raise ImportError("Flask is required for the MCP Dashboard. Install with: pip install flask flask-cors")
+        
         self.port = port
         self.host = host
         
