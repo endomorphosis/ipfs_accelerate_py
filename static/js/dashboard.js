@@ -468,6 +468,7 @@ function displayHFResults(data) {
         // Handle both direct model objects and wrapped model objects
         const model = modelData.model_info || modelData;
         const modelId = modelData.model_id || model.id || model.model_id;
+        const safeId = (modelId || '').replace(/[^a-zA-Z0-9]/g, '-');
         
         html += `
             <div class="model-result">
@@ -475,7 +476,7 @@ function displayHFResults(data) {
                     <div class="model-title">${model.model_name || model.title || modelId}</div>
                     <div class="model-actions">
                         <button class="btn btn-sm btn-warning" onclick="testModelFromHF('${modelId}')">🔧 Test</button>
-                        <button class="btn btn-sm btn-success" onclick="downloadModel('${modelId}')">⬇️ Download</button>
+                        <button class="btn btn-sm btn-success" id="download-btn-${safeId}" onclick="downloadModel('${modelId}', 'download-btn-${safeId}')">⬇️ Download</button>
                     </div>
                 </div>
                 <div class="model-meta">
@@ -508,9 +509,18 @@ function testModelFromHF(modelId) {
     }, 100);
 }
 
-function downloadModel(modelId) {
+function downloadModel(modelId, buttonId) {
     console.log(`[Dashboard] Downloading model: ${modelId}`);
     showToast(`Initiating download for: ${modelId}`, 'info');
+    
+    // Update button state
+    const button = buttonId ? document.getElementById(buttonId) : null;
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '⏳ Downloading...';
+        button.classList.remove('btn-success');
+        button.classList.add('btn-secondary');
+    }
     
     // Call the MCP API to download the model
     fetch('/api/mcp/models/download', {
@@ -532,17 +542,41 @@ function downloadModel(modelId) {
         console.log(`[Dashboard] Download response:`, data);
         if (data.status === 'success') {
             showToast(`✓ Model ${modelId} downloaded successfully`, 'success');
+            
+            // Update button to show success
+            if (button) {
+                button.innerHTML = '✓ Downloaded';
+                button.classList.remove('btn-secondary');
+                button.classList.add('btn-info');
+            }
+            
             // Refresh the models list in Model Browser tab
             if (typeof loadModels === 'function') {
                 loadModels();
             }
         } else {
             showToast(`Download failed: ${data.message || 'Unknown error'}`, 'error');
+            
+            // Reset button on failure
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = '⬇️ Download';
+                button.classList.remove('btn-secondary');
+                button.classList.add('btn-success');
+            }
         }
     })
     .catch(error => {
         console.error('[Dashboard] Download error:', error);
         showToast(`Download failed: ${error.message}`, 'error');
+        
+        // Reset button on error
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = '⬇️ Download';
+            button.classList.remove('btn-secondary');
+            button.classList.add('btn-success');
+        }
     });
 }
 

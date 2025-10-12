@@ -70,11 +70,13 @@ except ImportError:
 
 # Try to import HuggingFace search engine
 try:
-    from .huggingface_search_engine import HuggingFaceModelInfo, HuggingFaceSearchEngine
+    from .huggingface_search_engine import HuggingFaceModelInfo, HuggingFaceModelSearchEngine
+    HuggingFaceSearchEngine = HuggingFaceModelSearchEngine  # Alias for compatibility
     HAVE_HF_SEARCH = True
 except ImportError:
     try:
-        from huggingface_search_engine import HuggingFaceModelInfo, HuggingFaceSearchEngine
+        from huggingface_search_engine import HuggingFaceModelInfo, HuggingFaceModelSearchEngine
+        HuggingFaceSearchEngine = HuggingFaceModelSearchEngine  # Alias for compatibility
         HAVE_HF_SEARCH = True
     except ImportError:
         HAVE_HF_SEARCH = False
