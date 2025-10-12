@@ -48,6 +48,13 @@ def register_all_tools(mcp: Any) -> None:
                 logger.debug("Registered status tools")
             except Exception as e:
                 logger.warning(f"Status tools not registered: {e}")
+
+            try:
+                from ipfs_accelerate_py.mcp.tools.datasets import register_tools as register_dataset_tools
+                register_dataset_tools(mcp)
+                logger.debug("Registered dataset tools")
+            except Exception as e:
+                logger.warning(f"Dataset tools not registered: {e}")
         else:
             logger.warning("FastMCP decorators not available; only hardware tools registered in standalone mode")
 

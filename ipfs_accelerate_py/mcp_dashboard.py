@@ -564,6 +564,134 @@ class MCPDashboard:
                 'total_tested': len(results),
                 'operational': sum(1 for r in results if r['status'] == 'operational')
             })
+        
+        @self.app.route('/mcp/datasets')
+        def datasets():
+            """Legal datasets management page."""
+            return self._render_datasets_template()
+        
+        @self.app.route('/api/mcp/datasets')
+        def list_datasets():
+            """List all available legal datasets."""
+            try:
+                from .legal_datasets_loader import get_all_datasets_info
+                
+                datasets = get_all_datasets_info()
+                return jsonify({
+                    'success': True,
+                    'datasets': datasets,
+                    'total': len(datasets)
+                })
+            except Exception as e:
+                logger.error(f"Error listing datasets: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'datasets': []
+                }), 500
+        
+        @self.app.route('/api/mcp/datasets/<dataset_type>')
+        def get_dataset_info(dataset_type):
+            """Get information about a specific dataset."""
+            try:
+                from .legal_datasets_loader import get_all_dataset_loaders
+                
+                loaders = get_all_dataset_loaders()
+                if dataset_type not in loaders:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Unknown dataset type: {dataset_type}'
+                    }), 404
+                
+                loader = loaders[dataset_type]
+                info = loader.get_dataset_info()
+                
+                return jsonify({
+                    'success': True,
+                    'dataset_info': info
+                })
+            except Exception as e:
+                logger.error(f"Error getting dataset info: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        @self.app.route('/api/mcp/datasets/recap/scrape', methods=['POST'])
+        def scrape_recap():
+            """Scrape documents from RECAP Archive."""
+            data = request.get_json() or {}
+            court = data.get('court')
+            date_filed = data.get('date_filed')
+            limit = data.get('limit', 100)
+            
+            logger.info(f"RECAP scrape request: court={court}, date_filed={date_filed}, limit={limit}")
+            
+            try:
+                from .legal_datasets_loader import RECAPArchiveLoader
+                
+                loader = RECAPArchiveLoader()
+                documents = loader.scrape_recap_documents(
+                    court=court,
+                    date_filed=date_filed,
+                    limit=limit
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'documents': documents,
+                    'total': len(documents),
+                    'parameters': {
+                        'court': court,
+                        'date_filed': date_filed,
+                        'limit': limit
+                    }
+                })
+            except Exception as e:
+                logger.error(f"RECAP scrape error: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'documents': []
+                }), 500
+        
+        @self.app.route('/api/mcp/datasets/cap/scrape', methods=['POST'])
+        def scrape_cap():
+            """Scrape cases from Case Law Access Project."""
+            data = request.get_json() or {}
+            jurisdiction = data.get('jurisdiction')
+            court = data.get('court')
+            limit = data.get('limit', 100)
+            
+            logger.info(f"CAP scrape request: jurisdiction={jurisdiction}, court={court}, limit={limit}")
+            
+            try:
+                from .legal_datasets_loader import CaseLawAccessProjectLoader
+                
+                loader = CaseLawAccessProjectLoader()
+                cases = loader.scrape_cases(
+                    jurisdiction=jurisdiction,
+                    court=court,
+                    limit=limit
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'cases': cases,
+                    'total': len(cases),
+                    'parameters': {
+                        'jurisdiction': jurisdiction,
+                        'court': court,
+                        'limit': limit
+                    }
+                })
+            except Exception as e:
+                logger.error(f"CAP scrape error: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'cases': []
+                }), 500
     
     def _get_fallback_architecture_distribution(self, models):
         """Get architecture distribution from fallback models."""
@@ -706,6 +834,12 @@ class MCPDashboard:
                             <a href="/mcp/models" class="feature-card">
                                 <h5><i class="fas fa-robot me-2"></i>Model Discovery</h5>
                                 <p class="mb-0">HuggingFace Model Search & AI Recommendations</p>
+                            </a>
+                        </div>
+                        <div class="col-md-6">
+                            <a href="/mcp/datasets" class="feature-card">
+                                <h5><i class="fas fa-database me-2"></i>Legal Datasets</h5>
+                                <p class="mb-0">Manage and scrape legal datasets including RECAP</p>
                             </a>
                         </div>
                     </div>
@@ -2142,6 +2276,392 @@ class MCPDashboard:
         
         // Load initial stats
         loadStats();
+    </script>
+</body>
+</html>
+        """
+        
+        return html
+    
+    def _render_datasets_template(self) -> str:
+        """Render the legal datasets management page."""
+        html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Datasets - MCP Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .navbar { 
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+        
+        .main-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            margin: 2rem;
+            padding: 2rem;
+        }
+        
+        .dataset-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .dataset-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+        
+        .dataset-status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .status-empty {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .status-ready {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .btn-scrape {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: transform 0.2s;
+        }
+        
+        .btn-scrape:hover {
+            transform: translateY(-2px);
+            color: white;
+        }
+        
+        .scrape-form {
+            background: #f8fafc;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-top: 1rem;
+            display: none;
+        }
+        
+        .scrape-form.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/mcp">
+                <i class="fas fa-layer-group me-2"></i>
+                <strong>MCP Dashboard</strong>
+            </a>
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="/mcp">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <div class="mb-4">
+            <h2><i class="fas fa-database me-2"></i>Legal Datasets Management</h2>
+            <p class="text-muted">Manage and scrape legal datasets from various sources</p>
+        </div>
+
+        <div id="datasetsContainer">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Loading datasets...</p>
+            </div>
+        </div>
+
+        <!-- RECAP Archive Section -->
+        <div class="mt-5">
+            <h3><i class="fas fa-file-alt me-2"></i>RECAP Archive Scraper</h3>
+            <p class="text-muted">Scrape documents from the RECAP Archive (PACER documents)</p>
+            
+            <div class="dataset-card">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5>RECAP Archive</h5>
+                        <p class="mb-0 text-muted">Public Access to Court Electronic Records</p>
+                    </div>
+                    <button class="btn-scrape" onclick="toggleRecapForm()">
+                        <i class="fas fa-cloud-download-alt me-2"></i>Scrape RECAP
+                    </button>
+                </div>
+                
+                <div id="recapForm" class="scrape-form">
+                    <form onsubmit="scrapeRecap(event)">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Court</label>
+                                <input type="text" class="form-control" id="recapCourt" 
+                                       placeholder="e.g., ca9, dcd">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Date Filed</label>
+                                <input type="date" class="form-control" id="recapDate">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Limit</label>
+                                <input type="number" class="form-control" id="recapLimit" 
+                                       value="100" min="1" max="1000">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-play me-2"></i>Start Scraping
+                        </button>
+                    </form>
+                    <div id="recapResults" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Case Law Access Project Section -->
+        <div class="mt-4">
+            <div class="dataset-card">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5>Case Law Access Project</h5>
+                        <p class="mb-0 text-muted">Free public access to U.S. court decisions</p>
+                    </div>
+                    <button class="btn-scrape" onclick="toggleCapForm()">
+                        <i class="fas fa-cloud-download-alt me-2"></i>Scrape CAP
+                    </button>
+                </div>
+                
+                <div id="capForm" class="scrape-form">
+                    <form onsubmit="scrapeCap(event)">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Jurisdiction</label>
+                                <input type="text" class="form-control" id="capJurisdiction" 
+                                       placeholder="e.g., us, cal">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Court</label>
+                                <input type="text" class="form-control" id="capCourt" 
+                                       placeholder="e.g., Supreme Court">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Limit</label>
+                                <input type="number" class="form-control" id="capLimit" 
+                                       value="100" min="1" max="1000">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-play me-2"></i>Start Scraping
+                        </button>
+                    </form>
+                    <div id="capResults" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function loadDatasets() {
+            fetch('/api/mcp/datasets')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        renderDatasets(data.datasets);
+                    } else {
+                        showError('Failed to load datasets: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading datasets:', error);
+                    showError('Failed to load datasets');
+                });
+        }
+        
+        function renderDatasets(datasets) {
+            const container = document.getElementById('datasetsContainer');
+            
+            if (!datasets || datasets.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">No datasets available</p>';
+                return;
+            }
+            
+            let html = '<div class="row">';
+            
+            datasets.forEach(dataset => {
+                const statusClass = dataset.status === 'empty' ? 'status-empty' : 'status-ready';
+                const statusText = dataset.status === 'empty' ? 'Empty' : 'Ready';
+                
+                html += `
+                    <div class="col-md-6 mb-3">
+                        <div class="dataset-card">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h5 class="mb-0">${dataset.name}</h5>
+                                <span class="dataset-status ${statusClass}">${statusText}</span>
+                            </div>
+                            <p class="text-muted mb-2">${dataset.description}</p>
+                            <div class="small text-muted">
+                                <i class="fas fa-link me-1"></i>
+                                <a href="${dataset.url}" target="_blank">${dataset.url}</a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        function toggleRecapForm() {
+            const form = document.getElementById('recapForm');
+            form.classList.toggle('active');
+        }
+        
+        function toggleCapForm() {
+            const form = document.getElementById('capForm');
+            form.classList.toggle('active');
+        }
+        
+        function scrapeRecap(event) {
+            event.preventDefault();
+            
+            const court = document.getElementById('recapCourt').value;
+            const date = document.getElementById('recapDate').value;
+            const limit = document.getElementById('recapLimit').value;
+            
+            const resultsDiv = document.getElementById('recapResults');
+            resultsDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Scraping RECAP Archive...</div>';
+            
+            fetch('/api/mcp/datasets/recap/scrape', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    court: court || null,
+                    date_filed: date || null,
+                    limit: parseInt(limit)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Successfully scraped ${data.total} documents from RECAP Archive
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${data.error || 'Scraping failed'}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('RECAP scrape error:', error);
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-times-circle me-2"></i>
+                        Error: ${error.message}
+                    </div>
+                `;
+            });
+        }
+        
+        function scrapeCap(event) {
+            event.preventDefault();
+            
+            const jurisdiction = document.getElementById('capJurisdiction').value;
+            const court = document.getElementById('capCourt').value;
+            const limit = document.getElementById('capLimit').value;
+            
+            const resultsDiv = document.getElementById('capResults');
+            resultsDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Scraping Case Law Access Project...</div>';
+            
+            fetch('/api/mcp/datasets/cap/scrape', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jurisdiction: jurisdiction || null,
+                    court: court || null,
+                    limit: parseInt(limit)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Successfully scraped ${data.total} cases from CAP
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${data.error || 'Scraping failed'}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('CAP scrape error:', error);
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-times-circle me-2"></i>
+                        Error: ${error.message}
+                    </div>
+                `;
+            });
+        }
+        
+        function showError(message) {
+            const container = document.getElementById('datasetsContainer');
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>${message}
+                </div>
+            `;
+        }
+        
+        // Load datasets on page load
+        loadDatasets();
     </script>
 </body>
 </html>
