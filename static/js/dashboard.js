@@ -841,7 +841,7 @@ function refreshServerStatus() {
 }
 
 function refreshModels() {
-    alert('Refreshing model list...');
+    console.log('Refreshing model list...');
 }
 
 function loadModel() {
