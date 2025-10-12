@@ -51,8 +51,10 @@ def test_with_playwright():
     
     try:
         # Start server in background
+        # Use the mcp_dashboard.py directly instead of the CLI
+        mcp_dashboard_path = Path(__file__).parent.parent / "ipfs_accelerate_py" / "mcp_dashboard.py"
         server_process = subprocess.Popen(
-            [sys.executable, "-m", "ipfs_accelerate_py.cli", "mcp", "start"],
+            [sys.executable, str(mcp_dashboard_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -84,7 +86,7 @@ def test_with_playwright():
             try:
                 # Step 1: Load dashboard
                 print("\n📋 Step 1: Loading dashboard...")
-                page.goto("http://localhost:9000", timeout=30000)
+                page.goto("http://localhost:8899", timeout=30000)
                 page.wait_for_timeout(2000)
                 page.screenshot(path=str(screenshots_dir / "01_dashboard_overview.png"), full_page=True)
                 print("   ✅ Dashboard loaded")
@@ -140,10 +142,18 @@ def test_with_playwright():
                 print("\n📋 Step 5: Initiating download...")
                 download_btn = page.query_selector('button:has-text("Download")')
                 if download_btn:
-                    # Get model ID before clicking
-                    model_card = download_btn.locator("xpath=ancestor::div[@class='model-result']")
-                    model_title = model_card.query_selector(".model-title")
-                    model_name = model_title.inner_text() if model_title else "unknown"
+                    # Try to get model name from nearby elements
+                    try:
+                        # Get parent element and find model title
+                        model_results = page.query_selector_all('.model-result')
+                        if model_results:
+                            first_model = model_results[0]
+                            model_title_elem = first_model.query_selector('.model-title')
+                            model_name = model_title_elem.inner_text() if model_title_elem else "unknown"
+                        else:
+                            model_name = "unknown"
+                    except:
+                        model_name = "unknown"
                     
                     print(f"   Downloading model: {model_name}")
                     download_btn.click()
