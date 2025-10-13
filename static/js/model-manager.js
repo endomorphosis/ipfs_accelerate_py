@@ -175,6 +175,38 @@ async function loadModels(page = 1) {
     }
     
     try {
+        // Ensure mcpClient is initialized before using it
+        if (!ModelManager.mcpClient) {
+            console.log('[Model Manager] mcpClient not initialized, initializing now...');
+            // Initialize the client inline if not already done
+            ModelManager.mcpClient = {
+                getStats: async () => {
+                    const response = await fetch('/api/mcp/models/stats');
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return await response.json();
+                },
+                searchModels: async (query, filters) => {
+                    const params = new URLSearchParams({ q: query || '', limit: 20 });
+                    if (filters && filters.task) params.append('task', filters.task);
+                    if (filters && filters.hardware) params.append('hardware', filters.hardware);
+                    
+                    console.log('[Model Manager] Fetching models with params:', params.toString());
+                    const response = await fetch(`/api/mcp/models/search?${params}`);
+                    console.log('[Model Manager] Search response status:', response.status);
+                    
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    console.log('[Model Manager] Search response data:', data);
+                    return data;
+                },
+                getModelDetails: async (modelId) => {
+                    const response = await fetch(`/api/mcp/models/${encodeURIComponent(modelId)}/details`);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return await response.json();
+                }
+            };
+        }
+        
         const data = await ModelManager.mcpClient.searchModels(
             ModelManager.filters.query,
             {
