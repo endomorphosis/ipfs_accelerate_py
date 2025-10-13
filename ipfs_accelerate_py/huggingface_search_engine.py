@@ -282,6 +282,12 @@ class HuggingFaceModelSearchEngine:
             desc_words = model_info.description.lower().split()
             terms.extend([word.strip(".,!?()[]{}") for word in desc_words])
         
+        # Add model card words (limited to avoid index bloat)
+        if model_info.model_card:
+            # Extract first 1000 words from model card for indexing
+            card_words = model_info.model_card.lower().split()[:1000]
+            terms.extend([word.strip(".,!?()[]{}#*-_") for word in card_words if len(word) > 3])
+        
         # Update index
         for term in set(terms):  # Remove duplicates
             if term not in self.search_index:

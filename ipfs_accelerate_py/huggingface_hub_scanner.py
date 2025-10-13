@@ -1042,6 +1042,9 @@ class HuggingFaceHubScanner:
                 score += 1
             if any(query_lower in tag.lower() for tag in info.tags):
                 score += 1
+            # Search in model card content (lower weight)
+            if info.model_card and query_lower in info.model_card.lower():
+                score += 0.5
             
             # Task filtering
             if task_filter and info.pipeline_tag != task_filter:
