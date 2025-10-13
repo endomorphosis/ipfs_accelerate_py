@@ -340,6 +340,10 @@ class IPFSAccelerateCLI:
                         self._handle_model_stats()
                     elif '/test' in self.path:
                         self._handle_model_test(query_params)
+                    elif '/details' in self.path:
+                        # Extract model ID from path like /api/mcp/models/Falconsai/nsfw_image_detection/details
+                        model_id = self.path.split('/models/')[-1].replace('/details', '')
+                        self._handle_model_details(model_id)
                     else:
                         # Default model listing
                         self.send_response(200)
@@ -675,6 +679,64 @@ class IPFSAccelerateCLI:
                     "timestamp": time.time()
                 }
                 self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_model_details(self, model_id):
+                """Handle model details API request"""
+                try:
+                    from urllib.parse import unquote
+                    from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
+                    
+                    # Decode URL-encoded model ID
+                    model_id = unquote(model_id)
+                    
+                    # Get HuggingFaceHubScanner instance
+                    scanner = HuggingFaceHubScanner()
+                    
+                    # Check cache first
+                    if model_id in scanner.model_cache:
+                        model_info = scanner.model_cache[model_id]
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {
+                            'status': 'success',
+                            'model': model_info.to_dict()
+                        }
+                        self.wfile.write(json.dumps(response).encode())
+                        return
+                    
+                    # Fetch from API if not in cache
+                    search_results = scanner.search_models(model_id, limit=1)
+                    if search_results:
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        response = {
+                            'status': 'success',
+                            'model': search_results[0].to_dict()
+                        }
+                        self.wfile.write(json.dumps(response).encode())
+                        return
+                    
+                    # Model not found
+                    self.send_response(404)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {
+                        'status': 'error',
+                        'message': f'Model {model_id} not found'
+                    }
+                    self.wfile.write(json.dumps(response).encode())
+                    
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    response = {
+                        'status': 'error',
+                        'message': str(e)
+                    }
+                    self.wfile.write(json.dumps(response).encode())
             
             def _handle_queue_api(self):
                 """Handle queue monitoring API calls"""

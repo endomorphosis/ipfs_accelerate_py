@@ -380,7 +380,7 @@ class MCPDashboard:
                 logger.error(f"Model test error: {e}")
                 return jsonify({'error': f'Test failed: {str(e)}'}), 500
         
-        @self.app.route('/api/mcp/models/<model_id>/details')
+        @self.app.route('/api/mcp/models/<path:model_id>/details')
         def get_model_details(model_id):
             """Get detailed information about a specific model."""
             logger.info(f"Model details request: model_id='{model_id}'")
@@ -391,12 +391,22 @@ class MCPDashboard:
                 # Check if model exists in cache
                 if hasattr(scanner, 'model_cache') and model_id in scanner.model_cache:
                     model_data = scanner.model_cache[model_id]
+                    
+                    # Handle different cache formats
+                    if hasattr(model_data, 'to_dict'):
+                        model_info = model_data.to_dict()
+                    elif isinstance(model_data, dict):
+                        model_info = model_data.get('model_info', model_data)
+                    else:
+                        model_info = {'model_id': model_id}
+                    
                     performance = getattr(scanner, 'performance_cache', {}).get(model_id, {})
                     compatibility = getattr(scanner, 'compatibility_cache', {}).get(model_id, {})
                     
                     details = {
+                        'status': 'success',
                         'model_id': model_id,
-                        'model_info': model_data.get('model_info', {}),
+                        'model_info': model_info,
                         'performance': performance,
                         'compatibility': compatibility,
                         'download_available': True,
@@ -405,13 +415,44 @@ class MCPDashboard:
                     
                     logger.info(f"Model details found for: {model_id}")
                     return jsonify(details)
+                
+                # If not in cache, try to fetch from search
+                logger.info(f"Model not in cache, searching: {model_id}")
+                search_results = scanner.search_models(model_id, limit=1)
+                
+                if search_results and len(search_results) > 0:
+                    result = search_results[0]
+                    
+                    # Convert to dict if needed
+                    if hasattr(result, 'to_dict'):
+                        model_info = result.to_dict()
+                    elif hasattr(result, 'model_info'):
+                        if hasattr(result.model_info, 'to_dict'):
+                            model_info = result.model_info.to_dict()
+                        else:
+                            model_info = result.model_info
+                    else:
+                        model_info = result
+                    
+                    details = {
+                        'status': 'success',
+                        'model_id': model_id,
+                        'model_info': model_info,
+                        'performance': {},
+                        'compatibility': {},
+                        'download_available': True,
+                        'test_available': True
+                    }
+                    
+                    logger.info(f"Model details fetched from search: {model_id}")
+                    return jsonify(details)
                 else:
                     logger.warning(f"Model not found: {model_id}")
-                    return jsonify({'error': f'Model {model_id} not found'}), 404
+                    return jsonify({'status': 'error', 'error': f'Model {model_id} not found'}), 404
                     
             except Exception as e:
-                logger.error(f"Model details error: {e}")
-                return jsonify({'error': f'Failed to get model details: {str(e)}'}), 500
+                logger.error(f"Model details error: {e}", exc_info=True)
+                return jsonify({'status': 'error', 'error': f'Failed to get model details: {str(e)}'}), 500
         
         @self.app.route('/api/mcp/tools')
         def get_mcp_tools():
