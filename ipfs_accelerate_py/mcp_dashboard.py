@@ -1709,6 +1709,19 @@ class MCPDashboard:
                 });
         }
         
+        function truncateText(text, maxLength = 150) {
+            if (!text || text.length <= maxLength) {
+                return text || 'No description available';
+            }
+            return text.substring(0, maxLength).trim() + '...';
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
         function displaySearchResults(results, query) {
             const resultsDiv = document.getElementById('searchResults');
             
@@ -1723,6 +1736,7 @@ class MCPDashboard:
                 const modelInfo = result.model_info || {};
                 const performance = result.performance || {};
                 const compatibility = result.compatibility || {};
+                const description = truncateText(modelInfo.description);
                 
                 html += `
                     <div class="model-card">
@@ -1731,7 +1745,7 @@ class MCPDashboard:
                             <span class="badge bg-primary">${modelInfo.pipeline_tag || 'Unknown'}</span>
                         </div>
                         
-                        <p class="text-muted mb-2">${modelInfo.description || 'No description available'}</p>
+                        <p class="text-muted mb-2">${description}</p>
                         
                         <div class="row mb-2">
                             <div class="col-md-6">
@@ -1760,6 +1774,9 @@ class MCPDashboard:
                         </div>
                         
                         <div class="mt-2">
+                            <button class="btn btn-sm btn-info me-2" onclick="showModelDetails('${result.model_id}')">
+                                <i class="fas fa-info-circle me-1"></i>View Details
+                            </button>
                             <a href="https://huggingface.co/${result.model_id}" target="_blank" class="btn btn-sm btn-outline-primary me-2">
                                 <i class="fas fa-external-link-alt me-1"></i>View on HuggingFace
                             </a>
@@ -1861,6 +1878,7 @@ class MCPDashboard:
                 const modelInfo = rec.model_info || {};
                 const performance = rec.performance || {};
                 const compatibility = rec.compatibility || {};
+                const description = truncateText(modelInfo.description);
                 
                 html += `
                     <div class="model-card">
@@ -1875,7 +1893,7 @@ class MCPDashboard:
                             </div>
                         </div>
                         
-                        <p class="text-muted mb-2">${modelInfo.description || 'No description available'}</p>
+                        <p class="text-muted mb-2">${description}</p>
                         
                         <div class="row mb-2">
                             <div class="col-md-4">
@@ -1907,6 +1925,9 @@ class MCPDashboard:
                         </div>
                         
                         <div class="mt-2">
+                            <button class="btn btn-sm btn-info me-2" onclick="showModelDetails('${rec.model_id}')">
+                                <i class="fas fa-info-circle me-1"></i>View Details
+                            </button>
                             <a href="https://huggingface.co/${rec.model_id}" target="_blank" class="btn btn-sm btn-outline-primary">
                                 <i class="fas fa-external-link-alt me-1"></i>View on HuggingFace
                             </a>
@@ -2172,6 +2193,141 @@ class MCPDashboard:
             
             // Scroll to results
             resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Show model details modal
+        function showModelDetails(modelId) {
+            logUserAction('show_model_details', { modelId });
+            
+            showToast(`Loading details for ${modelId}...`, 'info', 2000);
+            
+            // Fetch model details
+            fetch(`/api/mcp/models/${encodeURIComponent(modelId)}/details`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    displayModelDetailsModal(data);
+                })
+                .catch(error => {
+                    console.error('[MCP Dashboard] Error fetching model details:', error);
+                    showToast(`Failed to load model details: ${error.message}`, 'error');
+                });
+        }
+        
+        // Display model details in a modal
+        function displayModelDetailsModal(modelData) {
+            const modelInfo = modelData.model_info || {};
+            const performance = modelData.performance || {};
+            const compatibility = modelData.compatibility || {};
+            
+            // Create modal HTML
+            const modalHtml = `
+                <div class="modal fade" id="modelDetailsModal" tabindex="-1" aria-labelledby="modelDetailsModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="modelDetailsModalLabel">
+                                    <i class="fas fa-robot me-2"></i>${modelInfo.model_name || modelData.model_id}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <!-- Full Description -->
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-file-alt me-2"></i>Description</h6>
+                                    <p>${modelInfo.description || 'No description available'}</p>
+                                </div>
+                                
+                                <!-- Model Card -->
+                                ${modelInfo.model_card ? `
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-book me-2"></i>Model Card</h6>
+                                    <div class="card">
+                                        <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                                            <pre style="white-space: pre-wrap; word-wrap: break-word; font-size: 0.9rem;">${escapeHtml(modelInfo.model_card)}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                                
+                                <!-- Model Info -->
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-info-circle me-2"></i>Model Information</h6>
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            <tr><td><strong>Model ID:</strong></td><td>${modelData.model_id}</td></tr>
+                                            <tr><td><strong>Pipeline Tag:</strong></td><td>${modelInfo.pipeline_tag || 'N/A'}</td></tr>
+                                            <tr><td><strong>Architecture:</strong></td><td>${modelInfo.architecture || 'N/A'}</td></tr>
+                                            <tr><td><strong>Library:</strong></td><td>${modelInfo.library_name || 'N/A'}</td></tr>
+                                            <tr><td><strong>Framework:</strong></td><td>${modelInfo.framework || 'N/A'}</td></tr>
+                                            <tr><td><strong>Downloads:</strong></td><td>${(modelInfo.downloads || 0).toLocaleString()}</td></tr>
+                                            <tr><td><strong>Likes:</strong></td><td>${(modelInfo.likes || 0).toLocaleString()}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <!-- Performance Metrics -->
+                                ${Object.keys(performance).length > 0 ? `
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-tachometer-alt me-2"></i>Performance Metrics</h6>
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            ${performance.throughput_tokens_per_sec ? `<tr><td><strong>Throughput:</strong></td><td>${performance.throughput_tokens_per_sec.toFixed(1)} tokens/sec</td></tr>` : ''}
+                                            ${performance.inference_time_ms ? `<tr><td><strong>Inference Time:</strong></td><td>${performance.inference_time_ms.toFixed(1)}ms</td></tr>` : ''}
+                                            ${performance.memory_usage_mb ? `<tr><td><strong>Memory Usage:</strong></td><td>${performance.memory_usage_mb.toFixed(0)}MB</td></tr>` : ''}
+                                            ${performance.gpu_memory_mb ? `<tr><td><strong>GPU Memory:</strong></td><td>${performance.gpu_memory_mb.toFixed(0)}MB</td></tr>` : ''}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                ` : ''}
+                                
+                                <!-- Hardware Compatibility -->
+                                ${Object.keys(compatibility).length > 0 ? `
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-microchip me-2"></i>Hardware Compatibility</h6>
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            ${compatibility.supports_cpu ? `<tr><td><strong>CPU:</strong></td><td><i class="fas fa-check text-success"></i> Supported</td></tr>` : ''}
+                                            ${compatibility.supports_gpu ? `<tr><td><strong>GPU:</strong></td><td><i class="fas fa-check text-success"></i> Supported</td></tr>` : ''}
+                                            ${compatibility.min_ram_gb ? `<tr><td><strong>Min RAM:</strong></td><td>${compatibility.min_ram_gb}GB</td></tr>` : ''}
+                                            ${compatibility.min_vram_gb ? `<tr><td><strong>Min VRAM:</strong></td><td>${compatibility.min_vram_gb}GB</td></tr>` : ''}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="modal-footer">
+                                <a href="https://huggingface.co/${modelData.model_id}" target="_blank" class="btn btn-primary">
+                                    <i class="fas fa-external-link-alt me-1"></i>View on HuggingFace
+                                </a>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove any existing modal
+            const existingModal = document.getElementById('modelDetailsModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to document
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('modelDetailsModal'));
+            modal.show();
+            
+            // Clean up after modal is hidden
+            document.getElementById('modelDetailsModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
         }
         
         // Allow Enter key to trigger search

@@ -100,6 +100,7 @@ if not HAVE_HF_SEARCH:
         private: bool = False
         gated: bool = False
         config: Dict[str, Any] = None
+        model_card: Optional[str] = None
         model_size_mb: Optional[float] = None
         architecture: Optional[str] = None
         framework: Optional[str] = None
@@ -447,6 +448,29 @@ class HuggingFaceHubScanner:
             with self._lock:
                 self.scan_stats['errors'] += 1
     
+    def _fetch_model_card(self, model_id: str) -> Optional[str]:
+        """Fetch the model card (README.md) from HuggingFace."""
+        try:
+            # Try to fetch README.md from the model repository
+            readme_url = f"https://huggingface.co/{model_id}/raw/main/README.md"
+            response = requests.get(readme_url, timeout=10)
+            
+            if response.status_code == 200:
+                return response.text
+            
+            # Fallback: try 'master' branch
+            readme_url = f"https://huggingface.co/{model_id}/raw/master/README.md"
+            response = requests.get(readme_url, timeout=10)
+            
+            if response.status_code == 200:
+                return response.text
+                
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Could not fetch model card for {model_id}: {e}")
+            return None
+    
     def _get_detailed_model_info(self, model_id: str) -> Optional[HuggingFaceModelInfo]:
         """Get detailed information about a specific model."""
         try:
@@ -459,7 +483,11 @@ class HuggingFaceHubScanner:
                 )
                 
                 if models_info and len(models_info) > 0:
-                    return models_info[0]
+                    # Fetch model card if not already present
+                    model_info = models_info[0]
+                    if not model_info.model_card:
+                        model_info.model_card = self._fetch_model_card(model_id)
+                    return model_info
             
             # Fallback: direct API call
             url = f"https://huggingface.co/api/models/{model_id}"
@@ -467,6 +495,9 @@ class HuggingFaceHubScanner:
             response.raise_for_status()
             
             model_info = response.json()
+            
+            # Fetch model card
+            model_card = self._fetch_model_card(model_id)
             
             # Convert to HuggingFaceModelInfo format
             return HuggingFaceModelInfo(
@@ -485,7 +516,8 @@ class HuggingFaceHubScanner:
                 config=model_info.get('config', {}),
                 model_size_mb=self._estimate_model_size(model_info),
                 architecture=self._extract_architecture(model_info),
-                framework=self._extract_framework(model_info)
+                framework=self._extract_framework(model_info),
+                model_card=model_card
             )
             
         except Exception as e:

@@ -63,6 +63,7 @@ class HuggingFaceModelInfo:
     model_size: Optional[int] = None
     config: Optional[Dict[str, Any]] = None
     card_data: Optional[Dict[str, Any]] = None
+    model_card: Optional[str] = None
     siblings: List[Dict[str, Any]] = None
     repository_structure: Optional[Dict[str, Any]] = None
     ipfs_cids: Optional[Dict[str, str]] = None
