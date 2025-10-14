@@ -1367,6 +1367,7 @@ class MCPDashboard:
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="/static/js/mcp-sdk.js"></script>
     <style>
         :root {
             --primary: #1e40af;
@@ -1619,6 +1620,9 @@ class MCPDashboard:
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Initialize MCP Client
+        const mcpClient = new MCPClient('/jsonrpc');
+        
         // Utility functions for user feedback
         function showToast(message, type = 'info', duration = 5000) {
             console.log(`[MCP Dashboard] ${type.toUpperCase()}: ${message}`);
@@ -1654,7 +1658,7 @@ class MCPDashboard:
         }
         
         // Search functionality with proper logging and error handling
-        function searchModels() {
+        async function searchModels() {
             const query = document.getElementById('searchInput').value.trim();
             const taskFilter = document.getElementById('taskFilter').value;
             const hardwareFilter = document.getElementById('hardwareFilter').value;
@@ -1672,53 +1676,45 @@ class MCPDashboard:
             
             showToast(`Searching for models: "${query}"...`, 'info', 3000);
             
-            const params = new URLSearchParams({
-                q: query,
-                limit: '20'
-            });
+            console.log(`[MCP Dashboard] Making MCP search request via SDK`);
             
-            if (taskFilter) params.append('task', taskFilter);
-            if (hardwareFilter) params.append('hardware', hardwareFilter);
-            
-            console.log(`[MCP Dashboard] Making search request to /api/mcp/models/search?${params}`);
-            
-            fetch(`/api/mcp/models/search?${params}`)
-                .then(response => {
-                    console.log(`[MCP Dashboard] Search response status: ${response.status}`);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log(`[MCP Dashboard] Search results received:`, data);
-                    
-                    if (data.error) {
-                        showToast(`Search error: ${data.error}`, 'error');
-                        resultsDiv.innerHTML = `<div class="alert alert-warning">
-                            <h5><i class="fas fa-exclamation-triangle me-2"></i>Search Error</h5>
-                            <p>${data.error}</p>
-                            <p class="mb-0"><small>Check the browser console for more details.</small></p>
-                        </div>`;
-                    } else {
-                        displaySearchResults(data.results, query);
-                        showToast(`Found ${data.results ? data.results.length : 0} models for "${query}"`, 'success');
-                    }
-                })
-                .catch(error => {
-                    console.error('[MCP Dashboard] Search error:', error);
-                    showToast(`Search failed: ${error.message}`, 'error');
-                    resultsDiv.innerHTML = `<div class="alert alert-danger">
-                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Search Failed</h5>
-                        <p>Unable to search for models. This might be because:</p>
-                        <ul>
-                            <li>The HuggingFace Hub scanner is not available</li>
-                            <li>Network connection issues</li>
-                            <li>Server configuration problems</li>
-                        </ul>
-                        <p class="mb-0"><small>Error: ${error.message}</small></p>
-                    </div>`;
+            try {
+                // Use MCP client to call the search_models tool
+                const data = await mcpClient.request('search_models', {
+                    query: query,
+                    task_filter: taskFilter || null,
+                    hardware_filter: hardwareFilter || null,
+                    limit: 20
                 });
+                
+                console.log(`[MCP Dashboard] Search results received via MCP:`, data);
+                
+                if (data.status === 'error') {
+                    showToast(`Search error: ${data.error}`, 'error');
+                    resultsDiv.innerHTML = `<div class="alert alert-warning">
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Search Error</h5>
+                        <p>${data.error}</p>
+                        <p class="mb-0"><small>Check the browser console for more details.</small></p>
+                    </div>`;
+                } else {
+                    displaySearchResults(data.results, query);
+                    showToast(`Found ${data.results ? data.results.length : 0} models for "${query}"`, 'success');
+                }
+            } catch (error) {
+                console.error('[MCP Dashboard] MCP search error:', error);
+                showToast(`Search failed: ${error.message}`, 'error');
+                resultsDiv.innerHTML = `<div class="alert alert-danger">
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i>Search Failed</h5>
+                    <p>Unable to search for models. This might be because:</p>
+                    <ul>
+                        <li>The MCP server is not running</li>
+                        <li>The HuggingFace Hub scanner is not available</li>
+                        <li>Network connection issues</li>
+                        <li>Server configuration problems</li>
+                    </ul>
+                    <p class="mb-0"><small>Error: ${error.message}</small></p>
+                </div>`;
+            }
         }
         
         function truncateText(text, maxLength = 150) {
@@ -1877,7 +1873,7 @@ class MCPDashboard:
             resultsDiv.innerHTML = html;
         }
         
-        function getRecommendations() {
+        async function getRecommendations() {
             const taskType = document.getElementById('taskFilter').value || 'text-generation';
             const hardware = document.getElementById('hardwareFilter').value || 'cpu';
             const performance = document.getElementById('performanceFilter').value || 'balanced';
@@ -1889,53 +1885,46 @@ class MCPDashboard:
             
             showToast(`Getting AI recommendations for ${taskType} on ${hardware}...`, 'info', 3000);
             
-            const params = new URLSearchParams({
-                task_type: taskType,
-                hardware: hardware,
-                performance: performance,
-                limit: '5'
-            });
+            console.log(`[MCP Dashboard] Getting recommendations via MCP with params:`, { taskType, hardware, performance });
             
-            console.log(`[MCP Dashboard] Getting recommendations with params:`, { taskType, hardware, performance });
-            
-            fetch(`/api/mcp/models/recommend?${params}`)
-                .then(response => {
-                    console.log(`[MCP Dashboard] Recommendations response status: ${response.status}`);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log(`[MCP Dashboard] Recommendations data:`, data);
-                    
-                    if (data.error) {
-                        showToast(`Recommendations error: ${data.error}`, 'error');
-                        resultsDiv.innerHTML = `<div class="alert alert-warning">
-                            <h5><i class="fas fa-exclamation-triangle me-2"></i>Recommendations Error</h5>
-                            <p>${data.error}</p>
-                            <p class="mb-0"><small>This might be because the model recommendation system is not available.</small></p>
-                        </div>`;
-                    } else {
-                        displayRecommendations(data.recommendations, data.context);
-                        const count = data.recommendations ? data.recommendations.length : 0;
-                        showToast(`Found ${count} AI recommendations`, 'success');
-                    }
-                })
-                .catch(error => {
-                    console.error('[MCP Dashboard] Recommendation error:', error);
-                    showToast(`Recommendations failed: ${error.message}`, 'error');
-                    resultsDiv.innerHTML = `<div class="alert alert-danger">
-                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Recommendations Failed</h5>
-                        <p>Unable to get AI recommendations. This might be because:</p>
-                        <ul>
-                            <li>The model recommendation system is not available</li>
-                            <li>The HuggingFace Hub scanner is not available</li>
-                            <li>Network connection issues</li>
-                        </ul>
-                        <p class="mb-0"><small>Error: ${error.message}</small></p>
-                    </div>`;
+            try {
+                // Use MCP client to call the recommend_models tool
+                const data = await mcpClient.request('recommend_models', {
+                    task_type: taskType,
+                    hardware: hardware,
+                    performance: performance,
+                    limit: 5
                 });
+                
+                console.log(`[MCP Dashboard] Recommendations data via MCP:`, data);
+                
+                if (data.status === 'error') {
+                    showToast(`Recommendations error: ${data.error}`, 'error');
+                    resultsDiv.innerHTML = `<div class="alert alert-warning">
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Recommendations Error</h5>
+                        <p>${data.error}</p>
+                        <p class="mb-0"><small>This might be because the model recommendation system is not available.</small></p>
+                    </div>`;
+                } else {
+                    displayRecommendations(data.recommendations, data.context);
+                    const count = data.recommendations ? data.recommendations.length : 0;
+                    showToast(`Found ${count} AI recommendations`, 'success');
+                }
+            } catch (error) {
+                console.error('[MCP Dashboard] MCP recommendation error:', error);
+                showToast(`Recommendations failed: ${error.message}`, 'error');
+                resultsDiv.innerHTML = `<div class="alert alert-danger">
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i>Recommendations Failed</h5>
+                    <p>Unable to get AI recommendations. This might be because:</p>
+                    <ul>
+                        <li>The MCP server is not running</li>
+                        <li>The model recommendation system is not available</li>
+                        <li>The HuggingFace Hub scanner is not available</li>
+                        <li>Network connection issues</li>
+                    </ul>
+                    <p class="mb-0"><small>Error: ${error.message}</small></p>
+                </div>`;
+            }
         }
         
         function displayRecommendations(recommendations, context) {
@@ -2275,26 +2264,26 @@ class MCPDashboard:
         }
         
         // Show model details modal
-        function showModelDetails(modelId) {
+        async function showModelDetails(modelId) {
             logUserAction('show_model_details', { modelId });
             
             showToast(`Loading details for ${modelId}...`, 'info', 2000);
             
-            // Fetch model details
-            fetch(`/api/mcp/models/${encodeURIComponent(modelId)}/details`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    displayModelDetailsModal(data);
-                })
-                .catch(error => {
-                    console.error('[MCP Dashboard] Error fetching model details:', error);
-                    showToast(`Failed to load model details: ${error.message}`, 'error');
+            try {
+                // Use MCP client to call the get_model_details tool
+                const data = await mcpClient.request('get_model_details', {
+                    model_id: modelId
                 });
+                
+                if (data.status === 'error') {
+                    showToast(`Failed to load model details: ${data.error}`, 'error');
+                } else {
+                    displayModelDetailsModal(data);
+                }
+            } catch (error) {
+                console.error('[MCP Dashboard] MCP error fetching model details:', error);
+                showToast(`Failed to load model details: ${error.message}`, 'error');
+            }
         }
         
         // Display model details in a modal

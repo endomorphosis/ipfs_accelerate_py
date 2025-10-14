@@ -26,6 +26,14 @@ def register_all_tools(mcp: Any) -> None:
         from ipfs_accelerate_py.mcp.tools.hardware import register_hardware_tools
         register_hardware_tools(mcp)
 
+        # Register model tools (search, recommendations, details)
+        try:
+            from ipfs_accelerate_py.mcp.tools.models import register_model_tools
+            register_model_tools(mcp)
+            logger.debug("Registered model tools")
+        except Exception as e:
+            logger.warning(f"Model tools not registered: {e}")
+
         # If FastMCP-style decorators are available, register decorator-based tool modules
         if hasattr(mcp, "tool"):
             try:
@@ -49,7 +57,7 @@ def register_all_tools(mcp: Any) -> None:
             except Exception as e:
                 logger.warning(f"Status tools not registered: {e}")
         else:
-            logger.warning("FastMCP decorators not available; only hardware tools registered in standalone mode")
+            logger.warning("FastMCP decorators not available; only hardware and model tools registered in standalone mode")
 
         logger.debug("All tools registered with MCP server")
 
