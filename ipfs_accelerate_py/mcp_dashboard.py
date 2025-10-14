@@ -1728,6 +1728,73 @@ class MCPDashboard:
             return text.substring(0, maxLength).trim() + '...';
         }
         
+        function extractSummaryFromModelCard(modelCard, maxLength = 150) {
+            if (!modelCard) {
+                return null;
+            }
+            
+            // Remove markdown headers (# ## ###)
+            let text = modelCard.replace(/^#+\s+/gm, '');
+            
+            // Remove code blocks
+            text = text.replace(/```[\s\S]*?```/g, '');
+            
+            // Remove inline code
+            text = text.replace(/`[^`]+`/g, '');
+            
+            // Remove URLs
+            text = text.replace(/https?:\/\/[^\s]+/g, '');
+            
+            // Remove markdown links [text](url)
+            text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+            
+            // Remove extra whitespace and newlines
+            text = text.replace(/\s+/g, ' ').trim();
+            
+            // Get first meaningful sentence or paragraph
+            const sentences = text.split(/[.!?]\s+/);
+            let summary = '';
+            
+            for (const sentence of sentences) {
+                const trimmed = sentence.trim();
+                // Skip very short sentences (likely headers or fragments)
+                if (trimmed.length > 20) {
+                    summary = trimmed;
+                    break;
+                }
+            }
+            
+            // If no good sentence found, just take the first part
+            if (!summary) {
+                summary = text.substring(0, maxLength * 2);
+            }
+            
+            // Truncate to maxLength
+            if (summary.length > maxLength) {
+                summary = summary.substring(0, maxLength).trim() + '...';
+            }
+            
+            return summary || null;
+        }
+        
+        function getModelDescription(modelInfo, maxLength = 150) {
+            // First, try the description field
+            if (modelInfo.description) {
+                return truncateText(modelInfo.description, maxLength);
+            }
+            
+            // If no description, try to extract from model_card
+            if (modelInfo.model_card) {
+                const summary = extractSummaryFromModelCard(modelInfo.model_card, maxLength);
+                if (summary) {
+                    return summary;
+                }
+            }
+            
+            // Fallback to "No description available"
+            return 'No description available';
+        }
+        
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
@@ -1748,7 +1815,7 @@ class MCPDashboard:
                 const modelInfo = result.model_info || {};
                 const performance = result.performance || {};
                 const compatibility = result.compatibility || {};
-                const description = truncateText(modelInfo.description);
+                const description = getModelDescription(modelInfo);
                 
                 html += `
                     <div class="model-card">
@@ -1890,7 +1957,7 @@ class MCPDashboard:
                 const modelInfo = rec.model_info || {};
                 const performance = rec.performance || {};
                 const compatibility = rec.compatibility || {};
-                const description = truncateText(modelInfo.description);
+                const description = getModelDescription(modelInfo);
                 
                 html += `
                     <div class="model-card">
@@ -2251,7 +2318,7 @@ class MCPDashboard:
                                 <!-- Full Description -->
                                 <div class="mb-4">
                                     <h6><i class="fas fa-file-alt me-2"></i>Description</h6>
-                                    <p>${modelInfo.description || 'No description available'}</p>
+                                    <p>${modelInfo.description || (modelInfo.model_card ? extractSummaryFromModelCard(modelInfo.model_card, 500) : null) || 'No description available'}</p>
                                 </div>
                                 
                                 <!-- Model Card -->
