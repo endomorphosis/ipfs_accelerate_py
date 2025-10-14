@@ -6,164 +6,158 @@ This module provides MCP tools for model search, recommendation, and management.
 
 import logging
 from typing import Any, Dict, List, Optional
+from dataclasses import asdict, is_dataclass
 
 # Set up logging
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.models")
 
-def register_model_tools(mcp: Any) -> None:
+# Shared scanner instance
+_scanner = None
+_model_manager = None
+_recommender = None
+
+def _get_scanner():
+    """Get or create shared HuggingFaceHubScanner instance."""
+    global _scanner
+    if _scanner is None:
+        from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
+        _scanner = HuggingFaceHubScanner()
+    return _scanner
+
+def _get_model_manager():
+    """Get or create shared ModelManager instance."""
+    global _model_manager
+    if _model_manager is None:
+        from ipfs_accelerate_py.model_manager import get_default_model_manager
+        _model_manager = get_default_model_manager()
+    return _model_manager
+
+def _get_recommender():
+    """Get or create shared BanditModelRecommender instance."""
+    global _recommender
+    if _recommender is None:
+        from ipfs_accelerate_py.model_manager import BanditModelRecommender
+        _recommender = BanditModelRecommender(model_manager=_get_model_manager())
+    return _recommender
+
+
+# Tool: Search Models
+def search_models_tool(query: str, task_filter: Optional[str] = None, 
+                       hardware_filter: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
     """
-    Register model-related tools with the MCP server
+    Search for models on HuggingFace Hub
     
     Args:
-        mcp: MCP server instance (either StandaloneMCP or FastMCP)
-    """
-    logger.debug("Registering model tools with MCP server")
+        query: Search query string
+        task_filter: Optional task type filter (e.g., 'text-generation', 'image-classification')
+        hardware_filter: Optional hardware filter (e.g., 'cpu', 'gpu')
+        limit: Maximum number of results to return (default: 20)
     
+    Returns:
+        Dictionary with search results and metadata
+    """
     try:
-        # Import required modules from ipfs_accelerate_py
-        from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
-        from ipfs_accelerate_py.model_manager import get_default_model_manager, BanditModelRecommender
+        logger.info(f"Searching models: query='{query}', task={task_filter}, hardware={hardware_filter}, limit={limit}")
         
-        # Create shared instances
-        scanner = None
-        model_manager = None
-        recommender = None
+        hub_scanner = _get_scanner()
+        results = hub_scanner.search_models(
+            query=query,
+            task_filter=task_filter,
+            hardware_filter=hardware_filter,
+            limit=limit
+        )
         
-        def get_scanner():
-            nonlocal scanner
-            if scanner is None:
-                scanner = HuggingFaceHubScanner()
-            return scanner
-        
-        def get_model_manager():
-            nonlocal model_manager
-            if model_manager is None:
-                model_manager = get_default_model_manager()
-            return model_manager
-        
-        def get_recommender():
-            nonlocal recommender
-            if recommender is None:
-                recommender = BanditModelRecommender(model_manager=get_model_manager())
-            return recommender
-        
-        # Tool: Search Models
-        def search_models_tool(query: str, task_filter: Optional[str] = None, 
-                               hardware_filter: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
-            """
-            Search for models on HuggingFace Hub
-            
-            Args:
-                query: Search query string
-                task_filter: Optional task type filter (e.g., 'text-generation', 'image-classification')
-                hardware_filter: Optional hardware filter (e.g., 'cpu', 'gpu')
-                limit: Maximum number of results to return (default: 20)
-            
-            Returns:
-                Dictionary with search results and metadata
-            """
-            try:
-                logger.info(f"Searching models: query='{query}', task={task_filter}, hardware={hardware_filter}, limit={limit}")
-                
-                hub_scanner = get_scanner()
-                results = hub_scanner.search_models(
-                    query=query,
-                    task_filter=task_filter,
-                    hardware_filter=hardware_filter,
-                    limit=limit
-                )
-                
-                return {
-                    'status': 'success',
-                    'results': results,
-                    'total': len(results),
-                    'query': query
+        return {
+            'status': 'success',
+            'results': results,
+            'total': len(results),
+            'query': query
                 }
             
             except Exception as e:
                 logger.error(f"Error searching models: {e}")
                 return {
-                    'status': 'error',
-                    'error': str(e),
-                    'results': []
-                }
+                'status': 'error',
+                'error': str(e),
+                'results': []
+            }
+
+
+# Tool: Get Model Recommendations
+def recommend_models_tool(task_type: str, hardware: str = 'cpu', 
+                         performance: str = 'balanced', limit: int = 5) -> Dict[str, Any]:
+    """
+    Get AI-powered model recommendations using bandit algorithm
+    
+    Args:
+        task_type: Type of task (e.g., 'text-generation', 'image-classification')
+        hardware: Target hardware ('cpu' or 'gpu')
+        performance: Performance preference ('speed', 'balanced', 'quality')
+        limit: Maximum number of recommendations (default: 5)
+    
+    Returns:
+        Dictionary with recommended models and confidence scores
+    """
+    try:
+        logger.info(f"Getting recommendations: task={task_type}, hardware={hardware}, performance={performance}")
         
-        # Tool: Get Model Recommendations
-        def recommend_models_tool(task_type: str, hardware: str = 'cpu', 
-                                 performance: str = 'balanced', limit: int = 5) -> Dict[str, Any]:
-            """
-            Get AI-powered model recommendations using bandit algorithm
-            
-            Args:
-                task_type: Type of task (e.g., 'text-generation', 'image-classification')
-                hardware: Target hardware ('cpu' or 'gpu')
-                performance: Performance preference ('speed', 'balanced', 'quality')
-                limit: Maximum number of recommendations (default: 5)
-            
-            Returns:
-                Dictionary with recommended models and confidence scores
-            """
-            try:
-                logger.info(f"Getting recommendations: task={task_type}, hardware={hardware}, performance={performance}")
-                
-                hub_scanner = get_scanner()
-                recommendations = hub_scanner.recommend_models(
-                    task_type=task_type,
-                    hardware=hardware,
-                    performance_preference=performance,
-                    limit=limit
-                )
-                
-                return {
-                    'status': 'success',
-                    'recommendations': recommendations,
-                    'context': {
-                        'task_type': task_type,
-                        'hardware': hardware,
-                        'performance': performance
-                    }
-                }
-            
-            except Exception as e:
-                logger.error(f"Error getting recommendations: {e}")
-                return {
-                    'status': 'error',
-                    'error': str(e),
-                    'recommendations': []
-                }
+        hub_scanner = _get_scanner()
+        recommendations = hub_scanner.recommend_models(
+            task_type=task_type,
+            hardware=hardware,
+            performance_preference=performance,
+            limit=limit
+        )
         
-        # Tool: Get Model Details
-        def get_model_details_tool(model_id: str) -> Dict[str, Any]:
-            """
-            Get detailed information about a specific model
+        return {
+            'status': 'success',
+            'recommendations': recommendations,
+            'context': {
+                'task_type': task_type,
+                'hardware': hardware,
+                'performance': performance
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting recommendations: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'recommendations': []
+        }
+
+
+# Tool: Get Model Details
+def get_model_details_tool(model_id: str) -> Dict[str, Any]:
+    """
+    Get detailed information about a specific model
+    
+    Args:
+        model_id: HuggingFace model ID (e.g., 'bert-base-uncased')
+    
+    Returns:
+        Dictionary with comprehensive model information including model card
+    """
+    try:
+        logger.info(f"Getting model details: model_id='{model_id}'")
+        
+        hub_scanner = _get_scanner()
+        
+        # Check if model exists in cache
+        if hasattr(hub_scanner, 'model_cache') and model_id in hub_scanner.model_cache:
+            model_data = hub_scanner.model_cache[model_id]
             
-            Args:
-                model_id: HuggingFace model ID (e.g., 'bert-base-uncased')
+            # Convert dataclass to dict if needed
+            if is_dataclass(model_data) and not isinstance(model_data, type):
+                model_info = asdict(model_data)
+            elif isinstance(model_data, dict):
+                model_info = model_data.get('model_info', model_data)
+            else:
+                model_info = {'model_id': model_id}
             
-            Returns:
-                Dictionary with comprehensive model information including model card
-            """
-            try:
-                logger.info(f"Getting model details: model_id='{model_id}'")
-                
-                hub_scanner = get_scanner()
-                
-                # Check if model exists in cache
-                if hasattr(hub_scanner, 'model_cache') and model_id in hub_scanner.model_cache:
-                    from dataclasses import asdict, is_dataclass
-                    
-                    model_data = hub_scanner.model_cache[model_id]
-                    
-                    # Convert dataclass to dict if needed
-                    if is_dataclass(model_data) and not isinstance(model_data, type):
-                        model_info = asdict(model_data)
-                    elif isinstance(model_data, dict):
-                        model_info = model_data.get('model_info', model_data)
-                    else:
-                        model_info = {'model_id': model_id}
-                    
-                    # Get and convert performance data
-                    performance_data = getattr(hub_scanner, 'performance_cache', {}).get(model_id, {})
+            # Get and convert performance data
+            performance_data = getattr(hub_scanner, 'performance_cache', {}).get(model_id, {})
                     if is_dataclass(performance_data) and not isinstance(performance_data, type):
                         performance = asdict(performance_data)
                     else:

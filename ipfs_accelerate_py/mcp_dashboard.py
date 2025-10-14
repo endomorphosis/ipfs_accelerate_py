@@ -617,6 +617,105 @@ class MCPDashboard:
                 'total_tested': len(results),
                 'operational': sum(1 for r in results if r['status'] == 'operational')
             })
+        
+        @self.app.route('/jsonrpc', methods=['POST'])
+        def jsonrpc_endpoint():
+            """JSON-RPC 2.0 endpoint for MCP tools."""
+            try:
+                data = request.get_json()
+                
+                if not data or 'jsonrpc' not in data or data['jsonrpc'] != '2.0':
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32600,
+                            'message': 'Invalid Request'
+                        },
+                        'id': data.get('id') if data else None
+                    }), 400
+                
+                method = data.get('method')
+                params = data.get('params', {})
+                request_id = data.get('id')
+                
+                logger.info(f"JSON-RPC request: method={method}, params={params}")
+                
+                # Lazy import MCP tools wrapper
+                try:
+                    from ipfs_accelerate_py.mcp.tools.model_tools_wrapper import (
+                        search_models_tool,
+                        recommend_models_tool,
+                        get_model_details_tool,
+                        get_model_stats_tool
+                    )
+                except ImportError as e:
+                    logger.error(f"Failed to import MCP tools: {e}")
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32603,
+                            'message': f'Internal error: MCP tools not available - {str(e)}'
+                        },
+                        'id': request_id
+                    }), 500
+                
+                # Map methods to tool functions
+                tools = {
+                    'search_models': search_models_tool,
+                    'recommend_models': recommend_models_tool,
+                    'get_model_details': get_model_details_tool,
+                    'get_model_stats': get_model_stats_tool
+                }
+                
+                if method not in tools:
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32601,
+                            'message': f'Method not found: {method}'
+                        },
+                        'id': request_id
+                    }), 404
+                
+                # Call the tool function
+                try:
+                    result = tools[method](**params)
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'result': result,
+                        'id': request_id
+                    })
+                except TypeError as e:
+                    logger.error(f"Invalid parameters for {method}: {e}")
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32602,
+                            'message': f'Invalid params: {str(e)}'
+                        },
+                        'id': request_id
+                    }), 400
+                except Exception as e:
+                    logger.error(f"Error executing {method}: {e}", exc_info=True)
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32603,
+                            'message': f'Internal error: {str(e)}'
+                        },
+                        'id': request_id
+                    }), 500
+                    
+            except Exception as e:
+                logger.error(f"JSON-RPC endpoint error: {e}", exc_info=True)
+                return jsonify({
+                    'jsonrpc': '2.0',
+                    'error': {
+                        'code': -32700,
+                        'message': f'Parse error: {str(e)}'
+                    },
+                    'id': None
+                }), 400
     
     def _get_fallback_architecture_distribution(self, models):
         """Get architecture distribution from fallback models."""
@@ -1628,6 +1727,11 @@ class MCPDashboard:
             console.log(`[MCP Dashboard] ${type.toUpperCase()}: ${message}`);
             
             const toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                console.warn('Toast container not found');
+                return;
+            }
+            
             const toastId = 'toast-' + Date.now();
             
             const toastHtml = `
@@ -1644,13 +1748,23 @@ class MCPDashboard:
             
             toastContainer.insertAdjacentHTML('beforeend', toastHtml);
             const toastElement = document.getElementById(toastId);
-            const toast = new bootstrap.Toast(toastElement, { delay: duration });
-            toast.show();
             
-            // Remove toast element after it's hidden
-            toastElement.addEventListener('hidden.bs.toast', () => {
-                toastElement.remove();
-            });
+            // Only use bootstrap if available
+            if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+                const toast = new bootstrap.Toast(toastElement, { delay: duration });
+                toast.show();
+                
+                // Remove toast element after it's hidden
+                toastElement.addEventListener('hidden.bs.toast', () => {
+                    toastElement.remove();
+                });
+            } else {
+                // Fallback: just show and remove after duration
+                toastElement.classList.add('show');
+                setTimeout(() => {
+                    toastElement.remove();
+                }, duration);
+            }
         }
         
         function logUserAction(action, details = {}) {
