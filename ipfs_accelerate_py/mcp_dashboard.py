@@ -8,6 +8,7 @@ AI and GraphRAG services, including the Caselaw GraphRAG system.
 import os
 import logging
 from pathlib import Path
+from dataclasses import asdict, is_dataclass
 
 # Try to import Flask (required for dashboard)
 try:
@@ -392,16 +393,27 @@ class MCPDashboard:
                 if hasattr(scanner, 'model_cache') and model_id in scanner.model_cache:
                     model_data = scanner.model_cache[model_id]
                     
-                    # Handle different cache formats
-                    if hasattr(model_data, 'to_dict'):
-                        model_info = model_data.to_dict()
+                    # Convert dataclass to dict if needed
+                    if is_dataclass(model_data) and not isinstance(model_data, type):
+                        model_info = asdict(model_data)
                     elif isinstance(model_data, dict):
                         model_info = model_data.get('model_info', model_data)
                     else:
                         model_info = {'model_id': model_id}
                     
-                    performance = getattr(scanner, 'performance_cache', {}).get(model_id, {})
-                    compatibility = getattr(scanner, 'compatibility_cache', {}).get(model_id, {})
+                    # Get and convert performance data
+                    performance_data = getattr(scanner, 'performance_cache', {}).get(model_id, {})
+                    if is_dataclass(performance_data) and not isinstance(performance_data, type):
+                        performance = asdict(performance_data)
+                    else:
+                        performance = performance_data if isinstance(performance_data, dict) else {}
+                    
+                    # Get and convert compatibility data
+                    compatibility_data = getattr(scanner, 'compatibility_cache', {}).get(model_id, {})
+                    if is_dataclass(compatibility_data) and not isinstance(compatibility_data, type):
+                        compatibility = asdict(compatibility_data)
+                    else:
+                        compatibility = compatibility_data if isinstance(compatibility_data, dict) else {}
                     
                     details = {
                         'status': 'success',
@@ -423,23 +435,23 @@ class MCPDashboard:
                 if search_results and len(search_results) > 0:
                     result = search_results[0]
                     
-                    # Convert to dict if needed
-                    if hasattr(result, 'to_dict'):
-                        model_info = result.to_dict()
-                    elif hasattr(result, 'model_info'):
-                        if hasattr(result.model_info, 'to_dict'):
-                            model_info = result.model_info.to_dict()
-                        else:
-                            model_info = result.model_info
+                    # search_models returns dicts with model_info already converted
+                    if isinstance(result, dict):
+                        model_info = result.get('model_info', {})
+                        performance = result.get('performance', {})
+                        compatibility = result.get('compatibility', {})
                     else:
-                        model_info = result
+                        # Fallback for unexpected format
+                        model_info = {'model_id': model_id}
+                        performance = {}
+                        compatibility = {}
                     
                     details = {
                         'status': 'success',
                         'model_id': model_id,
                         'model_info': model_info,
-                        'performance': {},
-                        'compatibility': {},
+                        'performance': performance,
+                        'compatibility': compatibility,
                         'download_available': True,
                         'test_available': True
                     }
