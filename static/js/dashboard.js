@@ -865,7 +865,7 @@ function refreshMetrics() {
 
 // Queue Functions
 function refreshQueue() {
-    alert('Refreshing queue status...');
+    console.log('Refreshing queue status...');
 }
 
 function clearQueue() {
