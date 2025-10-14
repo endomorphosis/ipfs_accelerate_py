@@ -1188,6 +1188,27 @@ class HuggingFaceHubScanner:
                 'lastModified': '2024-01-15',
                 'private': False,
                 'gated': False,
+                'description': 'Llama 2 7B Chat - optimized for dialogue use cases. Fine-tuned on over 1 million human annotations.',
+                'model_card': '''# Llama 2 7B Chat
+
+## Model Description
+
+Llama 2 is a collection of pretrained and fine-tuned generative text models ranging in scale from 7 billion to 70 billion parameters. This is the 7B fine-tuned model, optimized for dialogue use cases.
+
+## Intended Use
+
+- AI assistants
+- Chatbots
+- Content generation
+- Code generation
+
+## Training Data
+
+Trained on 2 trillion tokens of text from publicly available sources.
+
+## Safety & Limitations
+
+Fine-tuned with 1 million+ human annotations focused on helpfulness and safety. Use responsibly with appropriate guardrails.'''
             },
             {
                 'id': 'meta-llama/Llama-2-13b-chat-hf',
@@ -1201,6 +1222,21 @@ class HuggingFaceHubScanner:
                 'lastModified': '2024-01-15',
                 'private': False,
                 'gated': False,
+                'description': 'Llama 2 13B Chat - larger variant with improved performance on complex tasks.',
+                'model_card': '''# Llama 2 13B Chat
+
+## Model Description
+
+This is the 13B parameter version of Llama 2 Chat, offering improved performance over the 7B model while maintaining reasonable computational requirements.
+
+## Performance
+
+Generally achieves better results than 7B on reasoning tasks, math problems, and longer context understanding.
+
+## Hardware Requirements
+
+- Minimum: 16GB VRAM (with quantization)
+- Recommended: 24GB+ VRAM for full precision'''
             },
             {
                 'id': 'mistralai/Mistral-7B-Instruct-v0.2',
@@ -1214,6 +1250,26 @@ class HuggingFaceHubScanner:
                 'lastModified': '2024-02-20',
                 'private': False,
                 'gated': False,
+                'description': 'Mistral 7B Instruct v0.2 - efficient 7B model with strong performance on instruction following.',
+                'model_card': '''# Mistral 7B Instruct v0.2
+
+## Model Description
+
+Mistral 7B Instruct v0.2 is an instruction-tuned version of the Mistral 7B model, which outperforms Llama 2 13B on all benchmarks.
+
+## Key Features
+
+- Sliding window attention (4096 tokens)
+- Efficient inference
+- Strong performance on code and reasoning tasks
+- Apache 2.0 license
+
+## Use Cases
+
+- Code generation
+- Question answering
+- Instruction following
+- Creative writing'''
             },
             {
                 'id': 'gpt2',
@@ -1227,6 +1283,27 @@ class HuggingFaceHubScanner:
                 'lastModified': '2023-09-10',
                 'private': False,
                 'gated': False,
+                'description': 'GPT-2 is a transformers model pretrained on a large corpus of English data in a self-supervised fashion.',
+                'model_card': '''# GPT-2
+
+## Model Description
+
+GPT-2 is a transformers model pretrained on a very large corpus of English data in a self-supervised fashion using a causal language modeling (CLM) objective.
+
+## Intended Uses
+
+GPT-2 can be used for text generation. You can prompt the model with text and it will generate continuations.
+
+## Training Data
+
+Trained on WebText, a dataset of 8 million web pages filtered by Reddit submissions with at least 3 karma.
+
+## Model Sizes
+
+- GPT-2 small: 117M parameters
+- GPT-2 medium: 345M parameters
+- GPT-2 large: 762M parameters  
+- GPT-2 XL: 1.5B parameters'''
             },
             # BERT Models
             {
@@ -1241,6 +1318,31 @@ class HuggingFaceHubScanner:
                 'lastModified': '2023-08-15',
                 'private': False,
                 'gated': False,
+                'description': 'BERT base model (uncased). Pretrained model on English language using a masked language modeling (MLM) objective.',
+                'model_card': '''# BERT Base Uncased
+
+## Model Description
+
+BERT base model (uncased) was pretrained on BookCorpus, a dataset consisting of 11,038 unpublished books and English Wikipedia (excluding lists, tables and headers).
+
+## Intended Uses & Limitations
+
+You can use the raw model for masked language modeling, but it's mostly intended to be fine-tuned on a downstream task.
+
+## Training Data
+
+The model was pretrained on:
+- BookCorpus: 800M words
+- English Wikipedia: 2,500M words
+
+## Training Procedure
+
+The model was trained with:
+- Masked language modeling (MLM): 15% of tokens masked
+- Next sentence prediction (NSP)
+- Learning rate: 1e-4
+- Batch size: 256
+- Training steps: 1M'''
             },
             {
                 'id': 'bert-large-uncased',
@@ -1254,6 +1356,26 @@ class HuggingFaceHubScanner:
                 'lastModified': '2023-08-15',
                 'private': False,
                 'gated': False,
+                'description': 'BERT large model (uncased). Larger version with 24-layer, 1024-hidden, 16-heads, 340M parameters.',
+                'model_card': '''# BERT Large Uncased
+
+## Model Description
+
+BERT large model (uncased) is the larger variant of BERT with 24 transformer blocks, hidden size of 1024, and 16 attention heads, totaling 340M parameters.
+
+## Intended Uses & Limitations
+
+Best suited for tasks requiring deeper language understanding. Requires more computational resources than BERT base.
+
+## Training Data
+
+Same as BERT base:
+- BookCorpus: 800M words
+- English Wikipedia: 2,500M words
+
+## Model Performance
+
+Generally achieves better performance than BERT base on most NLP benchmarks, with typical improvements of 1-2% on tasks like GLUE, SQuAD, etc.'''
             },
             # T5 Models
             {
@@ -1335,6 +1457,12 @@ class HuggingFaceHubScanner:
         model_id = api_model.get('id', '')
         tags = api_model.get('tags', [])
         
+        # Check if model card is already in the api_model dict (from static database)
+        # Otherwise, fetch it from HuggingFace
+        model_card = api_model.get('model_card')
+        if not model_card:
+            model_card = self._fetch_model_card(model_id)
+        
         return HuggingFaceModelInfo(
             model_id=model_id,
             model_name=model_id.split('/')[-1] if '/' in model_id else model_id,
@@ -1351,7 +1479,8 @@ class HuggingFaceHubScanner:
             config=api_model.get('config'),
             model_size_mb=None,
             architecture=None,
-            framework=None
+            framework=None,
+            model_card=model_card
         )
     
     def download_model(self, model_id: str, download_dir: Optional[str] = None) -> Dict[str, Any]:
