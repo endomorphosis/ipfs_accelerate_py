@@ -471,6 +471,44 @@ class HuggingFaceHubScanner:
             logger.debug(f"Could not fetch model card for {model_id}: {e}")
             return None
     
+    def _extract_description_from_model_card(self, model_card: str) -> str:
+        """Extract a meaningful description from a model card.
+        
+        Extracts the first substantial paragraph after removing markdown headers,
+        code blocks, and other formatting.
+        """
+        if not model_card or not model_card.strip():
+            return ''
+        
+        # Remove markdown code blocks
+        import re
+        text = re.sub(r'```[\s\S]*?```', '', model_card)
+        
+        # Remove inline code
+        text = re.sub(r'`[^`]+`', '', text)
+        
+        # Remove markdown headers
+        text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
+        
+        # Remove URLs and links
+        text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        
+        # Split into lines and find first substantial paragraph
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        
+        for line in lines:
+            # Skip very short lines (likely headers or single words)
+            if len(line) > 20:
+                # Return first 200 characters of the first substantial line
+                return line[:200].strip()
+        
+        # If no substantial line found, return first non-empty line
+        if lines:
+            return lines[0][:200].strip()
+        
+        return ''
+    
     def _get_detailed_model_info(self, model_id: str) -> Optional[HuggingFaceModelInfo]:
         """Get detailed information about a specific model."""
         try:
@@ -1026,6 +1064,7 @@ class HuggingFaceHubScanner:
         """Search for models with comprehensive filtering.
         
         If cache is empty or has insufficient results, fetches from HuggingFace API.
+        Also validates cached models and refetches data if description or model_card are empty strings.
         """
         results = []
         
@@ -1033,6 +1072,32 @@ class HuggingFaceHubScanner:
         
         # First, search in local cache
         for model_id, info in self.model_cache.items():
+            # Validate and refetch if description and model_card are empty strings
+            needs_refetch = False
+            if (not info.description or info.description.strip() == '') and \
+               (not info.model_card or info.model_card.strip() == ''):
+                logger.info(f"Found model {model_id} with empty description and model_card in cache, will refetch")
+                needs_refetch = True
+            
+            # If refetch needed, try to get fresh data
+            if needs_refetch:
+                try:
+                    # Fetch model card from HuggingFace
+                    fetched_card = self._fetch_model_card(model_id)
+                    if fetched_card and fetched_card.strip():
+                        # Update the cached model info
+                        info.model_card = fetched_card
+                        # Extract description from model card if still empty
+                        if not info.description or info.description.strip() == '':
+                            info.description = self._extract_description_from_model_card(fetched_card)
+                        # Update cache
+                        self.model_cache[model_id] = info
+                        logger.info(f"Successfully updated {model_id} with model card and description")
+                        # Save updated cache
+                        self._save_scan_progress()
+                except Exception as e:
+                    logger.warning(f"Failed to refetch data for {model_id}: {e}")
+            
             score = 0
             
             # Text matching
@@ -1457,16 +1522,32 @@ Generally achieves better performance than BERT base on most NLP benchmarks, wit
         model_id = api_model.get('id', '')
         tags = api_model.get('tags', [])
         
-        # Check if model card is already in the api_model dict (from static database)
-        # Otherwise, fetch it from HuggingFace
-        model_card = api_model.get('model_card')
-        if not model_card:
-            model_card = self._fetch_model_card(model_id)
+        # Get description and model_card, validating for empty strings
+        description = api_model.get('description', '') or ''
+        model_card = api_model.get('model_card') or ''
+        
+        # Check if description is literally an empty string and model_card is also empty/missing
+        # If so, fetch fresh data from HuggingFace to populate these fields
+        if (description == '' or description.strip() == '') and (not model_card or model_card.strip() == ''):
+            logger.info(f"Empty description and model_card detected for {model_id}, fetching from HuggingFace")
+            fetched_card = self._fetch_model_card(model_id)
+            if fetched_card and fetched_card.strip():
+                model_card = fetched_card
+                # Try to extract description from model card if still empty
+                if not description or description.strip() == '':
+                    description = self._extract_description_from_model_card(model_card)
+                    logger.info(f"Extracted description from model card: {description[:100]}...")
+        # If model_card exists in api_model but is empty string, fetch it
+        elif not model_card or model_card.strip() == '':
+            logger.info(f"Empty model_card detected for {model_id}, fetching from HuggingFace")
+            fetched_card = self._fetch_model_card(model_id)
+            if fetched_card and fetched_card.strip():
+                model_card = fetched_card
         
         return HuggingFaceModelInfo(
             model_id=model_id,
             model_name=model_id.split('/')[-1] if '/' in model_id else model_id,
-            description=api_model.get('description', '') or '',
+            description=description,
             pipeline_tag=api_model.get('pipeline_tag', '') or '',
             library_name=api_model.get('library_name', '') or '',
             tags=tags,
