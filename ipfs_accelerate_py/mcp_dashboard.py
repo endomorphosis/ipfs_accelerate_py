@@ -8,6 +8,7 @@ AI and GraphRAG services, including the Caselaw GraphRAG system.
 import os
 import logging
 from pathlib import Path
+from dataclasses import asdict, is_dataclass
 
 # Try to import Flask (required for dashboard)
 try:
@@ -392,16 +393,27 @@ class MCPDashboard:
                 if hasattr(scanner, 'model_cache') and model_id in scanner.model_cache:
                     model_data = scanner.model_cache[model_id]
                     
-                    # Handle different cache formats
-                    if hasattr(model_data, 'to_dict'):
-                        model_info = model_data.to_dict()
+                    # Convert dataclass to dict if needed
+                    if is_dataclass(model_data) and not isinstance(model_data, type):
+                        model_info = asdict(model_data)
                     elif isinstance(model_data, dict):
                         model_info = model_data.get('model_info', model_data)
                     else:
                         model_info = {'model_id': model_id}
                     
-                    performance = getattr(scanner, 'performance_cache', {}).get(model_id, {})
-                    compatibility = getattr(scanner, 'compatibility_cache', {}).get(model_id, {})
+                    # Get and convert performance data
+                    performance_data = getattr(scanner, 'performance_cache', {}).get(model_id, {})
+                    if is_dataclass(performance_data) and not isinstance(performance_data, type):
+                        performance = asdict(performance_data)
+                    else:
+                        performance = performance_data if isinstance(performance_data, dict) else {}
+                    
+                    # Get and convert compatibility data
+                    compatibility_data = getattr(scanner, 'compatibility_cache', {}).get(model_id, {})
+                    if is_dataclass(compatibility_data) and not isinstance(compatibility_data, type):
+                        compatibility = asdict(compatibility_data)
+                    else:
+                        compatibility = compatibility_data if isinstance(compatibility_data, dict) else {}
                     
                     details = {
                         'status': 'success',
@@ -423,23 +435,23 @@ class MCPDashboard:
                 if search_results and len(search_results) > 0:
                     result = search_results[0]
                     
-                    # Convert to dict if needed
-                    if hasattr(result, 'to_dict'):
-                        model_info = result.to_dict()
-                    elif hasattr(result, 'model_info'):
-                        if hasattr(result.model_info, 'to_dict'):
-                            model_info = result.model_info.to_dict()
-                        else:
-                            model_info = result.model_info
+                    # search_models returns dicts with model_info already converted
+                    if isinstance(result, dict):
+                        model_info = result.get('model_info', {})
+                        performance = result.get('performance', {})
+                        compatibility = result.get('compatibility', {})
                     else:
-                        model_info = result
+                        # Fallback for unexpected format
+                        model_info = {'model_id': model_id}
+                        performance = {}
+                        compatibility = {}
                     
                     details = {
                         'status': 'success',
                         'model_id': model_id,
                         'model_info': model_info,
-                        'performance': {},
-                        'compatibility': {},
+                        'performance': performance,
+                        'compatibility': compatibility,
                         'download_available': True,
                         'test_available': True
                     }
@@ -605,6 +617,105 @@ class MCPDashboard:
                 'total_tested': len(results),
                 'operational': sum(1 for r in results if r['status'] == 'operational')
             })
+        
+        @self.app.route('/jsonrpc', methods=['POST'])
+        def jsonrpc_endpoint():
+            """JSON-RPC 2.0 endpoint for MCP tools."""
+            try:
+                data = request.get_json()
+                
+                if not data or 'jsonrpc' not in data or data['jsonrpc'] != '2.0':
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32600,
+                            'message': 'Invalid Request'
+                        },
+                        'id': data.get('id') if data else None
+                    }), 400
+                
+                method = data.get('method')
+                params = data.get('params', {})
+                request_id = data.get('id')
+                
+                logger.info(f"JSON-RPC request: method={method}, params={params}")
+                
+                # Lazy import MCP tools wrapper
+                try:
+                    from ipfs_accelerate_py.mcp.tools.model_tools_wrapper import (
+                        search_models_tool,
+                        recommend_models_tool,
+                        get_model_details_tool,
+                        get_model_stats_tool
+                    )
+                except ImportError as e:
+                    logger.error(f"Failed to import MCP tools: {e}")
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32603,
+                            'message': f'Internal error: MCP tools not available - {str(e)}'
+                        },
+                        'id': request_id
+                    }), 500
+                
+                # Map methods to tool functions
+                tools = {
+                    'search_models': search_models_tool,
+                    'recommend_models': recommend_models_tool,
+                    'get_model_details': get_model_details_tool,
+                    'get_model_stats': get_model_stats_tool
+                }
+                
+                if method not in tools:
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32601,
+                            'message': f'Method not found: {method}'
+                        },
+                        'id': request_id
+                    }), 404
+                
+                # Call the tool function
+                try:
+                    result = tools[method](**params)
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'result': result,
+                        'id': request_id
+                    })
+                except TypeError as e:
+                    logger.error(f"Invalid parameters for {method}: {e}")
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32602,
+                            'message': f'Invalid params: {str(e)}'
+                        },
+                        'id': request_id
+                    }), 400
+                except Exception as e:
+                    logger.error(f"Error executing {method}: {e}", exc_info=True)
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32603,
+                            'message': f'Internal error: {str(e)}'
+                        },
+                        'id': request_id
+                    }), 500
+                    
+            except Exception as e:
+                logger.error(f"JSON-RPC endpoint error: {e}", exc_info=True)
+                return jsonify({
+                    'jsonrpc': '2.0',
+                    'error': {
+                        'code': -32700,
+                        'message': f'Parse error: {str(e)}'
+                    },
+                    'id': None
+                }), 400
     
     def _get_fallback_architecture_distribution(self, models):
         """Get architecture distribution from fallback models."""
@@ -1355,6 +1466,7 @@ class MCPDashboard:
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="/static/js/mcp-sdk.js"></script>
     <style>
         :root {
             --primary: #1e40af;
@@ -1607,11 +1719,19 @@ class MCPDashboard:
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Initialize MCP Client
+        const mcpClient = new MCPClient('/jsonrpc');
+        
         // Utility functions for user feedback
         function showToast(message, type = 'info', duration = 5000) {
             console.log(`[MCP Dashboard] ${type.toUpperCase()}: ${message}`);
             
             const toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                console.warn('Toast container not found');
+                return;
+            }
+            
             const toastId = 'toast-' + Date.now();
             
             const toastHtml = `
@@ -1628,13 +1748,23 @@ class MCPDashboard:
             
             toastContainer.insertAdjacentHTML('beforeend', toastHtml);
             const toastElement = document.getElementById(toastId);
-            const toast = new bootstrap.Toast(toastElement, { delay: duration });
-            toast.show();
             
-            // Remove toast element after it's hidden
-            toastElement.addEventListener('hidden.bs.toast', () => {
-                toastElement.remove();
-            });
+            // Only use bootstrap if available
+            if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+                const toast = new bootstrap.Toast(toastElement, { delay: duration });
+                toast.show();
+                
+                // Remove toast element after it's hidden
+                toastElement.addEventListener('hidden.bs.toast', () => {
+                    toastElement.remove();
+                });
+            } else {
+                // Fallback: just show and remove after duration
+                toastElement.classList.add('show');
+                setTimeout(() => {
+                    toastElement.remove();
+                }, duration);
+            }
         }
         
         function logUserAction(action, details = {}) {
@@ -1642,7 +1772,7 @@ class MCPDashboard:
         }
         
         // Search functionality with proper logging and error handling
-        function searchModels() {
+        async function searchModels() {
             const query = document.getElementById('searchInput').value.trim();
             const taskFilter = document.getElementById('taskFilter').value;
             const hardwareFilter = document.getElementById('hardwareFilter').value;
@@ -1660,53 +1790,125 @@ class MCPDashboard:
             
             showToast(`Searching for models: "${query}"...`, 'info', 3000);
             
-            const params = new URLSearchParams({
-                q: query,
-                limit: '20'
-            });
+            console.log(`[MCP Dashboard] Making MCP search request via SDK`);
             
-            if (taskFilter) params.append('task', taskFilter);
-            if (hardwareFilter) params.append('hardware', hardwareFilter);
-            
-            console.log(`[MCP Dashboard] Making search request to /api/mcp/models/search?${params}`);
-            
-            fetch(`/api/mcp/models/search?${params}`)
-                .then(response => {
-                    console.log(`[MCP Dashboard] Search response status: ${response.status}`);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log(`[MCP Dashboard] Search results received:`, data);
-                    
-                    if (data.error) {
-                        showToast(`Search error: ${data.error}`, 'error');
-                        resultsDiv.innerHTML = `<div class="alert alert-warning">
-                            <h5><i class="fas fa-exclamation-triangle me-2"></i>Search Error</h5>
-                            <p>${data.error}</p>
-                            <p class="mb-0"><small>Check the browser console for more details.</small></p>
-                        </div>`;
-                    } else {
-                        displaySearchResults(data.results, query);
-                        showToast(`Found ${data.results ? data.results.length : 0} models for "${query}"`, 'success');
-                    }
-                })
-                .catch(error => {
-                    console.error('[MCP Dashboard] Search error:', error);
-                    showToast(`Search failed: ${error.message}`, 'error');
-                    resultsDiv.innerHTML = `<div class="alert alert-danger">
-                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Search Failed</h5>
-                        <p>Unable to search for models. This might be because:</p>
-                        <ul>
-                            <li>The HuggingFace Hub scanner is not available</li>
-                            <li>Network connection issues</li>
-                            <li>Server configuration problems</li>
-                        </ul>
-                        <p class="mb-0"><small>Error: ${error.message}</small></p>
-                    </div>`;
+            try {
+                // Use MCP client to call the search_models tool
+                const data = await mcpClient.request('search_models', {
+                    query: query,
+                    task_filter: taskFilter || null,
+                    hardware_filter: hardwareFilter || null,
+                    limit: 20
                 });
+                
+                console.log(`[MCP Dashboard] Search results received via MCP:`, data);
+                
+                if (data.status === 'error') {
+                    showToast(`Search error: ${data.error}`, 'error');
+                    resultsDiv.innerHTML = `<div class="alert alert-warning">
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Search Error</h5>
+                        <p>${data.error}</p>
+                        <p class="mb-0"><small>Check the browser console for more details.</small></p>
+                    </div>`;
+                } else {
+                    displaySearchResults(data.results, query);
+                    showToast(`Found ${data.results ? data.results.length : 0} models for "${query}"`, 'success');
+                }
+            } catch (error) {
+                console.error('[MCP Dashboard] MCP search error:', error);
+                showToast(`Search failed: ${error.message}`, 'error');
+                resultsDiv.innerHTML = `<div class="alert alert-danger">
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i>Search Failed</h5>
+                    <p>Unable to search for models. This might be because:</p>
+                    <ul>
+                        <li>The MCP server is not running</li>
+                        <li>The HuggingFace Hub scanner is not available</li>
+                        <li>Network connection issues</li>
+                        <li>Server configuration problems</li>
+                    </ul>
+                    <p class="mb-0"><small>Error: ${error.message}</small></p>
+                </div>`;
+            }
+        }
+        
+        function truncateText(text, maxLength = 150) {
+            if (!text || text.length <= maxLength) {
+                return text || 'No description available';
+            }
+            return text.substring(0, maxLength).trim() + '...';
+        }
+        
+        function extractSummaryFromModelCard(modelCard, maxLength = 150) {
+            if (!modelCard) {
+                return null;
+            }
+            
+            // Remove markdown headers (# ## ###)
+            let text = modelCard.replace(/^#+\s+/gm, '');
+            
+            // Remove code blocks
+            text = text.replace(/```[\s\S]*?```/g, '');
+            
+            // Remove inline code
+            text = text.replace(/`[^`]+`/g, '');
+            
+            // Remove URLs
+            text = text.replace(/https?:\/\/[^\s]+/g, '');
+            
+            // Remove markdown links [text](url)
+            text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+            
+            // Remove extra whitespace and newlines
+            text = text.replace(/\s+/g, ' ').trim();
+            
+            // Get first meaningful sentence or paragraph
+            const sentences = text.split(/[.!?]\s+/);
+            let summary = '';
+            
+            for (const sentence of sentences) {
+                const trimmed = sentence.trim();
+                // Skip very short sentences (likely headers or fragments)
+                if (trimmed.length > 20) {
+                    summary = trimmed;
+                    break;
+                }
+            }
+            
+            // If no good sentence found, just take the first part
+            if (!summary) {
+                summary = text.substring(0, maxLength * 2);
+            }
+            
+            // Truncate to maxLength
+            if (summary.length > maxLength) {
+                summary = summary.substring(0, maxLength).trim() + '...';
+            }
+            
+            return summary || null;
+        }
+        
+        function getModelDescription(modelInfo, maxLength = 150) {
+            // First, try the description field
+            if (modelInfo.description) {
+                return truncateText(modelInfo.description, maxLength);
+            }
+            
+            // If no description, try to extract from model_card
+            if (modelInfo.model_card) {
+                const summary = extractSummaryFromModelCard(modelInfo.model_card, maxLength);
+                if (summary) {
+                    return summary;
+                }
+            }
+            
+            // Fallback to "No description available"
+            return 'No description available';
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
         
         function displaySearchResults(results, query) {
@@ -1723,6 +1925,7 @@ class MCPDashboard:
                 const modelInfo = result.model_info || {};
                 const performance = result.performance || {};
                 const compatibility = result.compatibility || {};
+                const description = getModelDescription(modelInfo);
                 
                 html += `
                     <div class="model-card">
@@ -1731,7 +1934,7 @@ class MCPDashboard:
                             <span class="badge bg-primary">${modelInfo.pipeline_tag || 'Unknown'}</span>
                         </div>
                         
-                        <p class="text-muted mb-2">${modelInfo.description || 'No description available'}</p>
+                        <p class="text-muted mb-2">${description}</p>
                         
                         <div class="row mb-2">
                             <div class="col-md-6">
@@ -1760,6 +1963,9 @@ class MCPDashboard:
                         </div>
                         
                         <div class="mt-2">
+                            <button class="btn btn-sm btn-info me-2" onclick="showModelDetails('${result.model_id}')">
+                                <i class="fas fa-info-circle me-1"></i>View Details
+                            </button>
                             <a href="https://huggingface.co/${result.model_id}" target="_blank" class="btn btn-sm btn-outline-primary me-2">
                                 <i class="fas fa-external-link-alt me-1"></i>View on HuggingFace
                             </a>
@@ -1781,7 +1987,7 @@ class MCPDashboard:
             resultsDiv.innerHTML = html;
         }
         
-        function getRecommendations() {
+        async function getRecommendations() {
             const taskType = document.getElementById('taskFilter').value || 'text-generation';
             const hardware = document.getElementById('hardwareFilter').value || 'cpu';
             const performance = document.getElementById('performanceFilter').value || 'balanced';
@@ -1793,53 +1999,46 @@ class MCPDashboard:
             
             showToast(`Getting AI recommendations for ${taskType} on ${hardware}...`, 'info', 3000);
             
-            const params = new URLSearchParams({
-                task_type: taskType,
-                hardware: hardware,
-                performance: performance,
-                limit: '5'
-            });
+            console.log(`[MCP Dashboard] Getting recommendations via MCP with params:`, { taskType, hardware, performance });
             
-            console.log(`[MCP Dashboard] Getting recommendations with params:`, { taskType, hardware, performance });
-            
-            fetch(`/api/mcp/models/recommend?${params}`)
-                .then(response => {
-                    console.log(`[MCP Dashboard] Recommendations response status: ${response.status}`);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log(`[MCP Dashboard] Recommendations data:`, data);
-                    
-                    if (data.error) {
-                        showToast(`Recommendations error: ${data.error}`, 'error');
-                        resultsDiv.innerHTML = `<div class="alert alert-warning">
-                            <h5><i class="fas fa-exclamation-triangle me-2"></i>Recommendations Error</h5>
-                            <p>${data.error}</p>
-                            <p class="mb-0"><small>This might be because the model recommendation system is not available.</small></p>
-                        </div>`;
-                    } else {
-                        displayRecommendations(data.recommendations, data.context);
-                        const count = data.recommendations ? data.recommendations.length : 0;
-                        showToast(`Found ${count} AI recommendations`, 'success');
-                    }
-                })
-                .catch(error => {
-                    console.error('[MCP Dashboard] Recommendation error:', error);
-                    showToast(`Recommendations failed: ${error.message}`, 'error');
-                    resultsDiv.innerHTML = `<div class="alert alert-danger">
-                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Recommendations Failed</h5>
-                        <p>Unable to get AI recommendations. This might be because:</p>
-                        <ul>
-                            <li>The model recommendation system is not available</li>
-                            <li>The HuggingFace Hub scanner is not available</li>
-                            <li>Network connection issues</li>
-                        </ul>
-                        <p class="mb-0"><small>Error: ${error.message}</small></p>
-                    </div>`;
+            try {
+                // Use MCP client to call the recommend_models tool
+                const data = await mcpClient.request('recommend_models', {
+                    task_type: taskType,
+                    hardware: hardware,
+                    performance: performance,
+                    limit: 5
                 });
+                
+                console.log(`[MCP Dashboard] Recommendations data via MCP:`, data);
+                
+                if (data.status === 'error') {
+                    showToast(`Recommendations error: ${data.error}`, 'error');
+                    resultsDiv.innerHTML = `<div class="alert alert-warning">
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Recommendations Error</h5>
+                        <p>${data.error}</p>
+                        <p class="mb-0"><small>This might be because the model recommendation system is not available.</small></p>
+                    </div>`;
+                } else {
+                    displayRecommendations(data.recommendations, data.context);
+                    const count = data.recommendations ? data.recommendations.length : 0;
+                    showToast(`Found ${count} AI recommendations`, 'success');
+                }
+            } catch (error) {
+                console.error('[MCP Dashboard] MCP recommendation error:', error);
+                showToast(`Recommendations failed: ${error.message}`, 'error');
+                resultsDiv.innerHTML = `<div class="alert alert-danger">
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i>Recommendations Failed</h5>
+                    <p>Unable to get AI recommendations. This might be because:</p>
+                    <ul>
+                        <li>The MCP server is not running</li>
+                        <li>The model recommendation system is not available</li>
+                        <li>The HuggingFace Hub scanner is not available</li>
+                        <li>Network connection issues</li>
+                    </ul>
+                    <p class="mb-0"><small>Error: ${error.message}</small></p>
+                </div>`;
+            }
         }
         
         function displayRecommendations(recommendations, context) {
@@ -1861,6 +2060,7 @@ class MCPDashboard:
                 const modelInfo = rec.model_info || {};
                 const performance = rec.performance || {};
                 const compatibility = rec.compatibility || {};
+                const description = getModelDescription(modelInfo);
                 
                 html += `
                     <div class="model-card">
@@ -1875,7 +2075,7 @@ class MCPDashboard:
                             </div>
                         </div>
                         
-                        <p class="text-muted mb-2">${modelInfo.description || 'No description available'}</p>
+                        <p class="text-muted mb-2">${description}</p>
                         
                         <div class="row mb-2">
                             <div class="col-md-4">
@@ -1907,6 +2107,9 @@ class MCPDashboard:
                         </div>
                         
                         <div class="mt-2">
+                            <button class="btn btn-sm btn-info me-2" onclick="showModelDetails('${rec.model_id}')">
+                                <i class="fas fa-info-circle me-1"></i>View Details
+                            </button>
                             <a href="https://huggingface.co/${rec.model_id}" target="_blank" class="btn btn-sm btn-outline-primary">
                                 <i class="fas fa-external-link-alt me-1"></i>View on HuggingFace
                             </a>
@@ -2172,6 +2375,141 @@ class MCPDashboard:
             
             // Scroll to results
             resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Show model details modal
+        async function showModelDetails(modelId) {
+            logUserAction('show_model_details', { modelId });
+            
+            showToast(`Loading details for ${modelId}...`, 'info', 2000);
+            
+            try {
+                // Use MCP client to call the get_model_details tool
+                const data = await mcpClient.request('get_model_details', {
+                    model_id: modelId
+                });
+                
+                if (data.status === 'error') {
+                    showToast(`Failed to load model details: ${data.error}`, 'error');
+                } else {
+                    displayModelDetailsModal(data);
+                }
+            } catch (error) {
+                console.error('[MCP Dashboard] MCP error fetching model details:', error);
+                showToast(`Failed to load model details: ${error.message}`, 'error');
+            }
+        }
+        
+        // Display model details in a modal
+        function displayModelDetailsModal(modelData) {
+            const modelInfo = modelData.model_info || {};
+            const performance = modelData.performance || {};
+            const compatibility = modelData.compatibility || {};
+            
+            // Create modal HTML
+            const modalHtml = `
+                <div class="modal fade" id="modelDetailsModal" tabindex="-1" aria-labelledby="modelDetailsModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="modelDetailsModalLabel">
+                                    <i class="fas fa-robot me-2"></i>${modelInfo.model_name || modelData.model_id}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <!-- Full Description -->
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-file-alt me-2"></i>Description</h6>
+                                    <p>${modelInfo.description || (modelInfo.model_card ? extractSummaryFromModelCard(modelInfo.model_card, 500) : null) || 'No description available'}</p>
+                                </div>
+                                
+                                <!-- Model Card -->
+                                ${modelInfo.model_card ? `
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-book me-2"></i>Model Card</h6>
+                                    <div class="card">
+                                        <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                                            <pre style="white-space: pre-wrap; word-wrap: break-word; font-size: 0.9rem;">${escapeHtml(modelInfo.model_card)}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                                
+                                <!-- Model Info -->
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-info-circle me-2"></i>Model Information</h6>
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            <tr><td><strong>Model ID:</strong></td><td>${modelData.model_id}</td></tr>
+                                            <tr><td><strong>Pipeline Tag:</strong></td><td>${modelInfo.pipeline_tag || 'N/A'}</td></tr>
+                                            <tr><td><strong>Architecture:</strong></td><td>${modelInfo.architecture || 'N/A'}</td></tr>
+                                            <tr><td><strong>Library:</strong></td><td>${modelInfo.library_name || 'N/A'}</td></tr>
+                                            <tr><td><strong>Framework:</strong></td><td>${modelInfo.framework || 'N/A'}</td></tr>
+                                            <tr><td><strong>Downloads:</strong></td><td>${(modelInfo.downloads || 0).toLocaleString()}</td></tr>
+                                            <tr><td><strong>Likes:</strong></td><td>${(modelInfo.likes || 0).toLocaleString()}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <!-- Performance Metrics -->
+                                ${Object.keys(performance).length > 0 ? `
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-tachometer-alt me-2"></i>Performance Metrics</h6>
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            ${performance.throughput_tokens_per_sec ? `<tr><td><strong>Throughput:</strong></td><td>${performance.throughput_tokens_per_sec.toFixed(1)} tokens/sec</td></tr>` : ''}
+                                            ${performance.inference_time_ms ? `<tr><td><strong>Inference Time:</strong></td><td>${performance.inference_time_ms.toFixed(1)}ms</td></tr>` : ''}
+                                            ${performance.memory_usage_mb ? `<tr><td><strong>Memory Usage:</strong></td><td>${performance.memory_usage_mb.toFixed(0)}MB</td></tr>` : ''}
+                                            ${performance.gpu_memory_mb ? `<tr><td><strong>GPU Memory:</strong></td><td>${performance.gpu_memory_mb.toFixed(0)}MB</td></tr>` : ''}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                ` : ''}
+                                
+                                <!-- Hardware Compatibility -->
+                                ${Object.keys(compatibility).length > 0 ? `
+                                <div class="mb-4">
+                                    <h6><i class="fas fa-microchip me-2"></i>Hardware Compatibility</h6>
+                                    <table class="table table-sm">
+                                        <tbody>
+                                            ${compatibility.supports_cpu ? `<tr><td><strong>CPU:</strong></td><td><i class="fas fa-check text-success"></i> Supported</td></tr>` : ''}
+                                            ${compatibility.supports_gpu ? `<tr><td><strong>GPU:</strong></td><td><i class="fas fa-check text-success"></i> Supported</td></tr>` : ''}
+                                            ${compatibility.min_ram_gb ? `<tr><td><strong>Min RAM:</strong></td><td>${compatibility.min_ram_gb}GB</td></tr>` : ''}
+                                            ${compatibility.min_vram_gb ? `<tr><td><strong>Min VRAM:</strong></td><td>${compatibility.min_vram_gb}GB</td></tr>` : ''}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="modal-footer">
+                                <a href="https://huggingface.co/${modelData.model_id}" target="_blank" class="btn btn-primary">
+                                    <i class="fas fa-external-link-alt me-1"></i>View on HuggingFace
+                                </a>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove any existing modal
+            const existingModal = document.getElementById('modelDetailsModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to document
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('modelDetailsModal'));
+            modal.show();
+            
+            // Clean up after modal is hidden
+            document.getElementById('modelDetailsModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
         }
         
         // Allow Enter key to trigger search

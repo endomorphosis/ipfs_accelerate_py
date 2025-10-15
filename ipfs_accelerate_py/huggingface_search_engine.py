@@ -63,6 +63,7 @@ class HuggingFaceModelInfo:
     model_size: Optional[int] = None
     config: Optional[Dict[str, Any]] = None
     card_data: Optional[Dict[str, Any]] = None
+    model_card: Optional[str] = None
     siblings: List[Dict[str, Any]] = None
     repository_structure: Optional[Dict[str, Any]] = None
     ipfs_cids: Optional[Dict[str, str]] = None
@@ -280,6 +281,12 @@ class HuggingFaceModelSearchEngine:
         if model_info.description:
             desc_words = model_info.description.lower().split()
             terms.extend([word.strip(".,!?()[]{}") for word in desc_words])
+        
+        # Add model card words (limited to avoid index bloat)
+        if model_info.model_card:
+            # Extract first 1000 words from model card for indexing
+            card_words = model_info.model_card.lower().split()[:1000]
+            terms.extend([word.strip(".,!?()[]{}#*-_") for word in card_words if len(word) > 3])
         
         # Update index
         for term in set(terms):  # Remove duplicates

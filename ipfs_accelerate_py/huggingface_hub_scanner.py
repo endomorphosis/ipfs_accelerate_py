@@ -100,6 +100,7 @@ if not HAVE_HF_SEARCH:
         private: bool = False
         gated: bool = False
         config: Dict[str, Any] = None
+        model_card: Optional[str] = None
         model_size_mb: Optional[float] = None
         architecture: Optional[str] = None
         framework: Optional[str] = None
@@ -447,6 +448,67 @@ class HuggingFaceHubScanner:
             with self._lock:
                 self.scan_stats['errors'] += 1
     
+    def _fetch_model_card(self, model_id: str) -> Optional[str]:
+        """Fetch the model card (README.md) from HuggingFace."""
+        try:
+            # Try to fetch README.md from the model repository
+            readme_url = f"https://huggingface.co/{model_id}/raw/main/README.md"
+            response = requests.get(readme_url, timeout=10)
+            
+            if response.status_code == 200:
+                return response.text
+            
+            # Fallback: try 'master' branch
+            readme_url = f"https://huggingface.co/{model_id}/raw/master/README.md"
+            response = requests.get(readme_url, timeout=10)
+            
+            if response.status_code == 200:
+                return response.text
+                
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Could not fetch model card for {model_id}: {e}")
+            return None
+    
+    def _extract_description_from_model_card(self, model_card: str) -> str:
+        """Extract a meaningful description from a model card.
+        
+        Extracts the first substantial paragraph after removing markdown headers,
+        code blocks, and other formatting.
+        """
+        if not model_card or not model_card.strip():
+            return ''
+        
+        # Remove markdown code blocks
+        import re
+        text = re.sub(r'```[\s\S]*?```', '', model_card)
+        
+        # Remove inline code
+        text = re.sub(r'`[^`]+`', '', text)
+        
+        # Remove markdown headers
+        text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
+        
+        # Remove URLs and links
+        text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        
+        # Split into lines and find first substantial paragraph
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        
+        for line in lines:
+            # Skip very short lines (likely headers or single words)
+            if len(line) > 20:
+                # Return first 200 characters of the first substantial line
+                return line[:200].strip()
+        
+        # If no substantial line found, return first non-empty line
+        if lines:
+            return lines[0][:200].strip()
+        
+        return ''
+    
     def _get_detailed_model_info(self, model_id: str) -> Optional[HuggingFaceModelInfo]:
         """Get detailed information about a specific model."""
         try:
@@ -459,7 +521,11 @@ class HuggingFaceHubScanner:
                 )
                 
                 if models_info and len(models_info) > 0:
-                    return models_info[0]
+                    # Fetch model card if not already present
+                    model_info = models_info[0]
+                    if not model_info.model_card:
+                        model_info.model_card = self._fetch_model_card(model_id)
+                    return model_info
             
             # Fallback: direct API call
             url = f"https://huggingface.co/api/models/{model_id}"
@@ -467,6 +533,9 @@ class HuggingFaceHubScanner:
             response.raise_for_status()
             
             model_info = response.json()
+            
+            # Fetch model card
+            model_card = self._fetch_model_card(model_id)
             
             # Convert to HuggingFaceModelInfo format
             return HuggingFaceModelInfo(
@@ -485,7 +554,8 @@ class HuggingFaceHubScanner:
                 config=model_info.get('config', {}),
                 model_size_mb=self._estimate_model_size(model_info),
                 architecture=self._extract_architecture(model_info),
-                framework=self._extract_framework(model_info)
+                framework=self._extract_framework(model_info),
+                model_card=model_card
             )
             
         except Exception as e:
@@ -994,6 +1064,7 @@ class HuggingFaceHubScanner:
         """Search for models with comprehensive filtering.
         
         If cache is empty or has insufficient results, fetches from HuggingFace API.
+        Also validates cached models and refetches data if description or model_card are empty strings.
         """
         results = []
         
@@ -1001,6 +1072,32 @@ class HuggingFaceHubScanner:
         
         # First, search in local cache
         for model_id, info in self.model_cache.items():
+            # Validate and refetch if description and model_card are empty strings
+            needs_refetch = False
+            if (not info.description or info.description.strip() == '') and \
+               (not info.model_card or info.model_card.strip() == ''):
+                logger.info(f"Found model {model_id} with empty description and model_card in cache, will refetch")
+                needs_refetch = True
+            
+            # If refetch needed, try to get fresh data
+            if needs_refetch:
+                try:
+                    # Fetch model card from HuggingFace
+                    fetched_card = self._fetch_model_card(model_id)
+                    if fetched_card and fetched_card.strip():
+                        # Update the cached model info
+                        info.model_card = fetched_card
+                        # Extract description from model card if still empty
+                        if not info.description or info.description.strip() == '':
+                            info.description = self._extract_description_from_model_card(fetched_card)
+                        # Update cache
+                        self.model_cache[model_id] = info
+                        logger.info(f"Successfully updated {model_id} with model card and description")
+                        # Save updated cache
+                        self._save_scan_progress()
+                except Exception as e:
+                    logger.warning(f"Failed to refetch data for {model_id}: {e}")
+            
             score = 0
             
             # Text matching
@@ -1010,6 +1107,9 @@ class HuggingFaceHubScanner:
                 score += 1
             if any(query_lower in tag.lower() for tag in info.tags):
                 score += 1
+            # Search in model card content (lower weight)
+            if info.model_card and query_lower in info.model_card.lower():
+                score += 0.5
             
             # Task filtering
             if task_filter and info.pipeline_tag != task_filter:
@@ -1153,6 +1253,27 @@ class HuggingFaceHubScanner:
                 'lastModified': '2024-01-15',
                 'private': False,
                 'gated': False,
+                'description': 'Llama 2 7B Chat - optimized for dialogue use cases. Fine-tuned on over 1 million human annotations.',
+                'model_card': '''# Llama 2 7B Chat
+
+## Model Description
+
+Llama 2 is a collection of pretrained and fine-tuned generative text models ranging in scale from 7 billion to 70 billion parameters. This is the 7B fine-tuned model, optimized for dialogue use cases.
+
+## Intended Use
+
+- AI assistants
+- Chatbots
+- Content generation
+- Code generation
+
+## Training Data
+
+Trained on 2 trillion tokens of text from publicly available sources.
+
+## Safety & Limitations
+
+Fine-tuned with 1 million+ human annotations focused on helpfulness and safety. Use responsibly with appropriate guardrails.'''
             },
             {
                 'id': 'meta-llama/Llama-2-13b-chat-hf',
@@ -1166,6 +1287,21 @@ class HuggingFaceHubScanner:
                 'lastModified': '2024-01-15',
                 'private': False,
                 'gated': False,
+                'description': 'Llama 2 13B Chat - larger variant with improved performance on complex tasks.',
+                'model_card': '''# Llama 2 13B Chat
+
+## Model Description
+
+This is the 13B parameter version of Llama 2 Chat, offering improved performance over the 7B model while maintaining reasonable computational requirements.
+
+## Performance
+
+Generally achieves better results than 7B on reasoning tasks, math problems, and longer context understanding.
+
+## Hardware Requirements
+
+- Minimum: 16GB VRAM (with quantization)
+- Recommended: 24GB+ VRAM for full precision'''
             },
             {
                 'id': 'mistralai/Mistral-7B-Instruct-v0.2',
@@ -1179,6 +1315,26 @@ class HuggingFaceHubScanner:
                 'lastModified': '2024-02-20',
                 'private': False,
                 'gated': False,
+                'description': 'Mistral 7B Instruct v0.2 - efficient 7B model with strong performance on instruction following.',
+                'model_card': '''# Mistral 7B Instruct v0.2
+
+## Model Description
+
+Mistral 7B Instruct v0.2 is an instruction-tuned version of the Mistral 7B model, which outperforms Llama 2 13B on all benchmarks.
+
+## Key Features
+
+- Sliding window attention (4096 tokens)
+- Efficient inference
+- Strong performance on code and reasoning tasks
+- Apache 2.0 license
+
+## Use Cases
+
+- Code generation
+- Question answering
+- Instruction following
+- Creative writing'''
             },
             {
                 'id': 'gpt2',
@@ -1192,6 +1348,27 @@ class HuggingFaceHubScanner:
                 'lastModified': '2023-09-10',
                 'private': False,
                 'gated': False,
+                'description': 'GPT-2 is a transformers model pretrained on a large corpus of English data in a self-supervised fashion.',
+                'model_card': '''# GPT-2
+
+## Model Description
+
+GPT-2 is a transformers model pretrained on a very large corpus of English data in a self-supervised fashion using a causal language modeling (CLM) objective.
+
+## Intended Uses
+
+GPT-2 can be used for text generation. You can prompt the model with text and it will generate continuations.
+
+## Training Data
+
+Trained on WebText, a dataset of 8 million web pages filtered by Reddit submissions with at least 3 karma.
+
+## Model Sizes
+
+- GPT-2 small: 117M parameters
+- GPT-2 medium: 345M parameters
+- GPT-2 large: 762M parameters  
+- GPT-2 XL: 1.5B parameters'''
             },
             # BERT Models
             {
@@ -1206,6 +1383,31 @@ class HuggingFaceHubScanner:
                 'lastModified': '2023-08-15',
                 'private': False,
                 'gated': False,
+                'description': 'BERT base model (uncased). Pretrained model on English language using a masked language modeling (MLM) objective.',
+                'model_card': '''# BERT Base Uncased
+
+## Model Description
+
+BERT base model (uncased) was pretrained on BookCorpus, a dataset consisting of 11,038 unpublished books and English Wikipedia (excluding lists, tables and headers).
+
+## Intended Uses & Limitations
+
+You can use the raw model for masked language modeling, but it's mostly intended to be fine-tuned on a downstream task.
+
+## Training Data
+
+The model was pretrained on:
+- BookCorpus: 800M words
+- English Wikipedia: 2,500M words
+
+## Training Procedure
+
+The model was trained with:
+- Masked language modeling (MLM): 15% of tokens masked
+- Next sentence prediction (NSP)
+- Learning rate: 1e-4
+- Batch size: 256
+- Training steps: 1M'''
             },
             {
                 'id': 'bert-large-uncased',
@@ -1219,6 +1421,26 @@ class HuggingFaceHubScanner:
                 'lastModified': '2023-08-15',
                 'private': False,
                 'gated': False,
+                'description': 'BERT large model (uncased). Larger version with 24-layer, 1024-hidden, 16-heads, 340M parameters.',
+                'model_card': '''# BERT Large Uncased
+
+## Model Description
+
+BERT large model (uncased) is the larger variant of BERT with 24 transformer blocks, hidden size of 1024, and 16 attention heads, totaling 340M parameters.
+
+## Intended Uses & Limitations
+
+Best suited for tasks requiring deeper language understanding. Requires more computational resources than BERT base.
+
+## Training Data
+
+Same as BERT base:
+- BookCorpus: 800M words
+- English Wikipedia: 2,500M words
+
+## Model Performance
+
+Generally achieves better performance than BERT base on most NLP benchmarks, with typical improvements of 1-2% on tasks like GLUE, SQuAD, etc.'''
             },
             # T5 Models
             {
@@ -1300,10 +1522,32 @@ class HuggingFaceHubScanner:
         model_id = api_model.get('id', '')
         tags = api_model.get('tags', [])
         
+        # Get description and model_card, validating for empty strings
+        description = api_model.get('description', '') or ''
+        model_card = api_model.get('model_card') or ''
+        
+        # Check if description is literally an empty string and model_card is also empty/missing
+        # If so, fetch fresh data from HuggingFace to populate these fields
+        if (description == '' or description.strip() == '') and (not model_card or model_card.strip() == ''):
+            logger.info(f"Empty description and model_card detected for {model_id}, fetching from HuggingFace")
+            fetched_card = self._fetch_model_card(model_id)
+            if fetched_card and fetched_card.strip():
+                model_card = fetched_card
+                # Try to extract description from model card if still empty
+                if not description or description.strip() == '':
+                    description = self._extract_description_from_model_card(model_card)
+                    logger.info(f"Extracted description from model card: {description[:100]}...")
+        # If model_card exists in api_model but is empty string, fetch it
+        elif not model_card or model_card.strip() == '':
+            logger.info(f"Empty model_card detected for {model_id}, fetching from HuggingFace")
+            fetched_card = self._fetch_model_card(model_id)
+            if fetched_card and fetched_card.strip():
+                model_card = fetched_card
+        
         return HuggingFaceModelInfo(
             model_id=model_id,
             model_name=model_id.split('/')[-1] if '/' in model_id else model_id,
-            description=api_model.get('description', '') or '',
+            description=description,
             pipeline_tag=api_model.get('pipeline_tag', '') or '',
             library_name=api_model.get('library_name', '') or '',
             tags=tags,
@@ -1316,7 +1560,8 @@ class HuggingFaceHubScanner:
             config=api_model.get('config'),
             model_size_mb=None,
             architecture=None,
-            framework=None
+            framework=None,
+            model_card=model_card
         )
     
     def download_model(self, model_id: str, download_dir: Optional[str] = None) -> Dict[str, Any]:

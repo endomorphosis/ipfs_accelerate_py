@@ -277,6 +277,7 @@ class ModelMetadata:
     source_url: Optional[str] = None
     license: Optional[str] = None
     description: str = ""
+    model_card: Optional[str] = None
     repository_structure: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -381,6 +382,7 @@ class ModelManager:
                     source_url VARCHAR,
                     license VARCHAR,
                     description TEXT,
+                    model_card TEXT,
                     repository_structure JSON,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
@@ -511,7 +513,7 @@ class ModelManager:
                 
                 # Insert or update
                 self.con.execute("""
-                    INSERT OR REPLACE INTO model_metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO model_metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, tuple(data.values()))
             
             logger.info(f"Saved {len(self.models)} models to database")
