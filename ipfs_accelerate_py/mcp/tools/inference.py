@@ -36,18 +36,6 @@ except ImportError as e:
 
 def register_tools(mcp):
     """Register inference-related tools with the MCP server"""
-    """
-    Set the IPFS Accelerate instance
-    
-    Args:
-        ipfs_instance: IPFS Accelerate instance
-    """
-    global _ipfs_instance
-    _ipfs_instance = ipfs_instance
-    logger.info(f"IPFS Accelerate instance set: {ipfs_instance}")
-
-def register_tools(mcp):
-    """Register inference-related tools with the MCP server"""
     
     @mcp.tool()
     def run_inference(model: str,
