@@ -905,7 +905,7 @@ function refreshTools() {
                     toolTag.title = tool.description;
                     toolsGrid.appendChild(toolTag);
                 });
-                alert(`Successfully refreshed ${data.total} MCP tools!`);
+                console.log(`Successfully refreshed ${data.total} MCP tools!`);
             }
         })
         .catch(error => {
