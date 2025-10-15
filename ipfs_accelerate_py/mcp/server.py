@@ -107,15 +107,19 @@ class StandaloneMCP:
                 # Determine type hint if available
                 param_type = "string"  # default
                 if param.annotation != inspect.Parameter.empty:
-                    if param.annotation in (int, 'int'):
+                    ann = param.annotation
+                    # Check for typing generics by examining __origin__
+                    origin = getattr(ann, '__origin__', None)
+                    
+                    if ann is int:
                         param_type = "integer"
-                    elif param.annotation in (float, 'float'):
+                    elif ann is float:
                         param_type = "number"
-                    elif param.annotation in (bool, 'bool'):
+                    elif ann is bool:
                         param_type = "boolean"
-                    elif param.annotation in (list, List):
+                    elif ann is list or origin is list:
                         param_type = "array"
-                    elif param.annotation in (dict, Dict):
+                    elif ann is dict or origin is dict:
                         param_type = "object"
                 
                 properties[param_name] = {"type": param_type}
