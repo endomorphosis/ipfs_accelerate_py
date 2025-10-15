@@ -32,18 +32,20 @@ logger = logging.getLogger(__name__)
 class MCPDashboard:
     """MCP Dashboard with links to various services."""
     
-    def __init__(self, port: int = 8899, host: str = '127.0.0.1'):
+    def __init__(self, port: int = 8899, host: str = '127.0.0.1', mcp_server=None):
         """Initialize the MCP dashboard.
         
         Args:
             port: Port to run on
             host: Host to bind to
+            mcp_server: Optional MCP server instance to get tools from
         """
         if not HAVE_FLASK:
             raise ImportError("Flask is required for the MCP Dashboard. Install with: pip install flask flask-cors")
         
         self.port = port
         self.host = host
+        self.mcp_server = mcp_server
         
         # Set up Flask with proper template and static folders
         template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates')
@@ -469,58 +471,66 @@ class MCPDashboard:
         @self.app.route('/api/mcp/tools')
         def get_mcp_tools():
             """Get list of available MCP tools."""
-            tools = [
-                {
-                    'name': 'text_generation',
-                    'description': 'Generate text using language models',
-                    'status': 'active'
-                },
-                {
-                    'name': 'text_classification',
-                    'description': 'Classify text into categories',
-                    'status': 'active'
-                },
-                {
-                    'name': 'text_embeddings',
-                    'description': 'Generate embeddings from text',
-                    'status': 'active'
-                },
-                {
-                    'name': 'audio_transcription',
-                    'description': 'Transcribe audio to text',
-                    'status': 'active'
-                },
-                {
-                    'name': 'image_classification',
-                    'description': 'Classify images',
-                    'status': 'active'
-                },
-                {
-                    'name': 'visual_qa',
-                    'description': 'Answer questions about images',
-                    'status': 'active'
-                },
-                {
-                    'name': 'model_search',
-                    'description': 'Search for models on HuggingFace',
-                    'status': 'active'
-                },
-                {
-                    'name': 'model_recommend',
-                    'description': 'Get model recommendations',
-                    'status': 'active'
-                },
-                {
-                    'name': 'queue_status',
-                    'description': 'Check queue status',
-                    'status': 'active'
-                },
-                {
-                    'name': 'performance_stats',
-                    'description': 'Get performance statistics',
-                    'status': 'active'
-                }
-            ]
+            tools = []
+            
+            # If we have an MCP server instance, get tools from it
+            if self.mcp_server and hasattr(self.mcp_server, 'tools'):
+                for tool_name, tool_info in self.mcp_server.tools.items():
+                    desc = tool_info.get('description', 'No description')
+                    # Clean up description - take first line only
+                    if desc:
+                        desc = desc.split('\n')[0].strip()
+                    tools.append({
+                        'name': tool_name,
+                        'description': desc,
+                        'status': 'active'
+                    })
+            else:
+                # Fall back to creating a mock MCP server to get registered tools
+                try:
+                    from ipfs_accelerate_py.mcp.server import StandaloneMCP
+                    from ipfs_accelerate_py.mcp.tools import register_all_tools
+                    
+                    # Create a temporary MCP instance to get tool list
+                    temp_mcp = StandaloneMCP('temp')
+                    register_all_tools(temp_mcp)
+                    
+                    for tool_name, tool_info in temp_mcp.tools.items():
+                        desc = tool_info.get('description', 'No description')
+                        # Clean up description - take first line only
+                        if desc:
+                            desc = desc.split('\n')[0].strip()
+                        tools.append({
+                            'name': tool_name,
+                            'description': desc,
+                            'status': 'active'
+                        })
+                except Exception as e:
+                    logger.error(f"Error getting tools from MCP server: {e}")
+                    # Ultimate fallback - hardcoded list of essential tools
+                    tools = [
+                        {
+                            'name': 'search_models',
+                            'description': 'Search for models on HuggingFace',
+                            'status': 'active'
+                        },
+                        {
+                            'name': 'recommend_models',
+                            'description': 'Get model recommendations',
+                            'status': 'active'
+                        },
+                        {
+                            'name': 'get_model_details',
+                            'description': 'Get detailed information about a specific model',
+                            'status': 'active'
+                        },
+                        {
+                            'name': 'run_inference',
+                            'description': 'Run inference with a model',
+                            'status': 'active'
+                        }
+                    ]
+            
             return jsonify({'tools': tools, 'total': len(tools)})
         
         @self.app.route('/api/mcp/logs')

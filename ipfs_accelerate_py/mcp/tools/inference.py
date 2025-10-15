@@ -10,8 +10,15 @@ import time
 import logging
 import random
 import traceback
-import numpy as np
 from typing import Dict, List, Any, Optional, Union
+
+# Try to import numpy
+try:
+    import numpy as np
+    HAVE_NUMPY = True
+except ImportError:
+    HAVE_NUMPY = False
+    np = None
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.inference")
 
@@ -69,7 +76,7 @@ def register_tools(mcp):
             Dictionary with inference results
         """
         global _ipfs_instance
-    start_time = time.time()
+        start_time = time.time()
         
         try:
             # First try to use IPFS Accelerate instance if available
@@ -207,9 +214,17 @@ def register_tools(mcp):
                 embeddings = []
                 for _ in inputs:
                     # Generate a random embedding and normalize it
-                    embedding = np.random.randn(embedding_size)
-                    embedding = embedding / np.linalg.norm(embedding)
-                    embeddings.append(embedding.tolist())
+                    if HAVE_NUMPY:
+                        embedding = np.random.randn(embedding_size)
+                        embedding = embedding / np.linalg.norm(embedding)
+                        embeddings.append(embedding.tolist())
+                    else:
+                        # Fallback to plain Python if numpy not available
+                        embedding = [random.gauss(0, 1) for _ in range(embedding_size)]
+                        # Simple normalization
+                        magnitude = sum(x**2 for x in embedding) ** 0.5
+                        embedding = [x / magnitude if magnitude > 0 else 0 for x in embedding]
+                        embeddings.append(embedding)
                 
                 result = {
                     "model": model,
