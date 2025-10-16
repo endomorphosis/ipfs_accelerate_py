@@ -1025,7 +1025,11 @@ function refreshWorkflows() {
             if (data.workflows) {
                 displayWorkflows(data.workflows);
                 updateWorkflowStats(data.workflows);
-                showToast(`Loaded ${data.total} workflows`, 'success');
+                if (data.demo_mode) {
+                    showToast('⚠️ Loaded demo workflows - functionality not yet implemented', 'warning', 3000);
+                } else {
+                    showToast(`Loaded ${data.total} workflows`, 'success');
+                }
             }
         })
         .catch(error => {
@@ -1099,42 +1103,19 @@ function updateWorkflowStats(workflows) {
 }
 
 function createWorkflow() {
-    const name = prompt('Enter workflow name:');
-    if (name) {
-        showToast('Creating workflow: ' + name, 'info');
-        // In production, this would make an API call to create the workflow
-        setTimeout(() => {
-            showToast('Workflow created successfully!', 'success');
-            refreshWorkflows();
-        }, 1000);
-    }
+    showToast('⚠️ Demo Mode: Workflow creation is not yet implemented. This is demonstration data only.', 'warning', 4000);
 }
 
 function viewWorkflow(id) {
-    showToast(`Viewing workflow: ${id}`, 'info');
-    // In production, this would navigate to workflow details page
+    showToast('⚠️ Demo Mode: Workflow details view is not yet implemented. This is demonstration data only.', 'warning', 4000);
 }
 
 function pauseWorkflow(id) {
-    if (confirm('Pause this workflow?')) {
-        showToast(`Pausing workflow: ${id}`, 'info');
-        // In production, this would make an API call
-        setTimeout(() => {
-            showToast('Workflow paused', 'success');
-            refreshWorkflows();
-        }, 500);
-    }
+    showToast('⚠️ Demo Mode: Workflow pause functionality is not yet implemented. This is demonstration data only.', 'warning', 4000);
 }
 
 function stopWorkflow(id) {
-    if (confirm('Stop this workflow? This action cannot be undone.')) {
-        showToast(`Stopping workflow: ${id}`, 'warning');
-        // In production, this would make an API call
-        setTimeout(() => {
-            showToast('Workflow stopped', 'success');
-            refreshWorkflows();
-        }, 500);
-    }
+    showToast('⚠️ Demo Mode: Workflow stop functionality is not yet implemented. This is demonstration data only.', 'warning', 4000);
 }
 
 function optimizePerformance() {

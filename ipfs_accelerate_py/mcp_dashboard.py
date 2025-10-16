@@ -591,7 +591,13 @@ class MCPDashboard:
                     'description': 'Fine-tuning workflow for custom models'
                 }
             ]
-            return jsonify({'workflows': workflows, 'total': len(workflows)})
+            return jsonify({
+                'workflows': workflows, 
+                'total': len(workflows),
+                'demo_mode': True,
+                'message': 'This is demonstration data. Workflow management is not yet implemented.'
+            })
+        
         
         @self.app.route('/api/mcp/test')
         def test_apis():
