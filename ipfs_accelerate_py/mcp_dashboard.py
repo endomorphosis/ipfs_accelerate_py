@@ -124,6 +124,45 @@ class MCPDashboard:
             """Serve static files."""
             return send_from_directory(self.app.static_folder, filename)
         
+        @self.app.route('/api/mcp/models/autocomplete')
+        def autocomplete_models():
+            """Autocomplete models API endpoint for workflow editor."""
+            query = request.args.get('q', '').strip()
+            limit = int(request.args.get('limit', 10))
+            
+            if not query or len(query) < 2:
+                return jsonify({'suggestions': []})
+            
+            try:
+                scanner = self._get_hub_scanner()
+                
+                if scanner is None:
+                    # Provide fallback with common models
+                    fallback = self._get_autocomplete_fallback(query, limit)
+                    return jsonify({'suggestions': fallback, 'fallback': True})
+                
+                # Search models and format for autocomplete
+                results = scanner.search_models(query=query, limit=limit)
+                suggestions = []
+                for model in results:
+                    model_id = model.get('model_id', model.get('id', ''))
+                    pipeline_tag = model.get('pipeline_tag', 'unknown')
+                    downloads = model.get('downloads', 0)
+                    
+                    suggestions.append({
+                        'id': model_id,
+                        'label': f"{model_id} ({pipeline_tag})",
+                        'pipeline_tag': pipeline_tag,
+                        'downloads': downloads
+                    })
+                
+                return jsonify({'suggestions': suggestions, 'fallback': False})
+                
+            except Exception as e:
+                logger.error(f"Autocomplete error: {e}")
+                fallback = self._get_autocomplete_fallback(query, limit)
+                return jsonify({'suggestions': fallback, 'fallback': True, 'error': str(e)})
+        
         @self.app.route('/api/mcp/models/search')
         def search_models():
             """Search models API endpoint."""
@@ -1722,6 +1761,39 @@ class MCPDashboard:
                 break
         
         return filtered_models
+    
+    def _get_autocomplete_fallback(self, query: str, limit: int = 10):
+        """Get fallback autocomplete suggestions when HuggingFace Hub scanner is not available."""
+        query_lower = query.lower()
+        
+        # Common popular models for autocomplete
+        common_models = [
+            {'id': 'gpt2', 'label': 'gpt2 (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 3200000},
+            {'id': 'bert-base-uncased', 'label': 'bert-base-uncased (text-classification)', 'pipeline_tag': 'text-classification', 'downloads': 2100000},
+            {'id': 'distilbert-base-uncased', 'label': 'distilbert-base-uncased (text-classification)', 'pipeline_tag': 'text-classification', 'downloads': 1500000},
+            {'id': 'stabilityai/stable-diffusion-xl-base-1.0', 'label': 'stabilityai/stable-diffusion-xl-base-1.0 (text-to-image)', 'pipeline_tag': 'text-to-image', 'downloads': 950000},
+            {'id': 'runwayml/stable-diffusion-v1-5', 'label': 'runwayml/stable-diffusion-v1-5 (text-to-image)', 'pipeline_tag': 'text-to-image', 'downloads': 1200000},
+            {'id': 'openai/whisper-large-v3', 'label': 'openai/whisper-large-v3 (automatic-speech-recognition)', 'pipeline_tag': 'automatic-speech-recognition', 'downloads': 780000},
+            {'id': 'meta-llama/Llama-2-7b-chat-hf', 'label': 'meta-llama/Llama-2-7b-chat-hf (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 1800000},
+            {'id': 'microsoft/DialoGPT-large', 'label': 'microsoft/DialoGPT-large (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 125000},
+            {'id': 'sentence-transformers/all-MiniLM-L6-v2', 'label': 'sentence-transformers/all-MiniLM-L6-v2 (sentence-similarity)', 'pipeline_tag': 'sentence-similarity', 'downloads': 650000},
+            {'id': 'google/vit-base-patch16-224', 'label': 'google/vit-base-patch16-224 (image-classification)', 'pipeline_tag': 'image-classification', 'downloads': 420000},
+            {'id': 'facebook/detr-resnet-50', 'label': 'facebook/detr-resnet-50 (object-detection)', 'pipeline_tag': 'object-detection', 'downloads': 280000},
+            {'id': 'microsoft/resnet-50', 'label': 'microsoft/resnet-50 (image-classification)', 'pipeline_tag': 'image-classification', 'downloads': 520000},
+            {'id': 'google/flan-t5-base', 'label': 'google/flan-t5-base (text2text-generation)', 'pipeline_tag': 'text2text-generation', 'downloads': 890000},
+            {'id': 'facebook/bart-large-cnn', 'label': 'facebook/bart-large-cnn (summarization)', 'pipeline_tag': 'summarization', 'downloads': 670000},
+            {'id': 'Helsinki-NLP/opus-mt-en-de', 'label': 'Helsinki-NLP/opus-mt-en-de (translation)', 'pipeline_tag': 'translation', 'downloads': 340000},
+        ]
+        
+        # Filter models that match the query
+        matching = []
+        for model in common_models:
+            if query_lower in model['id'].lower() or query_lower in model['pipeline_tag'].lower():
+                matching.append(model)
+                if len(matching) >= limit:
+                    break
+        
+        return matching
     
     def _render_model_discovery_template(self) -> str:
         """Render the model discovery page template."""

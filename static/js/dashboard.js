@@ -1230,6 +1230,12 @@ function addTaskToEditor() {
     
     container.appendChild(taskCard);
     updateTaskCount();
+    
+    // Initialize autocomplete for the model input field
+    const modelInput = taskCard.querySelector('.task-model');
+    if (modelInput) {
+        initializeModelAutocomplete(modelInput);
+    }
 }
 
 // Remove task from editor
@@ -1584,6 +1590,145 @@ function optimizePerformance() {
     setTimeout(() => {
         showToast('Performance optimization completed!\n- Reduced latency by 15%\n- Improved throughput by 10%', 'success', 5000);
     }, 2000);
+}
+
+// Model autocomplete functionality
+let autocompleteTimeout = null;
+let currentAutocompleteInput = null;
+
+function initializeModelAutocomplete(inputElement) {
+    // Create autocomplete container wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'autocomplete-container';
+    inputElement.parentNode.insertBefore(wrapper, inputElement);
+    wrapper.appendChild(inputElement);
+    
+    // Create autocomplete dropdown
+    const dropdown = document.createElement('div');
+    dropdown.className = 'autocomplete-items';
+    dropdown.style.display = 'none';
+    wrapper.appendChild(dropdown);
+    
+    let currentFocus = -1;
+    
+    // Handle input events
+    inputElement.addEventListener('input', function(e) {
+        const query = this.value.trim();
+        
+        // Clear existing timeout
+        if (autocompleteTimeout) {
+            clearTimeout(autocompleteTimeout);
+        }
+        
+        // Hide dropdown if query is too short
+        if (query.length < 2) {
+            dropdown.style.display = 'none';
+            return;
+        }
+        
+        // Debounce autocomplete requests
+        autocompleteTimeout = setTimeout(() => {
+            fetchModelSuggestions(query, dropdown, inputElement);
+        }, 300);
+    });
+    
+    // Handle keyboard navigation
+    inputElement.addEventListener('keydown', function(e) {
+        const items = dropdown.getElementsByTagName('div');
+        
+        if (e.keyCode === 40) { // Arrow Down
+            e.preventDefault();
+            currentFocus++;
+            addActive(items);
+        } else if (e.keyCode === 38) { // Arrow Up
+            e.preventDefault();
+            currentFocus--;
+            addActive(items);
+        } else if (e.keyCode === 13) { // Enter
+            e.preventDefault();
+            if (currentFocus > -1 && items[currentFocus]) {
+                items[currentFocus].click();
+            }
+        } else if (e.keyCode === 27) { // Escape
+            dropdown.style.display = 'none';
+            currentFocus = -1;
+        }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        if (e.target !== inputElement) {
+            dropdown.style.display = 'none';
+            currentFocus = -1;
+        }
+    });
+    
+    function addActive(items) {
+        if (!items) return false;
+        removeActive(items);
+        if (currentFocus >= items.length) currentFocus = 0;
+        if (currentFocus < 0) currentFocus = items.length - 1;
+        if (items[currentFocus]) {
+            items[currentFocus].classList.add('autocomplete-active');
+        }
+    }
+    
+    function removeActive(items) {
+        for (let i = 0; i < items.length; i++) {
+            items[i].classList.remove('autocomplete-active');
+        }
+    }
+}
+
+async function fetchModelSuggestions(query, dropdown, inputElement) {
+    try {
+        const response = await fetch(`/api/mcp/models/autocomplete?q=${encodeURIComponent(query)}&limit=10`);
+        const data = await response.json();
+        
+        // Clear existing suggestions
+        dropdown.innerHTML = '';
+        
+        if (!data.suggestions || data.suggestions.length === 0) {
+            dropdown.style.display = 'none';
+            return;
+        }
+        
+        // Add suggestions to dropdown
+        data.suggestions.forEach(suggestion => {
+            const item = document.createElement('div');
+            item.innerHTML = `
+                <span class="autocomplete-model-id">${suggestion.id}</span>
+                <span class="autocomplete-pipeline-tag">${suggestion.pipeline_tag}</span>
+                ${suggestion.downloads ? `<span class="autocomplete-downloads">${formatNumber(suggestion.downloads)} downloads</span>` : ''}
+            `;
+            
+            // Handle click
+            item.addEventListener('click', function() {
+                inputElement.value = suggestion.id;
+                dropdown.style.display = 'none';
+                
+                // Trigger change event
+                inputElement.dispatchEvent(new Event('change'));
+            });
+            
+            dropdown.appendChild(item);
+        });
+        
+        dropdown.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Autocomplete error:', error);
+        dropdown.style.display = 'none';
+    }
+}
+
+function formatNumber(num) {
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toString();
 }
 
 // Auto-refresh functionality
