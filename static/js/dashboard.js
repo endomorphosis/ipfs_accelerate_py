@@ -1025,11 +1025,7 @@ function refreshWorkflows() {
             if (data.workflows) {
                 displayWorkflows(data.workflows);
                 updateWorkflowStats(data.workflows);
-                if (data.demo_mode) {
-                    showToast('⚠️ Loaded demo workflows - functionality not yet implemented', 'warning', 3000);
-                } else {
-                    showToast(`Loaded ${data.total} workflows`, 'success');
-                }
+                showToast(`Loaded ${data.total} workflows`, 'success');
             }
         })
         .catch(error => {
@@ -1044,12 +1040,21 @@ function displayWorkflows(workflows) {
     
     workflowsList.innerHTML = '';
     
+    if (workflows.length === 0) {
+        workflowsList.innerHTML = '<div class="workflow-item"><p>No workflows yet. Click "Create Workflow" to get started.</p></div>';
+        return;
+    }
+    
     workflows.forEach(workflow => {
         const workflowItem = document.createElement('div');
         workflowItem.className = 'workflow-item';
         
         const statusClass = workflow.status === 'running' ? 'status-running' : 
-                          workflow.status === 'idle' ? 'status-idle' : 'status-stopped';
+                          workflow.status === 'pending' ? 'status-idle' :
+                          workflow.status === 'paused' ? 'status-idle' :
+                          workflow.status === 'completed' ? 'status-idle' : 'status-stopped';
+        
+        const percent = workflow.tasks > 0 ? Math.round((workflow.completed / workflow.tasks) * 100) : 0;
         
         workflowItem.innerHTML = `
             <div class="workflow-header">
@@ -1060,16 +1065,20 @@ function displayWorkflows(workflows) {
             <div class="workflow-progress">
                 <div class="progress-info">
                     <span>Tasks: ${workflow.completed}/${workflow.tasks}</span>
-                    <span>${Math.round((workflow.completed / workflow.tasks) * 100)}%</span>
+                    <span>${percent}%</span>
                 </div>
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${(workflow.completed / workflow.tasks) * 100}%"></div>
+                    <div class="progress-fill" style="width: ${percent}%"></div>
                 </div>
             </div>
             <div class="workflow-actions">
                 <button class="btn btn-sm btn-primary" onclick="viewWorkflow('${workflow.id}')">👁️ View</button>
-                <button class="btn btn-sm btn-warning" onclick="pauseWorkflow('${workflow.id}')">⏸️ Pause</button>
+                ${workflow.status === 'running' || workflow.status === 'pending' ? 
+                    `<button class="btn btn-sm btn-warning" onclick="pauseWorkflow('${workflow.id}')">⏸️ Pause</button>` :
+                    `<button class="btn btn-sm btn-success" onclick="startWorkflow('${workflow.id}')">▶️ Start</button>`
+                }
                 <button class="btn btn-sm btn-danger" onclick="stopWorkflow('${workflow.id}')">⏹️ Stop</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteWorkflow('${workflow.id}')">🗑️ Delete</button>
             </div>
         `;
         
@@ -1080,7 +1089,7 @@ function displayWorkflows(workflows) {
 function updateWorkflowStats(workflows) {
     const total = workflows.length;
     const running = workflows.filter(w => w.status === 'running').length;
-    const completed = workflows.filter(w => w.completed === w.tasks).length;
+    const completed = workflows.filter(w => w.status === 'completed').length;
     
     const totalEl = document.getElementById('total-workflows');
     const runningEl = document.getElementById('running-workflows');
@@ -1090,7 +1099,7 @@ function updateWorkflowStats(workflows) {
     if (runningEl) runningEl.textContent = running;
     if (completedEl) completedEl.textContent = completed;
     
-    // Update performance metrics
+    // Update performance metrics (placeholder for now)
     const avgTimeEl = document.getElementById('avg-processing-time');
     const successRateEl = document.getElementById('success-rate');
     const throughputEl = document.getElementById('queue-throughput');
@@ -1103,19 +1112,151 @@ function updateWorkflowStats(workflows) {
 }
 
 function createWorkflow() {
-    showToast('⚠️ Demo Mode: Workflow creation is not yet implemented. This is demonstration data only.', 'warning', 4000);
+    const name = prompt('Enter workflow name:');
+    if (!name) return;
+    
+    const description = prompt('Enter workflow description (optional):') || '';
+    
+    // Create a simple default workflow with one inference task
+    const workflow = {
+        name: name,
+        description: description,
+        tasks: [
+            {
+                name: 'Inference Task',
+                type: 'inference',
+                config: {
+                    model: 'gpt2',
+                    inputs: ['Hello, world!']
+                },
+                dependencies: []
+            }
+        ]
+    };
+    
+    showToast('Creating workflow...', 'info');
+    
+    fetch('/api/mcp/workflows/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(workflow)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showToast('Workflow created successfully!', 'success');
+            refreshWorkflows();
+        } else {
+            showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        showToast('Failed to create workflow: ' + error.message, 'error');
+    });
 }
 
 function viewWorkflow(id) {
-    showToast('⚠️ Demo Mode: Workflow details view is not yet implemented. This is demonstration data only.', 'warning', 4000);
+    showToast(`Loading workflow details for ${id}...`, 'info');
+    
+    fetch(`/api/mcp/workflows/${id}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.workflow) {
+                const wf = data.workflow;
+                const details = `
+Workflow: ${wf.name}
+Description: ${wf.description}
+Status: ${wf.status}
+Tasks: ${wf.progress.completed}/${wf.progress.total}
+                `.trim();
+                alert(details);
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to load workflow: ' + error.message, 'error');
+        });
+}
+
+function startWorkflow(id) {
+    if (!confirm('Start this workflow?')) return;
+    
+    showToast('Starting workflow...', 'info');
+    
+    fetch(`/api/mcp/workflows/${id}/start`, {method: 'POST'})
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Workflow started!', 'success');
+                refreshWorkflows();
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to start workflow: ' + error.message, 'error');
+        });
 }
 
 function pauseWorkflow(id) {
-    showToast('⚠️ Demo Mode: Workflow pause functionality is not yet implemented. This is demonstration data only.', 'warning', 4000);
+    if (!confirm('Pause this workflow?')) return;
+    
+    showToast('Pausing workflow...', 'info');
+    
+    fetch(`/api/mcp/workflows/${id}/pause`, {method: 'POST'})
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Workflow paused!', 'success');
+                refreshWorkflows();
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to pause workflow: ' + error.message, 'error');
+        });
 }
 
 function stopWorkflow(id) {
-    showToast('⚠️ Demo Mode: Workflow stop functionality is not yet implemented. This is demonstration data only.', 'warning', 4000);
+    if (!confirm('Stop this workflow? This action cannot be undone.')) return;
+    
+    showToast('Stopping workflow...', 'warning');
+    
+    fetch(`/api/mcp/workflows/${id}/stop`, {method: 'POST'})
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Workflow stopped!', 'success');
+                refreshWorkflows();
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to stop workflow: ' + error.message, 'error');
+        });
+}
+
+function deleteWorkflow(id) {
+    if (!confirm('Delete this workflow? This action cannot be undone.')) return;
+    
+    showToast('Deleting workflow...', 'warning');
+    
+    fetch(`/api/mcp/workflows/${id}`, {method: 'DELETE'})
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Workflow deleted!', 'success');
+                refreshWorkflows();
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to delete workflow: ' + error.message, 'error');
+        });
 }
 
 function optimizePerformance() {

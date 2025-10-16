@@ -565,38 +565,197 @@ class MCPDashboard:
         @self.app.route('/api/mcp/workflows')
         def get_workflows():
             """Get workflow management information."""
-            workflows = [
-                {
-                    'id': 'wf-001',
-                    'name': 'Model Inference Pipeline',
-                    'status': 'running',
-                    'tasks': 3,
-                    'completed': 2,
-                    'description': 'End-to-end model inference workflow'
-                },
-                {
-                    'id': 'wf-002',
-                    'name': 'Batch Processing',
-                    'status': 'idle',
-                    'tasks': 5,
-                    'completed': 5,
-                    'description': 'Batch text processing workflow'
-                },
-                {
-                    'id': 'wf-003',
-                    'name': 'Model Training',
-                    'status': 'stopped',
-                    'tasks': 4,
-                    'completed': 1,
-                    'description': 'Fine-tuning workflow for custom models'
-                }
-            ]
-            return jsonify({
-                'workflows': workflows, 
-                'total': len(workflows),
-                'demo_mode': True,
-                'message': 'This is demonstration data. Workflow management is not yet implemented.'
-            })
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                # Get workflow manager instance
+                manager = WorkflowManager()
+                workflows_list = manager.list_workflows()
+                
+                # Format workflows for API response
+                workflows = []
+                for wf in workflows_list:
+                    progress = wf.get_progress()
+                    workflows.append({
+                        'id': wf.workflow_id,
+                        'name': wf.name,
+                        'status': wf.status,
+                        'tasks': progress['total'],
+                        'completed': progress['completed'],
+                        'description': wf.description,
+                        'created_at': wf.created_at,
+                        'started_at': wf.started_at,
+                        'completed_at': wf.completed_at,
+                        'error': wf.error
+                    })
+                
+                return jsonify({
+                    'workflows': workflows,
+                    'total': len(workflows),
+                    'demo_mode': False
+                })
+            
+            except Exception as e:
+                logger.error(f"Error getting workflows: {e}")
+                # Return empty list on error
+                return jsonify({
+                    'workflows': [],
+                    'total': 0,
+                    'demo_mode': False,
+                    'error': str(e)
+                })
+        
+        @self.app.route('/api/mcp/workflows/create', methods=['POST'])
+        def create_workflow():
+            """Create a new workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                data = request.get_json() or {}
+                name = data.get('name')
+                description = data.get('description', '')
+                tasks = data.get('tasks', [])
+                
+                if not name:
+                    return jsonify({'error': 'Workflow name is required'}), 400
+                
+                if not tasks:
+                    return jsonify({'error': 'At least one task is required'}), 400
+                
+                manager = WorkflowManager()
+                workflow = manager.create_workflow(name, description, tasks)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow.workflow_id,
+                    'name': workflow.name,
+                    'message': 'Workflow created successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error creating workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>/start', methods=['POST'])
+        def start_workflow(workflow_id):
+            """Start a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                manager.start_workflow(workflow_id)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow_id,
+                    'message': 'Workflow started successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error starting workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>/pause', methods=['POST'])
+        def pause_workflow(workflow_id):
+            """Pause a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                manager.pause_workflow(workflow_id)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow_id,
+                    'message': 'Workflow paused successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error pausing workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>/stop', methods=['POST'])
+        def stop_workflow(workflow_id):
+            """Stop a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                manager.stop_workflow(workflow_id)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow_id,
+                    'message': 'Workflow stopped successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error stopping workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>', methods=['DELETE'])
+        def delete_workflow(workflow_id):
+            """Delete a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                manager.delete_workflow(workflow_id)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow_id,
+                    'message': 'Workflow deleted successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error deleting workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>')
+        def get_workflow_details(workflow_id):
+            """Get detailed information about a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                workflow = manager.get_workflow(workflow_id)
+                
+                if not workflow:
+                    return jsonify({'error': 'Workflow not found'}), 404
+                
+                progress = workflow.get_progress()
+                
+                tasks_data = []
+                for task in workflow.tasks:
+                    tasks_data.append({
+                        'task_id': task.task_id,
+                        'name': task.name,
+                        'type': task.type,
+                        'status': task.status,
+                        'started_at': task.started_at,
+                        'completed_at': task.completed_at,
+                        'error': task.error
+                    })
+                
+                return jsonify({
+                    'workflow': {
+                        'workflow_id': workflow.workflow_id,
+                        'name': workflow.name,
+                        'description': workflow.description,
+                        'status': workflow.status,
+                        'created_at': workflow.created_at,
+                        'started_at': workflow.started_at,
+                        'completed_at': workflow.completed_at,
+                        'error': workflow.error,
+                        'progress': progress,
+                        'tasks': tasks_data
+                    }
+                })
+            
+            except Exception as e:
+                logger.error(f"Error getting workflow details: {e}")
+                return jsonify({'error': str(e)}), 500
         
         
         @self.app.route('/api/mcp/test')
