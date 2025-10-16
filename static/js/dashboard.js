@@ -1118,8 +1118,269 @@ function createWorkflow() {
     if (useTemplate) {
         createWorkflowFromTemplate();
     } else {
-        createCustomWorkflow();
+        openWorkflowEditor();
     }
+}
+
+// Open workflow editor modal
+function openWorkflowEditor(workflowId = null) {
+    const modal = document.getElementById('workflowEditorModal');
+    const modeTitle = document.getElementById('editorModeTitle');
+    const editingId = document.getElementById('editingWorkflowId');
+    
+    // Clear form
+    document.getElementById('workflow-name').value = '';
+    document.getElementById('workflow-description').value = '';
+    document.getElementById('tasks-container').innerHTML = '';
+    editingId.value = workflowId || '';
+    
+    if (workflowId) {
+        modeTitle.textContent = 'Edit';
+        // Load existing workflow
+        loadWorkflowForEditing(workflowId);
+    } else {
+        modeTitle.textContent = 'Create';
+    }
+    
+    updateTaskCount();
+    modal.style.display = 'flex';
+}
+
+// Close workflow editor
+function closeWorkflowEditor() {
+    const modal = document.getElementById('workflowEditorModal');
+    modal.style.display = 'none';
+}
+
+// Add task to editor
+let taskCounter = 0;
+function addTaskToEditor() {
+    const container = document.getElementById('tasks-container');
+    const taskId = 'task-' + (taskCounter++);
+    
+    const taskCard = document.createElement('div');
+    taskCard.className = 'task-card';
+    taskCard.id = taskId;
+    taskCard.innerHTML = `
+        <div class="task-card-header">
+            <h4>Task ${taskCounter}</h4>
+            <div class="task-card-actions">
+                <button type="button" class="btn-danger-sm" onclick="removeTaskFromEditor('${taskId}')">Remove</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Task Name:</label>
+            <input type="text" class="form-control task-name" placeholder="e.g., Generate Image" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Pipeline Type:</label>
+                <select class="form-control task-type" required>
+                    <option value="">Select type...</option>
+                    <option value="text-generation">Text Generation</option>
+                    <option value="text-to-image">Text to Image</option>
+                    <option value="image-to-image">Image to Image</option>
+                    <option value="image-to-video">Image to Video</option>
+                    <option value="text-to-video">Text to Video</option>
+                    <option value="text-to-speech">Text to Speech</option>
+                    <option value="automatic-speech-recognition">Speech Recognition</option>
+                    <option value="image-classification">Image Classification</option>
+                    <option value="text-classification">Text Classification</option>
+                    <option value="filter">Content Filter</option>
+                    <option value="processing">Custom Processing</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Model:</label>
+                <input type="text" class="form-control task-model" placeholder="e.g., stable-diffusion-xl">
+            </div>
+        </div>
+        <div class="memory-section">
+            <h5>⚠️ Memory Management (Prevent OOM)</h5>
+            <div class="form-row-3">
+                <label class="checkbox-label">
+                    <input type="checkbox" class="task-vram-pinned">
+                    Pin in VRAM
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" class="task-preemptable" checked>
+                    Preemptable
+                </label>
+                <div class="form-group">
+                    <label>Priority (1-10):</label>
+                    <input type="number" class="form-control task-priority" value="5" min="1" max="10">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Max Memory (MB, 0=unlimited):</label>
+                    <input type="number" class="form-control task-max-memory" value="0" min="0" max="32000">
+                </div>
+                <div class="form-group">
+                    <label>Batch Size:</label>
+                    <input type="number" class="form-control task-batch-size" value="1" min="1" max="128">
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Custom Config (JSON):</label>
+            <textarea class="form-control task-config" rows="2" placeholder='{"param": "value"}'>{}</textarea>
+        </div>
+    `;
+    
+    container.appendChild(taskCard);
+    updateTaskCount();
+}
+
+// Remove task from editor
+function removeTaskFromEditor(taskId) {
+    const task = document.getElementById(taskId);
+    if (task && confirm('Remove this task?')) {
+        task.remove();
+        updateTaskCount();
+    }
+}
+
+// Update task count
+function updateTaskCount() {
+    const count = document.querySelectorAll('.task-card').length;
+    document.getElementById('task-count').textContent = `(${count})`;
+}
+
+// Save workflow
+function saveWorkflow() {
+    const name = document.getElementById('workflow-name').value.trim();
+    const description = document.getElementById('workflow-description').value.trim();
+    const workflowId = document.getElementById('editingWorkflowId').value;
+    
+    if (!name) {
+        showToast('Please enter a workflow name', 'error');
+        return;
+    }
+    
+    // Collect tasks
+    const taskCards = document.querySelectorAll('.task-card');
+    if (taskCards.length === 0) {
+        showToast('Please add at least one task', 'error');
+        return;
+    }
+    
+    const tasks = [];
+    let isValid = true;
+    
+    taskCards.forEach((card, index) => {
+        const taskName = card.querySelector('.task-name').value.trim();
+        const taskType = card.querySelector('.task-type').value;
+        const taskModel = card.querySelector('.task-model').value.trim();
+        const vramPinned = card.querySelector('.task-vram-pinned').checked;
+        const preemptable = card.querySelector('.task-preemptable').checked;
+        const priority = parseInt(card.querySelector('.task-priority').value);
+        const maxMemory = parseInt(card.querySelector('.task-max-memory').value);
+        const batchSize = parseInt(card.querySelector('.task-batch-size').value);
+        const configText = card.querySelector('.task-config').value.trim();
+        
+        if (!taskName || !taskType) {
+            showToast(`Task ${index + 1}: Name and type are required`, 'error');
+            isValid = false;
+            return;
+        }
+        
+        let config = {};
+        try {
+            if (configText) {
+                config = JSON.parse(configText);
+            }
+        } catch (e) {
+            showToast(`Task ${index + 1}: Invalid JSON in config`, 'error');
+            isValid = false;
+            return;
+        }
+        
+        if (taskModel) {
+            config.model = taskModel;
+        }
+        
+        tasks.push({
+            name: taskName,
+            type: taskType,
+            config: config,
+            dependencies: [],
+            input_mapping: {},
+            output_keys: [],
+            vram_pinned: vramPinned,
+            preemptable: preemptable,
+            priority: priority,
+            max_memory_mb: maxMemory,
+            batch_size: batchSize
+        });
+    });
+    
+    if (!isValid) return;
+    
+    const workflowData = {
+        name: name,
+        description: description,
+        tasks: tasks
+    };
+    
+    const url = workflowId ? `/api/mcp/workflows/${workflowId}` : '/api/mcp/workflows/create';
+    const method = workflowId ? 'PUT' : 'POST';
+    
+    showToast(workflowId ? 'Updating workflow...' : 'Creating workflow...', 'info');
+    
+    fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(workflowData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success' || data.workflow_id) {
+            showToast(workflowId ? 'Workflow updated!' : 'Workflow created!', 'success');
+            closeWorkflowEditor();
+            refreshWorkflows();
+        } else {
+            showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        showToast('Failed to save workflow: ' + error.message, 'error');
+    });
+}
+
+// Load workflow for editing
+function loadWorkflowForEditing(workflowId) {
+    fetch(`/api/mcp/workflows/${workflowId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.workflow) {
+                const wf = data.workflow;
+                document.getElementById('workflow-name').value = wf.name;
+                document.getElementById('workflow-description').value = wf.description || '';
+                
+                // Load tasks
+                if (wf.tasks && wf.tasks.length > 0) {
+                    wf.tasks.forEach(task => {
+                        addTaskToEditor();
+                        const cards = document.querySelectorAll('.task-card');
+                        const card = cards[cards.length - 1];
+                        
+                        card.querySelector('.task-name').value = task.name;
+                        card.querySelector('.task-type').value = task.type;
+                        card.querySelector('.task-model').value = task.config.model || '';
+                        card.querySelector('.task-vram-pinned').checked = task.vram_pinned || false;
+                        card.querySelector('.task-preemptable').checked = task.preemptable !== false;
+                        card.querySelector('.task-priority').value = task.priority || 5;
+                        card.querySelector('.task-max-memory').value = task.max_memory_mb || 0;
+                        card.querySelector('.task-batch-size').value = task.batch_size || 1;
+                        card.querySelector('.task-config').value = JSON.stringify(task.config, null, 2);
+                    });
+                }
+            }
+        })
+        .catch(error => {
+            showToast('Failed to load workflow: ' + error.message, 'error');
+        });
 }
 
 function createWorkflowFromTemplate() {
@@ -1233,27 +1494,8 @@ function createCustomWorkflow() {
 }
 
 function viewWorkflow(id) {
-    showToast(`Loading workflow details for ${id}...`, 'info');
-    
-    fetch(`/api/mcp/workflows/${id}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.workflow) {
-                const wf = data.workflow;
-                const details = `
-Workflow: ${wf.name}
-Description: ${wf.description}
-Status: ${wf.status}
-Tasks: ${wf.progress.completed}/${wf.progress.total}
-                `.trim();
-                alert(details);
-            } else {
-                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
-            }
-        })
-        .catch(error => {
-            showToast('Failed to load workflow: ' + error.message, 'error');
-        });
+    // Open workflow editor for editing
+    openWorkflowEditor(id);
 }
 
 function startWorkflow(id) {

@@ -745,6 +745,39 @@ class MCPDashboard:
                 logger.error(f"Error stopping workflow: {e}")
                 return jsonify({'error': str(e)}), 500
         
+        @self.app.route('/api/mcp/workflows/<workflow_id>', methods=['PUT'])
+        def update_workflow(workflow_id):
+            """Update a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                data = request.json
+                if not data:
+                    return jsonify({'error': 'No data provided'}), 400
+                
+                manager = WorkflowManager()
+                
+                # Call update_workflow method
+                result = manager.update_workflow(
+                    workflow_id=workflow_id,
+                    name=data.get('name'),
+                    description=data.get('description'),
+                    tasks=data.get('tasks')
+                )
+                
+                if result:
+                    return jsonify({
+                        'status': 'success',
+                        'workflow_id': workflow_id,
+                        'message': 'Workflow updated successfully'
+                    })
+                else:
+                    return jsonify({'error': 'Failed to update workflow'}), 500
+            
+            except Exception as e:
+                logger.error(f"Error updating workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
         @self.app.route('/api/mcp/workflows/<workflow_id>', methods=['DELETE'])
         def delete_workflow(workflow_id):
             """Delete a workflow."""
@@ -784,10 +817,19 @@ class MCPDashboard:
                         'task_id': task.task_id,
                         'name': task.name,
                         'type': task.type,
+                        'config': task.config,
                         'status': task.status,
                         'started_at': task.started_at,
                         'completed_at': task.completed_at,
-                        'error': task.error
+                        'error': task.error,
+                        'dependencies': task.dependencies,
+                        'input_mapping': task.input_mapping,
+                        'output_keys': task.output_keys,
+                        'vram_pinned': task.vram_pinned,
+                        'preemptable': task.preemptable,
+                        'max_memory_mb': task.max_memory_mb,
+                        'batch_size': task.batch_size,
+                        'priority': task.priority
                     })
                 
                 return jsonify({

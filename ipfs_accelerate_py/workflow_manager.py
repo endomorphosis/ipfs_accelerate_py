@@ -75,6 +75,13 @@ class WorkflowTask:
     Tasks use HuggingFace pipeline_tag taxonomy for automatic model classification.
     This allows the scraper to automatically map models to task types based on their
     pipeline_tag without human intervention.
+    
+    Memory management fields help prevent OOM and control resource allocation:
+    - vram_pinned: Keep model loaded in VRAM (prevents unloading)
+    - preemptable: Allow task to be interrupted for higher priority work
+    - max_memory_mb: Maximum memory allocation for this task (0 = unlimited)
+    - batch_size: Inference batch size (affects memory vs throughput)
+    - priority: Task priority for execution scheduling (1=lowest, 10=highest)
     """
     task_id: str
     name: str
@@ -88,6 +95,12 @@ class WorkflowTask:
     dependencies: List[str] = None  # List of task_ids that must complete first
     input_mapping: Optional[Dict[str, str]] = None  # Maps output keys from dependencies to input keys
     output_keys: Optional[List[str]] = None  # Keys to extract from result for downstream tasks
+    # Memory management fields
+    vram_pinned: bool = False  # Pin model in VRAM (prevents unloading)
+    preemptable: bool = True  # Allow task to be interrupted
+    max_memory_mb: int = 0  # Max memory in MB (0 = unlimited)
+    batch_size: int = 1  # Inference batch size
+    priority: int = 5  # Priority 1-10 (1=lowest, 10=highest)
 
     def __post_init__(self):
         if self.dependencies is None:
@@ -177,9 +190,40 @@ class WorkflowStorage:
                     dependencies TEXT,
                     input_mapping TEXT,
                     output_keys TEXT,
+                    vram_pinned INTEGER DEFAULT 0,
+                    preemptable INTEGER DEFAULT 1,
+                    max_memory_mb INTEGER DEFAULT 0,
+                    batch_size INTEGER DEFAULT 1,
+                    priority INTEGER DEFAULT 5,
                     FOREIGN KEY (workflow_id) REFERENCES workflows (workflow_id)
                 )
             """)
+            
+            # Migrate existing tables to add new columns
+            try:
+                conn.execute("ALTER TABLE tasks ADD COLUMN vram_pinned INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                conn.execute("ALTER TABLE tasks ADD COLUMN preemptable INTEGER DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                conn.execute("ALTER TABLE tasks ADD COLUMN max_memory_mb INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                conn.execute("ALTER TABLE tasks ADD COLUMN batch_size INTEGER DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                conn.execute("ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT 5")
+            except sqlite3.OperationalError:
+                pass
             
             conn.commit()
     
@@ -207,8 +251,9 @@ class WorkflowStorage:
                 conn.execute("""
                     INSERT OR REPLACE INTO tasks
                     (task_id, workflow_id, name, type, config, status, result, error, 
-                     started_at, completed_at, dependencies, input_mapping, output_keys)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     started_at, completed_at, dependencies, input_mapping, output_keys,
+                     vram_pinned, preemptable, max_memory_mb, batch_size, priority)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     task.task_id,
                     workflow.workflow_id,
@@ -222,7 +267,12 @@ class WorkflowStorage:
                     task.completed_at,
                     json.dumps(task.dependencies),
                     json.dumps(task.input_mapping),
-                    json.dumps(task.output_keys)
+                    json.dumps(task.output_keys),
+                    1 if task.vram_pinned else 0,
+                    1 if task.preemptable else 0,
+                    task.max_memory_mb,
+                    task.batch_size,
+                    task.priority
                 ))
             
             conn.commit()
@@ -260,6 +310,32 @@ class WorkflowStorage:
                 except (KeyError, IndexError):
                     output_keys_val = None
                 
+                # Load memory management fields with defaults for backward compatibility
+                try:
+                    vram_pinned = bool(task_row['vram_pinned'])
+                except (KeyError, IndexError):
+                    vram_pinned = False
+                
+                try:
+                    preemptable = bool(task_row['preemptable'])
+                except (KeyError, IndexError):
+                    preemptable = True
+                
+                try:
+                    max_memory_mb = int(task_row['max_memory_mb'])
+                except (KeyError, IndexError):
+                    max_memory_mb = 0
+                
+                try:
+                    batch_size = int(task_row['batch_size'])
+                except (KeyError, IndexError):
+                    batch_size = 1
+                
+                try:
+                    priority = int(task_row['priority'])
+                except (KeyError, IndexError):
+                    priority = 5
+                
                 tasks.append(WorkflowTask(
                     task_id=task_row['task_id'],
                     name=task_row['name'],
@@ -272,7 +348,12 @@ class WorkflowStorage:
                     completed_at=task_row['completed_at'],
                     dependencies=json.loads(task_row['dependencies']),
                     input_mapping=json.loads(input_mapping_val) if input_mapping_val else {},
-                    output_keys=json.loads(output_keys_val) if output_keys_val else []
+                    output_keys=json.loads(output_keys_val) if output_keys_val else [],
+                    vram_pinned=vram_pinned,
+                    preemptable=preemptable,
+                    max_memory_mb=max_memory_mb,
+                    batch_size=batch_size,
+                    priority=priority
                 ))
             
             return Workflow(
