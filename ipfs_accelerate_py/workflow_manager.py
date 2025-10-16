@@ -249,6 +249,17 @@ class WorkflowStorage:
             
             tasks = []
             for task_row in task_rows:
+                # sqlite3.Row doesn't support .get(), so use try/except or check columns
+                try:
+                    input_mapping_val = task_row['input_mapping']
+                except (KeyError, IndexError):
+                    input_mapping_val = None
+                
+                try:
+                    output_keys_val = task_row['output_keys']
+                except (KeyError, IndexError):
+                    output_keys_val = None
+                
                 tasks.append(WorkflowTask(
                     task_id=task_row['task_id'],
                     name=task_row['name'],
@@ -260,8 +271,8 @@ class WorkflowStorage:
                     started_at=task_row['started_at'],
                     completed_at=task_row['completed_at'],
                     dependencies=json.loads(task_row['dependencies']),
-                    input_mapping=json.loads(task_row['input_mapping']) if task_row.get('input_mapping') else {},
-                    output_keys=json.loads(task_row['output_keys']) if task_row.get('output_keys') else []
+                    input_mapping=json.loads(input_mapping_val) if input_mapping_val else {},
+                    output_keys=json.loads(output_keys_val) if output_keys_val else []
                 ))
             
             return Workflow(
@@ -866,6 +877,105 @@ class WorkflowManager:
         self.storage.save_workflow(workflow)
         logger.info(f"Created workflow {workflow_id}: {name}")
         return workflow
+    
+    def list_workflows(self, status: Optional[str] = None, limit: int = 100) -> List[Workflow]:
+        """List workflows, optionally filtered by status"""
+        return self.storage.list_workflows(status=status, limit=limit)
+    
+    def get_workflow(self, workflow_id: str) -> Optional[Workflow]:
+        """Get a specific workflow by ID"""
+        return self.storage.load_workflow(workflow_id)
+    
+    def update_workflow(
+        self, 
+        workflow_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        tasks: Optional[List[Dict[str, Any]]] = None
+    ) -> Workflow:
+        """
+        Update an existing workflow
+        
+        Args:
+            workflow_id: ID of workflow to update
+            name: Optional new name
+            description: Optional new description
+            tasks: Optional new task list (replaces all tasks)
+        
+        Returns:
+            Updated workflow
+        
+        Raises:
+            ValueError: If workflow not found or if workflow is currently running
+        """
+        workflow = self.storage.load_workflow(workflow_id)
+        if not workflow:
+            raise ValueError(f"Workflow {workflow_id} not found")
+        
+        # Don't allow updating running workflows
+        if workflow.status == WorkflowStatus.RUNNING.value:
+            raise ValueError(f"Cannot update running workflow {workflow_id}. Pause or stop it first.")
+        
+        # Update basic fields
+        if name is not None:
+            workflow.name = name
+        if description is not None:
+            workflow.description = description
+        
+        # Update tasks if provided
+        if tasks is not None:
+            # Convert task dicts to WorkflowTask objects
+            workflow_tasks = []
+            task_id_map = {}
+            
+            for i, task_dict in enumerate(tasks):
+                task_id = f"{workflow_id}-task-{i}"
+                task_id_map[i] = task_id
+                
+                # Handle dependencies
+                dependencies = []
+                for dep in task_dict.get('dependencies', []):
+                    if isinstance(dep, int):
+                        dependencies.append(task_id_map.get(dep, dep))
+                    else:
+                        dependencies.append(dep)
+                
+                workflow_tasks.append(WorkflowTask(
+                    task_id=task_id,
+                    name=task_dict['name'],
+                    type=task_dict['type'],
+                    config=task_dict.get('config', {}),
+                    dependencies=dependencies,
+                    input_mapping=task_dict.get('input_mapping', {}),
+                    output_keys=task_dict.get('output_keys', [])
+                ))
+            
+            workflow.tasks = workflow_tasks
+            # Reset status to pending when tasks change
+            workflow.status = WorkflowStatus.PENDING.value
+            workflow.started_at = None
+            workflow.completed_at = None
+            workflow.error = None
+        
+        self.storage.save_workflow(workflow)
+        logger.info(f"Updated workflow {workflow_id}")
+        return workflow
+    
+    def delete_workflow(self, workflow_id: str):
+        """Delete a workflow"""
+        return self.storage.delete_workflow(workflow_id)
+    
+    def start_workflow(self, workflow_id: str):
+        """Start workflow execution"""
+        return self.engine.start_workflow(workflow_id)
+    
+    def pause_workflow(self, workflow_id: str):
+        """Pause workflow execution"""
+        return self.engine.pause_workflow(workflow_id)
+    
+    def stop_workflow(self, workflow_id: str):
+        """Stop workflow execution"""
+        return self.engine.stop_workflow(workflow_id)
     
     @staticmethod
     def create_image_generation_pipeline() -> Dict[str, Any]:

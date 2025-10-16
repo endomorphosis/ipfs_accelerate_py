@@ -312,6 +312,60 @@ def register_tools(mcp):
             }
     
     @mcp.tool()
+    def update_workflow(
+        workflow_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        tasks: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Update an existing workflow
+        
+        Args:
+            workflow_id: The workflow ID to update
+            name: Optional new name
+            description: Optional new description
+            tasks: Optional new task list (replaces all tasks). Same format as create_workflow.
+        
+        Returns:
+            Dictionary with updated workflow details
+        
+        Note:
+            Cannot update workflows that are currently running. Pause or stop them first.
+        """
+        try:
+            manager = get_workflow_manager()
+            if not manager:
+                return {
+                    'status': 'error',
+                    'error': 'Workflow manager not available'
+                }
+            
+            workflow = manager.update_workflow(
+                workflow_id=workflow_id,
+                name=name,
+                description=description,
+                tasks=tasks
+            )
+            
+            return {
+                'status': 'success',
+                'workflow_id': workflow.workflow_id,
+                'name': workflow.name,
+                'description': workflow.description,
+                'task_count': len(workflow.tasks),
+                'message': 'Workflow updated successfully'
+            }
+        
+        except Exception as e:
+            logger.error(f"Error updating workflow: {e}")
+            logger.debug(traceback.format_exc())
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    @mcp.tool()
     def delete_workflow(workflow_id: str) -> Dict[str, Any]:
         """
         Delete a workflow
@@ -466,5 +520,6 @@ def register_tools(mcp):
                 'error': str(e)
             }
     
-    logger.info("Workflow management tools registered successfully (9 tools including templates)")
+    logger.info("Workflow management tools registered successfully (10 tools: create, list, get, update, start, pause, stop, delete, templates, create_from_template)")
+
 
