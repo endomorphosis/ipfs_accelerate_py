@@ -5,7 +5,6 @@ This module provides workflow definition, execution, and management capabilities
 """
 
 import json
-import sqlite3
 import time
 import uuid
 import logging
@@ -14,6 +13,14 @@ from typing import Dict, List, Any, Optional
 from enum import Enum
 from dataclasses import dataclass, asdict
 from pathlib import Path
+
+# Import DuckDB for storage (with fallback for migration scenarios)
+try:
+    import duckdb
+    HAVE_DUCKDB = True
+except ImportError:
+    HAVE_DUCKDB = False
+    raise ImportError("DuckDB is required for workflow storage. Install with: pip install duckdb")
 
 logger = logging.getLogger(__name__)
 
@@ -148,88 +155,163 @@ class Workflow:
 
 
 class WorkflowStorage:
-    """Handles workflow persistence using SQLite"""
+    """Handles workflow persistence using DuckDB with Parquet storage
+    
+    Migrated from SQLite to DuckDB for better performance, analytics capabilities,
+    and Parquet file format for efficient storage and data interchange.
+    """
     
     def __init__(self, db_path: str = None):
+        if not HAVE_DUCKDB:
+            raise RuntimeError("DuckDB is required for workflow storage. Install with: pip install duckdb")
+        
         if db_path is None:
-            db_path = str(Path.home() / ".ipfs_accelerate" / "workflows.db")
+            # Use .duckdb extension instead of .db
+            db_path = str(Path.home() / ".ipfs_accelerate" / "workflows.duckdb")
         
         self.db_path = db_path
+        self.parquet_dir = str(Path(self.db_path).parent / "workflow_data")
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.parquet_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Migrate from SQLite if it exists
+        self._migrate_from_sqlite_if_needed()
+        
         self._init_db()
     
+    def _migrate_from_sqlite_if_needed(self):
+        """Migrate data from legacy SQLite database if it exists"""
+        legacy_db = str(Path.home() / ".ipfs_accelerate" / "workflows.db")
+        if not Path(legacy_db).exists():
+            return
+        
+        logger.info(f"Found legacy SQLite database, migrating to DuckDB...")
+        
+        try:
+            import sqlite3
+            
+            # Connect to both databases
+            sqlite_conn = sqlite3.connect(legacy_db)
+            sqlite_conn.row_factory = sqlite3.Row
+            
+            duck_conn = duckdb.connect(self.db_path)
+            
+            # Create tables in DuckDB first
+            self._create_tables_in_connection(duck_conn)
+            
+            # Migrate workflows
+            workflows = sqlite_conn.execute("SELECT * FROM workflows").fetchall()
+            for row in workflows:
+                duck_conn.execute("""
+                    INSERT INTO workflows 
+                    (workflow_id, name, description, status, created_at, started_at, completed_at, error, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    row['workflow_id'], row['name'], row['description'], row['status'],
+                    row['created_at'], row['started_at'], row['completed_at'], 
+                    row['error'], row['metadata']
+                ))
+            
+            # Migrate tasks
+            tasks = sqlite_conn.execute("SELECT * FROM tasks").fetchall()
+            for row in tasks:
+                # Handle optional columns that may not exist in older SQLite DBs
+                vram_pinned = row['vram_pinned'] if 'vram_pinned' in row.keys() else 0
+                preemptable = row['preemptable'] if 'preemptable' in row.keys() else 1
+                max_memory_mb = row['max_memory_mb'] if 'max_memory_mb' in row.keys() else 0
+                batch_size = row['batch_size'] if 'batch_size' in row.keys() else 1
+                priority = row['priority'] if 'priority' in row.keys() else 5
+                
+                duck_conn.execute("""
+                    INSERT INTO tasks
+                    (task_id, workflow_id, name, type, config, status, result, error,
+                     started_at, completed_at, dependencies, input_mapping, output_keys,
+                     vram_pinned, preemptable, max_memory_mb, batch_size, priority)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    row['task_id'], row['workflow_id'], row['name'], row['type'],
+                    row['config'], row['status'], row['result'], row['error'],
+                    row['started_at'], row['completed_at'], row['dependencies'],
+                    row['input_mapping'], row['output_keys'],
+                    vram_pinned, preemptable, max_memory_mb, batch_size, priority
+                ))
+            
+            duck_conn.commit()
+            duck_conn.close()
+            sqlite_conn.close()
+            
+            # Rename the old SQLite database as backup
+            backup_path = legacy_db + ".migrated_backup"
+            Path(legacy_db).rename(backup_path)
+            logger.info(f"Migration complete! SQLite backup saved to: {backup_path}")
+            
+        except Exception as e:
+            logger.error(f"Error during SQLite to DuckDB migration: {e}")
+            logger.info("Continuing with fresh DuckDB database")
+    
+    def _create_tables_in_connection(self, conn):
+        """Create tables in a DuckDB connection"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS workflows (
+                workflow_id VARCHAR PRIMARY KEY,
+                name VARCHAR NOT NULL,
+                description VARCHAR,
+                status VARCHAR NOT NULL,
+                created_at DOUBLE NOT NULL,
+                started_at DOUBLE,
+                completed_at DOUBLE,
+                error VARCHAR,
+                metadata VARCHAR
+            )
+        """)
+        
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                task_id VARCHAR PRIMARY KEY,
+                workflow_id VARCHAR NOT NULL,
+                name VARCHAR NOT NULL,
+                type VARCHAR NOT NULL,
+                config VARCHAR NOT NULL,
+                status VARCHAR NOT NULL,
+                result VARCHAR,
+                error VARCHAR,
+                started_at DOUBLE,
+                completed_at DOUBLE,
+                dependencies VARCHAR,
+                input_mapping VARCHAR,
+                output_keys VARCHAR,
+                vram_pinned BOOLEAN DEFAULT false,
+                preemptable BOOLEAN DEFAULT true,
+                max_memory_mb INTEGER DEFAULT 0,
+                batch_size INTEGER DEFAULT 1,
+                priority INTEGER DEFAULT 5
+            )
+        """)
+    
     def _init_db(self):
-        """Initialize database schema"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS workflows (
-                    workflow_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    status TEXT NOT NULL,
-                    created_at REAL NOT NULL,
-                    started_at REAL,
-                    completed_at REAL,
-                    error TEXT,
-                    metadata TEXT
-                )
-            """)
+        """Initialize DuckDB database schema"""
+        with duckdb.connect(self.db_path) as conn:
+            self._create_tables_in_connection(conn)
             
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS tasks (
-                    task_id TEXT PRIMARY KEY,
-                    workflow_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    type TEXT NOT NULL,
-                    config TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    result TEXT,
-                    error TEXT,
-                    started_at REAL,
-                    completed_at REAL,
-                    dependencies TEXT,
-                    input_mapping TEXT,
-                    output_keys TEXT,
-                    vram_pinned INTEGER DEFAULT 0,
-                    preemptable INTEGER DEFAULT 1,
-                    max_memory_mb INTEGER DEFAULT 0,
-                    batch_size INTEGER DEFAULT 1,
-                    priority INTEGER DEFAULT 5,
-                    FOREIGN KEY (workflow_id) REFERENCES workflows (workflow_id)
-                )
-            """)
+            # Export to Parquet for efficient storage and analytics
+            workflows_parquet = str(Path(self.parquet_dir) / "workflows.parquet")
+            tasks_parquet = str(Path(self.parquet_dir) / "tasks.parquet")
             
-            # Migrate existing tables to add new columns
+            # Create Parquet files if they don't exist
             try:
-                conn.execute("ALTER TABLE tasks ADD COLUMN vram_pinned INTEGER DEFAULT 0")
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+                conn.execute(f"COPY (SELECT * FROM workflows) TO '{workflows_parquet}' (FORMAT PARQUET)")
+            except:
+                pass  # Table may be empty
             
             try:
-                conn.execute("ALTER TABLE tasks ADD COLUMN preemptable INTEGER DEFAULT 1")
-            except sqlite3.OperationalError:
-                pass
-            
-            try:
-                conn.execute("ALTER TABLE tasks ADD COLUMN max_memory_mb INTEGER DEFAULT 0")
-            except sqlite3.OperationalError:
-                pass
-            
-            try:
-                conn.execute("ALTER TABLE tasks ADD COLUMN batch_size INTEGER DEFAULT 1")
-            except sqlite3.OperationalError:
-                pass
-            
-            try:
-                conn.execute("ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT 5")
-            except sqlite3.OperationalError:
-                pass
-            
-            conn.commit()
+                conn.execute(f"COPY (SELECT * FROM tasks) TO '{tasks_parquet}' (FORMAT PARQUET)")
+            except:
+                pass  # Table may be empty
     
     def save_workflow(self, workflow: Workflow):
         """Save or update a workflow"""
-        with sqlite3.connect(self.db_path) as conn:
+        with duckdb.connect(self.db_path) as conn:
+            # Insert or replace workflow
             conn.execute("""
                 INSERT OR REPLACE INTO workflows 
                 (workflow_id, name, description, status, created_at, started_at, completed_at, error, metadata)
@@ -268,73 +350,47 @@ class WorkflowStorage:
                     json.dumps(task.dependencies),
                     json.dumps(task.input_mapping),
                     json.dumps(task.output_keys),
-                    1 if task.vram_pinned else 0,
-                    1 if task.preemptable else 0,
+                    task.vram_pinned,
+                    task.preemptable,
                     task.max_memory_mb,
                     task.batch_size,
                     task.priority
                 ))
             
-            conn.commit()
+            # Export to Parquet after each save for persistence
+            workflows_parquet = str(Path(self.parquet_dir) / "workflows.parquet")
+            tasks_parquet = str(Path(self.parquet_dir) / "tasks.parquet")
+            
+            conn.execute(f"COPY (SELECT * FROM workflows) TO '{workflows_parquet}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE)")
+            conn.execute(f"COPY (SELECT * FROM tasks) TO '{tasks_parquet}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE)")
     
     def load_workflow(self, workflow_id: str) -> Optional[Workflow]:
         """Load a workflow by ID"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            
+        with duckdb.connect(self.db_path) as conn:
             # Load workflow
-            row = conn.execute(
+            result = conn.execute(
                 "SELECT * FROM workflows WHERE workflow_id = ?", 
                 (workflow_id,)
             ).fetchone()
             
-            if not row:
+            if not result:
                 return None
             
+            # DuckDB returns tuples, so we need to get column names
+            columns = [desc[0] for desc in conn.execute("SELECT * FROM workflows WHERE workflow_id = ?", (workflow_id,)).description]
+            row = dict(zip(columns, result))
+            
             # Load tasks
-            task_rows = conn.execute(
+            task_results = conn.execute(
                 "SELECT * FROM tasks WHERE workflow_id = ? ORDER BY task_id",
                 (workflow_id,)
             ).fetchall()
             
+            task_columns = [desc[0] for desc in conn.execute("SELECT * FROM tasks LIMIT 0").description]
+            
             tasks = []
-            for task_row in task_rows:
-                # sqlite3.Row doesn't support .get(), so use try/except or check columns
-                try:
-                    input_mapping_val = task_row['input_mapping']
-                except (KeyError, IndexError):
-                    input_mapping_val = None
-                
-                try:
-                    output_keys_val = task_row['output_keys']
-                except (KeyError, IndexError):
-                    output_keys_val = None
-                
-                # Load memory management fields with defaults for backward compatibility
-                try:
-                    vram_pinned = bool(task_row['vram_pinned'])
-                except (KeyError, IndexError):
-                    vram_pinned = False
-                
-                try:
-                    preemptable = bool(task_row['preemptable'])
-                except (KeyError, IndexError):
-                    preemptable = True
-                
-                try:
-                    max_memory_mb = int(task_row['max_memory_mb'])
-                except (KeyError, IndexError):
-                    max_memory_mb = 0
-                
-                try:
-                    batch_size = int(task_row['batch_size'])
-                except (KeyError, IndexError):
-                    batch_size = 1
-                
-                try:
-                    priority = int(task_row['priority'])
-                except (KeyError, IndexError):
-                    priority = 5
+            for task_result in task_results:
+                task_row = dict(zip(task_columns, task_result))
                 
                 tasks.append(WorkflowTask(
                     task_id=task_row['task_id'],
@@ -342,18 +398,18 @@ class WorkflowStorage:
                     type=task_row['type'],
                     config=json.loads(task_row['config']),
                     status=task_row['status'],
-                    result=json.loads(task_row['result']) if task_row['result'] else None,
-                    error=task_row['error'],
-                    started_at=task_row['started_at'],
-                    completed_at=task_row['completed_at'],
-                    dependencies=json.loads(task_row['dependencies']),
-                    input_mapping=json.loads(input_mapping_val) if input_mapping_val else {},
-                    output_keys=json.loads(output_keys_val) if output_keys_val else [],
-                    vram_pinned=vram_pinned,
-                    preemptable=preemptable,
-                    max_memory_mb=max_memory_mb,
-                    batch_size=batch_size,
-                    priority=priority
+                    result=json.loads(task_row['result']) if task_row.get('result') else None,
+                    error=task_row.get('error'),
+                    started_at=task_row.get('started_at'),
+                    completed_at=task_row.get('completed_at'),
+                    dependencies=json.loads(task_row['dependencies']) if task_row.get('dependencies') else [],
+                    input_mapping=json.loads(task_row['input_mapping']) if task_row.get('input_mapping') else {},
+                    output_keys=json.loads(task_row['output_keys']) if task_row.get('output_keys') else [],
+                    vram_pinned=task_row.get('vram_pinned', False) if isinstance(task_row.get('vram_pinned'), bool) else bool(task_row.get('vram_pinned', False)),
+                    preemptable=task_row.get('preemptable', True) if isinstance(task_row.get('preemptable'), bool) else bool(task_row.get('preemptable', True)),
+                    max_memory_mb=int(task_row.get('max_memory_mb', 0)),
+                    batch_size=int(task_row.get('batch_size', 1)),
+                    priority=int(task_row.get('priority', 5))
                 ))
             
             return Workflow(
@@ -363,31 +419,29 @@ class WorkflowStorage:
                 tasks=tasks,
                 status=row['status'],
                 created_at=row['created_at'],
-                started_at=row['started_at'],
-                completed_at=row['completed_at'],
-                error=row['error'],
-                metadata=json.loads(row['metadata']) if row['metadata'] else {}
+                started_at=row.get('started_at'),
+                completed_at=row.get('completed_at'),
+                error=row.get('error'),
+                metadata=json.loads(row['metadata']) if row.get('metadata') else {}
             )
     
     def list_workflows(self, status: Optional[str] = None, limit: int = 100) -> List[Workflow]:
         """List all workflows, optionally filtered by status"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            
+        with duckdb.connect(self.db_path) as conn:
             if status:
-                rows = conn.execute(
+                results = conn.execute(
                     "SELECT workflow_id FROM workflows WHERE status = ? ORDER BY created_at DESC LIMIT ?",
                     (status, limit)
                 ).fetchall()
             else:
-                rows = conn.execute(
+                results = conn.execute(
                     "SELECT workflow_id FROM workflows ORDER BY created_at DESC LIMIT ?",
                     (limit,)
                 ).fetchall()
             
             workflows = []
-            for row in rows:
-                workflow = self.load_workflow(row['workflow_id'])
+            for result in results:
+                workflow = self.load_workflow(result[0])
                 if workflow:
                     workflows.append(workflow)
             
@@ -395,9 +449,16 @@ class WorkflowStorage:
     
     def delete_workflow(self, workflow_id: str):
         """Delete a workflow and its tasks"""
-        with sqlite3.connect(self.db_path) as conn:
+        with duckdb.connect(self.db_path) as conn:
             conn.execute("DELETE FROM tasks WHERE workflow_id = ?", (workflow_id,))
             conn.execute("DELETE FROM workflows WHERE workflow_id = ?", (workflow_id,))
+            
+            # Update Parquet files
+            workflows_parquet = str(Path(self.parquet_dir) / "workflows.parquet")
+            tasks_parquet = str(Path(self.parquet_dir) / "tasks.parquet")
+            
+            conn.execute(f"COPY (SELECT * FROM workflows) TO '{workflows_parquet}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE)")
+            conn.execute(f"COPY (SELECT * FROM tasks) TO '{tasks_parquet}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE)")
             conn.commit()
 
 
@@ -945,7 +1006,12 @@ class WorkflowManager:
                 config=task_dict.get('config', {}),
                 dependencies=dependencies,
                 input_mapping=task_dict.get('input_mapping', {}),
-                output_keys=task_dict.get('output_keys', [])
+                output_keys=task_dict.get('output_keys', []),
+                vram_pinned=task_dict.get('vram_pinned', False),
+                preemptable=task_dict.get('preemptable', True),
+                max_memory_mb=task_dict.get('max_memory_mb', 0),
+                batch_size=task_dict.get('batch_size', 1),
+                priority=task_dict.get('priority', 5)
             ))
         
         workflow = Workflow(
