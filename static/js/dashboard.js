@@ -1112,24 +1112,101 @@ function updateWorkflowStats(workflows) {
 }
 
 function createWorkflow() {
+    // Ask user if they want to use a template
+    const useTemplate = confirm('Would you like to create a workflow from a template?\n\nClick OK for templates, Cancel for custom workflow.');
+    
+    if (useTemplate) {
+        createWorkflowFromTemplate();
+    } else {
+        createCustomWorkflow();
+    }
+}
+
+function createWorkflowFromTemplate() {
+    const templates = `Available Templates:
+
+1. Image Generation Pipeline
+   - LLM prompt enhancement → image generation → upscaling
+   
+2. Text-to-Video Pipeline
+   - Enhanced prompt → image → animated video
+   
+3. Safe Image Generation
+   - NSFW filter → image generation → quality validation
+   
+4. Multimodal Content Pipeline
+   - Text → Image → Audio → Video generation
+
+Enter template number (1-4):`;
+    
+    const choice = prompt(templates);
+    if (!choice) return;
+    
+    const templateMap = {
+        '1': 'image_generation',
+        '2': 'video_generation',
+        '3': 'safe_image',
+        '4': 'multimodal'
+    };
+    
+    const templateName = templateMap[choice];
+    if (!templateName) {
+        showToast('Invalid template selection', 'error');
+        return;
+    }
+    
+    const customName = prompt('Enter a custom name for this workflow (optional):');
+    
+    showToast('Creating workflow from template...', 'info');
+    
+    const requestData = {
+        template_name: templateName
+    };
+    
+    if (customName) {
+        requestData.custom_config = { name: customName };
+    }
+    
+    fetch('/api/mcp/workflows/create_from_template', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(requestData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showToast(`Workflow created from template: ${data.template_used}`, 'success');
+            refreshWorkflows();
+        } else {
+            showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        showToast('Failed to create workflow: ' + error.message, 'error');
+    });
+}
+
+function createCustomWorkflow() {
     const name = prompt('Enter workflow name:');
     if (!name) return;
     
     const description = prompt('Enter workflow description (optional):') || '';
     
-    // Create a simple default workflow with one inference task
+    // Create a simple default workflow with one text model task
     const workflow = {
         name: name,
         description: description,
         tasks: [
             {
-                name: 'Inference Task',
-                type: 'inference',
+                name: 'Text Processing',
+                type: 'text_model',
                 config: {
                     model: 'gpt2',
-                    inputs: ['Hello, world!']
+                    inputs: {prompt: 'Hello, world!'}
                 },
-                dependencies: []
+                dependencies: [],
+                input_mapping: {},
+                output_keys: ['text']
             }
         ]
     };

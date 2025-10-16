@@ -39,21 +39,27 @@ class TaskStatus(Enum):
 
 @dataclass
 class WorkflowTask:
-    """Represents a single task in a workflow"""
+    """Represents a single task in a workflow - designed for AI model pipelines"""
     task_id: str
     name: str
-    type: str  # 'inference', 'processing', 'custom'
-    config: Dict[str, Any]
+    type: str  # 'text_model', 'image_model', 'video_model', 'audio_model', 'filter_model', 'processing', 'custom'
+    config: Dict[str, Any]  # Model-specific config (model_name, parameters, etc.)
     status: str = TaskStatus.PENDING.value
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     started_at: Optional[float] = None
     completed_at: Optional[float] = None
     dependencies: List[str] = None  # List of task_ids that must complete first
+    input_mapping: Optional[Dict[str, str]] = None  # Maps output keys from dependencies to input keys
+    output_keys: Optional[List[str]] = None  # Keys to extract from result for downstream tasks
 
     def __post_init__(self):
         if self.dependencies is None:
             self.dependencies = []
+        if self.input_mapping is None:
+            self.input_mapping = {}
+        if self.output_keys is None:
+            self.output_keys = []
 
 
 @dataclass
@@ -133,6 +139,8 @@ class WorkflowStorage:
                     started_at REAL,
                     completed_at REAL,
                     dependencies TEXT,
+                    input_mapping TEXT,
+                    output_keys TEXT,
                     FOREIGN KEY (workflow_id) REFERENCES workflows (workflow_id)
                 )
             """)
@@ -163,8 +171,8 @@ class WorkflowStorage:
                 conn.execute("""
                     INSERT OR REPLACE INTO tasks
                     (task_id, workflow_id, name, type, config, status, result, error, 
-                     started_at, completed_at, dependencies)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     started_at, completed_at, dependencies, input_mapping, output_keys)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     task.task_id,
                     workflow.workflow_id,
@@ -176,7 +184,9 @@ class WorkflowStorage:
                     task.error,
                     task.started_at,
                     task.completed_at,
-                    json.dumps(task.dependencies)
+                    json.dumps(task.dependencies),
+                    json.dumps(task.input_mapping),
+                    json.dumps(task.output_keys)
                 ))
             
             conn.commit()
@@ -213,7 +223,9 @@ class WorkflowStorage:
                     error=task_row['error'],
                     started_at=task_row['started_at'],
                     completed_at=task_row['completed_at'],
-                    dependencies=json.loads(task_row['dependencies'])
+                    dependencies=json.loads(task_row['dependencies']),
+                    input_mapping=json.loads(task_row['input_mapping']) if task_row.get('input_mapping') else {},
+                    output_keys=json.loads(task_row['output_keys']) if task_row.get('output_keys') else []
                 ))
             
             return Workflow(
@@ -269,38 +281,72 @@ class WorkflowEngine:
         self.ipfs_instance = ipfs_accelerate_instance
         self._running_workflows: Dict[str, asyncio.Task] = {}
     
-    async def execute_task(self, workflow: Workflow, task: WorkflowTask) -> bool:
-        """Execute a single task"""
-        logger.info(f"Executing task {task.task_id}: {task.name}")
+    async def execute_task(self, workflow: Workflow, task: WorkflowTask, task_results: Dict[str, Any]) -> bool:
+        """
+        Execute a single task with support for AI model pipelines
+        
+        Args:
+            workflow: The workflow being executed
+            task: The task to execute
+            task_results: Results from previously completed tasks (for data passing)
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.info(f"Executing task {task.task_id}: {task.name} (type: {task.type})")
         
         task.status = TaskStatus.RUNNING.value
         task.started_at = time.time()
         self.storage.save_workflow(workflow)
         
         try:
-            if task.type == "inference":
-                # Execute inference task
-                if self.ipfs_instance:
-                    model = task.config.get('model', 'gpt2')
-                    inputs = task.config.get('inputs', ['Hello world'])
-                    
-                    # Use the existing inference infrastructure
-                    result = await self._run_inference(model, inputs)
-                    task.result = result
+            # Prepare inputs from dependencies if input_mapping is defined
+            task_inputs = dict(task.config.get('inputs', {}))
+            
+            # Apply input mapping from dependency outputs
+            for input_key, mapping in task.input_mapping.items():
+                # mapping format: "task_id.output_key" or just "task_id" for full output
+                if '.' in mapping:
+                    dep_task_id, output_key = mapping.split('.', 1)
+                    if dep_task_id in task_results and output_key in task_results[dep_task_id]:
+                        task_inputs[input_key] = task_results[dep_task_id][output_key]
                 else:
-                    # Simulated inference for testing
-                    await asyncio.sleep(1)
-                    task.result = {'output': 'Simulated output', 'model': task.config.get('model')}
+                    # Use full output from dependency
+                    dep_task_id = mapping
+                    if dep_task_id in task_results:
+                        task_inputs[input_key] = task_results[dep_task_id]
+            
+            # Execute based on task type
+            if task.type == "text_model":
+                # Text generation models (LLMs, prompt enhancement, etc.)
+                task.result = await self._execute_text_model(task, task_inputs)
+                
+            elif task.type == "image_model":
+                # Image generation/manipulation models
+                task.result = await self._execute_image_model(task, task_inputs)
+                
+            elif task.type == "video_model":
+                # Video generation/manipulation models
+                task.result = await self._execute_video_model(task, task_inputs)
+                
+            elif task.type == "audio_model":
+                # Audio generation/manipulation models
+                task.result = await self._execute_audio_model(task, task_inputs)
+                
+            elif task.type == "filter_model":
+                # Filter models (NSFW, quality check, etc.)
+                task.result = await self._execute_filter_model(task, task_inputs)
                 
             elif task.type == "processing":
                 # Custom processing task
-                await asyncio.sleep(0.5)
-                task.result = {'processed': True}
+                task.result = await self._execute_processing(task, task_inputs)
+                
+            elif task.type in ["inference", "custom"]:
+                # Legacy/generic inference task
+                task.result = await self._execute_generic_inference(task, task_inputs)
                 
             else:
-                # Custom task type
-                await asyncio.sleep(0.5)
-                task.result = {'completed': True}
+                raise ValueError(f"Unknown task type: {task.type}")
             
             task.status = TaskStatus.COMPLETED.value
             task.completed_at = time.time()
@@ -316,6 +362,128 @@ class WorkflowEngine:
         
         finally:
             self.storage.save_workflow(workflow)
+    
+    async def _execute_text_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a text/LLM model task"""
+        model = task.config.get('model', 'gpt2')
+        prompt = inputs.get('prompt', inputs.get('text', ''))
+        max_length = task.config.get('max_length', 100)
+        temperature = task.config.get('temperature', 0.7)
+        
+        # Simulated text generation
+        await asyncio.sleep(1)
+        
+        return {
+            'model': model,
+            'prompt': prompt,
+            'text': f"Generated text based on: {prompt[:50]}...",
+            'enhanced_prompt': f"Enhanced: {prompt}",  # For prompt enhancement use case
+            'parameters': {'max_length': max_length, 'temperature': temperature}
+        }
+    
+    async def _execute_image_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute an image generation/manipulation model"""
+        model = task.config.get('model', 'stable-diffusion')
+        prompt = inputs.get('prompt', inputs.get('text', ''))
+        image_input = inputs.get('image')  # For img2img or upscaling
+        
+        # Simulated image generation
+        await asyncio.sleep(2)
+        
+        return {
+            'model': model,
+            'prompt': prompt,
+            'image': f"generated_image_{task.task_id}.png",  # Placeholder
+            'image_url': f"https://placeholder.com/generated/{task.task_id}",
+            'width': task.config.get('width', 512),
+            'height': task.config.get('height', 512)
+        }
+    
+    async def _execute_video_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a video generation model"""
+        model = task.config.get('model', 'animatediff')
+        prompt = inputs.get('prompt', '')
+        image_input = inputs.get('image')  # Base image for video
+        
+        # Simulated video generation
+        await asyncio.sleep(3)
+        
+        return {
+            'model': model,
+            'prompt': prompt,
+            'video': f"generated_video_{task.task_id}.mp4",  # Placeholder
+            'video_url': f"https://placeholder.com/generated/{task.task_id}.mp4",
+            'duration': task.config.get('duration', 4),
+            'fps': task.config.get('fps', 24)
+        }
+    
+    async def _execute_audio_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute an audio generation/manipulation model"""
+        model = task.config.get('model', 'whisper')
+        text_input = inputs.get('text', '')
+        audio_input = inputs.get('audio')
+        
+        # Simulated audio processing
+        await asyncio.sleep(1)
+        
+        return {
+            'model': model,
+            'audio': f"generated_audio_{task.task_id}.wav",
+            'audio_url': f"https://placeholder.com/generated/{task.task_id}.wav",
+            'transcript': text_input if audio_input else None,
+            'duration': task.config.get('duration', 10)
+        }
+    
+    async def _execute_filter_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a filter/classification model (NSFW, quality, etc.)"""
+        model = task.config.get('model', 'nsfw-filter')
+        image = inputs.get('image')
+        text = inputs.get('text', '')
+        
+        # Simulated filter check
+        await asyncio.sleep(0.5)
+        
+        filter_type = task.config.get('filter_type', 'nsfw')
+        
+        return {
+            'model': model,
+            'filter_type': filter_type,
+            'passed': True,  # Simulated - would be actual filter result
+            'confidence': 0.95,
+            'labels': ['safe', 'appropriate'],
+            'input_preserved': image or text  # Pass through the input
+        }
+    
+    async def _execute_processing(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a custom processing task"""
+        processing_type = task.config.get('processing_type', 'generic')
+        
+        # Simulated processing
+        await asyncio.sleep(0.5)
+        
+        return {
+            'processing_type': processing_type,
+            'processed': True,
+            'output': inputs  # Pass through with processing flag
+        }
+    
+    async def _execute_generic_inference(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a generic inference task (legacy compatibility)"""
+        if self.ipfs_instance:
+            model = task.config.get('model', 'gpt2')
+            model_inputs = inputs.get('inputs', ['Hello world'])
+            
+            # Use the existing inference infrastructure
+            result = await self._run_inference(model, model_inputs)
+            return result
+        else:
+            # Simulated inference
+            await asyncio.sleep(1)
+            return {
+                'output': 'Simulated output',
+                'model': task.config.get('model'),
+                'inputs': inputs
+            }
     
     async def _run_inference(self, model: str, inputs: List[str]) -> Dict[str, Any]:
         """Run inference using the IPFS accelerate instance"""
@@ -348,6 +516,8 @@ class WorkflowEngine:
         try:
             # Track completed tasks for dependency resolution
             completed_tasks = set()
+            # Store task results for data passing
+            task_results = {}
             
             while True:
                 # Find tasks that are ready to run (dependencies met)
@@ -379,9 +549,12 @@ class WorkflowEngine:
                 
                 # Execute runnable tasks (could be parallelized)
                 for task in runnable_tasks:
-                    success = await self.execute_task(workflow, task)
+                    success = await self.execute_task(workflow, task, task_results)
                     if success:
                         completed_tasks.add(task.task_id)
+                        # Store task results for downstream tasks
+                        if task.result:
+                            task_results[task.task_id] = task.result
                 
                 # Reload workflow to get latest state
                 workflow = self.storage.load_workflow(workflow_id)
@@ -458,19 +631,34 @@ class WorkflowManager:
         self.engine = WorkflowEngine(storage, ipfs_accelerate_instance)
     
     def create_workflow(self, name: str, description: str, tasks: List[Dict[str, Any]]) -> Workflow:
-        """Create a new workflow"""
+        """Create a new workflow with AI model pipeline support"""
         workflow_id = str(uuid.uuid4())
         
         # Convert task dicts to WorkflowTask objects
         workflow_tasks = []
+        task_id_map = {}  # Map task indices to IDs for dependency resolution
+        
         for i, task_dict in enumerate(tasks):
             task_id = f"{workflow_id}-task-{i}"
+            task_id_map[i] = task_id
+            
+            # Handle dependencies (can be task indices or IDs)
+            dependencies = []
+            for dep in task_dict.get('dependencies', []):
+                if isinstance(dep, int):
+                    # Convert task index to task ID
+                    dependencies.append(task_id_map.get(dep, dep))
+                else:
+                    dependencies.append(dep)
+            
             workflow_tasks.append(WorkflowTask(
                 task_id=task_id,
                 name=task_dict['name'],
                 type=task_dict['type'],
                 config=task_dict.get('config', {}),
-                dependencies=task_dict.get('dependencies', [])
+                dependencies=dependencies,
+                input_mapping=task_dict.get('input_mapping', {}),
+                output_keys=task_dict.get('output_keys', [])
             ))
         
         workflow = Workflow(
@@ -483,6 +671,224 @@ class WorkflowManager:
         self.storage.save_workflow(workflow)
         logger.info(f"Created workflow {workflow_id}: {name}")
         return workflow
+    
+    @staticmethod
+    def create_image_generation_pipeline() -> Dict[str, Any]:
+        """
+        Template for: Prompt Enhancement -> Image Generation -> Upscaling
+        """
+        return {
+            'name': 'Image Generation Pipeline',
+            'description': 'LLM prompt enhancement → image generation → upscaling',
+            'tasks': [
+                {
+                    'name': 'Enhance Prompt',
+                    'type': 'text_model',
+                    'config': {
+                        'model': 'gpt-4',
+                        'inputs': {'prompt': 'a beautiful landscape'},
+                        'max_length': 200
+                    },
+                    'dependencies': [],
+                    'output_keys': ['enhanced_prompt']
+                },
+                {
+                    'name': 'Generate Image',
+                    'type': 'image_model',
+                    'config': {
+                        'model': 'stable-diffusion-xl',
+                        'width': 1024,
+                        'height': 1024
+                    },
+                    'dependencies': [0],  # Depends on task 0 (prompt enhancement)
+                    'input_mapping': {
+                        'prompt': '0.enhanced_prompt'  # Use enhanced_prompt from task 0
+                    },
+                    'output_keys': ['image', 'image_url']
+                },
+                {
+                    'name': 'Upscale Image',
+                    'type': 'image_model',
+                    'config': {
+                        'model': 'real-esrgan',
+                        'scale': 4
+                    },
+                    'dependencies': [1],  # Depends on task 1 (image generation)
+                    'input_mapping': {
+                        'image': '1.image'  # Use image from task 1
+                    },
+                    'output_keys': ['image', 'image_url']
+                }
+            ]
+        }
+    
+    @staticmethod
+    def create_video_generation_pipeline() -> Dict[str, Any]:
+        """
+        Template for: Prompt Enhancement -> Image Generation -> Video Generation
+        """
+        return {
+            'name': 'Text-to-Video Pipeline',
+            'description': 'Enhanced prompt → image → animated video',
+            'tasks': [
+                {
+                    'name': 'Enhance Prompt',
+                    'type': 'text_model',
+                    'config': {
+                        'model': 'gpt-4',
+                        'inputs': {'prompt': 'a serene mountain scene'},
+                        'max_length': 150
+                    },
+                    'dependencies': [],
+                    'output_keys': ['enhanced_prompt']
+                },
+                {
+                    'name': 'Generate Base Image',
+                    'type': 'image_model',
+                    'config': {
+                        'model': 'stable-diffusion-xl',
+                        'width': 768,
+                        'height': 768
+                    },
+                    'dependencies': [0],
+                    'input_mapping': {
+                        'prompt': '0.enhanced_prompt'
+                    },
+                    'output_keys': ['image']
+                },
+                {
+                    'name': 'Generate Video',
+                    'type': 'video_model',
+                    'config': {
+                        'model': 'animatediff',
+                        'duration': 4,
+                        'fps': 24
+                    },
+                    'dependencies': [0, 1],  # Depends on both prompt and image
+                    'input_mapping': {
+                        'prompt': '0.enhanced_prompt',
+                        'image': '1.image'
+                    },
+                    'output_keys': ['video', 'video_url']
+                }
+            ]
+        }
+    
+    @staticmethod
+    def create_safe_image_pipeline() -> Dict[str, Any]:
+        """
+        Template for: NSFW Filter -> Image Generation -> Quality Check
+        """
+        return {
+            'name': 'Safe Image Generation',
+            'description': 'NSFW filter → image generation → quality validation',
+            'tasks': [
+                {
+                    'name': 'Check Prompt Safety',
+                    'type': 'filter_model',
+                    'config': {
+                        'model': 'nsfw-text-classifier',
+                        'filter_type': 'nsfw',
+                        'inputs': {'text': 'a beautiful portrait'}
+                    },
+                    'dependencies': [],
+                    'output_keys': ['passed', 'input_preserved']
+                },
+                {
+                    'name': 'Generate Image',
+                    'type': 'image_model',
+                    'config': {
+                        'model': 'stable-diffusion',
+                        'width': 512,
+                        'height': 512
+                    },
+                    'dependencies': [0],
+                    'input_mapping': {
+                        'prompt': '0.input_preserved'
+                    },
+                    'output_keys': ['image']
+                },
+                {
+                    'name': 'Validate Image Quality',
+                    'type': 'filter_model',
+                    'config': {
+                        'model': 'image-quality-scorer',
+                        'filter_type': 'quality'
+                    },
+                    'dependencies': [1],
+                    'input_mapping': {
+                        'image': '1.image'
+                    },
+                    'output_keys': ['passed', 'confidence']
+                }
+            ]
+        }
+    
+    @staticmethod
+    def create_multimodal_pipeline() -> Dict[str, Any]:
+        """
+        Template for: Text → Image → Audio Description → Video
+        Complex multi-modal AI pipeline
+        """
+        return {
+            'name': 'Multimodal Content Pipeline',
+            'description': 'Text → Image → Audio → Video generation',
+            'tasks': [
+                {
+                    'name': 'Generate Story',
+                    'type': 'text_model',
+                    'config': {
+                        'model': 'gpt-4',
+                        'inputs': {'prompt': 'Write a short story'},
+                        'max_length': 300
+                    },
+                    'dependencies': [],
+                    'output_keys': ['text']
+                },
+                {
+                    'name': 'Generate Scene Image',
+                    'type': 'image_model',
+                    'config': {
+                        'model': 'dalle-3',
+                        'width': 1024,
+                        'height': 1024
+                    },
+                    'dependencies': [0],
+                    'input_mapping': {
+                        'prompt': '0.text'
+                    },
+                    'output_keys': ['image']
+                },
+                {
+                    'name': 'Generate Narration',
+                    'type': 'audio_model',
+                    'config': {
+                        'model': 'tts-1',
+                        'voice': 'alloy'
+                    },
+                    'dependencies': [0],
+                    'input_mapping': {
+                        'text': '0.text'
+                    },
+                    'output_keys': ['audio']
+                },
+                {
+                    'name': 'Create Video',
+                    'type': 'video_model',
+                    'config': {
+                        'model': 'video-composer',
+                        'duration': 10,
+                        'fps': 30
+                    },
+                    'dependencies': [1, 2],  # Depends on image and audio
+                    'input_mapping': {
+                        'image': '1.image',
+                        'audio': '2.audio'
+                    },
+                    'output_keys': ['video', 'video_url']
+                }
+            ]
+        }
     
     def get_workflow(self, workflow_id: str) -> Optional[Workflow]:
         """Get a workflow by ID"""

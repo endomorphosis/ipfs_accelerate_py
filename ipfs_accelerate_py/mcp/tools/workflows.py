@@ -341,4 +341,125 @@ def register_tools(mcp):
                 'error': str(e)
             }
     
-    logger.info("Workflow management tools registered successfully")
+    @mcp.tool()
+    def get_workflow_templates() -> Dict[str, Any]:
+        """
+        Get pre-built workflow templates for common AI pipelines
+        
+        Returns:
+            Dictionary with available templates
+        """
+        try:
+            templates = {
+                'image_generation': {
+                    'name': 'Image Generation Pipeline',
+                    'description': 'LLM prompt enhancement → image generation → upscaling',
+                    'use_case': 'Create high-quality images with enhanced prompts',
+                    'models': ['gpt-4', 'stable-diffusion-xl', 'real-esrgan']
+                },
+                'video_generation': {
+                    'name': 'Text-to-Video Pipeline',
+                    'description': 'Enhanced prompt → image → animated video',
+                    'use_case': 'Generate videos from text descriptions',
+                    'models': ['gpt-4', 'stable-diffusion-xl', 'animatediff']
+                },
+                'safe_image': {
+                    'name': 'Safe Image Generation',
+                    'description': 'NSFW filter → image generation → quality validation',
+                    'use_case': 'Generate safe, high-quality images with content filtering',
+                    'models': ['nsfw-text-classifier', 'stable-diffusion', 'image-quality-scorer']
+                },
+                'multimodal': {
+                    'name': 'Multimodal Content Pipeline',
+                    'description': 'Text → Image → Audio → Video generation',
+                    'use_case': 'Create complete multimedia content from text',
+                    'models': ['gpt-4', 'dalle-3', 'tts-1', 'video-composer']
+                }
+            }
+            
+            return {
+                'status': 'success',
+                'templates': templates,
+                'total': len(templates)
+            }
+        
+        except Exception as e:
+            logger.error(f"Error getting templates: {e}")
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    @mcp.tool()
+    def create_workflow_from_template(
+        template_name: str,
+        custom_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a workflow from a pre-built template
+        
+        Args:
+            template_name: Name of the template ('image_generation', 'video_generation', 'safe_image', 'multimodal')
+            custom_config: Optional custom configuration to override template defaults
+        
+        Returns:
+            Dictionary with created workflow details
+        """
+        try:
+            manager = get_workflow_manager()
+            if not manager:
+                return {
+                    'status': 'error',
+                    'error': 'Workflow manager not available'
+                }
+            
+            # Get template
+            template_map = {
+                'image_generation': WorkflowManager.create_image_generation_pipeline,
+                'video_generation': WorkflowManager.create_video_generation_pipeline,
+                'safe_image': WorkflowManager.create_safe_image_pipeline,
+                'multimodal': WorkflowManager.create_multimodal_pipeline
+            }
+            
+            if template_name not in template_map:
+                return {
+                    'status': 'error',
+                    'error': f'Unknown template: {template_name}. Available: {list(template_map.keys())}'
+                }
+            
+            template = template_map[template_name]()
+            
+            # Apply custom config if provided
+            if custom_config:
+                if 'name' in custom_config:
+                    template['name'] = custom_config['name']
+                if 'description' in custom_config:
+                    template['description'] = custom_config['description']
+                # Can extend to support task-level customization
+            
+            # Create workflow from template
+            workflow = manager.create_workflow(
+                name=template['name'],
+                description=template['description'],
+                tasks=template['tasks']
+            )
+            
+            return {
+                'status': 'success',
+                'workflow_id': workflow.workflow_id,
+                'name': workflow.name,
+                'description': workflow.description,
+                'task_count': len(workflow.tasks),
+                'template_used': template_name
+            }
+        
+        except Exception as e:
+            logger.error(f"Error creating workflow from template: {e}")
+            logger.debug(traceback.format_exc())
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    logger.info("Workflow management tools registered successfully (9 tools including templates)")
+

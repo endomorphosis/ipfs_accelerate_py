@@ -636,6 +636,58 @@ class MCPDashboard:
                 logger.error(f"Error creating workflow: {e}")
                 return jsonify({'error': str(e)}), 500
         
+        @self.app.route('/api/mcp/workflows/create_from_template', methods=['POST'])
+        def create_workflow_from_template():
+            """Create a workflow from a pre-built template."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                data = request.get_json() or {}
+                template_name = data.get('template_name')
+                custom_config = data.get('custom_config', {})
+                
+                if not template_name:
+                    return jsonify({'error': 'Template name is required'}), 400
+                
+                # Get template
+                template_map = {
+                    'image_generation': WorkflowManager.create_image_generation_pipeline,
+                    'video_generation': WorkflowManager.create_video_generation_pipeline,
+                    'safe_image': WorkflowManager.create_safe_image_pipeline,
+                    'multimodal': WorkflowManager.create_multimodal_pipeline
+                }
+                
+                if template_name not in template_map:
+                    return jsonify({'error': f'Unknown template: {template_name}'}), 400
+                
+                template = template_map[template_name]()
+                
+                # Apply custom config
+                if 'name' in custom_config:
+                    template['name'] = custom_config['name']
+                if 'description' in custom_config:
+                    template['description'] = custom_config['description']
+                
+                # Create workflow
+                manager = WorkflowManager()
+                workflow = manager.create_workflow(
+                    name=template['name'],
+                    description=template['description'],
+                    tasks=template['tasks']
+                )
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow.workflow_id,
+                    'name': workflow.name,
+                    'template_used': template_name,
+                    'message': 'Workflow created from template'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error creating workflow from template: {e}")
+                return jsonify({'error': str(e)}), 500
+        
         @self.app.route('/api/mcp/workflows/<workflow_id>/start', methods=['POST'])
         def start_workflow(workflow_id):
             """Start a workflow."""
