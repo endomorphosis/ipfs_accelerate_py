@@ -84,6 +84,8 @@ function initializeTab(tabName) {
             if (typeof initializeModelManager === 'function') {
                 initializeModelManager();
             }
+            // Load database stats when model browser tab opens
+            loadDatabaseStats();
             break;
         case 'queue-monitor':
             refreshQueue();
@@ -604,10 +606,49 @@ function updateSearchStats(data) {
     const models = data.results || data.models || [];
     const total = data.total || models.length;
     
-    if (totalIndexedSpan) totalIndexedSpan.textContent = total;
-    if (hfModelsSpan) hfModelsSpan.textContent = models.length;
-    if (compatibleSpan) compatibleSpan.textContent = models.filter(m => m.compatibility).length;
-    if (testedSpan) testedSpan.textContent = models.filter(m => m.performance).length;
+    // These stats should represent the search results, not the full database
+    // We'll load database stats separately
+    if (totalIndexedSpan && data.database_total !== undefined) {
+        totalIndexedSpan.textContent = data.database_total;
+    }
+    if (hfModelsSpan && data.database_hf !== undefined) {
+        hfModelsSpan.textContent = data.database_hf;
+    }
+    if (compatibleSpan && data.database_compatible !== undefined) {
+        compatibleSpan.textContent = data.database_compatible;
+    }
+    if (testedSpan && data.database_tested !== undefined) {
+        testedSpan.textContent = data.database_tested;
+    }
+}
+
+// Load database statistics
+function loadDatabaseStats() {
+    console.log('[Dashboard] Loading database statistics...');
+    
+    fetch('/api/mcp/models/stats')
+        .then(response => response.json())
+        .then(data => {
+            console.log('[Dashboard] Database stats:', data);
+            
+            const totalIndexedSpan = document.getElementById('total-indexed');
+            const hfModelsSpan = document.getElementById('hf-models-count');
+            const compatibleSpan = document.getElementById('compatible-models');
+            const testedSpan = document.getElementById('tested-models');
+            
+            if (totalIndexedSpan) totalIndexedSpan.textContent = data.total_indexed || 0;
+            if (hfModelsSpan) hfModelsSpan.textContent = data.hf_models || 0;
+            if (compatibleSpan) compatibleSpan.textContent = data.compatible_models || 0;
+            if (testedSpan) testedSpan.textContent = data.tested_models || 0;
+            
+            if (data.fallback) {
+                console.warn('[Dashboard] Using fallback statistics');
+            }
+        })
+        .catch(error => {
+            console.error('[Dashboard] Failed to load database stats:', error);
+            // Keep showing zeros on error
+        });
 }
 
 // Hardware Compatibility Testing
@@ -1763,6 +1804,11 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         updateInferenceForm();
     }, 100);
+    
+    // Load database statistics for search-stats section
+    setTimeout(() => {
+        loadDatabaseStats();
+    }, 500);
 });
 
 // Cleanup on page unload
