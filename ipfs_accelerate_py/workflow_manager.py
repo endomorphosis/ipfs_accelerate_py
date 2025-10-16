@@ -37,12 +37,48 @@ class TaskStatus(Enum):
     SKIPPED = "skipped"
 
 
+# HuggingFace Pipeline Tags - Official taxonomy from HF Hub
+# This allows automatic model classification without human intervention
+# Tasks use these tags so models can be automatically mapped based on their pipeline_tag
+HF_PIPELINE_TAGS = {
+    # Text tasks
+    'text-generation', 'text2text-generation', 'text-classification',
+    'token-classification', 'question-answering', 'fill-mask',
+    'summarization', 'translation', 'sentence-similarity',
+    'conversational', 'feature-extraction',
+    # Audio tasks
+    'text-to-speech', 'automatic-speech-recognition', 'audio-classification',
+    'audio-to-audio', 'voice-activity-detection',
+    # Image tasks
+    'text-to-image', 'image-to-text', 'image-classification',
+    'image-segmentation', 'object-detection', 'depth-estimation',
+    'image-to-image', 'unconditional-image-generation',
+    # Video tasks
+    'video-classification', 'image-to-video', 'text-to-video',
+    # Multimodal tasks
+    'visual-question-answering', 'document-question-answering',
+    'table-question-answering',
+    # Zero-shot tasks
+    'zero-shot-classification', 'zero-shot-image-classification',
+    'zero-shot-object-detection',
+    # Other
+    'reinforcement-learning', 'robotics',
+    # Legacy/custom (for backwards compatibility and special processing)
+    'inference', 'processing', 'filter'
+}
+
+
 @dataclass
 class WorkflowTask:
-    """Represents a single task in a workflow - designed for AI model pipelines"""
+    """Represents a single task in a workflow - designed for AI model pipelines
+    
+    Tasks use HuggingFace pipeline_tag taxonomy for automatic model classification.
+    This allows the scraper to automatically map models to task types based on their
+    pipeline_tag without human intervention.
+    """
     task_id: str
     name: str
-    type: str  # 'text_model', 'image_model', 'video_model', 'audio_model', 'filter_model', 'processing', 'custom'
+    type: str  # HuggingFace pipeline_tag (e.g., 'text-generation', 'text-to-image', 'image-to-video', etc.)
     config: Dict[str, Any]  # Model-specific config (model_name, parameters, etc.)
     status: str = TaskStatus.PENDING.value
     result: Optional[Dict[str, Any]] = None
@@ -316,37 +352,10 @@ class WorkflowEngine:
                     if dep_task_id in task_results:
                         task_inputs[input_key] = task_results[dep_task_id]
             
-            # Execute based on task type
-            if task.type == "text_model":
-                # Text generation models (LLMs, prompt enhancement, etc.)
-                task.result = await self._execute_text_model(task, task_inputs)
-                
-            elif task.type == "image_model":
-                # Image generation/manipulation models
-                task.result = await self._execute_image_model(task, task_inputs)
-                
-            elif task.type == "video_model":
-                # Video generation/manipulation models
-                task.result = await self._execute_video_model(task, task_inputs)
-                
-            elif task.type == "audio_model":
-                # Audio generation/manipulation models
-                task.result = await self._execute_audio_model(task, task_inputs)
-                
-            elif task.type == "filter_model":
-                # Filter models (NSFW, quality check, etc.)
-                task.result = await self._execute_filter_model(task, task_inputs)
-                
-            elif task.type == "processing":
-                # Custom processing task
-                task.result = await self._execute_processing(task, task_inputs)
-                
-            elif task.type in ["inference", "custom"]:
-                # Legacy/generic inference task
-                task.result = await self._execute_generic_inference(task, task_inputs)
-                
-            else:
-                raise ValueError(f"Unknown task type: {task.type}")
+            # Execute based on HuggingFace pipeline_tag
+            # Map pipeline tags to execution methods
+            task_result = await self._execute_hf_pipeline_task(task, task_inputs)
+            task.result = task_result
             
             task.status = TaskStatus.COMPLETED.value
             task.completed_at = time.time()
@@ -363,8 +372,75 @@ class WorkflowEngine:
         finally:
             self.storage.save_workflow(workflow)
     
-    async def _execute_text_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a text/LLM model task"""
+    async def _execute_hf_pipeline_task(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a task based on HuggingFace pipeline_tag
+        
+        This method routes execution based on the official HuggingFace taxonomy,
+        allowing automatic model classification without human intervention.
+        The model scraper can automatically map models based on their pipeline_tag.
+        """
+        pipeline_tag = task.type
+        
+        # Map HuggingFace pipeline tags to execution methods
+        # Text tasks
+        if pipeline_tag in ['text-generation', 'text2text-generation', 'conversational', 
+                           'summarization', 'translation', 'fill-mask']:
+            return await self._execute_text_generation(task, inputs)
+        
+        elif pipeline_tag in ['text-classification', 'token-classification', 'question-answering',
+                             'sentence-similarity', 'zero-shot-classification', 
+                             'table-question-answering']:
+            return await self._execute_text_analysis(task, inputs)
+        
+        # Image tasks
+        elif pipeline_tag in ['text-to-image', 'unconditional-image-generation']:
+            return await self._execute_image_generation(task, inputs)
+        
+        elif pipeline_tag in ['image-to-image', 'image-segmentation', 'object-detection',
+                             'depth-estimation', 'image-classification',
+                             'zero-shot-image-classification', 'zero-shot-object-detection']:
+            return await self._execute_image_analysis(task, inputs)
+        
+        elif pipeline_tag == 'image-to-text':
+            return await self._execute_image_to_text(task, inputs)
+        
+        # Video tasks
+        elif pipeline_tag in ['image-to-video', 'text-to-video', 'video-classification']:
+            return await self._execute_video_task(task, inputs)
+        
+        # Audio tasks
+        elif pipeline_tag in ['text-to-speech', 'audio-to-audio']:
+            return await self._execute_audio_generation(task, inputs)
+        
+        elif pipeline_tag in ['automatic-speech-recognition', 'audio-classification',
+                             'voice-activity-detection']:
+            return await self._execute_audio_analysis(task, inputs)
+        
+        # Multimodal tasks
+        elif pipeline_tag in ['visual-question-answering', 'document-question-answering']:
+            return await self._execute_multimodal(task, inputs)
+        
+        # Feature extraction
+        elif pipeline_tag == 'feature-extraction':
+            return await self._execute_feature_extraction(task, inputs)
+        
+        # Special/legacy types
+        elif pipeline_tag == 'filter':
+            return await self._execute_filter(task, inputs)
+        
+        elif pipeline_tag == 'processing':
+            return await self._execute_processing(task, inputs)
+        
+        elif pipeline_tag == 'inference':
+            return await self._execute_generic_inference(task, inputs)
+        
+        else:
+            # Unknown pipeline tag - try generic inference
+            logger.warning(f"Unknown pipeline_tag '{pipeline_tag}', using generic inference")
+            return await self._execute_generic_inference(task, inputs)
+    
+    async def _execute_text_generation(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute text generation tasks (text-generation, summarization, translation, etc.)"""
         model = task.config.get('model', 'gpt2')
         prompt = inputs.get('prompt', inputs.get('text', ''))
         max_length = task.config.get('max_length', 100)
@@ -372,87 +448,206 @@ class WorkflowEngine:
         
         # Simulated text generation
         await asyncio.sleep(1)
+        logger.info(f"Executing {task.type} with model {model}")
         
-        return {
+        # Simulated output
+        result = {
+            'text': f"Generated text from {model} for prompt: {prompt[:50]}...",
+            'enhanced_prompt': f"Enhanced: {prompt}",
             'model': model,
-            'prompt': prompt,
-            'text': f"Generated text based on: {prompt[:50]}...",
-            'enhanced_prompt': f"Enhanced: {prompt}",  # For prompt enhancement use case
+            'pipeline_tag': task.type,
             'parameters': {'max_length': max_length, 'temperature': temperature}
         }
+        
+        return result
     
-    async def _execute_image_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute an image generation/manipulation model"""
-        model = task.config.get('model', 'stable-diffusion')
-        prompt = inputs.get('prompt', inputs.get('text', ''))
-        image_input = inputs.get('image')  # For img2img or upscaling
+    async def _execute_text_analysis(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute text analysis tasks (classification, QA, NER, etc.)"""
+        model = task.config.get('model', 'bert-base')
+        text = inputs.get('text', inputs.get('prompt', ''))
         
-        # Simulated image generation
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
+        logger.info(f"Executing {task.type} with model {model}")
         
-        return {
+        result = {
+            'label': 'positive',
+            'score': 0.95,
+            'analysis': f"Analysis result from {model}",
             'model': model,
-            'prompt': prompt,
-            'image': f"generated_image_{task.task_id}.png",  # Placeholder
-            'image_url': f"https://placeholder.com/generated/{task.task_id}",
-            'width': task.config.get('width', 512),
-            'height': task.config.get('height', 512)
+            'pipeline_tag': task.type
         }
+        
+        return result
     
-    async def _execute_video_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a video generation model"""
+    async def _execute_image_generation(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute image generation tasks (text-to-image, unconditional generation)"""
+        model = task.config.get('model', 'stable-diffusion-xl')
+        prompt = inputs.get('prompt', inputs.get('text', ''))
+        
+        await asyncio.sleep(2)
+        logger.info(f"Executing {task.type} with model {model}")
+        
+        result = {
+            'image': f"generated_image_{task.task_id}.png",
+            'image_url': f"https://placeholder.com/generated/{task.task_id}",
+            'prompt_used': prompt,
+            'model': model,
+            'pipeline_tag': task.type,
+            'width': task.config.get('width', 1024),
+            'height': task.config.get('height', 1024)
+        }
+        
+        return result
+    
+    async def _execute_image_analysis(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute image analysis/manipulation tasks (segmentation, detection, classification, etc.)"""
+        model = task.config.get('model', 'image-processor')
+        image = inputs.get('image', '/path/to/input.png')
+        
+        await asyncio.sleep(1)
+        logger.info(f"Executing {task.type} with model {model}")
+        
+        result = {
+            'processed_image': f"processed_{image}",
+            'detections': [],
+            'labels': ['object1', 'object2'],
+            'scores': [0.95, 0.87],
+            'model': model,
+            'pipeline_tag': task.type
+        }
+        
+        return result
+    
+    async def _execute_image_to_text(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute image-to-text tasks (captioning, OCR, etc.)"""
+        model = task.config.get('model', 'blip-2')
+        image = inputs.get('image', '/path/to/input.png')
+        
+        await asyncio.sleep(1)
+        logger.info(f"Executing {task.type} with model {model}")
+        
+        result = {
+            'text': f"Description of image {image}",
+            'captions': ['A detailed description of the image'],
+            'model': model,
+            'pipeline_tag': task.type
+        }
+        
+        return result
+    
+    async def _execute_video_task(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute video tasks (generation, classification, etc.)"""
         model = task.config.get('model', 'animatediff')
         prompt = inputs.get('prompt', '')
-        image_input = inputs.get('image')  # Base image for video
+        image_input = inputs.get('image')
         
-        # Simulated video generation
         await asyncio.sleep(3)
+        logger.info(f"Executing {task.type} with model {model}")
         
-        return {
-            'model': model,
-            'prompt': prompt,
-            'video': f"generated_video_{task.task_id}.mp4",  # Placeholder
+        result = {
+            'video': f"generated_video_{task.task_id}.mp4",
             'video_url': f"https://placeholder.com/generated/{task.task_id}.mp4",
+            'frames': 30,
             'duration': task.config.get('duration', 4),
-            'fps': task.config.get('fps', 24)
-        }
-    
-    async def _execute_audio_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute an audio generation/manipulation model"""
-        model = task.config.get('model', 'whisper')
-        text_input = inputs.get('text', '')
-        audio_input = inputs.get('audio')
-        
-        # Simulated audio processing
-        await asyncio.sleep(1)
-        
-        return {
+            'fps': task.config.get('fps', 24),
             'model': model,
+            'pipeline_tag': task.type
+        }
+        
+        return result
+    
+    async def _execute_audio_generation(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute audio generation tasks (TTS, audio-to-audio, etc.)"""
+        model = task.config.get('model', 'elevenlabs-tts')
+        text = inputs.get('text', inputs.get('prompt', ''))
+        
+        await asyncio.sleep(1.5)
+        logger.info(f"Executing {task.type} with model {model}")
+        
+        result = {
             'audio': f"generated_audio_{task.task_id}.wav",
             'audio_url': f"https://placeholder.com/generated/{task.task_id}.wav",
-            'transcript': text_input if audio_input else None,
-            'duration': task.config.get('duration', 10)
+            'text_used': text,
+            'duration': task.config.get('duration', 10),
+            'model': model,
+            'pipeline_tag': task.type
         }
+        
+        return result
     
-    async def _execute_filter_model(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a filter/classification model (NSFW, quality, etc.)"""
+    async def _execute_audio_analysis(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute audio analysis tasks (ASR, classification, etc.)"""
+        model = task.config.get('model', 'whisper-large')
+        audio = inputs.get('audio', '/path/to/input.wav')
+        
+        await asyncio.sleep(1)
+        logger.info(f"Executing {task.type} with model {model}")
+        
+        result = {
+            'text': f"Transcription from {audio}",
+            'language': 'en',
+            'confidence': 0.96,
+            'model': model,
+            'pipeline_tag': task.type
+        }
+        
+        return result
+    
+    async def _execute_multimodal(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute multimodal tasks (VQA, document QA, etc.)"""
+        model = task.config.get('model', 'multimodal-model')
+        
+        await asyncio.sleep(1.5)
+        logger.info(f"Executing {task.type} with model {model}")
+        
+        result = {
+            'answer': 'Response to multimodal query',
+            'confidence': 0.92,
+            'model': model,
+            'pipeline_tag': task.type
+        }
+        
+        return result
+    
+    async def _execute_feature_extraction(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute feature extraction tasks"""
+        model = task.config.get('model', 'sentence-transformers')
+        
+        await asyncio.sleep(0.5)
+        logger.info(f"Executing {task.type} with model {model}")
+        
+        result = {
+            'embeddings': [0.1, 0.2, 0.3],  # Simulated
+            'dimensions': 768,
+            'model': model,
+            'pipeline_tag': task.type
+        }
+        
+        return result
+    
+    async def _execute_filter(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute content filtering tasks (NSFW, quality checks, etc.)"""
         model = task.config.get('model', 'nsfw-filter')
         image = inputs.get('image')
         text = inputs.get('text', '')
         
-        # Simulated filter check
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.3)
+        logger.info(f"Executing filter with model {model}")
         
-        filter_type = task.config.get('filter_type', 'nsfw')
-        
-        return {
-            'model': model,
-            'filter_type': filter_type,
-            'passed': True,  # Simulated - would be actual filter result
-            'confidence': 0.95,
+        result = {
+            'passed': True,
+            'score': 0.95,
             'labels': ['safe', 'appropriate'],
-            'input_preserved': image or text  # Pass through the input
+            'model': model,
+            'pipeline_tag': task.type
         }
+        
+        # Preserve inputs for downstream tasks if filter passes
+        result['text'] = text
+        if image:
+            result['image'] = image
+        
+        return result
     
     async def _execute_processing(self, task: WorkflowTask, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a custom processing task"""
@@ -676,6 +871,7 @@ class WorkflowManager:
     def create_image_generation_pipeline() -> Dict[str, Any]:
         """
         Template for: Prompt Enhancement -> Image Generation -> Upscaling
+        Uses HuggingFace pipeline tags: text-generation, text-to-image, image-to-image
         """
         return {
             'name': 'Image Generation Pipeline',
@@ -683,18 +879,18 @@ class WorkflowManager:
             'tasks': [
                 {
                     'name': 'Enhance Prompt',
-                    'type': 'text_model',
+                    'type': 'text-generation',  # HuggingFace pipeline tag
                     'config': {
                         'model': 'gpt-4',
                         'inputs': {'prompt': 'a beautiful landscape'},
                         'max_length': 200
                     },
                     'dependencies': [],
-                    'output_keys': ['enhanced_prompt']
+                    'output_keys': ['enhanced_prompt', 'text']
                 },
                 {
                     'name': 'Generate Image',
-                    'type': 'image_model',
+                    'type': 'text-to-image',  # HuggingFace pipeline tag
                     'config': {
                         'model': 'stable-diffusion-xl',
                         'width': 1024,
@@ -708,7 +904,7 @@ class WorkflowManager:
                 },
                 {
                     'name': 'Upscale Image',
-                    'type': 'image_model',
+                    'type': 'image-to-image',  # HuggingFace pipeline tag
                     'config': {
                         'model': 'real-esrgan',
                         'scale': 4
@@ -726,6 +922,7 @@ class WorkflowManager:
     def create_video_generation_pipeline() -> Dict[str, Any]:
         """
         Template for: Prompt Enhancement -> Image Generation -> Video Generation
+        Uses HuggingFace pipeline tags: text-generation, text-to-image, image-to-video
         """
         return {
             'name': 'Text-to-Video Pipeline',
@@ -733,18 +930,18 @@ class WorkflowManager:
             'tasks': [
                 {
                     'name': 'Enhance Prompt',
-                    'type': 'text_model',
+                    'type': 'text-generation',  # HuggingFace pipeline tag
                     'config': {
                         'model': 'gpt-4',
                         'inputs': {'prompt': 'a serene mountain scene'},
                         'max_length': 150
                     },
                     'dependencies': [],
-                    'output_keys': ['enhanced_prompt']
+                    'output_keys': ['enhanced_prompt', 'text']
                 },
                 {
                     'name': 'Generate Base Image',
-                    'type': 'image_model',
+                    'type': 'text-to-image',  # HuggingFace pipeline tag
                     'config': {
                         'model': 'stable-diffusion-xl',
                         'width': 768,
@@ -757,8 +954,8 @@ class WorkflowManager:
                     'output_keys': ['image']
                 },
                 {
-                    'name': 'Generate Video',
-                    'type': 'video_model',
+                    'name': 'Animate to Video',
+                    'type': 'image-to-video',  # HuggingFace pipeline tag
                     'config': {
                         'model': 'animatediff',
                         'duration': 4,
@@ -778,78 +975,27 @@ class WorkflowManager:
     def create_safe_image_pipeline() -> Dict[str, Any]:
         """
         Template for: NSFW Filter -> Image Generation -> Quality Check
+        Uses HuggingFace pipeline tags: filter (custom), text-to-image, image-classification
         """
         return {
             'name': 'Safe Image Generation',
             'description': 'NSFW filter → image generation → quality validation',
             'tasks': [
                 {
-                    'name': 'Check Prompt Safety',
-                    'type': 'filter_model',
+                    'name': 'NSFW Filter',
+                    'type': 'filter',  # Custom filter type
                     'config': {
-                        'model': 'nsfw-text-classifier',
-                        'filter_type': 'nsfw',
-                        'inputs': {'text': 'a beautiful portrait'}
+                        'model': 'nsfw-classifier',
+                        'filter_type': 'nsfw'
                     },
                     'dependencies': [],
-                    'output_keys': ['passed', 'input_preserved']
+                    'output_keys': ['passed', 'text']
                 },
                 {
                     'name': 'Generate Image',
-                    'type': 'image_model',
+                    'type': 'text-to-image',  # HuggingFace pipeline tag
                     'config': {
-                        'model': 'stable-diffusion',
-                        'width': 512,
-                        'height': 512
-                    },
-                    'dependencies': [0],
-                    'input_mapping': {
-                        'prompt': '0.input_preserved'
-                    },
-                    'output_keys': ['image']
-                },
-                {
-                    'name': 'Validate Image Quality',
-                    'type': 'filter_model',
-                    'config': {
-                        'model': 'image-quality-scorer',
-                        'filter_type': 'quality'
-                    },
-                    'dependencies': [1],
-                    'input_mapping': {
-                        'image': '1.image'
-                    },
-                    'output_keys': ['passed', 'confidence']
-                }
-            ]
-        }
-    
-    @staticmethod
-    def create_multimodal_pipeline() -> Dict[str, Any]:
-        """
-        Template for: Text → Image → Audio Description → Video
-        Complex multi-modal AI pipeline
-        """
-        return {
-            'name': 'Multimodal Content Pipeline',
-            'description': 'Text → Image → Audio → Video generation',
-            'tasks': [
-                {
-                    'name': 'Generate Story',
-                    'type': 'text_model',
-                    'config': {
-                        'model': 'gpt-4',
-                        'inputs': {'prompt': 'Write a short story'},
-                        'max_length': 300
-                    },
-                    'dependencies': [],
-                    'output_keys': ['text']
-                },
-                {
-                    'name': 'Generate Scene Image',
-                    'type': 'image_model',
-                    'config': {
-                        'model': 'dalle-3',
+                        'model': 'stable-diffusion-xl',
                         'width': 1024,
                         'height': 1024
                     },
@@ -860,11 +1006,62 @@ class WorkflowManager:
                     'output_keys': ['image']
                 },
                 {
-                    'name': 'Generate Narration',
-                    'type': 'audio_model',
+                    'name': 'Quality Check',
+                    'type': 'image-classification',  # HuggingFace pipeline tag
                     'config': {
-                        'model': 'tts-1',
-                        'voice': 'alloy'
+                        'model': 'image-quality-classifier',
+                        'threshold': 0.8
+                    },
+                    'dependencies': [1],
+                    'input_mapping': {
+                        'image': '1.image'
+                    },
+                    'output_keys': ['quality_score', 'approved']
+                }
+            ]
+        }
+    
+    @staticmethod
+    def create_multimodal_pipeline() -> Dict[str, Any]:
+        """
+        Template for: Text -> Image -> Audio -> Video (Complete Multimodal)
+        Uses HuggingFace pipeline tags: text-generation, text-to-image, text-to-speech, image-to-video
+        """
+        return {
+            'name': 'Multimodal Content Pipeline',
+            'description': 'Text generation → image → audio narration → video composition',
+            'tasks': [
+                {
+                    'name': 'Generate Script',
+                    'type': 'text-generation',  # HuggingFace pipeline tag
+                    'config': {
+                        'model': 'gpt-4',
+                        'inputs': {'prompt': 'Create a short story about nature'},
+                        'max_length': 300
+                    },
+                    'dependencies': [],
+                    'output_keys': ['text']
+                },
+                {
+                    'name': 'Generate Scene Image',
+                    'type': 'text-to-image',  # HuggingFace pipeline tag
+                    'config': {
+                        'model': 'stable-diffusion-xl',
+                        'width': 1024,
+                        'height': 576
+                    },
+                    'dependencies': [0],
+                    'input_mapping': {
+                        'prompt': '0.text'
+                    },
+                    'output_keys': ['image']
+                },
+                {
+                    'name': 'Generate Narration',
+                    'type': 'text-to-speech',  # HuggingFace pipeline tag
+                    'config': {
+                        'model': 'elevenlabs-tts',
+                        'voice': 'narrator'
                     },
                     'dependencies': [0],
                     'input_mapping': {
@@ -873,14 +1070,14 @@ class WorkflowManager:
                     'output_keys': ['audio']
                 },
                 {
-                    'name': 'Create Video',
-                    'type': 'video_model',
+                    'name': 'Create Final Video',
+                    'type': 'image-to-video',  # HuggingFace pipeline tag
                     'config': {
-                        'model': 'video-composer',
+                        'model': 'animatediff',
                         'duration': 10,
                         'fps': 30
                     },
-                    'dependencies': [1, 2],  # Depends on image and audio
+                    'dependencies': [1, 2],
                     'input_mapping': {
                         'image': '1.image',
                         'audio': '2.audio'
@@ -889,28 +1086,3 @@ class WorkflowManager:
                 }
             ]
         }
-    
-    def get_workflow(self, workflow_id: str) -> Optional[Workflow]:
-        """Get a workflow by ID"""
-        return self.storage.load_workflow(workflow_id)
-    
-    def list_workflows(self, status: Optional[str] = None) -> List[Workflow]:
-        """List all workflows"""
-        return self.storage.list_workflows(status=status)
-    
-    def delete_workflow(self, workflow_id: str):
-        """Delete a workflow"""
-        self.storage.delete_workflow(workflow_id)
-        logger.info(f"Deleted workflow {workflow_id}")
-    
-    def start_workflow(self, workflow_id: str):
-        """Start executing a workflow"""
-        return self.engine.start_workflow(workflow_id)
-    
-    def pause_workflow(self, workflow_id: str):
-        """Pause a workflow"""
-        self.engine.pause_workflow(workflow_id)
-    
-    def stop_workflow(self, workflow_id: str):
-        """Stop a workflow"""
-        self.engine.stop_workflow(workflow_id)

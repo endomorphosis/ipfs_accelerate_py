@@ -41,16 +41,21 @@ def register_tools(mcp):
         tasks: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        Create a new workflow
+        Create a new AI model pipeline workflow
         
         Args:
             name: Workflow name
             description: Workflow description
             tasks: List of task definitions. Each task should have:
                 - name: Task name
-                - type: Task type ('inference', 'processing', 'custom')
-                - config: Task configuration dict
+                - type: HuggingFace pipeline_tag (e.g., 'text-generation', 'text-to-image', 
+                       'image-to-video', 'automatic-speech-recognition', etc.)
+                       This allows automatic model classification without human intervention.
+                       See: https://huggingface.co/docs/hub/models-tasks
+                - config: Task configuration dict (model, parameters, etc.)
                 - dependencies: Optional list of task indices that must complete first
+                - input_mapping: Optional dict mapping dependency outputs to task inputs
+                - output_keys: Optional list of keys to expose for downstream tasks
         
         Returns:
             Dictionary with workflow details
