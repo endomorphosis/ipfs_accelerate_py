@@ -1805,10 +1805,14 @@ document.addEventListener('DOMContentLoaded', function() {
         updateInferenceForm();
     }, 100);
     
-    // Load database statistics for search-stats section
-    setTimeout(() => {
-        loadDatabaseStats();
-    }, 500);
+    // Load database statistics for search-stats section immediately
+    loadDatabaseStats();
+    
+    // Initialize autocomplete on test-model-id input
+    const testModelInput = document.getElementById('test-model-id');
+    if (testModelInput) {
+        initializeModelAutocomplete(testModelInput);
+    }
 });
 
 // Cleanup on page unload
