@@ -528,7 +528,7 @@
         <div class="dashboard-grid">
             <div class="card full-width">
                 <h3>⚡ Workflow Management</h3>
-                <p class="text-muted">Manage and monitor AI inference workflows</p>
+                <p class="text-muted">Create and manage AI inference workflows</p>
                 <button class="btn btn-primary" onclick="refreshWorkflows()">🔄 Refresh Workflows</button>
                 <button class="btn btn-success" onclick="createWorkflow()">➕ Create Workflow</button>
             </div>
@@ -787,6 +787,45 @@
                         <input type="checkbox" id="auto-refresh" checked> Auto-refresh
                     </label>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workflow Editor Modal -->
+    <div id="workflowEditorModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2><span id="editorModeTitle">Create</span> Workflow</h2>
+                <button class="modal-close" onclick="closeWorkflowEditor()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editingWorkflowId" value="">
+                
+                <!-- Workflow Metadata -->
+                <div class="form-section">
+                    <h3>Workflow Information</h3>
+                    <div class="form-group">
+                        <label for="workflow-name">Name:</label>
+                        <input type="text" id="workflow-name" class="form-control" placeholder="Enter workflow name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="workflow-description">Description:</label>
+                        <textarea id="workflow-description" class="form-control" rows="2" placeholder="Enter workflow description"></textarea>
+                    </div>
+                </div>
+
+                <!-- Tasks Section -->
+                <div class="form-section">
+                    <h3>Tasks <span id="task-count">(0)</span></h3>
+                    <button type="button" class="btn btn-success btn-sm" onclick="addTaskToEditor()">+ Add Task</button>
+                    <div id="tasks-container" style="margin-top: 15px;">
+                        <!-- Tasks will be added here dynamically -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeWorkflowEditor()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveWorkflow()">Save Workflow</button>
             </div>
         </div>
     </div>

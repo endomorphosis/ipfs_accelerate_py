@@ -78,6 +78,74 @@ class StandaloneMCP:
         
         logger.debug(f"Registered tool: {name}")
     
+    def tool(self):
+        """
+        Decorator for registering tools (FastMCP compatibility)
+        
+        This decorator allows tools to be registered using the @mcp.tool() syntax
+        compatible with FastMCP, but internally uses register_tool.
+        
+        Returns:
+            Decorator function
+        """
+        def decorator(func):
+            # Extract function name and docstring
+            tool_name = func.__name__
+            description = func.__doc__ or "No description"
+            
+            # Create a simple input schema from the function signature
+            import inspect
+            sig = inspect.signature(func)
+            properties = {}
+            required = []
+            
+            for param_name, param in sig.parameters.items():
+                # Skip self/cls parameters
+                if param_name in ('self', 'cls'):
+                    continue
+                    
+                # Determine type hint if available
+                param_type = "string"  # default
+                if param.annotation != inspect.Parameter.empty:
+                    ann = param.annotation
+                    # Check for typing generics by examining __origin__
+                    origin = getattr(ann, '__origin__', None)
+                    
+                    if ann is int:
+                        param_type = "integer"
+                    elif ann is float:
+                        param_type = "number"
+                    elif ann is bool:
+                        param_type = "boolean"
+                    elif ann is list or origin is list:
+                        param_type = "array"
+                    elif ann is dict or origin is dict:
+                        param_type = "object"
+                
+                properties[param_name] = {"type": param_type}
+                
+                # Add to required if no default value
+                if param.default == inspect.Parameter.empty:
+                    required.append(param_name)
+            
+            input_schema = {
+                "type": "object",
+                "properties": properties,
+                "required": required
+            }
+            
+            # Register the tool
+            self.register_tool(
+                name=tool_name,
+                function=func,
+                description=description,
+                input_schema=input_schema
+            )
+            
+            return func
+        
+        return decorator
+    
     def register_resource(
         self,
         uri: str,

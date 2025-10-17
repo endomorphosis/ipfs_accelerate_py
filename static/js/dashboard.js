@@ -84,6 +84,8 @@ function initializeTab(tabName) {
             if (typeof initializeModelManager === 'function') {
                 initializeModelManager();
             }
+            // Load database stats when model browser tab opens
+            loadDatabaseStats();
             break;
         case 'queue-monitor':
             refreshQueue();
@@ -604,10 +606,49 @@ function updateSearchStats(data) {
     const models = data.results || data.models || [];
     const total = data.total || models.length;
     
-    if (totalIndexedSpan) totalIndexedSpan.textContent = total;
-    if (hfModelsSpan) hfModelsSpan.textContent = models.length;
-    if (compatibleSpan) compatibleSpan.textContent = models.filter(m => m.compatibility).length;
-    if (testedSpan) testedSpan.textContent = models.filter(m => m.performance).length;
+    // These stats should represent the search results, not the full database
+    // We'll load database stats separately
+    if (totalIndexedSpan && data.database_total !== undefined) {
+        totalIndexedSpan.textContent = data.database_total;
+    }
+    if (hfModelsSpan && data.database_hf !== undefined) {
+        hfModelsSpan.textContent = data.database_hf;
+    }
+    if (compatibleSpan && data.database_compatible !== undefined) {
+        compatibleSpan.textContent = data.database_compatible;
+    }
+    if (testedSpan && data.database_tested !== undefined) {
+        testedSpan.textContent = data.database_tested;
+    }
+}
+
+// Load database statistics
+function loadDatabaseStats() {
+    console.log('[Dashboard] Loading database statistics...');
+    
+    fetch('/api/mcp/models/stats')
+        .then(response => response.json())
+        .then(data => {
+            console.log('[Dashboard] Database stats:', data);
+            
+            const totalIndexedSpan = document.getElementById('total-indexed');
+            const hfModelsSpan = document.getElementById('hf-models-count');
+            const compatibleSpan = document.getElementById('compatible-models');
+            const testedSpan = document.getElementById('tested-models');
+            
+            if (totalIndexedSpan) totalIndexedSpan.textContent = data.total_indexed || 0;
+            if (hfModelsSpan) hfModelsSpan.textContent = data.hf_models || 0;
+            if (compatibleSpan) compatibleSpan.textContent = data.compatible_models || 0;
+            if (testedSpan) testedSpan.textContent = data.tested_models || 0;
+            
+            if (data.fallback) {
+                console.warn('[Dashboard] Using fallback statistics');
+            }
+        })
+        .catch(error => {
+            console.error('[Dashboard] Failed to load database stats:', error);
+            // Keep showing zeros on error
+        });
 }
 
 // Hardware Compatibility Testing
@@ -1040,12 +1081,21 @@ function displayWorkflows(workflows) {
     
     workflowsList.innerHTML = '';
     
+    if (workflows.length === 0) {
+        workflowsList.innerHTML = '<div class="workflow-item"><p>No workflows yet. Click "Create Workflow" to get started.</p></div>';
+        return;
+    }
+    
     workflows.forEach(workflow => {
         const workflowItem = document.createElement('div');
         workflowItem.className = 'workflow-item';
         
         const statusClass = workflow.status === 'running' ? 'status-running' : 
-                          workflow.status === 'idle' ? 'status-idle' : 'status-stopped';
+                          workflow.status === 'pending' ? 'status-idle' :
+                          workflow.status === 'paused' ? 'status-idle' :
+                          workflow.status === 'completed' ? 'status-idle' : 'status-stopped';
+        
+        const percent = workflow.tasks > 0 ? Math.round((workflow.completed / workflow.tasks) * 100) : 0;
         
         workflowItem.innerHTML = `
             <div class="workflow-header">
@@ -1056,16 +1106,20 @@ function displayWorkflows(workflows) {
             <div class="workflow-progress">
                 <div class="progress-info">
                     <span>Tasks: ${workflow.completed}/${workflow.tasks}</span>
-                    <span>${Math.round((workflow.completed / workflow.tasks) * 100)}%</span>
+                    <span>${percent}%</span>
                 </div>
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${(workflow.completed / workflow.tasks) * 100}%"></div>
+                    <div class="progress-fill" style="width: ${percent}%"></div>
                 </div>
             </div>
             <div class="workflow-actions">
                 <button class="btn btn-sm btn-primary" onclick="viewWorkflow('${workflow.id}')">👁️ View</button>
-                <button class="btn btn-sm btn-warning" onclick="pauseWorkflow('${workflow.id}')">⏸️ Pause</button>
+                ${workflow.status === 'running' || workflow.status === 'pending' ? 
+                    `<button class="btn btn-sm btn-warning" onclick="pauseWorkflow('${workflow.id}')">⏸️ Pause</button>` :
+                    `<button class="btn btn-sm btn-success" onclick="startWorkflow('${workflow.id}')">▶️ Start</button>`
+                }
                 <button class="btn btn-sm btn-danger" onclick="stopWorkflow('${workflow.id}')">⏹️ Stop</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteWorkflow('${workflow.id}')">🗑️ Delete</button>
             </div>
         `;
         
@@ -1076,7 +1130,7 @@ function displayWorkflows(workflows) {
 function updateWorkflowStats(workflows) {
     const total = workflows.length;
     const running = workflows.filter(w => w.status === 'running').length;
-    const completed = workflows.filter(w => w.completed === w.tasks).length;
+    const completed = workflows.filter(w => w.status === 'completed').length;
     
     const totalEl = document.getElementById('total-workflows');
     const runningEl = document.getElementById('running-workflows');
@@ -1086,7 +1140,7 @@ function updateWorkflowStats(workflows) {
     if (runningEl) runningEl.textContent = running;
     if (completedEl) completedEl.textContent = completed;
     
-    // Update performance metrics
+    // Update performance metrics (placeholder for now)
     const avgTimeEl = document.getElementById('avg-processing-time');
     const successRateEl = document.getElementById('success-rate');
     const throughputEl = document.getElementById('queue-throughput');
@@ -1099,42 +1153,476 @@ function updateWorkflowStats(workflows) {
 }
 
 function createWorkflow() {
+    // Ask user if they want to use a template
+    const useTemplate = confirm('Would you like to create a workflow from a template?\n\nClick OK for templates, Cancel for custom workflow.');
+    
+    if (useTemplate) {
+        createWorkflowFromTemplate();
+    } else {
+        openWorkflowEditor();
+    }
+}
+
+// Open workflow editor modal
+function openWorkflowEditor(workflowId = null) {
+    const modal = document.getElementById('workflowEditorModal');
+    const modeTitle = document.getElementById('editorModeTitle');
+    const editingId = document.getElementById('editingWorkflowId');
+    
+    // Clear form
+    document.getElementById('workflow-name').value = '';
+    document.getElementById('workflow-description').value = '';
+    document.getElementById('tasks-container').innerHTML = '';
+    editingId.value = workflowId || '';
+    
+    if (workflowId) {
+        modeTitle.textContent = 'Edit';
+        // Load existing workflow
+        loadWorkflowForEditing(workflowId);
+    } else {
+        modeTitle.textContent = 'Create';
+    }
+    
+    updateTaskCount();
+    modal.style.display = 'flex';
+}
+
+// Close workflow editor
+function closeWorkflowEditor() {
+    const modal = document.getElementById('workflowEditorModal');
+    modal.style.display = 'none';
+}
+
+// Add task to editor
+let taskCounter = 0;
+function addTaskToEditor() {
+    const container = document.getElementById('tasks-container');
+    const taskId = 'task-' + (taskCounter++);
+    
+    const taskCard = document.createElement('div');
+    taskCard.className = 'task-card';
+    taskCard.id = taskId;
+    taskCard.innerHTML = `
+        <div class="task-card-header">
+            <h4>Task ${taskCounter}</h4>
+            <div class="task-card-actions">
+                <button type="button" class="btn-danger-sm" onclick="removeTaskFromEditor('${taskId}')">Remove</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Task Name:</label>
+            <input type="text" class="form-control task-name" placeholder="e.g., Generate Image" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Pipeline Type:</label>
+                <select class="form-control task-type" required>
+                    <option value="">Select type...</option>
+                    <option value="text-generation">Text Generation</option>
+                    <option value="text-to-image">Text to Image</option>
+                    <option value="image-to-image">Image to Image</option>
+                    <option value="image-to-video">Image to Video</option>
+                    <option value="text-to-video">Text to Video</option>
+                    <option value="text-to-speech">Text to Speech</option>
+                    <option value="automatic-speech-recognition">Speech Recognition</option>
+                    <option value="image-classification">Image Classification</option>
+                    <option value="text-classification">Text Classification</option>
+                    <option value="filter">Content Filter</option>
+                    <option value="processing">Custom Processing</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Model:</label>
+                <input type="text" class="form-control task-model" placeholder="e.g., stable-diffusion-xl">
+            </div>
+        </div>
+        <div class="memory-section">
+            <h5>⚠️ Memory Management (Prevent OOM)</h5>
+            <div class="form-row-3">
+                <label class="checkbox-label">
+                    <input type="checkbox" class="task-vram-pinned">
+                    Pin in VRAM
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" class="task-preemptable" checked>
+                    Preemptable
+                </label>
+                <div class="form-group">
+                    <label>Priority (1-10):</label>
+                    <input type="number" class="form-control task-priority" value="5" min="1" max="10">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Max Memory (MB, 0=unlimited):</label>
+                    <input type="number" class="form-control task-max-memory" value="0" min="0" max="32000">
+                </div>
+                <div class="form-group">
+                    <label>Batch Size:</label>
+                    <input type="number" class="form-control task-batch-size" value="1" min="1" max="128">
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Custom Config (JSON):</label>
+            <textarea class="form-control task-config" rows="2" placeholder='{"param": "value"}'>{}</textarea>
+        </div>
+    `;
+    
+    container.appendChild(taskCard);
+    updateTaskCount();
+    
+    // Initialize autocomplete for the model input field
+    const modelInput = taskCard.querySelector('.task-model');
+    if (modelInput) {
+        initializeModelAutocomplete(modelInput);
+    }
+}
+
+// Remove task from editor
+function removeTaskFromEditor(taskId) {
+    const task = document.getElementById(taskId);
+    if (task && confirm('Remove this task?')) {
+        task.remove();
+        updateTaskCount();
+    }
+}
+
+// Update task count
+function updateTaskCount() {
+    const count = document.querySelectorAll('.task-card').length;
+    document.getElementById('task-count').textContent = `(${count})`;
+}
+
+// Save workflow
+function saveWorkflow() {
+    const name = document.getElementById('workflow-name').value.trim();
+    const description = document.getElementById('workflow-description').value.trim();
+    const workflowId = document.getElementById('editingWorkflowId').value;
+    
+    if (!name) {
+        showToast('Please enter a workflow name', 'error');
+        return;
+    }
+    
+    // Collect tasks
+    const taskCards = document.querySelectorAll('.task-card');
+    if (taskCards.length === 0) {
+        showToast('Please add at least one task', 'error');
+        return;
+    }
+    
+    const tasks = [];
+    let isValid = true;
+    
+    taskCards.forEach((card, index) => {
+        const taskName = card.querySelector('.task-name').value.trim();
+        const taskType = card.querySelector('.task-type').value;
+        const taskModel = card.querySelector('.task-model').value.trim();
+        const vramPinned = card.querySelector('.task-vram-pinned').checked;
+        const preemptable = card.querySelector('.task-preemptable').checked;
+        const priority = parseInt(card.querySelector('.task-priority').value);
+        const maxMemory = parseInt(card.querySelector('.task-max-memory').value);
+        const batchSize = parseInt(card.querySelector('.task-batch-size').value);
+        const configText = card.querySelector('.task-config').value.trim();
+        
+        if (!taskName || !taskType) {
+            showToast(`Task ${index + 1}: Name and type are required`, 'error');
+            isValid = false;
+            return;
+        }
+        
+        let config = {};
+        try {
+            if (configText) {
+                config = JSON.parse(configText);
+            }
+        } catch (e) {
+            showToast(`Task ${index + 1}: Invalid JSON in config`, 'error');
+            isValid = false;
+            return;
+        }
+        
+        if (taskModel) {
+            config.model = taskModel;
+        }
+        
+        tasks.push({
+            name: taskName,
+            type: taskType,
+            config: config,
+            dependencies: [],
+            input_mapping: {},
+            output_keys: [],
+            vram_pinned: vramPinned,
+            preemptable: preemptable,
+            priority: priority,
+            max_memory_mb: maxMemory,
+            batch_size: batchSize
+        });
+    });
+    
+    if (!isValid) return;
+    
+    const workflowData = {
+        name: name,
+        description: description,
+        tasks: tasks
+    };
+    
+    const url = workflowId ? `/api/mcp/workflows/${workflowId}` : '/api/mcp/workflows/create';
+    const method = workflowId ? 'PUT' : 'POST';
+    
+    showToast(workflowId ? 'Updating workflow...' : 'Creating workflow...', 'info');
+    
+    fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(workflowData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success' || data.workflow_id) {
+            showToast(workflowId ? 'Workflow updated!' : 'Workflow created!', 'success');
+            closeWorkflowEditor();
+            refreshWorkflows();
+        } else {
+            showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        showToast('Failed to save workflow: ' + error.message, 'error');
+    });
+}
+
+// Load workflow for editing
+function loadWorkflowForEditing(workflowId) {
+    fetch(`/api/mcp/workflows/${workflowId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.workflow) {
+                const wf = data.workflow;
+                document.getElementById('workflow-name').value = wf.name;
+                document.getElementById('workflow-description').value = wf.description || '';
+                
+                // Load tasks
+                if (wf.tasks && wf.tasks.length > 0) {
+                    wf.tasks.forEach(task => {
+                        addTaskToEditor();
+                        const cards = document.querySelectorAll('.task-card');
+                        const card = cards[cards.length - 1];
+                        
+                        card.querySelector('.task-name').value = task.name;
+                        card.querySelector('.task-type').value = task.type;
+                        card.querySelector('.task-model').value = task.config.model || '';
+                        card.querySelector('.task-vram-pinned').checked = task.vram_pinned || false;
+                        card.querySelector('.task-preemptable').checked = task.preemptable !== false;
+                        card.querySelector('.task-priority').value = task.priority || 5;
+                        card.querySelector('.task-max-memory').value = task.max_memory_mb || 0;
+                        card.querySelector('.task-batch-size').value = task.batch_size || 1;
+                        card.querySelector('.task-config').value = JSON.stringify(task.config, null, 2);
+                    });
+                }
+            }
+        })
+        .catch(error => {
+            showToast('Failed to load workflow: ' + error.message, 'error');
+        });
+}
+
+function createWorkflowFromTemplate() {
+    const templates = `Available Templates:
+
+1. Image Generation Pipeline
+   - LLM prompt enhancement → image generation → upscaling
+   
+2. Text-to-Video Pipeline
+   - Enhanced prompt → image → animated video
+   
+3. Safe Image Generation
+   - NSFW filter → image generation → quality validation
+   
+4. Multimodal Content Pipeline
+   - Text → Image → Audio → Video generation
+
+Enter template number (1-4):`;
+    
+    const choice = prompt(templates);
+    if (!choice) return;
+    
+    const templateMap = {
+        '1': 'image_generation',
+        '2': 'video_generation',
+        '3': 'safe_image',
+        '4': 'multimodal'
+    };
+    
+    const templateName = templateMap[choice];
+    if (!templateName) {
+        showToast('Invalid template selection', 'error');
+        return;
+    }
+    
+    const customName = prompt('Enter a custom name for this workflow (optional):');
+    
+    showToast('Creating workflow from template...', 'info');
+    
+    const requestData = {
+        template_name: templateName
+    };
+    
+    if (customName) {
+        requestData.custom_config = { name: customName };
+    }
+    
+    fetch('/api/mcp/workflows/create_from_template', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(requestData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showToast(`Workflow created from template: ${data.template_used}`, 'success');
+            refreshWorkflows();
+        } else {
+            showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        showToast('Failed to create workflow: ' + error.message, 'error');
+    });
+}
+
+function createCustomWorkflow() {
     const name = prompt('Enter workflow name:');
-    if (name) {
-        showToast('Creating workflow: ' + name, 'info');
-        // In production, this would make an API call to create the workflow
-        setTimeout(() => {
+    if (!name) return;
+    
+    const description = prompt('Enter workflow description (optional):') || '';
+    
+    // Create a simple default workflow with one text model task
+    const workflow = {
+        name: name,
+        description: description,
+        tasks: [
+            {
+                name: 'Text Processing',
+                type: 'text_model',
+                config: {
+                    model: 'gpt2',
+                    inputs: {prompt: 'Hello, world!'}
+                },
+                dependencies: [],
+                input_mapping: {},
+                output_keys: ['text']
+            }
+        ]
+    };
+    
+    showToast('Creating workflow...', 'info');
+    
+    fetch('/api/mcp/workflows/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(workflow)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
             showToast('Workflow created successfully!', 'success');
             refreshWorkflows();
-        }, 1000);
-    }
+        } else {
+            showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        showToast('Failed to create workflow: ' + error.message, 'error');
+    });
 }
 
 function viewWorkflow(id) {
-    showToast(`Viewing workflow: ${id}`, 'info');
-    // In production, this would navigate to workflow details page
+    // Open workflow editor for editing
+    openWorkflowEditor(id);
+}
+
+function startWorkflow(id) {
+    if (!confirm('Start this workflow?')) return;
+    
+    showToast('Starting workflow...', 'info');
+    
+    fetch(`/api/mcp/workflows/${id}/start`, {method: 'POST'})
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Workflow started!', 'success');
+                refreshWorkflows();
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to start workflow: ' + error.message, 'error');
+        });
 }
 
 function pauseWorkflow(id) {
-    if (confirm('Pause this workflow?')) {
-        showToast(`Pausing workflow: ${id}`, 'info');
-        // In production, this would make an API call
-        setTimeout(() => {
-            showToast('Workflow paused', 'success');
-            refreshWorkflows();
-        }, 500);
-    }
+    if (!confirm('Pause this workflow?')) return;
+    
+    showToast('Pausing workflow...', 'info');
+    
+    fetch(`/api/mcp/workflows/${id}/pause`, {method: 'POST'})
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Workflow paused!', 'success');
+                refreshWorkflows();
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to pause workflow: ' + error.message, 'error');
+        });
 }
 
 function stopWorkflow(id) {
-    if (confirm('Stop this workflow? This action cannot be undone.')) {
-        showToast(`Stopping workflow: ${id}`, 'warning');
-        // In production, this would make an API call
-        setTimeout(() => {
-            showToast('Workflow stopped', 'success');
-            refreshWorkflows();
-        }, 500);
-    }
+    if (!confirm('Stop this workflow? This action cannot be undone.')) return;
+    
+    showToast('Stopping workflow...', 'warning');
+    
+    fetch(`/api/mcp/workflows/${id}/stop`, {method: 'POST'})
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Workflow stopped!', 'success');
+                refreshWorkflows();
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to stop workflow: ' + error.message, 'error');
+        });
+}
+
+function deleteWorkflow(id) {
+    if (!confirm('Delete this workflow? This action cannot be undone.')) return;
+    
+    showToast('Deleting workflow...', 'warning');
+    
+    fetch(`/api/mcp/workflows/${id}`, {method: 'DELETE'})
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Workflow deleted!', 'success');
+                refreshWorkflows();
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showToast('Failed to delete workflow: ' + error.message, 'error');
+        });
 }
 
 function optimizePerformance() {
@@ -1143,6 +1631,145 @@ function optimizePerformance() {
     setTimeout(() => {
         showToast('Performance optimization completed!\n- Reduced latency by 15%\n- Improved throughput by 10%', 'success', 5000);
     }, 2000);
+}
+
+// Model autocomplete functionality
+let autocompleteTimeout = null;
+let currentAutocompleteInput = null;
+
+function initializeModelAutocomplete(inputElement) {
+    // Create autocomplete container wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'autocomplete-container';
+    inputElement.parentNode.insertBefore(wrapper, inputElement);
+    wrapper.appendChild(inputElement);
+    
+    // Create autocomplete dropdown
+    const dropdown = document.createElement('div');
+    dropdown.className = 'autocomplete-items';
+    dropdown.style.display = 'none';
+    wrapper.appendChild(dropdown);
+    
+    let currentFocus = -1;
+    
+    // Handle input events
+    inputElement.addEventListener('input', function(e) {
+        const query = this.value.trim();
+        
+        // Clear existing timeout
+        if (autocompleteTimeout) {
+            clearTimeout(autocompleteTimeout);
+        }
+        
+        // Hide dropdown if query is too short
+        if (query.length < 2) {
+            dropdown.style.display = 'none';
+            return;
+        }
+        
+        // Debounce autocomplete requests
+        autocompleteTimeout = setTimeout(() => {
+            fetchModelSuggestions(query, dropdown, inputElement);
+        }, 300);
+    });
+    
+    // Handle keyboard navigation
+    inputElement.addEventListener('keydown', function(e) {
+        const items = dropdown.getElementsByTagName('div');
+        
+        if (e.keyCode === 40) { // Arrow Down
+            e.preventDefault();
+            currentFocus++;
+            addActive(items);
+        } else if (e.keyCode === 38) { // Arrow Up
+            e.preventDefault();
+            currentFocus--;
+            addActive(items);
+        } else if (e.keyCode === 13) { // Enter
+            e.preventDefault();
+            if (currentFocus > -1 && items[currentFocus]) {
+                items[currentFocus].click();
+            }
+        } else if (e.keyCode === 27) { // Escape
+            dropdown.style.display = 'none';
+            currentFocus = -1;
+        }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        if (e.target !== inputElement) {
+            dropdown.style.display = 'none';
+            currentFocus = -1;
+        }
+    });
+    
+    function addActive(items) {
+        if (!items) return false;
+        removeActive(items);
+        if (currentFocus >= items.length) currentFocus = 0;
+        if (currentFocus < 0) currentFocus = items.length - 1;
+        if (items[currentFocus]) {
+            items[currentFocus].classList.add('autocomplete-active');
+        }
+    }
+    
+    function removeActive(items) {
+        for (let i = 0; i < items.length; i++) {
+            items[i].classList.remove('autocomplete-active');
+        }
+    }
+}
+
+async function fetchModelSuggestions(query, dropdown, inputElement) {
+    try {
+        const response = await fetch(`/api/mcp/models/autocomplete?q=${encodeURIComponent(query)}&limit=10`);
+        const data = await response.json();
+        
+        // Clear existing suggestions
+        dropdown.innerHTML = '';
+        
+        if (!data.suggestions || data.suggestions.length === 0) {
+            dropdown.style.display = 'none';
+            return;
+        }
+        
+        // Add suggestions to dropdown
+        data.suggestions.forEach(suggestion => {
+            const item = document.createElement('div');
+            item.innerHTML = `
+                <span class="autocomplete-model-id">${suggestion.id}</span>
+                <span class="autocomplete-pipeline-tag">${suggestion.pipeline_tag}</span>
+                ${suggestion.downloads ? `<span class="autocomplete-downloads">${formatNumber(suggestion.downloads)} downloads</span>` : ''}
+            `;
+            
+            // Handle click
+            item.addEventListener('click', function() {
+                inputElement.value = suggestion.id;
+                dropdown.style.display = 'none';
+                
+                // Trigger change event
+                inputElement.dispatchEvent(new Event('change'));
+            });
+            
+            dropdown.appendChild(item);
+        });
+        
+        dropdown.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Autocomplete error:', error);
+        dropdown.style.display = 'none';
+    }
+}
+
+function formatNumber(num) {
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toString();
 }
 
 // Auto-refresh functionality
@@ -1177,6 +1804,15 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         updateInferenceForm();
     }, 100);
+    
+    // Load database statistics for search-stats section immediately
+    loadDatabaseStats();
+    
+    // Initialize autocomplete on test-model-id input
+    const testModelInput = document.getElementById('test-model-id');
+    if (testModelInput) {
+        initializeModelAutocomplete(testModelInput);
+    }
 });
 
 // Cleanup on page unload

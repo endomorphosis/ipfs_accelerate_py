@@ -9,8 +9,15 @@ import time
 import uuid
 import logging
 import platform
-import psutil
 from typing import Dict, List, Any, Optional
+
+# Try to import psutil
+try:
+    import psutil
+    HAVE_PSUTIL = True
+except ImportError:
+    HAVE_PSUTIL = False
+    psutil = None
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.status")
 
@@ -65,36 +72,51 @@ def register_tools(mcp):
             Dictionary with performance metrics
         """
         try:
-            # Get CPU usage
-            cpu_percent = psutil.cpu_percent(interval=0.1)
-            
-            # Get memory usage
-            memory = psutil.virtual_memory()
-            memory_percent = memory.percent
-            memory_used_gb = memory.used / (1024 ** 3)
-            memory_total_gb = memory.total / (1024 ** 3)
-            
-            # Get disk usage
-            disk = psutil.disk_usage('/')
-            disk_percent = disk.percent
-            disk_used_gb = disk.used / (1024 ** 3)
-            disk_total_gb = disk.total / (1024 ** 3)
-            
-            # Get network info (simplified)
-            network_stats = psutil.net_io_counters()
-            
-            return {
-                "timestamp": time.time(),
-                "cpu_percent": cpu_percent,
-                "memory_percent": memory_percent,
-                "memory_used_gb": memory_used_gb,
-                "memory_total_gb": memory_total_gb,
-                "disk_percent": disk_percent,
-                "disk_used_gb": disk_used_gb,
-                "disk_total_gb": disk_total_gb,
-                "network_bytes_sent": network_stats.bytes_sent,
-                "network_bytes_recv": network_stats.bytes_recv
-            }
+            if HAVE_PSUTIL:
+                # Get CPU usage
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                
+                # Get memory usage
+                memory = psutil.virtual_memory()
+                memory_percent = memory.percent
+                memory_used_gb = memory.used / (1024 ** 3)
+                memory_total_gb = memory.total / (1024 ** 3)
+                
+                # Get disk usage
+                disk = psutil.disk_usage('/')
+                disk_percent = disk.percent
+                disk_used_gb = disk.used / (1024 ** 3)
+                disk_total_gb = disk.total / (1024 ** 3)
+                
+                # Get network info (simplified)
+                network_stats = psutil.net_io_counters()
+                
+                return {
+                    "timestamp": time.time(),
+                    "cpu_percent": cpu_percent,
+                    "memory_percent": memory_percent,
+                    "memory_used_gb": memory_used_gb,
+                    "memory_total_gb": memory_total_gb,
+                    "disk_percent": disk_percent,
+                    "disk_used_gb": disk_used_gb,
+                    "disk_total_gb": disk_total_gb,
+                    "network_bytes_sent": network_stats.bytes_sent,
+                    "network_bytes_recv": network_stats.bytes_recv
+                }
+            else:
+                return {
+                    "timestamp": time.time(),
+                    "error": "psutil not available - install with: pip install psutil",
+                    "cpu_percent": 0,
+                    "memory_percent": 0,
+                    "memory_used_gb": 0,
+                    "memory_total_gb": 0,
+                    "disk_percent": 0,
+                    "disk_used_gb": 0,
+                    "disk_total_gb": 0,
+                    "network_bytes_sent": 0,
+                    "network_bytes_recv": 0
+                }
         except Exception as e:
             return {
                 "error": f"Error getting performance metrics: {str(e)}"

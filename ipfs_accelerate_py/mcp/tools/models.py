@@ -72,15 +72,14 @@ def search_models_tool(query: str, task_filter: Optional[str] = None,
             'results': results,
             'total': len(results),
             'query': query
-                }
-            
-            except Exception as e:
-                logger.error(f"Error searching models: {e}")
-                return {
-                'status': 'error',
-                'error': str(e),
-                'results': []
-            }
+        }
+    except Exception as e:
+        logger.error(f"Error searching models: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'results': []
+        }
 
 
 # Tool: Get Model Recommendations
@@ -158,93 +157,97 @@ def get_model_details_tool(model_id: str) -> Dict[str, Any]:
             
             # Get and convert performance data
             performance_data = getattr(hub_scanner, 'performance_cache', {}).get(model_id, {})
-                    if is_dataclass(performance_data) and not isinstance(performance_data, type):
-                        performance = asdict(performance_data)
-                    else:
-                        performance = performance_data if isinstance(performance_data, dict) else {}
-                    
-                    # Get and convert compatibility data
-                    compatibility_data = getattr(hub_scanner, 'compatibility_cache', {}).get(model_id, {})
-                    if is_dataclass(compatibility_data) and not isinstance(compatibility_data, type):
-                        compatibility = asdict(compatibility_data)
-                    else:
-                        compatibility = compatibility_data if isinstance(compatibility_data, dict) else {}
-                    
-                    return {
-                        'status': 'success',
-                        'model_id': model_id,
-                        'model_info': model_info,
-                        'performance': performance,
-                        'compatibility': compatibility
-                    }
-                
-                # If not in cache, try to fetch from search
-                search_results = hub_scanner.search_models(model_id, limit=1)
-                
-                if search_results and len(search_results) > 0:
-                    result = search_results[0]
-                    
-                    if isinstance(result, dict):
-                        model_info = result.get('model_info', {})
-                        performance = result.get('performance', {})
-                        compatibility = result.get('compatibility', {})
-                    else:
-                        model_info = {'model_id': model_id}
-                        performance = {}
-                        compatibility = {}
-                    
-                    return {
-                        'status': 'success',
-                        'model_id': model_id,
-                        'model_info': model_info,
-                        'performance': performance,
-                        'compatibility': compatibility
-                    }
-                else:
-                    return {
-                        'status': 'error',
-                        'error': f'Model {model_id} not found',
-                        'model_id': model_id
-                    }
+            if is_dataclass(performance_data) and not isinstance(performance_data, type):
+                performance = asdict(performance_data)
+            else:
+                performance = performance_data if isinstance(performance_data, dict) else {}
             
-            except Exception as e:
-                logger.error(f"Error getting model details: {e}")
-                return {
-                    'status': 'error',
-                    'error': str(e),
-                    'model_id': model_id
-                }
+            # Get and convert compatibility data
+            compatibility_data = getattr(hub_scanner, 'compatibility_cache', {}).get(model_id, {})
+            if is_dataclass(compatibility_data) and not isinstance(compatibility_data, type):
+                compatibility = asdict(compatibility_data)
+            else:
+                compatibility = compatibility_data if isinstance(compatibility_data, dict) else {}
+            
+            return {
+                'status': 'success',
+                'model_id': model_id,
+                'model_info': model_info,
+                'performance': performance,
+                'compatibility': compatibility
+            }
         
-        # Tool: Get Model Stats
-        def get_model_stats_tool() -> Dict[str, Any]:
-            """
-            Get statistics about cached models
-            
-            Returns:
-                Dictionary with model statistics
-            """
-            try:
-                logger.info("Getting model stats")
-                
-                hub_scanner = get_scanner()
-                
-                stats = {
-                    'total_models': len(getattr(hub_scanner, 'model_cache', {})),
-                    'scan_stats': getattr(hub_scanner, 'scan_stats', {})
-                }
-                
-                return {
-                    'status': 'success',
-                    'stats': stats
-                }
-            
-            except Exception as e:
-                logger.error(f"Error getting model stats: {e}")
-                return {
-                    'status': 'error',
-                    'error': str(e)
-                }
+        # If not in cache, try to fetch from search
+        search_results = hub_scanner.search_models(model_id, limit=1)
         
+        if search_results and len(search_results) > 0:
+            result = search_results[0]
+            
+            if isinstance(result, dict):
+                model_info = result.get('model_info', {})
+                performance = result.get('performance', {})
+                compatibility = result.get('compatibility', {})
+            else:
+                model_info = {'model_id': model_id}
+                performance = {}
+                compatibility = {}
+            
+            return {
+                'status': 'success',
+                'model_id': model_id,
+                'model_info': model_info,
+                'performance': performance,
+                'compatibility': compatibility
+            }
+        else:
+            return {
+                'status': 'error',
+                'error': f'Model {model_id} not found',
+                'model_id': model_id
+            }
+    except Exception as e:
+        logger.error(f"Error getting model details: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'model_id': model_id
+        }
+
+
+# Tool: Get Model Stats
+def get_model_stats_tool() -> Dict[str, Any]:
+    """
+    Get statistics about cached models
+    
+    Returns:
+        Dictionary with model statistics
+    """
+    try:
+        logger.info("Getting model stats")
+        
+        hub_scanner = _get_scanner()
+        
+        stats = {
+            'total_models': len(getattr(hub_scanner, 'model_cache', {})),
+            'scan_stats': getattr(hub_scanner, 'scan_stats', {})
+        }
+        
+        return {
+            'status': 'success',
+            'stats': stats
+        }
+    except Exception as e:
+        logger.error(f"Error getting model stats: {e}")
+        return {
+            'status': 'error',
+            'error': str(e)
+        }
+
+
+# Register model tools with the MCP server
+def register_model_tools(mcp) -> None:
+    """Register model management tools with the MCP server"""
+    try:
         # Register tools based on MCP server type
         if hasattr(mcp, 'register_tool'):
             # Standalone MCP style
@@ -303,7 +306,6 @@ def get_model_details_tool(model_id: str) -> Dict[str, Any]:
                     "required": []
                 }
             )
-        
         elif hasattr(mcp, 'tool'):
             # FastMCP decorator style
             @mcp.tool()
@@ -329,7 +331,6 @@ def get_model_details_tool(model_id: str) -> Dict[str, Any]:
                 return get_model_stats_tool()
         
         logger.info("Model tools registered successfully")
-    
     except Exception as e:
         logger.error(f"Error registering model tools: {e}")
         raise

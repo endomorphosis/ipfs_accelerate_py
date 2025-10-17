@@ -32,18 +32,20 @@ logger = logging.getLogger(__name__)
 class MCPDashboard:
     """MCP Dashboard with links to various services."""
     
-    def __init__(self, port: int = 8899, host: str = '127.0.0.1'):
+    def __init__(self, port: int = 8899, host: str = '127.0.0.1', mcp_server=None):
         """Initialize the MCP dashboard.
         
         Args:
             port: Port to run on
             host: Host to bind to
+            mcp_server: Optional MCP server instance to get tools from
         """
         if not HAVE_FLASK:
             raise ImportError("Flask is required for the MCP Dashboard. Install with: pip install flask flask-cors")
         
         self.port = port
         self.host = host
+        self.mcp_server = mcp_server
         
         # Set up Flask with proper template and static folders
         template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates')
@@ -121,6 +123,98 @@ class MCPDashboard:
         def serve_static(filename):
             """Serve static files."""
             return send_from_directory(self.app.static_folder, filename)
+        
+        @self.app.route('/api/mcp/models/autocomplete')
+        def autocomplete_models():
+            """Autocomplete models API endpoint for workflow editor."""
+            query = request.args.get('q', '').strip()
+            limit = int(request.args.get('limit', 10))
+            
+            if not query or len(query) < 2:
+                return jsonify({'suggestions': []})
+            
+            try:
+                scanner = self._get_hub_scanner()
+                
+                if scanner is None:
+                    # Provide fallback with common models
+                    fallback = self._get_autocomplete_fallback(query, limit)
+                    return jsonify({'suggestions': fallback, 'fallback': True})
+                
+                # Search models and format for autocomplete
+                results = scanner.search_models(query=query, limit=limit)
+                suggestions = []
+                for model in results:
+                    model_id = model.get('model_id', model.get('id', ''))
+                    pipeline_tag = model.get('pipeline_tag', 'unknown')
+                    downloads = model.get('downloads', 0)
+                    
+                    suggestions.append({
+                        'id': model_id,
+                        'label': f"{model_id} ({pipeline_tag})",
+                        'pipeline_tag': pipeline_tag,
+                        'downloads': downloads
+                    })
+                
+                return jsonify({'suggestions': suggestions, 'fallback': False})
+                
+            except Exception as e:
+                logger.error(f"Autocomplete error: {e}")
+                fallback = self._get_autocomplete_fallback(query, limit)
+                return jsonify({'suggestions': fallback, 'fallback': True, 'error': str(e)})
+        
+        @self.app.route('/api/mcp/models/stats')
+        def model_stats():
+            """Get model database statistics."""
+            logger.info("Model stats request")
+            
+            try:
+                scanner = self._get_hub_scanner()
+                
+                if scanner is None:
+                    logger.warning("Hub scanner not available for stats")
+                    return jsonify({
+                        'total_indexed': 15,  # Fallback count
+                        'hf_models': 15,
+                        'compatible_models': 12,
+                        'tested_models': 8,
+                        'fallback': True,
+                        'message': 'Using fallback statistics (HuggingFace Hub scanner not available)'
+                    })
+                
+                # Get statistics from scanner
+                stats = {}
+                if hasattr(scanner, 'get_database_stats'):
+                    stats = scanner.get_database_stats()
+                
+                # If scanner doesn't have get_database_stats, try to count models
+                if not stats:
+                    all_models = scanner.search_models(query='', limit=10000)  # Get all models
+                    stats = {
+                        'total_indexed': len(all_models),
+                        'hf_models': len([m for m in all_models if m.get('source') == 'huggingface' or 'huggingface' in m.get('id', '').lower()]),
+                        'compatible_models': len([m for m in all_models if m.get('compatibility') or m.get('tested')]),
+                        'tested_models': len([m for m in all_models if m.get('performance') or m.get('benchmarks')])
+                    }
+                
+                return jsonify({
+                    'total_indexed': stats.get('total_indexed', 0),
+                    'hf_models': stats.get('hf_models', stats.get('total_indexed', 0)),
+                    'compatible_models': stats.get('compatible_models', 0),
+                    'tested_models': stats.get('tested_models', 0),
+                    'fallback': False
+                })
+                
+            except Exception as e:
+                logger.error(f"Model stats error: {e}")
+                return jsonify({
+                    'total_indexed': 0,
+                    'hf_models': 0,
+                    'compatible_models': 0,
+                    'tested_models': 0,
+                    'error': str(e),
+                    'fallback': True
+                }), 500
         
         @self.app.route('/api/mcp/models/search')
         def search_models():
@@ -469,58 +563,66 @@ class MCPDashboard:
         @self.app.route('/api/mcp/tools')
         def get_mcp_tools():
             """Get list of available MCP tools."""
-            tools = [
-                {
-                    'name': 'text_generation',
-                    'description': 'Generate text using language models',
-                    'status': 'active'
-                },
-                {
-                    'name': 'text_classification',
-                    'description': 'Classify text into categories',
-                    'status': 'active'
-                },
-                {
-                    'name': 'text_embeddings',
-                    'description': 'Generate embeddings from text',
-                    'status': 'active'
-                },
-                {
-                    'name': 'audio_transcription',
-                    'description': 'Transcribe audio to text',
-                    'status': 'active'
-                },
-                {
-                    'name': 'image_classification',
-                    'description': 'Classify images',
-                    'status': 'active'
-                },
-                {
-                    'name': 'visual_qa',
-                    'description': 'Answer questions about images',
-                    'status': 'active'
-                },
-                {
-                    'name': 'model_search',
-                    'description': 'Search for models on HuggingFace',
-                    'status': 'active'
-                },
-                {
-                    'name': 'model_recommend',
-                    'description': 'Get model recommendations',
-                    'status': 'active'
-                },
-                {
-                    'name': 'queue_status',
-                    'description': 'Check queue status',
-                    'status': 'active'
-                },
-                {
-                    'name': 'performance_stats',
-                    'description': 'Get performance statistics',
-                    'status': 'active'
-                }
-            ]
+            tools = []
+            
+            # If we have an MCP server instance, get tools from it
+            if self.mcp_server and hasattr(self.mcp_server, 'tools'):
+                for tool_name, tool_info in self.mcp_server.tools.items():
+                    desc = tool_info.get('description', 'No description')
+                    # Clean up description - take first line only
+                    if desc:
+                        desc = desc.split('\n')[0].strip()
+                    tools.append({
+                        'name': tool_name,
+                        'description': desc,
+                        'status': 'active'
+                    })
+            else:
+                # Fall back to creating a mock MCP server to get registered tools
+                try:
+                    from ipfs_accelerate_py.mcp.server import StandaloneMCP
+                    from ipfs_accelerate_py.mcp.tools import register_all_tools
+                    
+                    # Create a temporary MCP instance to get tool list
+                    temp_mcp = StandaloneMCP('temp')
+                    register_all_tools(temp_mcp)
+                    
+                    for tool_name, tool_info in temp_mcp.tools.items():
+                        desc = tool_info.get('description', 'No description')
+                        # Clean up description - take first line only
+                        if desc:
+                            desc = desc.split('\n')[0].strip()
+                        tools.append({
+                            'name': tool_name,
+                            'description': desc,
+                            'status': 'active'
+                        })
+                except Exception as e:
+                    logger.error(f"Error getting tools from MCP server: {e}")
+                    # Ultimate fallback - hardcoded list of essential tools
+                    tools = [
+                        {
+                            'name': 'search_models',
+                            'description': 'Search for models on HuggingFace',
+                            'status': 'active'
+                        },
+                        {
+                            'name': 'recommend_models',
+                            'description': 'Get model recommendations',
+                            'status': 'active'
+                        },
+                        {
+                            'name': 'get_model_details',
+                            'description': 'Get detailed information about a specific model',
+                            'status': 'active'
+                        },
+                        {
+                            'name': 'run_inference',
+                            'description': 'Run inference with a model',
+                            'status': 'active'
+                        }
+                    ]
+            
             return jsonify({'tools': tools, 'total': len(tools)})
         
         @self.app.route('/api/mcp/logs')
@@ -555,33 +657,292 @@ class MCPDashboard:
         @self.app.route('/api/mcp/workflows')
         def get_workflows():
             """Get workflow management information."""
-            workflows = [
-                {
-                    'id': 'wf-001',
-                    'name': 'Model Inference Pipeline',
-                    'status': 'running',
-                    'tasks': 3,
-                    'completed': 2,
-                    'description': 'End-to-end model inference workflow'
-                },
-                {
-                    'id': 'wf-002',
-                    'name': 'Batch Processing',
-                    'status': 'idle',
-                    'tasks': 5,
-                    'completed': 5,
-                    'description': 'Batch text processing workflow'
-                },
-                {
-                    'id': 'wf-003',
-                    'name': 'Model Training',
-                    'status': 'stopped',
-                    'tasks': 4,
-                    'completed': 1,
-                    'description': 'Fine-tuning workflow for custom models'
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                # Get workflow manager instance
+                manager = WorkflowManager()
+                workflows_list = manager.list_workflows()
+                
+                # Format workflows for API response
+                workflows = []
+                for wf in workflows_list:
+                    progress = wf.get_progress()
+                    workflows.append({
+                        'id': wf.workflow_id,
+                        'name': wf.name,
+                        'status': wf.status,
+                        'tasks': progress['total'],
+                        'completed': progress['completed'],
+                        'description': wf.description,
+                        'created_at': wf.created_at,
+                        'started_at': wf.started_at,
+                        'completed_at': wf.completed_at,
+                        'error': wf.error
+                    })
+                
+                return jsonify({
+                    'workflows': workflows,
+                    'total': len(workflows),
+                    'demo_mode': False
+                })
+            
+            except Exception as e:
+                logger.error(f"Error getting workflows: {e}")
+                # Return empty list on error
+                return jsonify({
+                    'workflows': [],
+                    'total': 0,
+                    'demo_mode': False,
+                    'error': str(e)
+                })
+        
+        @self.app.route('/api/mcp/workflows/create', methods=['POST'])
+        def create_workflow():
+            """Create a new workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                data = request.get_json() or {}
+                name = data.get('name')
+                description = data.get('description', '')
+                tasks = data.get('tasks', [])
+                
+                if not name:
+                    return jsonify({'error': 'Workflow name is required'}), 400
+                
+                if not tasks:
+                    return jsonify({'error': 'At least one task is required'}), 400
+                
+                manager = WorkflowManager()
+                workflow = manager.create_workflow(name, description, tasks)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow.workflow_id,
+                    'name': workflow.name,
+                    'message': 'Workflow created successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error creating workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/create_from_template', methods=['POST'])
+        def create_workflow_from_template():
+            """Create a workflow from a pre-built template."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                data = request.get_json() or {}
+                template_name = data.get('template_name')
+                custom_config = data.get('custom_config', {})
+                
+                if not template_name:
+                    return jsonify({'error': 'Template name is required'}), 400
+                
+                # Get template
+                template_map = {
+                    'image_generation': WorkflowManager.create_image_generation_pipeline,
+                    'video_generation': WorkflowManager.create_video_generation_pipeline,
+                    'safe_image': WorkflowManager.create_safe_image_pipeline,
+                    'multimodal': WorkflowManager.create_multimodal_pipeline
                 }
-            ]
-            return jsonify({'workflows': workflows, 'total': len(workflows)})
+                
+                if template_name not in template_map:
+                    return jsonify({'error': f'Unknown template: {template_name}'}), 400
+                
+                template = template_map[template_name]()
+                
+                # Apply custom config
+                if 'name' in custom_config:
+                    template['name'] = custom_config['name']
+                if 'description' in custom_config:
+                    template['description'] = custom_config['description']
+                
+                # Create workflow
+                manager = WorkflowManager()
+                workflow = manager.create_workflow(
+                    name=template['name'],
+                    description=template['description'],
+                    tasks=template['tasks']
+                )
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow.workflow_id,
+                    'name': workflow.name,
+                    'template_used': template_name,
+                    'message': 'Workflow created from template'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error creating workflow from template: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>/start', methods=['POST'])
+        def start_workflow(workflow_id):
+            """Start a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                manager.start_workflow(workflow_id)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow_id,
+                    'message': 'Workflow started successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error starting workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>/pause', methods=['POST'])
+        def pause_workflow(workflow_id):
+            """Pause a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                manager.pause_workflow(workflow_id)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow_id,
+                    'message': 'Workflow paused successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error pausing workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>/stop', methods=['POST'])
+        def stop_workflow(workflow_id):
+            """Stop a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                manager.stop_workflow(workflow_id)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow_id,
+                    'message': 'Workflow stopped successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error stopping workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>', methods=['PUT'])
+        def update_workflow(workflow_id):
+            """Update a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                data = request.json
+                if not data:
+                    return jsonify({'error': 'No data provided'}), 400
+                
+                manager = WorkflowManager()
+                
+                # Call update_workflow method
+                result = manager.update_workflow(
+                    workflow_id=workflow_id,
+                    name=data.get('name'),
+                    description=data.get('description'),
+                    tasks=data.get('tasks')
+                )
+                
+                if result:
+                    return jsonify({
+                        'status': 'success',
+                        'workflow_id': workflow_id,
+                        'message': 'Workflow updated successfully'
+                    })
+                else:
+                    return jsonify({'error': 'Failed to update workflow'}), 500
+            
+            except Exception as e:
+                logger.error(f"Error updating workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>', methods=['DELETE'])
+        def delete_workflow(workflow_id):
+            """Delete a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                manager.delete_workflow(workflow_id)
+                
+                return jsonify({
+                    'status': 'success',
+                    'workflow_id': workflow_id,
+                    'message': 'Workflow deleted successfully'
+                })
+            
+            except Exception as e:
+                logger.error(f"Error deleting workflow: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mcp/workflows/<workflow_id>')
+        def get_workflow_details(workflow_id):
+            """Get detailed information about a workflow."""
+            try:
+                from ipfs_accelerate_py.workflow_manager import WorkflowManager
+                
+                manager = WorkflowManager()
+                workflow = manager.get_workflow(workflow_id)
+                
+                if not workflow:
+                    return jsonify({'error': 'Workflow not found'}), 404
+                
+                progress = workflow.get_progress()
+                
+                tasks_data = []
+                for task in workflow.tasks:
+                    tasks_data.append({
+                        'task_id': task.task_id,
+                        'name': task.name,
+                        'type': task.type,
+                        'config': task.config,
+                        'status': task.status,
+                        'started_at': task.started_at,
+                        'completed_at': task.completed_at,
+                        'error': task.error,
+                        'dependencies': task.dependencies,
+                        'input_mapping': task.input_mapping,
+                        'output_keys': task.output_keys,
+                        'vram_pinned': task.vram_pinned,
+                        'preemptable': task.preemptable,
+                        'max_memory_mb': task.max_memory_mb,
+                        'batch_size': task.batch_size,
+                        'priority': task.priority
+                    })
+                
+                return jsonify({
+                    'workflow': {
+                        'workflow_id': workflow.workflow_id,
+                        'name': workflow.name,
+                        'description': workflow.description,
+                        'status': workflow.status,
+                        'created_at': workflow.created_at,
+                        'started_at': workflow.started_at,
+                        'completed_at': workflow.completed_at,
+                        'error': workflow.error,
+                        'progress': progress,
+                        'tasks': tasks_data
+                    }
+                })
+            
+            except Exception as e:
+                logger.error(f"Error getting workflow details: {e}")
+                return jsonify({'error': str(e)}), 500
+        
         
         @self.app.route('/api/mcp/test')
         def test_apis():
@@ -1453,6 +1814,39 @@ class MCPDashboard:
                 break
         
         return filtered_models
+    
+    def _get_autocomplete_fallback(self, query: str, limit: int = 10):
+        """Get fallback autocomplete suggestions when HuggingFace Hub scanner is not available."""
+        query_lower = query.lower()
+        
+        # Common popular models for autocomplete
+        common_models = [
+            {'id': 'gpt2', 'label': 'gpt2 (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 3200000},
+            {'id': 'bert-base-uncased', 'label': 'bert-base-uncased (text-classification)', 'pipeline_tag': 'text-classification', 'downloads': 2100000},
+            {'id': 'distilbert-base-uncased', 'label': 'distilbert-base-uncased (text-classification)', 'pipeline_tag': 'text-classification', 'downloads': 1500000},
+            {'id': 'stabilityai/stable-diffusion-xl-base-1.0', 'label': 'stabilityai/stable-diffusion-xl-base-1.0 (text-to-image)', 'pipeline_tag': 'text-to-image', 'downloads': 950000},
+            {'id': 'runwayml/stable-diffusion-v1-5', 'label': 'runwayml/stable-diffusion-v1-5 (text-to-image)', 'pipeline_tag': 'text-to-image', 'downloads': 1200000},
+            {'id': 'openai/whisper-large-v3', 'label': 'openai/whisper-large-v3 (automatic-speech-recognition)', 'pipeline_tag': 'automatic-speech-recognition', 'downloads': 780000},
+            {'id': 'meta-llama/Llama-2-7b-chat-hf', 'label': 'meta-llama/Llama-2-7b-chat-hf (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 1800000},
+            {'id': 'microsoft/DialoGPT-large', 'label': 'microsoft/DialoGPT-large (text-generation)', 'pipeline_tag': 'text-generation', 'downloads': 125000},
+            {'id': 'sentence-transformers/all-MiniLM-L6-v2', 'label': 'sentence-transformers/all-MiniLM-L6-v2 (sentence-similarity)', 'pipeline_tag': 'sentence-similarity', 'downloads': 650000},
+            {'id': 'google/vit-base-patch16-224', 'label': 'google/vit-base-patch16-224 (image-classification)', 'pipeline_tag': 'image-classification', 'downloads': 420000},
+            {'id': 'facebook/detr-resnet-50', 'label': 'facebook/detr-resnet-50 (object-detection)', 'pipeline_tag': 'object-detection', 'downloads': 280000},
+            {'id': 'microsoft/resnet-50', 'label': 'microsoft/resnet-50 (image-classification)', 'pipeline_tag': 'image-classification', 'downloads': 520000},
+            {'id': 'google/flan-t5-base', 'label': 'google/flan-t5-base (text2text-generation)', 'pipeline_tag': 'text2text-generation', 'downloads': 890000},
+            {'id': 'facebook/bart-large-cnn', 'label': 'facebook/bart-large-cnn (summarization)', 'pipeline_tag': 'summarization', 'downloads': 670000},
+            {'id': 'Helsinki-NLP/opus-mt-en-de', 'label': 'Helsinki-NLP/opus-mt-en-de (translation)', 'pipeline_tag': 'translation', 'downloads': 340000},
+        ]
+        
+        # Filter models that match the query
+        matching = []
+        for model in common_models:
+            if query_lower in model['id'].lower() or query_lower in model['pipeline_tag'].lower():
+                matching.append(model)
+                if len(matching) >= limit:
+                    break
+        
+        return matching
     
     def _render_model_discovery_template(self) -> str:
         """Render the model discovery page template."""
