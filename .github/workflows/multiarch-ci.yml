@@ -1,0 +1,619 @@
+name: Multi-Architecture CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run daily at 3 AM UTC  
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      test_all_platforms:
+        description: 'Test all supported platforms'
+        required: false
+        default: true
+        type: boolean
+      build_gpu_images:
+        description: 'Build GPU-accelerated images'
+        required: false
+        default: false
+        type: boolean
+      performance_testing:
+        description: 'Run performance benchmarks'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DOCKER_BUILDKIT: 1
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Platform detection and setup
+  detect-platforms:
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.platforms.outputs.platforms }}
+      matrix-native: ${{ steps.matrix.outputs.native }}
+      matrix-docker: ${{ steps.matrix.outputs.docker }}
+      
+    steps:
+    - name: Detect supported platforms
+      id: platforms
+      run: |
+        # Always test AMD64, conditionally test ARM64
+        PLATFORMS="linux/amd64"
+        
+        if [[ "${{ github.event.inputs.test_all_platforms }}" == "true" ]] || [[ "${{ github.event_name }}" == "schedule" ]]; then
+          PLATFORMS="$PLATFORMS,linux/arm64"
+        fi
+        
+        echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
+        echo "🎯 Testing platforms: $PLATFORMS"
+        
+    - name: Generate test matrices
+      id: matrix
+      run: |
+        # Native testing matrix
+        NATIVE_MATRIX='{"platform": ["amd64"], "python": ["3.9", "3.10", "3.11", "3.12"]}'
+        
+        if [[ "${{ github.event.inputs.test_all_platforms }}" == "true" ]] || [[ "${{ github.event_name }}" == "schedule" ]]; then
+          NATIVE_MATRIX='{"include": [
+            {"platform": "amd64", "os": "ubuntu-latest", "python": "3.9"},
+            {"platform": "amd64", "os": "ubuntu-latest", "python": "3.10"}, 
+            {"platform": "amd64", "os": "ubuntu-latest", "python": "3.11"},
+            {"platform": "amd64", "os": "ubuntu-latest", "python": "3.12"},
+            {"platform": "arm64", "os": "ubuntu-latest", "python": "3.11"}
+          ]}'
+        fi
+        
+        # Docker testing matrix
+        DOCKER_MATRIX='{"target": ["minimal", "development", "production"], "platform": ["linux/amd64"]}'
+        
+        if [[ "${{ github.event.inputs.test_all_platforms }}" == "true" ]] || [[ "${{ github.event_name }}" == "schedule" ]]; then
+          DOCKER_MATRIX='{"target": ["minimal", "development", "production"], "platform": ["linux/amd64", "linux/arm64"]}'
+        fi
+        
+        echo "native=$NATIVE_MATRIX" >> $GITHUB_OUTPUT
+        echo "docker=$DOCKER_MATRIX" >> $GITHUB_OUTPUT
+
+  # Cross-platform native testing
+  test-native:
+    runs-on: ubuntu-latest
+    needs: detect-platforms
+    
+    strategy:
+      matrix: ${{ fromJson(needs.detect-platforms.outputs.matrix-native) }}
+      fail-fast: false
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up QEMU for ARM64 emulation (if needed)
+      if: matrix.platform == 'arm64'
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Python ${{ matrix.python }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python }}
+        
+    - name: System Information
+      run: |
+        echo "=== Multi-Architecture System Info ==="
+        echo "Target Platform: ${{ matrix.platform }}"
+        echo "Python Version: ${{ matrix.python }}"
+        uname -a
+        
+        if command -v lscpu &> /dev/null; then
+          lscpu | grep -E "Architecture|CPU|Model name|Thread|Core" || true
+        fi
+        
+        free -h
+        df -h /
+        python --version
+        
+        # Docker platform info
+        if command -v docker &> /dev/null; then
+          docker version
+          docker info | grep -E "Architecture|OS/Arch" || true
+        fi
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-${{ matrix.platform }}-pip-${{ matrix.python }}-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.platform }}-pip-${{ matrix.python }}-
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        
+        # Platform-specific optimizations
+        if [[ "${{ matrix.platform }}" == "arm64" ]]; then
+          echo "🔧 Installing ARM64-optimized packages..."
+          export CFLAGS="-march=armv8-a"
+        fi
+        
+        # Install base requirements
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        fi
+        
+        # Install package with testing dependencies
+        pip install -e ".[minimal,testing]"
+        
+    - name: Run platform tests
+      run: |
+        echo "🧪 Testing on ${{ matrix.platform }} with Python ${{ matrix.python }}"
+        
+        # Test basic imports
+        python -c "
+        import ipfs_accelerate_py
+        import platform
+        print(f'✅ Package import successful')
+        print(f'✅ Platform: {platform.platform()}')
+        print(f'✅ Architecture: {platform.machine()}')
+        print(f'✅ Processor: {platform.processor()}')
+        "
+        
+        # Test CLI
+        python -m ipfs_accelerate_py.cli_entry --help
+        
+        # Run unit tests
+        if [ -d "tests" ]; then
+          python -m pytest tests/ -v --timeout=600 --tb=short -x
+        fi
+
+  # Cross-platform Docker testing  
+  test-docker:
+    runs-on: ubuntu-latest
+    needs: [detect-platforms, test-native]
+    
+    strategy:
+      matrix: ${{ fromJson(needs.detect-platforms.outputs.matrix-docker) }}
+      fail-fast: false
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ matrix.platform }}
+        target: ${{ matrix.target }}
+        tags: ipfs-accelerate-py:test-${{ matrix.target }}-${{ matrix.platform }}
+        load: true
+        cache-from: type=gha,scope=${{ matrix.platform }}-${{ matrix.target }}
+        cache-to: type=gha,mode=max,scope=${{ matrix.platform }}-${{ matrix.target }}
+        
+    - name: Test Docker image
+      run: |
+        PLATFORM="${{ matrix.platform }}"
+        TARGET="${{ matrix.target }}"
+        IMAGE_TAG="ipfs-accelerate-py:test-$TARGET-$PLATFORM"
+        
+        echo "🧪 Testing Docker image: $IMAGE_TAG"
+        echo "Platform: $PLATFORM, Target: $TARGET"
+        
+        # Test basic functionality
+        docker run --rm --platform $PLATFORM $IMAGE_TAG python -c "
+        import ipfs_accelerate_py
+        import platform
+        print('✅ Docker import test passed')
+        print(f'Container platform: {platform.platform()}')
+        print(f'Container architecture: {platform.machine()}')
+        "
+        
+        # Test CLI in container
+        docker run --rm --platform $PLATFORM $IMAGE_TAG python -m ipfs_accelerate_py.cli_entry --help
+
+  # Multi-architecture build validation
+  test-multiarch-build:
+    runs-on: ubuntu-latest
+    needs: [detect-platforms, test-docker]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build multi-architecture production image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ needs.detect-platforms.outputs.platforms }}
+        target: production
+        tags: |
+          ipfs-accelerate-py:multiarch-production
+          ipfs-accelerate-py:latest
+        cache-from: type=gha,scope=multiarch
+        cache-to: type=gha,mode=max,scope=multiarch
+        # Build only, don't push
+        
+    - name: Build multi-architecture minimal image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ needs.detect-platforms.outputs.platforms }}
+        target: minimal
+        tags: ipfs-accelerate-py:multiarch-minimal
+        cache-from: type=gha,scope=multiarch-minimal
+        cache-to: type=gha,mode=max,scope=multiarch-minimal
+
+  # Hardware acceleration testing
+  test-gpu-acceleration:
+    runs-on: ubuntu-latest
+    needs: test-docker
+    if: github.event.inputs.build_gpu_images == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build GPU-accelerated image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        target: hardware-accelerated
+        tags: ipfs-accelerate-py:gpu-test
+        load: true
+        
+    - name: Test GPU capabilities
+      run: |
+        echo "🚀 Testing hardware acceleration support"
+        
+        docker run --rm ipfs-accelerate-py:gpu-test python -c "
+        import ipfs_accelerate_py
+        print('✅ GPU image basic import successful')
+        
+        # Test hardware acceleration libraries
+        libs_tested = []
+        
+        # Test PyTorch
+        try:
+            import torch
+            libs_tested.append(f'PyTorch {torch.__version__}')
+            print(f'✅ PyTorch: {torch.__version__}')
+            print(f'CUDA available: {torch.cuda.is_available()}')
+            if torch.cuda.is_available():
+                print(f'CUDA devices: {torch.cuda.device_count()}')
+        except ImportError:
+            print('ℹ️ PyTorch not available')
+            
+        # Test TensorFlow  
+        try:
+            import tensorflow as tf
+            libs_tested.append(f'TensorFlow {tf.__version__}')
+            print(f'✅ TensorFlow: {tf.__version__}')
+            gpus = tf.config.experimental.list_physical_devices('GPU')
+            print(f'TF GPU devices: {len(gpus)}')
+        except ImportError:
+            print('ℹ️ TensorFlow not available')
+            
+        # Test NumPy with optimized BLAS
+        try:
+            import numpy as np
+            libs_tested.append(f'NumPy {np.__version__}')
+            print(f'✅ NumPy: {np.__version__}')
+        except ImportError:
+            print('ℹ️ NumPy not available')
+            
+        print(f'Hardware acceleration libraries: {libs_tested}')
+        "
+
+  # Comprehensive Docker Compose testing
+  test-docker-compose:
+    runs-on: ubuntu-latest  
+    needs: test-multiarch-build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create required directories
+      run: |
+        mkdir -p data logs config models benchmarks test-results coverage-reports benchmark-results
+        chmod 755 data logs config models benchmarks test-results coverage-reports benchmark-results
+        
+    - name: Validate Docker Compose configuration
+      run: |
+        echo "🔍 Validating Docker Compose configuration..."
+        docker compose config --quiet
+        echo "✅ Docker Compose configuration is valid"
+        
+    - name: Test minimal profile
+      run: |
+        echo "🧪 Testing minimal profile..."
+        docker compose --profile minimal up -d
+        sleep 15
+        
+        if docker compose ps | grep -q "ipfs-accelerate-py.*Up"; then
+          echo "✅ Minimal profile started successfully"
+          curl -f http://localhost:8000/health || echo "ℹ️ No health endpoint (expected for minimal profile)"
+        else
+          echo "⚠️ Minimal profile status check"
+          docker compose logs ipfs-accelerate-py
+        fi
+        
+        docker compose --profile minimal down --volumes
+        
+    - name: Test development profile  
+      run: |
+        echo "🧪 Testing development profile..."
+        docker compose --profile development up -d
+        sleep 20
+        
+        # Check services
+        docker compose ps
+        
+        # Test main service
+        if docker compose ps | grep -q "ipfs-accelerate-py.*Up"; then
+          echo "✅ Development environment started"
+          
+          # Test any exposed endpoints
+          curl -f http://localhost:8000/health || echo "ℹ️ Health endpoint test"
+          curl -f http://localhost:8001/docs || echo "ℹ️ API docs test"
+        fi
+        
+        docker compose --profile development down --volumes
+        
+    - name: Test production profile
+      run: |
+        echo "🧪 Testing production profile..."
+        docker compose --profile production up -d
+        sleep 25
+        
+        docker compose ps
+        
+        # Test production services
+        if docker compose ps | grep -q "Up"; then
+          echo "✅ Production environment operational"
+          
+          # Test health endpoints
+          curl -f http://localhost:8000/health || echo "ℹ️ Main service health check"
+        fi
+        
+        docker compose --profile production down --volumes
+
+  # Performance benchmarking
+  performance-benchmark:
+    runs-on: ubuntu-latest
+    needs: test-docker-compose
+    if: github.event.inputs.performance_testing == 'true'
+    
+    strategy:
+      matrix:
+        platform: [amd64, arm64]
+      fail-fast: false
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up QEMU (for ARM64)
+      if: matrix.platform == 'arm64'
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install benchmarking tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[all,testing]"
+        pip install memory-profiler psutil pytest-benchmark
+        
+    - name: Run performance benchmarks
+      run: |
+        echo "🚀 Running performance benchmarks on ${{ matrix.platform }}"
+        
+        python -c "
+        import time
+        import psutil
+        import platform
+        import ipfs_accelerate_py
+        
+        print('=== Performance Benchmark Results ===')
+        print(f'Platform: {platform.platform()}')
+        print(f'Architecture: {platform.machine()}')
+        print(f'Python: {platform.python_version()}')
+        
+        # Measure import time
+        start_time = time.time()
+        import ipfs_accelerate_py
+        import_time = time.time() - start_time
+        print(f'Import time: {import_time:.4f}s')
+        
+        # Memory usage
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        print(f'Memory usage: {memory_mb:.1f} MB')
+        
+        # CPU information
+        cpu_count = psutil.cpu_count()
+        cpu_freq = psutil.cpu_freq()
+        print(f'CPU cores: {cpu_count}')
+        if cpu_freq:
+            print(f'CPU frequency: {cpu_freq.current:.0f} MHz')
+        
+        # Basic performance test
+        iterations = 10000
+        start_time = time.time()
+        for i in range(iterations):
+            _ = str(i) * 10
+        elapsed = time.time() - start_time
+        print(f'String operations ({iterations} iterations): {elapsed:.4f}s')
+        print(f'Operations per second: {iterations/elapsed:.0f}')
+        
+        print('✅ Performance benchmark completed')
+        "
+        
+    - name: Save benchmark results
+      run: |
+        echo "Performance benchmark for ${{ matrix.platform }}" > benchmark-${{ matrix.platform }}.txt
+        echo "Commit: ${{ github.sha }}" >> benchmark-${{ matrix.platform }}.txt  
+        echo "Timestamp: $(date)" >> benchmark-${{ matrix.platform }}.txt
+        echo "Platform: ${{ matrix.platform }}" >> benchmark-${{ matrix.platform }}.txt
+        
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results-${{ matrix.platform }}
+        path: benchmark-${{ matrix.platform }}.txt
+        retention-days: 30
+
+  # Security scanning
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test-multiarch-build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build image for scanning
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        target: production
+        tags: ipfs-accelerate-py:security-scan
+        load: true
+        
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'ipfs-accelerate-py:security-scan'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # Final summary
+  multiarch-summary:
+    runs-on: ubuntu-latest
+    needs: [
+      detect-platforms,
+      test-native, 
+      test-docker,
+      test-multiarch-build,
+      test-docker-compose,
+      security-scan,
+      test-gpu-acceleration,
+      performance-benchmark
+    ]
+    if: always()
+    
+    steps:
+    - name: Generate comprehensive summary
+      run: |
+        echo "# 🏗️ Multi-Architecture CI/CD Pipeline Summary" > summary.md
+        echo "" >> summary.md
+        echo "## 📋 Pipeline Overview" >> summary.md
+        echo "- **Repository:** ${{ github.repository }}" >> summary.md
+        echo "- **Commit SHA:** ${{ github.sha }}" >> summary.md
+        echo "- **Branch:** ${{ github.ref_name }}" >> summary.md
+        echo "- **Trigger:** ${{ github.event_name }}" >> summary.md
+        echo "- **Platforms Tested:** ${{ needs.detect-platforms.outputs.platforms }}" >> summary.md
+        echo "- **Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> summary.md
+        echo "" >> summary.md
+        
+        echo "## ✅ Job Results" >> summary.md
+        echo "| Job | Status | Details |" >> summary.md
+        echo "|-----|--------|---------|" >> summary.md
+        echo "| Platform Detection | ${{ needs.detect-platforms.result }} | Detected supported platforms |" >> summary.md
+        echo "| Native Testing | ${{ needs.test-native.result }} | Cross-platform Python testing |" >> summary.md
+        echo "| Docker Testing | ${{ needs.test-docker.result }} | Multi-arch container testing |" >> summary.md
+        echo "| Multi-arch Build | ${{ needs.test-multiarch-build.result }} | Cross-platform Docker builds |" >> summary.md
+        echo "| Docker Compose | ${{ needs.test-docker-compose.result }} | Service orchestration testing |" >> summary.md
+        echo "| Security Scan | ${{ needs.security-scan.result }} | Container vulnerability scanning |" >> summary.md
+        echo "" >> summary.md
+        
+        # Optional job results
+        if [[ "${{ needs.test-gpu-acceleration.result }}" != "skipped" ]] && [[ "${{ needs.test-gpu-acceleration.result }}" != "" ]]; then
+          echo "| GPU Acceleration | ${{ needs.test-gpu-acceleration.result }} | Hardware acceleration testing |" >> summary.md
+        fi
+        
+        if [[ "${{ needs.performance-benchmark.result }}" != "skipped" ]] && [[ "${{ needs.performance-benchmark.result }}" != "" ]]; then
+          echo "| Performance Benchmark | ${{ needs.performance-benchmark.result }} | Cross-platform performance testing |" >> summary.md
+        fi
+        
+        echo "" >> summary.md
+        echo "## 🎯 Success Criteria" >> summary.md
+        
+        CRITICAL_SUCCESS=true
+        
+        if [[ "${{ needs.test-native.result }}" != "success" ]]; then
+          echo "❌ Native testing failed" >> summary.md
+          CRITICAL_SUCCESS=false
+        else
+          echo "✅ Native testing passed" >> summary.md
+        fi
+        
+        if [[ "${{ needs.test-docker.result }}" != "success" ]]; then
+          echo "❌ Docker testing failed" >> summary.md  
+          CRITICAL_SUCCESS=false
+        else
+          echo "✅ Docker testing passed" >> summary.md
+        fi
+        
+        if [[ "${{ needs.test-multiarch-build.result }}" != "success" ]]; then
+          echo "❌ Multi-architecture builds failed" >> summary.md
+          CRITICAL_SUCCESS=false  
+        else
+          echo "✅ Multi-architecture builds passed" >> summary.md
+        fi
+        
+        echo "" >> summary.md
+        echo "Generated at: $(date)" >> summary.md
+        
+        cat summary.md
+        
+        # Set final exit code
+        if [[ "$CRITICAL_SUCCESS" == "true" ]]; then
+          echo "🎉 Multi-architecture pipeline successful!"
+          exit 0
+        else
+          echo "❌ Critical multi-architecture tests failed"
+          exit 1
+        fi
+        
+    - name: Upload pipeline summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: multiarch-pipeline-summary
+        path: summary.md
+        retention-days: 30

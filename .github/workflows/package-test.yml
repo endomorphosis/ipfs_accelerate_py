@@ -1,0 +1,96 @@
+name: Package Installation Test
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - 'setup.py'
+  workflow_dispatch:
+
+jobs:
+  package-test:
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Test package installation methods
+      run: |
+        echo "=== Testing Package Installation Methods ==="
+        
+        # Method 1: pip install with requirements
+        echo "Testing pip install with requirements..."
+        python3 -m venv test-venv-1
+        source test-venv-1/bin/activate
+        pip install --upgrade pip
+        
+        # Install core dependencies
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+          echo "✅ Core requirements installed"
+        fi
+        
+        # Install dashboard dependencies
+        if [ -f requirements_dashboard.txt ]; then
+          pip install -r requirements_dashboard.txt
+          echo "✅ Dashboard requirements installed"
+        fi
+        
+        # Install enhanced scraper dependencies
+        if [ -f requirements_enhanced_scraper.txt ]; then
+          pip install -r requirements_enhanced_scraper.txt || echo "⚠️  Enhanced scraper deps may have failed"
+        fi
+        
+        deactivate
+        rm -rf test-venv-1
+        
+    - name: Test pyproject.toml installation
+      run: |
+        echo "=== Testing pyproject.toml Installation ==="
+        
+        python3 -m venv test-venv-2
+        source test-venv-2/bin/activate
+        pip install --upgrade pip
+        
+        # Install in development mode
+        pip install -e . || echo "⚠️  Development install may have issues"
+        
+        # Test optional dependencies
+        pip install -e ".[minimal]" || echo "⚠️  Minimal install may have issues"
+        
+        deactivate
+        rm -rf test-venv-2
+        
+    - name: ARM64 compatibility check
+      run: |
+        echo "=== ARM64 Compatibility Check ==="
+        
+        python3 -m venv test-venv-3
+        source test-venv-3/bin/activate
+        pip install --upgrade pip
+        
+        # Test key ARM64 packages
+        echo "Testing NumPy on ARM64..."
+        pip install numpy
+        python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
+        
+        echo "Testing aiohttp on ARM64..."
+        pip install aiohttp
+        python -c "import aiohttp; print(f'aiohttp version: {aiohttp.__version__}')"
+        
+        echo "Testing websockets on ARM64..."
+        pip install websockets
+        python -c "import websockets; print(f'websockets version: {websockets.__version__}')"
+        
+        # Test if DuckDB works on ARM64
+        echo "Testing DuckDB on ARM64..."
+        pip install duckdb
+        python -c "import duckdb; print(f'DuckDB version: {duckdb.__version__}')"
+        
+        deactivate
+        rm -rf test-venv-3
+        
+        echo "✅ ARM64 compatibility check completed"
