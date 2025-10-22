@@ -28,10 +28,15 @@ try:
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
-    print("⚠️ Playwright not available - install with: pip install playwright && playwright install")
-    sys.exit(1)
+    # Don't call sys.exit() - it breaks pytest collection
+    # Tests will be skipped via pytest.mark.skipif instead
+    # Create stub types to prevent NameError during collection
+    Page = None
+    Browser = None
+    async_playwright = None
 
 import requests
+import pytest
 
 
 class HuggingFaceWorkflowTest:
@@ -302,5 +307,8 @@ async def main():
 
 
 if __name__ == '__main__':
+    if not PLAYWRIGHT_AVAILABLE:
+        print("⚠️ Playwright not available - install with: pip install playwright && playwright install")
+        sys.exit(1)
     exit_code = asyncio.run(main())
     sys.exit(exit_code)

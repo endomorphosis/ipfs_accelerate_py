@@ -16,3 +16,6 @@
 [submodule "docs/fastmcp"]
 	path = docs/fastmcp
 	url = https://github.com/jlowin/fastmcp.git
+[submodule "docs/mcp-python-sdk"]
+	path = docs/mcp-python-sdk
+	url = https://github.com/jlowin/mcp-python-sdk.git
