@@ -340,7 +340,7 @@ jobs:
         echo "Timestamp: $(date)" >> performance-baseline.txt
         
     - name: Upload performance results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: performance-baseline-amd64
         path: performance-baseline.txt
@@ -385,7 +385,7 @@ jobs:
         fi
         
     - name: Upload summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: amd64-test-summary
         path: amd64-summary.md

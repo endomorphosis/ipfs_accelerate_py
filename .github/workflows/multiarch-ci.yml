@@ -482,7 +482,7 @@ jobs:
         echo "Platform: ${{ matrix.platform }}" >> benchmark-${{ matrix.platform }}.txt
         
     - name: Upload benchmark results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: benchmark-results-${{ matrix.platform }}
         path: benchmark-${{ matrix.platform }}.txt
@@ -612,7 +612,7 @@ jobs:
         fi
         
     - name: Upload pipeline summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: multiarch-pipeline-summary
         path: summary.md

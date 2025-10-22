@@ -24,13 +24,19 @@ from dataclasses import dataclass, asdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
+# Add current directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Configure logging - must be done BEFORE any usage
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Try to import aiohttp (optional for async operations)
 try:
     import aiohttp
     HAVE_AIOHTTP = True
 except ImportError:
     HAVE_AIOHTTP = False
-    logger = logging.getLogger(__name__)
     logger.warning("aiohttp not available - async operations disabled")
 
 # Try to import huggingface_hub (for better API access)
@@ -40,13 +46,6 @@ try:
 except ImportError:
     HAVE_HUGGINGFACE_HUB = False
     logger.warning("huggingface_hub not available - using direct API calls")
-
-# Add current directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
