@@ -141,7 +141,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import ipfs_accelerate_py; print('OK')" || exit 1
 
 EXPOSE 8000
-CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "server", "start", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
 
 # Minimal stage for lightweight deployments
 FROM base AS minimal
@@ -200,4 +200,4 @@ RUN pip install \
 USER appuser
 WORKDIR /app
 
-CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "server", "start", "--host", "0.0.0.0", "--port", "8000", "--accelerated"]
+CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
