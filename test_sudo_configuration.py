@@ -14,8 +14,14 @@ def test_sudo_access():
     
     try:
         # Test basic sudo access
-        result = subprocess.run(['sudo', '-n', 'whoami'], 
-                              capture_output=True, text=True, timeout=10)
+        try:
+            result = subprocess.run(['sudo', '-n', 'whoami'], 
+                                  capture_output=True, text=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            print("❌ Passwordless sudo access: TIMED OUT")
+            print("   Sudo configuration may be severely misconfigured")
+            print("   Check /etc/sudoers.d/ for proper passwordless configuration")
+            return False
         
         if result.returncode == 0:
             print("✅ Passwordless sudo access: WORKING")
@@ -26,8 +32,9 @@ def test_sudo_access():
             return False
             
         # Test apt-get access (common CI/CD requirement)
+        apt_update_timeout = int(os.getenv("APT_UPDATE_TIMEOUT", "60"))
         result = subprocess.run(['sudo', '-n', 'apt-get', 'update', '-qq'], 
-                              capture_output=True, text=True, timeout=30)
+                              capture_output=True, text=True, timeout=apt_update_timeout)
         
         if result.returncode == 0:
             print("✅ Package manager access: WORKING")
