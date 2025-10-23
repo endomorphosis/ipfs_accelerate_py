@@ -27,6 +27,11 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
     print("⚠️ Playwright not available - install with: pip install playwright && playwright install")
+    # Create stub types to prevent NameError during collection
+    Page = None
+    Browser = None
+    async_playwright = None
+    expect = None
 
 import requests
 

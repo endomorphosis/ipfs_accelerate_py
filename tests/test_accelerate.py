@@ -21,7 +21,8 @@ logger = logging.getLogger('test_accelerate')
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 # Import the helper module for creating the framework instance
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'test')))
+# The test_helper.py is in the test/ directory at the root, not tests/test
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'test')))
 from test_helper import create_framework
 
 async def test_hardware_detection():
