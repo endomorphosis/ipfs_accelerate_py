@@ -19,3 +19,6 @@
 [submodule "docs/mcp-python-sdk"]
 	path = docs/mcp-python-sdk
 	url = https://github.com/jlowin/mcp-python-sdk.git
+[submodule "test/huggingface_doc_builder"]
+	path = test/huggingface_doc_builder
+	url = https://github.com/huggingface/doc-builder.git
