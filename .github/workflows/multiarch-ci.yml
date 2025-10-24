@@ -184,19 +184,39 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Free up disk space
+      run: |
+        echo "=== Before cleanup ==="
+        df -h /
+        
+        # Remove unnecessary software
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+        sudo apt-get autoremove -y
+        sudo apt-get clean
+        sudo docker system prune -af --volumes
+        
+        echo "=== After cleanup ==="
+        df -h /
+      
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
       
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       
+    - name: Prepare Docker tag
+      id: docker_tag
+      run: |
+        PLATFORM_TAG=$(echo "${{ matrix.platform }}" | tr '/' '-')
+        echo "tag=ipfs-accelerate-py:test-${{ matrix.target }}-${PLATFORM_TAG}" >> $GITHUB_OUTPUT
+        
     - name: Build Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
         platforms: ${{ matrix.platform }}
         target: ${{ matrix.target }}
-        tags: ipfs-accelerate-py:test-${{ matrix.target }}-${{ matrix.platform }}
+        tags: ${{ steps.docker_tag.outputs.tag }}
         load: true
         cache-from: type=gha,scope=${{ matrix.platform }}-${{ matrix.target }}
         cache-to: type=gha,mode=max,scope=${{ matrix.platform }}-${{ matrix.target }}
@@ -205,7 +225,7 @@ jobs:
       run: |
         PLATFORM="${{ matrix.platform }}"
         TARGET="${{ matrix.target }}"
-        IMAGE_TAG="ipfs-accelerate-py:test-$TARGET-$PLATFORM"
+        IMAGE_TAG="${{ steps.docker_tag.outputs.tag }}"
         
         echo "🧪 Testing Docker image: $IMAGE_TAG"
         echo "Platform: $PLATFORM, Target: $TARGET"
