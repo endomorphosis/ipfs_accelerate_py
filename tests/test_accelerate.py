@@ -9,6 +9,7 @@ import asyncio
 import logging
 import sys
 import os
+import pytest
 
 # Setup logging
 logging.basicConfig(
@@ -25,6 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'test')))
 from test_helper import create_framework
 
+@pytest.mark.asyncio
 async def test_hardware_detection():
     """Test hardware detection functionality."""
     logger.info("Testing hardware detection...")
@@ -53,6 +55,7 @@ async def test_hardware_detection():
     # Return success
     return True
 
+@pytest.mark.asyncio
 async def test_model_endpoints():
     """Test model endpoint initialization and processing."""
     logger.info("Testing model endpoint initialization...")
@@ -92,6 +95,7 @@ async def test_model_endpoints():
         logger.warning("No endpoints were initialized, skipping processing test")
         return False
 
+@pytest.mark.asyncio
 async def test_ipfs_operations():
     """Test IPFS operations."""
     logger.info("Testing IPFS operations...")
@@ -128,6 +132,7 @@ async def test_ipfs_operations():
         logger.error(f"Error testing IPFS operations: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_accelerated_inference():
     """Test accelerated inference with IPFS fallback."""
     logger.info("Testing accelerated inference...")
