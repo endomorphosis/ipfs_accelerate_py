@@ -7,7 +7,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-def test_import(module_path):
+def check_import(module_path):
     """
     Attempt to import a single module and print dependency errors.
     
@@ -42,20 +42,20 @@ if __name__ == "__main__":
     # Test DuckDB API
     duckdb_file = project_root / "duckdb_api" / "analysis" / "benchmark_regression_detector.py"
     if duckdb_file.exists():
-        test_import(duckdb_file)
+        check_import(duckdb_file)
     else:
         print(f"File not found: {duckdb_file}")
         
     # Test integration test suite
     integration_file = project_root / "generators" / "test_runners" / "integration_test_suite.py"
     if integration_file.exists():
-        test_import(integration_file)
+        check_import(integration_file)
     else:
         print(f"File not found: {integration_file}")
         
     # Test IPFS accelerate
     ipfs_file = project_root / "generators" / "models" / "test_ipfs_accelerate.py"
     if ipfs_file.exists():
-        test_import(ipfs_file)
+        check_import(ipfs_file)
     else:
         print(f"File not found: {ipfs_file}")

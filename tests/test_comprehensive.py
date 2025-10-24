@@ -65,9 +65,13 @@ class TestHardwareDetectionCore(unittest.TestCase):
         for key in required_keys:
             self.assertIn(key, result, f"Missing key: {key}")
         
-        # CPU should be available and best available in minimal environment
+        # CPU should be available
         self.assertTrue(result['hardware']['cpu'])
-        self.assertEqual(result['best_available'], 'cpu')
+        
+        # best_available should be one of the available hardware types
+        available_hardware = [k for k, v in result['hardware'].items() if v]
+        self.assertIn(result['best_available'], available_hardware,
+                     f"best_available '{result['best_available']}' should be one of {available_hardware}")
     
     def test_model_compatibility_checking(self):
         """Test model hardware compatibility."""

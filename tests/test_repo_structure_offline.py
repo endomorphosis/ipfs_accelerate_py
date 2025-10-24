@@ -232,8 +232,13 @@ def test_repo_structure_offline():
     print(f"   ✅ Gracefully handled repository structure fetching failure")
     
     print(f"\n✅ All offline repository structure tests completed successfully!")
-    return True
+    # Test passes if we get here without exceptions
 
 if __name__ == "__main__":
-    success = test_repo_structure_offline()
+    try:
+        test_repo_structure_offline()
+        success = True
+    except Exception as e:
+        print(f"Test failed: {e}")
+        success = False
     sys.exit(0 if success else 1)

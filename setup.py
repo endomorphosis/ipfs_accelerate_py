@@ -127,6 +127,7 @@ setup(
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
+			"pytest-asyncio>=0.21.0",
 		],
 		"webnn": [
 			"playwright>=1.31.0",
@@ -180,6 +181,7 @@ setup(
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
+			"pytest-asyncio>=0.21.0",
 		],
 	},
 	entry_points={

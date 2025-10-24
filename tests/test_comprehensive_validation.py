@@ -40,7 +40,7 @@ print("\n" + "="*80)
 print("PHASE 1: VALIDATING BACKEND MCP SERVER TOOLS")
 print("="*80)
 
-def test_phase1_backend_tools():
+def validate_phase1_backend_tools():
     """Test that backend MCP server tools exist and work."""
     
     print("\n📋 Step 1.1: Testing HuggingFaceHubScanner class...")
@@ -90,7 +90,7 @@ print("\n" + "="*80)
 print("PHASE 2: VALIDATING IPFS_ACCELERATE_PY PACKAGE FUNCTIONS")
 print("="*80)
 
-def test_phase2_package_functions(scanner):
+def validate_phase2_package_functions(scanner):
     """Test that package functions work independently."""
     
     print("\n📋 Step 2.1: Testing model_manager integration...")
@@ -118,7 +118,7 @@ print("\n" + "="*80)
 print("PHASE 3: VALIDATING MCP DASHBOARD API ENDPOINTS")
 print("="*80)
 
-def test_phase3_dashboard_apis():
+def validate_phase3_dashboard_apis():
     """Test that MCP Dashboard APIs work when server is running."""
     
     import requests
@@ -193,7 +193,7 @@ print("\n" + "="*80)
 print("PHASE 4: VALIDATING GUI INTEGRATION WITH PLAYWRIGHT")
 print("="*80)
 
-def test_phase4_gui_with_playwright():
+def validate_phase4_gui_with_playwright():
     """Test GUI integration using Playwright with screenshots."""
     
     try:
@@ -322,20 +322,20 @@ def run_all_phases():
     results = {}
     
     # Phase 1: Backend tools
-    success1, scanner = test_phase1_backend_tools()
+    success1, scanner = validate_phase1_backend_tools()
     results['phase1_backend'] = 'PASS' if success1 else 'FAIL'
     
     # Phase 2: Package functions
-    success2, manager = test_phase2_package_functions(scanner if success1 else None)
+    success2, manager = validate_phase2_package_functions(scanner if success1 else None)
     results['phase2_package'] = 'PASS' if success2 else 'WARN'
     
     # Phase 3: API endpoints (requires server)
-    success3 = test_phase3_dashboard_apis()
+    success3 = validate_phase3_dashboard_apis()
     results['phase3_apis'] = 'PASS' if success3 else 'WARN (server not running)'
     
     # Phase 4: GUI with Playwright (requires server)
     if success3:
-        success4 = test_phase4_gui_with_playwright()
+        success4 = validate_phase4_gui_with_playwright()
         results['phase4_gui'] = 'PASS' if success4 else 'FAIL'
     else:
         print("\n   ⚠️ Skipping Phase 4 - server not running")
