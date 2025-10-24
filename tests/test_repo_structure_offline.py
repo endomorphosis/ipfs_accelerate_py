@@ -11,8 +11,8 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# Add the ipfs_accelerate_py directory to the path
-sys.path.insert(0, str(Path(__file__).parent / "ipfs_accelerate_py"))
+# Add the parent directory to the path to import ipfs_accelerate_py
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from ipfs_accelerate_py.model_manager import (
     ModelManager, 
@@ -232,8 +232,13 @@ def test_repo_structure_offline():
     print(f"   ✅ Gracefully handled repository structure fetching failure")
     
     print(f"\n✅ All offline repository structure tests completed successfully!")
-    return True
+    # Test passes if we get here without exceptions
 
 if __name__ == "__main__":
-    success = test_repo_structure_offline()
+    try:
+        test_repo_structure_offline()
+        success = True
+    except Exception as e:
+        print(f"Test failed: {e}")
+        success = False
     sys.exit(0 if success else 1)

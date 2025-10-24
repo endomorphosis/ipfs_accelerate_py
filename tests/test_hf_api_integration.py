@@ -42,7 +42,7 @@ print("\n" + "="*80)
 print("PHASE 1: VALIDATING BACKEND TOOLS")
 print("="*80)
 
-def test_phase1_backend_tools():
+def validate_phase1_backend_tools():
     """Test that backend MCP server tools exist and work."""
     
     print("\n📋 Step 1.1: Testing HuggingFaceHubScanner class...")
@@ -77,7 +77,7 @@ print("\n" + "="*80)
 print("PHASE 2: VALIDATING PACKAGE FUNCTIONS")
 print("="*80)
 
-def test_phase2_package_functions(scanner):
+def validate_phase2_package_functions(scanner):
     """Test that package functions work independently."""
     
     if not scanner:
@@ -122,7 +122,7 @@ print("\n" + "="*80)
 print("RUNNING VALIDATION TESTS")
 print("="*80)
 
-success_phase1, scanner = test_phase1_backend_tools()
+success_phase1, scanner = validate_phase1_backend_tools()
 
 if success_phase1:
     print("\n✅ Phase 1 passed!")
@@ -130,7 +130,7 @@ else:
     print("\n❌ Phase 1 failed!")
     sys.exit(1)
 
-success_phase2 = test_phase2_package_functions(scanner)
+success_phase2 = validate_phase2_package_functions(scanner)
 
 if success_phase2:
     print("\n✅ Phase 2 passed!")

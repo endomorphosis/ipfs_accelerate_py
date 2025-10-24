@@ -260,22 +260,25 @@ if pytest:
             """Test that hardware detection provides optimization recommendations."""
             detector = HardwareDetector()
             
-            # Test with mocked hardware
-            with patch.object(detector, 'get_available_hardware') as mock_detect:
-                mock_detect.return_value = ['cpu', 'cuda', 'webnn']
-                best_hardware = detector.get_best_available_hardware()
+            # Get actual available hardware instead of mocking
+            best_hardware = detector.get_best_available_hardware()
+            
+            # Should be one of the known hardware types
+            known_hardware = ['cpu', 'cuda', 'rocm', 'mps', 'openvino', 'webnn', 'webgpu', 'qualcomm']
+            assert best_hardware in known_hardware, f"Unexpected hardware choice: {best_hardware}"
+            
+            # CPU should always be available as fallback
+            available = detector.get_available_hardware()
+            assert available['cpu'] is True, "CPU should always be available"
+            
+            # Test recommendations for different model types
+            for model_info in model_tester.TEST_MODELS:
+                compatibility = model_tester.test_model_compatibility(model_info, use_mock=True)
                 
-                # Should prefer CUDA over CPU when available
-                assert best_hardware in ['cuda', 'cpu'], f"Unexpected hardware choice: {best_hardware}"
+                assert compatibility["compatible"] is True
+                assert compatibility["estimated_inference_time_ms"] > 0
+                assert compatibility["memory_requirements_mb"] > 0
                 
-                # Test recommendations for different model types
-                for model_info in model_tester.TEST_MODELS:
-                    compatibility = model_tester.test_model_compatibility(model_info, use_mock=True)
-                    
-                    assert compatibility["compatible"] is True
-                    assert compatibility["estimated_inference_time_ms"] > 0
-                    assert compatibility["memory_requirements_mb"] > 0
-                    
             logger.info("✅ Hardware optimization recommendations test passed")
 else:
     # Define empty class if pytest not available
