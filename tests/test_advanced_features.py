@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-# Add the parent directory to the path to import our modules
-sys.path.insert(0, str(Path(__file__).parent))
+# Add the repository root to the path to import our modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import modules to test
 from test_real_world_models import RealWorldModelTester, TestRealWorldModels
