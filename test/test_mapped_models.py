@@ -21,7 +21,7 @@ os.environ["PYTHONWARNINGS"] = "ignore::RuntimeWarning"
 # Import utils module locally
 sys.path.insert())0, os.path.dirname())os.path.abspath())__file__)))
 try:
-    import utils
+    import test_helpers as utils
 except ImportError:
     print())"Warning: utils module not found. Creating mock utils.")
     utils = MagicMock()))
