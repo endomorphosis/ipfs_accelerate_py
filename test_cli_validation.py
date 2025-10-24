@@ -107,9 +107,13 @@ except ImportError as e:
     print(f"✅ Created entry point script: {entry_point_path}")
     return str(entry_point_path)
 
-def test_entry_point_script(script_path):
+def test_entry_point_script():
     """Test the standalone entry point script"""
     print("🧪 Testing standalone entry point script...")
+    
+    # Create the entry point script
+    script_path = create_entry_point_script()
+    
     try:
         result = subprocess.run([
             sys.executable, script_path, "--help"
@@ -124,6 +128,13 @@ def test_entry_point_script(script_path):
     except Exception as e:
         print(f"❌ Entry point test error: {e}")
         return False
+    finally:
+        # Clean up the created script
+        try:
+            if os.path.exists(script_path):
+                os.remove(script_path)
+        except:
+            pass
 
 def provide_installation_guidance():
     """Provide installation guidance for users"""
