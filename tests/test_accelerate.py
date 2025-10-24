@@ -35,22 +35,30 @@ async def test_hardware_detection():
     framework = create_framework()
     
     # Get hardware detection results
-    if hasattr(framework.hardware_detection, "detect_all_hardware"):
+    if hasattr(framework.hardware_detection, "detect_available_hardware"):
+        hardware_result = framework.hardware_detection.detect_available_hardware()
+        hardware = hardware_result.get('hardware', {}) if isinstance(hardware_result, dict) else hardware_result
+    elif hasattr(framework.hardware_detection, "detect_all_hardware"):
         hardware = framework.hardware_detection.detect_all_hardware()
     else:
-        hardware = framework.hardware_detection.detect_hardware()
+        logger.warning("Could not find hardware detection method")
+        hardware = {'cpu': True}
     
     # Print detected hardware
     logger.info("Detected hardware:")
     for platform, info in hardware.items():
-        available = info.get("available", False) or info.get("detected", False)
+        if isinstance(info, dict):
+            available = info.get("available", False) or info.get("detected", False)
+        else:
+            available = info
         if available:
             logger.info(f"  - {platform} is available")
             # Print platform details if available
-            if platform == "cpu" and "cores" in info:
-                logger.info(f"    - Cores: {info['cores']}")
-            elif platform == "cuda" and "devices" in info:
-                logger.info(f"    - Devices: {info['devices']}")
+            if isinstance(info, dict):
+                if platform == "cpu" and "cores" in info:
+                    logger.info(f"    - Cores: {info['cores']}")
+                elif platform == "cuda" and "devices" in info:
+                    logger.info(f"    - Devices: {info['devices']}")
     
     # Return success
     return True

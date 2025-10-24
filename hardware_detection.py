@@ -348,7 +348,9 @@ class HardwareDetector:
         """Detect CUDA availability and capabilities"""
         try:
             if not HAS_TORCH:
-                return {'available': False, 'reason': 'PyTorch not available'}
+                self._hardware_info[CUDA] = False
+                self._details[CUDA] = {"reason": "PyTorch not available"}
+                return
                 
             cuda_available = torch.cuda.is_available()
             
@@ -422,7 +424,9 @@ class HardwareDetector:
         """Detect AMD ROCm availability and capabilities"""
         try:
             if not HAS_TORCH:
-                return {'available': False, 'reason': 'PyTorch not available'}
+                self._hardware_info[ROCM] = False
+                self._details[ROCM] = {"reason": "PyTorch not available"}
+                return
             
             # Check if PyTorch was built with ROCm
             is_rocm = False
@@ -480,7 +484,9 @@ class HardwareDetector:
             
         try:
             if not HAS_TORCH:
-                return {'available': False, 'reason': 'PyTorch not available'}
+                self._hardware_info[MPS] = False
+                self._details[MPS] = {"reason": "PyTorch not available"}
+                return
             
             # Check if PyTorch has MPS support
             has_mps_support = hasattr(torch.backends, "mps")
@@ -643,30 +649,35 @@ class HardwareDetector:
             logger.info("WebNN availability forced by environment variable")
             return
         
-        # Check for ONNX export capabilities
+        # Check for ONNX export capabilities - but don't mark WebNN as available
+        # Just having ONNX doesn't mean WebNN can be used for inference
+        # This is for export capability only, not runtime execution
         try:
             if not HAS_TORCH:
                 logger.debug("PyTorch not available, WebNN limited")
             onnx = safe_import('onnx', optional=True)
-            self._hardware_info[WEBNN] = True
-            self._details[WEBNN] = {
-                "environment": "node",
-                "mode": "onnx_export",
-                "python_export_capability": {
-                    "torch": torch.__version__ if torch and hasattr(torch, '__version__') else "not_available",
-                    "onnx": onnx.__version__ if onnx and hasattr(onnx, '__version__') else "not_available"
+            if onnx:
+                self._details[WEBNN] = {
+                    "environment": "python",
+                    "mode": "onnx_export_capability",
+                    "runtime_available": False,
+                    "export_capability": {
+                        "torch": torch.__version__ if torch and hasattr(torch, '__version__') else "not_available",
+                        "onnx": onnx.__version__ if onnx and hasattr(onnx, '__version__') else "not_available"
+                    },
+                    "note": "ONNX export available but WebNN runtime not detected"
                 }
-            }
-            logger.info("WebNN support detected via Python ONNX export capabilities")
-            return
+                logger.debug("ONNX export capability available but WebNN runtime not detected")
         except ImportError:
             pass
         
-        # Final details
-        self._details[WEBNN] = {
-            "reason": "WebNN not available",
-            "environment": "node"
-        }
+        # Final details - WebNN not available for runtime inference
+        if WEBNN not in self._details:
+            self._details[WEBNN] = {
+                "reason": "WebNN runtime not available - requires browser environment",
+                "environment": "python",
+                "runtime_available": False
+            }
     
     def _detect_webgpu(self):
         """Detect WebGPU availability and capabilities"""
@@ -778,30 +789,35 @@ class HardwareDetector:
         except (subprocess.SubprocessError, FileNotFoundError):
             pass
         
-        # Check for ONNX export capabilities
+        # Check for ONNX export capabilities - but don't mark WebGPU as available
+        # Just having ONNX doesn't mean WebGPU can be used for inference
+        # This is for export capability only, not runtime execution
         try:
             if not HAS_TORCH:
                 logger.debug("PyTorch not available, WebGPU export limited")
             onnx = safe_import('onnx', optional=True)
-            self._hardware_info[WEBGPU] = True
-            self._details[WEBGPU] = {
-                "environment": "node",
-                "mode": "onnx_export",
-                "python_export_capability": {
-                    "torch": torch.__version__ if torch and hasattr(torch, '__version__') else "not_available",
-                    "onnx": onnx.__version__ if onnx and hasattr(onnx, '__version__') else "not_available"
+            if onnx:
+                self._details[WEBGPU] = {
+                    "environment": "python",
+                    "mode": "onnx_export_capability",
+                    "runtime_available": False,
+                    "export_capability": {
+                        "torch": torch.__version__ if torch and hasattr(torch, '__version__') else "not_available",
+                        "onnx": onnx.__version__ if onnx and hasattr(onnx, '__version__') else "not_available"
+                    },
+                    "note": "ONNX export available but WebGPU runtime not detected"
                 }
-            }
-            logger.info("WebGPU support detected via Python ONNX export capabilities")
-            return
+                logger.debug("ONNX export capability available but WebGPU runtime not detected")
         except ImportError:
             pass
             
-        # Final details
-        self._details[WEBGPU] = {
-            "reason": "WebGPU not available",
-            "environment": "node"
-        }
+        # Final details - WebGPU not available for runtime inference
+        if WEBGPU not in self._details:
+            self._details[WEBGPU] = {
+                "reason": "WebGPU runtime not available - requires browser or Node.js environment",
+                "environment": "python",
+                "runtime_available": False
+            }
     
     def _detect_qualcomm(self):
         """Detect Qualcomm AI capabilities"""

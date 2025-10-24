@@ -249,6 +249,7 @@ class DataType(Enum):
 
 @dataclass
 @dataclass
+@dataclass
 class IOSpec:
     """Specification for model input or output."""
     name: str
@@ -495,9 +496,16 @@ class ModelManager:
                 # Convert to dictionary and handle special fields
                 data = asdict(metadata)
                 
-                # Convert IOSpec objects to dictionaries
-                data['inputs'] = json.dumps([asdict(spec) for spec in data['inputs']])
-                data['outputs'] = json.dumps([asdict(spec) for spec in data['outputs']])
+                # Convert inputs/outputs DataType enums to strings before JSON serialization
+                for io_list in [data['inputs'], data['outputs']]:
+                    for io_spec in io_list:
+                        if 'data_type' in io_spec and hasattr(io_spec['data_type'], 'value'):
+                            io_spec['data_type'] = io_spec['data_type'].value
+                
+                # inputs and outputs are already converted to dicts by asdict()
+                # Just need to convert them to JSON strings
+                data['inputs'] = json.dumps(data['inputs'])
+                data['outputs'] = json.dumps(data['outputs'])
                 
                 # Convert other complex fields to JSON
                 for json_field in ['huggingface_config', 'supported_backends', 
