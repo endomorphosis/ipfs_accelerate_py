@@ -61,7 +61,7 @@ def init_cuda())))))))self, model_name, model_type, device_label="cuda:0", **kwa
     # Try to import the necessary utility functions
     try:
         sys.path.insert())))))))0, "/home/barberb/ipfs_accelerate_py/test")
-        import utils as test_utils
+        import test_helpers as test_utils
         
         # Check if CUDA is really available
         import torch:

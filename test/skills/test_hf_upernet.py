@@ -245,7 +245,7 @@ class test_hf_upernet:
                 try:
                     # First try direct import using sys.path
                     sys.path.insert())))))))0, "/home/barberb/ipfs_accelerate_py/test")
-                    import utils as test_utils
+                    import test_helpers as test_utils
                     cuda_utils_available = True
                     print())))))))"Successfully imported CUDA utilities")
                 except ImportError:

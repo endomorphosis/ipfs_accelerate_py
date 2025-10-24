@@ -82,7 +82,7 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0"):
         # Try to import the necessary utility functions
         sys.path.insert(0, "/home/barberb/ipfs_accelerate_py/test")
         try:
-            import utils as test_utils
+            import test_helpers as test_utils
         except ImportError:
             test_utils = None
         
