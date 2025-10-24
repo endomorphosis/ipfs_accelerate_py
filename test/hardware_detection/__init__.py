@@ -16,6 +16,7 @@ This package provides hardware detection and support for various hardware platfo
 
 from .capabilities import (
     detect_all_hardware,
+    HardwareDetector,
     HAS_CUDA,
     HAS_ROCM,
     HAS_OPENVINO,

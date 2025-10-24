@@ -92,3 +92,38 @@ def detect_webnn() -> Dict[str, Any]:
 def detect_webgpu() -> Dict[str, Any]:
     """Detect WebGPU capabilities."""
     return {"detected": False}
+
+class HardwareDetector:
+    """
+    Main hardware detection class for test framework.
+    
+    This is a minimal implementation to support test imports.
+    """
+    
+    def __init__(self):
+        """Initialize hardware detector."""
+        self.hardware = detect_all_hardware()
+    
+    def detect(self) -> Dict[str, Any]:
+        """Run hardware detection."""
+        return self.hardware
+    
+    def has_cuda(self) -> bool:
+        """Check if CUDA is available."""
+        return self.hardware.get("cuda", {}).get("detected", False)
+    
+    def has_rocm(self) -> bool:
+        """Check if ROCm is available."""
+        return self.hardware.get("rocm", {}).get("detected", False)
+    
+    def has_openvino(self) -> bool:
+        """Check if OpenVINO is available."""
+        return self.hardware.get("openvino", {}).get("detected", False)
+    
+    def has_mps(self) -> bool:
+        """Check if Apple MPS is available."""
+        return self.hardware.get("mps", {}).get("detected", False)
+    
+    def has_qnn(self) -> bool:
+        """Check if Qualcomm QNN is available."""
+        return self.hardware.get("qnn", {}).get("detected", False)
