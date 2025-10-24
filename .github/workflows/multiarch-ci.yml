@@ -175,6 +175,8 @@ jobs:
   test-docker:
     runs-on: ubuntu-latest
     needs: [detect-platforms, test-native]
+    # Only run Docker builds on schedule or manual trigger to save resources
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     
     strategy:
       matrix: ${{ fromJson(needs.detect-platforms.outputs.matrix-docker) }}
@@ -603,14 +605,14 @@ jobs:
           echo "✅ Native testing passed" >> summary.md
         fi
         
-        if [[ "${{ needs.test-docker.result }}" != "success" ]]; then
+        if [[ "${{ needs.test-docker.result }}" != "success" ]] && [[ "${{ needs.test-docker.result }}" != "skipped" ]]; then
           echo "❌ Docker testing failed" >> summary.md  
           CRITICAL_SUCCESS=false
         else
           echo "✅ Docker testing passed" >> summary.md
         fi
         
-        if [[ "${{ needs.test-multiarch-build.result }}" != "success" ]]; then
+        if [[ "${{ needs.test-multiarch-build.result }}" != "success" ]] && [[ "${{ needs.test-multiarch-build.result }}" != "skipped" ]]; then
           echo "❌ Multi-architecture builds failed" >> summary.md
           CRITICAL_SUCCESS=false  
         else

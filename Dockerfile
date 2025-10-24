@@ -10,9 +10,6 @@ ARG BUILDPLATFORM
 # Base stage with Python and system dependencies
 FROM python:${PYTHON_VERSION}-slim-bookworm AS base
 
-# Platform information for debugging
-RUN echo "Building on $BUILDPLATFORM, targeting $TARGETPLATFORM"
-
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

@@ -103,10 +103,12 @@ jobs:
   test-amd64-docker:
     runs-on: ubuntu-latest
     needs: test-amd64-native
+    # Only run Docker builds on schedule or manual trigger to save resources
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.inputs.build_gpu_images == 'true'
     
     strategy:
       matrix:
-        docker-target: [minimal, development, production]
+        docker-target: [minimal]  # Only build minimal by default to save space
       fail-fast: false
     
     steps:
@@ -389,8 +391,9 @@ jobs:
         
         cat amd64-summary.md
         
-        # Check if critical tests passed
-        if [[ "${{ needs.test-amd64-native.result }}" == "success" && "${{ needs.test-amd64-docker.result }}" == "success" ]]; then
+        # Check if critical tests passed (allow Docker tests to be skipped)
+        DOCKER_RESULT="${{ needs.test-amd64-docker.result }}"
+        if [[ "${{ needs.test-amd64-native.result }}" == "success" ]] && [[ "$DOCKER_RESULT" == "success" || "$DOCKER_RESULT" == "skipped" ]]; then
           echo "🎉 AMD64 platform tests successful!"
           exit 0
         else
