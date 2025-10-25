@@ -709,18 +709,83 @@ def register_tools(mcp):
             """
             Register a CLI-based endpoint for inference multiplexing
             
-            This tool registers CLI tools like Claude Code, OpenAI Codex, or Google Gemini
-            as endpoints that can be used in the multiplexing queue system.
+            This tool registers CLI tools like Claude Code, OpenAI Codex, Google Gemini,
+            or VSCode as endpoints that can be used in the multiplexing queue system.
+            
+            **IMPORTANT**: Before registering a CLI endpoint, ensure:
+            1. The CLI tool is installed (use get_cli_install to see installation steps)
+            2. Required API keys are configured (use get_cli_config to see configuration steps)
+            3. The CLI tool is accessible in your PATH or provide explicit cli_path
             
             Args:
-                cli_type: Type of CLI tool (claude_cli, openai_cli, gemini_cli)
-                endpoint_id: Unique identifier (auto-generated if None)
-                cli_path: Path to CLI executable (auto-detected if None)
-                model: Default model to use
-                **config: Additional configuration (temperature, max_tokens, etc.)
+                cli_type (str): Type of CLI tool to register. Must be one of:
+                    - "claude_cli": Anthropic's Claude Code CLI
+                    - "openai_cli": OpenAI's CLI tool
+                    - "gemini_cli": Google's Gemini CLI (via gcloud)
+                    - "vscode_cli": Visual Studio Code CLI with GitHub Copilot
                 
+                endpoint_id (str, optional): Unique identifier for this endpoint.
+                    If not provided, auto-generated as "{cli_type}_{count}".
+                    Must contain only alphanumeric characters, hyphens, and underscores.
+                    Example: "my_claude_endpoint"
+                
+                cli_path (str, optional): Explicit path to the CLI executable.
+                    If not provided, will attempt auto-detection in common locations.
+                    Example: "/usr/local/bin/claude"
+                
+                model (str, optional): Default model to use for this endpoint.
+                    Examples:
+                        - For claude_cli: "claude-3-sonnet", "claude-3-opus", "claude-3-haiku"
+                        - For openai_cli: "gpt-3.5-turbo", "gpt-4", "codex"
+                        - For gemini_cli: "gemini-pro", "gemini-ultra"
+                        - For vscode_cli: "copilot-chat", "copilot-code"
+                
+                **config: Additional configuration parameters:
+                    - temperature (float): Sampling temperature 0.0-1.0 (default: 0.7)
+                    - max_tokens (int): Maximum tokens to generate (default: 4096)
+                    - env_vars (dict): Environment variables to set
+                    - working_dir (str): Working directory for CLI execution
+            
             Returns:
-                Dictionary with registration status
+                Dictionary with structure:
+                {
+                    "status": "success" | "error",
+                    "endpoint_id": str,  # The registered endpoint ID
+                    "available": bool,   # Whether CLI tool is actually available
+                    "message": str,      # Success/error message
+                    "error": str         # Only present if status is "error"
+                }
+            
+            Warnings:
+                - If the CLI tool is not installed, registration will succeed but
+                  endpoint will be marked as unavailable
+                - If required API keys are not configured, inference attempts will fail
+                - Check the "available" field in the response before using
+            
+            Examples:
+                >>> # Register Claude CLI with default settings
+                >>> register_cli_endpoint_tool("claude_cli")
+                
+                >>> # Register OpenAI with custom model and temperature
+                >>> register_cli_endpoint_tool(
+                ...     "openai_cli",
+                ...     endpoint_id="my_gpt4",
+                ...     model="gpt-4",
+                ...     temperature=0.5,
+                ...     max_tokens=2048
+                ... )
+                
+                >>> # Register with explicit path and API key
+                >>> register_cli_endpoint_tool(
+                ...     "claude_cli",
+                ...     cli_path="/opt/claude/bin/claude",
+                ...     env_vars={"ANTHROPIC_API_KEY": "sk-..."}
+                ... )
+            
+            See Also:
+                - get_cli_config(): Get configuration instructions for a CLI type
+                - get_cli_install(): Get installation instructions for a CLI type
+                - validate_cli_config(): Validate an endpoint's configuration
             """
             try:
                 if cli_type not in CLI_PROVIDERS:
@@ -756,6 +821,23 @@ def register_tools(mcp):
                 # Register the adapter
                 result = register_cli_endpoint(adapter)
                 
+                # Add warnings if tool is not available
+                if not adapter.is_available():
+                    result["warning"] = (
+                        f"CLI tool not found. Please install {cli_type} first. "
+                        f"Use get_cli_install('{cli_type}') for installation instructions."
+                    )
+                
+                # Check for API key configuration
+                validation = adapter.validate_config()
+                if not validation.get("valid", True):
+                    result["config_warnings"] = validation.get("issues", [])
+                    result["warning"] = (
+                        result.get("warning", "") + 
+                        f" Configuration issues detected: {', '.join(validation.get('issues', []))}. "
+                        f"Use get_cli_config('{cli_type}') for setup instructions."
+                    )
+                
                 # Also add to endpoint registry for queue monitoring
                 if result["status"] == "success":
                     ENDPOINT_REGISTRY[endpoint_id] = {
@@ -782,8 +864,48 @@ def register_tools(mcp):
             """
             List all registered CLI endpoints
             
+            Returns information about all CLI endpoints that have been registered,
+            including their availability status, statistics, and configuration.
+            
+            Args:
+                None required
+            
             Returns:
-                Dictionary with list of CLI endpoints and their status
+                Dictionary with structure:
+                {
+                    "status": "success" | "error",
+                    "count": int,           # Number of registered endpoints
+                    "endpoints": [          # List of endpoint information
+                        {
+                            "endpoint_id": str,       # Unique endpoint identifier
+                            "endpoint_type": "cli",   # Always "cli"
+                            "cli_path": str,          # Path to CLI executable
+                            "available": bool,        # Whether CLI is installed and accessible
+                            "stats": {
+                                "requests": int,      # Total requests made
+                                "successes": int,     # Successful requests
+                                "failures": int,      # Failed requests
+                                "total_time": float,  # Total execution time
+                                "avg_time": float     # Average execution time
+                            }
+                        },
+                        ...
+                    ],
+                    "error": str            # Only present if status is "error"
+                }
+            
+            Examples:
+                >>> # List all endpoints
+                >>> result = list_cli_endpoints_tool()
+                >>> print(f"Found {result['count']} endpoints")
+                >>> for ep in result['endpoints']:
+                ...     if not ep['available']:
+                ...         print(f"Warning: {ep['endpoint_id']} is not available")
+            
+            See Also:
+                - register_cli_endpoint_tool(): Register a new CLI endpoint
+                - check_cli_version(): Check version of a specific endpoint
+                - get_cli_capabilities(): Get capabilities of a specific endpoint
             """
             try:
                 endpoints = list_cli_endpoints()
@@ -810,17 +932,124 @@ def register_tools(mcp):
             """
             Run inference using a registered CLI endpoint
             
+            Executes an inference request through a registered CLI tool endpoint.
+            The CLI tool must be registered first using register_cli_endpoint_tool().
+            
+            **IMPORTANT**: Before running inference:
+            1. Ensure the endpoint is registered (use list_cli_endpoints_tool())
+            2. Verify the endpoint is available (check "available" field)
+            3. Confirm required API keys are configured
+            
             Args:
-                endpoint_id: ID of the registered CLI endpoint
-                prompt: Input prompt for the model
-                task_type: Type of task (text_generation, code_generation, etc.)
-                timeout: Maximum execution time in seconds
-                **kwargs: Additional task parameters (model, temperature, max_tokens, etc.)
+                endpoint_id (str): ID of the registered CLI endpoint.
+                    Use list_cli_endpoints_tool() to see available endpoints.
+                    Example: "my_claude_endpoint", "claude_cli_0"
                 
+                prompt (str): Input prompt for the model.
+                    Maximum length: 100,000 characters
+                    Will be sanitized for security
+                    Example: "Explain quantum computing in simple terms"
+                
+                task_type (str, optional): Type of task to perform. Default: "text_generation"
+                    Supported values:
+                        - "text_generation": General text generation
+                        - "code_generation": Generate code snippets
+                        - "code_completion": Complete partial code
+                        - "code_explanation": Explain code
+                        - "embedding": Generate embeddings (OpenAI only)
+                        - "classification": Text classification
+                        - "analysis": Analyze text
+                
+                timeout (int, optional): Maximum execution time in seconds. Default: 30
+                    Range: 1-600 seconds
+                    Increase for complex tasks or slow connections
+                
+                **kwargs: Additional task-specific parameters:
+                    - model (str): Override default model for this request
+                    - temperature (float): Sampling temperature 0.0-1.0
+                    - max_tokens (int): Maximum tokens to generate
+                    - top_p (float): Nucleus sampling parameter
+                    - frequency_penalty (float): Frequency penalty (OpenAI)
+                    - presence_penalty (float): Presence penalty (OpenAI)
+            
             Returns:
-                Dictionary with inference results
+                Dictionary with structure:
+                {
+                    "status": "success" | "error" | "timeout" | "validation_error",
+                    "result": str,         # Generated text (if successful)
+                    "model": str,          # Model that was used
+                    "provider": str,       # Provider name (anthropic, openai, google, github)
+                    "endpoint_id": str,    # Endpoint that processed the request
+                    "endpoint_type": "cli",
+                    "elapsed_time": float, # Execution time in seconds
+                    "returncode": int,     # CLI tool exit code (if successful)
+                    "error": str,          # Error message (if failed)
+                    "raw_response": Any    # Raw CLI output (for debugging)
+                }
+            
+            Raises:
+                No exceptions are raised - all errors are returned in the response dict
+            
+            Warnings:
+                - Returns {"status": "error", "error": "CLI endpoint 'X' not found"}
+                  if endpoint_id is not registered
+                - Returns {"status": "error", "error": "CLI tool for endpoint 'X' is not available"}
+                  if the CLI tool is not installed or not in PATH
+                - Returns {"status": "timeout"} if execution exceeds timeout
+                - Returns {"status": "validation_error"} if input validation fails
+            
+            Examples:
+                >>> # Basic text generation
+                >>> cli_inference(
+                ...     endpoint_id="claude_cli_0",
+                ...     prompt="What is machine learning?"
+                ... )
+                
+                >>> # Code generation with custom model
+                >>> cli_inference(
+                ...     endpoint_id="my_gpt4",
+                ...     prompt="Write a Python function to sort a list",
+                ...     task_type="code_generation",
+                ...     model="gpt-4",
+                ...     temperature=0.2,
+                ...     max_tokens=500
+                ... )
+                
+                >>> # Long-running task with extended timeout
+                >>> cli_inference(
+                ...     endpoint_id="gemini_cli_0",
+                ...     prompt="Analyze this entire codebase...",
+                ...     timeout=120
+                ... )
+            
+            See Also:
+                - register_cli_endpoint_tool(): Register a CLI endpoint
+                - list_cli_endpoints_tool(): List available endpoints
+                - check_cli_version(): Verify CLI tool version
             """
             try:
+                # Check if endpoint exists first
+                from .cli_endpoint_adapters import get_cli_endpoint
+                adapter = get_cli_endpoint(endpoint_id)
+                
+                if not adapter:
+                    return {
+                        "error": f"CLI endpoint '{endpoint_id}' not found. Use list_cli_endpoints_tool() to see available endpoints.",
+                        "status": "error"
+                    }
+                
+                # Check if endpoint is available
+                if not adapter.is_available():
+                    return {
+                        "error": (
+                            f"CLI tool for endpoint '{endpoint_id}' is not available. "
+                            f"Please ensure the tool is installed and in your PATH. "
+                            f"Use get_cli_install() for installation instructions."
+                        ),
+                        "status": "error"
+                    }
+                
+                # Execute the inference
                 result = execute_cli_inference(endpoint_id, prompt, task_type, timeout, **kwargs)
                 
                 # Update queue monitoring stats
@@ -844,8 +1073,51 @@ def register_tools(mcp):
             """
             Get information about available CLI providers
             
+            Returns metadata about all supported CLI provider types, including
+            their descriptions, supported models, and adapter classes.
+            
+            Args:
+                None required
+            
             Returns:
-                Dictionary with CLI provider information
+                Dictionary with structure:
+                {
+                    "status": "success",
+                    "providers": {
+                        "claude_cli": {
+                            "adapter_class": "ClaudeCodeAdapter",
+                            "models": ["claude-3-sonnet", "claude-3-opus", "claude-3-haiku"],
+                            "description": "Claude Code CLI tool for local Anthropic model access"
+                        },
+                        "openai_cli": {
+                            "adapter_class": "OpenAICodexAdapter",
+                            "models": ["gpt-3.5-turbo", "gpt-4", "codex"],
+                            "description": "OpenAI CLI tool (ChatGPT/Codex)"
+                        },
+                        "gemini_cli": {
+                            "adapter_class": "GeminiCLIAdapter",
+                            "models": ["gemini-pro", "gemini-ultra"],
+                            "description": "Google Gemini CLI tool"
+                        },
+                        "vscode_cli": {
+                            "adapter_class": "VSCodeCLIAdapter",
+                            "models": ["copilot-chat", "copilot-code"],
+                            "description": "Visual Studio Code CLI with GitHub Copilot integration"
+                        }
+                    }
+                }
+            
+            Examples:
+                >>> # Get all providers
+                >>> result = get_cli_providers()
+                >>> for provider_id, info in result['providers'].items():
+                ...     print(f"{provider_id}: {info['description']}")
+                ...     print(f"  Models: {', '.join(info['models'])}")
+            
+            See Also:
+                - get_cli_config(): Get configuration instructions for a provider
+                - get_cli_install(): Get installation instructions for a provider
+                - register_cli_endpoint_tool(): Register an endpoint for a provider
             """
             return {
                 "providers": CLI_PROVIDERS,
@@ -857,11 +1129,54 @@ def register_tools(mcp):
             """
             Get configuration instructions for a CLI tool
             
+            Returns detailed configuration steps, required environment variables,
+            config file locations, and documentation links for setting up a CLI tool.
+            
+            **Use this before registering a CLI endpoint** to understand configuration requirements.
+            
             Args:
-                cli_type: Type of CLI tool (claude_cli, openai_cli, gemini_cli, vscode_cli)
-                
+                cli_type (str): Type of CLI tool. Must be one of:
+                    - "claude_cli": Anthropic's Claude Code CLI
+                    - "openai_cli": OpenAI's CLI tool
+                    - "gemini_cli": Google's Gemini CLI
+                    - "vscode_cli": Visual Studio Code CLI with Copilot
+            
             Returns:
-                Dictionary with configuration steps and requirements
+                Dictionary with structure:
+                {
+                    "status": "success" | "error",
+                    "tool_name": str,           # Full name of the CLI tool
+                    "description": str,         # Description of the tool
+                    "config_steps": [str],      # Step-by-step configuration instructions
+                    "env_vars": {               # Required environment variables
+                        "VAR_NAME": "Description of what this variable is for"
+                    },
+                    "config_files": [str],      # Locations of configuration files
+                    "documentation": str,       # URL to official documentation
+                    "error": str                # Only present if status is "error"
+                }
+            
+            Examples:
+                >>> # Get configuration for Claude CLI
+                >>> config = get_cli_config("claude_cli")
+                >>> print("Configuration steps:")
+                >>> for step in config['config_steps']:
+                ...     print(f"  {step}")
+                >>> print(f"\\nRequired API key: {list(config['env_vars'].keys())[0]}")
+                
+                >>> # Check if API key is needed
+                >>> config = get_cli_config("openai_cli")
+                >>> if "OPENAI_API_KEY" in config['env_vars']:
+                ...     print("Warning: OPENAI_API_KEY must be set")
+            
+            Warnings:
+                Returns error if cli_type is not recognized.
+                Available types can be obtained from get_cli_providers().
+            
+            See Also:
+                - get_cli_install(): Get installation instructions
+                - get_cli_providers(): List all available provider types
+                - register_cli_endpoint_tool(): Register an endpoint after configuration
             """
             try:
                 if cli_type not in CLI_PROVIDERS:
@@ -902,11 +1217,62 @@ def register_tools(mcp):
             """
             Get installation instructions for a CLI tool
             
+            Returns platform-specific installation instructions with multiple methods
+            for installing the specified CLI tool.
+            
+            **Use this before registering a CLI endpoint** to install the required tool.
+            
             Args:
-                cli_type: Type of CLI tool (claude_cli, openai_cli, gemini_cli, vscode_cli)
-                
+                cli_type (str): Type of CLI tool. Must be one of:
+                    - "claude_cli": Anthropic's Claude Code CLI
+                    - "openai_cli": OpenAI's CLI tool  
+                    - "gemini_cli": Google's Gemini CLI (gcloud)
+                    - "vscode_cli": Visual Studio Code CLI
+            
             Returns:
-                Dictionary with installation commands and steps
+                Dictionary with structure:
+                {
+                    "status": "success" | "error",
+                    "tool_name": str,           # Full name of the CLI tool
+                    "platform": str,            # Detected platform (darwin, linux, windows)
+                    "install_methods": [        # List of installation methods
+                        {
+                            "method": str,      # Name of installation method
+                            "commands": [str]   # Commands to run
+                        },
+                        ...
+                    ],
+                    "verify_command": str,      # Command to verify installation
+                    "documentation": str,       # URL to installation documentation
+                    "post_install": [str],      # Optional post-installation steps
+                    "error": str                # Only present if status is "error"
+                }
+            
+            Examples:
+                >>> # Get installation instructions for current platform
+                >>> install = get_cli_install("claude_cli")
+                >>> print(f"Installing on {install['platform']}:")
+                >>> for method in install['install_methods']:
+                ...     print(f"\\n{method['method']}:")
+                ...     for cmd in method['commands']:
+                ...         print(f"  {cmd}")
+                >>> print(f"\\nVerify with: {install['verify_command']}")
+                
+                >>> # Show all installation options
+                >>> install = get_cli_install("openai_cli")
+                >>> if len(install['install_methods']) > 1:
+                ...     print("Multiple installation methods available:")
+                ...     for m in install['install_methods']:
+                ...         print(f"  - {m['method']}")
+            
+            Warnings:
+                Returns error if cli_type is not recognized.
+                Installation instructions are platform-specific based on detected OS.
+            
+            See Also:
+                - get_cli_config(): Get configuration instructions after installation
+                - check_cli_version(): Verify installation was successful
+                - register_cli_endpoint_tool(): Register endpoint after installation
             """
             try:
                 if cli_type not in CLI_PROVIDERS:
@@ -947,11 +1313,50 @@ def register_tools(mcp):
             """
             Validate configuration of a registered CLI endpoint
             
+            Checks if a registered CLI endpoint has valid configuration and
+            identifies any configuration issues that might prevent successful execution.
+            
             Args:
-                endpoint_id: ID of the registered CLI endpoint
-                
+                endpoint_id (str): ID of the registered CLI endpoint to validate
+                    Use list_cli_endpoints_tool() to see available endpoints
+            
             Returns:
-                Dictionary with validation results
+                Dictionary with structure:
+                {
+                    "status": "success" | "error",
+                    "valid": bool,              # Whether configuration is valid
+                    "issues": [str],            # List of configuration problems found
+                    "config": {...},            # Current configuration
+                    "error": str                # Only present if status is "error"
+                }
+            
+            Examples:
+                >>> # Validate endpoint configuration
+                >>> result = validate_cli_config("claude_cli_0")
+                >>> if not result['valid']:
+                ...     print("Configuration issues found:")
+                ...     for issue in result['issues']:
+                ...         print(f"  - {issue}")
+                ...     print("\\nUse get_cli_config('claude_cli') for setup help")
+                
+                >>> # Check before running inference
+                >>> validation = validate_cli_config("my_endpoint")
+                >>> if validation['valid']:
+                ...     cli_inference("my_endpoint", "Hello!")
+                ... else:
+                ...     print(f"Fix these issues first: {validation['issues']}")
+            
+            Warnings:
+                Returns error if endpoint_id does not exist.
+                Common issues detected:
+                - CLI tool not installed or not in PATH
+                - Missing required configuration fields
+                - Invalid configuration values
+            
+            See Also:
+                - get_cli_config(): Get configuration instructions
+                - check_cli_version(): Verify CLI tool is installed
+                - register_cli_endpoint_tool(): Register a new endpoint
             """
             try:
                 from .cli_endpoint_adapters import get_cli_endpoint
@@ -959,12 +1364,20 @@ def register_tools(mcp):
                 adapter = get_cli_endpoint(endpoint_id)
                 if not adapter:
                     return {
-                        "error": f"CLI endpoint '{endpoint_id}' not found",
+                        "error": f"CLI endpoint '{endpoint_id}' not found. Use list_cli_endpoints_tool() to see available endpoints.",
                         "status": "error"
                     }
                 
                 validation = adapter.validate_config()
                 validation["status"] = "success"
+                
+                # Add helpful message if validation failed
+                if not validation.get("valid", False):
+                    validation["help"] = (
+                        f"Configuration issues detected. "
+                        f"Run get_cli_config() for the provider type to see setup instructions."
+                    )
+                
                 return validation
                 
             except Exception as e:
@@ -979,11 +1392,50 @@ def register_tools(mcp):
             """
             Check the version of a CLI tool
             
+            Executes the CLI tool's version command to verify it is installed
+            and accessible. Useful for troubleshooting installation issues.
+            
             Args:
-                endpoint_id: ID of the registered CLI endpoint
-                
+                endpoint_id (str): ID of the registered CLI endpoint
+                    Use list_cli_endpoints_tool() to see available endpoints
+            
             Returns:
-                Dictionary with version information
+                Dictionary with structure:
+                {
+                    "status": "success" | "error",
+                    "available": bool,      # Whether CLI tool is accessible
+                    "version": str,         # Version string from CLI tool
+                    "returncode": int,      # Exit code from version command
+                    "error": str            # Only present if check failed
+                }
+            
+            Examples:
+                >>> # Check if tool is installed
+                >>> version = check_cli_version("claude_cli_0")
+                >>> if version['available']:
+                ...     print(f"Claude CLI version: {version['version']}")
+                ... else:
+                ...     print("Claude CLI not found!")
+                ...     print("Use get_cli_install('claude_cli') for installation")
+                
+                >>> # Verify after installation
+                >>> import time
+                >>> # ... install CLI tool ...
+                >>> time.sleep(1)  # Give system time to update PATH
+                >>> result = check_cli_version("new_endpoint")
+                >>> print(f"Installation {'successful' if result['available'] else 'failed'}")
+            
+            Warnings:
+                Returns {"available": False, "error": "..."} if:
+                - Endpoint not found
+                - CLI tool not installed
+                - CLI tool not in PATH
+                - Version command failed
+            
+            See Also:
+                - get_cli_install(): Get installation instructions
+                - validate_cli_config(): Check full configuration
+                - list_cli_endpoints_tool(): List all endpoints
             """
             try:
                 from .cli_endpoint_adapters import get_cli_endpoint
@@ -991,19 +1443,29 @@ def register_tools(mcp):
                 adapter = get_cli_endpoint(endpoint_id)
                 if not adapter:
                     return {
-                        "error": f"CLI endpoint '{endpoint_id}' not found",
-                        "status": "error"
+                        "error": f"CLI endpoint '{endpoint_id}' not found. Use list_cli_endpoints_tool() to see available endpoints.",
+                        "status": "error",
+                        "available": False
                     }
                 
                 version_info = adapter.check_version()
                 version_info["status"] = "success"
+                
+                # Add helpful message if not available
+                if not version_info.get("available", False):
+                    version_info["help"] = (
+                        f"CLI tool not accessible. "
+                        f"Use get_cli_install() to see installation instructions."
+                    )
+                
                 return version_info
                 
             except Exception as e:
                 logger.error(f"Version check failed: {e}")
                 return {
                     "error": f"Version check failed: {str(e)}",
-                    "status": "error"
+                    "status": "error",
+                    "available": False
                 }
         
         @mcp.tool()
@@ -1011,11 +1473,48 @@ def register_tools(mcp):
             """
             Get capabilities of a registered CLI endpoint
             
+            Returns detailed information about what an endpoint can do,
+            including supported tasks, configuration options, and current status.
+            
             Args:
-                endpoint_id: ID of the registered CLI endpoint
-                
+                endpoint_id (str): ID of the registered CLI endpoint
+                    Use list_cli_endpoints_tool() to see available endpoints
+            
             Returns:
-                Dictionary describing endpoint capabilities
+                Dictionary with structure:
+                {
+                    "status": "success" | "error",
+                    "endpoint_id": str,         # Endpoint identifier
+                    "cli_path": str,            # Path to CLI executable
+                    "available": bool,          # Whether CLI is accessible
+                    "supported_tasks": [str],   # List of supported task types
+                    "config_fields": {...},     # Available configuration options
+                    "version_info": {...},      # Version information
+                    "error": str                # Only present if status is "error"
+                }
+            
+            Examples:
+                >>> # Get endpoint capabilities
+                >>> caps = get_cli_capabilities("claude_cli_0")
+                >>> print(f"Supported tasks: {', '.join(caps['supported_tasks'])}")
+                >>> print(f"Available: {caps['available']}")
+                >>> if 'config_fields' in caps:
+                ...     print("Configuration options:")
+                ...     for field, info in caps['config_fields'].items():
+                ...         print(f"  {field}: {info.get('description', 'N/A')}")
+                
+                >>> # Check what tasks are supported
+                >>> caps = get_cli_capabilities("my_endpoint")
+                >>> if "code_generation" in caps['supported_tasks']:
+                ...     print("This endpoint supports code generation!")
+            
+            Warnings:
+                Returns error if endpoint_id does not exist.
+            
+            See Also:
+                - check_cli_version(): Check version specifically
+                - validate_cli_config(): Validate configuration
+                - list_cli_endpoints_tool(): List all available endpoints
             """
             try:
                 from .cli_endpoint_adapters import get_cli_endpoint
@@ -1023,7 +1522,7 @@ def register_tools(mcp):
                 adapter = get_cli_endpoint(endpoint_id)
                 if not adapter:
                     return {
-                        "error": f"CLI endpoint '{endpoint_id}' not found",
+                        "error": f"CLI endpoint '{endpoint_id}' not found. Use list_cli_endpoints_tool() to see available endpoints.",
                         "status": "error"
                     }
                 
