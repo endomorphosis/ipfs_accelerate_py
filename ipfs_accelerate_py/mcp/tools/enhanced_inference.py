@@ -28,6 +28,7 @@ try:
         ClaudeCodeAdapter,
         OpenAICodexAdapter,
         GeminiCLIAdapter,
+        VSCodeCLIAdapter,
         register_cli_endpoint,
         execute_cli_inference,
         list_cli_endpoints,
@@ -76,6 +77,11 @@ CLI_PROVIDERS = {
         "adapter_class": "GeminiCLIAdapter",
         "models": ["gemini-pro", "gemini-ultra"],
         "description": "Google Gemini CLI tool"
+    },
+    "vscode_cli": {
+        "adapter_class": "VSCodeCLIAdapter",
+        "models": ["copilot-chat", "copilot-code"],
+        "description": "Visual Studio Code CLI with GitHub Copilot integration"
     }
 }
 
@@ -739,6 +745,8 @@ def register_tools(mcp):
                     adapter = OpenAICodexAdapter(endpoint_id, cli_path, config)
                 elif adapter_class_name == "GeminiCLIAdapter":
                     adapter = GeminiCLIAdapter(endpoint_id, cli_path, config)
+                elif adapter_class_name == "VSCodeCLIAdapter":
+                    adapter = VSCodeCLIAdapter(endpoint_id, cli_path, config)
                 else:
                     return {
                         "error": f"Unknown adapter class: {adapter_class_name}",
@@ -843,6 +851,192 @@ def register_tools(mcp):
                 "providers": CLI_PROVIDERS,
                 "status": "success"
             }
+        
+        @mcp.tool()
+        def get_cli_config(cli_type: str) -> Dict[str, Any]:
+            """
+            Get configuration instructions for a CLI tool
+            
+            Args:
+                cli_type: Type of CLI tool (claude_cli, openai_cli, gemini_cli, vscode_cli)
+                
+            Returns:
+                Dictionary with configuration steps and requirements
+            """
+            try:
+                if cli_type not in CLI_PROVIDERS:
+                    return {
+                        "error": f"Unknown CLI type: {cli_type}. Supported: {list(CLI_PROVIDERS.keys())}",
+                        "status": "error"
+                    }
+                
+                # Create a temporary adapter to get config
+                adapter_class_name = CLI_PROVIDERS[cli_type]["adapter_class"]
+                if adapter_class_name == "ClaudeCodeAdapter":
+                    adapter = ClaudeCodeAdapter("temp", None, {})
+                elif adapter_class_name == "OpenAICodexAdapter":
+                    adapter = OpenAICodexAdapter("temp", None, {})
+                elif adapter_class_name == "GeminiCLIAdapter":
+                    adapter = GeminiCLIAdapter("temp", None, {})
+                elif adapter_class_name == "VSCodeCLIAdapter":
+                    adapter = VSCodeCLIAdapter("temp", None, {})
+                else:
+                    return {
+                        "error": f"Unknown adapter class: {adapter_class_name}",
+                        "status": "error"
+                    }
+                
+                config_info = adapter._config()
+                config_info["status"] = "success"
+                return config_info
+                
+            except Exception as e:
+                logger.error(f"Failed to get CLI config: {e}")
+                return {
+                    "error": f"Failed to get CLI config: {str(e)}",
+                    "status": "error"
+                }
+        
+        @mcp.tool()
+        def get_cli_install(cli_type: str) -> Dict[str, Any]:
+            """
+            Get installation instructions for a CLI tool
+            
+            Args:
+                cli_type: Type of CLI tool (claude_cli, openai_cli, gemini_cli, vscode_cli)
+                
+            Returns:
+                Dictionary with installation commands and steps
+            """
+            try:
+                if cli_type not in CLI_PROVIDERS:
+                    return {
+                        "error": f"Unknown CLI type: {cli_type}. Supported: {list(CLI_PROVIDERS.keys())}",
+                        "status": "error"
+                    }
+                
+                # Create a temporary adapter to get install instructions
+                adapter_class_name = CLI_PROVIDERS[cli_type]["adapter_class"]
+                if adapter_class_name == "ClaudeCodeAdapter":
+                    adapter = ClaudeCodeAdapter("temp", None, {})
+                elif adapter_class_name == "OpenAICodexAdapter":
+                    adapter = OpenAICodexAdapter("temp", None, {})
+                elif adapter_class_name == "GeminiCLIAdapter":
+                    adapter = GeminiCLIAdapter("temp", None, {})
+                elif adapter_class_name == "VSCodeCLIAdapter":
+                    adapter = VSCodeCLIAdapter("temp", None, {})
+                else:
+                    return {
+                        "error": f"Unknown adapter class: {adapter_class_name}",
+                        "status": "error"
+                    }
+                
+                install_info = adapter._install()
+                install_info["status"] = "success"
+                return install_info
+                
+            except Exception as e:
+                logger.error(f"Failed to get CLI install info: {e}")
+                return {
+                    "error": f"Failed to get CLI install info: {str(e)}",
+                    "status": "error"
+                }
+        
+        @mcp.tool()
+        def validate_cli_config(endpoint_id: str) -> Dict[str, Any]:
+            """
+            Validate configuration of a registered CLI endpoint
+            
+            Args:
+                endpoint_id: ID of the registered CLI endpoint
+                
+            Returns:
+                Dictionary with validation results
+            """
+            try:
+                from .cli_endpoint_adapters import get_cli_endpoint
+                
+                adapter = get_cli_endpoint(endpoint_id)
+                if not adapter:
+                    return {
+                        "error": f"CLI endpoint '{endpoint_id}' not found",
+                        "status": "error"
+                    }
+                
+                validation = adapter.validate_config()
+                validation["status"] = "success"
+                return validation
+                
+            except Exception as e:
+                logger.error(f"CLI config validation failed: {e}")
+                return {
+                    "error": f"Validation failed: {str(e)}",
+                    "status": "error"
+                }
+        
+        @mcp.tool()
+        def check_cli_version(endpoint_id: str) -> Dict[str, Any]:
+            """
+            Check the version of a CLI tool
+            
+            Args:
+                endpoint_id: ID of the registered CLI endpoint
+                
+            Returns:
+                Dictionary with version information
+            """
+            try:
+                from .cli_endpoint_adapters import get_cli_endpoint
+                
+                adapter = get_cli_endpoint(endpoint_id)
+                if not adapter:
+                    return {
+                        "error": f"CLI endpoint '{endpoint_id}' not found",
+                        "status": "error"
+                    }
+                
+                version_info = adapter.check_version()
+                version_info["status"] = "success"
+                return version_info
+                
+            except Exception as e:
+                logger.error(f"Version check failed: {e}")
+                return {
+                    "error": f"Version check failed: {str(e)}",
+                    "status": "error"
+                }
+        
+        @mcp.tool()
+        def get_cli_capabilities(endpoint_id: str) -> Dict[str, Any]:
+            """
+            Get capabilities of a registered CLI endpoint
+            
+            Args:
+                endpoint_id: ID of the registered CLI endpoint
+                
+            Returns:
+                Dictionary describing endpoint capabilities
+            """
+            try:
+                from .cli_endpoint_adapters import get_cli_endpoint
+                
+                adapter = get_cli_endpoint(endpoint_id)
+                if not adapter:
+                    return {
+                        "error": f"CLI endpoint '{endpoint_id}' not found",
+                        "status": "error"
+                    }
+                
+                capabilities = adapter.get_capabilities()
+                capabilities["status"] = "success"
+                return capabilities
+                
+            except Exception as e:
+                logger.error(f"Failed to get capabilities: {e}")
+                return {
+                    "error": f"Failed to get capabilities: {str(e)}",
+                    "status": "error"
+                }
 
 
 def _run_local_inference(model: str, prompt: str, task_type: str, **kwargs) -> Dict[str, Any]:
@@ -948,6 +1142,9 @@ def _run_cli_inference(provider: str, model: str, prompt: str, task_type: str, *
         elif adapter_class_name == "GeminiCLIAdapter":
             from .cli_endpoint_adapters import GeminiCLIAdapter
             adapter = GeminiCLIAdapter(endpoint_id, None, config)
+        elif adapter_class_name == "VSCodeCLIAdapter":
+            from .cli_endpoint_adapters import VSCodeCLIAdapter
+            adapter = VSCodeCLIAdapter(endpoint_id, None, config)
         else:
             raise ValueError(f"Unknown adapter class: {adapter_class_name}")
         
