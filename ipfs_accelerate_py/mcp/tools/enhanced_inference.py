@@ -6,6 +6,7 @@ This module provides enhanced MCP tools for running inference with:
 - API multiplexing (OpenAI, Anthropic, local models)
 - libp2p distributed inference
 - Endpoint handlers for load balancing
+- CLI tool integration (Claude Code, OpenAI Codex, Google Gemini)
 """
 
 import os
@@ -20,6 +21,23 @@ except ImportError:
     asyncio = None
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
+
+# Import CLI endpoint adapters
+try:
+    from .cli_endpoint_adapters import (
+        ClaudeCodeAdapter,
+        OpenAICodexAdapter,
+        GeminiCLIAdapter,
+        register_cli_endpoint,
+        execute_cli_inference,
+        list_cli_endpoints,
+        CLI_ADAPTER_REGISTRY
+    )
+    HAVE_CLI_ADAPTERS = True
+except ImportError:
+    HAVE_CLI_ADAPTERS = False
+    logger = logging.getLogger("ipfs_accelerate_mcp.tools.enhanced_inference")
+    logger.warning("CLI endpoint adapters not available")
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.enhanced_inference")
 
@@ -39,6 +57,25 @@ API_PROVIDERS = {
         "base_url": "https://api-inference.huggingface.co",
         "models": ["meta-llama/Llama-2-7b-chat-hf", "microsoft/DialoGPT-medium", "gpt2"],
         "requires_key": False
+    }
+}
+
+# Configuration for CLI providers
+CLI_PROVIDERS = {
+    "claude_cli": {
+        "adapter_class": "ClaudeCodeAdapter",
+        "models": ["claude-3-sonnet", "claude-3-opus", "claude-3-haiku"],
+        "description": "Claude Code CLI tool for local Anthropic model access"
+    },
+    "openai_cli": {
+        "adapter_class": "OpenAICodexAdapter", 
+        "models": ["gpt-3.5-turbo", "gpt-4", "codex"],
+        "description": "OpenAI CLI tool (ChatGPT/Codex)"
+    },
+    "gemini_cli": {
+        "adapter_class": "GeminiCLIAdapter",
+        "models": ["gemini-pro", "gemini-ultra"],
+        "description": "Google Gemini CLI tool"
     }
 }
 
@@ -119,6 +156,9 @@ def register_tools(mcp):
                             result = _run_distributed_inference(model, prompt, task_type, **kwargs)
                         elif provider in API_PROVIDERS:
                             result = _run_api_inference(provider, model, prompt, task_type, **kwargs)
+                        elif HAVE_CLI_ADAPTERS and provider in CLI_PROVIDERS:
+                            # Use CLI endpoint if available
+                            result = _run_cli_inference(provider, model, prompt, task_type, **kwargs)
                         else:
                             raise ValueError(f"Unknown provider: {provider}")
                         
@@ -415,15 +455,7 @@ def register_tools(mcp):
         """
         try:
             # Simulate queue data with realistic examples
-            queue_status = {
-                "global_queue": {
-                    "total_tasks": QUEUE_MONITOR["stats"]["total_tasks"] + len(QUEUE_MONITOR["global_queue"]),
-                    "pending_tasks": len(QUEUE_MONITOR["global_queue"]),
-                    "processing_tasks": 3,
-                    "completed_tasks": QUEUE_MONITOR["stats"]["completed_tasks"],
-                    "failed_tasks": QUEUE_MONITOR["stats"]["failed_tasks"]
-                },
-                "endpoint_queues": {
+            endpoint_queues = {
                     # Local CUDA devices
                     "cuda1": {
                         "endpoint_type": "local_gpu",
@@ -547,16 +579,48 @@ def register_tools(mcp):
                             "estimated_completion": "45 seconds"
                         }
                     }
+                }
+            
+            # Add CLI endpoints if available
+            if HAVE_CLI_ADAPTERS:
+                for endpoint_id, adapter in CLI_ADAPTER_REGISTRY.items():
+                    stats = adapter.get_stats()
+                    endpoint_queues[endpoint_id] = {
+                        "endpoint_type": "cli_tool",
+                        "provider": stats.get("endpoint_id", "unknown").split("_")[0],
+                        "cli_path": stats.get("cli_path", "unknown"),
+                        "model_types": ["text-generation", "code-generation"],
+                        "queue_size": 0,
+                        "processing": 0,
+                        "avg_processing_time": stats["stats"].get("avg_time", 0.0),
+                        "status": "available" if stats.get("available") else "unavailable",
+                        "total_requests": stats["stats"].get("requests", 0),
+                        "success_rate": (stats["stats"].get("successes", 0) / stats["stats"].get("requests", 1) * 100) if stats["stats"].get("requests", 0) > 0 else 0,
+                        "current_task": None
+                    }
+            
+            # Calculate summary statistics
+            cli_endpoint_count = len(CLI_ADAPTER_REGISTRY) if HAVE_CLI_ADAPTERS else 0
+            
+            queue_status = {
+                "global_queue": {
+                    "total_tasks": QUEUE_MONITOR["stats"]["total_tasks"] + len(QUEUE_MONITOR["global_queue"]),
+                    "pending_tasks": len(QUEUE_MONITOR["global_queue"]),
+                    "processing_tasks": 3,
+                    "completed_tasks": QUEUE_MONITOR["stats"]["completed_tasks"],
+                    "failed_tasks": QUEUE_MONITOR["stats"]["failed_tasks"]
                 },
+                "endpoint_queues": endpoint_queues,
                 "summary": {
-                    "total_endpoints": 8,
+                    "total_endpoints": 8 + cli_endpoint_count,
                     "active_endpoints": 4,
                     "idle_endpoints": 3,
                     "offline_endpoints": 1,
+                    "cli_endpoints": cli_endpoint_count,
                     "total_queue_size": 16,
                     "total_processing": 7,
                     "average_processing_time": 2.1,
-                    "healthy_endpoints": 7,
+                    "healthy_endpoints": 7 + cli_endpoint_count,
                     "unhealthy_endpoints": 1
                 },
                 "timestamp": datetime.now().isoformat(),
@@ -624,6 +688,160 @@ def register_tools(mcp):
             return {
                 "error": f"Failed to get queue history: {str(e)}",
                 "status": "error"
+            }
+    
+    # CLI Endpoint Tools
+    if HAVE_CLI_ADAPTERS:
+        @mcp.tool()
+        def register_cli_endpoint_tool(
+            cli_type: str,
+            endpoint_id: Optional[str] = None,
+            cli_path: Optional[str] = None,
+            model: Optional[str] = None,
+            **config
+        ) -> Dict[str, Any]:
+            """
+            Register a CLI-based endpoint for inference multiplexing
+            
+            This tool registers CLI tools like Claude Code, OpenAI Codex, or Google Gemini
+            as endpoints that can be used in the multiplexing queue system.
+            
+            Args:
+                cli_type: Type of CLI tool (claude_cli, openai_cli, gemini_cli)
+                endpoint_id: Unique identifier (auto-generated if None)
+                cli_path: Path to CLI executable (auto-detected if None)
+                model: Default model to use
+                **config: Additional configuration (temperature, max_tokens, etc.)
+                
+            Returns:
+                Dictionary with registration status
+            """
+            try:
+                if cli_type not in CLI_PROVIDERS:
+                    return {
+                        "error": f"Unknown CLI type: {cli_type}. Supported: {list(CLI_PROVIDERS.keys())}",
+                        "status": "error"
+                    }
+                
+                # Generate endpoint_id if not provided
+                if not endpoint_id:
+                    endpoint_id = f"{cli_type}_{len(CLI_ADAPTER_REGISTRY)}"
+                
+                # Add model to config if provided
+                if model:
+                    config["model"] = model
+                
+                # Create appropriate adapter
+                adapter_class_name = CLI_PROVIDERS[cli_type]["adapter_class"]
+                if adapter_class_name == "ClaudeCodeAdapter":
+                    adapter = ClaudeCodeAdapter(endpoint_id, cli_path, config)
+                elif adapter_class_name == "OpenAICodexAdapter":
+                    adapter = OpenAICodexAdapter(endpoint_id, cli_path, config)
+                elif adapter_class_name == "GeminiCLIAdapter":
+                    adapter = GeminiCLIAdapter(endpoint_id, cli_path, config)
+                else:
+                    return {
+                        "error": f"Unknown adapter class: {adapter_class_name}",
+                        "status": "error"
+                    }
+                
+                # Register the adapter
+                result = register_cli_endpoint(adapter)
+                
+                # Also add to endpoint registry for queue monitoring
+                if result["status"] == "success":
+                    ENDPOINT_REGISTRY[endpoint_id] = {
+                        "endpoint_id": endpoint_id,
+                        "provider": cli_type,
+                        "endpoint_type": "cli",
+                        "available": adapter.is_available(),
+                        "cli_path": adapter.cli_path,
+                        "config": config,
+                        "registered_at": datetime.now().isoformat()
+                    }
+                
+                return result
+                
+            except Exception as e:
+                logger.error(f"Failed to register CLI endpoint: {e}")
+                return {
+                    "error": f"Failed to register CLI endpoint: {str(e)}",
+                    "status": "error"
+                }
+        
+        @mcp.tool()
+        def list_cli_endpoints_tool() -> Dict[str, Any]:
+            """
+            List all registered CLI endpoints
+            
+            Returns:
+                Dictionary with list of CLI endpoints and their status
+            """
+            try:
+                endpoints = list_cli_endpoints()
+                return {
+                    "endpoints": endpoints,
+                    "count": len(endpoints),
+                    "status": "success"
+                }
+            except Exception as e:
+                logger.error(f"Failed to list CLI endpoints: {e}")
+                return {
+                    "error": f"Failed to list CLI endpoints: {str(e)}",
+                    "status": "error"
+                }
+        
+        @mcp.tool()
+        def cli_inference(
+            endpoint_id: str,
+            prompt: str,
+            task_type: str = "text_generation",
+            timeout: int = 30,
+            **kwargs
+        ) -> Dict[str, Any]:
+            """
+            Run inference using a registered CLI endpoint
+            
+            Args:
+                endpoint_id: ID of the registered CLI endpoint
+                prompt: Input prompt for the model
+                task_type: Type of task (text_generation, code_generation, etc.)
+                timeout: Maximum execution time in seconds
+                **kwargs: Additional task parameters (model, temperature, max_tokens, etc.)
+                
+            Returns:
+                Dictionary with inference results
+            """
+            try:
+                result = execute_cli_inference(endpoint_id, prompt, task_type, timeout, **kwargs)
+                
+                # Update queue monitoring stats
+                if result.get("status") == "success":
+                    QUEUE_MONITOR["stats"]["completed_tasks"] += 1
+                else:
+                    QUEUE_MONITOR["stats"]["failed_tasks"] += 1
+                
+                return result
+                
+            except Exception as e:
+                logger.error(f"CLI inference failed: {e}")
+                QUEUE_MONITOR["stats"]["failed_tasks"] += 1
+                return {
+                    "error": f"CLI inference failed: {str(e)}",
+                    "status": "error"
+                }
+        
+        @mcp.tool()
+        def get_cli_providers() -> Dict[str, Any]:
+            """
+            Get information about available CLI providers
+            
+            Returns:
+                Dictionary with CLI provider information
+            """
+            return {
+                "providers": CLI_PROVIDERS,
+                "status": "success"
             }
 
 
@@ -703,3 +921,42 @@ def _run_api_inference(provider: str, model: str, prompt: str, task_type: str, *
             "model": model,
             "provider": provider
         }
+
+
+def _run_cli_inference(provider: str, model: str, prompt: str, task_type: str, **kwargs) -> Dict[str, Any]:
+    """Run inference using CLI tools"""
+    if not HAVE_CLI_ADAPTERS:
+        raise ImportError("CLI adapters not available")
+    
+    # Find or create an endpoint for this provider/model combination
+    endpoint_id = f"{provider}_{model.replace('/', '_')}"
+    
+    # Check if endpoint exists in CLI adapter registry
+    adapter = CLI_ADAPTER_REGISTRY.get(endpoint_id)
+    
+    if not adapter:
+        # Auto-register a CLI endpoint for this provider
+        adapter_class_name = CLI_PROVIDERS[provider]["adapter_class"]
+        config = {"model": model}
+        
+        if adapter_class_name == "ClaudeCodeAdapter":
+            from .cli_endpoint_adapters import ClaudeCodeAdapter
+            adapter = ClaudeCodeAdapter(endpoint_id, None, config)
+        elif adapter_class_name == "OpenAICodexAdapter":
+            from .cli_endpoint_adapters import OpenAICodexAdapter
+            adapter = OpenAICodexAdapter(endpoint_id, None, config)
+        elif adapter_class_name == "GeminiCLIAdapter":
+            from .cli_endpoint_adapters import GeminiCLIAdapter
+            adapter = GeminiCLIAdapter(endpoint_id, None, config)
+        else:
+            raise ValueError(f"Unknown adapter class: {adapter_class_name}")
+        
+        # Register the adapter
+        from .cli_endpoint_adapters import register_cli_endpoint
+        register_cli_endpoint(adapter)
+    
+    # Execute inference
+    result = adapter.execute(prompt, task_type, **kwargs)
+    
+    # Return result (already includes provider info)
+    return result
