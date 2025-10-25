@@ -20,6 +20,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Best-effort ensure minimal deps when allowed
+try:
+    from ipfs_accelerate_py.utils.auto_install import ensure_packages
+    ensure_packages({
+        "fastmcp": "fastmcp",
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+    })
+except Exception:
+    pass
+
 # Try imports with fallbacks
 try:
     # Try to import FastMCP if available
@@ -34,14 +45,14 @@ except ImportError:
 # Import the IPFS context
 from mcp.types import IPFSAccelerateContext
 
-# Try to import ipfs_kit_py
+# Try to import ipfs_kit_py (be tolerant to any import error)
 try:
     import ipfs_kit_py
     from ipfs_kit_py import IPFSApi
     ipfs_available = True
-except ImportError:
+except Exception as e:
     ipfs_available = False
-    logger.warning("ipfs_kit_py not available, some functionality will be limited")
+    logger.warning(f"ipfs_kit_py not available or failed to import ({e!s}); some functionality will be limited")
 
 
 def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
@@ -140,7 +151,7 @@ async def run_server(
     name: str = "IPFS Accelerate MCP",
     description: str = "MCP server for IPFS Accelerate",
     transport: str = "stdio",
-    host: str = "127.0.0.1",
+    host: str = "0.0.0.0",
     port: int = 8000,
     debug: bool = False
 ) -> None:
@@ -182,7 +193,7 @@ if __name__ == "__main__":
     parser.add_argument("--name", default="IPFS Accelerate MCP", help="Server name")
     parser.add_argument("--description", default="", help="Server description")
     parser.add_argument("--transport", default="stdio", choices=["stdio", "sse"], help="Transport type")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to for network transports")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to for network transports")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to for network transports")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     

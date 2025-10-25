@@ -17,14 +17,29 @@ from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 from pathlib import Path
 
+# Best-effort ensure minimal server deps when allowed
+try:
+    from ipfs_accelerate_py.utils.auto_install import ensure_packages
+    ensure_packages({
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        # optional but commonly used in this server
+        "huggingface_hub": "huggingface_hub",
+    })
+except Exception:
+    pass
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-# Import our comprehensive MCP server
-from tools.comprehensive_mcp_server import ComprehensiveMCPServer
+# Set up logging first
+logger = logging.getLogger(__name__)
+
+# Defer importing the comprehensive MCP server to avoid heavy deps at import-time
+ComprehensiveMCPServer = None  # will be imported lazily in __init__
 
 # Import HuggingFace model search service
 from tools.huggingface_model_search import get_hf_search_service
@@ -40,6 +55,8 @@ except ImportError:
 
 # Try to import ipfs_accelerate_py model manager
 try:
+    # Avoid importing heavy core components when only model manager is needed
+    os.environ.setdefault("IPFS_ACCEL_SKIP_CORE", "1")
     from ipfs_accelerate_py.model_manager import ModelManager
     HAVE_MODEL_MANAGER = True
 except ImportError:
@@ -214,8 +231,12 @@ class MCPJSONRPCServer:
             allow_headers=["*"],
         )
         
-        # Initialize the comprehensive MCP server
+        # Initialize the comprehensive MCP server (optional)
         try:
+            global ComprehensiveMCPServer
+            if ComprehensiveMCPServer is None:
+                from tools.comprehensive_mcp_server import ComprehensiveMCPServer as _CMS
+                ComprehensiveMCPServer = _CMS
             self.mcp_server = ComprehensiveMCPServer()
             logger.info("MCP server initialized successfully")
         except Exception as e:
@@ -1818,7 +1839,7 @@ def create_app() -> FastAPI:
     server = MCPJSONRPCServer()
     return server.app
 
-def run_server(host: str = "127.0.0.1", port: int = 8000):
+def run_server(host: str = "0.0.0.0", port: int = 9000):
     """Run the JSON-RPC server."""
     app = create_app()
     uvicorn.run(app, host=host, port=port)
@@ -1827,8 +1848,8 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="MCP JSON-RPC Server")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=9000, help="Port to bind to (default: 9000)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     
     args = parser.parse_args()

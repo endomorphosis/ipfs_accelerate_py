@@ -1,0 +1,220 @@
+name: ARM64 CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      run_full_tests:
+        description: 'Run full test suite (including heavy dependencies)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  arm64-basic-tests:
+    runs-on: [self-hosted, ARM64]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Display system info
+      run: |
+        echo "Runner architecture: $(uname -m)"
+        echo "Python version: $(python --version)"
+        echo "Available cores: $(nproc)"
+        echo "Available memory: $(free -h | grep Mem)"
+        echo "Disk space: $(df -h / | tail -1)"
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-arm64-${{ hashFiles('**/requirements*.txt') }}-${{ hashFiles('**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-arm64-
+          
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential git curl wget
+        
+    - name: Create virtual environment
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate
+        pip install --upgrade pip setuptools wheel
+        
+    - name: Install minimal dependencies
+      run: |
+        source .venv/bin/activate
+        pip install -r requirements.txt
+        pip install -e .[minimal]
+        
+    - name: Run basic CLI tests
+      run: |
+        source .venv/bin/activate
+        # Test CLI entry points
+        ipfs-accelerate --help
+        ipfs_accelerate --help
+        
+        # Test basic functionality
+        python -m ipfs_accelerate_py.cli_entry --help
+        
+    - name: Run unit tests
+      run: |
+        source .venv/bin/activate
+        pip install pytest pytest-timeout pytest-cov
+        
+        # Run lightweight tests first
+        python -m pytest test_cli_validation.py -v --timeout=30
+        
+        # Test imports
+        python -c "import ipfs_accelerate_py; print('Package import successful')"
+        
+    - name: Build package
+      run: |
+        source .venv/bin/activate
+        pip install build
+        python -m build --wheel
+        
+    - name: Test wheel installation
+      run: |
+        # Create new environment to test wheel
+        python -m venv .test_venv
+        source .test_venv/bin/activate
+        pip install --upgrade pip
+        pip install dist/*.whl
+        
+        # Test installed package
+        ipfs-accelerate --help
+        python -c "import ipfs_accelerate_py; print('Wheel installation successful')"
+
+  arm64-docker-tests:
+    runs-on: [self-hosted, ARM64]
+    needs: arm64-basic-tests
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build Docker image (minimal)
+      run: |
+        docker build --platform linux/arm64 --target minimal -t ipfs-accelerate-py:ci-test .
+        
+    - name: Test Docker image
+      run: |
+        # Test CLI commands in container
+        docker run --platform linux/arm64 --rm ipfs-accelerate-py:ci-test ipfs-accelerate --help
+        docker run --platform linux/arm64 --rm ipfs-accelerate-py:ci-test ipfs_accelerate --help
+        
+        # Test Python imports
+        docker run --platform linux/arm64 --rm ipfs-accelerate-py:ci-test python -c "import ipfs_accelerate_py; print('Docker package import successful')"
+        
+    - name: Clean up Docker images
+      if: always()
+      run: |
+        docker image rm ipfs-accelerate-py:ci-test || true
+        docker system prune -f || true
+
+  arm64-full-tests:
+    runs-on: self-hosted
+    if: github.event.inputs.run_full_tests == 'true' || github.ref == 'refs/heads/main'
+    needs: arm64-docker-tests
+    timeout-minutes: 60
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install full dependencies
+      run: |
+        python -m venv .full_venv
+        source .full_venv/bin/activate
+        pip install --upgrade pip setuptools wheel
+        
+        # Install with timeout for ARM64 builds
+        timeout 30m pip install -e .[full] || echo "Some packages may have failed to install on ARM64"
+        
+    - name: Run comprehensive tests
+      run: |
+        source .full_venv/bin/activate
+        
+        # Test available functionality
+        python -c "
+        try:
+            import torch
+            print(f'PyTorch available: {torch.__version__}')
+            print(f'CUDA available: {torch.cuda.is_available()}')
+        except ImportError:
+            print('PyTorch not available')
+            
+        try:
+            import transformers
+            print(f'Transformers available: {transformers.__version__}')
+        except ImportError:
+            print('Transformers not available')
+        "
+        
+    - name: Performance benchmark
+      run: |
+        source .full_venv/bin/activate
+        
+        # Simple performance test
+        python -c "
+        import time
+        import numpy as np
+        
+        # Basic numpy performance test
+        start = time.time()
+        a = np.random.rand(1000, 1000)
+        b = np.random.rand(1000, 1000)
+        c = np.dot(a, b)
+        end = time.time()
+        
+        print(f'NumPy matrix multiplication (1000x1000): {end-start:.3f}s')
+        print(f'ARM64 performance baseline established')
+        "
+
+  security-audit:
+    runs-on: [self-hosted, ARM64]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Security audit
+      run: |
+        python -m venv .security_venv
+        source .security_venv/bin/activate
+        pip install --upgrade pip
+        pip install safety bandit
+        
+        # Check for known vulnerabilities
+        safety check
+        
+        # Run static analysis
+        bandit -r ipfs_accelerate_py/ -f json -o security-report.json || true
+        
+    - name: Upload security report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-report-arm64
+        path: security-report.json

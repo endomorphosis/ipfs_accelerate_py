@@ -127,6 +127,7 @@ setup(
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
+			"pytest-asyncio>=0.21.0",
 		],
 		"webnn": [
 			"playwright>=1.31.0",
@@ -180,11 +181,13 @@ setup(
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
+			"pytest-asyncio>=0.21.0",
 		],
 	},
 	entry_points={
 		'console_scripts': [
 			'ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main',
+			'ipfs-accelerate=ipfs_accelerate_py.cli_entry:main',
 		],
 	}
 )

@@ -20,11 +20,22 @@ logging.basicConfig(
 logger = logging.getLogger("ipfs_accelerate_mcp")
 
 # Import for external use
+try:
+    # Ensure minimal deps if allowed
+    from ipfs_accelerate_py.utils.auto_install import ensure_packages
+    ensure_packages({
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        "fastmcp": "fastmcp",
+    })
+except Exception:
+    pass
+
 from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer
 
 def create_server(
     name: str = "ipfs-accelerate",
-    host: str = "localhost",
+    host: str = "0.0.0.0",
     port: int = 8000,
     mount_path: str = "/mcp",
     debug: bool = False
@@ -56,7 +67,7 @@ def create_server(
 
 def start_server(
     name: str = "ipfs-accelerate",
-    host: str = "localhost",
+    host: str = "0.0.0.0",
     port: int = 8000,
     mount_path: str = "/mcp",
     debug: bool = False
@@ -141,9 +152,14 @@ def check_dependencies() -> Dict[str, bool]:
 # Perform dependency check
 dependencies = check_dependencies()
 
-# Log missing dependencies
+# Log missing dependencies with adjustable verbosity
 missing_dependencies = [dep for dep, installed in dependencies.items() if not installed]
 if missing_dependencies:
-    logger.warning(f"Missing dependencies: {', '.join(missing_dependencies)}")
-    logger.warning("Some features may not be available.")
-    logger.warning("Install all dependencies with: pip install fastmcp uvicorn psutil numpy torch")
+    strict = os.getenv("IPFS_ACCEL_MCP_STRICT", "").lower() in ("1", "true", "yes")
+    if strict:
+        logger.warning(f"Missing dependencies: {', '.join(missing_dependencies)}")
+        logger.warning("Some features may not be available.")
+        logger.warning("Install all dependencies with: pip install fastmcp uvicorn psutil numpy torch")
+    else:
+        # Demote to info when not strict; FastMCP is optional thanks to mock fallback
+        logger.info(f"Optional dependencies not found: {', '.join(missing_dependencies)} (running with fallbacks)")

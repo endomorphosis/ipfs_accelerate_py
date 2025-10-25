@@ -13,3 +13,12 @@
 [submodule "external/ipfs_model_manager_py"]
 	path = external/ipfs_model_manager_py
 	url = https://github.com/endomorphosis/ipfs_model_manager_py.git
+[submodule "docs/fastmcp"]
+	path = docs/fastmcp
+	url = https://github.com/jlowin/fastmcp.git
+[submodule "docs/mcp-python-sdk"]
+	path = docs/mcp-python-sdk
+	url = https://github.com/jlowin/mcp-python-sdk.git
+[submodule "test/huggingface_doc_builder"]
+	path = test/huggingface_doc_builder
+	url = https://github.com/huggingface/doc-builder.git

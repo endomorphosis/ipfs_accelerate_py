@@ -59,7 +59,7 @@ def init_cuda()))))))))))self, model_name, model_type, device_label="cuda:0"):
         
         # Try to import the necessary utility functions
         sys.path.insert()))))))))))0, "/home/barberb/ipfs_accelerate_py/test")
-        import utils as test_utils
+        import test_helpers as test_utils
         
         print()))))))))))f"Checking CUDA availability for {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}model_name}")
         
@@ -244,7 +244,7 @@ def create_cuda_deepseek_r1_endpoint_handler()))))))))))self, tokenizer, model_n
     # Try to import test utilities
     try:
         sys.path.insert()))))))))))0, "/home/barberb/ipfs_accelerate_py/test")
-        import utils as test_utils
+        import test_helpers as test_utils
     except ImportError:
         print()))))))))))"Could not import test utils")
     
@@ -769,7 +769,7 @@ class test_hf_deepseek_r1:
                             try:
                                 import sys
                                 sys.path.insert()))))))))))0, "/home/barberb/ipfs_accelerate_py/test")
-                                import utils as test_utils
+                                import test_helpers as test_utils
                                 
                                 if hasattr()))))))))))test_utils, 'enhance_cuda_implementation_detection'):
                                     # Enhance the handler to ensure proper implementation detection

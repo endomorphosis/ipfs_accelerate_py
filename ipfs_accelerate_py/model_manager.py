@@ -28,8 +28,18 @@ try:
 except ImportError:
     try:
         from ipfs_multiformats import ipfs_multiformats_py  
+        HAVE_IPFS_MULTIFORMATS = True
     except ImportError:
-        HAVE_IPFS_MULTIFORMATS = False
+        # Attempt auto-install of missing optional deps when allowed
+        try:
+            from .utils.auto_install import ensure_packages
+            ensure_packages({
+                "multiformats": "multiformats",
+            })
+            from ipfs_multiformats import ipfs_multiformats_py  # retry after install
+            HAVE_IPFS_MULTIFORMATS = True
+        except Exception:
+            HAVE_IPFS_MULTIFORMATS = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -41,16 +51,29 @@ try:
     import duckdb
     HAVE_DUCKDB = True
 except ImportError:
-    HAVE_DUCKDB = False
-    logger.warning("DuckDB not available. Using JSON storage backend.")
+    # Attempt auto-install
+    try:
+        from .utils.auto_install import ensure_packages
+        ensure_packages(["duckdb"])
+        import duckdb  # retry
+        HAVE_DUCKDB = True
+    except Exception:
+        HAVE_DUCKDB = False
+        logger.warning("DuckDB not available. Using JSON storage backend.")
 
 # Try to import requests for HuggingFace API access
 try:
     import requests
     HAVE_REQUESTS = True
 except ImportError:
-    HAVE_REQUESTS = False
-    logger.warning("Requests not available. HuggingFace repository fetching disabled.")
+    try:
+        from .utils.auto_install import ensure_packages
+        ensure_packages(["requests"])  # retry
+        import requests
+        HAVE_REQUESTS = True
+    except Exception:
+        HAVE_REQUESTS = False
+        logger.warning("Requests not available. HuggingFace repository fetching disabled.")
 
 # Initialize IPFS multiformats instance if available
 ipfs_multiformats = None
@@ -226,6 +249,7 @@ class DataType(Enum):
 
 @dataclass
 @dataclass
+@dataclass
 class IOSpec:
     """Specification for model input or output."""
     name: str
@@ -254,6 +278,7 @@ class ModelMetadata:
     source_url: Optional[str] = None
     license: Optional[str] = None
     description: str = ""
+    model_card: Optional[str] = None
     repository_structure: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -358,6 +383,7 @@ class ModelManager:
                     source_url VARCHAR,
                     license VARCHAR,
                     description TEXT,
+                    model_card TEXT,
                     repository_structure JSON,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
@@ -470,9 +496,16 @@ class ModelManager:
                 # Convert to dictionary and handle special fields
                 data = asdict(metadata)
                 
-                # Convert IOSpec objects to dictionaries
-                data['inputs'] = json.dumps([asdict(spec) for spec in data['inputs']])
-                data['outputs'] = json.dumps([asdict(spec) for spec in data['outputs']])
+                # Convert inputs/outputs DataType enums to strings before JSON serialization
+                for io_list in [data['inputs'], data['outputs']]:
+                    for io_spec in io_list:
+                        if 'data_type' in io_spec and hasattr(io_spec['data_type'], 'value'):
+                            io_spec['data_type'] = io_spec['data_type'].value
+                
+                # inputs and outputs are already converted to dicts by asdict()
+                # Just need to convert them to JSON strings
+                data['inputs'] = json.dumps(data['inputs'])
+                data['outputs'] = json.dumps(data['outputs'])
                 
                 # Convert other complex fields to JSON
                 for json_field in ['huggingface_config', 'supported_backends', 
@@ -488,7 +521,7 @@ class ModelManager:
                 
                 # Insert or update
                 self.con.execute("""
-                    INSERT OR REPLACE INTO model_metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO model_metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, tuple(data.values()))
             
             logger.info(f"Saved {len(self.models)} models to database")
@@ -1030,16 +1063,28 @@ try:
     from sentence_transformers import SentenceTransformer
     HAVE_SENTENCE_TRANSFORMERS = True
 except ImportError:
-    HAVE_SENTENCE_TRANSFORMERS = False
-    logger.warning("SentenceTransformers not available. Vector search disabled.")
+    try:
+        from .utils.auto_install import ensure_packages
+        ensure_packages({"sentence_transformers": "sentence-transformers"})
+        from sentence_transformers import SentenceTransformer  # retry
+        HAVE_SENTENCE_TRANSFORMERS = True
+    except Exception:
+        HAVE_SENTENCE_TRANSFORMERS = False
+        logger.warning("SentenceTransformers not available. Vector search disabled.")
 
 # Try to import numpy for vector operations
 try:
     import numpy as np
     HAVE_NUMPY = True
 except ImportError:
-    HAVE_NUMPY = False
-    logger.warning("NumPy not available. Vector operations disabled.")
+    try:
+        from .utils.auto_install import ensure_packages
+        ensure_packages(["numpy"])  # retry
+        import numpy as np
+        HAVE_NUMPY = True
+    except Exception:
+        HAVE_NUMPY = False
+        logger.warning("NumPy not available. Vector operations disabled.")
 
 
 @dataclass

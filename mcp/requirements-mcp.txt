@@ -3,8 +3,18 @@ fastmcp>=0.1.0
 anyio>=3.7.0
 typing_extensions>=4.5.0
 
-# IPFS integration
-ipfs-kit-py>=0.1.0
+# IPFS integration (use main branch from GitHub)
+ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py@main
+
+# Ensure protobuf is available for google.protobuf imports
+protobuf>=4.25.0
+
+# Runtime deps for ipfs_kit_py/libp2p integration
+# websockets 10.x exposes WebSocketServerProtocol used by ipfs_kit_py
+websockets==10.4
+semver>=2.13.0
+# libp2p Python package (optional but enables p2p features)
+libp2p
 
 # Optional dependencies
 # For WebSocket transport

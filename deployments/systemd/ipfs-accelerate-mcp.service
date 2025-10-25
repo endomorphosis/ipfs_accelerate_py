@@ -1,0 +1,18 @@
+[Unit]
+Description=IPFS Accelerate MCP API
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=barberb
+WorkingDirectory=/home/barberb/ipfs_accelerate_py
+Environment=MCP_CORS_ORIGINS=*
+Environment=IPFS_ACCEL_SKIP_CORE=1
+Environment=MCP_DISABLE_IPFS=1
+ExecStart=/bin/bash -lc '/home/barberb/ipfs_accelerate_py/tools/run_mcp_api.sh'
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

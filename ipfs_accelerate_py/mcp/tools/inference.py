@@ -2,6 +2,7 @@
 Inference Tools for IPFS Accelerate MCP Server
 
 This module provides MCP tools for running inference with machine learning models.
+Uses shared operations for consistency with CLI.
 """
 
 import os
@@ -9,35 +10,42 @@ import time
 import logging
 import random
 import traceback
-import numpy as np
 from typing import Dict, List, Any, Optional, Union
+
+# Try to import numpy
+try:
+    import numpy as np
+    HAVE_NUMPY = True
+except ImportError:
+    HAVE_NUMPY = False
+    np = None
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.inference")
 
-# Store the IPFS Accelerate instance for use by the tools
-_ipfs_instance = None
-
-def set_ipfs_instance(ipfs_instance) -> None:
-    """
-    Set the IPFS Accelerate instance
-    
-    Args:
-        ipfs_instance: IPFS Accelerate instance
-    """
-    global _ipfs_instance
-    _ipfs_instance = ipfs_instance
-    logger.info(f"IPFS Accelerate instance set: {ipfs_instance}")
+# Import shared operations
+try:
+    from ....shared import SharedCore, InferenceOperations
+    shared_core = SharedCore()
+    inference_ops = InferenceOperations(shared_core)
+    HAVE_SHARED = True
+except ImportError as e:
+    logger.warning(f"Shared operations not available: {e}")
+    HAVE_SHARED = False
+    shared_core = None
+    inference_ops = None
 
 def register_tools(mcp):
     """Register inference-related tools with the MCP server"""
     
     @mcp.tool()
-    def run_inference(model: str, 
-                     inputs: List[str], 
-                     device: str = "auto",
-                     max_length: int = 1024,
-                     temperature: float = 0.7,
-                     **kwargs) -> Dict[str, Any]:
+    def run_inference(model: str,
+                      inputs: List[str],
+                      device: str = "auto",
+                      max_length: int = 1024,
+                      temperature: float = 0.7,
+                      endpoint_id: Optional[str] = None,
+                      provider: Optional[str] = None,
+                      **kwargs) -> Dict[str, Any]:
         """
         Run inference on a model
         
@@ -87,6 +95,17 @@ def register_tools(mcp):
                 except Exception as e:
                     logger.warning(f"IPFS Accelerate inference failed: {e}. Falling back to MCP implementation.")
             
+            # If an endpoint_id is provided, try to resolve endpoint settings first
+            if endpoint_id:
+                try:
+                    ep = mcp.use_tool("get_endpoint", endpoint_id=endpoint_id)
+                    if isinstance(ep, dict) and "error" not in ep:
+                        model = ep.get("model", model)
+                        device = ep.get("device", device)
+                        kwargs.setdefault("max_batch_size", ep.get("max_batch_size"))
+                except Exception:
+                    pass
+
             # Fallback to MCP implementation
             # Get model info from resources
             model_info = mcp.access_resource("get_model_info", model_name=model)
@@ -104,6 +123,69 @@ def register_tools(mcp):
             # Record start time
             start_time = time.time()
             
+            if provider:
+                # Optional provider routing; keep minimal to avoid heavy deps
+                try:
+                    if provider.lower() in ["openai", "gpt", "oai"]:
+                        from ipfs_accelerate_py.utils.auto_install import ensure_packages
+                        ensure_packages({"openai": "openai"})
+                        import os as _os
+                        from openai import OpenAI
+                        api_key = _os.getenv("OPENAI_API_KEY")
+                        if not api_key:
+                            raise RuntimeError("OPENAI_API_KEY not set")
+                        client = OpenAI(api_key=api_key)
+                        if model_type == "generation":
+                            outputs = []
+                            for input_text in inputs:
+                                r = client.chat.completions.create(
+                                    model=model,
+                                    messages=[{"role": "user", "content": input_text}],
+                                    temperature=temperature,
+                                    max_tokens=max(1, max_length),
+                                )
+                                outputs.append(r.choices[0].message.content)
+                            result = {
+                                "model": model,
+                                "model_type": "generation",
+                                "outputs": outputs,
+                                "device": "provider",
+                                "provider": provider,
+                                "processing_time": time.time() - start_time,
+                            }
+                        else:
+                            # Embeddings path
+                            vectors = []
+                            for text in inputs:
+                                er = client.embeddings.create(model=model, input=text)
+                                vectors.append(er.data[0].embedding)
+                            result = {
+                                "model": model,
+                                "model_type": "embedding",
+                                "embeddings": vectors,
+                                "device": "provider",
+                                "provider": provider,
+                                "processing_time": time.time() - start_time,
+                            }
+
+                        # If endpoint_id provided, log usage
+                        if endpoint_id:
+                            try:
+                                mcp.use_tool(
+                                    "log_request",
+                                    endpoint_id=endpoint_id,
+                                    model=model,
+                                    device=result.get("device", device),
+                                    request_type=result.get("model_type", "unknown"),
+                                    inputs_processed=len(inputs),
+                                    processing_time=result.get("processing_time", 0.0),
+                                )
+                            except Exception:
+                                pass
+                        return result
+                except Exception as e:
+                    logger.warning(f"Provider routing failed ({provider}): {e}. Falling back to local simulation.")
+
             if model_type == "embedding":
                 # Simulate embedding generation
                 embedding_size = model_info.get("embedding_size", 384)
@@ -120,11 +202,19 @@ def register_tools(mcp):
                 embeddings = []
                 for _ in inputs:
                     # Generate a random embedding and normalize it
-                    embedding = np.random.randn(embedding_size)
-                    embedding = embedding / np.linalg.norm(embedding)
-                    embeddings.append(embedding.tolist())
+                    if HAVE_NUMPY:
+                        embedding = np.random.randn(embedding_size)
+                        embedding = embedding / np.linalg.norm(embedding)
+                        embeddings.append(embedding.tolist())
+                    else:
+                        # Fallback to plain Python if numpy not available
+                        embedding = [random.gauss(0, 1) for _ in range(embedding_size)]
+                        # Simple normalization
+                        magnitude = sum(x**2 for x in embedding) ** 0.5
+                        embedding = [x / magnitude if magnitude > 0 else 0 for x in embedding]
+                        embeddings.append(embedding)
                 
-                return {
+                result = {
                     "model": model,
                     "model_type": "embedding",
                     "embedding_size": embedding_size,
@@ -133,6 +223,20 @@ def register_tools(mcp):
                     "device": device,
                     "processing_time": time.time() - start_time
                 }
+                if endpoint_id:
+                    try:
+                        mcp.use_tool(
+                            "log_request",
+                            endpoint_id=endpoint_id,
+                            model=model,
+                            device=device,
+                            request_type="embedding",
+                            inputs_processed=len(inputs),
+                            processing_time=result["processing_time"],
+                        )
+                    except Exception:
+                        pass
+                return result
                 
             elif model_type == "generation":
                 # Simulate text generation
@@ -158,7 +262,7 @@ def register_tools(mcp):
                     
                     outputs.append(output)
                 
-                return {
+                result = {
                     "model": model,
                     "model_type": "generation",
                     "outputs": outputs,
@@ -166,6 +270,20 @@ def register_tools(mcp):
                     "device": device,
                     "processing_time": time.time() - start_time
                 }
+                if endpoint_id:
+                    try:
+                        mcp.use_tool(
+                            "log_request",
+                            endpoint_id=endpoint_id,
+                            model=model,
+                            device=device,
+                            request_type="generation",
+                            inputs_processed=len(inputs),
+                            processing_time=result["processing_time"],
+                        )
+                    except Exception:
+                        pass
+                return result
                 
             else:
                 return {

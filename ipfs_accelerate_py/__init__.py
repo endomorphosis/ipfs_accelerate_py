@@ -22,9 +22,15 @@ try:
 except ImportError:
     install_depends = None
 
-try:
-    from .ipfs_accelerate import ipfs_accelerate_py as original_ipfs_accelerate_py
-except ImportError:
+import os
+
+# Optionally skip importing the heavy core (avoids ipfs_kit_py import at import-time)
+if os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") != "1":
+    try:
+        from .ipfs_accelerate import ipfs_accelerate_py as original_ipfs_accelerate_py
+    except ImportError:
+        original_ipfs_accelerate_py = None
+else:
     original_ipfs_accelerate_py = None
 
 try:
@@ -42,45 +48,62 @@ try:
 except ImportError:
     config = None
 
-# Import WebNN/WebGPU integration
-try:
-    from .webnn_webgpu_integration import (
-        accelerate_with_browser,
-        WebNNWebGPUAccelerator,
-        get_accelerator
-    )
-    webnn_webgpu_available = True
-except ImportError:
+SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
+
+# Import WebNN/WebGPU integration (skip when core is disabled)
+if not SKIP_CORE:
+    try:
+        from .webnn_webgpu_integration import (
+            accelerate_with_browser,
+            WebNNWebGPUAccelerator,
+            get_accelerator
+        )
+        webnn_webgpu_available = True
+    except ImportError:
+        webnn_webgpu_available = False
+        
+        # Create stubs if not available
+        def accelerate_with_browser(*args, **kwargs):
+            raise NotImplementedError("WebNN/WebGPU integration is not available")
+        
+        def get_accelerator(*args, **kwargs):
+            raise NotImplementedError("WebNN/WebGPU integration is not available")
+        
+        class WebNNWebGPUAccelerator:
+            def __init__(self, *args, **kwargs):
+                raise NotImplementedError("WebNN/WebGPU integration is not available")
+else:
     webnn_webgpu_available = False
-    
-    # Create stubs if not available
     def accelerate_with_browser(*args, **kwargs):
-        raise NotImplementedError("WebNN/WebGPU integration is not available")
-    
+        raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
     def get_accelerator(*args, **kwargs):
-        raise NotImplementedError("WebNN/WebGPU integration is not available")
-    
+        raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
     class WebNNWebGPUAccelerator:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError("WebNN/WebGPU integration is not available")
+            raise NotImplementedError("WebNN/WebGPU integration is disabled (IPFS_ACCEL_SKIP_CORE=1)")
 
-# Import Model Manager
-try:
-    from .model_manager import (
-        ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
-        create_model_from_huggingface, get_default_model_manager
-    )
-    model_manager_available = True
-except ImportError:
+# Import Model Manager (skip by default to avoid heavy optional deps at import time)
+if os.environ.get("IPFS_ACCEL_IMPORT_EAGER", "0") == "1":
+    try:
+        from .model_manager import (
+            ModelManager, ModelMetadata, IOSpec, ModelType, DataType,
+            create_model_from_huggingface, get_default_model_manager
+        )
+        model_manager_available = True
+    except ImportError:
+        model_manager_available = False
+        def get_default_model_manager(*args, **kwargs):
+            raise NotImplementedError("Model Manager is not available")
+        class ModelManager:
+            def __init__(self, *args, **kwargs):
+                raise NotImplementedError("Model Manager is not available")
+else:
     model_manager_available = False
-    
-    # Create stubs if not available
     def get_default_model_manager(*args, **kwargs):
-        raise NotImplementedError("Model Manager is not available")
-    
+        raise NotImplementedError("Model Manager is not imported by default. Set IPFS_ACCEL_IMPORT_EAGER=1 to enable.")
     class ModelManager:
         def __init__(self, *args, **kwargs):
-            raise NotImplementedError("Model Manager is not available")
+            raise NotImplementedError("Model Manager is not imported by default. Set IPFS_ACCEL_IMPORT_EAGER=1 to enable.")
 
 # Import our new implementation
 try:
@@ -122,12 +145,19 @@ export = {
     "model_manager_available": model_manager_available
 }
 
+# Add CLI entry point for package access
+try:
+    from .cli_entry import main as cli_main
+    export["cli_main"] = cli_main
+except ImportError:
+    cli_main = None
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
     'install_depends', 'worker', 'ipfs_multiformats_py',
     'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
-    'model_manager_available'
+    'model_manager_available', 'cli_main'
 ]
 
 # Package version

@@ -1,0 +1,15 @@
+[Unit]
+Description=IPFS Accelerate Performance Dashboard
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=barberb
+WorkingDirectory=/home/barberb/ipfs_accelerate_py
+ExecStart=/bin/bash -lc '/home/barberb/ipfs_accelerate_py/tools/run_dashboard.sh'
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

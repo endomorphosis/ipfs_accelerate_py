@@ -78,7 +78,7 @@ if "fill-mask" in ["table-question-answering", "time-series-prediction"]:
 try:
     # Set path to find utils
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from test import utils as test_utils
+    from test import test_helpers as test_utils
     UTILS_AVAILABLE = True
 except ImportError:
     test_utils = MagicMock()

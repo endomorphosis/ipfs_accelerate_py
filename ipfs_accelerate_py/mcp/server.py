@@ -7,6 +7,7 @@ This module provides the MCP server for IPFS Accelerate.
 import os
 import sys
 import json
+import json
 import logging
 import argparse
 from typing import Dict, Any, Optional, List, Union, Callable
@@ -17,6 +18,19 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("ipfs_accelerate_mcp.server")
+
+# Ensure minimal runtime dependencies when allowed
+try:
+    from ..utils.auto_install import ensure_packages
+    ensure_packages({
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        # FastMCP is optional; try to make it available if user permits
+        "fastmcp": "fastmcp",
+    })
+except Exception:
+    # Best-effort; server can still run in standalone mode
+    pass
 
 class StandaloneMCP:
     """
@@ -64,6 +78,74 @@ class StandaloneMCP:
         
         logger.debug(f"Registered tool: {name}")
     
+    def tool(self):
+        """
+        Decorator for registering tools (FastMCP compatibility)
+        
+        This decorator allows tools to be registered using the @mcp.tool() syntax
+        compatible with FastMCP, but internally uses register_tool.
+        
+        Returns:
+            Decorator function
+        """
+        def decorator(func):
+            # Extract function name and docstring
+            tool_name = func.__name__
+            description = func.__doc__ or "No description"
+            
+            # Create a simple input schema from the function signature
+            import inspect
+            sig = inspect.signature(func)
+            properties = {}
+            required = []
+            
+            for param_name, param in sig.parameters.items():
+                # Skip self/cls parameters
+                if param_name in ('self', 'cls'):
+                    continue
+                    
+                # Determine type hint if available
+                param_type = "string"  # default
+                if param.annotation != inspect.Parameter.empty:
+                    ann = param.annotation
+                    # Check for typing generics by examining __origin__
+                    origin = getattr(ann, '__origin__', None)
+                    
+                    if ann is int:
+                        param_type = "integer"
+                    elif ann is float:
+                        param_type = "number"
+                    elif ann is bool:
+                        param_type = "boolean"
+                    elif ann is list or origin is list:
+                        param_type = "array"
+                    elif ann is dict or origin is dict:
+                        param_type = "object"
+                
+                properties[param_name] = {"type": param_type}
+                
+                # Add to required if no default value
+                if param.default == inspect.Parameter.empty:
+                    required.append(param_name)
+            
+            input_schema = {
+                "type": "object",
+                "properties": properties,
+                "required": required
+            }
+            
+            # Register the tool
+            self.register_tool(
+                name=tool_name,
+                function=func,
+                description=description,
+                input_schema=input_schema
+            )
+            
+            return func
+        
+        return decorator
+    
     def register_resource(
         self,
         uri: str,
@@ -108,6 +190,26 @@ class StandaloneMCP:
         }
         
         logger.debug(f"Registered prompt: {name}")
+
+    def access_resource(self, uri: str, **kwargs) -> Any:
+        """
+        Access a registered resource by URI.
+
+        This helper mirrors FastMCP's access_resource to provide a common API
+        for tools that query resources. It calls the registered function with
+        any provided keyword arguments.
+        """
+        resource = self.resources.get(uri)
+        if not resource:
+            return None
+        try:
+            func = resource.get("function")
+            if callable(func):
+                return func(**kwargs) if kwargs else func()
+        except Exception as e:
+            logger.error(f"Error accessing resource {uri}: {e}")
+            logger.debug(traceback.format_exc())
+        return None
     
     def create_fastapi_app(
         self,
@@ -281,8 +383,8 @@ class IPFSAccelerateMCPServer:
     
     def __init__(
         self,
-        name: str = "ipfs-accelerate",
-        host: str = "localhost",
+    name: str = "ipfs-accelerate",
+    host: str = "0.0.0.0",
         port: int = 8000,
         mount_path: str = "/mcp",
         debug: bool = False
@@ -325,12 +427,25 @@ class IPFSAccelerateMCPServer:
         
         try:
             # Try to import FastMCP
-            try:
-                from fastmcp import FastMCP
-                
+            def _import_fastmcp_site_first():
+                original = list(sys.path)
+                try:
+                    site_paths = [p for p in original if ('site-packages' in p or 'dist-packages' in p)]
+                    other_paths = [p for p in original if p not in site_paths]
+                    # Prioritize site-packages before repo root to avoid local mcp shadowing
+                    sys.path[:] = site_paths + other_paths
+                    import importlib
+                    return importlib.import_module('fastmcp')
+                except Exception:
+                    return None
+                finally:
+                    sys.path[:] = original
+
+            fm = _import_fastmcp_site_first()
+            if fm is not None and hasattr(fm, 'FastMCP'):
+                FastMCP = getattr(fm, 'FastMCP')
                 # Create FastMCP instance
                 self.mcp = FastMCP(name=self.name)
-                
                 # Create FastAPI app
                 self.fastapi_app = self.mcp.create_fastapi_app(
                     title="IPFS Accelerate MCP API",
@@ -340,12 +455,9 @@ class IPFSAccelerateMCPServer:
                     redoc_url="/redoc",
                     mount_path=self.mount_path
                 )
-                
-                # Use FastMCP implementation
                 logger.info("Using FastMCP implementation")
                 self._using_fastmcp = True
-            
-            except ImportError:
+            else:
                 # Use standalone implementation
                 logger.warning("FastMCP not available, using standalone implementation")
                 self.mcp = StandaloneMCP(name=self.name)
@@ -362,6 +474,24 @@ class IPFSAccelerateMCPServer:
                 
                 self._using_fastmcp = False
             
+            # Enable CORS for external API consumers (configurable via MCP_CORS_ORIGINS)
+            try:
+                from fastapi.middleware.cors import CORSMiddleware
+
+                allowed = os.getenv("MCP_CORS_ORIGINS", "*")
+                allow_origins = [o.strip() for o in allowed.split(",") if o.strip()] or ["*"]
+
+                self.fastapi_app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=allow_origins,
+                    allow_credentials=True,
+                    allow_methods=["*"],
+                    allow_headers=["*"],
+                )
+                logger.info(f"CORS enabled for MCP API (origins: {allow_origins})")
+            except Exception as e:
+                logger.warning(f"CORS not enabled (missing dependency or error): {e}")
+
             # Register tools
             self._register_tools()
             
@@ -503,7 +633,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="IPFS Accelerate MCP Server")
     
     parser.add_argument("--name", default="ipfs-accelerate", help="Name of the server")
-    parser.add_argument("--host", default="localhost", help="Host to bind the server to")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind the server to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
     parser.add_argument("--mount-path", default="/mcp", help="Path to mount the server at")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
