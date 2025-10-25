@@ -410,6 +410,7 @@ optimizations = optimizer.analyze_system_performance()
 - **[WebNN/WebGPU Integration](docs/WEBNN_WEBGPU_README.md)** - Enterprise browser-based acceleration with monitoring
 - **[MCP Integration](mcp/README.md)** - Model Control Protocol for advanced model management and automation
 - **[Testing & Validation Framework](docs/TESTING.md)** - Comprehensive testing methodologies and enterprise validation
+- **[Self-Hosted Runner Setup](docs/SELF_HOSTED_RUNNER_SETUP.md)** - Complete guide for setting up GitHub Actions self-hosted runners with Docker and hardware acceleration
 
 ### **📖 Implementation & Deployment**
 - **[Production Installation Guide](INSTALLATION_TROUBLESHOOTING_GUIDE.md)** - 16,000+ word enterprise installation and troubleshooting guide

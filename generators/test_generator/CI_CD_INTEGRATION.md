@@ -4,6 +4,17 @@
 
 This document provides details on the CI/CD integration for the comprehensive HuggingFace model test suite. We have successfully configured GitHub Actions workflows to automatically run our test suite in a CI environment with mocked dependencies, ensuring that all tests can be verified without requiring the actual model weights or computation resources.
 
+## Self-Hosted Runner Configuration
+
+**IMPORTANT**: If running tests on self-hosted runners that use Docker containers, ensure the runner user has Docker access:
+
+```bash
+sudo usermod -aG docker <runner-user>
+sudo systemctl restart actions-runner
+```
+
+For complete setup instructions including hardware-specific configurations, see the [Self-Hosted Runner Setup Guide](../../docs/SELF_HOSTED_RUNNER_SETUP.md).
+
 ## Implementation Details
 
 ### GitHub Actions Workflow

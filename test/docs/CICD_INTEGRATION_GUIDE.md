@@ -20,6 +20,22 @@ The CI/CD integration system automates the following tasks:
 
 The system is implemented using GitHub Actions workflows that run on schedule, on push to main, on pull requests, or can be triggered manually.
 
+## Self-Hosted Runner Setup
+
+**IMPORTANT**: When using self-hosted runners for CI/CD tests that utilize Docker containers, the runner user must be added to the docker group:
+
+```bash
+sudo usermod -aG docker <runner-user>
+```
+
+After adding the user to the docker group, restart the runner service:
+
+```bash
+sudo systemctl restart actions-runner
+```
+
+For comprehensive setup instructions including hardware-specific configurations (CUDA, ROCm, OpenVINO), see the [Self-Hosted Runner Setup Guide](../../docs/SELF_HOSTED_RUNNER_SETUP.md).
+
 ## Workflows
 
 ### Test Results Integration Workflow

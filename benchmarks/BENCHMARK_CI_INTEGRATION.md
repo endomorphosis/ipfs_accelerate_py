@@ -12,6 +12,22 @@ The CI/CD integration provides the following features:
 4. **Historical Tracking**: Maintains a history of benchmark results for trend analysis
 5. **Performance Regression Detection**: Compares results with historical data to detect regressions
 
+## Self-Hosted Runner Requirements
+
+**IMPORTANT**: If using self-hosted runners for benchmarks that utilize Docker containers, the runner user must be added to the docker group:
+
+```bash
+sudo usermod -aG docker <runner-user>
+```
+
+After making this change, restart the runner service to apply the changes:
+
+```bash
+sudo systemctl restart actions-runner
+```
+
+For comprehensive setup instructions, see [Self-Hosted Runner Setup Guide](../docs/SELF_HOSTED_RUNNER_SETUP.md).
+
 ## GitHub Actions Workflow
 
 The benchmark CI/CD is implemented as a GitHub Actions workflow defined in `.github/workflows/benchmark_db_ci.yml`. The workflow consists of four jobs:

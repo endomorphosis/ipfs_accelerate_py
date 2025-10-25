@@ -36,6 +36,22 @@ The framework includes GitHub Actions workflows that can be added to your reposi
 2. Configure the workflow according to your needs (see [Configuration](#configuration))
 3. Push the changes to your repository
 
+### Self-Hosted Runner Setup
+
+**IMPORTANT**: If using self-hosted runners for testing, you must add the runner user to the docker group:
+
+```bash
+sudo usermod -aG docker <runner-user>
+```
+
+After adding the user to the docker group, either log out and back in, or restart the runner service:
+
+```bash
+sudo systemctl restart actions-runner
+```
+
+For complete self-hosted runner setup instructions, including hardware-specific configurations, see [SELF_HOSTED_RUNNER_SETUP.md](../../docs/SELF_HOSTED_RUNNER_SETUP.md).
+
 ## Workflows
 
 The CI/CD integration includes the following workflows:
