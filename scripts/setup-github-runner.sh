@@ -190,8 +190,17 @@ if [ "$INSTALL_DEPENDENCIES" = true ]; then
     # Install Python dependencies
     if command -v python3 &> /dev/null; then
         log "Installing Python dependencies..."
-        python3 -m pip install --user --upgrade pip
-        python3 -m pip install --user requests psutil
+        
+        # Check if we're in a virtual environment
+        if [[ "$VIRTUAL_ENV" != "" ]]; then
+            log "Virtual environment detected: $VIRTUAL_ENV"
+            python3 -m pip install --upgrade pip
+            python3 -m pip install requests psutil
+        else
+            log "Installing to user site-packages"
+            python3 -m pip install --user --upgrade pip
+            python3 -m pip install --user requests psutil
+        fi
     fi
 fi
 
@@ -289,27 +298,29 @@ log "Runner configured successfully"
 if [ "$CREATE_SERVICE" = true ]; then
     log "Creating systemd service..."
     
-    # Determine service name
-    if [ "$ADDITIONAL_RUNNER" = true ]; then
-        SERVICE_NAME="github-actions-runner-backup"
-    else
-        SERVICE_NAME="github-actions-runner"
-    fi
-    
     # Install the service
     sudo ./svc.sh install "$USER"
     
     # Start the service
     sudo ./svc.sh start
     
-    # Enable service to start on boot
-    sudo systemctl enable "$SERVICE_NAME"
-    
-    # Check service status
-    if sudo ./svc.sh status; then
-        log "Service '$SERVICE_NAME' created and started successfully"
+    # Get the actual service name from the .service file
+    if [ -f ".service" ]; then
+        SERVICE_NAME=$(cat .service)
+        log "Service created: $SERVICE_NAME"
+        
+        # Enable service to start on boot
+        sudo systemctl enable "$SERVICE_NAME"
+        
+        # Check service status
+        if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
+            log "Service '$SERVICE_NAME' created and started successfully"
+        else
+            warn "Service '$SERVICE_NAME' was created but may not be running properly"
+            log "Check status with: sudo systemctl status $SERVICE_NAME"
+        fi
     else
-        error "Failed to start service '$SERVICE_NAME'"
+        warn "Could not determine service name. Check manually with: sudo systemctl list-units | grep actions"
     fi
 else
     log "Skipping service creation (--no-service specified)"
