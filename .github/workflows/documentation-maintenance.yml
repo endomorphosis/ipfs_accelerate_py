@@ -1,0 +1,620 @@
+name: Weekly Documentation Maintenance
+
+on:
+  schedule:
+    # Run every Monday at 9:00 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:  # Allow manual trigger for testing
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  documentation-maintenance:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+          pip install pdoc3 pydocstyle pylint mypy pytest black isort
+          pip install gitpython markdown beautifulsoup4 lxml
+      
+      - name: Analyze codebase structure
+        id: analyze
+        run: |
+          cat > analyze_codebase.py << 'PYTHON'
+          import os
+          import json
+          import ast
+          from pathlib import Path
+          from collections import defaultdict
+          
+          def analyze_python_file(filepath):
+              """Analyze a Python file for documentation."""
+              try:
+                  with open(filepath, 'r', encoding='utf-8') as f:
+                      content = f.read()
+                  
+                  tree = ast.parse(content)
+                  
+                  stats = {
+                      'classes': [],
+                      'functions': [],
+                      'has_module_docstring': ast.get_docstring(tree) is not None
+                  }
+                  
+                  for node in ast.walk(tree):
+                      if isinstance(node, ast.ClassDef):
+                          has_docstring = ast.get_docstring(node) is not None
+                          stats['classes'].append({
+                              'name': node.name,
+                              'has_docstring': has_docstring,
+                              'line': node.lineno
+                          })
+                      elif isinstance(node, ast.FunctionDef):
+                          has_docstring = ast.get_docstring(node) is not None
+                          is_private = node.name.startswith('_')
+                          if not is_private:  # Only track public functions
+                              stats['functions'].append({
+                                  'name': node.name,
+                                  'has_docstring': has_docstring,
+                                  'line': node.lineno
+                              })
+                  
+                  return stats
+              except Exception as e:
+                  return {'error': str(e)}
+          
+          def scan_repository():
+              """Scan the repository for Python files and documentation."""
+              base_path = Path('.')
+              
+              # Find all Python files
+              py_files = []
+              for pattern in ['**/*.py']:
+                  py_files.extend(base_path.glob(pattern))
+              
+              # Filter out test files and virtual environments
+              py_files = [
+                  f for f in py_files 
+                  if 'venv' not in str(f) 
+                  and 'ipfs_env' not in str(f)
+                  and '.eggs' not in str(f)
+                  and 'build' not in str(f)
+              ]
+              
+              results = {
+                  'total_files': len(py_files),
+                  'files_analyzed': 0,
+                  'classes_total': 0,
+                  'classes_documented': 0,
+                  'functions_total': 0,
+                  'functions_documented': 0,
+                  'modules_with_docstring': 0,
+                  'undocumented_items': []
+              }
+              
+              for py_file in py_files:
+                  stats = analyze_python_file(py_file)
+                  if 'error' in stats:
+                      continue
+                  
+                  results['files_analyzed'] += 1
+                  
+                  if stats['has_module_docstring']:
+                      results['modules_with_docstring'] += 1
+                  
+                  for cls in stats['classes']:
+                      results['classes_total'] += 1
+                      if cls['has_docstring']:
+                          results['classes_documented'] += 1
+                      else:
+                          results['undocumented_items'].append({
+                              'type': 'class',
+                              'name': cls['name'],
+                              'file': str(py_file),
+                              'line': cls['line']
+                          })
+                  
+                  for func in stats['functions']:
+                      results['functions_total'] += 1
+                      if func['has_docstring']:
+                          results['functions_documented'] += 1
+                      else:
+                          results['undocumented_items'].append({
+                              'type': 'function',
+                              'name': func['name'],
+                              'file': str(py_file),
+                              'line': func['line']
+                          })
+              
+              return results
+          
+          if __name__ == '__main__':
+              results = scan_repository()
+              
+              # Save full results
+              with open('documentation_analysis.json', 'w') as f:
+                  json.dump(results, f, indent=2)
+              
+              # Create summary
+              print("=== Documentation Analysis Summary ===")
+              print(f"Total Python files analyzed: {results['files_analyzed']}")
+              print(f"Modules with docstrings: {results['modules_with_docstring']}")
+              print(f"Classes: {results['classes_documented']}/{results['classes_total']} documented")
+              print(f"Functions: {results['functions_documented']}/{results['functions_total']} documented")
+              
+              if results['classes_total'] > 0:
+                  class_coverage = (results['classes_documented'] / results['classes_total']) * 100
+                  print(f"Class documentation coverage: {class_coverage:.1f}%")
+              
+              if results['functions_total'] > 0:
+                  func_coverage = (results['functions_documented'] / results['functions_total']) * 100
+                  print(f"Function documentation coverage: {func_coverage:.1f}%")
+              
+              # Output for GitHub Actions
+              with open('analysis_summary.txt', 'w') as f:
+                  f.write(f"Files: {results['files_analyzed']}, ")
+                  f.write(f"Classes: {results['classes_documented']}/{results['classes_total']}, ")
+                  f.write(f"Functions: {results['functions_documented']}/{results['functions_total']}")
+          PYTHON
+          
+          python analyze_codebase.py
+          
+          # Store summary for later use
+          echo "summary=$(cat analysis_summary.txt)" >> $GITHUB_OUTPUT
+      
+      - name: Generate API documentation
+        run: |
+          # Generate HTML documentation with pdoc3
+          mkdir -p docs/api
+          
+          # Generate documentation for main modules
+          echo "Generating API documentation..."
+          pdoc --html --output-dir docs/api \
+            ipfs_accelerate_py \
+            --force || echo "Warning: Some modules may have failed"
+          
+          echo "✅ API documentation generated"
+      
+      - name: Check documentation examples
+        run: |
+          cat > check_examples.py << 'PYTHON'
+          import os
+          import re
+          import ast
+          from pathlib import Path
+          
+          def extract_code_blocks(md_file):
+              """Extract Python code blocks from markdown files."""
+              with open(md_file, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              
+              # Find Python code blocks
+              pattern = r'```python\n(.*?)\n```'
+              code_blocks = re.findall(pattern, content, re.DOTALL)
+              return code_blocks
+          
+          def validate_code_block(code, md_file):
+              """Validate a Python code block for syntax errors."""
+              try:
+                  ast.parse(code)
+                  return True, None
+              except SyntaxError as e:
+                  return False, f"{md_file}: Line {e.lineno}: {e.msg}"
+          
+          def scan_markdown_files():
+              """Scan all markdown files for code examples."""
+              md_files = list(Path('.').glob('**/*.md'))
+              
+              # Filter out node_modules and other non-relevant directories
+              md_files = [
+                  f for f in md_files 
+                  if 'node_modules' not in str(f)
+                  and 'venv' not in str(f)
+                  and '.git' not in str(f)
+              ]
+              
+              results = {
+                  'total_md_files': len(md_files),
+                  'files_with_code': 0,
+                  'total_code_blocks': 0,
+                  'valid_blocks': 0,
+                  'errors': []
+              }
+              
+              for md_file in md_files:
+                  code_blocks = extract_code_blocks(md_file)
+                  if code_blocks:
+                      results['files_with_code'] += 1
+                      results['total_code_blocks'] += len(code_blocks)
+                      
+                      for i, code in enumerate(code_blocks):
+                          is_valid, error = validate_code_block(code, str(md_file))
+                          if is_valid:
+                              results['valid_blocks'] += 1
+                          else:
+                              results['errors'].append({
+                                  'file': str(md_file),
+                                  'block': i + 1,
+                                  'error': error
+                              })
+              
+              return results
+          
+          if __name__ == '__main__':
+              results = scan_markdown_files()
+              
+              print("=== Documentation Examples Validation ===")
+              print(f"Markdown files: {results['total_md_files']}")
+              print(f"Files with Python code: {results['files_with_code']}")
+              print(f"Code blocks: {results['valid_blocks']}/{results['total_code_blocks']} valid")
+              
+              if results['errors']:
+                  print(f"\n⚠️  Found {len(results['errors'])} syntax errors:")
+                  for error in results['errors'][:10]:  # Show first 10
+                      print(f"  - {error['file']} (block {error['block']}): {error['error']}")
+              else:
+                  print("✅ All code examples have valid syntax")
+          PYTHON
+          
+          python check_examples.py || true
+      
+      - name: Find missing documentation
+        run: |
+          cat > find_missing_docs.py << 'PYTHON'
+          import json
+          from pathlib import Path
+          
+          def analyze_missing_docs():
+              """Analyze which files need documentation."""
+              with open('documentation_analysis.json', 'r') as f:
+                  data = json.load(f)
+              
+              # Group undocumented items by file
+              by_file = {}
+              for item in data['undocumented_items']:
+                  file = item['file']
+                  if file not in by_file:
+                      by_file[file] = {'classes': [], 'functions': []}
+                  
+                  if item['type'] == 'class':
+                      by_file[file]['classes'].append(item['name'])
+                  else:
+                      by_file[file]['functions'].append(item['name'])
+              
+              # Sort by number of undocumented items
+              sorted_files = sorted(
+                  by_file.items(),
+                  key=lambda x: len(x[1]['classes']) + len(x[1]['functions']),
+                  reverse=True
+              )
+              
+              print("=== Files Needing Documentation (Top 20) ===")
+              for file, items in sorted_files[:20]:
+                  total = len(items['classes']) + len(items['functions'])
+                  print(f"\n{file} ({total} items)")
+                  if items['classes']:
+                      print(f"  Classes: {', '.join(items['classes'][:5])}")
+                      if len(items['classes']) > 5:
+                          print(f"    ... and {len(items['classes']) - 5} more")
+                  if items['functions']:
+                      print(f"  Functions: {', '.join(items['functions'][:5])}")
+                      if len(items['functions']) > 5:
+                          print(f"    ... and {len(items['functions']) - 5} more")
+              
+              # Create a documentation TODO list
+              with open('DOCUMENTATION_TODO.md', 'w') as f:
+                  f.write("# Documentation TODO List\n\n")
+                  f.write("This file is automatically generated by the documentation maintenance workflow.\n\n")
+                  f.write(f"## Summary\n\n")
+                  f.write(f"- Total files needing documentation: {len(by_file)}\n")
+                  f.write(f"- Total undocumented classes: {data['classes_total'] - data['classes_documented']}\n")
+                  f.write(f"- Total undocumented functions: {data['functions_total'] - data['functions_documented']}\n\n")
+                  
+                  f.write("## Priority Files\n\n")
+                  for file, items in sorted_files[:20]:
+                      total = len(items['classes']) + len(items['functions'])
+                      f.write(f"### {file}\n\n")
+                      f.write(f"**{total} undocumented items**\n\n")
+                      
+                      if items['classes']:
+                          f.write("#### Classes\n\n")
+                          for cls in items['classes']:
+                              f.write(f"- [ ] `{cls}`\n")
+                          f.write("\n")
+                      
+                      if items['functions']:
+                          f.write("#### Functions\n\n")
+                          for func in items['functions']:
+                              f.write(f"- [ ] `{func}`\n")
+                          f.write("\n")
+          
+          if __name__ == '__main__':
+              analyze_missing_docs()
+          PYTHON
+          
+          python find_missing_docs.py
+      
+      - name: Generate README update suggestions
+        run: |
+          cat > readme_suggestions.py << 'PYTHON'
+          import os
+          import json
+          from pathlib import Path
+          
+          def analyze_readme_coverage():
+              """Check if README covers main modules."""
+              readme_path = Path('README.md')
+              
+              if not readme_path.exists():
+                  print("⚠️  README.md not found!")
+                  return
+              
+              with open(readme_path, 'r', encoding='utf-8') as f:
+                  readme_content = f.read().lower()
+              
+              # Load analysis data
+              with open('documentation_analysis.json', 'r') as f:
+                  data = json.load(f)
+              
+              # Extract main modules
+              main_modules = set()
+              for item in data['undocumented_items']:
+                  file_path = Path(item['file'])
+                  if len(file_path.parts) > 0:
+                      # Get top-level module name
+                      module = file_path.parts[0]
+                      if module.endswith('.py'):
+                          module = module[:-3]
+                      main_modules.add(module)
+              
+              print("=== README Coverage Analysis ===")
+              print(f"Found {len(main_modules)} main modules in codebase")
+              
+              mentioned = []
+              not_mentioned = []
+              
+              for module in sorted(main_modules):
+                  if module in readme_content:
+                      mentioned.append(module)
+                  else:
+                      not_mentioned.append(module)
+              
+              print(f"Mentioned in README: {len(mentioned)}")
+              print(f"Not mentioned in README: {len(not_mentioned)}")
+              
+              if not_mentioned:
+                  print("\nModules that could be added to README:")
+                  for module in not_mentioned[:10]:
+                      print(f"  - {module}")
+              
+              # Create suggestions file
+              with open('README_SUGGESTIONS.md', 'w') as f:
+                  f.write("# README Improvement Suggestions\n\n")
+                  f.write("This file is automatically generated.\n\n")
+                  
+                  if not_mentioned:
+                      f.write("## Modules Not Mentioned in README\n\n")
+                      f.write("Consider adding documentation for these modules:\n\n")
+                      for module in sorted(not_mentioned):
+                          f.write(f"- `{module}`\n")
+                  
+                  f.write("\n## Documentation Statistics\n\n")
+                  f.write(f"- Total Python files: {data['files_analyzed']}\n")
+                  f.write(f"- Modules with docstrings: {data['modules_with_docstring']}\n")
+                  f.write(f"- Classes documented: {data['classes_documented']}/{data['classes_total']}\n")
+                  f.write(f"- Functions documented: {data['functions_documented']}/{data['functions_total']}\n")
+          
+          if __name__ == '__main__':
+              analyze_readme_coverage()
+          PYTHON
+          
+          python readme_suggestions.py
+      
+      - name: Create documentation report
+        run: |
+          cat > DOCUMENTATION_REPORT.md << 'EOF'
+          # Weekly Documentation Maintenance Report
+          
+          Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Analysis Summary
+          
+          EOF
+          
+          cat analysis_summary.txt >> DOCUMENTATION_REPORT.md
+          
+          cat >> DOCUMENTATION_REPORT.md << 'EOF'
+          
+          ## Key Findings
+          
+          ### 📊 Documentation Coverage
+          
+          EOF
+          
+          cat documentation_analysis.json | python3 -c "
+          import sys
+          import json
+          data = json.load(sys.stdin)
+          
+          if data['classes_total'] > 0:
+              class_cov = (data['classes_documented'] / data['classes_total']) * 100
+              print(f\"- Classes: {class_cov:.1f}% ({data['classes_documented']}/{data['classes_total']})\")
+          
+          if data['functions_total'] > 0:
+              func_cov = (data['functions_documented'] / data['functions_total']) * 100
+              print(f\"- Functions: {func_cov:.1f}% ({data['functions_documented']}/{data['functions_total']})\")
+          
+          print(f\"- Modules with docstrings: {data['modules_with_docstring']}/{data['files_analyzed']}\")
+          " >> DOCUMENTATION_REPORT.md
+          
+          cat >> DOCUMENTATION_REPORT.md << 'EOF'
+          
+          ### 📝 Action Items
+          
+          See [DOCUMENTATION_TODO.md](./DOCUMENTATION_TODO.md) for detailed list of items needing documentation.
+          
+          ### 💡 README Improvements
+          
+          See [README_SUGGESTIONS.md](./README_SUGGESTIONS.md) for suggestions on improving the README.
+          
+          ### 🔧 Generated Documentation
+          
+          API documentation has been generated in `docs/api/` directory.
+          
+          ## Recommendations for Users
+          
+          1. **New Users**: Start with the main [README.md](./README.md) for installation and quick start
+          2. **Developers**: Review the API documentation in `docs/api/`
+          3. **Contributors**: Check [DOCUMENTATION_TODO.md](./DOCUMENTATION_TODO.md) for areas needing documentation
+          
+          ## Recommendations for Programming Agents
+          
+          When working with this codebase:
+          
+          1. **Module Documentation**: Check if module has docstring at the top explaining its purpose
+          2. **Function Signatures**: Review function docstrings for parameters, return values, and examples
+          3. **Class Documentation**: Look for class-level docstrings and method documentation
+          4. **Usage Examples**: Refer to `examples/` directory for practical usage patterns
+          5. **API Reference**: Use generated API docs in `docs/api/` for complete reference
+          
+          ### Key Entry Points
+          
+          - Main module: `ipfs_accelerate_py/ipfs_accelerate.py`
+          - CLI interface: `ipfs_accelerate_py/ai_inference_cli.py`
+          - Configuration: `ipfs_accelerate_py/config/`
+          - Examples: `examples/`
+          
+          ### Common Patterns
+          
+          - Hardware acceleration is configured through the main `ipfs_accelerate_py` class
+          - IPFS integration is handled by dedicated modules
+          - Browser-based acceleration uses WebNN/WebGPU APIs
+          - Performance monitoring is available through utility modules
+          
+          EOF
+          
+          echo "✅ Documentation report generated"
+      
+      - name: Check for documentation updates needed
+        id: check_updates
+        run: |
+          # Check if we have significant changes
+          if [ -f "DOCUMENTATION_TODO.md" ] || [ -f "README_SUGGESTIONS.md" ]; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Commit documentation updates
+        if: steps.check_updates.outputs.has_updates == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Add generated files
+          git add docs/api/ DOCUMENTATION_REPORT.md DOCUMENTATION_TODO.md README_SUGGESTIONS.md || true
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No documentation changes to commit"
+          else
+            git commit -m "docs: Weekly documentation maintenance update
+
+          - Generated API documentation
+          - Updated documentation analysis
+          - Created TODO list for missing documentation
+          - Added README improvement suggestions
+          
+          This is an automated commit from the weekly documentation maintenance workflow."
+            
+            echo "COMMIT_CREATED=true" >> $GITHUB_ENV
+          fi
+      
+      - name: Create Pull Request
+        if: env.COMMIT_CREATED == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "docs: Weekly documentation maintenance"
+          branch: docs/maintenance-${{ github.run_number }}
+          delete-branch: true
+          title: "📚 Weekly Documentation Maintenance Update"
+          body: |
+            ## 📊 Automated Documentation Maintenance
+            
+            This PR contains automated documentation updates from the weekly maintenance workflow.
+            
+            ### 📋 What's Included
+            
+            - ✅ Updated API documentation
+            - ✅ Documentation coverage analysis
+            - ✅ List of items needing documentation
+            - ✅ README improvement suggestions
+            
+            ### 📈 Summary
+            
+            ${{ steps.analyze.outputs.summary }}
+            
+            ### 🔍 Review Checklist
+            
+            - [ ] Review generated API documentation in `docs/api/`
+            - [ ] Check [DOCUMENTATION_TODO.md](./DOCUMENTATION_TODO.md) for priority items
+            - [ ] Review [README_SUGGESTIONS.md](./README_SUGGESTIONS.md) for README improvements
+            - [ ] Read full report in [DOCUMENTATION_REPORT.md](./DOCUMENTATION_REPORT.md)
+            
+            ### 🤖 For Programming Agents
+            
+            This PR provides:
+            - Comprehensive API documentation for all modules
+            - Analysis of documentation coverage
+            - Prioritized list of components needing documentation
+            - Usage patterns and entry points
+            
+            See [DOCUMENTATION_REPORT.md](./DOCUMENTATION_REPORT.md) for detailed information.
+            
+            ---
+            
+            *This PR was automatically generated by the documentation maintenance workflow.*
+          labels: |
+            documentation
+            automated
+      
+      - name: Upload documentation artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: documentation-analysis
+          path: |
+            documentation_analysis.json
+            DOCUMENTATION_REPORT.md
+            DOCUMENTATION_TODO.md
+            README_SUGGESTIONS.md
+            docs/api/
+          retention-days: 30
+      
+      - name: Post summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 📚 Documentation Maintenance Complete
+          
+          ### Summary
+          
+          EOF
+          
+          cat DOCUMENTATION_REPORT.md >> $GITHUB_STEP_SUMMARY
