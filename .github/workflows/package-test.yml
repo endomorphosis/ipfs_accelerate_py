@@ -11,86 +11,133 @@ on:
 
 jobs:
   package-test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Test package installation methods
+    - name: Set up QEMU for multi-arch support
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Test package installation methods in container
       run: |
-        echo "=== Testing Package Installation Methods ==="
+        echo "=== Testing Package Installation Methods in Isolated Containers ==="
+        
+        # Create a simple test Dockerfile for package installation
+        cat > Dockerfile.test << 'DOCKERFILE'
+        FROM python:3.12-slim-bookworm
+        
+        WORKDIR /app
+        COPY . .
+        
+        RUN apt-get update && apt-get install -y \
+            build-essential \
+            git \
+            && rm -rf /var/lib/apt/lists/*
         
         # Method 1: pip install with requirements
-        echo "Testing pip install with requirements..."
-        python3 -m venv test-venv-1
-        source test-venv-1/bin/activate
-        pip install --upgrade pip
-        
-        # Install core dependencies
-        if [ -f requirements.txt ]; then
-          pip install -r requirements.txt
-          echo "✅ Core requirements installed"
-        fi
+        RUN echo "Testing pip install with requirements..." && \
+            pip install --upgrade pip && \
+            if [ -f requirements.txt ]; then \
+              pip install -r requirements.txt && \
+              echo "✅ Core requirements installed"; \
+            fi
         
         # Install dashboard dependencies
-        if [ -f requirements_dashboard.txt ]; then
-          pip install -r requirements_dashboard.txt
-          echo "✅ Dashboard requirements installed"
-        fi
+        RUN if [ -f requirements_dashboard.txt ]; then \
+              pip install -r requirements_dashboard.txt && \
+              echo "✅ Dashboard requirements installed"; \
+            fi
         
         # Install enhanced scraper dependencies
-        if [ -f requirements_enhanced_scraper.txt ]; then
-          pip install -r requirements_enhanced_scraper.txt || echo "⚠️  Enhanced scraper deps may have failed"
-        fi
+        RUN if [ -f requirements_enhanced_scraper.txt ]; then \
+              pip install -r requirements_enhanced_scraper.txt || echo "⚠️  Enhanced scraper deps may have failed"; \
+            fi
         
-        deactivate
-        rm -rf test-venv-1
+        CMD ["python", "-c", "import ipfs_accelerate_py; print('Package import test')"]
+        DOCKERFILE
         
-    - name: Test pyproject.toml installation
+        docker build -f Dockerfile.test -t ipfs-accelerate-py:pkg-test-1 .
+        docker run --rm ipfs-accelerate-py:pkg-test-1
+        
+    - name: Test pyproject.toml installation in container
       run: |
-        echo "=== Testing pyproject.toml Installation ==="
+        echo "=== Testing pyproject.toml Installation in Isolated Container ==="
         
-        python3 -m venv test-venv-2
-        source test-venv-2/bin/activate
-        pip install --upgrade pip
+        cat > Dockerfile.test2 << 'DOCKERFILE'
+        FROM python:3.12-slim-bookworm
+        
+        WORKDIR /app
+        COPY . .
+        
+        RUN apt-get update && apt-get install -y \
+            build-essential \
+            git \
+            && rm -rf /var/lib/apt/lists/*
+        
+        RUN pip install --upgrade pip
         
         # Install in development mode
-        pip install -e . || echo "⚠️  Development install may have issues"
+        RUN pip install -e . || echo "⚠️  Development install may have issues"
         
         # Test optional dependencies
-        pip install -e ".[minimal]" || echo "⚠️  Minimal install may have issues"
+        RUN pip install -e ".[minimal]" || echo "⚠️  Minimal install may have issues"
         
-        deactivate
-        rm -rf test-venv-2
+        CMD ["python", "-c", "import ipfs_accelerate_py; print('Package installed successfully')"]
+        DOCKERFILE
         
-    - name: ARM64 compatibility check
+        docker build -f Dockerfile.test2 -t ipfs-accelerate-py:pkg-test-2 .
+        docker run --rm ipfs-accelerate-py:pkg-test-2
+        
+    - name: ARM64 compatibility check in container
       run: |
-        echo "=== ARM64 Compatibility Check ==="
+        echo "=== ARM64 Compatibility Check in Isolated Container ==="
         
-        python3 -m venv test-venv-3
-        source test-venv-3/bin/activate
-        pip install --upgrade pip
+        cat > Dockerfile.test3 << 'DOCKERFILE'
+        FROM python:3.12-slim-bookworm
+        
+        WORKDIR /app
+        
+        RUN apt-get update && apt-get install -y \
+            build-essential \
+            && rm -rf /var/lib/apt/lists/*
+        
+        RUN pip install --upgrade pip
         
         # Test key ARM64 packages
-        echo "Testing NumPy on ARM64..."
-        pip install numpy
-        python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
+        RUN echo "Testing NumPy..." && \
+            pip install numpy && \
+            python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
         
-        echo "Testing aiohttp on ARM64..."
-        pip install aiohttp
-        python -c "import aiohttp; print(f'aiohttp version: {aiohttp.__version__}')"
+        RUN echo "Testing aiohttp..." && \
+            pip install aiohttp && \
+            python -c "import aiohttp; print(f'aiohttp version: {aiohttp.__version__}')"
         
-        echo "Testing websockets on ARM64..."
-        pip install websockets
-        python -c "import websockets; print(f'websockets version: {websockets.__version__}')"
+        RUN echo "Testing websockets..." && \
+            pip install websockets && \
+            python -c "import websockets; print(f'websockets version: {websockets.__version__}')"
         
-        # Test if DuckDB works on ARM64
-        echo "Testing DuckDB on ARM64..."
-        pip install duckdb
-        python -c "import duckdb; print(f'DuckDB version: {duckdb.__version__}')"
+        # Test if DuckDB works
+        RUN echo "Testing DuckDB..." && \
+            pip install duckdb && \
+            python -c "import duckdb; print(f'DuckDB version: {duckdb.__version__}')"
         
-        deactivate
-        rm -rf test-venv-3
+        CMD ["echo", "ARM64 compatibility check completed"]
+        DOCKERFILE
         
-        echo "✅ ARM64 compatibility check completed"
+        docker build --platform linux/arm64 -f Dockerfile.test3 -t ipfs-accelerate-py:pkg-test-arm64 .
+        docker run --rm --platform linux/arm64 ipfs-accelerate-py:pkg-test-arm64
+        
+        echo "✅ ARM64 compatibility check completed in isolated container"
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        rm -f Dockerfile.test Dockerfile.test2 Dockerfile.test3
+        docker image rm ipfs-accelerate-py:pkg-test-1 || true
+        docker image rm ipfs-accelerate-py:pkg-test-2 || true
+        docker image rm ipfs-accelerate-py:pkg-test-arm64 || true
