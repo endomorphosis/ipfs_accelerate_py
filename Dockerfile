@@ -2,7 +2,7 @@
 # Supports multi-architecture builds (amd64, arm64) with hardware acceleration
 # Based on successful ipfs_kit_py patterns
 
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.12
 ARG BUILD_TYPE=production
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM

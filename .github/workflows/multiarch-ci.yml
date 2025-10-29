@@ -28,7 +28,7 @@ on:
 
 env:
   DOCKER_BUILDKIT: 1
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: '3.12'
 
 jobs:
   # Platform detection and setup
@@ -56,16 +56,13 @@ jobs:
     - name: Generate test matrices
       id: matrix
       run: |
-        # Native testing matrix
-        NATIVE_MATRIX='{"platform": ["amd64"], "python": ["3.9", "3.10", "3.11", "3.12"]}'
+        # Native testing matrix - Python 3.12 only (deprecated older versions)
+        NATIVE_MATRIX='{"platform": ["amd64"], "python": ["3.12"]}'
         
         if [[ "${{ github.event.inputs.test_all_platforms }}" == "true" ]] || [[ "${{ github.event_name }}" == "schedule" ]]; then
           NATIVE_MATRIX='{"include": [
-            {"platform": "amd64", "os": "ubuntu-latest", "python": "3.9"},
-            {"platform": "amd64", "os": "ubuntu-latest", "python": "3.10"}, 
-            {"platform": "amd64", "os": "ubuntu-latest", "python": "3.11"},
             {"platform": "amd64", "os": "ubuntu-latest", "python": "3.12"},
-            {"platform": "arm64", "os": "ubuntu-latest", "python": "3.11"}
+            {"platform": "arm64", "os": "ubuntu-latest", "python": "3.12"}
           ]}'
         fi
         
@@ -102,6 +99,7 @@ jobs:
     - name: System Information
       run: |
         echo "=== Multi-Architecture System Info ==="
+        echo "Testing Python 3.12 only (older versions deprecated)"
         echo "Target Platform: ${{ matrix.platform }}"
         echo "Python Version: ${{ matrix.python }}"
         uname -a
@@ -452,7 +450,7 @@ jobs:
         platforms: linux/${{ matrix.platform }}
         target: development
         build-args: |
-          PYTHON_VERSION=3.11
+          PYTHON_VERSION=3.12
         tags: ipfs-accelerate-py:perf-${{ matrix.platform }}
         load: true
         cache-from: type=gha,scope=perf-${{ matrix.platform }}

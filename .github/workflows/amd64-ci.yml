@@ -17,18 +17,14 @@ on:
         type: boolean
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: '3.12'
   DOCKER_BUILDKIT: 1
 
 jobs:
   # AMD64 containerized testing - all tests run inside Docker for security isolation
+  # Only testing Python 3.12 (older versions deprecated)
   test-amd64-containerized:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12']
-      fail-fast: false
     
     steps:
     - name: Checkout code
@@ -37,6 +33,7 @@ jobs:
     - name: System Information
       run: |
         echo "=== System Information ==="
+        echo "Testing Python 3.12 only (older versions deprecated)"
         uname -a
         lscpu | grep -E "Architecture|CPU|Model name|Thread|Core" || true
         free -h
@@ -67,15 +64,15 @@ jobs:
         platforms: linux/amd64
         target: testing
         build-args: |
-          PYTHON_VERSION=${{ matrix.python-version }}
-        tags: ipfs-accelerate-py:test-py${{ matrix.python-version }}-amd64
+          PYTHON_VERSION=3.12
+        tags: ipfs-accelerate-py:test-py3.12-amd64
         load: true
-        cache-from: type=gha,scope=test-py${{ matrix.python-version }}
-        cache-to: type=gha,mode=max,scope=test-py${{ matrix.python-version }}
+        cache-from: type=gha,scope=test-py3.12
+        cache-to: type=gha,mode=max,scope=test-py3.12
         
     - name: Run basic tests in container
       run: |
-        IMAGE_TAG="ipfs-accelerate-py:test-py${{ matrix.python-version }}-amd64"
+        IMAGE_TAG="ipfs-accelerate-py:test-py3.12-amd64"
         
         echo "🧪 Testing Docker image: $IMAGE_TAG"
         
@@ -93,7 +90,7 @@ jobs:
         
     - name: Run unit tests in container
       run: |
-        IMAGE_TAG="ipfs-accelerate-py:test-py${{ matrix.python-version }}-amd64"
+        IMAGE_TAG="ipfs-accelerate-py:test-py3.12-amd64"
         
         # Run pytest in isolated container
         docker run --rm --platform linux/amd64 $IMAGE_TAG bash -c "
@@ -106,7 +103,7 @@ jobs:
         
     - name: Test IPFS functionality in container
       run: |
-        IMAGE_TAG="ipfs-accelerate-py:test-py${{ matrix.python-version }}-amd64"
+        IMAGE_TAG="ipfs-accelerate-py:test-py3.12-amd64"
         
         docker run --rm --platform linux/amd64 $IMAGE_TAG python -c "
         try:
@@ -298,7 +295,7 @@ jobs:
         platforms: linux/amd64
         target: development
         build-args: |
-          PYTHON_VERSION=3.11
+          PYTHON_VERSION=3.12
         tags: ipfs-accelerate-py:integration-test
         load: true
         cache-from: type=gha,scope=integration
@@ -350,7 +347,7 @@ jobs:
         platforms: linux/amd64
         target: development
         build-args: |
-          PYTHON_VERSION=3.11
+          PYTHON_VERSION=3.12
         tags: ipfs-accelerate-py:performance-test
         load: true
         cache-from: type=gha,scope=performance
