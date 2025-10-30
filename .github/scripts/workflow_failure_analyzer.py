@@ -7,6 +7,7 @@ It can identify common patterns, suggest fixes, and generate detailed reports.
 """
 
 import json
+import os
 import re
 import sys
 from typing import Dict, List, Any, Optional, Tuple
