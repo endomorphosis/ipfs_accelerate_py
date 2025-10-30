@@ -68,6 +68,10 @@ jobs:
           workflow_url = os.environ['WORKFLOW_URL']
           repository = os.environ['REPOSITORY']
           
+          if not run_id or run_id == 'None':
+              print("Error: WORKFLOW_RUN_ID is not set", file=sys.stderr)
+              sys.exit(1)
+          
           headers = {
               'Authorization': f'Bearer {token}',
               'Accept': 'application/vnd.github.v3+json'
@@ -76,12 +80,24 @@ jobs:
           # Get workflow run details
           run_url = f'https://api.github.com/repos/{repository}/actions/runs/{run_id}'
           response = requests.get(run_url, headers=headers)
+          
+          if response.status_code != 200:
+              print(f"Error fetching workflow run: {response.status_code}", file=sys.stderr)
+              print(f"Response: {response.text}", file=sys.stderr)
+              sys.exit(1)
+          
           run_data = response.json()
           
           # Get jobs for this run
           jobs_url = f'https://api.github.com/repos/{repository}/actions/runs/{run_id}/jobs'
           jobs_response = requests.get(jobs_url, headers=headers)
-          jobs_data = jobs_response.json()
+          
+          if jobs_response.status_code != 200:
+              print(f"Error fetching jobs: {jobs_response.status_code}", file=sys.stderr)
+              # Continue with empty jobs list if we can't get jobs
+              jobs_data = {'jobs': []}
+          else:
+              jobs_data = jobs_response.json()
           
           # Find failed jobs
           failed_jobs = []
@@ -289,15 +305,21 @@ jobs:
       
       - name: Create healing context file
         run: |
-          cat > healing_context.json << 'EOF'
+          RUN_ID="${{ github.event.workflow_run.id || github.event.inputs.run_id }}"
+          TIMESTAMP="${{ github.event.workflow_run.updated_at || '' }}"
+          if [ -z "$TIMESTAMP" ]; then
+            TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          fi
+          
+          cat > healing_context.json << EOF
           {
             "workflow_name": "${{ steps.analyze.outputs.workflow_name }}",
             "failed_jobs_count": "${{ steps.analyze.outputs.failed_jobs_count }}",
             "branch": "${{ steps.analyze.outputs.branch }}",
             "commit_sha": "${{ steps.analyze.outputs.commit_sha }}",
-            "run_id": "${{ github.event.workflow_run.id }}",
+            "run_id": "${RUN_ID}",
             "repository": "${{ github.repository }}",
-            "timestamp": "${{ github.event.workflow_run.updated_at }}"
+            "timestamp": "${TIMESTAMP}"
           }
           EOF
           
@@ -315,7 +337,7 @@ jobs:
             const issue = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `🔧 Auto-Heal: ${{ steps.analyze.outputs.workflow_name }} Failed (Run #${{ github.event.workflow_run.id }})`,
+              title: `🔧 Auto-Heal: ${{ steps.analyze.outputs.workflow_name }} Failed (Run #${{ github.event.workflow_run.id || github.event.inputs.run_id }})`,
               body: issueBody,
               labels: ['auto-heal', 'workflow-failure', 'automated']
             });
@@ -326,7 +348,9 @@ jobs:
       - name: Create auto-heal branch
         id: create_branch
         run: |
-          BRANCH_NAME="auto-heal/workflow-${{ github.event.workflow_run.id }}-$(date +%s)"
+          # Use workflow_run.id or fall back to inputs.run_id for manual dispatches
+          RUN_ID="${{ github.event.workflow_run.id || github.event.inputs.run_id }}"
+          BRANCH_NAME="auto-heal/workflow-${RUN_ID}-$(date +%s)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
@@ -409,7 +433,7 @@ jobs:
 
               Automated fixes applied by auto-healing system:
               - Workflow: ${{ steps.analyze.outputs.workflow_name }}
-              - Run ID: ${{ github.event.workflow_run.id }}
+              - Run ID: ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
               - Branch: ${{ steps.analyze.outputs.branch }}
               
               This commit contains automated fixes for common issues detected in the workflow failure.
@@ -475,7 +499,7 @@ jobs:
             ### Failure Details
 
             - **Workflow**: ${{ steps.analyze.outputs.workflow_name }}
-            - **Run ID**: ${{ github.event.workflow_run.id }}
+            - **Run ID**: ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
             - **Branch**: ${{ steps.analyze.outputs.branch }}
             - **Commit**: ${{ steps.analyze.outputs.commit_sha }}
             - **Failed Jobs**: ${{ steps.analyze.outputs.failed_jobs_count }}
@@ -512,7 +536,7 @@ jobs:
               const pr = await github.rest.pulls.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: `🤖 Auto-Heal: Fix ${{ steps.analyze.outputs.workflow_name }} (Run #${{ github.event.workflow_run.id }})`,
+                title: `🤖 Auto-Heal: Fix ${{ steps.analyze.outputs.workflow_name }} (Run #${{ github.event.workflow_run.id || github.event.inputs.run_id }})`,
                 head: '${{ steps.create_branch.outputs.branch_name }}',
                 base: '${{ steps.analyze.outputs.branch }}',
                 body: prBody,
@@ -546,7 +570,7 @@ jobs:
       - name: Upload analysis artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: workflow-failure-analysis-${{ github.event.workflow_run.id }}
+          name: workflow-failure-analysis-${{ github.event.workflow_run.id || github.event.inputs.run_id }}
           path: |
             failure_analysis.json
             failure_report.md
