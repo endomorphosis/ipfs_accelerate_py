@@ -2,7 +2,13 @@ name: Auto-Heal Workflow Failures
 
 on:
   workflow_run:
-    workflows: ["*"]  # Monitor all workflows
+    # Monitor specific workflows (excluding auto-heal itself and documentation maintenance)
+    workflows:
+      - "AMD64 CI/CD Pipeline"
+      - "ARM64 CI/CD Pipeline"
+      - "Multi-Architecture CI/CD Pipeline"
+      - "Package Installation Test"
+      - "Test Auto-Heal System"
     types:
       - completed
 
@@ -564,43 +570,68 @@ jobs:
             // Create a comment on the issue with instructions for Copilot
             const issueNumber = ${{ steps.create_issue.outputs.result }};
             
-            const comment = `## 🤖 GitHub Copilot Manual Review Needed
-
-            The auto-healing system could not automatically fix this issue and requires manual intervention.
+            const comment = `## 🤖 GitHub Copilot Workspace Required
             
-            ${prompt}
+            The auto-healing system could not automatically fix this issue. A GitHub Copilot Workspace agent is needed to analyze and fix this problem.
             
-            ### Quick Context
+            ### Workflow Failure Context
             
             The workflow **${{ steps.analyze.outputs.workflow_name }}** failed with ${analysis.failed_jobs_count} failed job(s).
             
             A branch has been prepared for fixes:
-            - Branch: \`${{ steps.create_branch.outputs.branch_name }}\`
-            - Base: \`${{ steps.analyze.outputs.branch }}\`
+            - **Branch**: \`${{ steps.create_branch.outputs.branch_name }}\`
+            - **Base**: \`${{ steps.analyze.outputs.branch }}\`
+            - **Run ID**: ${{ github.event.workflow_run.id }}
+            - **Failed Commit**: ${{ steps.analyze.outputs.commit_sha }}
             
-            ### Failure Analysis
+            ### Root Cause Analysis
             
-            \`\`\`json
-            ${JSON.stringify(analysis, null, 2)}
+            ${prompt}
+            
+            ### Failure Logs Summary
+            
+            \`\`\`
+            ${analysis.failure_details && analysis.failure_details[0] ? analysis.failure_details[0].error_logs.substring(0, 1000) : 'No detailed logs available'}
             \`\`\`
             
-            ### Manual Fix Instructions
+            ### What Needs to be Done
             
-            1. Clone the repository
-            2. Checkout branch \`${{ steps.create_branch.outputs.branch_name }}\`
-            3. Review the failure analysis above
-            4. Implement the necessary fixes
-            5. Push your changes to the branch
-            6. Create a pull request linking this issue
+            A GitHub Copilot Workspace agent should:
             
-            Or invoke GitHub Copilot Workspace to assist:
+            1. **Checkout the branch** \`${{ steps.create_branch.outputs.branch_name }}\`
+            2. **Analyze the failure** using the detailed logs and context provided above
+            3. **Implement fixes** based on the root cause analysis
+            4. **Test the fixes** to ensure they resolve the issue
+            5. **Create a pull request** with the changes, linking this issue
+            
+            ### To Trigger GitHub Copilot Workspace
+            
+            Option 1 - **Automatic Trigger** (Recommended):
+            \`\`\`
+            @copilot /fix
+            \`\`\`
+            
+            Option 2 - **Manual GitHub Copilot Workspace**:
             \`\`\`
             @github-copilot workspace
-            Please help fix this workflow failure based on the analysis above.
+            
+            Please analyze the workflow failure described above and create a pull request with fixes.
+            Work on branch: ${{ steps.create_branch.outputs.branch_name }}
+            Fix the issues identified in the failure analysis.
             \`\`\`
             
+            ### Additional Context Files
+            
+            The following analysis files are available as workflow artifacts:
+            - \`failure_analysis.json\` - Complete failure data
+            - \`detailed_analysis.json\` - Advanced categorization
+            - \`copilot_healing_prompt.md\` - Detailed fix instructions
+            - \`healing_context.json\` - Workflow context
+            
+            Download artifacts from: [${{ github.event.workflow_run.html_url }}](${{ github.event.workflow_run.html_url }})
+            
             ---
-            *Automated fix was not possible - manual intervention required*`;
+            *🔧 Auto-heal system initialized - Waiting for GitHub Copilot Workspace to create fix PR*`;
             
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -609,13 +640,138 @@ jobs:
               body: comment
             });
             
-            console.log('Manual intervention notice posted to issue');
+            console.log('Manual intervention notice posted to issue with Copilot Workspace trigger');
+      
+      - name: Create placeholder PR for Copilot to work on
+        id: create_placeholder_pr
+        if: steps.apply_fixes.outputs.fixes_applied != 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const analysis = JSON.parse(fs.readFileSync('failure_analysis.json', 'utf8'));
+            
+            // Load detailed analysis if available
+            let detailedAnalysis = '';
+            if (fs.existsSync('detailed_analysis.json')) {
+              const detailed = JSON.parse(fs.readFileSync('detailed_analysis.json', 'utf8'));
+              detailedAnalysis = `### Root Cause Analysis
+            
+            **Category**: ${detailed.category || 'Unknown'}
+            **Confidence**: ${detailed.confidence ? (detailed.confidence * 100).toFixed(1) + '%' : 'N/A'}
+            **Description**: ${detailed.description || 'N/A'}
+            
+            ${detailed.root_cause ? '**Root Cause**:\n```\n' + detailed.root_cause + '\n```' : ''}
+            
+            ### Suggested Fixes
+            
+            ${detailed.suggested_fixes ? detailed.suggested_fixes.map((fix, i) => `${i+1}. ${fix}`).join('\n') : 'No specific suggestions available'}
+            `;
+            }
+            
+            const prBody = `## 🤖 Auto-Heal: GitHub Copilot Workspace Assistance Needed
+            
+            This PR was automatically created by the Auto-Heal system for a workflow failure that requires manual analysis.
+            
+            **⚠️ This PR is ready for GitHub Copilot Workspace to implement fixes.**
+            
+            ### Failure Details
+            
+            - **Workflow**: ${{ steps.analyze.outputs.workflow_name }}
+            - **Run ID**: ${{ github.event.workflow_run.id }}
+            - **Branch**: ${{ steps.analyze.outputs.branch }}
+            - **Commit**: ${{ steps.analyze.outputs.commit_sha }}
+            - **Failed Jobs**: ${{ steps.analyze.outputs.failed_jobs_count }}
+            - **Tracking Issue**: #${{ steps.create_issue.outputs.result }}
+            
+            ${detailedAnalysis}
+            
+            ### Task for GitHub Copilot Workspace
+            
+            Please analyze the workflow failure and implement fixes on this branch:
+            
+            1. **Review the failure analysis** in the linked issue and artifacts
+            2. **Identify the root cause** from the error logs
+            3. **Implement necessary fixes** to resolve the workflow failure
+            4. **Test the changes** to ensure they work correctly
+            5. **Update this PR description** with what was fixed
+            
+            ### Failure Summary
+            
+            \`\`\`
+            ${analysis.failure_details && analysis.failure_details[0] ? analysis.failure_details[0].error_logs.substring(0, 500) : 'See tracking issue for full logs'}
+            \`\`\`
+            
+            ### Testing Checklist
+            
+            - [ ] Root cause identified
+            - [ ] Fix implemented
+            - [ ] All tests pass
+            - [ ] No new errors introduced
+            - [ ] Original workflow issue is fixed
+            
+            ### Review Checklist
+            
+            - [ ] Review the implemented fix
+            - [ ] Verify the fix addresses the root cause
+            - [ ] Check for any side effects
+            - [ ] Ensure coding standards are maintained
+            - [ ] Test the workflow with these changes
+            
+            ### Links
+            
+            - **Tracking Issue**: #${{ steps.create_issue.outputs.result }}
+            - **Failed Workflow Run**: ${{ github.event.workflow_run.html_url }}
+            - **Commit**: https://github.com/${{ github.repository }}/commit/${{ steps.analyze.outputs.commit_sha }}
+            
+            ---
+            *This PR was created by the GitHub Actions Auto-Healing system*
+            *Waiting for GitHub Copilot Workspace to implement fixes*
+            *Issue: #${{ steps.create_issue.outputs.result }}*`;
+            
+            try {
+              const pr = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🔧 Auto-Heal: Fix ${{ steps.analyze.outputs.workflow_name }} (Run #${{ github.event.workflow_run.id }}) - Copilot Required`,
+                head: '${{ steps.create_branch.outputs.branch_name }}',
+                base: '${{ steps.analyze.outputs.branch }}',
+                body: prBody,
+                draft: true
+              });
+              
+              console.log(`Created placeholder PR #${pr.data.number} for Copilot Workspace`);
+              
+              // Add labels to the PR
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.data.number,
+                labels: ['auto-heal', 'copilot-workspace', 'needs-implementation', 'draft']
+              });
+              
+              // Link the PR to the issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ steps.create_issue.outputs.result }},
+                body: `📝 A draft pull request has been created for GitHub Copilot Workspace to work on.\n\n**PR**: #${pr.data.number}\n\nPlease use GitHub Copilot Workspace to analyze and implement fixes in this PR.`
+              });
+              
+              return pr.data.number;
+            } catch (error) {
+              console.error('Failed to create placeholder PR:', error);
+              // Don't fail the workflow if PR creation fails
+              return null;
+            }
       
       - name: Summary
         run: |
           # Determine if automated fixes were applied
           FIXES_APPLIED="${{ steps.apply_fixes.outputs.fixes_applied }}"
           PR_NUMBER="${{ steps.create_pr.outputs.result }}"
+          PLACEHOLDER_PR="${{ steps.create_placeholder_pr.outputs.result }}"
           
           cat >> $GITHUB_STEP_SUMMARY << EOF
           # 🔧 Auto-Heal Workflow Failure Detected
@@ -636,7 +792,8 @@ jobs:
           ✅ Created and pushed auto-heal branch  
           ${FIXES_APPLIED:+✅ Applied automated fixes  }
           ${PR_NUMBER:+✅ Created pull request #${PR_NUMBER}  }
-          ${FIXES_APPLIED:-⚠️ No automated fixes available - manual intervention required  }
+          ${PLACEHOLDER_PR:+✅ Created draft PR #${PLACEHOLDER_PR} for Copilot Workspace  }
+          ${FIXES_APPLIED:-⚠️ No automated fixes available - GitHub Copilot Workspace assistance requested  }
           
           ## Automated Fix Status
           
@@ -647,13 +804,23 @@ jobs:
           - **PR**: #${PR_NUMBER}
           - **Branch**: \`${{ steps.create_branch.outputs.branch_name }}\`
           
-          }${FIXES_APPLIED:-
+          }${PLACEHOLDER_PR:+
+          🤖 **GitHub Copilot Workspace Required**
+          
+          A draft pull request has been created for GitHub Copilot Workspace to implement fixes:
+          - **Draft PR**: #${PLACEHOLDER_PR}
+          - **Branch**: \`${{ steps.create_branch.outputs.branch_name }}\`
+          - **Tracking Issue**: #${{ steps.create_issue.outputs.result }}
+          
+          GitHub Copilot Workspace should analyze the failure and implement fixes in the PR.
+          
+          }${FIXES_APPLIED:-${PLACEHOLDER_PR:-
           ⚠️ **Manual intervention required**
           
           The auto-healing system could not automatically fix this issue. 
-          Please review the tracking issue and apply fixes manually, or invoke GitHub Copilot for assistance.
+          Please review the tracking issue and apply fixes manually, or invoke GitHub Copilot Workspace for assistance.
           
-          }
+          }}
           
           ## Next Steps
           
@@ -661,18 +828,25 @@ jobs:
           2. Run the affected workflow to verify the fix
           3. Merge the PR if all tests pass
           4. Close tracking issue #${{ steps.create_issue.outputs.result }}
-          }${FIXES_APPLIED:-1. Review the failure analysis in issue #${{ steps.create_issue.outputs.result }}
+          }${PLACEHOLDER_PR:+1. GitHub Copilot Workspace should implement fixes in PR #${PLACEHOLDER_PR}
+          2. Review the implemented fixes
+          3. Mark PR as ready for review when fixes are complete
+          4. Test the fixes by running the affected workflow
+          5. Merge the PR if all tests pass
+          6. Close tracking issue #${{ steps.create_issue.outputs.result }}
+          }${FIXES_APPLIED:-${PLACEHOLDER_PR:-1. Review the failure analysis in issue #${{ steps.create_issue.outputs.result }}
           2. Checkout branch \`${{ steps.create_branch.outputs.branch_name }}\`
-          3. Apply fixes manually or use GitHub Copilot
+          3. Apply fixes manually or use GitHub Copilot Workspace
           4. Create a pull request with your fixes
           5. Close the tracking issue after merging
-          }
+          }}
           
           ## Links
           
           - [Tracking Issue](#${{ steps.create_issue.outputs.result }})
           - [Failed Workflow Run](${{ github.event.workflow_run.html_url }})
           ${PR_NUMBER:+- [Auto-heal Pull Request](#${PR_NUMBER})}
+          ${PLACEHOLDER_PR:+- [Draft PR for Copilot Workspace](#${PLACEHOLDER_PR})}
           
           ---
           *Auto-healing system activated at $(date -u +"%Y-%m-%d %H:%M:%S UTC")*
