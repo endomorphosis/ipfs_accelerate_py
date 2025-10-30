@@ -21,8 +21,8 @@ permissions:
 jobs:
   detect-and-heal:
     runs-on: ubuntu-latest
-    # Only trigger if the workflow failed
-    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    # Only trigger if this is a workflow_run event AND the workflow failed
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
     
     steps:
       - name: Checkout repository
