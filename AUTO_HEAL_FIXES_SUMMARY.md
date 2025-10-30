@@ -132,10 +132,12 @@ All changes have been validated:
 ## Configuration
 
 The auto-healing system is configured via `.github/auto-heal-config.yml`:
-- Monitored workflows: Explicitly listed (no wildcards)
+- Monitored workflows: Config file uses `["*"]` (all workflows), but the actual workflow trigger uses explicit names due to GitHub Actions limitations
 - Excluded workflows: Auto-heal itself, documentation maintenance
 - Automated fixes: Enabled for dependency, timeout, permission, and syntax issues
 - Draft PRs: Created automatically when manual intervention is needed
+
+**Note**: While the config file supports wildcard syntax for flexibility, the actual GitHub Actions workflow trigger requires explicit workflow names. The workflow file lists all workflows that should be monitored.
 
 ## Usage
 
@@ -188,5 +190,5 @@ To verify the fixes:
 ---
 
 **Status**: ✅ All fixes implemented and tested
-**Date**: 2025-10-30
+**Last Updated**: October 2025
 **Version**: 1.1
