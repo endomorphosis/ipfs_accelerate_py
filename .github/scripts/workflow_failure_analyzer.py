@@ -496,47 +496,73 @@ Please:
 def main():
     """Main entry point for command-line usage."""
     if len(sys.argv) < 2:
-        print("Usage: python workflow_failure_analyzer.py <failure_analysis.json>")
+        print("Usage: python workflow_failure_analyzer.py <failure_analysis.json>", file=sys.stderr)
         sys.exit(1)
     
-    # Load failure analysis
-    with open(sys.argv[1], 'r') as f:
-        failure_data = json.load(f)
-    
-    # Extract logs
-    logs = []
-    for detail in failure_data.get('failure_details', []):
-        logs.append(detail.get('error_logs', ''))
-    log_content = '\n'.join(logs)
-    
-    # Analyze
-    analyzer = WorkflowFailureAnalyzer()
-    analysis = analyzer.analyze_logs(log_content)
-    
-    # Generate report
-    workflow_context = {
-        'workflow_name': failure_data.get('workflow_name'),
-        'branch': failure_data.get('branch'),
-        'commit_sha': failure_data.get('commit_sha'),
-        'run_id': failure_data.get('run_id'),
-        'timestamp': failure_data.get('failed_at'),
-    }
-    
-    report = analyzer.generate_report(analysis, workflow_context)
-    print(report)
-    
-    # Save detailed analysis
-    with open('detailed_analysis.json', 'w') as f:
-        json.dump(asdict(analysis), f, indent=2, default=str)
-    
-    # Generate Copilot prompt
-    copilot_prompt = analyzer.generate_copilot_prompt(analysis, workflow_context)
-    with open('copilot_detailed_prompt.md', 'w') as f:
-        f.write(copilot_prompt)
-    
-    print("\n✅ Analysis complete!")
-    print(f"- Detailed analysis: detailed_analysis.json")
-    print(f"- Copilot prompt: copilot_detailed_prompt.md")
+    try:
+        # Load failure analysis
+        input_file = sys.argv[1]
+        if not os.path.exists(input_file):
+            print(f"Error: Input file '{input_file}' not found", file=sys.stderr)
+            sys.exit(1)
+        
+        with open(input_file, 'r') as f:
+            failure_data = json.load(f)
+        
+        # Validate required fields
+        required_fields = ['workflow_name', 'failure_details']
+        missing_fields = [field for field in required_fields if field not in failure_data]
+        if missing_fields:
+            print(f"Warning: Missing required fields: {', '.join(missing_fields)}", file=sys.stderr)
+        
+        # Extract logs
+        logs = []
+        for detail in failure_data.get('failure_details', []):
+            logs.append(detail.get('error_logs', ''))
+        log_content = '\n'.join(logs)
+        
+        if not log_content.strip():
+            print("Warning: No failure logs found in the analysis", file=sys.stderr)
+        
+        # Analyze
+        analyzer = WorkflowFailureAnalyzer()
+        analysis = analyzer.analyze_logs(log_content)
+        
+        # Generate report
+        workflow_context = {
+            'workflow_name': failure_data.get('workflow_name', 'Unknown'),
+            'branch': failure_data.get('branch', 'Unknown'),
+            'commit_sha': failure_data.get('commit_sha', 'Unknown'),
+            'run_id': failure_data.get('run_id', 'Unknown'),
+            'timestamp': failure_data.get('failed_at', 'Unknown'),
+        }
+        
+        report = analyzer.generate_report(analysis, workflow_context)
+        print(report)
+        
+        # Save detailed analysis
+        with open('detailed_analysis.json', 'w') as f:
+            json.dump(asdict(analysis), f, indent=2, default=str)
+        
+        # Generate Copilot prompt
+        copilot_prompt = analyzer.generate_copilot_prompt(analysis, workflow_context)
+        with open('copilot_detailed_prompt.md', 'w') as f:
+            f.write(copilot_prompt)
+        
+        print("\n✅ Analysis complete!")
+        print(f"- Detailed analysis: detailed_analysis.json")
+        print(f"- Copilot prompt: copilot_detailed_prompt.md")
+        
+        sys.exit(0)
+        
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in input file: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: Analysis failed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == '__main__':

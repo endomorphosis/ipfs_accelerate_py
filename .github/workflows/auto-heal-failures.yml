@@ -149,8 +149,16 @@ jobs:
           python analyze_failure.py
       
       - name: Run advanced failure analysis
+        id: advanced_analysis
+        continue-on-error: true
         run: |
-          python .github/scripts/workflow_failure_analyzer.py failure_analysis.json || echo "Advanced analysis completed"
+          if python .github/scripts/workflow_failure_analyzer.py failure_analysis.json; then
+            echo "analysis_completed=true" >> $GITHUB_OUTPUT
+            echo "Advanced analysis completed successfully"
+          else
+            echo "analysis_completed=false" >> $GITHUB_OUTPUT
+            echo "Warning: Advanced analysis failed, continuing with basic analysis"
+          fi
       
       - name: Generate failure report
         id: report
@@ -313,8 +321,11 @@ jobs:
           # Create new branch from the failed commit
           git checkout -b "$BRANCH_NAME" ${{ steps.analyze.outputs.commit_sha }}
           
+          # Push the branch to remote so it's accessible
+          git push origin "$BRANCH_NAME"
+          
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-          echo "Created branch: $BRANCH_NAME"
+          echo "Created and pushed branch: $BRANCH_NAME"
       
       - name: Prepare Copilot healing request
         run: |
@@ -365,6 +376,161 @@ jobs:
           
           cat copilot_healing_prompt.md
       
+      - name: Apply automated fixes
+        id: apply_fixes
+        continue-on-error: true
+        run: |
+          # Apply automated fixes for common issues
+          if [ -f "detailed_analysis.json" ]; then
+            python .github/scripts/auto_fix_common_issues.py failure_analysis.json detailed_analysis.json
+            
+            # Check if any changes were made
+            if git diff --quiet; then
+              echo "fixes_applied=false" >> $GITHUB_OUTPUT
+              echo "No automated fixes could be applied"
+            else
+              echo "fixes_applied=true" >> $GITHUB_OUTPUT
+              
+              # Stage and commit the changes
+              git add -A
+              git commit -m "Auto-heal: Apply automated fixes for ${{ steps.analyze.outputs.workflow_name }}
+
+              Automated fixes applied by auto-healing system:
+              - Workflow: ${{ steps.analyze.outputs.workflow_name }}
+              - Run ID: ${{ github.event.workflow_run.id }}
+              - Branch: ${{ steps.analyze.outputs.branch }}
+              
+              This commit contains automated fixes for common issues detected in the workflow failure.
+              Please review the changes carefully before merging.
+              
+              Related issue: Will be linked in PR"
+              
+              # Push the changes to the remote branch
+              git push origin "${{ steps.create_branch.outputs.branch_name }}"
+              
+              echo "Automated fixes applied and pushed"
+              
+              # Load the fix summary
+              if [ -f "auto_fix_summary.json" ]; then
+                cat auto_fix_summary.json
+              fi
+            fi
+          else
+            echo "fixes_applied=false" >> $GITHUB_OUTPUT
+            echo "Detailed analysis not available, skipping automated fixes"
+          fi
+      
+      - name: Create Pull Request with fixes
+        id: create_pr
+        if: steps.apply_fixes.outputs.fixes_applied == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            // Load fix summary if available
+            let fixSummary = '';
+            if (fs.existsSync('auto_fix_summary.json')) {
+              const summary = JSON.parse(fs.readFileSync('auto_fix_summary.json', 'utf8'));
+              if (summary.fixes_applied && summary.fixes_applied.length > 0) {
+                fixSummary = '### Automated Fixes Applied\n\n' + 
+                  summary.fixes_applied.map(fix => `- ${fix}`).join('\n');
+              }
+            }
+            
+            // Load analysis for PR description
+            const analysis = JSON.parse(fs.readFileSync('failure_analysis.json', 'utf8'));
+            let detailedAnalysis = '';
+            if (fs.existsSync('detailed_analysis.json')) {
+              const detailed = JSON.parse(fs.readFileSync('detailed_analysis.json', 'utf8'));
+              detailedAnalysis = `### Root Cause Analysis
+
+            **Category**: ${detailed.category || 'Unknown'}
+            **Confidence**: ${detailed.confidence ? (detailed.confidence * 100).toFixed(1) + '%' : 'N/A'}
+            **Description**: ${detailed.description || 'N/A'}
+
+            ${detailed.root_cause ? '**Root Cause**:\n```\n' + detailed.root_cause + '\n```' : ''}
+            `;
+            }
+            
+            const prBody = `## 🤖 Automated Workflow Fix
+
+            This PR was automatically generated by the Auto-Heal system to fix a workflow failure.
+
+            ${fixSummary}
+
+            ### Failure Details
+
+            - **Workflow**: ${{ steps.analyze.outputs.workflow_name }}
+            - **Run ID**: ${{ github.event.workflow_run.id }}
+            - **Branch**: ${{ steps.analyze.outputs.branch }}
+            - **Commit**: ${{ steps.analyze.outputs.commit_sha }}
+            - **Failed Jobs**: ${{ steps.analyze.outputs.failed_jobs_count }}
+            - **Tracking Issue**: #${{ steps.create_issue.outputs.result }}
+
+            ${detailedAnalysis}
+
+            ### Testing Checklist
+
+            - [ ] All tests pass
+            - [ ] No new errors introduced
+            - [ ] Original workflow issue is fixed
+            - [ ] Changes reviewed for correctness
+
+            ### Review Checklist
+
+            - [ ] Verify the fix addresses the root cause
+            - [ ] Check for any side effects
+            - [ ] Ensure coding standards are maintained
+            - [ ] Test the workflow with these changes
+
+            ### Next Steps
+
+            1. Review the automated changes
+            2. Run the affected workflow to verify the fix
+            3. Merge if all checks pass
+            4. Close tracking issue #${{ steps.create_issue.outputs.result }}
+
+            ---
+            *This PR was created by the GitHub Actions Auto-Healing system*
+            *Fixes: #${{ steps.create_issue.outputs.result }}*`;
+
+            try {
+              const pr = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🤖 Auto-Heal: Fix ${{ steps.analyze.outputs.workflow_name }} (Run #${{ github.event.workflow_run.id }})`,
+                head: '${{ steps.create_branch.outputs.branch_name }}',
+                base: '${{ steps.analyze.outputs.branch }}',
+                body: prBody,
+                draft: false
+              });
+
+              console.log(`Created PR #${pr.data.number}`);
+              
+              // Add labels to the PR
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.data.number,
+                labels: ['auto-heal', 'automated-fix', 'needs-review']
+              });
+              
+              // Link the PR to the issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ steps.create_issue.outputs.result }},
+                body: `🎉 Automated fixes have been applied!\n\nPull Request: #${pr.data.number}\n\nPlease review and test the changes.`
+              });
+              
+              return pr.data.number;
+            } catch (error) {
+              console.error('Failed to create PR:', error);
+              throw error;
+            }
+      
       - name: Upload analysis artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -376,10 +542,12 @@ jobs:
             copilot_healing_prompt.md
             detailed_analysis.json
             copilot_detailed_prompt.md
+            auto_fix_summary.json
           retention-days: 30
       
-      - name: Trigger Copilot Workspace
+      - name: Notify via Copilot comment (if no auto-fix applied)
         id: trigger_copilot
+        if: steps.apply_fixes.outputs.fixes_applied != 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -396,9 +564,9 @@ jobs:
             // Create a comment on the issue with instructions for Copilot
             const issueNumber = ${{ steps.create_issue.outputs.result }};
             
-            const comment = `## 🤖 GitHub Copilot Auto-Healing Instructions
-            
-            @github-copilot workspace
+            const comment = `## 🤖 GitHub Copilot Manual Review Needed
+
+            The auto-healing system could not automatically fix this issue and requires manual intervention.
             
             ${prompt}
             
@@ -406,7 +574,7 @@ jobs:
             
             The workflow **${{ steps.analyze.outputs.workflow_name }}** failed with ${analysis.failed_jobs_count} failed job(s).
             
-            Please analyze the failure and create a pull request with fixes to:
+            A branch has been prepared for fixes:
             - Branch: \`${{ steps.create_branch.outputs.branch_name }}\`
             - Base: \`${{ steps.analyze.outputs.branch }}\`
             
@@ -416,17 +584,23 @@ jobs:
             ${JSON.stringify(analysis, null, 2)}
             \`\`\`
             
-            ### Instructions
+            ### Manual Fix Instructions
             
             1. Clone the repository
             2. Checkout branch \`${{ steps.create_branch.outputs.branch_name }}\`
             3. Review the failure analysis above
-            4. Fix the identified issues
-            5. Create a pull request with your fixes
-            6. Link this issue in the PR description
+            4. Implement the necessary fixes
+            5. Push your changes to the branch
+            6. Create a pull request linking this issue
+            
+            Or invoke GitHub Copilot Workspace to assist:
+            \`\`\`
+            @github-copilot workspace
+            Please help fix this workflow failure based on the analysis above.
+            \`\`\`
             
             ---
-            *Copilot, please help fix this workflow failure!*`;
+            *Automated fix was not possible - manual intervention required*`;
             
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -435,11 +609,15 @@ jobs:
               body: comment
             });
             
-            console.log('Copilot workspace instructions posted to issue');
+            console.log('Manual intervention notice posted to issue');
       
       - name: Summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # Determine if automated fixes were applied
+          FIXES_APPLIED="${{ steps.apply_fixes.outputs.fixes_applied }}"
+          PR_NUMBER="${{ steps.create_pr.outputs.result }}"
+          
+          cat >> $GITHUB_STEP_SUMMARY << EOF
           # 🔧 Auto-Heal Workflow Failure Detected
           
           ## Details
@@ -448,28 +626,53 @@ jobs:
           - **Failed Jobs**: ${{ steps.analyze.outputs.failed_jobs_count }}
           - **Branch**: ${{ steps.analyze.outputs.branch }}
           - **Issue**: #${{ steps.create_issue.outputs.result }}
-          - **Auto-heal Branch**: `${{ steps.create_branch.outputs.branch_name }}`
+          - **Auto-heal Branch**: \`${{ steps.create_branch.outputs.branch_name }}\`
           
           ## Actions Taken
           
           ✅ Analyzed workflow failure  
           ✅ Created tracking issue  
           ✅ Prepared healing context  
-          ✅ Created auto-heal branch  
-          ✅ Triggered GitHub Copilot Workspace  
+          ✅ Created and pushed auto-heal branch  
+          ${FIXES_APPLIED:+✅ Applied automated fixes  }
+          ${PR_NUMBER:+✅ Created pull request #${PR_NUMBER}  }
+          ${FIXES_APPLIED:-⚠️ No automated fixes available - manual intervention required  }
+          
+          ## Automated Fix Status
+          
+          ${FIXES_APPLIED:+
+          🎉 **Automated fixes successfully applied!**
+          
+          A pull request has been created with the fixes. Please review and test:
+          - **PR**: #${PR_NUMBER}
+          - **Branch**: \`${{ steps.create_branch.outputs.branch_name }}\`
+          
+          }${FIXES_APPLIED:-
+          ⚠️ **Manual intervention required**
+          
+          The auto-healing system could not automatically fix this issue. 
+          Please review the tracking issue and apply fixes manually, or invoke GitHub Copilot for assistance.
+          
+          }
           
           ## Next Steps
           
-          1. GitHub Copilot will analyze the failure
-          2. Copilot will create fixes on branch `${{ steps.create_branch.outputs.branch_name }}`
-          3. A pull request will be created with the fixes
-          4. Review and test the automated fix
-          5. Merge if the fix resolves the issue
+          ${FIXES_APPLIED:+1. Review the automated fixes in PR #${PR_NUMBER}
+          2. Run the affected workflow to verify the fix
+          3. Merge the PR if all tests pass
+          4. Close tracking issue #${{ steps.create_issue.outputs.result }}
+          }${FIXES_APPLIED:-1. Review the failure analysis in issue #${{ steps.create_issue.outputs.result }}
+          2. Checkout branch \`${{ steps.create_branch.outputs.branch_name }}\`
+          3. Apply fixes manually or use GitHub Copilot
+          4. Create a pull request with your fixes
+          5. Close the tracking issue after merging
+          }
           
           ## Links
           
           - [Tracking Issue](#${{ steps.create_issue.outputs.result }})
           - [Failed Workflow Run](${{ github.event.workflow_run.html_url }})
+          ${PR_NUMBER:+- [Auto-heal Pull Request](#${PR_NUMBER})}
           
           ---
           *Auto-healing system activated at $(date -u +"%Y-%m-%d %H:%M:%S UTC")*
