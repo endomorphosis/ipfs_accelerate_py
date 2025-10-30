@@ -50,3 +50,20 @@ test_output2
 test_outputs
 transformers_docs_build
 test/doc-builder
+
+# Auto-heal system temporary files
+failure_analysis.json
+failure_report.md
+healing_context.json
+copilot_healing_prompt.md
+copilot_detailed_prompt.md
+detailed_analysis.json
+issue_body.md
+analyze_codebase.py
+analyze_failure.py
+check_examples.py
+find_missing_docs.py
+generate_report.py
+readme_suggestions.py
+analysis_summary.txt
+documentation_analysis.json
