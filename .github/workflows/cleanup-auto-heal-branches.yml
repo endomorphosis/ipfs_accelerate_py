@@ -130,7 +130,7 @@ jobs:
           python .github/scripts/cleanup_old_branches.py branches.json "$DAYS"
           
           if [ -f "stale_branches.txt" ] && [ -s "stale_branches.txt" ]; then
-            BRANCH_COUNT=$(grep -c "^" stale_branches.txt || echo "0")
+            BRANCH_COUNT=$(wc -l < stale_branches.txt | tr -d ' ')
             echo "stale_count=$BRANCH_COUNT" >> $GITHUB_OUTPUT
             echo "Found $BRANCH_COUNT stale branches"
           else
@@ -244,6 +244,13 @@ jobs:
       - name: Summary
         run: |
           BRANCHES_DELETED="${{ steps.check_prs.outputs.result || '0' }}"
+          DRY_RUN="${{ github.event.inputs.dry_run }}"
+          
+          if [ "$DRY_RUN" = "true" ]; then
+            DELETED_MSG="0 (dry run)"
+          else
+            DELETED_MSG="$BRANCHES_DELETED"
+          fi
           
           cat >> $GITHUB_STEP_SUMMARY << EOF
           # 🧹 Auto-Heal Branch Cleanup
@@ -253,15 +260,28 @@ jobs:
           - **Total auto-heal branches**: ${{ steps.get_branches.outputs.result }}
           - **Stale branches identified**: ${{ steps.identify_stale.outputs.stale_count }}
           - **Branches with open PRs**: $((${{ steps.identify_stale.outputs.stale_count }} - ${BRANCHES_DELETED}))
-          - **Branches deleted**: ${{ github.event.inputs.dry_run == 'true' && '0 (dry run)' || '${BRANCHES_DELETED}' }}
+          - **Branches deleted**: ${DELETED_MSG}
           
           ## Details
           
           Branches older than **${{ github.event.inputs.days_old || '7' }}** days were considered for cleanup.
           
           Branches with open pull requests were automatically preserved.
+          EOF
           
-          ${{ github.event.inputs.dry_run == 'true' && '⚠️ **This was a dry run** - no branches were actually deleted.' || '✅ Cleanup completed successfully.' }}
+          if [ "$DRY_RUN" = "true" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          
+          ⚠️ **This was a dry run** - no branches were actually deleted.
+          EOF
+          else
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          
+          ✅ Cleanup completed successfully.
+          EOF
+          fi
+          
+          cat >> $GITHUB_STEP_SUMMARY << EOF
           
           ---
           *Cleanup ran at $(date -u +"%Y-%m-%d %H:%M:%S UTC")*

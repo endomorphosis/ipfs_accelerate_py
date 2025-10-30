@@ -12,7 +12,7 @@ It keeps branches that:
 import os
 import sys
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 
 
@@ -27,7 +27,6 @@ def get_stale_branches(branches: List[Dict[str, Any]], days: int = 7) -> List[st
     Returns:
         List of branch names that are stale
     """
-    from datetime import timezone
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
     stale_branches = []
     
