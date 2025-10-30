@@ -14,7 +14,9 @@ excluded_workflows:
   - "Weekly Documentation Maintenance"  # Documentation workflows typically don't need auto-heal
 
 # Maximum number of auto-heal attempts per workflow per day
-max_heal_attempts_per_day: 3
+# Set to 0 or -1 for unlimited attempts (recommended for aggressive auto-healing)
+# Set to a positive number (e.g., 3) if you want to limit attempts to prevent loops
+max_heal_attempts_per_day: 0  # Unlimited - will attempt to heal every failure
 
 # Require manual approval before creating PR
 require_manual_approval: false

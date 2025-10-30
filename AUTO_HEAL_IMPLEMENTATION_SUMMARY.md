@@ -273,7 +273,7 @@ enabled: true
 monitored_workflows: ["*"]
 excluded_workflows:
   - "Auto-Heal Workflow Failures"
-max_heal_attempts_per_day: 1
+max_heal_attempts_per_day: 0  # Unlimited attempts
 require_manual_approval: false
 auto_merge_on_success: false
 pull_request:
@@ -294,7 +294,7 @@ monitored_workflows: ["*"]
 excluded_workflows:
   - "Auto-Heal Workflow Failures"
   - "Weekly Documentation Maintenance"
-max_heal_attempts_per_day: 3
+max_heal_attempts_per_day: 0  # Unlimited attempts
 require_manual_approval: false
 auto_merge_on_success: false
 pull_request:
@@ -314,7 +314,7 @@ enabled: true
 monitored_workflows: ["*"]
 excluded_workflows:
   - "Auto-Heal Workflow Failures"
-max_heal_attempts_per_day: 5
+max_heal_attempts_per_day: 0  # Unlimited attempts
 require_manual_approval: false
 auto_merge_on_success: true  # ⚠️ Use carefully!
 pull_request:
@@ -404,8 +404,8 @@ copilot:
 logging:
   retention_days: 7  # default: 30
 
-# Limit triggers
-max_heal_attempts_per_day: 1
+# Note: Rate limiting removed - unlimited attempts enabled by default
+# You can add back: max_heal_attempts_per_day: N if needed
 ```
 
 ## 🐛 Common Issues & Solutions

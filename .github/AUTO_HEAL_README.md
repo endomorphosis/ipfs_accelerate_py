@@ -161,8 +161,8 @@ monitored_workflows:
 excluded_workflows:
   - "Auto-Heal Workflow Failures"
   
-# Maximum healing attempts per day
-max_heal_attempts_per_day: 3
+# Maximum healing attempts per day (0 = unlimited)
+max_heal_attempts_per_day: 0  # Unlimited attempts
 ```
 
 ### Advanced Configuration
@@ -340,7 +340,7 @@ Please analyze the failure in the issue description and create a fix.
 2. **Monitor Success Rate**: Track how many auto-heals succeed
 3. **Update Patterns**: Add new failure patterns as you discover them
 4. **Train Team**: Ensure team knows how to work with auto-heal PRs
-5. **Set Limits**: Use `max_heal_attempts_per_day` to prevent loops
+5. **Monitor Activity**: Watch for excessive auto-heal attempts if needed
 
 ### For Developers
 
