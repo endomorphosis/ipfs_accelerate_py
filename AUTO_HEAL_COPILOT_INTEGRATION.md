@@ -4,6 +4,8 @@
 
 This document describes how the Auto-Heal workflow system integrates with GitHub Copilot agents to automatically fix workflow failures.
 
+**Latest Update (2025-10-30)**: The auto-heal workflow has been improved with better error handling, support for manual dispatches, and more robust API interactions.
+
 ## How It Works
 
 ### 1. Workflow Failure Detection
@@ -195,6 +197,34 @@ If auto-heal doesn't start:
 3. Check auto-heal workflow permissions
 4. Review auto-heal workflow run logs
 
+## Recent Improvements (2025-10-30)
+
+The auto-heal workflow has been enhanced with the following improvements:
+
+### Enhanced Error Handling
+- ✅ Added validation for missing run IDs to prevent silent failures
+- ✅ Improved GitHub API error handling with clear error messages
+- ✅ Added graceful degradation when job data cannot be fetched
+- ✅ Better error reporting for debugging issues
+
+### Manual Dispatch Support
+- ✅ Fixed branch creation to handle manual workflow dispatches
+- ✅ Added proper fallback from `github.event.workflow_run.id` to `github.event.inputs.run_id`
+- ✅ Updated healing context generation to work with both event types
+- ✅ Fixed artifact naming for manual dispatches
+
+### Robustness Improvements
+- ✅ Consistent use of run ID fallbacks throughout the workflow
+- ✅ Timestamp generation for manual dispatches
+- ✅ Null/None checks before using critical values
+- ✅ More detailed logging for troubleshooting
+
+### What This Means
+These improvements make the auto-heal system more reliable and easier to test. You can now:
+- Manually trigger the auto-heal workflow for testing
+- Get better error messages when something goes wrong
+- Have confidence that the workflow will handle edge cases gracefully
+
 ## Benefits
 
 ✅ **Automatic Issue Creation**: Every failure is tracked
@@ -203,6 +233,8 @@ If auto-heal doesn't start:
 ✅ **Copilot Integration**: Complex issues handled by AI agent
 ✅ **Audit Trail**: Complete history of failures and fixes
 ✅ **Time Savings**: Reduces manual debugging time
+✅ **Robust Error Handling**: Clear error messages and graceful degradation (NEW)
+✅ **Manual Testing**: Support for manual workflow dispatches (NEW)
 
 ## Security Considerations
 
