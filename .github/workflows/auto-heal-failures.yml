@@ -148,6 +148,10 @@ jobs:
           
           python analyze_failure.py
       
+      - name: Run advanced failure analysis
+        run: |
+          python .github/scripts/workflow_failure_analyzer.py failure_analysis.json || echo "Advanced analysis completed"
+      
       - name: Generate failure report
         id: report
         run: |
@@ -158,6 +162,12 @@ jobs:
           # Load analysis
           with open('failure_analysis.json', 'r') as f:
               analysis = json.load(f)
+          
+          # Load advanced analysis if available
+          advanced_analysis = None
+          if os.path.exists('detailed_analysis.json'):
+              with open('detailed_analysis.json', 'r') as f:
+                  advanced_analysis = json.load(f)
           
           # Generate markdown report
           report = f"""# Workflow Failure Analysis Report
@@ -170,6 +180,36 @@ jobs:
           - **Commit**: {analysis['commit_sha'][:7]}
           - **Failed Jobs**: {analysis['failed_jobs_count']}
           - **Failed At**: {analysis['failed_at']}
+          """
+          
+          # Add advanced analysis if available
+          if advanced_analysis:
+              confidence_emoji = "🟢" if advanced_analysis['confidence'] > 0.8 else "🟡" if advanced_analysis['confidence'] > 0.6 else "🔴"
+              report += f"""
+          
+          ## Advanced Analysis
+          
+          {confidence_emoji} **Confidence Level**: {advanced_analysis['confidence'] * 100:.1f}%
+          
+          - **Category**: {advanced_analysis['category'].upper()}
+          - **Description**: {advanced_analysis['description']}
+          
+          ### Root Cause
+          
+          ```
+          {advanced_analysis['root_cause']}
+          ```
+          
+          ### Affected Files
+          
+          {chr(10).join(f'- `{f}`' for f in advanced_analysis.get('affected_files', [])) if advanced_analysis.get('affected_files') else '_No specific files identified_'}
+          
+          ### Recommended Fixes
+          
+          {chr(10).join(f'{i+1}. {fix}' for i, fix in enumerate(advanced_analysis['suggested_fixes']))}
+          """
+          
+          report += """
           
           ## Failure Details
           
@@ -334,6 +374,8 @@ jobs:
             failure_report.md
             healing_context.json
             copilot_healing_prompt.md
+            detailed_analysis.json
+            copilot_detailed_prompt.md
           retention-days: 30
       
       - name: Trigger Copilot Workspace
@@ -344,7 +386,12 @@ jobs:
           script: |
             const fs = require('fs');
             const analysis = JSON.parse(fs.readFileSync('failure_analysis.json', 'utf8'));
-            const prompt = fs.readFileSync('copilot_healing_prompt.md', 'utf8');
+            
+            // Use advanced prompt if available, otherwise use basic prompt
+            let prompt = fs.readFileSync('copilot_healing_prompt.md', 'utf8');
+            if (fs.existsSync('copilot_detailed_prompt.md')) {
+              prompt = fs.readFileSync('copilot_detailed_prompt.md', 'utf8');
+            }
             
             // Create a comment on the issue with instructions for Copilot
             const issueNumber = ${{ steps.create_issue.outputs.result }};
