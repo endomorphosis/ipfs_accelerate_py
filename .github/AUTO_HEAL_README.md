@@ -2,15 +2,16 @@
 
 ## Overview
 
-The Auto-Healing System is an automated workflow failure detection and remediation system that uses **GitHub Copilot Workspace** to automatically diagnose and fix failing GitHub Actions workflows.
+The Auto-Healing System is an automated workflow failure detection and remediation system that **automatically diagnoses and fixes** common GitHub Actions workflow failures. It can apply automated fixes for many common issues and create pull requests without manual intervention.
 
 ## 🎯 Features
 
 - **Automatic Failure Detection**: Monitors all GitHub Actions workflows for failures
-- **Intelligent Analysis**: Analyzes failure logs to identify root causes
-- **AI-Powered Fixes**: Uses GitHub Copilot to generate fixes automatically
+- **Intelligent Analysis**: Analyzes failure logs to identify root causes with high confidence
+- **Automated Fixes**: Automatically fixes common issues (dependencies, timeouts, syntax, permissions)
 - **Issue Tracking**: Creates tracking issues for every failure
-- **Pull Request Generation**: Automatically creates PRs with proposed fixes
+- **Automatic Pull Request Generation**: Creates PRs with automated fixes when possible
+- **Manual Intervention Support**: Provides detailed guidance when automatic fixes aren't possible
 - **Comprehensive Logging**: Maintains detailed logs and reports for audit
 - **Configurable Behavior**: Extensive configuration options for customization
 
@@ -21,17 +22,18 @@ graph TD
     A[Workflow Fails] --> B[Auto-Heal Triggered]
     B --> C[Analyze Failure Logs]
     C --> D[Create Tracking Issue]
-    D --> E[Create Auto-Heal Branch]
-    E --> F[Trigger GitHub Copilot]
-    F --> G[Copilot Analyzes & Fixes]
-    G --> H[Create Pull Request]
-    H --> I[Run Tests on Fix]
-    I --> J{Tests Pass?}
-    J -->|Yes| K[Ready for Review]
-    J -->|No| L[Update Issue]
-    K --> M[Manual Review]
-    M --> N[Merge PR]
-    N --> O[Original Workflow Passes]
+    D --> E[Create & Push Auto-Heal Branch]
+    E --> F{Can Auto-Fix?}
+    F -->|Yes| G[Apply Automated Fixes]
+    G --> H[Push Changes]
+    H --> I[Create Pull Request]
+    I --> J[Link PR to Issue]
+    J --> K[Ready for Review]
+    F -->|No| L[Notify for Manual Fix]
+    L --> M[Provide Detailed Instructions]
+    K --> N[Manual Review]
+    N --> O[Merge PR]
+    O --> P[Original Workflow Passes]
 ```
 
 ## 📋 Workflow Lifecycle
@@ -49,6 +51,7 @@ The system:
 - Identifies all failed jobs and steps
 - Extracts relevant error logs
 - Creates a structured analysis JSON file
+- Categorizes the failure type with confidence score
 
 ### 3. Issue Creation
 
@@ -58,30 +61,71 @@ A tracking issue is automatically created with:
 - Error logs and context
 - Links to the failed run
 - Auto-heal label for tracking
+- Detailed analysis and root cause
 
-### 4. Copilot Activation
+### 4. Automated Fix Application
 
-GitHub Copilot Workspace is triggered via issue comment:
-- Receives the complete failure analysis
-- Gets context about the repository
-- Receives instructions on what to fix
-- Creates fixes on a dedicated branch
+The system attempts to automatically fix common issues:
+
+**Dependency Issues** (95% confidence)
+- Detects missing Python/Node modules
+- Adds them to requirements.txt or package.json
+- Commits and pushes the fix
+
+**Timeout Issues** (90% confidence)
+- Identifies timeout failures
+- Increases timeout values appropriately
+- Updates workflow files
+
+**Syntax Issues** (85% confidence)
+- Detects YAML syntax errors
+- Fixes common formatting issues
+- Cleans up trailing whitespace
+
+**Permission Issues** (85% confidence)
+- Identifies permission errors
+- Adds necessary permission blocks
+- Updates workflow configuration
+
+**Docker Issues** (80% confidence)
+- Detects Dockerfile syntax errors
+- Fixes common Docker build issues
+- Updates Docker configuration
 
 ### 5. Pull Request Creation
 
-Copilot creates a PR that:
+If automated fixes were applied, the system:
+- Commits the changes to the auto-heal branch
+- Pushes the branch to remote
+- Creates a pull request automatically
+- Links the PR to the tracking issue
+- Applies appropriate labels
+- Provides detailed fix summary
+
+### 6. Manual Intervention (if needed)
+
+If automatic fixes aren't possible:
+- Posts detailed instructions to the issue
+- Provides the prepared branch for manual fixes
+- Includes complete analysis and suggestions
+- Optionally notifies GitHub Copilot Workspace for assistance
+
+### 7. Pull Request Review
+
+The PR (whether automated or manual):
+- Contains the proposed fixes
 - Contains the proposed fixes
 - Links to the tracking issue
 - Includes detailed explanation of changes
 - Runs CI/CD tests to validate the fix
 
-### 6. Review and Merge
+### 8. Review and Merge
 
 The PR is:
-- Created as a draft (by default)
 - Reviewed by human developers
 - Tested automatically via CI/CD
 - Merged if tests pass and changes are approved
+- Closes the tracking issue when merged
 
 ## 🔧 Setup Instructions
 
@@ -89,7 +133,7 @@ The PR is:
 
 1. **GitHub Repository Settings**
    - Enable GitHub Actions
-   - Enable GitHub Copilot (requires subscription)
+   - GitHub Copilot (optional - only needed for manual intervention support)
    - Set up branch protection rules (recommended)
 
 2. **Required Permissions**
@@ -224,70 +268,157 @@ Each auto-heal run creates artifacts containing:
 - `failure_analysis.json` - Structured failure data
 - `failure_report.md` - Human-readable report
 - `healing_context.json` - Workflow context
-- `copilot_healing_prompt.md` - Instructions for Copilot
+- `detailed_analysis.json` - Advanced failure categorization
+- `auto_fix_summary.json` - Summary of automated fixes applied
+- `copilot_healing_prompt.md` - Instructions for manual fixes
 
 Download artifacts from the Actions tab.
 
+## 🤖 Automated Fix Capabilities
+
+The auto-healing system can automatically fix the following types of issues:
+
+### 1. Dependency Issues (95% Confidence)
+
+**Detects:**
+- `ModuleNotFoundError: No module named 'xyz'`
+- `ImportError: cannot import name 'xyz'`
+- `Error: Cannot find module 'xyz'` (Node.js)
+
+**Fixes:**
+- Extracts the missing module name from error logs
+- Adds the module to `requirements.txt` (Python) or `package.json` (Node.js)
+- Commits and pushes the change
+- Creates a PR automatically
+
+### 2. Timeout Issues (90% Confidence)
+
+**Detects:**
+- Workflow timeout errors
+- Job execution time exceeded
+- Step timeout failures
+
+**Fixes:**
+- Identifies the workflow file
+- Doubles the current timeout value (up to 6 hours max)
+- Updates the workflow YAML file
+- Creates a PR with the change
+
+### 3. Permission Issues (85% Confidence)
+
+**Detects:**
+- Permission denied errors
+- 403 Forbidden responses
+- Missing workflow permissions
+
+**Fixes:**
+- Adds appropriate `permissions:` block to workflow
+- Includes standard permissions (contents, issues, pull-requests)
+- Updates the workflow file
+- Creates a PR
+
+### 4. YAML Syntax Issues (85% Confidence)
+
+**Detects:**
+- YAML syntax errors in workflow files
+- Indentation issues
+- Trailing whitespace problems
+
+**Fixes:**
+- Removes trailing whitespace
+- Basic formatting corrections
+- Updates affected YAML files
+- Creates a PR
+
+### 5. Coming Soon
+
+Additional automated fixes planned:
+- Docker build failures (basic syntax issues)
+- Resource constraint issues (disk space, memory)
+- Network timeout issues (add retry logic)
+- Environment variable issues
+
 ## 🎓 Usage Examples
 
-### Example 1: Dependency Issue
+### Example 1: Dependency Issue (Automated Fix)
 
 **Failure**: Missing Python package
 
 **Auto-Heal Action**:
 1. Detects "ModuleNotFoundError: No module named 'requests'"
-2. Creates issue #42
-3. Copilot adds `requests` to requirements.txt
-4. Creates PR #43 with fix
-5. Tests pass, ready for review
+2. Creates tracking issue #42
+3. **Automatically** adds `requests` to requirements.txt
+4. Commits and pushes the fix to auto-heal branch
+5. **Automatically** creates PR #43 with the fix
+6. PR links to issue #42
+7. Ready for review and testing
 
-### Example 2: Timeout Issue
+**Result**: ✅ Fully automated - no manual intervention needed
+
+### Example 2: Timeout Issue (Automated Fix)
 
 **Failure**: Workflow step timeout
 
 **Auto-Heal Action**:
 1. Detects "The job running on runner Hosted Agent has exceeded the maximum execution time"
-2. Creates issue #44
-3. Copilot increases timeout from 30m to 60m
-4. Creates PR #45 with fix
-5. Tests pass, ready for review
+2. Creates tracking issue #44
+3. **Automatically** increases timeout from 30m to 60m in workflow file
+4. Commits and pushes the fix
+5. **Automatically** creates PR #45 with the fix
+6. Ready for review and testing
 
-### Example 3: Docker Build Failure
+**Result**: ✅ Fully automated - no manual intervention needed
 
-**Failure**: Docker build fails due to syntax error in Dockerfile
+### Example 3: Complex Issue (Manual Intervention)
+
+**Failure**: Test failure due to logic error
 
 **Auto-Heal Action**:
-1. Detects "ERROR: failed to solve: process '/bin/sh -c' failed"
-2. Creates issue #46
-3. Copilot fixes syntax in Dockerfile
-4. Creates PR #47 with fix
-5. Tests pass, ready for review
+1. Detects test assertion failure
+2. Creates tracking issue #46
+3. Analyzes the failure and provides detailed root cause
+4. Creates and pushes auto-heal branch
+5. Posts detailed instructions for manual fix
+6. Optionally notifies for Copilot Workspace assistance
+
+**Result**: ⚠️ Manual intervention required - detailed guidance provided
 
 ## 🔒 Security Considerations
 
-### What Gets Auto-Healed
+### What Gets Auto-Healed Automatically
 
-✅ **Safe to Auto-Heal**:
-- Configuration file errors
-- Syntax errors in workflows
-- Missing dependencies
-- Timeout issues
-- Resource constraints
+✅ **Automatically Fixed** (High confidence, low risk):
+- **Dependency Issues**: Missing packages added to requirements.txt
+- **Timeout Issues**: Timeout values increased appropriately
+- **YAML Syntax**: Basic formatting and whitespace issues
+- **Permission Issues**: Missing permission blocks added to workflows
+- **Minor Configuration**: Simple config file updates
 
-❌ **Not Safe to Auto-Heal** (requires manual review):
-- Security vulnerabilities
-- Authentication failures
-- Credential issues
-- Major architectural changes
+### What Requires Manual Review
+
+⚠️ **Manual Intervention Required** (Complex or risky changes):
+- **Test Failures**: Logic errors in application code
+- **Security Vulnerabilities**: Authentication or credential issues
+- **Docker Issues**: Complex Dockerfile changes
+- **Build Failures**: Compilation errors requiring code changes
+- **Architecture Changes**: Major structural modifications
+
+### Automated Fix Safety Features
+
+1. **Minimal Changes**: Only makes the smallest necessary changes
+2. **Branch Isolation**: All fixes on separate auto-heal branches
+3. **No Direct Merge**: All PRs require manual review before merge
+4. **Detailed Logging**: Complete audit trail of all changes
+5. **Rollback Friendly**: Easy to revert if issues arise
 
 ### Security Best Practices
 
-1. **Always review auto-heal PRs** before merging
-2. **Set up branch protection** to require reviews
+1. **Always review auto-heal PRs** before merging - automated doesn't mean unreviewed
+2. **Set up branch protection** to require reviews and passing tests
 3. **Enable security scans** in configuration
-4. **Limit to trusted branches** only
-5. **Set reasonable file change limits**
-6. **Monitor auto-heal activity** regularly
+4. **Limit to trusted branches** only (main, develop, etc.)
+5. **Set reasonable file change limits** to prevent excessive modifications
+6. **Monitor auto-heal activity** regularly for unexpected patterns
 
 ## 🐛 Troubleshooting
 
