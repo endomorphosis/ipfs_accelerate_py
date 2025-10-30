@@ -21,13 +21,14 @@ def get_stale_branches(branches: List[Dict[str, Any]], days: int = 7) -> List[st
     Identify stale auto-heal branches.
     
     Args:
-        branches: List of branch information
+        branches: List of branch information with dates from GitHub API
         days: Number of days to consider a branch stale (default: 7)
     
     Returns:
         List of branch names that are stale
     """
-    cutoff_date = datetime.now() - timedelta(days=days)
+    from datetime import timezone
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
     stale_branches = []
     
     for branch in branches:
@@ -37,18 +38,22 @@ def get_stale_branches(branches: List[Dict[str, Any]], days: int = 7) -> List[st
         if not branch_name.startswith('auto-heal/'):
             continue
         
-        # Parse the timestamp from the branch name
-        # Format: auto-heal/workflow-{run_id}-{timestamp}
+        # Use the date from the GitHub API response
+        date_str = branch.get('date')
+        if not date_str:
+            # If no date, consider it stale for safety
+            stale_branches.append(branch_name)
+            continue
+        
         try:
-            parts = branch_name.split('-')
-            if len(parts) >= 3:
-                timestamp = int(parts[-1])
-                branch_date = datetime.fromtimestamp(timestamp)
-                
-                if branch_date < cutoff_date:
-                    stale_branches.append(branch_name)
-        except (ValueError, IndexError):
-            # If we can't parse the timestamp, consider it stale
+            # Parse ISO 8601 format from GitHub API
+            branch_date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            
+            if branch_date < cutoff_date:
+                stale_branches.append(branch_name)
+        except (ValueError, AttributeError) as e:
+            # If we can't parse the date, consider it stale
+            print(f"Warning: Could not parse date for {branch_name}: {e}", file=sys.stderr)
             stale_branches.append(branch_name)
     
     return stale_branches

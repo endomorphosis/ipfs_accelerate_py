@@ -48,15 +48,37 @@ jobs:
           script: |
             const fs = require('fs');
             
-            // Get all branches
-            const { data: branches } = await github.rest.repos.listBranches({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100
-            });
+            // Get all branches with pagination
+            let allBranches = [];
+            let page = 1;
+            let hasMore = true;
+            
+            while (hasMore) {
+              const { data: branches } = await github.rest.repos.listBranches({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+                page: page
+              });
+              
+              if (branches.length === 0) {
+                hasMore = false;
+              } else {
+                allBranches = allBranches.concat(branches);
+                page++;
+              }
+              
+              // Safety limit
+              if (page > 20) {
+                console.log('Warning: Reached page limit, some branches may be missed');
+                hasMore = false;
+              }
+            }
+            
+            console.log(`Found ${allBranches.length} total branches`);
             
             // Filter auto-heal branches and get their info
-            const autoHealBranches = branches
+            const autoHealBranches = allBranches
               .filter(b => b.name.startsWith('auto-heal/'))
               .map(b => ({
                 name: b.name,
@@ -64,6 +86,11 @@ jobs:
               }));
             
             console.log(`Found ${autoHealBranches.length} auto-heal branches`);
+            
+            if (autoHealBranches.length === 0) {
+              fs.writeFileSync('branches.json', JSON.stringify([], null, 2));
+              return 0;
+            }
             
             // Get commit dates for each branch
             const branchesWithDates = await Promise.all(
@@ -102,8 +129,8 @@ jobs:
           
           python .github/scripts/cleanup_old_branches.py branches.json "$DAYS"
           
-          if [ -f "stale_branches.txt" ]; then
-            BRANCH_COUNT=$(wc -l < stale_branches.txt)
+          if [ -f "stale_branches.txt" ] && [ -s "stale_branches.txt" ]; then
+            BRANCH_COUNT=$(grep -c "^" stale_branches.txt || echo "0")
             echo "stale_count=$BRANCH_COUNT" >> $GITHUB_OUTPUT
             echo "Found $BRANCH_COUNT stale branches"
           else
@@ -122,40 +149,70 @@ jobs:
             
             if (!fs.existsSync('stale_branches.txt')) {
               console.log('No stale branches file found');
-              return [];
+              return 0;
             }
             
             const staleBranches = fs.readFileSync('stale_branches.txt', 'utf8')
               .split('\n')
               .filter(b => b.trim());
             
-            // Check if any of these branches have open PRs
-            const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              per_page: 100
-            });
+            if (staleBranches.length === 0) {
+              console.log('No stale branches to check');
+              return 0;
+            }
             
-            const branchesWithPRs = new Set(prs.map(pr => pr.head.ref));
+            // Get all open PRs with pagination
+            const branchesWithPRs = new Set();
+            let page = 1;
+            let hasMore = true;
+            
+            while (hasMore) {
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                per_page: 100,
+                page: page
+              });
+              
+              if (prs.length === 0) {
+                hasMore = false;
+              } else {
+                prs.forEach(pr => branchesWithPRs.add(pr.head.ref));
+                page++;
+              }
+              
+              // Safety limit to prevent infinite loops
+              if (page > 10) {
+                console.log('Warning: Reached page limit, some PRs may be missed');
+                hasMore = false;
+              }
+            }
+            
+            console.log(`Found ${branchesWithPRs.size} open PRs across all pages`);
             
             // Filter out branches with open PRs
             const branchesToDelete = staleBranches.filter(b => !branchesWithPRs.has(b));
             
-            console.log(`Branches with open PRs: ${Array.from(branchesWithPRs).join(', ') || 'none'}`);
+            const protectedBranches = staleBranches.filter(b => branchesWithPRs.has(b));
+            if (protectedBranches.length > 0) {
+              console.log(`Protected branches (have open PRs): ${protectedBranches.join(', ')}`);
+            }
             console.log(`Branches safe to delete: ${branchesToDelete.length}`);
             
             // Save the final list
-            fs.writeFileSync('branches_to_delete.txt', branchesToDelete.join('\n'));
+            if (branchesToDelete.length > 0) {
+              fs.writeFileSync('branches_to_delete.txt', branchesToDelete.join('\n'));
+            }
             
             return branchesToDelete.length;
       
       - name: Delete stale branches
         if: |
-          steps.identify_stale.outputs.stale_count != '0' && 
+          steps.check_prs.outputs.result != '0' && 
           github.event.inputs.dry_run != 'true'
         run: |
-          if [ ! -f "branches_to_delete.txt" ]; then
+          if [ ! -f "branches_to_delete.txt" ] || [ ! -s "branches_to_delete.txt" ]; then
             echo "No branches to delete"
             exit 0
           fi
@@ -186,20 +243,23 @@ jobs:
       
       - name: Summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          BRANCHES_DELETED="${{ steps.check_prs.outputs.result || '0' }}"
+          
+          cat >> $GITHUB_STEP_SUMMARY << EOF
           # 🧹 Auto-Heal Branch Cleanup
           
           ## Summary
           
           - **Total auto-heal branches**: ${{ steps.get_branches.outputs.result }}
           - **Stale branches identified**: ${{ steps.identify_stale.outputs.stale_count }}
-          - **Branches deleted**: ${{ github.event.inputs.dry_run == 'true' && '0 (dry run)' || steps.identify_stale.outputs.stale_count }}
+          - **Branches with open PRs**: $((${{ steps.identify_stale.outputs.stale_count }} - ${BRANCHES_DELETED}))
+          - **Branches deleted**: ${{ github.event.inputs.dry_run == 'true' && '0 (dry run)' || '${BRANCHES_DELETED}' }}
           
           ## Details
           
           Branches older than **${{ github.event.inputs.days_old || '7' }}** days were considered for cleanup.
           
-          Branches with open pull requests were preserved.
+          Branches with open pull requests were automatically preserved.
           
           ${{ github.event.inputs.dry_run == 'true' && '⚠️ **This was a dry run** - no branches were actually deleted.' || '✅ Cleanup completed successfully.' }}
           
