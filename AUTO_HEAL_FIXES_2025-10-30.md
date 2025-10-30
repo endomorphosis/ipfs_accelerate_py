@@ -6,7 +6,7 @@
 
 **Problem**: The auto-heal workflow was being triggered by `push` events in addition to `workflow_run` events. When triggered by push, it would fail because it expected `github.event.workflow_run` data which doesn't exist in push events.
 
-**Root Cause**: GitHub Actions triggers ALL workflows that match any trigger condition. Since the workflow only had `workflow_run` triggers, any push to a branch would also trigger it if the commit affected the workflow file.
+**Root Cause**: The workflow configuration file was being modified as part of development work. When this happens, GitHub Actions re-evaluates the workflow and can trigger it even though no workflow_run event has occurred. The issue is that the conditional check `if: ${{ github.event.workflow_run.conclusion == 'failure' }}` tries to access `github.event.workflow_run` which is `null` when the workflow is triggered by other means, causing the job to be skipped but still show as "failed" in the UI.
 
 **Solution**: Added a conditional check to only run the workflow when `github.event_name == 'workflow_run'`:
 
@@ -133,8 +133,11 @@ ERROR: failed to build: failed to solve: failed to copy to tar: rpc error: code 
 
 ## Commits
 
-1. `b0bd8e4` - Fix auto-heal workflow trigger to only run on workflow_run events
-2. `18a2fb3` - Add workflow_dispatch trigger to auto-heal for testing
+1. Fix auto-heal workflow trigger to only run on workflow_run events
+2. Add workflow_dispatch trigger to auto-heal for testing
+3. Add comprehensive documentation for auto-heal system fixes
+
+_(See git log for commit SHAs)_
 
 ## Security Considerations
 

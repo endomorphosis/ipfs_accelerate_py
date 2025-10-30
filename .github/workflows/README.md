@@ -32,7 +32,7 @@
 gh run list --workflow="AMD64 CI/CD Pipeline" --status=failure --limit=1 --json databaseId --jq '.[0].databaseId'
 
 # Trigger auto-heal manually
-gh workflow run auto-heal-failures.yml -f run_id=<run_id>
+gh workflow run auto-heal-failures.yml -f run_id=`<run_id>`
 ```
 
 **Outputs**:
@@ -103,7 +103,7 @@ gh workflow run cleanup-auto-heal-branches.yml -f dry_run=false -f days_old=14
 
 **Triggers**: push, pull_request
 
-**Status**: ⚠️ Currently failing with disk space issues during Docker builds
+**Status**: ⚠️ Failing with disk space issues during Docker builds (as of 2025-10-30)
 
 ### ARM64 CI/CD Pipeline (`arm64-ci.yml`)
 
