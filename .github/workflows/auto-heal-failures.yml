@@ -11,6 +11,12 @@ on:
       - "Test Auto-Heal System"
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Workflow run ID to analyze (for testing)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -21,8 +27,8 @@ permissions:
 jobs:
   detect-and-heal:
     runs-on: ubuntu-latest
-    # Only trigger if this is a workflow_run event AND the workflow failed
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
+    # Only trigger if this is a workflow_run event AND the workflow failed, OR if manually dispatched
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure') || github.event_name == 'workflow_dispatch' }}
     
     steps:
       - name: Checkout repository
@@ -43,9 +49,9 @@ jobs:
         id: analyze
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-          WORKFLOW_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name || 'Manual Test' }}
+          WORKFLOW_URL: ${{ github.event.workflow_run.html_url || format('https://github.com/{0}/actions/runs/{1}', github.repository, github.event.inputs.run_id) }}
           REPOSITORY: ${{ github.repository }}
         run: |
           cat > analyze_failure.py << 'PYTHON'
