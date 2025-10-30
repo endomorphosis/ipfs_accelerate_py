@@ -1,0 +1,476 @@
+name: Auto-Heal Workflow Failures
+
+on:
+  workflow_run:
+    workflows: ["*"]  # Monitor all workflows
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  detect-and-heal:
+    runs-on: ubuntu-latest
+    # Only trigger if the workflow failed
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install requests PyGithub
+
+      - name: Analyze workflow failure
+        id: analyze
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          WORKFLOW_URL: ${{ github.event.workflow_run.html_url }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          cat > analyze_failure.py << 'PYTHON'
+          import os
+          import sys
+          import json
+          import requests
+          from datetime import datetime
+          
+          # Get environment variables
+          token = os.environ['GITHUB_TOKEN']
+          run_id = os.environ['WORKFLOW_RUN_ID']
+          workflow_name = os.environ['WORKFLOW_NAME']
+          workflow_url = os.environ['WORKFLOW_URL']
+          repository = os.environ['REPOSITORY']
+          
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github.v3+json'
+          }
+          
+          # Get workflow run details
+          run_url = f'https://api.github.com/repos/{repository}/actions/runs/{run_id}'
+          response = requests.get(run_url, headers=headers)
+          run_data = response.json()
+          
+          # Get jobs for this run
+          jobs_url = f'https://api.github.com/repos/{repository}/actions/runs/{run_id}/jobs'
+          jobs_response = requests.get(jobs_url, headers=headers)
+          jobs_data = jobs_response.json()
+          
+          # Find failed jobs
+          failed_jobs = []
+          for job in jobs_data.get('jobs', []):
+              if job['conclusion'] == 'failure':
+                  failed_jobs.append({
+                      'name': job['name'],
+                      'id': job['id'],
+                      'steps': [
+                          {
+                              'name': step['name'],
+                              'conclusion': step.get('conclusion'),
+                              'number': step['number']
+                          }
+                          for step in job.get('steps', [])
+                          if step.get('conclusion') == 'failure'
+                      ]
+                  })
+          
+          # Get logs for failed jobs
+          failure_details = []
+          for job in failed_jobs:
+              logs_url = f'https://api.github.com/repos/{repository}/actions/jobs/{job["id"]}/logs'
+              logs_response = requests.get(logs_url, headers=headers)
+              
+              # Get last 100 lines of logs for context
+              if logs_response.status_code == 200:
+                  log_lines = logs_response.text.split('\n')
+                  # Look for error patterns
+                  error_lines = [
+                      line for line in log_lines[-200:]
+                      if any(keyword in line.lower() for keyword in [
+                          'error', 'failed', 'exception', 'traceback', 
+                          'fatal', 'panic', 'exit code'
+                      ])
+                  ]
+                  
+                  failure_details.append({
+                      'job_name': job['name'],
+                      'failed_steps': [s['name'] for s in job['steps']],
+                      'error_logs': '\n'.join(error_lines[-50:])  # Last 50 error lines
+                  })
+          
+          # Create analysis summary
+          analysis = {
+              'workflow_name': workflow_name,
+              'workflow_url': workflow_url,
+              'run_id': run_id,
+              'failed_at': run_data.get('updated_at', datetime.utcnow().isoformat()),
+              'branch': run_data.get('head_branch', 'unknown'),
+              'commit_sha': run_data.get('head_sha', 'unknown'),
+              'failed_jobs_count': len(failed_jobs),
+              'failed_jobs': failed_jobs,
+              'failure_details': failure_details
+          }
+          
+          # Write analysis to file
+          with open('failure_analysis.json', 'w') as f:
+              json.dump(analysis, f, indent=2)
+          
+          # Create summary for GitHub Actions
+          print(f"Workflow: {workflow_name}")
+          print(f"Failed jobs: {len(failed_jobs)}")
+          print(f"Branch: {analysis['branch']}")
+          print(f"Commit: {analysis['commit_sha'][:7]}")
+          
+          # Set output for next step
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"workflow_name={workflow_name}\n")
+              f.write(f"failed_jobs_count={len(failed_jobs)}\n")
+              f.write(f"branch={analysis['branch']}\n")
+              f.write(f"commit_sha={analysis['commit_sha']}\n")
+          
+          sys.exit(0)
+          PYTHON
+          
+          python analyze_failure.py
+      
+      - name: Run advanced failure analysis
+        run: |
+          python .github/scripts/workflow_failure_analyzer.py failure_analysis.json || echo "Advanced analysis completed"
+      
+      - name: Generate failure report
+        id: report
+        run: |
+          cat > generate_report.py << 'PYTHON'
+          import json
+          import os
+          
+          # Load analysis
+          with open('failure_analysis.json', 'r') as f:
+              analysis = json.load(f)
+          
+          # Load advanced analysis if available
+          advanced_analysis = None
+          if os.path.exists('detailed_analysis.json'):
+              with open('detailed_analysis.json', 'r') as f:
+                  advanced_analysis = json.load(f)
+          
+          # Generate markdown report
+          report = f"""# Workflow Failure Analysis Report
+          
+          ## Summary
+          
+          - **Workflow**: {analysis['workflow_name']}
+          - **Run ID**: {analysis['run_id']}
+          - **Branch**: {analysis['branch']}
+          - **Commit**: {analysis['commit_sha'][:7]}
+          - **Failed Jobs**: {analysis['failed_jobs_count']}
+          - **Failed At**: {analysis['failed_at']}
+          """
+          
+          # Add advanced analysis if available
+          if advanced_analysis:
+              confidence_emoji = "🟢" if advanced_analysis['confidence'] > 0.8 else "🟡" if advanced_analysis['confidence'] > 0.6 else "🔴"
+              report += f"""
+          
+          ## Advanced Analysis
+          
+          {confidence_emoji} **Confidence Level**: {advanced_analysis['confidence'] * 100:.1f}%
+          
+          - **Category**: {advanced_analysis['category'].upper()}
+          - **Description**: {advanced_analysis['description']}
+          
+          ### Root Cause
+          
+          ```
+          {advanced_analysis['root_cause']}
+          ```
+          
+          ### Affected Files
+          
+          {chr(10).join(f'- `{f}`' for f in advanced_analysis.get('affected_files', [])) if advanced_analysis.get('affected_files') else '_No specific files identified_'}
+          
+          ### Recommended Fixes
+          
+          {chr(10).join(f'{i+1}. {fix}' for i, fix in enumerate(advanced_analysis['suggested_fixes']))}
+          """
+          
+          report += """
+          
+          ## Failure Details
+          
+          """
+          
+          for detail in analysis['failure_details']:
+              report += f"""### Job: {detail['job_name']}
+          
+          **Failed Steps**: {', '.join(detail['failed_steps'])}
+          
+          **Error Logs**:
+          ```
+          {detail['error_logs']}
+          ```
+          
+          """
+          
+          report += f"""
+          ## Action Required
+          
+          This failure has been detected by the auto-healing system. A GitHub Copilot Workspace 
+          agent will analyze the failure and attempt to create a fix.
+          
+          ### Next Steps
+          
+          1. Review the failure logs above
+          2. GitHub Copilot will analyze the root cause
+          3. An automated fix will be proposed in a pull request
+          4. Review and test the proposed fix
+          5. Merge if the fix resolves the issue
+          
+          ## Links
+          
+          - [Workflow Run]({analysis['workflow_url']})
+          - [Commit](https://github.com/${{{{ github.repository }}}}/commit/{analysis['commit_sha']})
+          
+          ---
+          *This report was automatically generated by the Auto-Heal Workflow Failures system.*
+          """
+          
+          # Save report
+          with open('failure_report.md', 'w') as f:
+              f.write(report)
+          
+          # Create condensed version for issue body
+          issue_body = report.replace('```', '```text')  # Ensure code blocks render
+          with open('issue_body.md', 'w') as f:
+              f.write(issue_body)
+          
+          print("Failure report generated")
+          PYTHON
+          
+          python generate_report.py
+          
+          # Display report
+          cat failure_report.md
+      
+      - name: Create healing context file
+        run: |
+          cat > healing_context.json << 'EOF'
+          {
+            "workflow_name": "${{ steps.analyze.outputs.workflow_name }}",
+            "failed_jobs_count": "${{ steps.analyze.outputs.failed_jobs_count }}",
+            "branch": "${{ steps.analyze.outputs.branch }}",
+            "commit_sha": "${{ steps.analyze.outputs.commit_sha }}",
+            "run_id": "${{ github.event.workflow_run.id }}",
+            "repository": "${{ github.repository }}",
+            "timestamp": "${{ github.event.workflow_run.updated_at }}"
+          }
+          EOF
+          
+          cat healing_context.json
+      
+      - name: Create issue for tracking
+        id: create_issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const issueBody = fs.readFileSync('issue_body.md', 'utf8');
+            
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔧 Auto-Heal: ${{ steps.analyze.outputs.workflow_name }} Failed (Run #${{ github.event.workflow_run.id }})`,
+              body: issueBody,
+              labels: ['auto-heal', 'workflow-failure', 'automated']
+            });
+            
+            console.log(`Created issue #${issue.data.number}`);
+            return issue.data.number;
+      
+      - name: Create auto-heal branch
+        id: create_branch
+        run: |
+          BRANCH_NAME="auto-heal/workflow-${{ github.event.workflow_run.id }}-$(date +%s)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create new branch from the failed commit
+          git checkout -b "$BRANCH_NAME" ${{ steps.analyze.outputs.commit_sha }}
+          
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "Created branch: $BRANCH_NAME"
+      
+      - name: Prepare Copilot healing request
+        run: |
+          cat > copilot_healing_prompt.md << 'EOF'
+          # GitHub Copilot Auto-Healing Request
+          
+          ## Context
+          
+          A GitHub Actions workflow has failed and requires automatic remediation.
+          
+          ## Failure Information
+          
+          - **Workflow**: ${{ steps.analyze.outputs.workflow_name }}
+          - **Branch**: ${{ steps.analyze.outputs.branch }}
+          - **Commit**: ${{ steps.analyze.outputs.commit_sha }}
+          - **Failed Jobs**: ${{ steps.analyze.outputs.failed_jobs_count }}
+          
+          ## Task
+          
+          Analyze the failure logs in `failure_analysis.json` and:
+          
+          1. Identify the root cause of the workflow failure
+          2. Determine which files need to be modified to fix the issue
+          3. Make the minimal necessary changes to fix the workflow
+          4. Ensure the fix doesn't break other workflows or tests
+          5. Add any necessary documentation about the fix
+          
+          ## Analysis Data
+          
+          The complete failure analysis is available in `failure_analysis.json` and `failure_report.md`.
+          
+          ## Expected Outcome
+          
+          - Modified workflow files (if the issue is in the workflow itself)
+          - Modified source code (if the issue is in the application code)
+          - Updated tests (if needed to prevent regression)
+          - Clear commit message explaining the fix
+          
+          ## Guidelines
+          
+          - Make minimal changes necessary to fix the issue
+          - Preserve existing functionality
+          - Follow the project's coding standards
+          - Add comments explaining any non-obvious changes
+          - Update documentation if the fix changes behavior
+          
+          EOF
+          
+          cat copilot_healing_prompt.md
+      
+      - name: Upload analysis artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-failure-analysis-${{ github.event.workflow_run.id }}
+          path: |
+            failure_analysis.json
+            failure_report.md
+            healing_context.json
+            copilot_healing_prompt.md
+            detailed_analysis.json
+            copilot_detailed_prompt.md
+          retention-days: 30
+      
+      - name: Trigger Copilot Workspace
+        id: trigger_copilot
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const analysis = JSON.parse(fs.readFileSync('failure_analysis.json', 'utf8'));
+            
+            // Use advanced prompt if available, otherwise use basic prompt
+            let prompt = fs.readFileSync('copilot_healing_prompt.md', 'utf8');
+            if (fs.existsSync('copilot_detailed_prompt.md')) {
+              prompt = fs.readFileSync('copilot_detailed_prompt.md', 'utf8');
+            }
+            
+            // Create a comment on the issue with instructions for Copilot
+            const issueNumber = ${{ steps.create_issue.outputs.result }};
+            
+            const comment = `## 🤖 GitHub Copilot Auto-Healing Instructions
+            
+            @github-copilot workspace
+            
+            ${prompt}
+            
+            ### Quick Context
+            
+            The workflow **${{ steps.analyze.outputs.workflow_name }}** failed with ${analysis.failed_jobs_count} failed job(s).
+            
+            Please analyze the failure and create a pull request with fixes to:
+            - Branch: \`${{ steps.create_branch.outputs.branch_name }}\`
+            - Base: \`${{ steps.analyze.outputs.branch }}\`
+            
+            ### Failure Analysis
+            
+            \`\`\`json
+            ${JSON.stringify(analysis, null, 2)}
+            \`\`\`
+            
+            ### Instructions
+            
+            1. Clone the repository
+            2. Checkout branch \`${{ steps.create_branch.outputs.branch_name }}\`
+            3. Review the failure analysis above
+            4. Fix the identified issues
+            5. Create a pull request with your fixes
+            6. Link this issue in the PR description
+            
+            ---
+            *Copilot, please help fix this workflow failure!*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: comment
+            });
+            
+            console.log('Copilot workspace instructions posted to issue');
+      
+      - name: Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # 🔧 Auto-Heal Workflow Failure Detected
+          
+          ## Details
+          
+          - **Workflow**: ${{ steps.analyze.outputs.workflow_name }}
+          - **Failed Jobs**: ${{ steps.analyze.outputs.failed_jobs_count }}
+          - **Branch**: ${{ steps.analyze.outputs.branch }}
+          - **Issue**: #${{ steps.create_issue.outputs.result }}
+          - **Auto-heal Branch**: `${{ steps.create_branch.outputs.branch_name }}`
+          
+          ## Actions Taken
+          
+          ✅ Analyzed workflow failure  
+          ✅ Created tracking issue  
+          ✅ Prepared healing context  
+          ✅ Created auto-heal branch  
+          ✅ Triggered GitHub Copilot Workspace  
+          
+          ## Next Steps
+          
+          1. GitHub Copilot will analyze the failure
+          2. Copilot will create fixes on branch `${{ steps.create_branch.outputs.branch_name }}`
+          3. A pull request will be created with the fixes
+          4. Review and test the automated fix
+          5. Merge if the fix resolves the issue
+          
+          ## Links
+          
+          - [Tracking Issue](#${{ steps.create_issue.outputs.result }})
+          - [Failed Workflow Run](${{ github.event.workflow_run.html_url }})
+          
+          ---
+          *Auto-healing system activated at $(date -u +"%Y-%m-%d %H:%M:%S UTC")*
+          EOF

@@ -1,0 +1,88 @@
+name: Test Auto-Heal System
+
+on:
+  workflow_dispatch:
+    inputs:
+      failure_type:
+        description: 'Type of failure to simulate'
+        required: true
+        type: choice
+        options:
+          - dependency_error
+          - syntax_error
+          - timeout_error
+          - resource_error
+          - docker_error
+          - test_failure
+
+jobs:
+  simulate-failure:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Simulate failure - Dependency Error
+        if: inputs.failure_type == 'dependency_error'
+        run: |
+          echo "Simulating missing dependency error..."
+          python -c "import nonexistent_module"
+      
+      - name: Simulate failure - Syntax Error
+        if: inputs.failure_type == 'syntax_error'
+        run: |
+          echo "Simulating syntax error..."
+          python -c "def broken_function( print('missing colon')"
+      
+      - name: Simulate failure - Timeout Error
+        if: inputs.failure_type == 'timeout_error'
+        timeout-minutes: 1
+        run: |
+          echo "Simulating timeout error (will timeout after 1 minute)..."
+          sleep 120
+      
+      - name: Simulate failure - Resource Error
+        if: inputs.failure_type == 'resource_error'
+        run: |
+          echo "Simulating disk space error..."
+          # This is a simulated error message
+          echo "Error: No space left on device" >&2
+          exit 1
+      
+      - name: Simulate failure - Docker Error
+        if: inputs.failure_type == 'docker_error'
+        run: |
+          echo "Simulating docker build error..."
+          echo "ERROR [2/4] RUN invalid command" >&2
+          echo "docker build failed" >&2
+          exit 1
+      
+      - name: Simulate failure - Test Failure
+        if: inputs.failure_type == 'test_failure'
+        run: |
+          echo "Simulating test failure..."
+          python -c "
+          import sys
+          print('Running tests...')
+          print('FAILED test_example.py::test_function')
+          print('AssertionError: expected 5 but got 3')
+          sys.exit(1)
+          "
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "Test completed. The auto-heal system should now:"
+          echo "1. Detect this workflow failure"
+          echo "2. Create a tracking issue"
+          echo "3. Analyze the failure logs"
+          echo "4. Trigger GitHub Copilot for automatic fix"
+          echo "5. Create a pull request with the fix"
+          echo ""
+          echo "Check the Actions tab for 'Auto-Heal Workflow Failures' run."
