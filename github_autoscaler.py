@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""
+GitHub Actions Auto-Scaling Runner Service
+
+This service automatically monitors GitHub workflows and provisions
+self-hosted runners as needed based on workflow queue depth.
+
+Usage:
+    python github_autoscaler.py                    # Start in foreground
+    python github_autoscaler.py --daemon           # Run as daemon
+    python github_autoscaler.py --owner myorg      # Monitor specific org
+"""
+
+import sys
+import os
+import time
+import logging
+import signal
+import argparse
+from datetime import datetime
+from typing import Optional
+
+# Setup path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+
+# Now import from the correct location
+try:
+    from ipfs_accelerate_py.github_cli import GitHubCLI, WorkflowQueue, RunnerManager
+except ImportError:
+    # Try alternative import path
+    from github_cli import GitHubCLI, WorkflowQueue, RunnerManager
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("github_autoscaler")
+
+
+class GitHubRunnerAutoscaler:
+    """
+    Automatic GitHub Actions runner provisioning service.
+    
+    Monitors workflow queues and automatically provisions self-hosted
+    runners based on demand when user is authenticated with GitHub CLI.
+    """
+    
+    def __init__(
+        self,
+        owner: Optional[str] = None,
+        poll_interval: int = 60,
+        since_days: int = 1,
+        max_runners: Optional[int] = None
+    ):
+        """
+        Initialize the autoscaler.
+        
+        Args:
+            owner: GitHub owner (user or org) to monitor
+            poll_interval: Seconds between checks (default: 60)
+            since_days: Look at repos updated in last N days (default: 1)
+            max_runners: Maximum runners to provision (default: system cores)
+        """
+        self.owner = owner
+        self.poll_interval = poll_interval
+        self.since_days = since_days
+        self.max_runners = max_runners
+        self.running = False
+        
+        # Initialize GitHub CLI components
+        try:
+            self.gh = GitHubCLI()
+            self.queue_mgr = WorkflowQueue(self.gh)
+            self.runner_mgr = RunnerManager(self.gh)
+            logger.info("✓ GitHub CLI components initialized")
+        except Exception as e:
+            logger.error(f"✗ Failed to initialize GitHub CLI: {e}")
+            raise
+        
+        # Verify authentication
+        auth_status = self.gh.get_auth_status()
+        if not auth_status["authenticated"]:
+            logger.error("✗ Not authenticated with GitHub CLI")
+            logger.error("  Run: gh auth login")
+            raise RuntimeError("GitHub CLI not authenticated")
+        
+        logger.info("✓ Authenticated with GitHub")
+        
+        # Get system capacity
+        if self.max_runners is None:
+            self.max_runners = self.runner_mgr.get_system_cores()
+        
+        logger.info(f"Auto-scaler configured:")
+        logger.info(f"  Owner: {self.owner or 'All accessible repos'}")
+        logger.info(f"  Poll interval: {self.poll_interval}s")
+        logger.info(f"  Max runners: {self.max_runners}")
+        logger.info(f"  Monitor window: {self.since_days} day(s)")
+    
+    def check_and_scale(self) -> None:
+        """
+        Check workflow queues and provision runners if needed.
+        """
+        try:
+            logger.info("Checking workflow queues...")
+            
+            # Get workflow queues for repos with recent activity
+            queues = self.queue_mgr.create_workflow_queues(
+                owner=self.owner,
+                since_days=self.since_days
+            )
+            
+            if not queues:
+                logger.info("No repositories with active workflows")
+                return
+            
+            # Count workflows needing attention
+            total_workflows = sum(len(workflows) for workflows in queues.values())
+            total_running = sum(
+                sum(1 for w in workflows if w.get("status") == "in_progress")
+                for workflows in queues.values()
+            )
+            total_failed = sum(
+                sum(1 for w in workflows if w.get("conclusion") in ["failure", "timed_out", "cancelled"])
+                for workflows in queues.values()
+            )
+            
+            logger.info(f"Found {len(queues)} repos with {total_workflows} workflows")
+            logger.info(f"  Running: {total_running}, Failed: {total_failed}")
+            
+            # Check if we need to provision runners
+            if total_running == 0 and total_failed == 0:
+                logger.info("No workflows need runner provisioning")
+                return
+            
+            # Provision runners for queues
+            logger.info("Provisioning runners...")
+            provisioning = self.runner_mgr.provision_runners_for_queue(
+                queues,
+                max_runners=self.max_runners
+            )
+            
+            # Report results
+            success_count = sum(
+                1 for status in provisioning.values()
+                if status.get("status") == "token_generated"
+            )
+            
+            if success_count > 0:
+                logger.info(f"✓ Generated {success_count} runner token(s)")
+                for repo, status in provisioning.items():
+                    if status.get("status") == "token_generated":
+                        logger.info(f"  {repo}: {status['total_workflows']} workflows")
+            else:
+                logger.warning("No runners were provisioned")
+            
+        except Exception as e:
+            logger.error(f"Error during check and scale: {e}", exc_info=True)
+    
+    def start(self) -> None:
+        """
+        Start the autoscaler service.
+        """
+        self.running = True
+        logger.info("=" * 80)
+        logger.info("GitHub Actions Runner Autoscaler Started")
+        logger.info("=" * 80)
+        logger.info("")
+        logger.info("Monitoring for workflow queues and auto-provisioning runners...")
+        logger.info("Press Ctrl+C to stop")
+        logger.info("")
+        
+        # Set up signal handlers
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        
+        # Main loop
+        iteration = 0
+        while self.running:
+            iteration += 1
+            logger.info(f"--- Check #{iteration} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
+            
+            try:
+                self.check_and_scale()
+            except Exception as e:
+                logger.error(f"Error in main loop: {e}", exc_info=True)
+            
+            if self.running:
+                logger.info(f"Sleeping for {self.poll_interval}s...")
+                logger.info("")
+                time.sleep(self.poll_interval)
+        
+        logger.info("Autoscaler stopped")
+    
+    def stop(self) -> None:
+        """
+        Stop the autoscaler service.
+        """
+        logger.info("Stopping autoscaler...")
+        self.running = False
+    
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals."""
+        logger.info(f"Received signal {signum}")
+        self.stop()
+
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="GitHub Actions Runner Autoscaler - Automatically provision runners based on workflow demand",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Start monitoring all accessible repos
+  python github_autoscaler.py
+  
+  # Monitor specific organization
+  python github_autoscaler.py --owner myorg
+  
+  # Custom poll interval and max runners
+  python github_autoscaler.py --interval 30 --max-runners 8
+  
+  # Monitor repos updated in last 2 days
+  python github_autoscaler.py --since-days 2
+
+Requirements:
+  - GitHub CLI (gh) must be installed
+  - Must be authenticated: gh auth login
+  - Will auto-provision runners as workflows are detected
+        """
+    )
+    
+    parser.add_argument(
+        '--owner',
+        type=str,
+        help='GitHub owner (user or org) to monitor (default: all accessible repos)'
+    )
+    parser.add_argument(
+        '--interval',
+        type=int,
+        default=60,
+        help='Poll interval in seconds (default: 60)'
+    )
+    parser.add_argument(
+        '--since-days',
+        type=int,
+        default=1,
+        help='Monitor repos updated in last N days (default: 1)'
+    )
+    parser.add_argument(
+        '--max-runners',
+        type=int,
+        help='Maximum runners to provision (default: system CPU cores)'
+    )
+    parser.add_argument(
+        '--daemon',
+        action='store_true',
+        help='Run as background daemon (not yet implemented)'
+    )
+    
+    args = parser.parse_args()
+    
+    if args.daemon:
+        print("Daemon mode not yet implemented. Run in foreground for now.")
+        return 1
+    
+    try:
+        # Create and start autoscaler
+        autoscaler = GitHubRunnerAutoscaler(
+            owner=args.owner,
+            poll_interval=args.interval,
+            since_days=args.since_days,
+            max_runners=args.max_runners
+        )
+        
+        autoscaler.start()
+        return 0
+        
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        return 0
+    except Exception as e:
+        logger.error(f"Failed to start autoscaler: {e}", exc_info=True)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

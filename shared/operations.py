@@ -1445,5 +1445,229 @@ class HardwareOperations:
                 },
                 "message": f"Concurrent test completed - {success_rate}% success rate"
             }
+
+
+class GitHubOperations:
+    """GitHub CLI operations"""
+    
+    def __init__(self, shared_core: SharedCore):
+        self.core = shared_core
+        self._gh_cli = None
+        self._workflow_queue = None
+        self._runner_manager = None
+        
+    @property
+    def gh_cli(self):
+        """Lazy load GitHub CLI wrapper"""
+        if self._gh_cli is None:
+            try:
+                from ipfs_accelerate_py.github_cli import GitHubCLI
+                self._gh_cli = GitHubCLI()
+            except Exception as e:
+                logger.warning(f"Failed to initialize GitHub CLI: {e}")
+                self._gh_cli = None
+        return self._gh_cli
+    
+    @property
+    def workflow_queue(self):
+        """Lazy load Workflow Queue manager"""
+        if self._workflow_queue is None:
+            try:
+                from ipfs_accelerate_py.github_cli import WorkflowQueue
+                self._workflow_queue = WorkflowQueue(self.gh_cli)
+            except Exception as e:
+                logger.warning(f"Failed to initialize Workflow Queue: {e}")
+                self._workflow_queue = None
+        return self._workflow_queue
+    
+    @property
+    def runner_manager(self):
+        """Lazy load Runner Manager"""
+        if self._runner_manager is None:
+            try:
+                from ipfs_accelerate_py.github_cli import RunnerManager
+                self._runner_manager = RunnerManager(self.gh_cli)
+            except Exception as e:
+                logger.warning(f"Failed to initialize Runner Manager: {e}")
+                self._runner_manager = None
+        return self._runner_manager
+    
+    def get_auth_status(self) -> Dict[str, Any]:
+        """Get GitHub authentication status"""
+        if not self.gh_cli:
+            return {"error": "GitHub CLI not available", "success": False}
+        
+        result = self.gh_cli.get_auth_status()
+        result["operation"] = "get_auth_status"
+        result["timestamp"] = time.time()
+        return result
+    
+    def list_repos(self, owner: Optional[str] = None, limit: int = 30) -> Dict[str, Any]:
+        """List GitHub repositories"""
+        if not self.gh_cli:
+            return {"error": "GitHub CLI not available", "success": False}
+        
+        repos = self.gh_cli.list_repos(owner=owner, limit=limit)
+        return {
+            "repos": repos,
+            "count": len(repos),
+            "operation": "list_repos",
+            "timestamp": time.time(),
+            "success": True
+        }
+    
+    def list_workflow_runs(
+        self,
+        repo: str,
+        status: Optional[str] = None,
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        """List workflow runs for a repository"""
+        if not self.workflow_queue:
+            return {"error": "Workflow Queue not available", "success": False}
+        
+        runs = self.workflow_queue.list_workflow_runs(repo, status=status, limit=limit)
+        return {
+            "runs": runs,
+            "count": len(runs),
+            "repo": repo,
+            "operation": "list_workflow_runs",
+            "timestamp": time.time(),
+            "success": True
+        }
+    
+    def get_workflow_run(self, repo: str, run_id: str) -> Dict[str, Any]:
+        """Get details of a specific workflow run"""
+        if not self.workflow_queue:
+            return {"error": "Workflow Queue not available", "success": False}
+        
+        run = self.workflow_queue.get_workflow_run(repo, run_id)
+        return {
+            "run": run,
+            "repo": repo,
+            "run_id": run_id,
+            "operation": "get_workflow_run",
+            "timestamp": time.time(),
+            "success": run is not None
+        }
+    
+    def create_workflow_queues(
+        self,
+        owner: Optional[str] = None,
+        since_days: int = 1
+    ) -> Dict[str, Any]:
+        """Create workflow queues for repositories with recent activity"""
+        if not self.workflow_queue:
+            return {"error": "Workflow Queue not available", "success": False}
+        
+        queues = self.workflow_queue.create_workflow_queues(owner=owner, since_days=since_days)
+        return {
+            "queues": queues,
+            "repo_count": len(queues),
+            "total_workflows": sum(len(workflows) for workflows in queues.values()),
+            "operation": "create_workflow_queues",
+            "timestamp": time.time(),
+            "success": True
+        }
+    
+    def list_runners(
+        self,
+        repo: Optional[str] = None,
+        org: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """List self-hosted runners"""
+        if not self.runner_manager:
+            return {"error": "Runner Manager not available", "success": False}
+        
+        runners = self.runner_manager.list_runners(repo=repo, org=org)
+        return {
+            "runners": runners,
+            "count": len(runners),
+            "operation": "list_runners",
+            "timestamp": time.time(),
+            "success": True
+        }
+    
+    def provision_runners(
+        self,
+        owner: Optional[str] = None,
+        since_days: int = 1,
+        max_runners: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Provision self-hosted runners based on workflow queues"""
+        if not self.workflow_queue or not self.runner_manager:
+            return {"error": "GitHub CLI components not available", "success": False}
+        
+        # Create workflow queues
+        queues = self.workflow_queue.create_workflow_queues(owner=owner, since_days=since_days)
+        
+        # Provision runners
+        provisioning = self.runner_manager.provision_runners_for_queue(
+            queues, max_runners=max_runners
+        )
+        
+        return {
+            "queues": queues,
+            "provisioning": provisioning,
+            "repos_processed": len(queues),
+            "runners_provisioned": len(provisioning),
+            "operation": "provision_runners",
+            "timestamp": time.time(),
+            "success": True
+        }
+
+
+class CopilotOperations:
+    """GitHub Copilot CLI operations"""
+    
+    def __init__(self, shared_core: SharedCore):
+        self.core = shared_core
+        self._copilot_cli = None
+    
+    @property
+    def copilot_cli(self):
+        """Lazy load Copilot CLI wrapper"""
+        if self._copilot_cli is None:
+            try:
+                from ipfs_accelerate_py.copilot_cli import CopilotCLI
+                self._copilot_cli = CopilotCLI()
+            except Exception as e:
+                logger.warning(f"Failed to initialize Copilot CLI: {e}")
+                self._copilot_cli = None
+        return self._copilot_cli
+    
+    def suggest_command(
+        self,
+        prompt: str,
+        shell: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get command suggestions from Copilot"""
+        if not self.copilot_cli:
+            return {"error": "Copilot CLI not available", "success": False}
+        
+        result = self.copilot_cli.suggest_command(prompt, shell=shell)
+        result["operation"] = "suggest_command"
+        result["timestamp"] = time.time()
+        return result
+    
+    def explain_command(self, command: str) -> Dict[str, Any]:
+        """Get an explanation for a command"""
+        if not self.copilot_cli:
+            return {"error": "Copilot CLI not available", "success": False}
+        
+        result = self.copilot_cli.explain_command(command)
+        result["operation"] = "explain_command"
+        result["timestamp"] = time.time()
+        return result
+    
+    def suggest_git_command(self, prompt: str) -> Dict[str, Any]:
+        """Get Git command suggestions from Copilot"""
+        if not self.copilot_cli:
+            return {"error": "Copilot CLI not available", "success": False}
+        
+        result = self.copilot_cli.suggest_git_command(prompt)
+        result["operation"] = "suggest_git_command"
+        result["timestamp"] = time.time()
+        return result
         
         return {"error": f"Unknown performance test type: {test_type}"}
