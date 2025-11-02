@@ -447,25 +447,23 @@ class RunnerManager:
         Returns:
             Comma-separated string of labels
         """
+        import shutil
+        
         labels = ['self-hosted', 'linux', self._system_arch, 'docker']
         
         # Add GPU labels if available
         try:
             # Check for NVIDIA GPU
-            result = subprocess.run(['which', 'nvidia-smi'], 
-                                  capture_output=True, timeout=5)
-            if result.returncode == 0:
+            if shutil.which('nvidia-smi'):
                 labels.extend(['cuda', 'gpu'])
-        except:
+        except Exception:
             pass
         
         try:
             # Check for AMD GPU
-            result = subprocess.run(['which', 'rocm-smi'], 
-                                  capture_output=True, timeout=5)
-            if result.returncode == 0:
+            if shutil.which('rocm-smi'):
                 labels.extend(['rocm', 'gpu'])
-        except:
+        except Exception:
             pass
         
         if 'gpu' not in labels:

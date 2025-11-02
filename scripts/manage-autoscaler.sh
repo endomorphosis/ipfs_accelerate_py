@@ -150,11 +150,17 @@ install_service() {
     if [ "$use_system" = true ]; then
         info "Installing as system service..."
         
+        # Validate USER variable
+        if [[ ! "$USER" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            error "Invalid USER variable: $USER"
+        fi
+        
         # Copy service file to system directory
         sudo cp "$SERVICE_FILE" "$SYSTEM_SERVICE_DIR/$SERVICE_NAME.service"
         
-        # Update service file to use actual user
-        sudo sed -i "s/%i/$USER/g" "$SYSTEM_SERVICE_DIR/$SERVICE_NAME.service"
+        # Update service file to use actual user (escape special characters)
+        local safe_user=$(printf '%s\n' "$USER" | sed 's/[[\.*^$/]/\\&/g')
+        sudo sed -i "s/%i/$safe_user/g" "$SYSTEM_SERVICE_DIR/$SERVICE_NAME.service"
         
         # Reload systemd
         sudo systemctl daemon-reload
@@ -167,14 +173,20 @@ install_service() {
     else
         info "Installing as user service..."
         
+        # Validate USER variable
+        if [[ ! "$USER" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            error "Invalid USER variable: $USER"
+        fi
+        
         # Create user service directory if it doesn't exist
         mkdir -p "$USER_SERVICE_DIR"
         
         # Copy service file to user directory
         cp "$SERVICE_FILE" "$USER_SERVICE_DIR/$SERVICE_NAME.service"
         
-        # Update service file to use actual user
-        sed -i "s/%i/$USER/g" "$USER_SERVICE_DIR/$SERVICE_NAME.service"
+        # Update service file to use actual user (escape special characters)
+        local safe_user=$(printf '%s\n' "$USER" | sed 's/[[\.*^$/]/\\&/g')
+        sed -i "s/%i/$safe_user/g" "$USER_SERVICE_DIR/$SERVICE_NAME.service"
         
         # Reload systemd
         systemctl --user daemon-reload
