@@ -111,6 +111,8 @@ def _load_heavy_imports():
             network_ops = None
             queue_ops = None
             test_ops = None
+            
+            # GitHub and Copilot operations will be initialized lazily
 
 class IPFSAccelerateCLI:
     """Main CLI class for IPFS Accelerate"""
@@ -118,6 +120,34 @@ class IPFSAccelerateCLI:
     def __init__(self):
         self.mcp_process = None
         self.dashboard_process = None
+        self._github_ops = None
+        self._copilot_ops = None
+        
+    @property
+    def github_ops(self):
+        """Lazy load GitHub operations"""
+        if self._github_ops is None:
+            _load_heavy_imports()
+            try:
+                from shared import GitHubOperations
+                self._github_ops = GitHubOperations(shared_core)
+            except Exception as e:
+                logger.warning(f"Failed to load GitHub operations: {e}")
+                self._github_ops = None
+        return self._github_ops
+    
+    @property
+    def copilot_ops(self):
+        """Lazy load Copilot operations"""
+        if self._copilot_ops is None:
+            _load_heavy_imports()
+            try:
+                from shared import CopilotOperations
+                self._copilot_ops = CopilotOperations(shared_core)
+            except Exception as e:
+                logger.warning(f"Failed to load Copilot operations: {e}")
+                self._copilot_ops = None
+        return self._copilot_ops
         
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
@@ -225,6 +255,170 @@ class IPFSAccelerateCLI:
         except Exception as e:
             logger.error(f"✗ Error checking MCP server status: {e}")
             return 1
+    
+    def run_github_auth(self, args):
+        """Check GitHub authentication status"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        result = self.github_ops.get_auth_status()
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get("authenticated"):
+                logger.info("✓ GitHub CLI is authenticated")
+                logger.info(f"  {result.get('output', '')}")
+            else:
+                logger.error("✗ GitHub CLI is not authenticated")
+                logger.error(f"  {result.get('error', '')}")
+        return 0 if result.get("authenticated") else 1
+    
+    def run_github_repos(self, args):
+        """List GitHub repositories"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        result = self.github_ops.list_repos(owner=args.owner, limit=args.limit)
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"Found {result.get('count', 0)} repositories:")
+            for repo in result.get('repos', []):
+                print(f"  {repo['owner']['login']}/{repo['name']} - {repo['url']}")
+        return 0
+    
+    def run_github_workflows(self, args):
+        """List workflow runs for a repository"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        result = self.github_ops.list_workflow_runs(
+            repo=args.repo,
+            status=args.status,
+            limit=args.limit
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"Found {result.get('count', 0)} workflow runs for {args.repo}:")
+            for run in result.get('runs', []):
+                status = run.get('status', 'unknown')
+                conclusion = run.get('conclusion', 'pending')
+                print(f"  #{run.get('databaseId')} - {run.get('workflowName')} - {status}/{conclusion}")
+        return 0
+    
+    def run_github_queues(self, args):
+        """Create workflow queues for repositories"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        logger.info(f"Creating workflow queues for repos updated in the last {args.since_days} day(s)...")
+        result = self.github_ops.create_workflow_queues(
+            owner=args.owner,
+            since_days=args.since_days
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"✓ Created queues for {result.get('repo_count', 0)} repositories")
+            logger.info(f"  Total workflows: {result.get('total_workflows', 0)}")
+            for repo, workflows in result.get('queues', {}).items():
+                running = sum(1 for w in workflows if w.get('status') == 'in_progress')
+                failed = sum(1 for w in workflows if w.get('conclusion') in ['failure', 'timed_out'])
+                print(f"  {repo}: {len(workflows)} workflows ({running} running, {failed} failed)")
+        return 0
+    
+    def run_github_runners(self, args):
+        """Manage self-hosted runners"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        if args.action == 'list':
+            result = self.github_ops.list_runners(repo=args.repo, org=args.org)
+            if args.output_json:
+                print(json.dumps(result, indent=2))
+            else:
+                logger.info(f"Found {result.get('count', 0)} self-hosted runners:")
+                for runner in result.get('runners', []):
+                    print(f"  {runner.get('name')} - {runner.get('status')}")
+        
+        elif args.action == 'provision':
+            logger.info("Provisioning self-hosted runners based on workflow queues...")
+            result = self.github_ops.provision_runners(
+                owner=args.owner,
+                since_days=args.since_days,
+                max_runners=args.max_runners
+            )
+            
+            if args.output_json:
+                print(json.dumps(result, indent=2))
+            else:
+                logger.info(f"✓ Provisioned runners for {result.get('runners_provisioned', 0)} repositories")
+                for repo, status in result.get('provisioning', {}).items():
+                    if status.get('status') == 'token_generated':
+                        logger.info(f"  {repo}: Token generated ({status.get('total_workflows', 0)} workflows)")
+                    else:
+                        logger.error(f"  {repo}: Failed - {status.get('error')}")
+        
+        return 0
+    
+    def run_copilot_suggest(self, args):
+        """Get command suggestions from Copilot"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.suggest_command(args.prompt, shell=args.shell)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Suggested command:\n{result.get('suggestion', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_explain(self, args):
+        """Get explanation for a command"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.explain_command(args.command)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Explanation:\n{result.get('explanation', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_git(self, args):
+        """Get Git command suggestions from Copilot"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.suggest_git_command(args.prompt)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Suggested Git command:\n{result.get('suggestion', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
     
     def _start_integrated_mcp_server(self, args):
         """Start the integrated MCP server with dashboard, model manager, and queue monitoring"""
@@ -1020,6 +1214,61 @@ Examples:
         status_parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
         status_parser.add_argument('--port', type=int, default=9000, help='Server port (default: 9000)')
         
+        # GitHub commands
+        github_parser = subparsers.add_parser('github', help='GitHub CLI operations')
+        github_subparsers = github_parser.add_subparsers(dest='github_command', help='GitHub commands')
+        
+        # GitHub auth command
+        github_auth_parser = github_subparsers.add_parser('auth', help='Check authentication status')
+        
+        # GitHub repos command
+        github_repos_parser = github_subparsers.add_parser('repos', help='List repositories')
+        github_repos_parser.add_argument('--owner', help='Repository owner (user or org)')
+        github_repos_parser.add_argument('--limit', type=int, default=30, help='Maximum repos to list')
+        
+        # GitHub workflows command
+        github_workflows_parser = github_subparsers.add_parser('workflows', help='List workflow runs')
+        github_workflows_parser.add_argument('repo', help='Repository (owner/repo)')
+        github_workflows_parser.add_argument('--status', choices=['queued', 'in_progress', 'completed'], 
+                                            help='Filter by status')
+        github_workflows_parser.add_argument('--limit', type=int, default=20, help='Maximum runs to list')
+        
+        # GitHub queues command
+        github_queues_parser = github_subparsers.add_parser('queues', 
+                                                           help='Create workflow queues for recent repos')
+        github_queues_parser.add_argument('--owner', help='Repository owner (user or org)')
+        github_queues_parser.add_argument('--since-days', type=int, default=1, 
+                                         help='Include repos updated in last N days')
+        
+        # GitHub runners command
+        github_runners_parser = github_subparsers.add_parser('runners', help='Manage self-hosted runners')
+        github_runners_parser.add_argument('action', choices=['list', 'provision'], 
+                                          help='Runner action')
+        github_runners_parser.add_argument('--repo', help='Repository (owner/repo)')
+        github_runners_parser.add_argument('--org', help='Organization name')
+        github_runners_parser.add_argument('--owner', help='Owner for provisioning')
+        github_runners_parser.add_argument('--since-days', type=int, default=1, 
+                                          help='Include workflows from last N days')
+        github_runners_parser.add_argument('--max-runners', type=int, 
+                                          help='Max runners to provision (default: system cores)')
+        
+        # Copilot commands
+        copilot_parser = subparsers.add_parser('copilot', help='GitHub Copilot CLI operations')
+        copilot_subparsers = copilot_parser.add_subparsers(dest='copilot_command', help='Copilot commands')
+        
+        # Copilot suggest command
+        copilot_suggest_parser = copilot_subparsers.add_parser('suggest', help='Get command suggestions')
+        copilot_suggest_parser.add_argument('prompt', help='Natural language description')
+        copilot_suggest_parser.add_argument('--shell', help='Shell type (bash, zsh, powershell)')
+        
+        # Copilot explain command
+        copilot_explain_parser = copilot_subparsers.add_parser('explain', help='Explain a command')
+        copilot_explain_parser.add_argument('command', help='Command to explain')
+        
+        # Copilot git command
+        copilot_git_parser = copilot_subparsers.add_parser('git', help='Get Git command suggestions')
+        copilot_git_parser.add_argument('prompt', help='Natural language description')
+        
         # Parse arguments
         args = parser.parse_args()
         
@@ -1045,6 +1294,33 @@ Examples:
             else:
                 mcp_parser.print_help()
                 return 1
+        
+        elif args.command == 'github':
+            if args.github_command == 'auth':
+                return cli.run_github_auth(args)
+            elif args.github_command == 'repos':
+                return cli.run_github_repos(args)
+            elif args.github_command == 'workflows':
+                return cli.run_github_workflows(args)
+            elif args.github_command == 'queues':
+                return cli.run_github_queues(args)
+            elif args.github_command == 'runners':
+                return cli.run_github_runners(args)
+            else:
+                github_parser.print_help()
+                return 1
+        
+        elif args.command == 'copilot':
+            if args.copilot_command == 'suggest':
+                return cli.run_copilot_suggest(args)
+            elif args.copilot_command == 'explain':
+                return cli.run_copilot_explain(args)
+            elif args.copilot_command == 'git':
+                return cli.run_copilot_git(args)
+            else:
+                copilot_parser.print_help()
+                return 1
+        
         else:
             parser.print_help()
             return 1
