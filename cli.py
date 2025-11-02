@@ -497,6 +497,8 @@ class IPFSAccelerateCLI:
                         self._handle_model_api()
                     elif self.path.startswith('/api/queue/'):
                         self._handle_queue_api()
+                    elif self.path.startswith('/api/github/'):
+                        self._handle_github_api()
                     elif self.path.startswith('/static/'):
                         self._serve_static()
                     else:
@@ -968,6 +970,53 @@ class IPFSAccelerateCLI:
                 response = {
                     "queue_status": "active",
                     "pending_jobs": 0,
+                    "running_jobs": 0,
+                    "completed_jobs": 0
+                }
+                self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_github_api(self):
+                """Handle GitHub workflows and runners API calls"""
+                from urllib.parse import urlparse, parse_qs
+                
+                parsed = urlparse(self.path)
+                path_parts = parsed.path.split('/')
+                
+                # Get GitHub operations
+                _load_heavy_imports()
+                try:
+                    from shared import GitHubOperations
+                    github_ops = GitHubOperations(shared_core)
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "error": f"GitHub operations not available: {str(e)}"
+                    }).encode())
+                    return
+                
+                if 'workflows' in self.path:
+                    # Get workflow queues
+                    result = github_ops.create_workflow_queues(since_days=1)
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result.get('queues', {})).encode())
+                
+                elif 'runners' in self.path:
+                    # Get runners (try org-level first)
+                    result = github_ops.list_runners(org=None)
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result.get('runners', [])).encode())
+                
+                else:
+                    self.send_response(404)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unknown GitHub API endpoint"}).encode())
                     "completed_jobs": 0,
                     "failed_jobs": 0,
                     "workers": 1
