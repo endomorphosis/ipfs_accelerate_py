@@ -446,6 +446,33 @@ class IPFSAccelerateCLI:
                 logger.error(f"Error: {result.get('error', 'Unknown error')}")
         return 0 if result.get('success') else 1
     
+    def run_github_autoscaler(self, args):
+        """Start the GitHub Actions runner autoscaler service"""
+        logger.info("Starting GitHub Actions Runner Autoscaler...")
+        
+        # Import and run the autoscaler
+        try:
+            from github_autoscaler import GitHubRunnerAutoscaler
+            
+            autoscaler = GitHubRunnerAutoscaler(
+                owner=args.owner,
+                poll_interval=args.interval,
+                since_days=args.since_days,
+                max_runners=args.max_runners
+            )
+            
+            autoscaler.start()
+            return 0
+            
+        except KeyboardInterrupt:
+            logger.info("Autoscaler stopped by user")
+            return 0
+        except Exception as e:
+            logger.error(f"Failed to start autoscaler: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+    
     def _start_integrated_mcp_server(self, args):
         """Start the integrated MCP server with dashboard, model manager, and queue monitoring"""
         import asyncio
@@ -1322,6 +1349,17 @@ Examples:
         github_runners_parser.add_argument('--max-runners', type=int, 
                                           help='Max runners to provision (default: system cores)')
         
+        # GitHub autoscaler command
+        github_autoscaler_parser = github_subparsers.add_parser('autoscaler', 
+                                                                help='Auto-scale runners based on workflow demand')
+        github_autoscaler_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        github_autoscaler_parser.add_argument('--interval', type=int, default=60,
+                                             help='Poll interval in seconds (default: 60)')
+        github_autoscaler_parser.add_argument('--since-days', type=int, default=1,
+                                             help='Monitor repos updated in last N days (default: 1)')
+        github_autoscaler_parser.add_argument('--max-runners', type=int,
+                                             help='Max runners to provision (default: system cores)')
+        
         # Copilot commands
         copilot_parser = subparsers.add_parser('copilot', help='GitHub Copilot CLI operations')
         copilot_subparsers = copilot_parser.add_subparsers(dest='copilot_command', help='Copilot commands')
@@ -1376,6 +1414,8 @@ Examples:
                 return cli.run_github_queues(args)
             elif args.github_command == 'runners':
                 return cli.run_github_runners(args)
+            elif args.github_command == 'autoscaler':
+                return cli.run_github_autoscaler(args)
             else:
                 github_parser.print_help()
                 return 1

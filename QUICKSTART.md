@@ -2,6 +2,32 @@
 
 This guide demonstrates that the GitHub CLI and Copilot CLI integration is working correctly.
 
+## 🚀 NEW: Auto-Scaling Runner Service
+
+The easiest way to use the GitHub integration is the autoscaler - it automatically monitors workflows and provisions runners as needed:
+
+```bash
+# 1. Authenticate (one time)
+gh auth login
+
+# 2. Start the autoscaler (runs continuously)
+python cli.py github autoscaler
+
+# Or with options
+python cli.py github autoscaler --owner myorg --interval 30
+```
+
+The autoscaler will:
+- ✅ Monitor your repos for workflow activity
+- ✅ Detect running and failed workflows automatically
+- ✅ Provision self-hosted runners on demand
+- ✅ Respect your system's CPU core limit
+- ✅ Work completely automatically once started
+
+**See [AUTOSCALER.md](AUTOSCALER.md) for complete autoscaler documentation.**
+
+---
+
 ## ✅ Quick Verification
 
 Run the integration test to verify everything works:

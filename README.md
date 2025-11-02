@@ -58,6 +58,10 @@ ipfs-accelerate github workflows owner/repo    # List workflow runs
 ipfs-accelerate github queues --since-days 1   # Create workflow queues
 ipfs-accelerate github runners provision       # Auto-provision runners
 
+# 🚀 NEW: Auto-scaling runner service
+ipfs-accelerate github autoscaler              # Automatically scale runners as needed!
+ipfs-accelerate github autoscaler --owner myorg --interval 30
+
 # Copilot CLI operations  
 ipfs-accelerate copilot suggest "list text files"
 ipfs-accelerate copilot explain "ls -la"
@@ -65,13 +69,17 @@ ipfs-accelerate copilot git "commit all changes"
 ```
 
 **Features:**
-- Automated workflow queue creation for recent repositories
-- Self-hosted runner provisioning based on system capacity
-- Token management from gh CLI
-- Dashboard integration for monitoring
-- Python package and MCP tools access
+- ✅ **Automatic Runner Scaling** - Just run `ipfs-accelerate github autoscaler` and it handles everything
+- ✅ Out-of-the-box operation when logged into GitHub CLI
+- ✅ Monitors workflows continuously and provisions runners on demand
+- ✅ Respects system CPU core limits automatically
+- ✅ Automated workflow queue creation for recent repositories
+- ✅ Self-hosted runner provisioning based on system capacity
+- ✅ Token management from gh CLI
+- ✅ Dashboard integration for monitoring
+- ✅ Python package and MCP tools access
 
-See [README_GITHUB_COPILOT.md](README_GITHUB_COPILOT.md) for detailed documentation.
+See [AUTOSCALER.md](AUTOSCALER.md) for the complete autoscaler guide and [README_GITHUB_COPILOT.md](README_GITHUB_COPILOT.md) for detailed documentation.
 
 ---
 
