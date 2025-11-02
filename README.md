@@ -46,6 +46,33 @@ ipfs_accelerate [GLOBAL_OPTIONS] CATEGORY COMMAND [COMMAND_OPTIONS]
 **Global Options:** `--model-id`, `--hardware`, `--output-format`, `--verbose`  
 **Output Formats:** json, text, pretty
 
+### **🆕 GitHub CLI and Copilot Integration**
+
+IPFS Accelerate now integrates with GitHub CLI and GitHub Copilot CLI for automated workflow management:
+
+```bash
+# GitHub CLI operations
+ipfs-accelerate github auth                    # Check authentication
+ipfs-accelerate github repos --owner myorg     # List repositories
+ipfs-accelerate github workflows owner/repo    # List workflow runs
+ipfs-accelerate github queues --since-days 1   # Create workflow queues
+ipfs-accelerate github runners provision       # Auto-provision runners
+
+# Copilot CLI operations  
+ipfs-accelerate copilot suggest "list text files"
+ipfs-accelerate copilot explain "ls -la"
+ipfs-accelerate copilot git "commit all changes"
+```
+
+**Features:**
+- Automated workflow queue creation for recent repositories
+- Self-hosted runner provisioning based on system capacity
+- Token management from gh CLI
+- Dashboard integration for monitoring
+- Python package and MCP tools access
+
+See [README_GITHUB_COPILOT.md](README_GITHUB_COPILOT.md) for detailed documentation.
+
 ---
 
 ## 🌟 **Advanced Enterprise Features**
