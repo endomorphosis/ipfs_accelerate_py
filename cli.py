@@ -1017,11 +1017,6 @@ class IPFSAccelerateCLI:
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
                     self.wfile.write(json.dumps({"error": "Unknown GitHub API endpoint"}).encode())
-                    "completed_jobs": 0,
-                    "failed_jobs": 0,
-                    "workers": 1
-                }
-                self.wfile.write(json.dumps(response).encode())
             
             def _serve_static(self):
                 """Serve static files (CSS, JS, images)"""
