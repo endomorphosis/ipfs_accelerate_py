@@ -96,6 +96,32 @@ def _load_heavy_imports():
         except ImportError as e2:
             logger.warning(f"Alternative import also failed: {e2}")
             HAVE_CORE = False
+        
+    except ImportError as e:
+        logger.warning(f"Core modules not available: {e}")
+        try:
+            # Try alternative import paths
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+            from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+            
+            IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
+            HAVE_CORE = True
+            
+            # Initialize core components
+            shared_core = SharedCore()
+            inference_ops = InferenceOperations(shared_core)
+            file_ops = FileOperations(shared_core)
+            model_ops = ModelOperations(shared_core)
+            network_ops = NetworkOperations(shared_core)
+            queue_ops = QueueOperations(shared_core)
+            test_ops = TestOperations(shared_core)
+            
+        except ImportError as e2:
+            logger.warning(f"Alternative import also failed: {e2}")
+            HAVE_CORE = False
             
             # Fallback shared core for when imports fail
             class SharedCore:
