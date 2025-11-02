@@ -1,11 +1,18 @@
 // GitHub Workflows Integration for IPFS Accelerate Dashboard
 // Provides workflow monitoring and runner management features
+// Uses MCP Server JavaScript SDK for communication
 
 class GitHubWorkflowsManager {
-    constructor() {
+    constructor(mcpClient) {
         this.workflows = {};
         this.runners = [];
         this.updateInterval = null;
+        // Use MCP client if provided, otherwise create new one
+        this.mcp = mcpClient || (typeof MCPClient !== 'undefined' ? new MCPClient() : null);
+        
+        if (!this.mcp) {
+            console.warn('[GitHub Workflows] MCP Client not available, falling back to direct API');
+        }
     }
 
     // Initialize the workflows manager
@@ -16,30 +23,64 @@ class GitHubWorkflowsManager {
         this.startAutoRefresh();
     }
 
-    // Fetch workflows from the server
+    // Fetch workflows from the server using MCP tools
     async fetchWorkflows() {
         try {
-            const response = await fetch('/api/github/workflows');
-            if (response.ok) {
-                this.workflows = await response.json();
-                this.renderWorkflows();
+            if (this.mcp) {
+                // Use MCP tool: gh_create_workflow_queues
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_create_workflow_queues',
+                    arguments: {
+                        since_days: 1
+                    }
+                });
+                
+                if (result && result.queues) {
+                    this.workflows = result.queues;
+                    this.renderWorkflows();
+                } else {
+                    console.error('[GitHub Workflows] Invalid response from MCP tool');
+                }
             } else {
-                console.error('[GitHub Workflows] Failed to fetch workflows:', response.statusText);
+                // Fallback to direct API
+                const response = await fetch('/api/github/workflows');
+                if (response.ok) {
+                    this.workflows = await response.json();
+                    this.renderWorkflows();
+                } else {
+                    console.error('[GitHub Workflows] Failed to fetch workflows:', response.statusText);
+                }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching workflows:', error);
         }
     }
 
-    // Fetch runners from the server
+    // Fetch runners from the server using MCP tools
     async fetchRunners() {
         try {
-            const response = await fetch('/api/github/runners');
-            if (response.ok) {
-                this.runners = await response.json();
-                this.renderRunners();
+            if (this.mcp) {
+                // Use MCP tool: gh_list_runners
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_runners',
+                    arguments: {}
+                });
+                
+                if (result && result.runners) {
+                    this.runners = result.runners;
+                    this.renderRunners();
+                } else {
+                    console.error('[GitHub Workflows] Invalid response from MCP tool');
+                }
             } else {
-                console.error('[GitHub Workflows] Failed to fetch runners:', response.statusText);
+                // Fallback to direct API
+                const response = await fetch('/api/github/runners');
+                if (response.ok) {
+                    this.runners = await response.json();
+                    this.renderRunners();
+                } else {
+                    console.error('[GitHub Workflows] Failed to fetch runners:', response.statusText);
+                }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching runners:', error);
@@ -187,27 +228,46 @@ class GitHubWorkflowsManager {
         document.body.insertAdjacentHTML('beforeend', html);
     }
 
-    // Provision runner for a repository
+    // Provision runner for a repository using MCP tools
     async provisionRunner(repo) {
         try {
-            const response = await fetch('/api/github/provision-runner', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ repo })
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success) {
+            if (this.mcp) {
+                // Use MCP tool: gh_provision_runners
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_provision_runners',
+                    arguments: {
+                        since_days: 1,
+                        max_runners: 1
+                    }
+                });
+                
+                if (result && result.success) {
                     showToast(`Runner token generated for ${repo}`, 'success');
                     await this.fetchRunners();
                 } else {
-                    showToast(`Failed to provision runner: ${result.error}`, 'error');
+                    showToast(`Failed to provision runner: ${result.error || 'Unknown error'}`, 'error');
                 }
             } else {
-                showToast('Failed to provision runner', 'error');
+                // Fallback to direct API
+                const response = await fetch('/api/github/provision-runner', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ repo })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast(`Runner token generated for ${repo}`, 'success');
+                        await this.fetchRunners();
+                    } else {
+                        showToast(`Failed to provision runner: ${result.error}`, 'error');
+                    }
+                } else {
+                    showToast('Failed to provision runner', 'error');
+                }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error provisioning runner:', error);
@@ -316,7 +376,9 @@ let githubManager = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    githubManager = new GitHubWorkflowsManager();
+    // Create MCP client for GitHub workflows
+    const mcpClient = typeof MCPClient !== 'undefined' ? new MCPClient() : null;
+    githubManager = new GitHubWorkflowsManager(mcpClient);
     
     // Check if GitHub tab exists before initializing
     const githubTab = document.getElementById('github-workflows');
