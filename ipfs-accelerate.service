@@ -1,0 +1,30 @@
+[Unit]
+Description=IPFS Accelerate MCP Server
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=barberb
+Group=barberb
+WorkingDirectory=/home/barberb/ipfs_accelerate_py
+Environment=VIRTUAL_ENV=/home/barberb/ipfs_accelerate_py/.venv
+Environment=PATH=/home/barberb/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/barberb/ipfs_accelerate_py/.venv/bin/ipfs-accelerate mcp start --host 0.0.0.0 --port 9000 --keep-running
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ipfs-accelerate
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/barberb/ipfs_accelerate_py
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
