@@ -298,10 +298,60 @@ class WorkflowQueue:
         
         return recent_repos
     
+    def _check_workflow_runner_compatibility(
+        self,
+        workflow: Dict[str, Any],
+        repo: str,
+        system_arch: str
+    ) -> bool:
+        """
+        Check if a workflow is compatible with the current system architecture.
+        
+        Args:
+            workflow: Workflow run dictionary
+            repo: Repository name
+            system_arch: System architecture (e.g., 'x64', 'arm64')
+            
+        Returns:
+            True if the workflow is compatible with this runner
+        """
+        workflow_name = workflow.get("workflowName", "").lower()
+        
+        # Architecture-specific workflow patterns
+        if "arm64" in workflow_name or "aarch64" in workflow_name:
+            # This workflow specifically requires ARM64
+            return system_arch == "arm64"
+        
+        if "amd64" in workflow_name or "x86" in workflow_name or "x64" in workflow_name:
+            # This workflow specifically requires x86_64
+            return system_arch == "x64"
+        
+        # Try to get detailed job information to check runner labels
+        try:
+            run_id = workflow.get("databaseId")
+            if run_id:
+                detailed_run = self.get_workflow_run(repo, str(run_id))
+                if detailed_run and "jobs" in detailed_run:
+                    for job in detailed_run["jobs"]:
+                        runner_labels = job.get("labels", [])
+                        # Check if the job has specific architecture requirements
+                        if "arm64" in runner_labels or "aarch64" in runner_labels:
+                            return system_arch == "arm64"
+                        if "x64" in runner_labels or "amd64" in runner_labels:
+                            return system_arch == "x64"
+        except Exception as e:
+            logger.debug(f"Could not get detailed job info: {e}")
+        
+        # If no specific architecture is mentioned, assume it's compatible
+        # (most workflows use ubuntu-latest which is x64)
+        return True
+    
     def create_workflow_queues(
         self,
         owner: Optional[str] = None,
-        since_days: int = 1
+        since_days: int = 1,
+        system_arch: Optional[str] = None,
+        filter_by_arch: bool = True
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Create workflow queues for repositories with recent activity.
@@ -312,6 +362,8 @@ class WorkflowQueue:
         Args:
             owner: Repository owner (user or org)
             since_days: Only include repos/workflows from the last N days
+            system_arch: System architecture (e.g., 'x64', 'arm64') for filtering
+            filter_by_arch: Whether to filter workflows by architecture compatibility
             
         Returns:
             Dict mapping repo names to lists of workflow runs
@@ -332,11 +384,24 @@ class WorkflowQueue:
             # Get failed workflows
             failed = self.list_failed_runs(repo, since_days=since_days, limit=20)
             
-            # Combine and add to queue
+            # Combine workflows
             all_workflows = running + failed
+            
+            # Filter by architecture compatibility if requested
+            if filter_by_arch and system_arch and all_workflows:
+                compatible_workflows = [
+                    w for w in all_workflows
+                    if self._check_workflow_runner_compatibility(w, repo, system_arch)
+                ]
+                
+                if len(compatible_workflows) < len(all_workflows):
+                    logger.info(f"  Filtered {len(all_workflows) - len(compatible_workflows)} incompatible workflows for {system_arch}")
+                
+                all_workflows = compatible_workflows
+            
             if all_workflows:
                 queues[repo] = all_workflows
-                logger.info(f"  Found {len(running)} running and {len(failed)} failed workflows")
+                logger.info(f"  Found {len(running)} running and {len(failed)} failed workflows (after filtering)")
         
         return queues
 
@@ -352,6 +417,69 @@ class RunnerManager:
             gh_cli: GitHubCLI instance (creates new one if None)
         """
         self.gh = gh_cli or GitHubCLI()
+        self._system_arch = self._detect_system_architecture()
+        self._runner_labels = self._generate_runner_labels()
+    
+    def _detect_system_architecture(self) -> str:
+        """
+        Detect the system architecture.
+        
+        Returns:
+            Architecture string ('x64', 'arm64', etc.)
+        """
+        import platform
+        arch = platform.machine().lower()
+        
+        # Map common architecture names to GitHub runner labels
+        arch_map = {
+            'x86_64': 'x64',
+            'amd64': 'x64',
+            'aarch64': 'arm64',
+            'arm64': 'arm64',
+        }
+        
+        return arch_map.get(arch, arch)
+    
+    def _generate_runner_labels(self) -> str:
+        """
+        Generate appropriate labels for this runner based on system capabilities.
+        
+        Returns:
+            Comma-separated string of labels
+        """
+        labels = ['self-hosted', 'linux', self._system_arch, 'docker']
+        
+        # Add GPU labels if available
+        try:
+            # Check for NVIDIA GPU
+            result = subprocess.run(['which', 'nvidia-smi'], 
+                                  capture_output=True, timeout=5)
+            if result.returncode == 0:
+                labels.extend(['cuda', 'gpu'])
+        except:
+            pass
+        
+        try:
+            # Check for AMD GPU
+            result = subprocess.run(['which', 'rocm-smi'], 
+                                  capture_output=True, timeout=5)
+            if result.returncode == 0:
+                labels.extend(['rocm', 'gpu'])
+        except:
+            pass
+        
+        if 'gpu' not in labels:
+            labels.append('cpu-only')
+        
+        return ','.join(labels)
+    
+    def get_system_architecture(self) -> str:
+        """Get the detected system architecture."""
+        return self._system_arch
+    
+    def get_runner_labels(self) -> str:
+        """Get the generated runner labels."""
+        return self._runner_labels
     
     def get_system_cores(self) -> int:
         """Get the number of CPU cores on the system."""
