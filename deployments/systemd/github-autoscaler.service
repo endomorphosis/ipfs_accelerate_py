@@ -1,0 +1,50 @@
+[Unit]
+Description=GitHub Actions Runner Autoscaler
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/ipfs_accelerate_py
+Environment=PATH=/home/%i/ipfs_accelerate_py/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+
+# GitHub CLI authentication
+# Ensure gh CLI is authenticated before starting the service
+# Run: gh auth login
+
+# Start the autoscaler with appropriate settings
+ExecStart=/home/%i/ipfs_accelerate_py/venv/bin/python3 /home/%i/ipfs_accelerate_py/github_autoscaler.py --interval 60
+
+# Restart on failure
+Restart=on-failure
+RestartSec=30
+
+# Resource limits
+# Limit memory to 512MB
+MemoryLimit=512M
+
+# Limit CPU to 50% of one core
+CPUQuota=50%
+
+# Security settings
+# Run with restricted permissions
+NoNewPrivileges=true
+
+# Restrict file system access
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/%i/ipfs_accelerate_py/logs
+
+# Network access (required for GitHub API)
+PrivateNetwork=false
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=github-autoscaler
+
+[Install]
+WantedBy=multi-user.target

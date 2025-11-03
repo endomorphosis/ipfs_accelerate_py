@@ -52,7 +52,8 @@ class GitHubRunnerAutoscaler:
         owner: Optional[str] = None,
         poll_interval: int = 60,
         since_days: int = 1,
-        max_runners: Optional[int] = None
+        max_runners: Optional[int] = None,
+        filter_by_arch: bool = True
     ):
         """
         Initialize the autoscaler.
@@ -62,11 +63,13 @@ class GitHubRunnerAutoscaler:
             poll_interval: Seconds between checks (default: 60)
             since_days: Look at repos updated in last N days (default: 1)
             max_runners: Maximum runners to provision (default: system cores)
+            filter_by_arch: Whether to filter workflows by architecture (default: True)
         """
         self.owner = owner
         self.poll_interval = poll_interval
         self.since_days = since_days
         self.max_runners = max_runners
+        self.filter_by_arch = filter_by_arch
         self.running = False
         
         # Initialize GitHub CLI components
@@ -88,15 +91,22 @@ class GitHubRunnerAutoscaler:
         
         logger.info("✓ Authenticated with GitHub")
         
-        # Get system capacity
+        # Get system capacity and architecture
         if self.max_runners is None:
             self.max_runners = self.runner_mgr.get_system_cores()
+        
+        system_arch = self.runner_mgr.get_system_architecture()
+        runner_labels = self.runner_mgr.get_runner_labels()
         
         logger.info(f"Auto-scaler configured:")
         logger.info(f"  Owner: {self.owner or 'All accessible repos'}")
         logger.info(f"  Poll interval: {self.poll_interval}s")
         logger.info(f"  Max runners: {self.max_runners}")
         logger.info(f"  Monitor window: {self.since_days} day(s)")
+        logger.info(f"  System architecture: {system_arch}")
+        logger.info(f"  Runner labels: {runner_labels}")
+        logger.info(f"  Architecture filtering: {'enabled' if filter_by_arch else 'disabled'}")
+        logger.info(f"  Docker isolation: enabled (see CONTAINERIZED_CI_SECURITY.md)")
     
     def check_and_scale(self) -> None:
         """
@@ -105,10 +115,16 @@ class GitHubRunnerAutoscaler:
         try:
             logger.info("Checking workflow queues...")
             
+            # Get system architecture for filtering
+            system_arch = self.runner_mgr.get_system_architecture()
+            
             # Get workflow queues for repos with recent activity
+            # Filter by architecture if enabled
             queues = self.queue_mgr.create_workflow_queues(
                 owner=self.owner,
-                since_days=self.since_days
+                since_days=self.since_days,
+                system_arch=system_arch if self.filter_by_arch else None,
+                filter_by_arch=self.filter_by_arch
             )
             
             if not queues:
@@ -128,6 +144,8 @@ class GitHubRunnerAutoscaler:
             
             logger.info(f"Found {len(queues)} repos with {total_workflows} workflows")
             logger.info(f"  Running: {total_running}, Failed: {total_failed}")
+            if self.filter_by_arch:
+                logger.info(f"  (Filtered for {system_arch} architecture)")
             
             # Check if we need to provision runners
             if total_running == 0 and total_failed == 0:
@@ -152,6 +170,8 @@ class GitHubRunnerAutoscaler:
                 for repo, status in provisioning.items():
                     if status.get("status") == "token_generated":
                         logger.info(f"  {repo}: {status['total_workflows']} workflows")
+                        logger.info(f"    Token (first 20 chars): {status['token'][:20]}...")
+                        logger.info(f"    Note: Runners will use Docker containers for isolation")
             else:
                 logger.warning("No runners were provisioned")
             
@@ -255,6 +275,11 @@ Requirements:
         help='Maximum runners to provision (default: system CPU cores)'
     )
     parser.add_argument(
+        '--no-arch-filter',
+        action='store_true',
+        help='Disable architecture-based workflow filtering (provision for all workflows)'
+    )
+    parser.add_argument(
         '--daemon',
         action='store_true',
         help='Run as background daemon (not yet implemented)'
@@ -272,7 +297,8 @@ Requirements:
             owner=args.owner,
             poll_interval=args.interval,
             since_days=args.since_days,
-            max_runners=args.max_runners
+            max_runners=args.max_runners,
+            filter_by_arch=not args.no_arch_filter
         )
         
         autoscaler.start()
