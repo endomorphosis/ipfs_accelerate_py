@@ -1243,6 +1243,45 @@ class IPFSAccelerateCLI:
             logger.info(f"Integrated MCP Server + Dashboard started at http://{args.host}:{bound_port}")
             logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
 
+            # Start GitHub Actions autoscaler in background thread
+            autoscaler_thread = None
+            autoscaler_instance = None
+            if not getattr(args, 'disable_autoscaler', False):  # Enabled by default
+                try:
+                    from github_autoscaler import GitHubRunnerAutoscaler
+                    
+                    # Check if GitHub CLI is authenticated
+                    from ipfs_accelerate_py.github_cli import GitHubCLI
+                    gh = GitHubCLI()
+                    auth_status = gh.get_auth_status()
+                    
+                    if auth_status.get("authenticated"):
+                        logger.info("Starting GitHub Actions autoscaler in background...")
+                        autoscaler_instance = GitHubRunnerAutoscaler(
+                            owner=getattr(args, 'autoscaler_owner', None),
+                            poll_interval=getattr(args, 'autoscaler_interval', 60),
+                            since_days=getattr(args, 'autoscaler_since_days', 1),
+                            max_runners=getattr(args, 'autoscaler_max_runners', None),
+                            filter_by_arch=True
+                        )
+                        
+                        def run_autoscaler():
+                            try:
+                                autoscaler_instance.start(setup_signals=False)
+                            except Exception as e:
+                                logger.error(f"Autoscaler error: {e}")
+                        
+                        autoscaler_thread = threading.Thread(target=run_autoscaler, daemon=True)
+                        autoscaler_thread.start()
+                        logger.info("✓ GitHub Actions autoscaler started")
+                    else:
+                        logger.warning("GitHub CLI not authenticated - autoscaler disabled")
+                        logger.warning("  To enable: gh auth login")
+                except ImportError as e:
+                    logger.warning(f"GitHub autoscaler not available: {e}")
+                except Exception as e:
+                    logger.warning(f"Could not start autoscaler: {e}")
+
             if getattr(args, 'open_browser', False):
                 import webbrowser
                 webbrowser.open(f"http://{args.host}:{bound_port}")
@@ -1251,6 +1290,9 @@ class IPFSAccelerateCLI:
                 server.serve_forever()
             except KeyboardInterrupt:
                 logger.info("Server shutdown requested")
+                if autoscaler_instance:
+                    logger.info("Stopping autoscaler...")
+                    autoscaler_instance.stop()
                 server.shutdown()
                 return 0
             except Exception as e:
@@ -1299,6 +1341,18 @@ Examples:
         start_parser.add_argument('--dashboard', action='store_true', help='Enable web dashboard')
         start_parser.add_argument('--open-browser', action='store_true', help='Open browser automatically')
         start_parser.add_argument('--keep-running', action='store_true', help='Keep server running')
+        
+        # GitHub Actions autoscaler options
+        start_parser.add_argument('--disable-autoscaler', action='store_true', 
+                                 help='Disable GitHub Actions autoscaler')
+        start_parser.add_argument('--autoscaler-owner', type=str,
+                                 help='GitHub owner/org to monitor for autoscaler')
+        start_parser.add_argument('--autoscaler-interval', type=int, default=60,
+                                 help='Autoscaler poll interval in seconds (default: 60)')
+        start_parser.add_argument('--autoscaler-since-days', type=int, default=1,
+                                 help='Monitor repos updated in last N days (default: 1)')
+        start_parser.add_argument('--autoscaler-max-runners', type=int,
+                                 help='Max runners for autoscaler (default: system cores)')
         
         # MCP dashboard command
         dashboard_parser = mcp_subparsers.add_parser('dashboard', help='Start dashboard only')

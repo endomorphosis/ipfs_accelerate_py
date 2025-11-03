@@ -229,9 +229,13 @@ class GitHubRunnerAutoscaler:
         except Exception as e:
             logger.error(f"Error during check and scale: {e}", exc_info=True)
     
-    def start(self) -> None:
+    def start(self, setup_signals=True) -> None:
         """
         Start the autoscaler service.
+        
+        Args:
+            setup_signals: Whether to set up signal handlers (default: True).
+                          Set to False when running in a background thread.
         """
         self.running = True
         logger.info("=" * 80)
@@ -239,12 +243,18 @@ class GitHubRunnerAutoscaler:
         logger.info("=" * 80)
         logger.info("")
         logger.info("Monitoring for workflow queues and auto-provisioning runners...")
-        logger.info("Press Ctrl+C to stop")
+        if setup_signals:
+            logger.info("Press Ctrl+C to stop")
         logger.info("")
         
-        # Set up signal handlers
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        # Set up signal handlers only if running in main thread
+        if setup_signals:
+            try:
+                signal.signal(signal.SIGINT, self._signal_handler)
+                signal.signal(signal.SIGTERM, self._signal_handler)
+            except ValueError:
+                # Not in main thread, skip signal handlers
+                logger.debug("Not in main thread, skipping signal handlers")
         
         # Main loop
         iteration = 0
