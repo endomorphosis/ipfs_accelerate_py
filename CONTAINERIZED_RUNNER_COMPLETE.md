@@ -19,16 +19,16 @@ Successfully implemented a complete autoscaling system that:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  1. IPFS Accelerate MCP Server (port 9000)                  │
-│     - Dashboard and API                                      │
-│     - Wants: github-autoscaler                               │
+│     - Dashboard and API                                     │
+│     - Wants: github-autoscaler                              │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  2. GitHub Actions Autoscaler (60s polling)                 │
-│     - Monitors workflow queues                               │
-│     - Filters by architecture (x64/ARM64)                    │
-│     - Generates registration tokens                          │
+│     - Monitors workflow queues                              │
+│     - Filters by architecture (x64/ARM64)                   │
+│     - Generates registration tokens                         │
 │     - Writes tokens to: /var/lib/github-runner-autoscaler/  │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -36,12 +36,12 @@ Successfully implemented a complete autoscaling system that:
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  3. Containerized Runner Launcher (60s checking)            │
-│     - Reads tokens from shared file                          │
-│     - Launches Docker containers with:                       │
+│     - Reads tokens from shared file                         │
+│     - Launches Docker containers with:                      │
 │       • Security: --rm, --security-opt=no-new-privileges    │
-│       • Limits: --memory=4g, --cpus=4                        │
+│       • Limits: --memory=4g, --cpus=4                       │
 │       • Ephemeral: EPHEMERAL=true (one job then exit)       │
-│       • Labels: architecture-specific (x64/arm64)            │
+│       • Labels: architecture-specific (x64/arm64)           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
