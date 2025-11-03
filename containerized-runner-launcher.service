@@ -1,0 +1,42 @@
+[Unit]
+Description=Containerized GitHub Actions Runner Launcher
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+After=docker.service github-autoscaler.service
+Wants=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=devel
+Group=devel
+WorkingDirectory=/home/devel/ipfs_accelerate_py
+
+# Ensure Docker socket is accessible
+SupplementaryGroups=docker
+
+# Environment
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+# Run the launcher
+ExecStart=/home/devel/.venvs/ipfs-accelerate/bin/python /home/devel/ipfs_accelerate_py/containerized_runner_launcher.py \
+    --token-file=/var/lib/github-runner-autoscaler/runner_tokens.json \
+    --max-containers=10 \
+    --cleanup-interval=300
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitInterval=0
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=runner-launcher
+
+# Security
+NoNewPrivileges=false
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

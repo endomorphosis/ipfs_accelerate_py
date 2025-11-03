@@ -18,7 +18,7 @@ import logging
 import signal
 import argparse
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 
 # Setup path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -74,7 +74,10 @@ class GitHubRunnerAutoscaler:
         
         # Initialize GitHub CLI components
         try:
-            self.gh = GitHubCLI()
+            # Use /usr/bin/gh (apt-installed) to avoid snap's privileged capabilities error under systemd
+            import os
+            gh_path = "/usr/bin/gh" if os.path.exists("/usr/bin/gh") else "gh"
+            self.gh = GitHubCLI(gh_path=gh_path)
             self.queue_mgr = WorkflowQueue(self.gh)
             self.runner_mgr = RunnerManager(self.gh)
             logger.info("✓ GitHub CLI components initialized")
@@ -107,6 +110,50 @@ class GitHubRunnerAutoscaler:
         logger.info(f"  Runner labels: {runner_labels}")
         logger.info(f"  Architecture filtering: {'enabled' if filter_by_arch else 'disabled'}")
         logger.info(f"  Docker isolation: enabled (see CONTAINERIZED_CI_SECURITY.md)")
+    
+    def _write_tokens_to_file(self, provisioning: Dict, system_arch: str, token_file: str = "/var/lib/github-runner-autoscaler/runner_tokens.json") -> None:
+        """
+        Write runner tokens to file for containerized launcher to consume.
+        
+        Args:
+            provisioning: Dictionary of provisioning results from runner manager
+            system_arch: System architecture (x64, arm64, etc.)
+            token_file: Path to token file
+        """
+        import json
+        from datetime import datetime
+        
+        tokens = []
+        for repo, status in provisioning.items():
+            if status.get("status") == "token_generated":
+                # Get labels from runner manager
+                labels = self.runner_mgr.get_runner_labels()
+                
+                tokens.append({
+                    "repo": repo,
+                    "token": status["token"],
+                    "labels": labels,
+                    "workflow_count": status.get("total_workflows", 0),
+                    "running": status.get("running", 0),
+                    "failed": status.get("failed", 0),
+                    "architecture": system_arch,
+                    "created_at": datetime.utcnow().isoformat() + "Z"
+                })
+        
+        if tokens:
+            try:
+                data = {
+                    "tokens": tokens,
+                    "generated_at": datetime.utcnow().isoformat() + "Z",
+                    "architecture": system_arch
+                }
+                
+                with open(token_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                
+                logger.info(f"✓ Wrote {len(tokens)} token(s) to {token_file}")
+            except IOError as e:
+                logger.error(f"Failed to write tokens to file: {e}")
     
     def check_and_scale(self) -> None:
         """
@@ -167,6 +214,10 @@ class GitHubRunnerAutoscaler:
             
             if success_count > 0:
                 logger.info(f"✓ Generated {success_count} runner token(s)")
+                
+                # Write tokens to file for containerized launcher
+                self._write_tokens_to_file(provisioning, system_arch)
+                
                 for repo, status in provisioning.items():
                     if status.get("status") == "token_generated":
                         logger.info(f"  {repo}: {status['total_workflows']} workflows")

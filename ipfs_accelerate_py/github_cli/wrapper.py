@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
@@ -31,14 +31,16 @@ class GitHubCLI:
     def _verify_installation(self) -> None:
         """Verify that gh CLI is installed and authenticated."""
         try:
+            logger.debug(f"Attempting to verify gh CLI at: {self.gh_path}")
             result = subprocess.run(
                 [self.gh_path, "--version"],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
+            logger.debug(f"gh CLI returncode: {result.returncode}, stdout: {result.stdout}, stderr: {result.stderr}")
             if result.returncode != 0:
-                raise RuntimeError(f"gh CLI not found at {self.gh_path}")
+                raise RuntimeError(f"gh CLI returned error (code {result.returncode}): stderr={result.stderr}, stdout={result.stdout}")
             logger.info(f"GitHub CLI version: {result.stdout.strip()}")
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             raise RuntimeError(f"Failed to verify gh CLI installation: {e}")
@@ -257,7 +259,7 @@ class WorkflowQueue:
         all_runs = self.list_workflow_runs(repo, status="completed", limit=limit)
         
         # Filter for failures within time window
-        cutoff_date = datetime.now() - timedelta(days=since_days)
+        cutoff_date = datetime.now().replace(tzinfo=timezone.utc) - timedelta(days=since_days)
         failed_runs = []
         
         for run in all_runs:
@@ -286,7 +288,7 @@ class WorkflowQueue:
             List of repository names in format "owner/repo"
         """
         repos = self.gh.list_repos(owner=owner, limit=limit)
-        cutoff_date = datetime.now() - timedelta(days=since_days)
+        cutoff_date = datetime.now().replace(tzinfo=timezone.utc) - timedelta(days=since_days)
         
         recent_repos = []
         for repo in repos:
