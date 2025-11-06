@@ -62,6 +62,10 @@ class ErrorReporter:
         self.include_system_info = include_system_info
         self.auto_label = auto_label
         
+        # Cache environment checks
+        self._is_docker = os.path.exists('/.dockerenv')
+        self._is_venv = sys.prefix != sys.base_prefix
+        
         # Track reported errors to avoid duplicates
         self.reported_errors = set()
         cache_base = cache_dir or os.environ.get('ERROR_REPORTER_CACHE_DIR') or str(Path.home() / '.ipfs_accelerate')
@@ -144,8 +148,8 @@ class ErrorReporter:
         # Add environment info if available
         try:
             info['environment'] = {
-                'docker': os.path.exists('/.dockerenv'),
-                'virtual_env': sys.prefix != sys.base_prefix
+                'docker': self._is_docker,
+                'virtual_env': self._is_venv
             }
         except Exception:
             pass

@@ -237,7 +237,6 @@ python -m ipfs_accelerate_py.utils.error_reporting_api
                 let statusHtml = '';
                 statusHtml += `Enabled: ${status.enabled ? '✓ Yes' : '✗ No'}\n`;
                 statusHtml += `GitHub Repo: ${status.github_repo || 'Not set'}\n`;
-                statusHtml += `Has Token: ${status.has_token ? '✓ Yes' : '✗ No'}\n`;
                 statusHtml += `Reported Errors: ${status.reported_errors_count || 0}\n`;
                 
                 pre.textContent = statusHtml;
