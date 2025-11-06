@@ -83,8 +83,8 @@ RUN pip install --upgrade pip setuptools wheel
 COPY --chown=appuser:appuser . .
 
 # Install package in editable mode with development dependencies
-# Install Flask and Werkzeug explicitly for MCP dashboard
-RUN pip install flask>=3.0.0 werkzeug>=3.0.0 && \
+# Install Flask, Werkzeug, flask-cors, and fastmcp explicitly for MCP dashboard
+RUN pip install flask>=3.0.0 flask-cors>=4.0.0 werkzeug>=3.0.0 fastmcp>=0.1.0 && \
     pip install -e ".[all,testing,mcp,webnn,viz]"
 
 # Copy startup validation and entrypoint scripts
@@ -128,9 +128,9 @@ ENV BUILD_TYPE=production
 COPY --from=builder /app/src/dist/*.whl /tmp/
 
 # Install package with full dependencies for production
-# Install Flask and Werkzeug explicitly for MCP dashboard
+# Install Flask, Werkzeug, and flask-cors explicitly for MCP dashboard
 RUN pip install --upgrade pip && \
-    pip install flask>=3.0.0 werkzeug>=3.0.0 && \
+    pip install flask>=3.0.0 flask-cors>=4.0.0 werkzeug>=3.0.0 && \
     find /tmp -name "*.whl" -exec pip install "{}[full,mcp]" \; && \
     rm -rf /tmp/*.whl
 

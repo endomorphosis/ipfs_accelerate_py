@@ -22,6 +22,43 @@ echo ""
 # Set PYTHONPATH to ensure package can be found
 export PYTHONPATH=/app:${PYTHONPATH:-}
 
+# Function to install missing dependencies
+install_missing_dependencies() {
+    echo "Checking and installing missing dependencies..."
+    
+    # Check for Flask and flask-cors
+    if ! python3 -c "import flask" 2>/dev/null; then
+        echo "  Installing flask..."
+        pip install --quiet --no-cache-dir "flask>=3.0.0" || echo "  Warning: Could not install flask"
+    fi
+    
+    if ! python3 -c "import flask_cors" 2>/dev/null; then
+        echo "  Installing flask-cors..."
+        pip install --quiet --no-cache-dir "flask-cors>=4.0.0" || echo "  Warning: Could not install flask-cors"
+    fi
+    
+    if ! python3 -c "import werkzeug" 2>/dev/null; then
+        echo "  Installing werkzeug..."
+        pip install --quiet --no-cache-dir "werkzeug>=3.0.0" || echo "  Warning: Could not install werkzeug"
+    fi
+    
+    if ! python3 -c "import jinja2" 2>/dev/null; then
+        echo "  Installing jinja2..."
+        pip install --quiet --no-cache-dir "jinja2>=3.1.0" || echo "  Warning: Could not install jinja2"
+    fi
+    
+    if ! python3 -c "import fastmcp" 2>/dev/null; then
+        echo "  Installing fastmcp..."
+        pip install --quiet --no-cache-dir "fastmcp>=0.1.0" || echo "  Warning: Could not install fastmcp"
+    fi
+    
+    echo "  Dependency check complete"
+    echo ""
+}
+
+# Install any missing dependencies
+install_missing_dependencies
+
 # Run startup validation
 echo "Running startup validation checks..."
 echo ""

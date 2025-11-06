@@ -350,6 +350,7 @@ class DockerEnvironmentValidator:
         # Check for MCP server dependencies
         mcp_packages = [
             'flask',
+            'flask_cors',
             'jinja2',
             'werkzeug',
         ]

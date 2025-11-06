@@ -953,9 +953,12 @@ class IPFSAccelerateCLI:
             logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
 
             # Start GitHub Actions autoscaler in background thread
+            # Only attempt if not in a container environment (gh CLI typically not in containers)
             autoscaler_thread = None
             autoscaler_instance = None
-            if not getattr(args, 'disable_autoscaler', False):  # Enabled by default
+            in_container = os.path.exists('/.dockerenv') or os.path.exists('/run/.containerenv')
+            
+            if not getattr(args, 'disable_autoscaler', False) and not in_container:
                 try:
                     from github_autoscaler import GitHubRunnerAutoscaler
                     
@@ -984,12 +987,11 @@ class IPFSAccelerateCLI:
                         autoscaler_thread.start()
                         logger.info("✓ GitHub Actions autoscaler started")
                     else:
-                        logger.warning("GitHub CLI not authenticated - autoscaler disabled")
-                        logger.warning("  To enable: gh auth login")
+                        logger.debug("GitHub CLI not authenticated - autoscaler disabled")
                 except ImportError as e:
-                    logger.warning(f"GitHub autoscaler not available: {e}")
+                    logger.debug(f"GitHub autoscaler not available: {e}")
                 except Exception as e:
-                    logger.warning(f"Could not start autoscaler: {e}")
+                    logger.debug(f"Could not start autoscaler: {e}")
 
             if getattr(args, 'open_browser', False):
                 import webbrowser

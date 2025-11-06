@@ -145,6 +145,7 @@ setup(
 			"libp2p>=0.1.5",
 			"async-timeout>=4.0.0",
 			"flask>=3.0.0",
+			"flask-cors>=4.0.0",
 			"werkzeug>=3.0.0",
 		],
 		"all": [
@@ -182,6 +183,7 @@ setup(
 			"libp2p>=0.1.5",
 			"async-timeout>=4.0.0",
 			"flask>=3.0.0",
+			"flask-cors>=4.0.0",
 			"werkzeug>=3.0.0",
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
@@ -192,7 +194,7 @@ setup(
 	entry_points={
 		'console_scripts': [
 			'ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main',
-			'ipfs-accelerate=ipfs_accelerate_py.cli_entry:main',
+			'ipfs-accelerate=ipfs_accelerate_py.cli:main',
 		],
 	}
 )
