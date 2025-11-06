@@ -85,10 +85,18 @@ COPY --chown=appuser:appuser . .
 # Install package in editable mode with development dependencies
 RUN pip install -e ".[all,testing,mcp,webnn,viz]"
 
+# Copy startup validation and entrypoint scripts
+COPY --chown=appuser:appuser docker_startup_check.py /app/
+COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
+
 USER appuser
 ENV HOME=/home/appuser
 EXPOSE 8000 5678 8888
-CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "--help"]
+
+# Use the new entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["--help"]
 
 # Testing stage
 FROM development AS testing
@@ -126,6 +134,11 @@ RUN pip install --upgrade pip && \
 RUN mkdir -p /app/data /app/logs /app/config /app/models && \
     chown -R appuser:appuser /app
 
+# Copy startup validation and entrypoint scripts
+COPY --chown=appuser:appuser docker_startup_check.py /app/
+COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
+
 # Copy config files if they exist (conditional copy)
 RUN mkdir -p /app/config
 
@@ -138,7 +151,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import ipfs_accelerate_py; print('OK')" || exit 1
 
 EXPOSE 8000
-CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
+
+# Use the new entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
 
 # Minimal stage for lightweight deployments
 FROM base AS minimal
@@ -194,7 +210,14 @@ RUN pip install \
     # Platform-specific packages will be installed if available
     && echo "Hardware acceleration setup complete"
 
+# Copy startup validation and entrypoint scripts  
+COPY --chown=appuser:appuser docker_startup_check.py /app/
+COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
+
 USER appuser
 WORKDIR /app
 
-CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
+# Use the new entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
