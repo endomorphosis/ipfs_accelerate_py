@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Error Reporting Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        
+        .demo-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .demo-section h2 {
+            color: #4CAF50;
+            margin-top: 0;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .output {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .output pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .status.enabled {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .status.disabled {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        
+        .code-block {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        
+        .code-block code {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 IPFS Accelerate - JavaScript Error Reporting Demo</h1>
+    
+    <div class="warning">
+        <strong>⚠️ Note:</strong> This demo requires a backend server running with the error reporting API endpoint.
+        Make sure to set GITHUB_TOKEN and GITHUB_REPO environment variables before starting the server.
+    </div>
+    
+    <div class="demo-section">
+        <h2>📊 Error Reporter Status</h2>
+        <div id="status-output" class="output">
+            <pre>Loading...</pre>
+        </div>
+        <button onclick="checkStatus()">🔄 Refresh Status</button>
+    </div>
+    
+    <div class="demo-section">
+        <h2>1️⃣ Basic Error Reporting</h2>
+        <p>Report a simple error with basic information.</p>
+        <button onclick="demoBasicError()">Trigger Basic Error</button>
+        <div id="basic-output" class="output" style="display:none;">
+            <pre></pre>
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h2>2️⃣ Error with Context</h2>
+        <p>Report an error with additional context information.</p>
+        <button onclick="demoErrorWithContext()">Trigger Error with Context</button>
+        <div id="context-output" class="output" style="display:none;">
+            <pre></pre>
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h2>3️⃣ Uncaught Error</h2>
+        <p>Trigger an uncaught error (will be caught by global handler).</p>
+        <button onclick="demoUncaughtError()">Trigger Uncaught Error</button>
+        <div id="uncaught-output" class="output" style="display:none;">
+            <pre></pre>
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h2>4️⃣ Promise Rejection</h2>
+        <p>Trigger an unhandled promise rejection.</p>
+        <button onclick="demoPromiseRejection()">Trigger Promise Rejection</button>
+        <div id="promise-output" class="output" style="display:none;">
+            <pre></pre>
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h2>5️⃣ Different Error Types</h2>
+        <p>Report various types of JavaScript errors.</p>
+        <button onclick="demoTypeError()">TypeError</button>
+        <button onclick="demoReferenceError()">ReferenceError</button>
+        <button onclick="demoRangeError()">RangeError</button>
+        <div id="types-output" class="output" style="display:none;">
+            <pre></pre>
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h2>6️⃣ Duplicate Prevention</h2>
+        <p>Report the same error multiple times to test duplicate detection.</p>
+        <button onclick="demoDuplicatePrevention()">Report Same Error 3x</button>
+        <div id="duplicate-output" class="output" style="display:none;">
+            <pre></pre>
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h2>💻 Setup Instructions</h2>
+        <div class="code-block">
+            <code># 1. Set environment variables
+export GITHUB_TOKEN=ghp_your_token_here
+export GITHUB_REPO=your_username/your_repo
+
+# 2. Start the server with error reporting API
+python -m ipfs_accelerate_py.utils.error_reporting_api
+
+# 3. Open this page in your browser
+</code>
+        </div>
+    </div>
+    
+    <!-- Include error reporter -->
+    <script src="/static/js/error-reporter.js"></script>
+    
+    <script>
+        // Initialize error reporting
+        const reporter = getErrorReporter({
+            apiEndpoint: '/api/report-error'
+        });
+        
+        // Install global handlers
+        installGlobalErrorHandler('demo-page');
+        
+        // Log function
+        function log(outputId, message) {
+            const output = document.getElementById(outputId);
+            output.style.display = 'block';
+            const pre = output.querySelector('pre');
+            pre.textContent += message + '\n';
+        }
+        
+        function clearLog(outputId) {
+            const output = document.getElementById(outputId);
+            const pre = output.querySelector('pre');
+            pre.textContent = '';
+        }
+        
+        // Check status
+        async function checkStatus() {
+            const output = document.getElementById('status-output');
+            const pre = output.querySelector('pre');
+            
+            try {
+                pre.textContent = 'Checking status...';
+                
+                const response = await fetch('/api/error-reporter/status');
+                const status = await response.json();
+                
+                let statusHtml = '';
+                statusHtml += `Enabled: ${status.enabled ? '✓ Yes' : '✗ No'}\n`;
+                statusHtml += `GitHub Repo: ${status.github_repo || 'Not set'}\n`;
+                statusHtml += `Has Token: ${status.has_token ? '✓ Yes' : '✗ No'}\n`;
+                statusHtml += `Reported Errors: ${status.reported_errors_count || 0}\n`;
+                
+                pre.textContent = statusHtml;
+                
+            } catch (error) {
+                pre.textContent = `Error checking status: ${error.message}`;
+            }
+        }
+        
+        // Demo 1: Basic error
+        async function demoBasicError() {
+            clearLog('basic-output');
+            log('basic-output', 'Triggering basic error...');
+            
+            try {
+                throw new Error('This is a demo error');
+            } catch (error) {
+                const issueUrl = await reporter.reportError({
+                    error: error,
+                    sourceComponent: 'demo-basic',
+                    context: {
+                        demo: 'basic_error',
+                        timestamp: new Date().toISOString()
+                    }
+                });
+                
+                if (issueUrl) {
+                    log('basic-output', `✓ Error reported: ${issueUrl}`);
+                } else {
+                    log('basic-output', '✗ Error not reported (may be duplicate or disabled)');
+                }
+            }
+        }
+        
+        // Demo 2: Error with context
+        async function demoErrorWithContext() {
+            clearLog('context-output');
+            log('context-output', 'Triggering error with context...');
+            
+            try {
+                const userData = { name: 'John', age: 30 };
+                throw new Error(`Failed to process user: ${userData.name}`);
+            } catch (error) {
+                const issueUrl = await reporter.reportError({
+                    error: error,
+                    sourceComponent: 'demo-context',
+                    context: {
+                        operation: 'process_user_data',
+                        user_data: { name: 'John', age: 30 },
+                        browser: navigator.userAgent,
+                        timestamp: new Date().toISOString()
+                    }
+                });
+                
+                if (issueUrl) {
+                    log('context-output', `✓ Error with context reported: ${issueUrl}`);
+                } else {
+                    log('context-output', '✗ Error not reported');
+                }
+            }
+        }
+        
+        // Demo 3: Uncaught error
+        function demoUncaughtError() {
+            clearLog('uncaught-output');
+            log('uncaught-output', 'Triggering uncaught error...');
+            log('uncaught-output', 'Check console for global handler message');
+            
+            // Trigger in next tick to show message first
+            setTimeout(() => {
+                throw new Error('This is an uncaught error (caught by global handler)');
+            }, 100);
+        }
+        
+        // Demo 4: Promise rejection
+        function demoPromiseRejection() {
+            clearLog('promise-output');
+            log('promise-output', 'Triggering promise rejection...');
+            log('promise-output', 'Check console for global handler message');
+            
+            // Create rejected promise
+            Promise.reject(new Error('This is an unhandled promise rejection'));
+        }
+        
+        // Demo 5: TypeError
+        async function demoTypeError() {
+            clearLog('types-output');
+            log('types-output', 'Triggering TypeError...');
+            
+            try {
+                const obj = null;
+                obj.someProperty = 'value'; // TypeError
+            } catch (error) {
+                const issueUrl = await reporter.reportError({
+                    error: error,
+                    sourceComponent: 'demo-types'
+                });
+                log('types-output', issueUrl ? `✓ TypeError reported: ${issueUrl}` : '✗ Not reported');
+            }
+        }
+        
+        async function demoReferenceError() {
+            clearLog('types-output');
+            log('types-output', 'Triggering ReferenceError...');
+            
+            try {
+                console.log(undefinedVariable); // ReferenceError
+            } catch (error) {
+                const issueUrl = await reporter.reportError({
+                    error: error,
+                    sourceComponent: 'demo-types'
+                });
+                log('types-output', issueUrl ? `✓ ReferenceError reported: ${issueUrl}` : '✗ Not reported');
+            }
+        }
+        
+        async function demoRangeError() {
+            clearLog('types-output');
+            log('types-output', 'Triggering RangeError...');
+            
+            try {
+                const arr = new Array(-1); // RangeError
+            } catch (error) {
+                const issueUrl = await reporter.reportError({
+                    error: error,
+                    sourceComponent: 'demo-types'
+                });
+                log('types-output', issueUrl ? `✓ RangeError reported: ${issueUrl}` : '✗ Not reported');
+            }
+        }
+        
+        // Demo 6: Duplicate prevention
+        async function demoDuplicatePrevention() {
+            clearLog('duplicate-output');
+            log('duplicate-output', 'Reporting same error 3 times...\n');
+            
+            for (let i = 1; i <= 3; i++) {
+                try {
+                    throw new Error('Duplicate test error');
+                } catch (error) {
+                    const issueUrl = await reporter.reportError({
+                        error: error,
+                        sourceComponent: 'demo-duplicate',
+                        context: { attempt: i }
+                    });
+                    
+                    if (issueUrl) {
+                        log('duplicate-output', `Attempt ${i}: ✓ Reported - ${issueUrl}`);
+                    } else {
+                        log('duplicate-output', `Attempt ${i}: ✗ Duplicate detected`);
+                    }
+                }
+            }
+        }
+        
+        // Check status on load
+        window.addEventListener('DOMContentLoaded', () => {
+            checkStatus();
+        });
+    </script>
+</body>
+</html>
