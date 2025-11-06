@@ -971,7 +971,7 @@ class IPFSAccelerateCLI:
                         logger.info("Starting GitHub Actions autoscaler in background...")
                         autoscaler_instance = GitHubRunnerAutoscaler(
                             owner=getattr(args, 'autoscaler_owner', None),
-                            poll_interval=getattr(args, 'autoscaler_interval', 60),
+                            poll_interval=getattr(args, 'autoscaler_interval', 120),  # Increased from 60s to 120s
                             since_days=getattr(args, 'autoscaler_since_days', 1),
                             max_runners=getattr(args, 'autoscaler_max_runners', None),
                             filter_by_arch=True

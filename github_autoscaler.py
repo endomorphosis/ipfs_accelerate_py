@@ -26,10 +26,10 @@ sys.path.insert(0, current_dir)
 
 # Now import from the correct location
 try:
-    from ipfs_accelerate_py.github_cli import GitHubCLI, WorkflowQueue, RunnerManager
+    from ipfs_accelerate_py.github_cli import GitHubCLI, WorkflowQueue, RunnerManager, GitHubGraphQL
 except ImportError:
     # Try alternative import path
-    from github_cli import GitHubCLI, WorkflowQueue, RunnerManager
+    from github_cli import GitHubCLI, WorkflowQueue, RunnerManager, GitHubGraphQL
 
 # Configure logging
 logging.basicConfig(
@@ -50,7 +50,7 @@ class GitHubRunnerAutoscaler:
     def __init__(
         self,
         owner: Optional[str] = None,
-        poll_interval: int = 60,
+        poll_interval: int = 120,
         since_days: int = 1,
         max_runners: Optional[int] = None,
         filter_by_arch: bool = True
@@ -60,7 +60,7 @@ class GitHubRunnerAutoscaler:
         
         Args:
             owner: GitHub owner (user or org) to monitor
-            poll_interval: Seconds between checks (default: 60)
+            poll_interval: Seconds between checks (default: 120)
             since_days: Look at repos updated in last N days (default: 1)
             max_runners: Maximum runners to provision (default: system cores)
             filter_by_arch: Whether to filter workflows by architecture (default: True)
@@ -80,6 +80,7 @@ class GitHubRunnerAutoscaler:
             self.gh = GitHubCLI(gh_path=gh_path)
             self.queue_mgr = WorkflowQueue(self.gh)
             self.runner_mgr = RunnerManager(self.gh)
+            self.graphql = GitHubGraphQL(gh_path=gh_path)  # Fallback for rate limits
             logger.info("✓ GitHub CLI components initialized")
         except Exception as e:
             logger.error(f"✗ Failed to initialize GitHub CLI: {e}")
@@ -163,9 +164,45 @@ class GitHubRunnerAutoscaler:
             except IOError as e:
                 logger.error(f"Failed to write tokens to file: {e}")
     
+    def _get_queues_via_graphql(self, system_arch: Optional[str] = None) -> Dict:
+        """
+        Get workflow queues using GraphQL API (fallback when REST is rate-limited).
+        
+        Args:
+            system_arch: System architecture to filter by
+            
+        Returns:
+            Dict of repo -> workflows
+        """
+        logger.info("Fetching workflow queues via GraphQL...")
+        queues = {}
+        
+        try:
+            # For now, we need a specific repo since we can't list all repos via GraphQL easily
+            # This is a limitation - GraphQL fallback works best when you know which repo to query
+            if self.owner:
+                # Try common repo names or get from cache
+                test_repos = ["ipfs_accelerate_py", "main", "runner"]
+                for repo_name in test_repos:
+                    result = self.graphql.list_workflow_runs(
+                        owner=self.owner,
+                        repo=repo_name,
+                        status="in_progress",
+                        limit=50
+                    )
+                    if result.get("success"):
+                        workflows = result.get("data", {}).get("workflow_runs", [])
+                        if workflows:
+                            queues[f"{self.owner}/{repo_name}"] = workflows
+        except Exception as e:
+            logger.error(f"GraphQL fallback failed: {e}")
+        
+        return queues
+    
     def check_and_scale(self) -> None:
         """
         Check workflow queues and provision runners if needed.
+        Uses GraphQL API as fallback if REST API is rate-limited.
         """
         try:
             logger.info("Checking workflow queues...")
@@ -175,12 +212,21 @@ class GitHubRunnerAutoscaler:
             
             # Get workflow queues for repos with recent activity
             # Filter by architecture if enabled
-            queues = self.queue_mgr.create_workflow_queues(
-                owner=self.owner,
-                since_days=self.since_days,
-                system_arch=system_arch if self.filter_by_arch else None,
-                filter_by_arch=self.filter_by_arch
-            )
+            try:
+                queues = self.queue_mgr.create_workflow_queues(
+                    owner=self.owner,
+                    since_days=self.since_days,
+                    system_arch=system_arch if self.filter_by_arch else None,
+                    filter_by_arch=self.filter_by_arch
+                )
+            except Exception as e:
+                # Check if it's a rate limit error
+                error_msg = str(e).lower()
+                if "rate limit" in error_msg or "403" in error_msg:
+                    logger.warning("REST API rate limited, using GraphQL API as fallback")
+                    queues = self._get_queues_via_graphql(system_arch)
+                else:
+                    raise
             
             if not queues:
                 logger.info("No repositories with active workflows")
