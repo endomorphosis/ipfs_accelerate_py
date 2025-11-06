@@ -4,8 +4,13 @@ include pyproject.toml
 include WEBGPU_WEBNN_MIGRATION_PLAN.md
 
 recursive-include ipfs_accelerate_py *.py
+recursive-include shared *.py
+recursive-include mcp *.py
 recursive-include docs *.md *.html *.py
 include ipfs_accelerate_py/api_backends/model_list/.gitkeep
+include github_autoscaler.py
+include docker_startup_check.py
+include docker-entrypoint.sh
 
 exclude benchmarks/*.txt
 exclude benchmarks/*.json

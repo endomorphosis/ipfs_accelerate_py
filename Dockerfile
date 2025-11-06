@@ -83,7 +83,9 @@ RUN pip install --upgrade pip setuptools wheel
 COPY --chown=appuser:appuser . .
 
 # Install package in editable mode with development dependencies
-RUN pip install -e ".[all,testing,mcp,webnn,viz]"
+# Install Flask and Werkzeug explicitly for MCP dashboard
+RUN pip install flask>=3.0.0 werkzeug>=3.0.0 && \
+    pip install -e ".[all,testing,mcp,webnn,viz]"
 
 # Copy startup validation and entrypoint scripts
 COPY --chown=appuser:appuser docker_startup_check.py /app/
@@ -111,7 +113,7 @@ FROM base AS builder
 # Install build dependencies
 RUN pip install --upgrade pip setuptools wheel build
 
-# Copy source files
+# Copy source files - ensure all modules are included
 COPY . /app/src/
 WORKDIR /app/src
 
@@ -126,7 +128,9 @@ ENV BUILD_TYPE=production
 COPY --from=builder /app/src/dist/*.whl /tmp/
 
 # Install package with full dependencies for production
+# Install Flask and Werkzeug explicitly for MCP dashboard
 RUN pip install --upgrade pip && \
+    pip install flask>=3.0.0 werkzeug>=3.0.0 && \
     find /tmp -name "*.whl" -exec pip install "{}[full,mcp]" \; && \
     rm -rf /tmp/*.whl
 

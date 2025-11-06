@@ -7,7 +7,8 @@ long_description = (this_directory / "README.md").read_text()
 setup(
 	name='ipfs_accelerate_py',
 	version='0.0.45',
-	packages=find_packages(),
+	packages=find_packages(include=['ipfs_accelerate_py', 'ipfs_accelerate_py.*', 'shared', 'shared.*', 'mcp', 'mcp.*']),
+	include_package_data=True,
 	description="A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution",
 	long_description=long_description,
 	long_description_content_type="text/markdown",
@@ -143,6 +144,8 @@ setup(
 			"fastmcp>=0.1.0",
 			"libp2p>=0.1.5",
 			"async-timeout>=4.0.0",
+			"flask>=3.0.0",
+			"werkzeug>=3.0.0",
 		],
 		"all": [
 			# Include all dependencies from full, testing, webnn, viz, mcp
@@ -178,6 +181,8 @@ setup(
 			"fastmcp>=0.1.0",
 			"libp2p>=0.1.5",
 			"async-timeout>=4.0.0",
+			"flask>=3.0.0",
+			"werkzeug>=3.0.0",
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
