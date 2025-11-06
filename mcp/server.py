@@ -54,6 +54,14 @@ except Exception as e:
     ipfs_available = False
     logger.warning(f"ipfs_kit_py not available or failed to import ({e!s}); some functionality will be limited")
 
+# Import error reporting
+try:
+    from utils.error_reporter import get_error_reporter, install_global_exception_handler
+    error_reporting_available = True
+except Exception as e:
+    error_reporting_available = False
+    logger.warning(f"Error reporting not available: {e}")
+
 
 def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
     """Create a new IPFS Accelerate MCP server.
@@ -67,6 +75,10 @@ def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
     """
     mcp_server = FastMCP(name=name, description=description or f"IPFS Accelerate MCP: {name}")
     logger.info(f"Created MCP server: {name}")
+    
+    # Install global exception handler for automatic error reporting
+    if error_reporting_available:
+        install_global_exception_handler(source_component='mcp-server')
     
     # Set up lifespan handlers
     @mcp_server.on_lifespan_start()
@@ -89,6 +101,13 @@ def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
                 await ctx.info(f"Connected to IPFS: {version.get('Version', 'unknown')}")
             except Exception as e:
                 await ctx.error(f"Error initializing IPFS client: {str(e)}")
+                # Report error if error reporting is available
+                if error_reporting_available:
+                    get_error_reporter().report_error(
+                        exception=e,
+                        source_component='mcp-server',
+                        context={'operation': 'ipfs_client_initialization'}
+                    )
                 # Continue without IPFS client
         else:
             # Using mock implementation
@@ -183,6 +202,13 @@ async def run_server(
         logger.info("Server interrupted")
     except Exception as e:
         logger.error(f"Error running server: {str(e)}")
+        # Report error if error reporting is available
+        if error_reporting_available:
+            get_error_reporter().report_error(
+                exception=e,
+                source_component='mcp-server',
+                context={'operation': 'server_run', 'transport': transport}
+            )
     finally:
         logger.info("Server shutdown complete")
 
