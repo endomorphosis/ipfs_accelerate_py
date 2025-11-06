@@ -981,17 +981,17 @@ class IPFSAccelerateCLI:
                             try:
                                 autoscaler_instance.start(setup_signals=False)
                             except Exception as e:
-                                logger.error(f"Autoscaler error: {e}")
+                                logger.error(f"Autoscaler error: {e}", exc_info=True)
                         
                         autoscaler_thread = threading.Thread(target=run_autoscaler, daemon=True)
                         autoscaler_thread.start()
                         logger.info("✓ GitHub Actions autoscaler started")
                     else:
-                        logger.debug("GitHub CLI not authenticated - autoscaler disabled")
+                        logger.warning(f"GitHub CLI not authenticated - autoscaler disabled (user: {auth_status.get('username', 'none')})")
                 except ImportError as e:
-                    logger.debug(f"GitHub autoscaler not available: {e}")
+                    logger.warning(f"GitHub autoscaler not available: {e}")
                 except Exception as e:
-                    logger.debug(f"Could not start autoscaler: {e}")
+                    logger.error(f"Could not start autoscaler: {e}", exc_info=True)
 
             if getattr(args, 'open_browser', False):
                 import webbrowser
