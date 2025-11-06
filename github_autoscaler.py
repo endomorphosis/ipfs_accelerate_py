@@ -129,16 +129,24 @@ class GitHubRunnerAutoscaler:
                 # Get labels from runner manager
                 labels = self.runner_mgr.get_runner_labels()
                 
-                tokens.append({
-                    "repo": repo,
-                    "token": status["token"],
-                    "labels": labels,
-                    "workflow_count": status.get("total_workflows", 0),
-                    "running": status.get("running", 0),
-                    "failed": status.get("failed", 0),
-                    "architecture": system_arch,
-                    "created_at": datetime.utcnow().isoformat() + "Z"
-                })
+                # Get the number of runners to provision for this repo
+                runners_to_provision = status.get("runners_to_provision", 1)
+                
+                # Create multiple token entries (same token, reused by multiple runners)
+                for i in range(runners_to_provision):
+                    tokens.append({
+                        "repo": repo,
+                        "token": status["token"],
+                        "labels": labels,
+                        "workflow_count": status.get("total_workflows", 0),
+                        "running": status.get("running", 0),
+                        "failed": status.get("failed", 0),
+                        "architecture": system_arch,
+                        "runner_number": i + 1,
+                        "total_runners_for_repo": runners_to_provision,
+                        "created_at": datetime.utcnow().isoformat() + "Z"
+                    })
+
         
         if tokens:
             try:

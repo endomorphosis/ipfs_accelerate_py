@@ -148,9 +148,11 @@ class DockerRunnerLauncher:
             logger.error("Invalid token info: missing repo or token")
             return None
         
-        # Generate container name
+        # Generate container name with unique ID to avoid conflicts
+        import uuid
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        container_name = f"runner_{repo.replace('/', '_')}_{timestamp}"
+        unique_id = uuid.uuid4().hex[:8]
+        container_name = f"runner_{repo.replace('/', '_')}_{timestamp}_{unique_id}"
         
         # Prepare Docker run command
         docker_cmd = [

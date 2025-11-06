@@ -99,6 +99,15 @@ class GitHubCLI:
     
     def get_auth_status(self) -> Dict[str, Any]:
         """Get GitHub authentication status."""
+        # Check for GITHUB_TOKEN environment variable first
+        import os
+        if os.environ.get("GITHUB_TOKEN"):
+            return {
+                "authenticated": True,
+                "output": "Authenticated via GITHUB_TOKEN environment variable",
+                "error": ""
+            }
+        
         result = self._run_command(["auth", "status"])
         return {
             "authenticated": result["success"],
@@ -595,8 +604,18 @@ class RunnerManager:
             # Determine how many runners this repo needs
             running_count = sum(1 for w in workflows if w.get("status") == "in_progress")
             failed_count = sum(1 for w in workflows if w.get("conclusion") in ["failure", "timed_out"])
+            queued_count = len(workflows) - running_count
             
-            # Get registration token
+            # Calculate needed runners: 1 (base per repo) + 1 (per workflow)
+            # But don't exceed available capacity
+            runners_needed = 1 + len(workflows)
+            runners_to_provision = min(runners_needed, max_runners - runners_provisioned)
+            
+            if runners_to_provision <= 0:
+                logger.info(f"No capacity for {repo} (would need {runners_needed})")
+                break
+            
+            # Generate tokens for this repo (one token can be reused by multiple runners)
             token = self.get_runner_registration_token(repo=repo)
             
             if token:
@@ -605,10 +624,12 @@ class RunnerManager:
                     "running_workflows": running_count,
                     "failed_workflows": failed_count,
                     "total_workflows": len(workflows),
+                    "runners_needed": runners_needed,
+                    "runners_to_provision": runners_to_provision,
                     "status": "token_generated"
                 }
-                runners_provisioned += 1
-                logger.info(f"Generated token for {repo} ({running_count} running, {failed_count} failed)")
+                runners_provisioned += runners_to_provision
+                logger.info(f"Generated token for {repo}: provisioning {runners_to_provision} runner(s) for {len(workflows)} workflow(s) ({running_count} running, {failed_count} failed)")
             else:
                 provisioning_status[repo] = {
                     "error": "Failed to generate registration token",
