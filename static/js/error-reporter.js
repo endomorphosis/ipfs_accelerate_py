@@ -189,7 +189,7 @@ class ErrorReporter {
         // Add priority labels based on error type
         const errorType = (errorInfo.error_type || '').toLowerCase();
         if (['syntaxerror', 'referenceerror', 'typeerror'].some(critical => 
-            errorType.includes(critical.toLowerCase()))) {
+            errorType.includes(critical))) {
             labels.push('priority:high');
         }
         

@@ -43,7 +43,8 @@ class ErrorReporter:
                  github_repo: Optional[str] = None,
                  enabled: bool = True,
                  include_system_info: bool = True,
-                 auto_label: bool = True):
+                 auto_label: bool = True,
+                 cache_dir: Optional[str] = None):
         """
         Initialize the error reporter.
         
@@ -53,6 +54,7 @@ class ErrorReporter:
             enabled: Whether error reporting is enabled
             include_system_info: Whether to include system information in reports
             auto_label: Whether to automatically add labels to issues
+            cache_dir: Directory for error cache (default: ~/.ipfs_accelerate)
         """
         self.github_token = github_token or os.environ.get('GITHUB_TOKEN')
         self.github_repo = github_repo or os.environ.get('GITHUB_REPO')
@@ -62,7 +64,8 @@ class ErrorReporter:
         
         # Track reported errors to avoid duplicates
         self.reported_errors = set()
-        self.error_cache_file = Path.home() / '.ipfs_accelerate' / 'reported_errors.json'
+        cache_base = cache_dir or os.environ.get('ERROR_REPORTER_CACHE_DIR') or str(Path.home() / '.ipfs_accelerate')
+        self.error_cache_file = Path(cache_base) / 'reported_errors.json'
         self._load_reported_errors()
         
         if not requests_available:
@@ -142,9 +145,7 @@ class ErrorReporter:
         try:
             info['environment'] = {
                 'docker': os.path.exists('/.dockerenv'),
-                'virtual_env': hasattr(sys, 'real_prefix') or (
-                    hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix
-                )
+                'virtual_env': sys.prefix != sys.base_prefix
             }
         except Exception:
             pass

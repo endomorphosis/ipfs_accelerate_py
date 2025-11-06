@@ -153,7 +153,6 @@ def create_error_reporting_api(app: Optional[Any] = None) -> Any:
             return jsonify({
                 'enabled': reporter.enabled,
                 'github_repo': reporter.github_repo if reporter.enabled else None,
-                'has_token': bool(reporter.github_token),
                 'reported_errors_count': len(reporter.reported_errors)
             }), 200
             
