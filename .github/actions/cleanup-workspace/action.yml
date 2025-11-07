@@ -1,0 +1,61 @@
+name: 'Cleanup Workspace'
+description: 'Clean runner workspace and fix permissions before checkout'
+branding:
+  icon: 'trash-2'
+  color: 'blue'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Remove stale git locks
+      shell: bash
+      run: |
+        echo "🔒 Removing stale git lock files..."
+        find "${GITHUB_WORKSPACE}" -name "*.lock" -type f -delete 2>/dev/null || true
+        find "${GITHUB_WORKSPACE}" -name "index.lock" -type f -delete 2>/dev/null || true
+        echo "✅ Lock files removed"
+      continue-on-error: true
+    
+    - name: Fix git directory permissions
+      shell: bash
+      run: |
+        echo "📁 Fixing .git directory permissions..."
+        if [ -d "${GITHUB_WORKSPACE}/.git" ]; then
+          # Fix directory permissions
+          find "${GITHUB_WORKSPACE}/.git" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
+          # Fix file permissions
+          find "${GITHUB_WORKSPACE}/.git" -type f -exec chmod u+rw {} \; 2>/dev/null || true
+          echo "✅ .git permissions fixed"
+        else
+          echo "ℹ️ No .git directory found"
+        fi
+      continue-on-error: true
+    
+    - name: Fix .github directory permissions
+      shell: bash
+      run: |
+        echo "📁 Fixing .github directory permissions..."
+        if [ -d "${GITHUB_WORKSPACE}/.github" ]; then
+          find "${GITHUB_WORKSPACE}/.github" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
+          find "${GITHUB_WORKSPACE}/.github" -type f -exec chmod u+rw {} \; 2>/dev/null || true
+          echo "✅ .github permissions fixed"
+        else
+          echo "ℹ️ No .github directory found"
+        fi
+      continue-on-error: true
+    
+    - name: Clean Python cache
+      shell: bash
+      run: |
+        echo "🐍 Cleaning Python cache files..."
+        find "${GITHUB_WORKSPACE}" -name "*.pyc" -delete 2>/dev/null || true
+        find "${GITHUB_WORKSPACE}" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+        echo "✅ Python cache cleaned"
+      continue-on-error: true
+    
+    - name: Report disk usage
+      shell: bash
+      run: |
+        echo "📊 Disk usage:"
+        df -h "${RUNNER_WORKSPACE}" 2>/dev/null || df -h "${GITHUB_WORKSPACE}" 2>/dev/null || true
+      continue-on-error: true
