@@ -688,11 +688,23 @@ jobs:
               });
               
               // Add a comment to the PR to additionally invoke Copilot
+              // Note: Temporarily disabled due to GitHub Copilot agent authentication issues
+              // Uncomment when GitHub resolves the GH_TOKEN authentication for Copilot assignments
+              /*
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: pr.data.number,
                 body: '@copilot /fix\n\nPlease analyze the workflow failure in the PR description and implement fixes to resolve the issue. The failure details and error logs are provided above.\n\nFocus on making minimal changes to fix the specific issue identified in the failure analysis.'
+              });
+              */
+              
+              // Alternative: Add a comment without @ mention to avoid triggering Copilot agent
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.data.number,
+                body: '🤖 **GitHub Copilot Workspace Ready**\n\nPlease analyze the workflow failure in the PR description and implement fixes to resolve the issue. The failure details and error logs are provided above.\n\nFocus on making minimal changes to fix the specific issue identified in the failure analysis.\n\n**To invoke Copilot manually**: Comment with `@github-copilot fix` or use GitHub Copilot Workspace.'
               });
               
               // Link the PR to the issue
