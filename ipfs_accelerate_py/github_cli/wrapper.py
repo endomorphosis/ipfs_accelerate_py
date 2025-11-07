@@ -2,30 +2,52 @@
 GitHub CLI Python Wrapper
 
 This module provides Python wrappers for GitHub CLI (gh) commands,
-enabling programmatic access to GitHub features.
+enabling programmatic access to GitHub features with optional caching.
 """
 
 import json
 import logging
 import os
 import subprocess
+import time
+import random
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
+
+from .cache import GitHubAPICache, get_global_cache
 
 logger = logging.getLogger(__name__)
 
 
 class GitHubCLI:
-    """Python wrapper for GitHub CLI (gh) commands."""
+    """Python wrapper for GitHub CLI (gh) commands with optional caching."""
     
-    def __init__(self, gh_path: str = "gh"):
+    def __init__(
+        self,
+        gh_path: str = "gh",
+        enable_cache: bool = True,
+        cache: Optional[GitHubAPICache] = None,
+        cache_ttl: int = 300
+    ):
         """
         Initialize GitHub CLI wrapper.
         
         Args:
             gh_path: Path to gh executable (default: "gh" from PATH)
+            enable_cache: Whether to enable response caching
+            cache: Custom cache instance (uses global cache if None)
+            cache_ttl: Default cache TTL in seconds (default: 5 minutes)
         """
         self.gh_path = gh_path
+        self.enable_cache = enable_cache
+        self.cache_ttl = cache_ttl
+        
+        # Set up cache
+        if enable_cache:
+            self.cache = cache if cache is not None else get_global_cache()
+        else:
+            self.cache = None
+        
         self._verify_installation()
     
     def _verify_installation(self) -> None:
@@ -49,53 +71,87 @@ class GitHubCLI:
         self,
         args: List[str],
         stdin: Optional[str] = None,
-        timeout: int = 30
+        timeout: int = 30,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        max_delay: float = 60.0
     ) -> Dict[str, Any]:
         """
-        Run a gh CLI command and return the result.
+        Run a gh CLI command with exponential backoff retry.
         
         Args:
             args: Command arguments
             stdin: Optional stdin input
             timeout: Command timeout in seconds
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay for exponential backoff (seconds)
+            max_delay: Maximum delay between retries (seconds)
             
         Returns:
             Dict with stdout, stderr, and returncode
         """
-        try:
-            cmd = [self.gh_path] + args
-            logger.debug(f"Running command: {' '.join(cmd)}")
-            
-            result = subprocess.run(
-                cmd,
-                input=stdin,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-            
-            return {
-                "stdout": result.stdout.strip(),
-                "stderr": result.stderr.strip(),
-                "returncode": result.returncode,
-                "success": result.returncode == 0
-            }
-        except subprocess.TimeoutExpired:
-            logger.error(f"Command timed out after {timeout}s")
-            return {
-                "stdout": "",
-                "stderr": f"Command timed out after {timeout}s",
-                "returncode": -1,
-                "success": False
-            }
-        except Exception as e:
-            logger.error(f"Error running command: {e}")
-            return {
-                "stdout": "",
-                "stderr": str(e),
-                "returncode": -1,
-                "success": False
-            }
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                cmd = [self.gh_path] + args
+                if attempt > 0:
+                    logger.debug(f"Retry attempt {attempt}/{max_retries} for command: {' '.join(cmd)}")
+                else:
+                    logger.debug(f"Running command: {' '.join(cmd)}")
+                
+                result = subprocess.run(
+                    cmd,
+                    input=stdin,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout
+                )
+                
+                # Check for rate limiting in stderr
+                stderr_lower = result.stderr.lower()
+                if result.returncode != 0 and any(keyword in stderr_lower for keyword in ['rate limit', 'api rate limit', 'too many requests']):
+                    if attempt < max_retries:
+                        # Exponential backoff with jitter
+                        delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), max_delay)
+                        logger.warning(f"Rate limit detected, retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(delay)
+                        continue
+                
+                # Success or non-retryable error
+                return {
+                    "stdout": result.stdout.strip(),
+                    "stderr": result.stderr.strip(),
+                    "returncode": result.returncode,
+                    "success": result.returncode == 0,
+                    "attempts": attempt + 1
+                }
+                
+            except subprocess.TimeoutExpired:
+                last_error = f"Command timed out after {timeout}s"
+                if attempt < max_retries:
+                    delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), max_delay)
+                    logger.warning(f"Timeout, retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    continue
+                    
+            except Exception as e:
+                last_error = str(e)
+                if attempt < max_retries:
+                    delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), max_delay)
+                    logger.warning(f"Error: {e}, retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    continue
+        
+        # All retries exhausted
+        logger.error(f"Command failed after {max_retries + 1} attempts: {last_error}")
+        return {
+            "stdout": "",
+            "stderr": last_error or "Unknown error",
+            "returncode": -1,
+            "success": False,
+            "attempts": max_retries + 1
+        }
     
     def get_auth_status(self) -> Dict[str, Any]:
         """Get GitHub authentication status."""
@@ -126,7 +182,8 @@ class GitHubCLI:
         self,
         owner: Optional[str] = None,
         limit: int = 30,
-        visibility: str = "all"
+        visibility: str = "all",
+        use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
         List GitHub repositories.
@@ -135,10 +192,18 @@ class GitHubCLI:
             owner: Repository owner (user or org)
             limit: Maximum number of repos to return
             visibility: Repository visibility (all, public, private)
+            use_cache: Whether to use cached results
             
         Returns:
             List of repository dictionaries
         """
+        # Check cache first
+        if use_cache and self.cache:
+            cached_result = self.cache.get("list_repos", owner=owner, limit=limit, visibility=visibility)
+            if cached_result is not None:
+                logger.debug(f"Using cached repo list for owner={owner}")
+                return cached_result
+        
         args = ["repo", "list", "--json", "name,owner,url,updatedAt", "--limit", str(limit)]
         if owner:
             args.append(owner)
@@ -146,29 +211,49 @@ class GitHubCLI:
         result = self._run_command(args)
         if result["success"] and result["stdout"]:
             try:
-                return json.loads(result["stdout"])
+                repos = json.loads(result["stdout"])
+                
+                # Cache the result
+                if use_cache and self.cache:
+                    self.cache.put("list_repos", repos, ttl=self.cache_ttl, owner=owner, limit=limit, visibility=visibility)
+                
+                return repos
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse repo list: {result['stdout']}")
                 return []
         return []
     
-    def get_repo_info(self, repo: str) -> Optional[Dict[str, Any]]:
+    def get_repo_info(self, repo: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
         """
         Get information about a specific repository.
         
         Args:
             repo: Repository in format "owner/repo"
+            use_cache: Whether to use cached results
             
         Returns:
             Repository information dictionary
         """
+        # Check cache first
+        if use_cache and self.cache:
+            cached_result = self.cache.get("get_repo_info", repo=repo)
+            if cached_result is not None:
+                logger.debug(f"Using cached repo info for {repo}")
+                return cached_result
+        
         args = ["repo", "view", repo, "--json", 
                 "name,owner,url,description,createdAt,updatedAt,pushedAt"]
         
         result = self._run_command(args)
         if result["success"] and result["stdout"]:
             try:
-                return json.loads(result["stdout"])
+                repo_info = json.loads(result["stdout"])
+                
+                # Cache the result
+                if use_cache and self.cache:
+                    self.cache.put("get_repo_info", repo_info, ttl=self.cache_ttl, repo=repo)
+                
+                return repo_info
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse repo info: {result['stdout']}")
                 return None
@@ -192,7 +277,8 @@ class WorkflowQueue:
         repo: str,
         status: Optional[str] = None,
         limit: int = 20,
-        branch: Optional[str] = None
+        branch: Optional[str] = None,
+        use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
         List workflow runs for a repository.
@@ -202,10 +288,18 @@ class WorkflowQueue:
             status: Filter by status (queued, in_progress, completed)
             limit: Maximum number of runs to return
             branch: Filter by branch
+            use_cache: Whether to use cached results
             
         Returns:
             List of workflow run dictionaries
         """
+        # Check cache first (shorter TTL for workflow runs - 60s)
+        if use_cache and self.gh.cache:
+            cached_result = self.gh.cache.get("list_workflow_runs", repo=repo, status=status, limit=limit, branch=branch)
+            if cached_result is not None:
+                logger.debug(f"Using cached workflow runs for {repo}")
+                return cached_result
+        
         args = ["run", "list", "--repo", repo, "--json",
                 "databaseId,name,status,conclusion,createdAt,updatedAt,event,headBranch,workflowName",
                 "--limit", str(limit)]
@@ -218,30 +312,50 @@ class WorkflowQueue:
         result = self.gh._run_command(args)
         if result["success"] and result["stdout"]:
             try:
-                return json.loads(result["stdout"])
+                runs = json.loads(result["stdout"])
+                
+                # Cache with shorter TTL (60s) since workflow status changes frequently
+                if use_cache and self.gh.cache:
+                    self.gh.cache.put("list_workflow_runs", runs, ttl=60, repo=repo, status=status, limit=limit, branch=branch)
+                
+                return runs
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse workflow runs: {result['stdout']}")
                 return []
         return []
     
-    def get_workflow_run(self, repo: str, run_id: str) -> Optional[Dict[str, Any]]:
+    def get_workflow_run(self, repo: str, run_id: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
         """
         Get details of a specific workflow run.
         
         Args:
             repo: Repository in format "owner/repo"
             run_id: Workflow run ID
+            use_cache: Whether to use cached results
             
         Returns:
             Workflow run details
         """
+        # Check cache first (shorter TTL - 60s)
+        if use_cache and self.gh.cache:
+            cached_result = self.gh.cache.get("get_workflow_run", repo=repo, run_id=run_id)
+            if cached_result is not None:
+                logger.debug(f"Using cached workflow run {run_id} for {repo}")
+                return cached_result
+        
         args = ["run", "view", run_id, "--repo", repo, "--json",
                 "databaseId,name,status,conclusion,createdAt,updatedAt,event,headBranch,workflowName,jobs"]
         
         result = self.gh._run_command(args)
         if result["success"] and result["stdout"]:
             try:
-                return json.loads(result["stdout"])
+                run_details = json.loads(result["stdout"])
+                
+                # Cache with shorter TTL (60s)
+                if use_cache and self.gh.cache:
+                    self.gh.cache.put("get_workflow_run", run_details, ttl=60, repo=repo, run_id=run_id)
+                
+                return run_details
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse workflow run: {result['stdout']}")
                 return None
@@ -498,7 +612,8 @@ class RunnerManager:
     def list_runners(
         self,
         repo: Optional[str] = None,
-        org: Optional[str] = None
+        org: Optional[str] = None,
+        use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
         List self-hosted runners.
@@ -506,10 +621,18 @@ class RunnerManager:
         Args:
             repo: Repository in format "owner/repo" (for repo-level runners)
             org: Organization name (for org-level runners)
+            use_cache: Whether to use cached results
             
         Returns:
             List of runner dictionaries
         """
+        # Check cache first (shorter TTL - 30s for runner status)
+        if use_cache and self.gh.cache:
+            cached_result = self.gh.cache.get("list_runners", repo=repo, org=org)
+            if cached_result is not None:
+                logger.debug(f"Using cached runner list for repo={repo}, org={org}")
+                return cached_result
+        
         if repo:
             # Repo-level runners (requires appropriate permissions)
             result = self.gh._run_command(
@@ -526,7 +649,13 @@ class RunnerManager:
         
         if result["success"] and result["stdout"]:
             try:
-                return json.loads(result["stdout"])
+                runners = json.loads(result["stdout"])
+                
+                # Cache with very short TTL (30s) since runner status changes frequently
+                if use_cache and self.gh.cache:
+                    self.gh.cache.put("list_runners", runners, ttl=30, repo=repo, org=org)
+                
+                return runners
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse runners: {result['stdout']}")
                 return []

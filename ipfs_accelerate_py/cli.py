@@ -953,9 +953,12 @@ class IPFSAccelerateCLI:
             logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
 
             # Start GitHub Actions autoscaler in background thread
+            # Only attempt if not in a container environment (gh CLI typically not in containers)
             autoscaler_thread = None
             autoscaler_instance = None
-            if not getattr(args, 'disable_autoscaler', False):  # Enabled by default
+            in_container = os.path.exists('/.dockerenv') or os.path.exists('/run/.containerenv')
+            
+            if not getattr(args, 'disable_autoscaler', False) and not in_container:
                 try:
                     from github_autoscaler import GitHubRunnerAutoscaler
                     
@@ -968,7 +971,7 @@ class IPFSAccelerateCLI:
                         logger.info("Starting GitHub Actions autoscaler in background...")
                         autoscaler_instance = GitHubRunnerAutoscaler(
                             owner=getattr(args, 'autoscaler_owner', None),
-                            poll_interval=getattr(args, 'autoscaler_interval', 60),
+                            poll_interval=getattr(args, 'autoscaler_interval', 120),  # Increased from 60s to 120s
                             since_days=getattr(args, 'autoscaler_since_days', 1),
                             max_runners=getattr(args, 'autoscaler_max_runners', None),
                             filter_by_arch=True
@@ -978,18 +981,17 @@ class IPFSAccelerateCLI:
                             try:
                                 autoscaler_instance.start(setup_signals=False)
                             except Exception as e:
-                                logger.error(f"Autoscaler error: {e}")
+                                logger.error(f"Autoscaler error: {e}", exc_info=True)
                         
                         autoscaler_thread = threading.Thread(target=run_autoscaler, daemon=True)
                         autoscaler_thread.start()
                         logger.info("✓ GitHub Actions autoscaler started")
                     else:
-                        logger.warning("GitHub CLI not authenticated - autoscaler disabled")
-                        logger.warning("  To enable: gh auth login")
+                        logger.warning(f"GitHub CLI not authenticated - autoscaler disabled (user: {auth_status.get('username', 'none')})")
                 except ImportError as e:
                     logger.warning(f"GitHub autoscaler not available: {e}")
                 except Exception as e:
-                    logger.warning(f"Could not start autoscaler: {e}")
+                    logger.error(f"Could not start autoscaler: {e}", exc_info=True)
 
             if getattr(args, 'open_browser', False):
                 import webbrowser

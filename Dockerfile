@@ -82,13 +82,26 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
+# Install ipfs_kit_py from GitHub known_good fork
+RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good
+
 # Install package in editable mode with development dependencies
-RUN pip install -e ".[all,testing,mcp,webnn,viz]"
+# Install Flask, Werkzeug, flask-cors, and fastmcp explicitly for MCP dashboard
+RUN pip install flask>=3.0.0 flask-cors>=4.0.0 werkzeug>=3.0.0 fastmcp>=0.1.0 && \
+    pip install -e ".[all,testing,mcp,webnn,viz]"
+
+# Copy startup validation and entrypoint scripts
+COPY --chown=appuser:appuser docker_startup_check.py /app/
+COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
 
 USER appuser
 ENV HOME=/home/appuser
 EXPOSE 8000 5678 8888
-CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "--help"]
+
+# Use the new entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["--help"]
 
 # Testing stage
 FROM development AS testing
@@ -103,7 +116,7 @@ FROM base AS builder
 # Install build dependencies
 RUN pip install --upgrade pip setuptools wheel build
 
-# Copy source files
+# Copy source files - ensure all modules are included
 COPY . /app/src/
 WORKDIR /app/src
 
@@ -118,13 +131,20 @@ ENV BUILD_TYPE=production
 COPY --from=builder /app/src/dist/*.whl /tmp/
 
 # Install package with full dependencies for production
+# Install Flask, Werkzeug, and flask-cors explicitly for MCP dashboard
 RUN pip install --upgrade pip && \
+    pip install flask>=3.0.0 flask-cors>=4.0.0 werkzeug>=3.0.0 && \
     find /tmp -name "*.whl" -exec pip install "{}[full,mcp]" \; && \
     rm -rf /tmp/*.whl
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/logs /app/config /app/models && \
     chown -R appuser:appuser /app
+
+# Copy startup validation and entrypoint scripts
+COPY --chown=appuser:appuser docker_startup_check.py /app/
+COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
 
 # Copy config files if they exist (conditional copy)
 RUN mkdir -p /app/config
@@ -138,7 +158,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import ipfs_accelerate_py; print('OK')" || exit 1
 
 EXPOSE 8000
-CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
+
+# Use the new entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
 
 # Minimal stage for lightweight deployments
 FROM base AS minimal
@@ -194,7 +217,14 @@ RUN pip install \
     # Platform-specific packages will be installed if available
     && echo "Hardware acceleration setup complete"
 
+# Copy startup validation and entrypoint scripts  
+COPY --chown=appuser:appuser docker_startup_check.py /app/
+COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
+
 USER appuser
 WORKDIR /app
 
-CMD ["python", "-m", "ipfs_accelerate_py.cli_entry", "mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]
+# Use the new entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["mcp", "start", "--host", "0.0.0.0", "--port", "8000", "--dashboard", "--keep-running"]

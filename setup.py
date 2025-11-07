@@ -7,7 +7,8 @@ long_description = (this_directory / "README.md").read_text()
 setup(
 	name='ipfs_accelerate_py',
 	version='0.0.45',
-	packages=find_packages(),
+	packages=find_packages(include=['ipfs_accelerate_py', 'ipfs_accelerate_py.*', 'shared', 'shared.*', 'mcp', 'mcp.*']),
+	include_package_data=True,
 	description="A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution",
 	long_description=long_description,
 	long_description_content_type="text/markdown",
@@ -28,8 +29,11 @@ setup(
 	],
 	python_requires=">=3.8",
 	keywords="machine learning, IPFS, hardware-acceleration, inference, distributed computing, WebGPU, WebNN",
+	dependency_links=[
+		'git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good#egg=ipfs_kit_py',
+	],
 	install_requires=[
-		'ipfs_kit_py',
+		'ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good',
 		'sentence_transformers',
 		'transformers>=4.46',
 		'ipfs_transformers_py',
@@ -143,6 +147,9 @@ setup(
 			"fastmcp>=0.1.0",
 			"libp2p>=0.1.5",
 			"async-timeout>=4.0.0",
+			"flask>=3.0.0",
+			"flask-cors>=4.0.0",
+			"werkzeug>=3.0.0",
 		],
 		"all": [
 			# Include all dependencies from full, testing, webnn, viz, mcp
@@ -178,6 +185,9 @@ setup(
 			"fastmcp>=0.1.0",
 			"libp2p>=0.1.5",
 			"async-timeout>=4.0.0",
+			"flask>=3.0.0",
+			"flask-cors>=4.0.0",
+			"werkzeug>=3.0.0",
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
@@ -187,7 +197,7 @@ setup(
 	entry_points={
 		'console_scripts': [
 			'ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main',
-			'ipfs-accelerate=ipfs_accelerate_py.cli_entry:main',
+			'ipfs-accelerate=ipfs_accelerate_py.cli:main',
 		],
 	}
 )

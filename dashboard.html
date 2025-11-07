@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IPFS Accelerate MCP Server Dashboard</title>
     <link rel="stylesheet" href="/static/dashboard.css">
+    <!-- Error Reporting -->
+    <script src="/static/js/error-reporter.js"></script>
 </head>
 <body>
     <div class="container">
@@ -549,5 +551,19 @@
     </div>
 
     <script src="/static/dashboard.js"></script>
+    
+    <!-- Initialize Error Reporting -->
+    <script>
+        // Initialize error reporting when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                // Install global error handlers
+                installGlobalErrorHandler('dashboard');
+                console.log('✓ Error reporting initialized for dashboard');
+            } catch (error) {
+                console.warn('Failed to initialize error reporting:', error);
+            }
+        });
+    </script>
 </body>
 </html>

@@ -81,6 +81,30 @@ ipfs-accelerate copilot git "commit all changes"
 
 See [AUTOSCALER.md](AUTOSCALER.md) for the complete autoscaler guide and [README_GITHUB_COPILOT.md](README_GITHUB_COPILOT.md) for detailed documentation.
 
+### **🐛 Automated Error Reporting**
+
+IPFS Accelerate includes an automated error reporting system that converts runtime errors into GitHub issues:
+
+```bash
+# Configure error reporting (set environment variables)
+export GITHUB_TOKEN=ghp_your_token_here
+export GITHUB_REPO=your_username/ipfs_accelerate_py
+
+# Error reporting is automatically enabled for:
+# - Python MCP server runtime errors
+# - JavaScript dashboard errors  
+# - Docker container errors
+```
+
+**Features:**
+- ✅ **Automatic Issue Creation** - Runtime errors automatically become GitHub issues
+- ✅ **Duplicate Detection** - Prevents creating multiple issues for the same error
+- ✅ **Rich Context** - Includes error details, stack traces, and system information
+- ✅ **Smart Labeling** - Automatically categorizes issues with appropriate labels
+- ✅ **Multi-Platform** - Works in Python, JavaScript, and Docker environments
+
+See [ERROR_REPORTING.md](ERROR_REPORTING.md) for setup instructions and detailed documentation.
+
 ---
 
 ## 🌟 **Advanced Enterprise Features**

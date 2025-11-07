@@ -163,59 +163,6 @@ class MCPDashboard:
                 fallback = self._get_autocomplete_fallback(query, limit)
                 return jsonify({'suggestions': fallback, 'fallback': True, 'error': str(e)})
         
-        @self.app.route('/api/mcp/models/stats')
-        def model_stats():
-            """Get model database statistics."""
-            logger.info("Model stats request")
-            
-            try:
-                scanner = self._get_hub_scanner()
-                
-                if scanner is None:
-                    logger.warning("Hub scanner not available for stats")
-                    return jsonify({
-                        'total_indexed': 15,  # Fallback count
-                        'hf_models': 15,
-                        'compatible_models': 12,
-                        'tested_models': 8,
-                        'fallback': True,
-                        'message': 'Using fallback statistics (HuggingFace Hub scanner not available)'
-                    })
-                
-                # Get statistics from scanner
-                stats = {}
-                if hasattr(scanner, 'get_database_stats'):
-                    stats = scanner.get_database_stats()
-                
-                # If scanner doesn't have get_database_stats, try to count models
-                if not stats:
-                    all_models = scanner.search_models(query='', limit=10000)  # Get all models
-                    stats = {
-                        'total_indexed': len(all_models),
-                        'hf_models': len([m for m in all_models if m.get('source') == 'huggingface' or 'huggingface' in m.get('id', '').lower()]),
-                        'compatible_models': len([m for m in all_models if m.get('compatibility') or m.get('tested')]),
-                        'tested_models': len([m for m in all_models if m.get('performance') or m.get('benchmarks')])
-                    }
-                
-                return jsonify({
-                    'total_indexed': stats.get('total_indexed', 0),
-                    'hf_models': stats.get('hf_models', stats.get('total_indexed', 0)),
-                    'compatible_models': stats.get('compatible_models', 0),
-                    'tested_models': stats.get('tested_models', 0),
-                    'fallback': False
-                })
-                
-            except Exception as e:
-                logger.error(f"Model stats error: {e}")
-                return jsonify({
-                    'total_indexed': 0,
-                    'hf_models': 0,
-                    'compatible_models': 0,
-                    'tested_models': 0,
-                    'error': str(e),
-                    'fallback': True
-                }), 500
-        
         @self.app.route('/api/mcp/models/search')
         def search_models():
             """Search models API endpoint."""
@@ -2238,25 +2185,25 @@ class MCPDashboard:
             }
             
             // Remove markdown headers (# ## ###)
-            let text = modelCard.replace(/^#+\s+/gm, '');
+            let text = modelCard.replace(/^#+\\s+/gm, '');
             
             // Remove code blocks
-            text = text.replace(/```[\s\S]*?```/g, '');
+            text = text.replace(/```[\\s\\S]*?```/g, '');
             
             // Remove inline code
             text = text.replace(/`[^`]+`/g, '');
             
             // Remove URLs
-            text = text.replace(/https?:\/\/[^\s]+/g, '');
+            text = text.replace(/https?:\\/\\/[^\\s]+/g, '');
             
             // Remove markdown links [text](url)
-            text = text.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+            text = text.replace(/\\[([^\\]]+)\\]\\([^\\)]+\\)/g, '$1');
             
             // Remove extra whitespace and newlines
-            text = text.replace(/\s+/g, ' ').trim();
+            text = text.replace(/\\s+/g, ' ').trim();
             
             // Get first meaningful sentence or paragraph
-            const sentences = text.split(/[.!?]\s+/);
+            const sentences = text.split(/[.!?]\\s+/);
             let summary = '';
             
             for (const sentence of sentences) {

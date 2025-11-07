@@ -4,6 +4,7 @@ duckdb>=0.7.0
 ipfshttpclient>=0.8.0a2
 websockets>=10.1
 urllib3<2  # ipfshttpclient currently incompatible with urllib3>=2
+requests>=2.28.0  # For error reporting to GitHub
 
 # Optional dependencies for WebNN/WebGPU support
 # Uncomment the one that works best for your platform
@@ -17,3 +18,4 @@ urllib3<2  # ipfshttpclient currently incompatible with urllib3>=2
 # Optional utilities
 tqdm>=4.64.0
 numpy>=1.23.0
+multiformats>=0.3.0  # For content-addressed cache validation
