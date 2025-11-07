@@ -8,8 +8,9 @@ Wants=network-online.target
 Type=simple
 User=%i
 WorkingDirectory=/home/%i/ipfs_accelerate_py
-Environment=PATH=/home/%i/ipfs_accelerate_py/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/home/%i/.local/bin:/home/%i/ipfs_accelerate_py/venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/home/%i
 
 # GitHub CLI authentication
 # Ensure gh CLI is authenticated before starting the service
@@ -32,11 +33,6 @@ CPUQuota=50%
 # Security settings
 # Run with restricted permissions
 NoNewPrivileges=true
-
-# Restrict file system access
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/home/%i/ipfs_accelerate_py/logs
 
 # Network access (required for GitHub API)
 PrivateNetwork=false
