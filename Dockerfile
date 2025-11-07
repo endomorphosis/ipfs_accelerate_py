@@ -82,6 +82,9 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
+# Install ipfs_kit_py from GitHub known_good fork
+RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good
+
 # Install package in editable mode with development dependencies
 # Install Flask, Werkzeug, flask-cors, and fastmcp explicitly for MCP dashboard
 RUN pip install flask>=3.0.0 flask-cors>=4.0.0 werkzeug>=3.0.0 fastmcp>=0.1.0 && \

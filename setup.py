@@ -29,8 +29,11 @@ setup(
 	],
 	python_requires=">=3.8",
 	keywords="machine learning, IPFS, hardware-acceleration, inference, distributed computing, WebGPU, WebNN",
+	dependency_links=[
+		'git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good#egg=ipfs_kit_py',
+	],
 	install_requires=[
-		'ipfs_kit_py',
+		'ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good',
 		'sentence_transformers',
 		'transformers>=4.46',
 		'ipfs_transformers_py',

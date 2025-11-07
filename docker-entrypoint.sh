@@ -52,6 +52,11 @@ install_missing_dependencies() {
         pip install --quiet --no-cache-dir "fastmcp>=0.1.0" || echo "  Warning: Could not install fastmcp"
     fi
     
+    if ! python3 -c "import ipfs_kit_py" 2>/dev/null; then
+        echo "  Installing ipfs_kit_py from GitHub..."
+        pip install --quiet --no-cache-dir "git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good" || echo "  Warning: Could not install ipfs_kit_py"
+    fi
+    
     echo "  Dependency check complete"
     echo ""
 }
