@@ -4,7 +4,8 @@
 # Fixes EACCES permission denied errors when removing files in runner workspace
 # Error: EACCES: permission denied, unlink '/home/actions-runner/_work/...'
 
-set -e
+# Don't exit on error - we want to continue through all runners
+set +e
 
 # Color output
 RED='\033[0;31m'
@@ -85,7 +86,19 @@ fix_runner_permissions() {
     # Fix ownership to current user
     local current_user=$(whoami)
     log_info "Fixing ownership to $current_user..."
-    sudo chown -R "$current_user:$current_user" "$work_dir" 2>/dev/null || true
+    
+    # First try without sudo (for files already owned by user)
+    find "$work_dir" -type f ! -user "$current_user" -path "*/.git/*" 2>/dev/null | head -1 > /dev/null
+    if [ $? -eq 0 ]; then
+        # There are files not owned by current user, try to fix with sudo
+        if sudo -n chown -R "$current_user:$current_user" "$work_dir" 2>/dev/null; then
+            log_info "✓ Fixed ownership with sudo"
+        else
+            log_warn "Some files owned by other users - may need manual sudo"
+        fi
+    else
+        log_info "✓ All files already owned by $current_user"
+    fi
     
     # Return to original directory
     cd "$original_dir" || true
@@ -99,11 +112,13 @@ main() {
     log_info "GitHub Actions Runner Permission Fix Script"
     log_info "==========================================="
     
-    # Default runner locations
+    # Default runner locations (discovered from ps aux)
     RUNNER_LOCATIONS=(
         "/home/barberb/actions-runner"
-        "/home/barberb/actions-runner-datasets"
-        "/home/actions-runner"
+        "/home/barberb/actions-runner-ipfs_datasets_py"
+        "/home/barberb/actions-runners/endomorphosis-ipfs_kit_py"
+        "/home/barberb/swissknife/actions-runner"
+        "/home/barberb/motion/actions-runner"
     )
     
     # Check if specific runner path provided
