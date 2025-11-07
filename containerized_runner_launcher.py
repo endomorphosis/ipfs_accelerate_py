@@ -163,6 +163,9 @@ class DockerRunnerLauncher:
             "--label=github-runner=true",
             f"--label=repo={repo}",
             
+            # User mapping to match host user (fixes Git permission issues)
+            "--user=1004:1004",
+            
             # Security options
             "--security-opt=no-new-privileges",
             "--cap-drop=ALL",

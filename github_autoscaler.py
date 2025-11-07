@@ -184,7 +184,14 @@ class GitHubRunnerAutoscaler:
             
             if not queues:
                 logger.info("No repositories with active workflows")
-                return
+                # Still get list of repositories to maintain minimum runners
+                repos = self.gh.list_repos(owner=self.owner, limit=30)
+                if repos:
+                    # Create empty queues for repos to ensure minimum 1 runner each
+                    queues = {repo["full_name"]: [] for repo in repos}
+                    logger.info(f"Maintaining minimum runners for {len(queues)} repository(ies)")
+                else:
+                    return
             
             # Count workflows needing attention
             total_workflows = sum(len(workflows) for workflows in queues.values())
@@ -203,11 +210,13 @@ class GitHubRunnerAutoscaler:
                 logger.info(f"  (Filtered for {system_arch} architecture)")
             
             # Check if we need to provision runners
-            if total_running == 0 and total_failed == 0:
-                logger.info("No workflows need runner provisioning")
-                return
+            # Always provision at least 1 runner per repo for availability
+            if total_running == 0 and total_failed == 0 and total_workflows > 0:
+                logger.info("No workflows need runner provisioning, but maintaining base runners")
+            elif total_workflows == 0:
+                logger.info("Provisioning minimum 1 runner per repository for availability")
             
-            # Provision runners for queues
+            # Provision runners for queues (minimum 1 per repo, or 1+workflows when active)
             logger.info("Provisioning runners...")
             provisioning = self.runner_mgr.provision_runners_for_queue(
                 queues,
