@@ -19,8 +19,17 @@ runs:
     - name: Fix git directory permissions
       shell: bash
       run: |
-        echo "📁 Fixing .git directory permissions..."
+        echo "📁 Fixing .git directory permissions and ownership..."
         if [ -d "${GITHUB_WORKSPACE}/.git" ]; then
+          # Fix ownership if files are owned by root (common in containerized workflows)
+          current_user=$(whoami)
+          if sudo -n test -f "${GITHUB_WORKSPACE}/.git/index" 2>/dev/null; then
+            owner=$(stat -c '%U' "${GITHUB_WORKSPACE}/.git/index" 2>/dev/null || echo "$current_user")
+            if [ "$owner" != "$current_user" ]; then
+              echo "  Fixing ownership from $owner to $current_user..."
+              sudo -n chown -R "$current_user:$current_user" "${GITHUB_WORKSPACE}/.git" 2>/dev/null || true
+            fi
+          fi
           # Fix directory permissions
           find "${GITHUB_WORKSPACE}/.git" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
           # Fix file permissions
