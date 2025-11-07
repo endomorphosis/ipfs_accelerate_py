@@ -31,6 +31,13 @@ jobs:
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure') || github.event_name == 'workflow_dispatch' }}
     
     steps:
+      - name: Pre-cleanup workspace
+        run: |
+          # Add safe directory and clean locks before checkout
+          git config --global --add safe.directory "*" 2>/dev/null || true
+          find . -name "*.lock" -type f -delete 2>/dev/null || true
+        continue-on-error: true
+        
       - name: Checkout repository
         uses: actions/checkout@v4
         with:

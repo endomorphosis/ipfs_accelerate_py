@@ -33,16 +33,29 @@ jobs:
         run: |
           echo "🧹 Starting workspace cleanup..."
           
+          # Add Git safe directory configuration first
+          git config --global --add safe.directory "*" 2>/dev/null || true
+          
           # Remove stale git lock files
           echo "Removing git lock files..."
           find "${GITHUB_WORKSPACE}" -name "*.lock" -type f -delete 2>/dev/null || true
           find "${GITHUB_WORKSPACE}" -name "index.lock" -type f -delete 2>/dev/null || true
+          find "${RUNNER_WORKSPACE:-/tmp}" -name "*.lock" -type f -delete 2>/dev/null || true
+          find "${RUNNER_WORKSPACE:-/tmp}" -name "index.lock" -type f -delete 2>/dev/null || true
           
-          # Fix git directory permissions
+          # Fix git directory permissions recursively
           echo "Fixing .git directory permissions..."
           if [ -d "${GITHUB_WORKSPACE}/.git" ]; then
+            chmod -R u+rwX "${GITHUB_WORKSPACE}/.git" 2>/dev/null || true
             find "${GITHUB_WORKSPACE}/.git" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
             find "${GITHUB_WORKSPACE}/.git" -type f -exec chmod u+rw {} \; 2>/dev/null || true
+          fi
+          
+          # Also fix permissions in the runner workspace
+          if [ -d "${RUNNER_WORKSPACE}" ]; then
+            echo "Fixing runner workspace permissions..."
+            find "${RUNNER_WORKSPACE}" -name ".git" -type d -exec chmod -R u+rwX {} \; 2>/dev/null || true
+            find "${RUNNER_WORKSPACE}" -name "FETCH_HEAD" -type f -exec chmod u+rw {} \; 2>/dev/null || true
           fi
           
           # Fix .github directory permissions
