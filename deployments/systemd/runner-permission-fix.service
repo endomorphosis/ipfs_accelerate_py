@@ -1,0 +1,18 @@
+[Unit]
+Description=GitHub Actions Runner Permission Fix Service
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+After=network.target
+
+[Service]
+Type=oneshot
+User=barberb
+WorkingDirectory=/home/barberb/ipfs_accelerate_py
+ExecStart=/bin/bash /home/barberb/ipfs_accelerate_py/.github/scripts/fix_runner_permissions.sh
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=runner-permission-fix
+
+[Install]
+WantedBy=multi-user.target
