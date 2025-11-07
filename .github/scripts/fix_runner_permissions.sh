@@ -44,6 +44,9 @@ fix_runner_permissions() {
         return 0
     fi
     
+    # Save current directory
+    local original_dir=$(pwd)
+    
     cd "$work_dir" || return 1
     
     log_info "Cleaning workspace: $work_dir"
@@ -78,7 +81,11 @@ fix_runner_permissions() {
     log_info "Fixing ownership to $current_user..."
     sudo chown -R "$current_user:$current_user" "$work_dir" 2>/dev/null || true
     
+    # Return to original directory
+    cd "$original_dir" || true
+    
     log_info "✓ Completed fixing permissions for $runner_name"
+    return 0
 }
 
 # Main execution
