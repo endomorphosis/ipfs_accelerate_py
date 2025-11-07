@@ -1,0 +1,100 @@
+name: Runner Workspace Cleanup
+
+on:
+  # Run on schedule to prevent permission buildup
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      runner_type:
+        description: 'Runner type to clean'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - self-hosted
+          - ubuntu-latest
+  
+  # Can be called by other workflows
+  workflow_call:
+
+jobs:
+  cleanup-self-hosted:
+    name: Cleanup Self-Hosted Runner
+    # Only run on self-hosted runners
+    runs-on: [self-hosted, linux]
+    if: github.event.inputs.runner_type == 'all' || github.event.inputs.runner_type == 'self-hosted' || github.event_name != 'workflow_dispatch'
+    
+    steps:
+      - name: Clean workspace permissions
+        run: |
+          echo "🧹 Starting workspace cleanup..."
+          
+          # Remove stale git lock files
+          echo "Removing git lock files..."
+          find "${GITHUB_WORKSPACE}" -name "*.lock" -type f -delete 2>/dev/null || true
+          find "${GITHUB_WORKSPACE}" -name "index.lock" -type f -delete 2>/dev/null || true
+          
+          # Fix git directory permissions
+          echo "Fixing .git directory permissions..."
+          if [ -d "${GITHUB_WORKSPACE}/.git" ]; then
+            find "${GITHUB_WORKSPACE}/.git" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
+            find "${GITHUB_WORKSPACE}/.git" -type f -exec chmod u+rw {} \; 2>/dev/null || true
+          fi
+          
+          # Fix .github directory permissions
+          echo "Fixing .github directory permissions..."
+          if [ -d "${GITHUB_WORKSPACE}/.github" ]; then
+            find "${GITHUB_WORKSPACE}/.github" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
+            find "${GITHUB_WORKSPACE}/.github" -type f -exec chmod u+rw {} \; 2>/dev/null || true
+          fi
+          
+          # Clean Python cache
+          echo "Cleaning Python cache files..."
+          find "${GITHUB_WORKSPACE}" -name "*.pyc" -delete 2>/dev/null || true
+          find "${GITHUB_WORKSPACE}" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+          
+          # Clean build artifacts
+          echo "Cleaning build artifacts..."
+          find "${GITHUB_WORKSPACE}" -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+          find "${GITHUB_WORKSPACE}" -name "build" -type d -exec rm -rf {} + 2>/dev/null || true
+          find "${GITHUB_WORKSPACE}" -name "dist" -type d -exec rm -rf {} + 2>/dev/null || true
+          
+          echo "✅ Workspace cleanup complete"
+        continue-on-error: true
+      
+      - name: Report disk usage
+        run: |
+          echo "📊 Disk usage report:"
+          df -h "${RUNNER_WORKSPACE}" || true
+          echo ""
+          echo "Runner workspace size:"
+          du -sh "${RUNNER_WORKSPACE}" 2>/dev/null || true
+        continue-on-error: true
+  
+  cleanup-report:
+    name: Generate Cleanup Report
+    needs: cleanup-self-hosted
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Report status
+        run: |
+          echo "# Runner Cleanup Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cleanup Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.cleanup-self-hosted.result }}" == "success" ]; then
+            echo "✅ Self-hosted runner cleanup: **Success**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Self-hosted runner cleanup: **${{ needs.cleanup-self-hosted.result }}**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Next Scheduled Run" >> $GITHUB_STEP_SUMMARY
+          echo "The cleanup will run automatically every 6 hours." >> $GITHUB_STEP_SUMMARY
