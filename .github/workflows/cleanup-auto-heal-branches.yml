@@ -32,6 +32,19 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
       
+      - name: GitHub CLI Authentication Preflight Check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Ensure gh CLI is available
+          if ! command -v gh &> /dev/null; then
+            echo "GitHub CLI is not available, but using actions/github-script instead"
+          else
+            # Run preflight check if gh is available
+            bash .github/scripts/check_gh_auth.sh || echo "Preflight check completed with warnings"
+          fi
+      
       - name: Configure Git safe directory
         run: |
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
