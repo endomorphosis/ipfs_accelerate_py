@@ -25,6 +25,12 @@ runs:
           find "${GITHUB_WORKSPACE}/.git" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
           # Fix file permissions
           find "${GITHUB_WORKSPACE}/.git" -type f -exec chmod u+rw {} \; 2>/dev/null || true
+          # Fix git logs specifically (common permission issue in Actions)
+          if [ -d "${GITHUB_WORKSPACE}/.git/logs" ]; then
+            chmod u+rwx "${GITHUB_WORKSPACE}/.git/logs" 2>/dev/null || true
+            find "${GITHUB_WORKSPACE}/.git/logs" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
+            find "${GITHUB_WORKSPACE}/.git/logs" -type f -exec chmod u+rw {} \; 2>/dev/null || true
+          fi
           echo "✅ .git permissions fixed"
         else
           echo "ℹ️ No .git directory found"

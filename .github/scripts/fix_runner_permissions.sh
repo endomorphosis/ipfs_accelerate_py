@@ -61,6 +61,12 @@ fix_runner_permissions() {
     find . -name ".git" -type d -exec chmod -R u+rwX {} \; 2>/dev/null || true
     find . -name ".git" -type d -exec find {} -type f -exec chmod u+rw {} \; \; 2>/dev/null || true
     
+    # Fix git logs directory permissions specifically (common issue in Actions)
+    log_info "Fixing git logs permissions..."
+    find . -path "*/.git/logs/*" -type f -exec chmod u+rw {} \; 2>/dev/null || true
+    find . -path "*/.git/logs" -type d -exec chmod u+rwx {} \; 2>/dev/null || true
+    find . -path "*/.git/logs/refs" -type d -exec chmod -R u+rwx {} \; 2>/dev/null || true
+    
     # Fix .github directory permissions
     log_info "Fixing .github directory permissions..."
     find . -path "*/.github/*" -type f -exec chmod u+rw {} \; 2>/dev/null || true
