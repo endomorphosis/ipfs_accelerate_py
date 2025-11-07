@@ -695,17 +695,20 @@ class RunnerManager:
     def provision_runners_for_queue(
         self,
         queues: Dict[str, List[Dict[str, Any]]],
-        max_runners: Optional[int] = None
+        max_runners: Optional[int] = None,
+        min_runners_per_repo: int = 1
     ) -> Dict[str, Dict[str, Any]]:
         """
         Provision self-hosted runners based on workflow queues.
         
         This method analyzes workflow queues and provisions runners
-        based on system capacity and workflow load.
+        based on system capacity and workflow load. Guarantees at least
+        one runner per repository with active workflows.
         
         Args:
             queues: Dict mapping repo names to workflow lists
             max_runners: Maximum runners to provision (defaults to system cores)
+            min_runners_per_repo: Minimum runners per repository (default: 1)
             
         Returns:
             Dict with provisioning status for each repo
@@ -713,7 +716,7 @@ class RunnerManager:
         if max_runners is None:
             max_runners = self.get_system_cores()
         
-        logger.info(f"Provisioning runners (max: {max_runners}, system cores: {self.get_system_cores()})")
+        logger.info(f"Provisioning runners (max: {max_runners}, min per repo: {min_runners_per_repo}, system cores: {self.get_system_cores()})")
         
         provisioning_status = {}
         runners_provisioned = 0
@@ -733,16 +736,24 @@ class RunnerManager:
             # Determine how many runners this repo needs
             running_count = sum(1 for w in workflows if w.get("status") == "in_progress")
             failed_count = sum(1 for w in workflows if w.get("conclusion") in ["failure", "timed_out"])
-            queued_count = len(workflows) - running_count
+            queued_count = sum(1 for w in workflows if w.get("status") in ["queued", "waiting"])
             
-            # Calculate needed runners: 1 (base per repo) + 1 (per workflow)
-            # But don't exceed available capacity
-            runners_needed = 1 + len(workflows)
+            # Calculate needed runners:
+            # - At least min_runners_per_repo for any repo with workflows
+            # - Additional runners for queued workflows (1 per queued workflow)
+            # - Don't provision extra runners for failed workflows (they already ran)
+            base_runners = min_runners_per_repo
+            additional_runners = queued_count  # Only provision for queued workflows
+            runners_needed = base_runners + additional_runners
+            
+            # Don't exceed available capacity
             runners_to_provision = min(runners_needed, max_runners - runners_provisioned)
+            # Ensure we provision at least min_runners_per_repo if capacity allows
+            runners_to_provision = max(min(min_runners_per_repo, max_runners - runners_provisioned), runners_to_provision)
             
             if runners_to_provision <= 0:
-                logger.info(f"No capacity for {repo} (would need {runners_needed})")
-                break
+                logger.info(f"No capacity for {repo} (would need {runners_needed}, have {max_runners - runners_provisioned} slots)")
+                continue  # Check next repo instead of breaking
             
             # Generate tokens for this repo (one token can be reused by multiple runners)
             token = self.get_runner_registration_token(repo=repo)
@@ -752,18 +763,20 @@ class RunnerManager:
                     "token": token,
                     "running_workflows": running_count,
                     "failed_workflows": failed_count,
+                    "queued_workflows": queued_count,
                     "total_workflows": len(workflows),
                     "runners_needed": runners_needed,
                     "runners_to_provision": runners_to_provision,
                     "status": "token_generated"
                 }
                 runners_provisioned += runners_to_provision
-                logger.info(f"Generated token for {repo}: provisioning {runners_to_provision} runner(s) for {len(workflows)} workflow(s) ({running_count} running, {failed_count} failed)")
+                logger.info(f"Generated token for {repo}: provisioning {runners_to_provision} runner(s) (min {min_runners_per_repo} + {queued_count} queued) for {len(workflows)} workflow(s) ({running_count} running, {queued_count} queued, {failed_count} failed)")
             else:
                 provisioning_status[repo] = {
                     "error": "Failed to generate registration token",
                     "running_workflows": running_count,
                     "failed_workflows": failed_count,
+                    "queued_workflows": queued_count,
                     "total_workflows": len(workflows),
                     "status": "failed"
                 }

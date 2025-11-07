@@ -234,7 +234,8 @@ class GitHubRunnerAutoscaler:
                 repos = self.gh.list_repos(owner=self.owner, limit=30)
                 if repos:
                     # Create empty queues for repos to ensure minimum 1 runner each
-                    queues = {repo["full_name"]: [] for repo in repos}
+                    # Note: list_repos returns {name, owner:{login}, url, updatedAt}
+                    queues = {f"{repo['owner']['login']}/{repo['name']}": [] for repo in repos}
                     logger.info(f"Maintaining minimum runners for {len(queues)} repository(ies)")
                 else:
                     return
@@ -262,11 +263,12 @@ class GitHubRunnerAutoscaler:
             elif total_workflows == 0:
                 logger.info("Provisioning minimum 1 runner per repository for availability")
             
-            # Provision runners for queues (minimum 1 per repo, or 1+workflows when active)
+            # Provision runners for queues (minimum 1 per repo, or 1+queued workflows when active)
             logger.info("Provisioning runners...")
             provisioning = self.runner_mgr.provision_runners_for_queue(
                 queues,
-                max_runners=self.max_runners
+                max_runners=self.max_runners,
+                min_runners_per_repo=1  # Guarantee at least 1 runner per repo
             )
             
             # Report results
