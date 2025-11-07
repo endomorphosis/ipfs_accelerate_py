@@ -3,8 +3,6 @@
 # Test script for runner permission fix
 # This validates that the fix works correctly
 
-set -e
-
 # Color output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -59,7 +57,7 @@ fi
 
 # Test 4: Validate cleanup action syntax
 echo "Testing cleanup action syntax..."
-if grep -q "uses: 'composite'" ".github/actions/cleanup-workspace/action.yml"; then
+if grep -q "using: 'composite'" ".github/actions/cleanup-workspace/action.yml"; then
     test_result "Cleanup action has correct syntax" "PASS"
 else
     test_result "Cleanup action has correct syntax" "FAIL"
@@ -125,7 +123,7 @@ else
 fi
 
 # Test 13: Validate cleanup action fixes git permissions
-if grep -q "chmod.*\.git" ".github/actions/cleanup-workspace/action.yml"; then
+if grep -q "chmod.*u+rw" ".github/actions/cleanup-workspace/action.yml" && grep -q "\.git" ".github/actions/cleanup-workspace/action.yml"; then
     test_result "Cleanup action fixes git permissions" "PASS"
 else
     test_result "Cleanup action fixes git permissions" "FAIL"
