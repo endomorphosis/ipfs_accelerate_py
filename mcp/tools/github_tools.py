@@ -237,4 +237,210 @@ def register_github_tools(mcp: FastMCP) -> None:
                 "timestamp": time.time()
             }
     
+    @mcp.tool()
+    def gh_get_cache_stats() -> Dict[str, Any]:
+        """
+        Get GitHub API cache statistics
+        
+        Returns cache performance metrics including:
+        - Hit/miss rates
+        - Total cached entries
+        - P2P peer status
+        - IPLD/multiformats data tracking
+        - API calls saved
+        
+        Returns:
+            Cache statistics and performance metrics
+        """
+        try:
+            from ...ipfs_accelerate_py.github_cli import get_global_cache
+            cache = get_global_cache()
+            
+            stats = cache.get_stats()
+            
+            # Add P2P peer information if available
+            if hasattr(cache, '_p2p_connected_peers'):
+                stats['p2p_peers'] = {
+                    'connected': len(cache._p2p_connected_peers),
+                    'peers': list(cache._p2p_connected_peers.keys())
+                }
+            
+            # Add IPLD/multiformats information
+            stats['content_addressing'] = {
+                'enabled': cache.__class__.__name__ == 'GitHubAPICache',
+                'multiformats_available': hasattr(cache, '_compute_validation_hash')
+            }
+            
+            stats['tool'] = 'gh_get_cache_stats'
+            stats['timestamp'] = time.time()
+            return stats
+        except Exception as e:
+            logger.error(f"Error in gh_get_cache_stats: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_get_cache_stats",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def gh_get_workflow_details(
+        repo: str,
+        run_id: str,
+        include_jobs: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Get detailed information about a workflow run including jobs
+        
+        Args:
+            repo: Repository in format "owner/repo"
+            run_id: Workflow run ID
+            include_jobs: Whether to include job details
+            
+        Returns:
+            Detailed workflow run information with job status
+        """
+        try:
+            # Get workflow run details
+            run_result = github_ops.get_workflow_run(repo, run_id)
+            
+            if not run_result.get('success'):
+                return run_result
+            
+            result = {
+                'run': run_result.get('run'),
+                'repo': repo,
+                'run_id': run_id,
+                'tool': 'gh_get_workflow_details',
+                'timestamp': time.time()
+            }
+            
+            # Get job details if requested
+            if include_jobs and github_ops.gh_cli:
+                try:
+                    jobs_cmd = github_ops.gh_cli._run_command([
+                        'api',
+                        f'repos/{repo}/actions/runs/{run_id}/jobs',
+                        '--jq', '.jobs[]'
+                    ])
+                    
+                    if jobs_cmd.get('success'):
+                        import json
+                        jobs_data = jobs_cmd.get('stdout', '')
+                        if jobs_data:
+                            # Parse multiple JSON objects
+                            jobs = []
+                            for line in jobs_data.strip().split('\n'):
+                                if line.strip():
+                                    try:
+                                        jobs.append(json.loads(line))
+                                    except json.JSONDecodeError:
+                                        pass
+                            result['jobs'] = jobs
+                            result['jobs_summary'] = {
+                                'total': len(jobs),
+                                'in_progress': sum(1 for j in jobs if j.get('status') == 'in_progress'),
+                                'completed': sum(1 for j in jobs if j.get('status') == 'completed'),
+                                'failed': sum(1 for j in jobs if j.get('conclusion') == 'failure'),
+                                'success': sum(1 for j in jobs if j.get('conclusion') == 'success')
+                            }
+                except Exception as e:
+                    logger.warning(f"Failed to fetch job details: {e}")
+                    result['jobs_error'] = str(e)
+            
+            result['success'] = True
+            return result
+        except Exception as e:
+            logger.error(f"Error in gh_get_workflow_details: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_get_workflow_details",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def gh_invalidate_cache(
+        pattern: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Invalidate GitHub API cache entries
+        
+        Args:
+            pattern: Optional pattern to match cache keys (e.g., 'list_repos', 'workflow')
+                    If None, invalidates all cache entries
+            
+        Returns:
+            Number of cache entries invalidated
+        """
+        try:
+            from ...ipfs_accelerate_py.github_cli import get_global_cache
+            cache = get_global_cache()
+            
+            if pattern:
+                invalidated = cache.invalidate_pattern(pattern)
+            else:
+                invalidated = cache.clear()
+            
+            return {
+                'invalidated': invalidated,
+                'pattern': pattern or 'all',
+                'tool': 'gh_invalidate_cache',
+                'timestamp': time.time(),
+                'success': True
+            }
+        except Exception as e:
+            logger.error(f"Error in gh_invalidate_cache: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_invalidate_cache",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def gh_get_rate_limit() -> Dict[str, Any]:
+        """
+        Get current GitHub API rate limit status
+        
+        Returns rate limit information including:
+        - Remaining requests
+        - Total limit
+        - Reset time
+        - Resources breakdown
+        
+        Returns:
+            Rate limit status
+        """
+        try:
+            if not github_ops.gh_cli:
+                return {"error": "GitHub CLI not available", "success": False}
+            
+            result = github_ops.gh_cli._run_command([
+                'api',
+                'rate_limit'
+            ])
+            
+            if result.get('success'):
+                import json
+                rate_limit = json.loads(result.get('stdout', '{}'))
+                
+                return {
+                    'rate_limit': rate_limit,
+                    'tool': 'gh_get_rate_limit',
+                    'timestamp': time.time(),
+                    'success': True
+                }
+            else:
+                return {
+                    'error': result.get('stderr', 'Unknown error'),
+                    'tool': 'gh_get_rate_limit',
+                    'timestamp': time.time(),
+                    'success': False
+                }
+        except Exception as e:
+            logger.error(f"Error in gh_get_rate_limit: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_get_rate_limit",
+                "timestamp": time.time()
+            }
+    
     logger.info("GitHub CLI tools registered successfully")

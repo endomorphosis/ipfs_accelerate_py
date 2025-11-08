@@ -6,6 +6,8 @@ class GitHubWorkflowsManager {
     constructor(mcpClient) {
         this.workflows = {};
         this.runners = [];
+        this.cacheStats = null;
+        this.rateLimit = null;
         this.updateInterval = null;
         // Use MCP client if provided, otherwise create new one
         this.mcp = mcpClient || (typeof MCPClient !== 'undefined' ? new MCPClient() : null);
@@ -13,21 +15,29 @@ class GitHubWorkflowsManager {
         if (!this.mcp) {
             console.warn('[GitHub Workflows] MCP Client not available, falling back to direct API');
         }
+        
+        console.log('[GitHub Workflows] Manager initialized with MCP SDK');
     }
 
     // Initialize the workflows manager
     async initialize() {
-        console.log('[GitHub Workflows] Initializing...');
-        await this.fetchWorkflows();
-        await this.fetchRunners();
+        console.log('[GitHub Workflows] Initializing with MCP SDK...');
+        await Promise.all([
+            this.fetchWorkflows(),
+            this.fetchRunners(),
+            this.fetchCacheStats(),
+            this.fetchRateLimit()
+        ]);
         this.startAutoRefresh();
+        console.log('[GitHub Workflows] Initialization complete');
     }
 
     // Fetch workflows from the server using MCP tools
     async fetchWorkflows() {
         try {
             if (this.mcp) {
-                // Use MCP tool: gh_create_workflow_queues
+                // Use MCP SDK to call gh_create_workflow_queues tool
+                console.log('[GitHub Workflows] Calling gh_create_workflow_queues via MCP SDK...');
                 const result = await this.mcp.request('tools/call', {
                     name: 'gh_create_workflow_queues',
                     arguments: {
@@ -35,14 +45,20 @@ class GitHubWorkflowsManager {
                     }
                 });
                 
+                console.log('[GitHub Workflows] Received workflow data:', result);
+                
                 if (result && result.queues) {
                     this.workflows = result.queues;
                     this.renderWorkflows();
+                    console.log(`[GitHub Workflows] Loaded ${Object.keys(this.workflows).length} repositories`);
+                } else if (result && result.error) {
+                    console.error('[GitHub Workflows] MCP tool returned error:', result.error);
                 } else {
                     console.error('[GitHub Workflows] Invalid response from MCP tool');
                 }
             } else {
                 // Fallback to direct API
+                console.warn('[GitHub Workflows] Falling back to direct API call');
                 const response = await fetch('/api/github/workflows');
                 if (response.ok) {
                     this.workflows = await response.json();
@@ -60,20 +76,27 @@ class GitHubWorkflowsManager {
     async fetchRunners() {
         try {
             if (this.mcp) {
-                // Use MCP tool: gh_list_runners
+                // Use MCP SDK to call gh_list_runners tool
+                console.log('[GitHub Workflows] Calling gh_list_runners via MCP SDK...');
                 const result = await this.mcp.request('tools/call', {
                     name: 'gh_list_runners',
                     arguments: {}
                 });
                 
+                console.log('[GitHub Workflows] Received runner data:', result);
+                
                 if (result && result.runners) {
                     this.runners = result.runners;
                     this.renderRunners();
+                    console.log(`[GitHub Workflows] Loaded ${this.runners.length} runners`);
+                } else if (result && result.error) {
+                    console.error('[GitHub Workflows] MCP tool returned error:', result.error);
                 } else {
                     console.error('[GitHub Workflows] Invalid response from MCP tool');
                 }
             } else {
                 // Fallback to direct API
+                console.warn('[GitHub Workflows] Falling back to direct API call');
                 const response = await fetch('/api/github/runners');
                 if (response.ok) {
                     this.runners = await response.json();
@@ -84,6 +107,58 @@ class GitHubWorkflowsManager {
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching runners:', error);
+        }
+    }
+
+    // Fetch cache statistics using MCP SDK
+    async fetchCacheStats() {
+        try {
+            if (this.mcp) {
+                console.log('[GitHub Workflows] Calling gh_get_cache_stats via MCP SDK...');
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_get_cache_stats',
+                    arguments: {}
+                });
+                
+                console.log('[GitHub Workflows] Received cache stats:', result);
+                
+                if (result && !result.error) {
+                    this.cacheStats = result;
+                    this.renderCacheStats();
+                } else if (result && result.error) {
+                    console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                } else {
+                    console.error('[GitHub Workflows] Invalid response from MCP tool');
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching cache stats:', error);
+        }
+    }
+
+    // Fetch GitHub API rate limit using MCP SDK
+    async fetchRateLimit() {
+        try {
+            if (this.mcp) {
+                console.log('[GitHub Workflows] Calling gh_get_rate_limit via MCP SDK...');
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_get_rate_limit',
+                    arguments: {}
+                });
+                
+                console.log('[GitHub Workflows] Received rate limit data:', result);
+                
+                if (result && result.rate_limit) {
+                    this.rateLimit = result.rate_limit;
+                    this.renderRateLimit();
+                } else if (result && result.error) {
+                    console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                } else {
+                    console.error('[GitHub Workflows] Invalid response from MCP tool');
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching rate limit:', error);
         }
     }
 
@@ -228,11 +303,12 @@ class GitHubWorkflowsManager {
         document.body.insertAdjacentHTML('beforeend', html);
     }
 
-    // Provision runner for a repository using MCP tools
+    // Provision runner for a repository using MCP SDK
     async provisionRunner(repo) {
         try {
             if (this.mcp) {
-                // Use MCP tool: gh_provision_runners
+                // Use MCP SDK to call gh_provision_runners tool
+                console.log('[GitHub Workflows] Calling gh_provision_runners via MCP SDK for:', repo);
                 const result = await this.mcp.request('tools/call', {
                     name: 'gh_provision_runners',
                     arguments: {
@@ -241,14 +317,19 @@ class GitHubWorkflowsManager {
                     }
                 });
                 
+                console.log('[GitHub Workflows] Provisioning result:', result);
+                
                 if (result && result.success) {
-                    showToast(`Runner token generated for ${repo}`, 'success');
+                    showToast(`Runner provisioned for ${repo}: ${result.runners_provisioned} runner(s)`, 'success');
                     await this.fetchRunners();
+                } else if (result && result.error) {
+                    showToast(`Failed to provision runner: ${result.error}`, 'error');
                 } else {
-                    showToast(`Failed to provision runner: ${result.error || 'Unknown error'}`, 'error');
+                    showToast('Failed to provision runner: Unknown error', 'error');
                 }
             } else {
                 // Fallback to direct API
+                console.warn('[GitHub Workflows] Falling back to direct API call');
                 const response = await fetch('/api/github/provision-runner', {
                     method: 'POST',
                     headers: {
@@ -302,9 +383,16 @@ class GitHubWorkflowsManager {
         }
 
         this.updateInterval = setInterval(async () => {
-            await this.fetchWorkflows();
-            await this.fetchRunners();
+            console.log('[GitHub Workflows] Auto-refreshing data via MCP SDK...');
+            await Promise.all([
+                this.fetchWorkflows(),
+                this.fetchRunners(),
+                this.fetchCacheStats(),
+                this.fetchRateLimit()
+            ]);
         }, interval);
+        
+        console.log(`[GitHub Workflows] Auto-refresh enabled (${interval}ms interval)`);
     }
 
     // Stop auto-refresh
@@ -368,6 +456,138 @@ class GitHubWorkflowsManager {
                 </div>
             </div>
         `;
+    }
+
+    // Render cache statistics
+    renderCacheStats() {
+        if (!this.cacheStats) return;
+        
+        const container = document.getElementById('github-cache-stats');
+        if (!container) {
+            console.warn('[GitHub Workflows] Cache stats container not found');
+            return;
+        }
+
+        const hitRate = (this.cacheStats.hit_rate * 100).toFixed(1);
+        const p2pStatus = this.cacheStats.p2p_enabled ? '✓ Enabled' : '✗ Disabled';
+        const multiformatsStatus = this.cacheStats.content_addressing?.multiformats_available ? '✓ IPLD/Multiformats' : '✗ Unavailable';
+        
+        container.innerHTML = `
+            <div class="cache-stats-grid">
+                <div class="cache-stat-card">
+                    <div class="stat-icon">💾</div>
+                    <div class="stat-value">${this.cacheStats.cache_size}/${this.cacheStats.max_cache_size}</div>
+                    <div class="stat-label">Cache Entries</div>
+                </div>
+                <div class="cache-stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-value">${hitRate}%</div>
+                    <div class="stat-label">Hit Rate</div>
+                </div>
+                <div class="cache-stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-value">${this.cacheStats.api_calls_saved || 0}</div>
+                    <div class="stat-label">API Calls Saved</div>
+                </div>
+                <div class="cache-stat-card">
+                    <div class="stat-icon">🔗</div>
+                    <div class="stat-value">${this.cacheStats.p2p_peers?.connected || 0}</div>
+                    <div class="stat-label">P2P Peers</div>
+                </div>
+            </div>
+            <div class="cache-details">
+                <div class="cache-detail-row">
+                    <span class="detail-label">P2P Cache Sharing:</span>
+                    <span class="detail-value">${p2pStatus}</span>
+                </div>
+                <div class="cache-detail-row">
+                    <span class="detail-label">Content Addressing:</span>
+                    <span class="detail-value">${multiformatsStatus}</span>
+                </div>
+                <div class="cache-detail-row">
+                    <span class="detail-label">Total Requests:</span>
+                    <span class="detail-value">${this.cacheStats.total_requests || 0}</span>
+                </div>
+                <div class="cache-detail-row">
+                    <span class="detail-label">Cache Hits (Local):</span>
+                    <span class="detail-value">${this.cacheStats.local_hits || 0}</span>
+                </div>
+                <div class="cache-detail-row">
+                    <span class="detail-label">Cache Hits (P2P):</span>
+                    <span class="detail-value">${this.cacheStats.peer_hits || 0}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Render rate limit information
+    renderRateLimit() {
+        if (!this.rateLimit) return;
+        
+        const container = document.getElementById('github-rate-limit');
+        if (!container) {
+            console.warn('[GitHub Workflows] Rate limit container not found');
+            return;
+        }
+
+        const core = this.rateLimit.resources?.core || {};
+        const remaining = core.remaining || 0;
+        const limit = core.limit || 5000;
+        const resetDate = core.reset ? new Date(core.reset * 1000).toLocaleTimeString() : 'Unknown';
+        const usagePercent = ((limit - remaining) / limit * 100).toFixed(1);
+        
+        const statusClass = remaining > 1000 ? 'status-good' : remaining > 100 ? 'status-warning' : 'status-critical';
+        
+        container.innerHTML = `
+            <div class="rate-limit-summary">
+                <div class="rate-limit-gauge ${statusClass}">
+                    <div class="gauge-value">${remaining}</div>
+                    <div class="gauge-label">Remaining</div>
+                    <div class="gauge-total">/ ${limit}</div>
+                </div>
+                <div class="rate-limit-details">
+                    <div class="rate-limit-row">
+                        <span class="label">Usage:</span>
+                        <span class="value">${usagePercent}%</span>
+                    </div>
+                    <div class="rate-limit-row">
+                        <span class="label">Resets at:</span>
+                        <span class="value">${resetDate}</span>
+                    </div>
+                    <div class="rate-limit-row">
+                        <span class="label">Used:</span>
+                        <span class="value">${limit - remaining}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Invalidate cache via MCP SDK
+    async invalidateCache(pattern = null) {
+        try {
+            if (this.mcp) {
+                console.log('[GitHub Workflows] Calling gh_invalidate_cache via MCP SDK...');
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_invalidate_cache',
+                    arguments: pattern ? { pattern } : {}
+                });
+                
+                console.log('[GitHub Workflows] Cache invalidation result:', result);
+                
+                if (result && result.success) {
+                    showToast(`Cache cleared: ${result.invalidated} entries`, 'success');
+                    await this.fetchCacheStats();
+                } else if (result && result.error) {
+                    showToast(`Failed to clear cache: ${result.error}`, 'error');
+                } else {
+                    showToast('Failed to clear cache', 'error');
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error invalidating cache:', error);
+            showToast('Error clearing cache', 'error');
+        }
     }
 }
 

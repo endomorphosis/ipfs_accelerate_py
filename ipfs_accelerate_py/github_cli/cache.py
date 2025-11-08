@@ -513,15 +513,23 @@ class GitHubAPICache:
             logger.info(f"Invalidated {len(keys_to_delete)} cache entries matching '{pattern}'")
             return len(keys_to_delete)
     
-    def clear(self) -> None:
-        """Clear all cache entries."""
+    def clear(self) -> int:
+        """
+        Clear all cache entries.
+        
+        Returns:
+            Number of entries cleared
+        """
         with self._lock:
+            count = len(self._cache)
             self._cache.clear()
             self._stats = {
                 "hits": 0,
                 "misses": 0,
+                "peer_hits": 0,
                 "expirations": 0,
-                "evictions": 0
+                "evictions": 0,
+                "api_calls_saved": 0
             }
             
             # Clear disk cache if persistence enabled
@@ -529,7 +537,8 @@ class GitHubAPICache:
                 for cache_file in self.cache_dir.glob("*.json"):
                     cache_file.unlink()
             
-            logger.info("Cleared all cache entries")
+            logger.info(f"Cleared {count} cache entries")
+            return count
     
     def get_stats(self) -> Dict[str, Any]:
         """
