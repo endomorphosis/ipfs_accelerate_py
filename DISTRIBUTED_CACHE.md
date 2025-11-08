@@ -7,6 +7,7 @@ The Distributed GitHub API Cache is a peer-to-peer (P2P) cache system built **di
 ### Key Features
 
 - **🌐 P2P Cache Sharing**: Uses `pylibp2p` for gossip-based cache distribution
+- **🔐 Encrypted Messages**: Uses GitHub token as shared secret - only authorized runners can decrypt
 - **🔐 Content-Addressable Storage**: Uses `ipfs_multiformats` for verifiable content hashing
 - **⚡ Rate Limit Reduction**: Saves API calls by sharing responses between runners
 - **🔄 Automatic Sync**: Broadcast cache updates to all connected peers
@@ -14,6 +15,7 @@ The Distributed GitHub API Cache is a peer-to-peer (P2P) cache system built **di
 - **🎯 Smart TTLs**: Different cache lifetimes for different data types
 - **✨ Zero Configuration**: Works automatically with existing code
 - **🔌 Transparent Integration**: No code changes needed
+- **🛡️ Secure by Default**: Messages encrypted with AES-256 using GitHub credentials
 
 ## Architecture
 
@@ -58,11 +60,14 @@ pip install requests PyGithub
 # P2P features (optional but recommended)
 pip install libp2p
 
+# Encryption (required for P2P)
+pip install cryptography
+
 # Content-addressable hashing (optional but recommended)
 pip install py-multiformats-cid
 
 # Or install all at once
-pip install libp2p py-multiformats-cid requests PyGithub
+pip install libp2p cryptography py-multiformats-cid requests PyGithub
 ```
 
 ### 2. Configure Cache (Optional)
@@ -327,11 +332,31 @@ get_cache().clear_stale()
 
 ## Security Considerations
 
-1. **Network Security**: Cache runs on localhost by default
-2. **Content Verification**: All entries are hash-verified
-3. **No Sensitive Data**: Only caches public API responses
-4. **Peer Authentication**: libp2p handles peer identity
-5. **Rate Limiting**: Still respects GitHub's rate limits
+1. **Message Encryption**: All P2P messages encrypted with AES-256 using Fernet
+2. **Shared Secret**: GitHub token used as encryption key (via PBKDF2 key derivation)
+3. **Authorization**: Only runners with same GitHub authentication can decrypt messages
+4. **Content Verification**: All entries are hash-verified with IPFS CID
+5. **No Sensitive Data**: Only caches public API responses
+6. **Peer Authentication**: libp2p handles peer identity
+7. **Unauthorized Access**: Encrypted messages appear as random bytes to unauthorized peers
+8. **Key Derivation**: PBKDF2-HMAC-SHA256 with 100,000 iterations
+
+### How Encryption Works
+
+```python
+# Encryption key derived from GitHub token
+GITHUB_TOKEN (environment or gh CLI)
+    ↓
+PBKDF2-HMAC-SHA256 (100k iterations, fixed salt)
+    ↓
+32-byte encryption key
+    ↓
+Fernet (AES-128-CBC + HMAC-SHA256)
+    ↓
+Encrypted message
+```
+
+**Result:** Only runners authenticated with the same GitHub credentials can decrypt cache messages.
 
 ## Performance
 

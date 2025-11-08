@@ -5,7 +5,8 @@ This module provides caching capabilities for GitHub API responses to reduce
 the number of API calls and avoid rate limiting.
 
 Uses content-addressed hashing (multiformats) to intelligently detect stale cache.
-Supports P2P cache sharing via libp2p for distributed runners.
+Supports P2P cache sharing via libp2p for distributed runners with encryption
+using GitHub token as shared secret (only runners with same GitHub access can decrypt).
 """
 
 import json
@@ -14,10 +15,21 @@ import os
 import time
 import hashlib
 import asyncio
+import base64
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from threading import Lock
+
+# Try to import cryptography for message encryption
+try:
+    from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+    HAVE_CRYPTO = True
+except ImportError:
+    HAVE_CRYPTO = False
+    Fernet = None
 
 # Try to import multiformats for content-addressed caching
 try:
@@ -144,6 +156,16 @@ class GitHubAPICache:
         self._p2p_bootstrap_peers = p2p_bootstrap_peers or []
         self._p2p_connected_peers: Dict[str, Any] = {}
         self._event_loop = None
+        
+        # Encryption for P2P messages (using GitHub token as shared secret)
+        self._encryption_key = None
+        self._cipher = None
+        if self.enable_p2p and HAVE_CRYPTO:
+            try:
+                self._init_encryption()
+                logger.info("✓ P2P message encryption enabled")
+            except Exception as e:
+                logger.warning(f"⚠ P2P encryption unavailable: {e}")
         
         # Load persistent cache if enabled
         if self.enable_persistence:
@@ -557,6 +579,103 @@ class GitHubAPICache:
         except Exception as e:
             logger.warning(f"Failed to load cache from disk: {e}")
     
+    def _init_encryption(self) -> None:
+        """
+        Initialize encryption for P2P messages using GitHub token as shared secret.
+        
+        All runners with the same GitHub authentication will share the same encryption key,
+        allowing only authorized runners to decrypt cache messages.
+        """
+        if not HAVE_CRYPTO:
+            raise RuntimeError("cryptography not available, install with: pip install cryptography")
+        
+        # Get GitHub token (shared secret)
+        github_token = os.environ.get("GITHUB_TOKEN")
+        if not github_token:
+            # Try to get token from gh CLI
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["gh", "auth", "token"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    github_token = result.stdout.strip()
+            except Exception as e:
+                logger.debug(f"Failed to get GitHub token from gh CLI: {e}")
+        
+        if not github_token:
+            raise RuntimeError("GitHub token not available (set GITHUB_TOKEN or run 'gh auth login')")
+        
+        # Derive encryption key from GitHub token using PBKDF2
+        # This ensures all runners with same token get same encryption key
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.backends import default_backend
+        
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"github-cache-p2p",  # Fixed salt for deterministic key derivation
+            iterations=100000,
+            backend=default_backend()
+        )
+        
+        key = base64.urlsafe_b64encode(kdf.derive(github_token.encode('utf-8')))
+        self._encryption_key = key
+        self._cipher = Fernet(key)
+        
+        logger.debug("Encryption key derived from GitHub token")
+    
+    def _encrypt_message(self, data: Dict[str, Any]) -> bytes:
+        """
+        Encrypt a message for P2P transmission.
+        
+        Args:
+            data: Dictionary to encrypt
+            
+        Returns:
+            Encrypted bytes
+        """
+        if not self._cipher:
+            # No encryption available, send plaintext (with warning)
+            logger.warning("P2P message sent unencrypted (cryptography not available)")
+            return json.dumps(data).encode('utf-8')
+        
+        try:
+            plaintext = json.dumps(data).encode('utf-8')
+            encrypted = self._cipher.encrypt(plaintext)
+            return encrypted
+        except Exception as e:
+            logger.error(f"Failed to encrypt message: {e}")
+            raise
+    
+    def _decrypt_message(self, encrypted_data: bytes) -> Optional[Dict[str, Any]]:
+        """
+        Decrypt a P2P message.
+        
+        Args:
+            encrypted_data: Encrypted bytes
+            
+        Returns:
+            Decrypted dictionary or None if decryption fails
+        """
+        if not self._cipher:
+            # No encryption available, try parsing as plaintext
+            try:
+                return json.loads(encrypted_data.decode('utf-8'))
+            except Exception as e:
+                logger.warning(f"Failed to parse unencrypted message: {e}")
+                return None
+        
+        try:
+            decrypted = self._cipher.decrypt(encrypted_data)
+            return json.loads(decrypted.decode('utf-8'))
+        except Exception as e:
+            logger.warning(f"Failed to decrypt message (wrong key or corrupted): {e}")
+            return None
+    
     def _init_p2p(self) -> None:
         """Initialize P2P networking for cache sharing."""
         if not HAVE_LIBP2P:
@@ -612,11 +731,17 @@ class GitHubAPICache:
         logger.info(f"Connected to peer: {peer_id}")
     
     async def _handle_cache_stream(self, stream: 'INetStream') -> None:
-        """Handle incoming cache entry from peer."""
+        """Handle incoming encrypted cache entry from peer."""
         try:
-            # Read cache entry data
-            data = await stream.read()
-            message = json.loads(data.decode('utf-8'))
+            # Read encrypted cache entry data
+            encrypted_data = await stream.read()
+            
+            # Decrypt message
+            message = self._decrypt_message(encrypted_data)
+            if message is None:
+                logger.warning("Failed to decrypt message from peer (unauthorized or corrupted)")
+                await stream.write(b"ERROR: Decryption failed")
+                return
             
             # Extract cache entry
             cache_key = message.get("key")
@@ -624,6 +749,7 @@ class GitHubAPICache:
             
             if not cache_key or not entry_data:
                 logger.warning("Received invalid cache entry from peer")
+                await stream.write(b"ERROR: Invalid format")
                 return
             
             # Reconstruct cache entry
@@ -665,7 +791,7 @@ class GitHubAPICache:
             await stream.close()
     
     async def _broadcast_cache_entry(self, cache_key: str, entry: CacheEntry) -> None:
-        """Broadcast cache entry to all connected peers."""
+        """Broadcast encrypted cache entry to all connected peers."""
         if not self._p2p_host or not self._p2p_connected_peers:
             return
         
@@ -681,13 +807,15 @@ class GitHubAPICache:
                     "validation_fields": entry.validation_fields
                 }
             }
-            message_bytes = json.dumps(message).encode('utf-8')
+            
+            # Encrypt message (only peers with same GitHub token can decrypt)
+            encrypted_bytes = self._encrypt_message(message)
             
             # Send to all connected peers
             for peer_id, peer_info in list(self._p2p_connected_peers.items()):
                 try:
                     stream = await self._p2p_host.new_stream(peer_info.peer_id, [self._p2p_protocol])
-                    await stream.write(message_bytes)
+                    await stream.write(encrypted_bytes)
                     
                     # Wait for ack
                     ack = await stream.read()

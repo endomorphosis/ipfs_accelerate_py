@@ -2,7 +2,7 @@
 
 ## What Is It?
 
-A peer-to-peer cache system **built directly into the GitHub CLI wrapper** that automatically shares cached API responses between GitHub Actions runners, reducing rate limit usage by 80%+.
+A peer-to-peer cache system **built directly into the GitHub CLI wrapper** that automatically shares cached API responses between GitHub Actions runners, reducing rate limit usage by 80%+. **Messages are encrypted** using your GitHub token as the shared secret.
 
 ## Key Points
 
@@ -10,14 +10,17 @@ A peer-to-peer cache system **built directly into the GitHub CLI wrapper** that 
 ✅ **Zero configuration** - works automatically with sensible defaults  
 ✅ **Transparent** - no code changes needed in existing scripts  
 ✅ **Optional** - gracefully falls back if P2P libraries unavailable  
+✅ **Secure** - AES-256 encryption using GitHub token (only authorized runners can decrypt)  
 
 ## Quick Start
 
 ### 1. Install P2P Dependencies (Optional)
 
 ```bash
-pip install libp2p py-multiformats-cid
+pip install libp2p cryptography py-multiformats-cid
 ```
+
+**Note:** `cryptography` is required for encrypted P2P messages.
 
 ### 2. Configure Bootstrap Peers (Optional)
 
@@ -228,11 +231,30 @@ rm -rf ~/.cache/github_cli/*.json
 
 ## Security
 
+- **Message encryption**: AES-256 via Fernet (PBKDF2 key derivation from GitHub token)
+- **Authorization**: Only runners with same GitHub credentials can decrypt messages
 - **Content verification**: All entries verified via IPFS CID
 - **No sensitive data**: Only caches public API responses
 - **Peer authentication**: libp2p handles peer identity
+- **Key derivation**: PBKDF2-HMAC-SHA256, 100k iterations, fixed salt
+- **Unauthorized access**: Encrypted messages unreadable without correct GitHub token
 - **Local-first**: Falls back to local cache if P2P fails
-- **Firewall friendly**: Only listens on localhost by default
+
+### Encryption Details
+
+```
+GitHub Token (from GITHUB_TOKEN env or gh CLI)
+    ↓
+PBKDF2-HMAC-SHA256 (100,000 iterations)
+    ↓
+32-byte encryption key (deterministic for same token)
+    ↓
+Fernet cipher (AES-128-CBC + HMAC-SHA256)
+    ↓
+Encrypted P2P messages
+```
+
+**Result:** Only runners with matching GitHub authentication can participate in cache sharing.
 
 ## Performance
 
