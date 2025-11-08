@@ -12,12 +12,16 @@ Environment=PATH=/home/%i/.local/bin:/home/%i/ipfs_accelerate_py/venv/bin:/usr/l
 Environment=PYTHONUNBUFFERED=1
 Environment=HOME=/home/%i
 
+# P2P Cache Configuration
+Environment=CACHE_ENABLE_P2P=true
+Environment=P2P_LISTEN_PORT=9000
+
 # GitHub CLI authentication
 # Ensure gh CLI is authenticated before starting the service
 # Run: gh auth login
 
 # Start the autoscaler with appropriate settings
-ExecStart=/home/%i/ipfs_accelerate_py/venv/bin/python3 /home/%i/ipfs_accelerate_py/github_autoscaler.py --interval 60
+ExecStart=/home/%i/ipfs_accelerate_py/.venv/bin/python3 /home/%i/ipfs_accelerate_py/github_autoscaler.py --interval 60
 
 # Restart on failure
 Restart=on-failure
