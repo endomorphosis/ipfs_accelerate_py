@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IPFS Accelerate MCP Server Dashboard</title>
-    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/github-workflows.css">
     <!-- Error Reporting -->
     <script src="/static/js/error-reporter.js"></script>
 </head>
@@ -43,6 +44,7 @@
             <button class="nav-tab" onclick="showTab('ai-inference')">🤖 AI Inference</button>
             <button class="nav-tab" onclick="showTab('model-manager')">📚 Model Manager</button>
             <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
+            <button class="nav-tab" onclick="showTab('github-workflows')">⚡ GitHub Workflows</button>
             <button class="nav-tab" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
             <button class="nav-tab" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
             <button class="nav-tab" onclick="showTab('system-logs')">📝 System Logs</button>
@@ -520,6 +522,62 @@
             </div>
         </div>
 
+        <!-- GitHub Workflows Tab -->
+        <div id="github-workflows" class="tab-content">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>📊 GitHub API Cache Statistics</h3>
+                    <div id="github-cache-stats">
+                        <p class="loading-message">Loading cache statistics...</p>
+                    </div>
+                    <div class="button-group" style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="githubManager?.fetchCacheStats()">🔄 Refresh</button>
+                        <button class="btn btn-warning" onclick="githubManager?.invalidateCache()">🗑️ Clear All Cache</button>
+                        <button class="btn btn-secondary" onclick="githubManager?.invalidateCache('workflow')">Clear Workflow Cache</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>⚡ GitHub API Rate Limit</h3>
+                    <div id="github-rate-limit">
+                        <p class="loading-message">Loading rate limit information...</p>
+                    </div>
+                    <div class="button-group" style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="githubManager?.fetchRateLimit()">🔄 Refresh</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📊 Workflow Queue Overview</h3>
+                    <div id="github-stats-overview">
+                        <p class="loading-message">Loading workflow statistics...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>⚙️ Active Workflows</h3>
+                    <div id="github-workflows-container">
+                        <p class="loading-message">Loading workflows...</p>
+                    </div>
+                    <div class="button-group" style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="githubManager?.fetchWorkflows()">🔄 Refresh Workflows</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🖥️ Self-Hosted Runners</h3>
+                    <div id="github-runners-container">
+                        <p class="loading-message">Loading runners...</p>
+                    </div>
+                    <div class="button-group" style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="githubManager?.fetchRunners()">🔄 Refresh Runners</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- System Logs Tab -->
         <div id="system-logs" class="tab-content">
             <div class="card">
@@ -550,6 +608,9 @@
         </div>
     </div>
 
+    <!-- MCP SDK and GitHub Workflows Integration -->
+    <script src="/static/js/mcp-sdk.js"></script>
+    <script src="/static/js/github-workflows.js"></script>
     <script src="/static/dashboard.js"></script>
     
     <!-- Initialize Error Reporting -->

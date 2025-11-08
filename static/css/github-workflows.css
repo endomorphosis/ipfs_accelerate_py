@@ -409,3 +409,169 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Cache Statistics Styles */
+.cache-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.cache-stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    background: #f9fafb;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.cache-stat-card .stat-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.cache-stat-card .stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 4px;
+}
+
+.cache-stat-card .stat-label {
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cache-details {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 15px;
+    background: #f9fafb;
+    border-radius: 8px;
+}
+
+.cache-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.cache-detail-row:last-child {
+    border-bottom: none;
+}
+
+.cache-detail-row .detail-label {
+    font-size: 14px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.cache-detail-row .detail-value {
+    font-size: 14px;
+    color: #1f2937;
+    font-weight: 600;
+}
+
+/* Rate Limit Styles */
+.rate-limit-summary {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    padding: 20px;
+}
+
+.rate-limit-gauge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    border-radius: 12px;
+    min-width: 150px;
+}
+
+.rate-limit-gauge.status-good {
+    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+    color: #065f46;
+}
+
+.rate-limit-gauge.status-warning {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    color: #92400e;
+}
+
+.rate-limit-gauge.status-critical {
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    color: #991b1b;
+}
+
+.rate-limit-gauge .gauge-value {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.rate-limit-gauge .gauge-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 5px;
+    opacity: 0.8;
+}
+
+.rate-limit-gauge .gauge-total {
+    font-size: 14px;
+    margin-top: 2px;
+    opacity: 0.7;
+}
+
+.rate-limit-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.rate-limit-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background: #f9fafb;
+    border-radius: 8px;
+}
+
+.rate-limit-row .label {
+    font-size: 14px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.rate-limit-row .value {
+    font-size: 14px;
+    color: #1f2937;
+    font-weight: 600;
+}
+
+/* Loading Message */
+.loading-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6b7280;
+    font-style: italic;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #9ca3af;
+    font-size: 14px;
+}
