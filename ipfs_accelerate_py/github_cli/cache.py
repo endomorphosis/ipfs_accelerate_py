@@ -48,11 +48,17 @@ except ImportError:
 try:
     from libp2p import new_host
     from libp2p.peer.peerinfo import info_from_p2p_addr
-    from libp2p.network.stream.net_stream_interface import INetStream
     HAVE_LIBP2P = True
+    # INetStream is only used for type hints, so it's optional
+    try:
+        from libp2p.network.stream.net_stream_interface import INetStream
+    except ImportError:
+        INetStream = None  # Type hint only, not critical
 except ImportError:
     HAVE_LIBP2P = False
     new_host = None
+    info_from_p2p_addr = None
+    INetStream = None
 
 logger = logging.getLogger(__name__)
 
