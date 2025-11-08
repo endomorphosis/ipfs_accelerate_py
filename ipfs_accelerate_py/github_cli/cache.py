@@ -5,6 +5,7 @@ This module provides caching capabilities for GitHub API responses to reduce
 the number of API calls and avoid rate limiting.
 
 Uses content-addressed hashing (multiformats) to intelligently detect stale cache.
+Supports P2P cache sharing via libp2p for distributed runners.
 """
 
 import json
@@ -12,6 +13,7 @@ import logging
 import os
 import time
 import hashlib
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,6 +27,16 @@ except ImportError:
     HAVE_MULTIFORMATS = False
     CID = None
     multihash = None
+
+# Try to import libp2p for P2P cache sharing
+try:
+    from libp2p import new_host
+    from libp2p.peer.peerinfo import info_from_p2p_addr
+    from libp2p.network.stream.net_stream_interface import INetStream
+    HAVE_LIBP2P = True
+except ImportError:
+    HAVE_LIBP2P = False
+    new_host = None
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +92,10 @@ class GitHubAPICache:
         cache_dir: Optional[str] = None,
         default_ttl: int = 300,  # 5 minutes
         max_cache_size: int = 1000,
-        enable_persistence: bool = True
+        enable_persistence: bool = True,
+        enable_p2p: bool = True,
+        p2p_listen_port: int = 9000,
+        p2p_bootstrap_peers: Optional[List[str]] = None
     ):
         """
         Initialize the GitHub API cache.
@@ -90,10 +105,14 @@ class GitHubAPICache:
             default_ttl: Default time-to-live for cache entries in seconds
             max_cache_size: Maximum number of entries to keep in memory
             enable_persistence: Whether to persist cache to disk
+            enable_p2p: Whether to enable P2P cache sharing via libp2p
+            p2p_listen_port: Port for libp2p to listen on (default: 9000)
+            p2p_bootstrap_peers: List of bootstrap peer multiaddrs
         """
         self.default_ttl = default_ttl
         self.max_cache_size = max_cache_size
         self.enable_persistence = enable_persistence
+        self.enable_p2p = enable_p2p and HAVE_LIBP2P
         
         # Set up cache directory
         if cache_dir:
@@ -112,13 +131,32 @@ class GitHubAPICache:
         self._stats = {
             "hits": 0,
             "misses": 0,
+            "peer_hits": 0,
             "expirations": 0,
-            "evictions": 0
+            "evictions": 0,
+            "api_calls_saved": 0
         }
+        
+        # P2P networking
+        self._p2p_host = None
+        self._p2p_protocol = "/github-cache/1.0.0"
+        self._p2p_listen_port = p2p_listen_port
+        self._p2p_bootstrap_peers = p2p_bootstrap_peers or []
+        self._p2p_connected_peers: Dict[str, Any] = {}
+        self._event_loop = None
         
         # Load persistent cache if enabled
         if self.enable_persistence:
             self._load_from_disk()
+        
+        # Initialize P2P if enabled
+        if self.enable_p2p:
+            try:
+                self._init_p2p()
+                logger.info(f"✓ P2P cache sharing enabled on port {p2p_listen_port}")
+            except Exception as e:
+                logger.warning(f"⚠ Failed to initialize P2P: {e}")
+                self.enable_p2p = False
     
     def _make_cache_key(self, operation: str, *args, **kwargs) -> str:
         """
@@ -335,6 +373,10 @@ class GitHubAPICache:
             # Persist to disk if enabled
             if self.enable_persistence:
                 self._save_to_disk(cache_key, entry)
+            
+            # Broadcast to P2P peers if enabled
+            if self.enable_p2p:
+                self._broadcast_in_background(cache_key, entry)
     
     def _evict_oldest(self) -> None:
         """Evict the oldest cache entry."""
@@ -420,16 +462,34 @@ class GitHubAPICache:
             Dictionary of cache statistics
         """
         with self._lock:
-            total_requests = self._stats["hits"] + self._stats["misses"]
-            hit_rate = self._stats["hits"] / total_requests if total_requests > 0 else 0
+            local_hits = self._stats["hits"]
+            peer_hits = self._stats["peer_hits"]
+            total_hits = local_hits + peer_hits
+            total_requests = total_hits + self._stats["misses"]
+            hit_rate = total_hits / total_requests if total_requests > 0 else 0
             
-            return {
+            # API calls saved = hits (local + peer) that would have been API calls
+            api_calls_saved = total_hits
+            
+            stats = {
                 **self._stats,
+                "local_hits": local_hits,
+                "total_hits": total_hits,
                 "total_requests": total_requests,
                 "hit_rate": hit_rate,
                 "cache_size": len(self._cache),
-                "max_cache_size": self.max_cache_size
+                "max_cache_size": self.max_cache_size,
+                "api_calls_saved": api_calls_saved,
+                "p2p_enabled": self.enable_p2p
             }
+            
+            # Add P2P-specific stats if enabled
+            if self.enable_p2p:
+                stats["connected_peers"] = len(self._p2p_connected_peers)
+                if self._p2p_host:
+                    stats["peer_id"] = self._p2p_host.get_id().pretty()
+            
+            return stats
     
     def _sanitize_filename(self, key: str) -> str:
         """Sanitize a cache key for use as a filename."""
@@ -496,6 +556,162 @@ class GitHubAPICache:
         
         except Exception as e:
             logger.warning(f"Failed to load cache from disk: {e}")
+    
+    def _init_p2p(self) -> None:
+        """Initialize P2P networking for cache sharing."""
+        if not HAVE_LIBP2P:
+            raise RuntimeError("libp2p not available, install with: pip install libp2p")
+        
+        # Get or create event loop
+        try:
+            self._event_loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self._event_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._event_loop)
+        
+        # Start P2P host in background
+        self._event_loop.run_until_complete(self._start_p2p_host())
+    
+    async def _start_p2p_host(self) -> None:
+        """Start libp2p host for P2P cache sharing."""
+        try:
+            # Create libp2p host
+            self._p2p_host = await new_host()
+            
+            # Set stream handler for cache protocol
+            self._p2p_host.set_stream_handler(self._p2p_protocol, self._handle_cache_stream)
+            
+            # Start listening
+            listen_addr = f"/ip4/0.0.0.0/tcp/{self._p2p_listen_port}"
+            await self._p2p_host.get_network().listen(listen_addr)
+            
+            logger.info(f"P2P host started, listening on {listen_addr}")
+            logger.info(f"Peer ID: {self._p2p_host.get_id().pretty()}")
+            
+            # Connect to bootstrap peers
+            for peer_addr in self._p2p_bootstrap_peers:
+                try:
+                    await self._connect_to_peer(peer_addr)
+                except Exception as e:
+                    logger.warning(f"Failed to connect to bootstrap peer {peer_addr}: {e}")
+        
+        except Exception as e:
+            logger.error(f"Failed to start P2P host: {e}")
+            raise
+    
+    async def _connect_to_peer(self, peer_addr: str) -> None:
+        """Connect to a peer by multiaddr."""
+        if not self._p2p_host:
+            return
+        
+        peer_info = info_from_p2p_addr(peer_addr)
+        await self._p2p_host.connect(peer_info)
+        
+        peer_id = peer_info.peer_id.pretty()
+        self._p2p_connected_peers[peer_id] = peer_info
+        logger.info(f"Connected to peer: {peer_id}")
+    
+    async def _handle_cache_stream(self, stream: 'INetStream') -> None:
+        """Handle incoming cache entry from peer."""
+        try:
+            # Read cache entry data
+            data = await stream.read()
+            message = json.loads(data.decode('utf-8'))
+            
+            # Extract cache entry
+            cache_key = message.get("key")
+            entry_data = message.get("entry")
+            
+            if not cache_key or not entry_data:
+                logger.warning("Received invalid cache entry from peer")
+                return
+            
+            # Reconstruct cache entry
+            entry = CacheEntry(
+                data=entry_data["data"],
+                timestamp=entry_data["timestamp"],
+                ttl=entry_data["ttl"],
+                content_hash=entry_data.get("content_hash"),
+                validation_fields=entry_data.get("validation_fields")
+            )
+            
+            # Verify content hash if available
+            if entry.content_hash and entry.validation_fields:
+                expected_hash = self._compute_validation_hash(entry.validation_fields)
+                if expected_hash != entry.content_hash:
+                    logger.warning(f"Content hash mismatch for {cache_key}, rejecting")
+                    return
+            
+            # Store in cache if not expired
+            if not entry.is_expired():
+                with self._lock:
+                    # Only store if we don't have it or our version is older
+                    existing = self._cache.get(cache_key)
+                    if not existing or existing.timestamp < entry.timestamp:
+                        self._cache[cache_key] = entry
+                        self._stats["peer_hits"] += 1
+                        logger.debug(f"Received cache entry from peer: {cache_key}")
+                        
+                        # Persist if enabled
+                        if self.enable_persistence:
+                            self._save_to_disk(cache_key, entry)
+            
+            # Send acknowledgment
+            await stream.write(b"OK")
+        
+        except Exception as e:
+            logger.error(f"Error handling cache stream: {e}")
+        finally:
+            await stream.close()
+    
+    async def _broadcast_cache_entry(self, cache_key: str, entry: CacheEntry) -> None:
+        """Broadcast cache entry to all connected peers."""
+        if not self._p2p_host or not self._p2p_connected_peers:
+            return
+        
+        try:
+            # Prepare message
+            message = {
+                "key": cache_key,
+                "entry": {
+                    "data": entry.data,
+                    "timestamp": entry.timestamp,
+                    "ttl": entry.ttl,
+                    "content_hash": entry.content_hash,
+                    "validation_fields": entry.validation_fields
+                }
+            }
+            message_bytes = json.dumps(message).encode('utf-8')
+            
+            # Send to all connected peers
+            for peer_id, peer_info in list(self._p2p_connected_peers.items()):
+                try:
+                    stream = await self._p2p_host.new_stream(peer_info.peer_id, [self._p2p_protocol])
+                    await stream.write(message_bytes)
+                    
+                    # Wait for ack
+                    ack = await stream.read()
+                    if ack == b"OK":
+                        logger.debug(f"Broadcast cache entry to {peer_id}: {cache_key}")
+                    
+                    await stream.close()
+                
+                except Exception as e:
+                    logger.warning(f"Failed to broadcast to peer {peer_id}: {e}")
+        
+        except Exception as e:
+            logger.error(f"Error broadcasting cache entry: {e}")
+    
+    def _broadcast_in_background(self, cache_key: str, entry: CacheEntry) -> None:
+        """Broadcast cache entry in background (non-blocking)."""
+        if not self.enable_p2p or not self._event_loop:
+            return
+        
+        # Schedule broadcast as background task
+        asyncio.run_coroutine_threadsafe(
+            self._broadcast_cache_entry(cache_key, entry),
+            self._event_loop
+        )
 
 
 # Global cache instance (can be configured at module level)
@@ -506,8 +722,15 @@ def get_global_cache(**kwargs) -> GitHubAPICache:
     """
     Get or create the global GitHub API cache instance.
     
+    Automatically reads P2P configuration from environment variables:
+    - CACHE_ENABLE_P2P: Enable P2P cache sharing (default: true)
+    - CACHE_LISTEN_PORT: P2P listen port (default: 9000)
+    - CACHE_BOOTSTRAP_PEERS: Comma-separated list of peer multiaddrs
+    - CACHE_DEFAULT_TTL: Default cache TTL in seconds (default: 300)
+    - CACHE_DIR: Cache directory (default: ~/.cache/github_cli)
+    
     Args:
-        **kwargs: Arguments to pass to GitHubAPICache constructor
+        **kwargs: Arguments to pass to GitHubAPICache constructor (overrides env vars)
         
     Returns:
         Global GitHubAPICache instance
@@ -515,6 +738,24 @@ def get_global_cache(**kwargs) -> GitHubAPICache:
     global _global_cache
     
     if _global_cache is None:
+        # Read from environment if not provided
+        if 'enable_p2p' not in kwargs:
+            kwargs['enable_p2p'] = os.environ.get('CACHE_ENABLE_P2P', 'true').lower() == 'true'
+        
+        if 'p2p_listen_port' not in kwargs:
+            kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9000'))
+        
+        if 'p2p_bootstrap_peers' not in kwargs:
+            peers_str = os.environ.get('CACHE_BOOTSTRAP_PEERS', '')
+            if peers_str:
+                kwargs['p2p_bootstrap_peers'] = [p.strip() for p in peers_str.split(',') if p.strip()]
+        
+        if 'default_ttl' not in kwargs:
+            kwargs['default_ttl'] = int(os.environ.get('CACHE_DEFAULT_TTL', '300'))
+        
+        if 'cache_dir' not in kwargs and 'CACHE_DIR' in os.environ:
+            kwargs['cache_dir'] = os.environ['CACHE_DIR']
+        
         _global_cache = GitHubAPICache(**kwargs)
     
     return _global_cache

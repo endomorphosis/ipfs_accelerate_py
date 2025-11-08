@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Distributed GitHub API Cache is a peer-to-peer (P2P) cache system that reduces GitHub API rate limit usage across multiple GitHub Actions runners by sharing cached API responses.
+The Distributed GitHub API Cache is a peer-to-peer (P2P) cache system built **directly into the GitHub CLI wrapper** that reduces GitHub API rate limit usage across multiple GitHub Actions runners by sharing cached API responses. No separate service needed!
 
 ### Key Features
 
@@ -12,6 +12,8 @@ The Distributed GitHub API Cache is a peer-to-peer (P2P) cache system that reduc
 - **🔄 Automatic Sync**: Broadcast cache updates to all connected peers
 - **📊 Staleness Detection**: Content hashing ensures cache integrity
 - **🎯 Smart TTLs**: Different cache lifetimes for different data types
+- **✨ Zero Configuration**: Works automatically with existing code
+- **🔌 Transparent Integration**: No code changes needed
 
 ## Architecture
 
@@ -63,69 +65,61 @@ pip install py-multiformats-cid
 pip install libp2p py-multiformats-cid requests PyGithub
 ```
 
-### 2. Configure Cache
+### 2. Configure Cache (Optional)
+
+The cache works automatically with sensible defaults. For P2P sharing between runners:
 
 ```bash
-# Copy example config
-cp .env.cache.example .env.cache
-
-# Edit configuration
-nano .env.cache
+# Set environment variables (optional)
+export CACHE_ENABLE_P2P=true
+export CACHE_LISTEN_PORT=9000
+export CACHE_BOOTSTRAP_PEERS="/ip4/192.168.1.100/tcp/9000/p2p/QmPeerID1,/ip4/192.168.1.101/tcp/9000/p2p/QmPeerID2"
+export CACHE_DEFAULT_TTL=300
+export CACHE_DIR=~/.cache/github_cli
 ```
 
-**Key Settings**:
-- `CACHE_LISTEN_PORT`: P2P listen port (default: 9000)
-- `CACHE_BOOTSTRAP_PEERS`: Comma-separated list of peer addresses
-- `CACHE_DEFAULT_TTL`: Default cache TTL in seconds (default: 300)
-- `CACHE_DIR`: Cache storage directory
-
-### 3. Start Cache Daemon
-
-```bash
-# Start as foreground process
-bash scripts/start-distributed-cache.sh
-
-# Or run as systemd service (recommended)
-sudo systemctl start github-cache.service
-```
+**That's it!** The cache is now automatically enabled for all GitHub CLI operations.
 
 ## Usage
 
-### In Python Code
+### Automatic Usage (Recommended)
+
+**The cache works automatically - no code changes needed!**
 
 ```python
-from ipfs_accelerate_py.cached_github_cli import CachedGitHubCLI
 from ipfs_accelerate_py.github_cli import GitHubCLI
 
-# Create GitHub CLI instance
+# Just use GitHub CLI as normal
 gh = GitHubCLI()
 
-# Wrap with caching
-cached_gh = CachedGitHubCLI(gh)
-
-# Use as normal - responses are automatically cached and shared
-repos = cached_gh.list_repos(owner="endomorphosis", since_days=1)
+# All operations are automatically cached and P2P-shared
+repos = gh.list_repos(owner="endomorphosis")
 # First call: Fetches from API, caches, broadcasts to peers
 # Subsequent calls: Returns from cache (local or peer)
 
-runs = cached_gh.get_workflow_runs("ipfs_accelerate_py", status="queued")
-# Cached for 2 minutes
+runs = gh.list_workflow_runs("ipfs_accelerate_py", status="queued")
+# Automatically cached with appropriate TTL
 
 # Get cache statistics
-stats = cached_gh.get_cache_stats()
-print(f"API calls saved: {stats['api_calls_saved']}")
+from ipfs_accelerate_py.github_cli.cache import get_global_cache
+cache = get_global_cache()
+stats = cache.get_stats()
+
+print(f"Local hits: {stats['local_hits']}")
+print(f"Peer hits: {stats['peer_hits']}")
 print(f"Hit rate: {stats['hit_rate']:.1%}")
+print(f"API calls saved: {stats['api_calls_saved']}")
 print(f"Connected peers: {stats['connected_peers']}")
 ```
 
 ### With GitHub Autoscaler
 
-The autoscaler automatically uses the distributed cache:
+The autoscaler automatically benefits from P2P cache sharing:
 
 ```python
 from github_autoscaler import GitHubRunnerAutoscaler
 
-# Autoscaler will use distributed cache if available
+# No changes needed - cache is automatically enabled
 autoscaler = GitHubRunnerAutoscaler(
     owner="endomorphosis",
     poll_interval=120
@@ -133,28 +127,32 @@ autoscaler = GitHubRunnerAutoscaler(
 
 autoscaler.run()
 # API calls are now cached and shared between runner instances
+# Runners share workflow states, repo lists, runner statuses, etc.
 ```
 
-### Starting P2P Network
+### Manual Configuration (Advanced)
+
+For fine-tuned control:
 
 ```python
-import asyncio
-from ipfs_accelerate_py.cached_github_cli import start_cache_network
+from ipfs_accelerate_py.github_cli import GitHubCLI
+from ipfs_accelerate_py.github_cli.cache import configure_cache
 
-async def main():
-    # Start P2P cache network
-    cache = await start_cache_network(
-        listen_port=9000,
-        bootstrap_peers=[
-            "/ip4/192.168.1.100/tcp/9000/p2p/QmPeerID1",
-            "/ip4/192.168.1.101/tcp/9000/p2p/QmPeerID2"
-        ]
-    )
-    
-    # Cache is now running and sharing with peers
-    await asyncio.sleep(3600)  # Run for 1 hour
+# Configure cache with custom settings
+cache = configure_cache(
+    enable_p2p=True,
+    p2p_listen_port=9000,
+    p2p_bootstrap_peers=[
+        "/ip4/192.168.1.100/tcp/9000/p2p/QmPeerID1",
+        "/ip4/192.168.1.101/tcp/9000/p2p/QmPeerID2"
+    ],
+    default_ttl=300,
+    max_cache_size=2000
+)
 
-asyncio.run(main())
+# Use GitHub CLI - will use configured cache
+gh = GitHubCLI()
+repos = gh.list_repos(owner="me")
 ```
 
 ## Configuration
@@ -248,11 +246,11 @@ is_valid = ContentHasher.verify_hash(data, cid)
 ### Cache Statistics
 
 ```bash
-# Get stats from running cache
+# Get stats from any Python script using the cache
 python3 << EOF
-from ipfs_accelerate_py.distributed_cache import get_cache
+from ipfs_accelerate_py.github_cli.cache import get_global_cache
 
-cache = get_cache()
+cache = get_global_cache()
 stats = cache.get_stats()
 
 print(f"Cache Statistics:")
@@ -262,18 +260,27 @@ print(f"  Misses: {stats['misses']}")
 print(f"  Hit rate: {stats['hit_rate']:.1%}")
 print(f"  API calls saved: {stats['api_calls_saved']}")
 print(f"  Cache size: {stats['cache_size']} entries")
-print(f"  Connected peers: {stats['connected_peers']}")
+print(f"  P2P enabled: {stats['p2p_enabled']}")
+if stats['p2p_enabled']:
+    print(f"  Connected peers: {stats['connected_peers']}")
+    print(f"  Peer ID: {stats.get('peer_id', 'N/A')}")
 EOF
 ```
 
 ### Logs
 
 ```bash
-# View cache daemon logs
-journalctl -u github-cache.service -f
-
 # View autoscaler logs (includes cache stats)
 journalctl -u github-autoscaler@barberb.service -f
+
+# Or for any Python script using GitHub CLI
+python3 -c "
+import logging
+logging.basicConfig(level=logging.DEBUG)
+from ipfs_accelerate_py.github_cli import GitHubCLI
+gh = GitHubCLI()
+repos = gh.list_repos(owner='endomorphosis')
+"
 ```
 
 ## Troubleshooting
