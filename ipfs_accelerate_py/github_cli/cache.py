@@ -184,6 +184,32 @@ class GitHubAPICache:
                 logger.warning(f"⚠ Failed to initialize P2P: {e}")
                 self.enable_p2p = False
     
+    def __del__(self):
+        """Cleanup when cache is destroyed."""
+        self.shutdown()
+    
+    def shutdown(self) -> None:
+        """Gracefully shutdown P2P and save cache."""
+        # Save all cache entries to disk
+        if self.enable_persistence:
+            try:
+                with self._lock:
+                    for cache_key, entry in self._cache.items():
+                        self._save_to_disk(cache_key, entry)
+                logger.info(f"✓ Saved {len(self._cache)} cache entries to disk")
+            except Exception as e:
+                logger.warning(f"Failed to save cache during shutdown: {e}")
+        
+        # Stop P2P event loop
+        if self.enable_p2p and self._event_loop and hasattr(self, '_p2p_thread_running'):
+            try:
+                if self._p2p_thread_running:
+                    self._event_loop.call_soon_threadsafe(self._event_loop.stop)
+                    self._p2p_thread_running = False
+                    logger.info("✓ P2P event loop stopped")
+            except Exception as e:
+                logger.warning(f"Failed to stop P2P event loop: {e}")
+    
     def _make_cache_key(self, operation: str, *args, **kwargs) -> str:
         """
         Create a cache key from operation and parameters.
@@ -678,19 +704,36 @@ class GitHubAPICache:
             return None
     
     def _init_p2p(self) -> None:
-        """Initialize P2P networking for cache sharing."""
+        """Initialize P2P networking for cache sharing in a background thread."""
         if not HAVE_LIBP2P:
             raise RuntimeError("libp2p not available, install with: pip install libp2p")
         
-        # Get or create event loop
-        try:
-            self._event_loop = asyncio.get_event_loop()
-        except RuntimeError:
-            self._event_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._event_loop)
+        # Create a new event loop for the background thread
+        self._event_loop = asyncio.new_event_loop()
+        self._p2p_thread_running = False
         
-        # Start P2P host in background
-        self._event_loop.run_until_complete(self._start_p2p_host())
+        def run_event_loop():
+            """Run event loop in background thread."""
+            asyncio.set_event_loop(self._event_loop)
+            self._event_loop.run_forever()
+        
+        # Start event loop in background thread
+        import threading
+        self._p2p_thread = threading.Thread(target=run_event_loop, daemon=True, name="p2p-event-loop")
+        self._p2p_thread.start()
+        
+        # Schedule P2P host initialization (non-blocking)
+        future = asyncio.run_coroutine_threadsafe(self._start_p2p_host(), self._event_loop)
+        
+        # Wait up to 5 seconds for initialization (optional, can be removed for fully async init)
+        try:
+            future.result(timeout=5.0)
+            self._p2p_thread_running = True
+            logger.info("✓ P2P initialized successfully in background")
+        except Exception as e:
+            logger.warning(f"⚠ P2P initialization deferred (will complete in background): {e}")
+            # P2P will continue initializing in background
+            self._p2p_thread_running = True
     
     async def _start_p2p_host(self) -> None:
         """Start libp2p host for P2P cache sharing."""
