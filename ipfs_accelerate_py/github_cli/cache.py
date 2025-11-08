@@ -117,7 +117,9 @@ class GitHubAPICache:
         enable_persistence: bool = True,
         enable_p2p: bool = True,
         p2p_listen_port: int = 9000,
-        p2p_bootstrap_peers: Optional[List[str]] = None
+        p2p_bootstrap_peers: Optional[List[str]] = None,
+        github_repo: Optional[str] = None,
+        enable_peer_discovery: bool = True
     ):
         """
         Initialize the GitHub API cache.
@@ -166,6 +168,23 @@ class GitHubAPICache:
         self._p2p_bootstrap_peers = p2p_bootstrap_peers or []
         self._p2p_connected_peers: Dict[str, Any] = {}
         self._event_loop = None
+        
+        # Peer discovery
+        self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
+        self.enable_peer_discovery = enable_peer_discovery and self.github_repo
+        self._peer_registry = None
+        
+        if self.enable_peer_discovery and self.enable_p2p:
+            try:
+                from .p2p_peer_registry import P2PPeerRegistry
+                self._peer_registry = P2PPeerRegistry(
+                    repo=self.github_repo,
+                    peer_ttl_minutes=15
+                )
+                logger.info(f"✓ P2P peer discovery enabled for {self.github_repo}")
+            except Exception as e:
+                logger.warning(f"⚠ Peer discovery unavailable: {e}")
+                self.enable_peer_discovery = False
         
         # Encryption for P2P messages (using GitHub token as shared secret)
         self._encryption_key = None
@@ -741,6 +760,29 @@ class GitHubAPICache:
             # P2P will continue initializing in background
             self._p2p_thread_running = True
     
+    def _get_public_ip(self) -> str:
+        """Get public IP address for P2P multiaddr."""
+        import urllib.request
+        
+        # Try multiple services
+        services = [
+            'https://api.ipify.org',
+            'https://ifconfig.me/ip',
+            'https://icanhazip.com'
+        ]
+        
+        for service in services:
+            try:
+                with urllib.request.urlopen(service, timeout=5) as response:
+                    ip = response.read().decode('utf-8').strip()
+                    if ip:
+                        return ip
+            except Exception:
+                continue
+        
+        # Fallback to localhost if all services fail
+        return "127.0.0.1"
+    
     async def _start_p2p_host(self) -> None:
         """Start libp2p host for P2P cache sharing."""
         try:
@@ -756,6 +798,28 @@ class GitHubAPICache:
             
             logger.info(f"P2P host started, listening on {listen_addr}")
             logger.info(f"Peer ID: {self._p2p_host.get_id().pretty()}")
+            
+            # Register with peer discovery if enabled
+            if self._peer_registry:
+                try:
+                    peer_id = self._p2p_host.get_id().pretty()
+                    multiaddr = f"/ip4/{self._get_public_ip()}/tcp/{self._p2p_listen_port}/p2p/{peer_id}"
+                    
+                    if self._peer_registry.register_peer(peer_id, self._p2p_listen_port, multiaddr):
+                        logger.info(f"✓ Registered with peer discovery: {multiaddr}")
+                        
+                        # Discover other peers
+                        discovered_peers = self._peer_registry.discover_peers(max_peers=10)
+                        logger.info(f"✓ Discovered {len(discovered_peers)} peer(s)")
+                        
+                        # Add to bootstrap list
+                        for peer in discovered_peers:
+                            if peer.get("peer_id") != peer_id:  # Don't connect to self
+                                self._p2p_bootstrap_peers.append(peer["multiaddr"])
+                    else:
+                        logger.warning("⚠ Failed to register with peer discovery")
+                except Exception as e:
+                    logger.warning(f"⚠ Peer discovery error: {e}")
             
             # Connect to bootstrap peers
             for peer_addr in self._p2p_bootstrap_peers:
