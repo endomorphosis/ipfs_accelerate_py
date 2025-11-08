@@ -25,11 +25,15 @@ from threading import Lock
 try:
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.backends import default_backend
     HAVE_CRYPTO = True
 except ImportError:
     HAVE_CRYPTO = False
     Fernet = None
+    PBKDF2HMAC = None
+    hashes = None
+    default_backend = None
 
 # Try to import multiformats for content-addressed caching
 try:
@@ -611,9 +615,6 @@ class GitHubAPICache:
         
         # Derive encryption key from GitHub token using PBKDF2
         # This ensures all runners with same token get same encryption key
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-        from cryptography.hazmat.backends import default_backend
-        
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
