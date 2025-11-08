@@ -86,6 +86,15 @@ class GitHubRunnerAutoscaler:
             logger.error(f"✗ Failed to initialize GitHub CLI: {e}")
             raise
         
+        # Initialize distributed cache
+        try:
+            from ipfs_accelerate_py.distributed_cache import get_cache
+            self.cache = get_cache()
+            logger.info("✓ Distributed cache initialized")
+        except Exception as e:
+            logger.warning(f"⚠ Distributed cache not available: {e}")
+            self.cache = None
+        
         # Verify authentication
         auth_status = self.gh.get_auth_status()
         if not auth_status["authenticated"]:
