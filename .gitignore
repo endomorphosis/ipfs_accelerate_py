@@ -67,3 +67,4 @@ generate_report.py
 readme_suggestions.py
 analysis_summary.txt
 documentation_analysis.json
+.env
