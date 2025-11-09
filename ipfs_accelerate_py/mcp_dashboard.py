@@ -1098,38 +1098,83 @@ class MCPDashboard:
         
         # Map tool names to GitHub operations methods
         if tool_name == 'gh_auth_status':
-            result = github_ops.get_auth_status()
-            result["tool"] = tool_name
-            return result
+            try:
+                result = github_ops.get_auth_status()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"get_auth_status failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
             
         elif tool_name == 'gh_list_repos':
             owner = args.get('owner')
             limit = args.get('limit', 30)
-            result = github_ops.list_repos(owner=owner, limit=limit)
-            result["tool"] = tool_name
-            return result
+            try:
+                result = github_ops.list_repos(owner=owner, limit=limit)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"list_repos failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
             
         elif tool_name == 'gh_list_workflow_runs':
             repo = args.get('repo')
             status = args.get('status')
             limit = args.get('limit', 20)
-            result = github_ops.list_workflow_runs(repo=repo, status=status, limit=limit)
-            result["tool"] = tool_name
-            return result
+            try:
+                result = github_ops.list_workflow_runs(repo=repo, status=status, limit=limit)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"list_workflow_runs failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
             
         elif tool_name == 'gh_get_workflow_run':
             repo = args.get('repo')
             run_id = args.get('run_id')
-            result = github_ops.get_workflow_run(repo=repo, run_id=run_id)
-            result["tool"] = tool_name
-            return result
+            try:
+                result = github_ops.get_workflow_run(repo=repo, run_id=run_id)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"get_workflow_run failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
             
         elif tool_name == 'gh_create_workflow_queues':
             since_days = args.get('since_days', 1)
             owner = args.get('owner')
-            result = github_ops.create_workflow_queues(since_days=since_days, owner=owner)
-            result["tool"] = tool_name
-            return result
+            try:
+                result = github_ops.create_workflow_queues(since_days=since_days, owner=owner)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"create_workflow_queues failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
             
         elif tool_name == 'gh_list_runners':
             owner = args.get('owner')
@@ -1138,8 +1183,9 @@ class MCPDashboard:
                 result = github_ops.list_runners(owner=owner, repo=repo)
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Fallback: try to get runners directly via GitHub CLI
+                logger.debug(f"list_runners failed: {e}, trying fallback")
                 try:
                     from ipfs_accelerate_py.github_cli import GitHubCLI
                     gh_cli = GitHubCLI()
@@ -1156,12 +1202,13 @@ class MCPDashboard:
                         "total_count": cmd_result.get('total_count', 0) if isinstance(cmd_result, dict) else 0,
                         "timestamp": time.time()
                     }
-                except Exception as e:
+                except Exception as e2:
+                    logger.error(f"Fallback for list_runners also failed: {e2}")
                     return {
                         "tool": tool_name,
                         "runners": [],
                         "total_count": 0,
-                        "error": str(e),
+                        "error": str(e2),
                         "timestamp": time.time()
                     }
             
@@ -1169,9 +1216,18 @@ class MCPDashboard:
             count = args.get('count', 1)
             owner = args.get('owner')
             labels = args.get('labels', [])
-            result = github_ops.provision_runners(count=count, owner=owner, labels=labels)
-            result["tool"] = tool_name
-            return result
+            try:
+                result = github_ops.provision_runners(count=count, owner=owner, labels=labels)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"provision_runners failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
             
         elif tool_name == 'gh_get_cache_stats':
             # Get cache statistics
@@ -1196,9 +1252,18 @@ class MCPDashboard:
             workflow_id = args.get('workflow_id')
             limit = args.get('limit', 10)
             # Get detailed workflow information
-            result = github_ops.get_workflow_details(repo=repo, workflow_id=workflow_id, limit=limit)
-            result["tool"] = tool_name
-            return result
+            try:
+                result = github_ops.get_workflow_details(repo=repo, workflow_id=workflow_id, limit=limit)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"get_workflow_details failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
             
         elif tool_name == 'gh_invalidate_cache':
             pattern = args.get('pattern', '')
@@ -1226,8 +1291,9 @@ class MCPDashboard:
                 result = github_ops.get_rate_limit()
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Fallback: get rate limit directly via GitHub CLI
+                logger.debug(f"get_rate_limit failed: {e}, trying fallback")
                 try:
                     from ipfs_accelerate_py.github_cli import GitHubCLI
                     gh_cli = GitHubCLI()
@@ -1242,8 +1308,8 @@ class MCPDashboard:
                             "used": rate_limit['rate'].get('used', 0),
                             "timestamp": time.time()
                         }
-                except Exception as e:
-                    pass
+                except Exception as e2:
+                    logger.error(f"Fallback for get_rate_limit also failed: {e2}")
                 
                 # Final fallback
                 return {
@@ -1262,8 +1328,9 @@ class MCPDashboard:
                 result = github_ops.set_token(token=token)
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Fallback: set token as environment variable
+                logger.debug(f"set_token failed: {e}, trying fallback")
                 import os
                 if token:
                     os.environ['GITHUB_TOKEN'] = token
@@ -1287,8 +1354,9 @@ class MCPDashboard:
                 result = github_ops.get_env_vars()
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Fallback: get GitHub-related environment variables
+                logger.debug(f"get_env_vars failed: {e}, trying fallback")
                 import os
                 gh_vars = {
                     k: v if k != 'GITHUB_TOKEN' else '***' + v[-4:] if len(v) > 4 else '***'
@@ -1309,8 +1377,9 @@ class MCPDashboard:
                 result = github_ops.set_env_var(name=name, value=value)
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Fallback: set environment variable directly
+                logger.debug(f"set_env_var failed: {e}, trying fallback")
                 import os
                 if name and value is not None:
                     os.environ[name] = str(value)
@@ -1337,8 +1406,9 @@ class MCPDashboard:
                 result = github_ops.get_runner_details(owner=owner, repo=repo, runner_id=runner_id)
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Stub implementation
+                logger.debug(f"get_runner_details failed: {e}, returning stub")
                 return {
                     "tool": tool_name,
                     "runner_id": runner_id,
@@ -1355,8 +1425,9 @@ class MCPDashboard:
                 result = github_ops.get_autoscaler_status()
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Stub implementation
+                logger.debug(f"get_autoscaler_status failed: {e}, returning stub")
                 return {
                     "tool": tool_name,
                     "enabled": False,
@@ -1386,8 +1457,9 @@ class MCPDashboard:
                 )
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Stub implementation
+                logger.debug(f"configure_autoscaler failed: {e}, returning stub")
                 return {
                     "tool": tool_name,
                     "status": "success",
@@ -1408,8 +1480,9 @@ class MCPDashboard:
                 result = github_ops.list_active_runners(owner=owner, repo=repo)
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Stub implementation - return empty list
+                logger.debug(f"list_active_runners failed: {e}, returning stub")
                 return {
                     "tool": tool_name,
                     "active_runners": [],
@@ -1429,8 +1502,9 @@ class MCPDashboard:
                 result = github_ops.bootstrap_runner_libp2p(runner_id=runner_id, owner=owner, repo=repo)
                 result["tool"] = tool_name
                 return result
-            except (AttributeError, NotImplementedError):
+            except Exception as e:
                 # Stub implementation
+                logger.debug(f"bootstrap_runner_libp2p failed: {e}, returning stub")
                 return {
                     "tool": tool_name,
                     "status": "success",
