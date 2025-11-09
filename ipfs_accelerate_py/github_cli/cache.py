@@ -158,7 +158,16 @@ class GitHubAPICache:
             "peer_hits": 0,
             "expirations": 0,
             "evictions": 0,
-            "api_calls_saved": 0
+            "api_calls_saved": 0,
+            "api_calls_made": 0  # Track actual API calls made
+        }
+        
+        # Aggregate stats from all peers
+        self._aggregate_stats = {
+            "total_api_calls": 0,
+            "total_cache_hits": 0,
+            "peer_stats": {},  # Map of peer_id -> stats
+            "last_sync": 0
         }
         
         # P2P networking
@@ -574,6 +583,122 @@ class GitHubAPICache:
                 stats["connected_peers"] = len(self._p2p_connected_peers)
                 if self._p2p_host:
                     stats["peer_id"] = self._p2p_host.get_id().pretty()
+                
+                # Include aggregate stats from all peers
+                stats["aggregate"] = self._get_aggregate_stats()
+            
+            return stats
+    
+    def _get_aggregate_stats(self) -> Dict[str, Any]:
+        """
+        Get aggregate statistics across all P2P peers.
+        
+        Returns:
+            Dictionary with aggregate statistics
+        """
+        with self._lock:
+            # Sync with peers if needed (every 60 seconds)
+            current_time = time.time()
+            if current_time - self._aggregate_stats["last_sync"] > 60:
+                self._sync_stats_with_peers()
+            
+            return {
+                "total_api_calls": self._aggregate_stats["total_api_calls"],
+                "total_cache_hits": self._aggregate_stats["total_cache_hits"],
+                "total_peers": len(self._aggregate_stats["peer_stats"]) + 1,  # +1 for self
+                "peer_breakdown": self._aggregate_stats["peer_stats"],
+                "last_synced": self._aggregate_stats["last_sync"]
+            }
+    
+    def _sync_stats_with_peers(self) -> None:
+        """
+        Sync statistics with connected P2P peers.
+        
+        Broadcasts local stats and receives stats from peers to build aggregate view.
+        """
+        if not self.enable_p2p or not self._p2p_connected_peers:
+            return
+        
+        try:
+            # Prepare local stats for sharing
+            local_stats = {
+                "api_calls_made": self._stats["api_calls_made"],
+                "cache_hits": self._stats["hits"] + self._stats["peer_hits"],
+                "timestamp": time.time()
+            }
+            
+            # Broadcast stats to peers
+            self._broadcast_stats(local_stats)
+            
+            # Update aggregate with local stats
+            peer_id = self._p2p_host.get_id().pretty() if self._p2p_host else "local"
+            self._aggregate_stats["peer_stats"][peer_id] = local_stats
+            
+            # Calculate totals
+            total_calls = self._stats["api_calls_made"]
+            total_hits = self._stats["hits"] + self._stats["peer_hits"]
+            
+            for peer_stats in self._aggregate_stats["peer_stats"].values():
+                total_calls += peer_stats.get("api_calls_made", 0)
+                total_hits += peer_stats.get("cache_hits", 0)
+            
+            self._aggregate_stats["total_api_calls"] = total_calls
+            self._aggregate_stats["total_cache_hits"] = total_hits
+            self._aggregate_stats["last_sync"] = time.time()
+            
+            logger.debug(f"Synced stats: {total_calls} total API calls across {len(self._aggregate_stats['peer_stats'])} peers")
+            
+        except Exception as e:
+            logger.warning(f"Failed to sync stats with peers: {e}")
+    
+    def _broadcast_stats(self, stats: Dict[str, Any]) -> None:
+        """
+        Broadcast statistics to all connected P2P peers.
+        
+        Args:
+            stats: Statistics dictionary to broadcast
+        """
+        if not self.enable_p2p or not self._p2p_connected_peers:
+            return
+        
+        try:
+            # Encrypt stats if encryption is enabled
+            if self._cipher:
+                stats_json = json.dumps(stats)
+                encrypted_stats = self._cipher.encrypt(stats_json.encode())
+                message = base64.b64encode(encrypted_stats).decode()
+            else:
+                message = json.dumps(stats)
+            
+            # Send stats to each connected peer
+            # Note: This would need to be implemented with actual P2P message sending
+            # For now, this is a placeholder for the P2P protocol
+            logger.debug(f"Broadcasting stats to {len(self._p2p_connected_peers)} peers")
+            
+        except Exception as e:
+            logger.warning(f"Failed to broadcast stats: {e}")
+    
+    def _handle_peer_stats(self, peer_id: str, stats: Dict[str, Any]) -> None:
+        """
+        Handle incoming statistics from a peer.
+        
+        Args:
+            peer_id: Peer ID
+            stats: Statistics from peer
+        """
+        with self._lock:
+            self._aggregate_stats["peer_stats"][peer_id] = stats
+            logger.debug(f"Received stats from peer {peer_id[:16]}...")
+    
+    def increment_api_call_count(self) -> None:
+        """
+        Increment the count of API calls made.
+        
+        Should be called whenever an actual API call is made (not cached).
+        """
+        with self._lock:
+            self._stats["api_calls_made"] += 1
+            logger.debug(f"API call count: {self._stats['api_calls_made']}")
             
             return stats
     

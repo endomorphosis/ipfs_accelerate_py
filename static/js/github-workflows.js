@@ -516,6 +516,7 @@ class GitHubWorkflowsManager {
                     <span class="detail-label">Cache Hits (P2P):</span>
                     <span class="detail-value">${this.cacheStats.peer_hits || 0}</span>
                 </div>
+                ${this.cacheStats.aggregate ? this._renderAggregateStats(this.cacheStats.aggregate) : ''}
             </div>
         `;
     }
@@ -558,6 +559,37 @@ class GitHubWorkflowsManager {
                         <span class="label">Used:</span>
                         <span class="value">${limit - remaining}</span>
                     </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Render aggregate statistics across all peers
+    _renderAggregateStats(aggregate) {
+        if (!aggregate || aggregate.total_peers <= 1) {
+            return '';  // Don't show if no other peers
+        }
+        
+        const lastSynced = aggregate.last_synced ? new Date(aggregate.last_synced * 1000).toLocaleTimeString() : 'Never';
+        
+        return `
+            <div class="cache-detail-section" style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #e5e7eb;">
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">📊 Aggregate Stats (All Peers)</h4>
+                <div class="cache-detail-row">
+                    <span class="detail-label">Total API Calls (All Peers):</span>
+                    <span class="detail-value" style="color: #ef4444; font-weight: 700;">${aggregate.total_api_calls || 0}</span>
+                </div>
+                <div class="cache-detail-row">
+                    <span class="detail-label">Total Cache Hits (All Peers):</span>
+                    <span class="detail-value" style="color: #10b981; font-weight: 700;">${aggregate.total_cache_hits || 0}</span>
+                </div>
+                <div class="cache-detail-row">
+                    <span class="detail-label">Connected Peers:</span>
+                    <span class="detail-value">${aggregate.total_peers || 0}</span>
+                </div>
+                <div class="cache-detail-row">
+                    <span class="detail-label">Last Synced:</span>
+                    <span class="detail-value">${lastSynced}</span>
                 </div>
             </div>
         `;
