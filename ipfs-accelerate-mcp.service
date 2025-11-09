@@ -6,25 +6,20 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=barberb
-Group=barberb
-WorkingDirectory=/home/barberb/ipfs_accelerate_py
+User=devel
+Group=devel
+WorkingDirectory=/home/devel/ipfs_accelerate_py
 
 # Environment variables
-Environment="PATH=/home/barberb/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/home/devel/ipfs_accelerate_py/ipfs_env/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH=/home/devel/ipfs_accelerate_py"
+Environment="VIRTUAL_ENV=/home/devel/ipfs_accelerate_py/ipfs_env"
 Environment="MCP_HOST=0.0.0.0"
 Environment="MCP_PORT=9000"
 
-# Note: GitHub tokens should be configured via `gh auth login` instead of environment variables
-# This allows the GitHub CLI to manage authentication securely
-
-# Start the MCP server using the CLI tool
-ExecStart=/home/barberb/ipfs_accelerate_py/.venv/bin/ipfs-accelerate mcp start \
-    --dashboard \
-    --host 0.0.0.0 \
-    --port 9000 \
-    --keep-running
+# Start the MCP server using wrapper script
+ExecStart=/home/devel/ipfs_accelerate_py/start_mcp_server.sh
 
 # Restart configuration
 Restart=always
@@ -40,8 +35,9 @@ NoNewPrivileges=true
 PrivateTmp=true
 
 # Resource limits
-MemoryMax=2G
+MemoryMax=4G
 CPUQuota=200%
+LimitNOFILE=8192
 
 [Install]
 WantedBy=multi-user.target
