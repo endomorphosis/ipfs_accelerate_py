@@ -957,7 +957,16 @@ class MCPDashboard:
                     
                     # Import GitHub operations
                     try:
-                        from ipfs_accelerate_py.shared import SharedCore, GitHubOperations
+                        # Try absolute import first (when installed as package)
+                        try:
+                            from shared import SharedCore, GitHubOperations
+                        except ImportError:
+                            # Fall back to relative import (when running from source)
+                            import sys
+                            import os
+                            sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+                            from shared import SharedCore, GitHubOperations
+                        
                         shared_core = SharedCore()
                         github_ops = GitHubOperations(shared_core)
                     except ImportError as e:
@@ -1140,8 +1149,8 @@ class MCPDashboard:
         elif tool_name == 'gh_get_cache_stats':
             # Get cache statistics
             try:
-                from ipfs_accelerate_py.github_cli.cache import GitHubCache
-                cache = GitHubCache()
+                from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+                cache = GitHubAPICache()
                 stats = cache.get_stats()
                 return {
                     "tool": tool_name,
@@ -1168,8 +1177,8 @@ class MCPDashboard:
             pattern = args.get('pattern', '')
             # Invalidate cache entries matching pattern
             try:
-                from ipfs_accelerate_py.github_cli.cache import GitHubCache
-                cache = GitHubCache()
+                from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+                cache = GitHubAPICache()
                 cleared = cache.clear(pattern=pattern)
                 return {
                     "tool": tool_name,
