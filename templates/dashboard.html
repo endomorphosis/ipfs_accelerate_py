@@ -523,167 +523,142 @@
         </div>
 
         <!-- GitHub Workflows Tab -->
+        <!-- GitHub Workflows Tab (Reorganized) -->
         <div id="github-workflows" class="tab-content">
-            <!-- Configuration Section -->
-            <div class="dashboard-grid">
-                <div class="card">
-                    <h3>🔐 GitHub Authentication & Configuration</h3>
-                    <div id="github-auth-config">
-                        <div style="margin-bottom: 15px;">
-                            <label for="github-token-input" style="display: block; margin-bottom: 5px; font-weight: 600;">GitHub Token:</label>
-                            <div style="display: flex; gap: 10px;">
+            
+            <!-- Quick Actions Bar -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; margin-bottom: 20px; color: white;">
+                <h2 style="margin: 0 0 15px 0; font-size: 24px;">⚡ GitHub Actions Control Center</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <button class="btn btn-light" onclick="githubManager?.fetchWorkflows()" style="background: white; color: #667eea; border: none; padding: 10px;">🔄 Refresh All</button>
+                    <button class="btn btn-light" onclick="githubManager?.getAutoscalerStatus()" style="background: white; color: #667eea; border: none; padding: 10px;">📊 Get Status</button>
+                    <button class="btn btn-light" onclick="githubManager?.fetchCacheStats()" style="background: white; color: #667eea; border: none; padding: 10px;">💾 Cache Stats</button>
+                    <button class="btn btn-light" onclick="githubManager?.listActiveRunners()" style="background: white; color: #667eea; border: none; padding: 10px;">🖥️ Active Runners</button>
+                </div>
+            </div>
+            
+            <!-- Collapsible Section: Configuration -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div onclick="toggleSection('config-section')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0;">⚙️ Configuration & Authentication</h3>
+                    <span style="font-size: 20px;">▼</span>
+                </div>
+                <div id="config-section" style="display: none; margin-top: 15px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <!-- GitHub Authentication -->
+                        <div style="border-left: 4px solid #667eea; padding-left: 15px;">
+                            <h4 style="margin: 0 0 10px 0; color: #667eea;">🔐 GitHub Token</h4>
+                            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                                 <input type="password" id="github-token-input" placeholder="ghp_xxxxxxxxxxxx" 
                                        style="flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" />
-                                <button class="btn btn-primary" onclick="githubManager?.setGitHubToken()">Set Token</button>
-                                <button class="btn btn-secondary" onclick="githubManager?.toggleTokenVisibility()" id="toggle-token-btn">👁️ Show</button>
+                                <button class="btn btn-primary" onclick="githubManager?.setGitHubToken()">Set</button>
+                                <button class="btn btn-secondary" onclick="githubManager?.toggleTokenVisibility()" id="toggle-token-btn">👁️</button>
+                            </div>
+                            <div id="token-status" style="display: none; padding: 10px; border-radius: 4px; font-size: 14px;"></div>
+                            <button class="btn btn-info" onclick="githubManager?.fetchEnvVars()" style="margin-top: 10px;">📋 View Env Vars</button>
+                            <div id="env-vars-display" style="display: none; margin-top: 10px;"></div>
+                        </div>
+                        
+                        <!-- Autoscaler Configuration -->
+                        <div style="border-left: 4px solid #f59e0b; padding-left: 15px;">
+                            <h4 style="margin: 0 0 10px 0; color: #f59e0b;">🤖 Autoscaler</h4>
+                            <div style="display: grid; gap: 10px;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="font-size: 12px; color: #6b7280;">Status</label>
+                                        <select id="autoscaler-enabled" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
+                                            <option value="true">Enabled</option>
+                                            <option value="false">Disabled</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 12px; color: #6b7280;">Poll (sec)</label>
+                                        <input type="number" id="autoscaler-poll-interval" value="120" min="30" 
+                                               style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;" />
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="font-size: 12px; color: #6b7280;">Max Runners</label>
+                                        <input type="number" id="autoscaler-max-runners" placeholder="Auto" 
+                                               style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 12px; color: #6b7280;">Days</label>
+                                        <input type="number" id="autoscaler-since-days" value="1" min="1" 
+                                               style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;" />
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" onclick="githubManager?.configureAutoscaler()">💾 Save Config</button>
+                                <div id="autoscaler-status-display"></div>
                             </div>
                         </div>
-                        <div id="token-status" style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
-                        <div style="margin-top: 15px;">
-                            <button class="btn btn-info" onclick="githubManager?.fetchEnvVars()">📋 View Environment Variables</button>
-                        </div>
-                        <div id="env-vars-display" style="margin-top: 10px; display: none;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stats Overview -->
+            <div class="dashboard-grid" style="margin-bottom: 20px;">
+                <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h3 style="margin: 0 0 10px 0;">📊 Cache Performance</h3>
+                    <div id="github-cache-stats">
+                        <p class="loading-message" style="color: white;">Loading...</p>
                     </div>
                 </div>
                 
-                <div class="card">
-                    <h3>🖥️ Runner Tracking</h3>
-                    <div id="runner-tracking-config">
-                        <div style="margin-bottom: 15px;">
-                            <label for="runner-repo-input" style="display: block; margin-bottom: 5px; font-weight: 600;">Repository:</label>
-                            <input type="text" id="runner-repo-input" placeholder="owner/repo" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" />
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <label for="runner-org-input" style="display: block; margin-bottom: 5px; font-weight: 600;">Organization:</label>
-                            <input type="text" id="runner-org-input" placeholder="organization-name" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" />
-                        </div>
-                        <div class="button-group">
-                            <button class="btn btn-primary" onclick="githubManager?.trackRunners()">🔍 Track Runners</button>
-                            <button class="btn btn-secondary" onclick="githubManager?.getRunnerDetails()">📊 Get Details</button>
-                        </div>
-                        <div id="runner-tracking-status" style="margin-top: 10px;"></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="dashboard-grid">
-                <div class="card">
-                    <h3>📊 GitHub API Cache Statistics</h3>
-                    <div id="github-cache-stats">
-                        <p class="loading-message">Loading cache statistics...</p>
-                    </div>
-                    <div class="button-group" style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="githubManager?.fetchCacheStats()">🔄 Refresh</button>
-                        <button class="btn btn-warning" onclick="githubManager?.invalidateCache()">🗑️ Clear All Cache</button>
-                        <button class="btn btn-secondary" onclick="githubManager?.invalidateCache('workflow')">Clear Workflow Cache</button>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>⚡ GitHub API Rate Limit</h3>
+                <div class="card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+                    <h3 style="margin: 0 0 10px 0;">⚡ API Rate Limit</h3>
                     <div id="github-rate-limit">
-                        <p class="loading-message">Loading rate limit information...</p>
+                        <p class="loading-message" style="color: white;">Loading...</p>
                     </div>
-                    <div class="button-group" style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="githubManager?.fetchRateLimit()">🔄 Refresh</button>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>📊 Workflow Queue Overview</h3>
-                    <div id="github-stats-overview">
-                        <p class="loading-message">Loading workflow statistics...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Autoscaler Configuration Section -->
-            <div class="card" style="grid-column: 1 / -1;">
-                <h3>🤖 GitHub Actions Autoscaler Configuration</h3>
-                <div id="autoscaler-config">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 15px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Enable Autoscaler:</label>
-                            <select id="autoscaler-enabled" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
-                                <option value="true">Enabled</option>
-                                <option value="false">Disabled</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Poll Interval (seconds):</label>
-                            <input type="number" id="autoscaler-poll-interval" value="120" min="30" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" />
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Runners:</label>
-                            <input type="number" id="autoscaler-max-runners" placeholder="Auto" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" />
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Monitor Days:</label>
-                            <input type="number" id="autoscaler-since-days" value="1" min="1" max="30"
-                                   style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" />
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Owner/Organization:</label>
-                        <input type="text" id="autoscaler-owner" placeholder="Leave empty for all accessible" 
-                               style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" />
-                    </div>
-                    <div class="button-group">
-                        <button class="btn btn-primary" onclick="githubManager?.configureAutoscaler()">💾 Save Configuration</button>
-                        <button class="btn btn-info" onclick="githubManager?.getAutoscalerStatus()">📊 Get Status</button>
-                        <button class="btn btn-secondary" onclick="githubManager?.refreshActiveRunners()">🔄 Refresh Active Runners</button>
-                    </div>
-                    <div id="autoscaler-status-display" style="margin-top: 15px;"></div>
                 </div>
             </div>
             
-            <!-- Active Runners with P2P Status -->
-            <div class="card" style="grid-column: 1 / -1;">
-                <h3>🚀 Active GitHub Actions Runners (P2P Enabled)</h3>
+            <!-- Active Runners -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">🚀 Active Runners (P2P Enabled)</h3>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="runner-repo-input" placeholder="owner/repo" 
+                               style="padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; width: 150px;" />
+                        <input type="text" id="runner-org-input" placeholder="org" 
+                               style="padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; width: 100px;" />
+                        <button class="btn btn-primary" onclick="githubManager?.trackRunners()">Track</button>
+                    </div>
+                </div>
                 <div id="active-runners-container">
                     <p class="loading-message">Loading active runners...</p>
                 </div>
-                <div class="button-group" style="margin-top: 15px;">
-                    <button class="btn btn-primary" onclick="githubManager?.listActiveRunners()">🔄 Refresh Active Runners</button>
-                    <button class="btn btn-info" onclick="githubManager?.showP2PStats()">📡 View P2P Stats</button>
+            </div>
+            
+            <!-- Collapsible Section: Workflows & All Runners -->
+            <div class="card">
+                <div onclick="toggleSection('workflows-section')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0;">📋 Workflows & All Runners</h3>
+                    <span style="font-size: 20px;">▼</span>
+                </div>
+                <div id="workflows-section" style="display: none; margin-top: 15px;">
+                    <div class="dashboard-grid">
+                        <div>
+                            <h4>⚙️ Active Workflows</h4>
+                            <div id="github-workflows-container">
+                                <p class="loading-message">Loading workflows...</p>
+                            </div>
+                            <button class="btn btn-primary" onclick="githubManager?.fetchWorkflows()" style="margin-top: 10px;">🔄 Refresh</button>
+                        </div>
+                        
+                        <div>
+                            <h4>🖥️ All Self-Hosted Runners</h4>
+                            <div id="github-runners-container">
+                                <p class="loading-message">Loading runners...</p>
+                            </div>
+                            <button class="btn btn-primary" onclick="githubManager?.fetchRunners()" style="margin-top: 10px;">🔄 Refresh</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
-            <div class="dashboard-grid">
-                <div class="card">
-                    <h3>⚙️ Active Workflows</h3>
-                    <div id="github-workflows-container">
-                        <p class="loading-message">Loading workflows...</p>
-                    </div>
-                    <div class="button-group" style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="githubManager?.fetchWorkflows()">🔄 Refresh Workflows</button>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>🖥️ All Self-Hosted Runners</h3>
-                    <div id="github-runners-container">
-                        <p class="loading-message">Loading runners...</p>
-                    </div>
-                    <div class="button-group" style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="githubManager?.fetchRunners()">🔄 Refresh Runners</button>
-                    </div>
-                </div>
-            </div>
         </div>
-
-        <!-- System Logs Tab -->
-        <div id="system-logs" class="tab-content">
-            <div class="card">
-                <h3>📝 System Logs</h3>
-                <div class="log-controls">
-                    <button class="btn btn-primary" onclick="refreshLogs()">🔄 Refresh</button>
-                    <button class="btn btn-secondary" onclick="clearLogs()">🧹 Clear</button>
-                    <button class="btn btn-info" onclick="downloadLogs()">💾 Download</button>
                 </div>
                 <div id="log-container" class="log-container">
                     <div class="log-entry">

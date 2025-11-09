@@ -621,7 +621,268 @@ class GitHubWorkflowsManager {
             showToast('Error clearing cache', 'error');
         }
     }
+    
+    // ==================== Token & Environment Configuration ====================
+    
+    async setGitHubToken() {
+        const tokenInput = document.getElementById('github-token-input');
+        const token = tokenInput?.value.trim();
+        
+        if (!token) {
+            this.showTokenStatus('error', 'Please enter a token');
+            return;
+        }
+        
+        try {
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_set_token',
+                arguments: { token }
+            });
+            
+            if (result.error) {
+                this.showTokenStatus('error', `Error: ${result.error}`);
+            } else {
+                this.showTokenStatus('success', result.message || 'Token configured');
+                tokenInput.value = '';
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error setting token:', error);
+            this.showTokenStatus('error', `Failed: ${error.message}`);
+        }
+    }
+    
+    toggleTokenVisibility() {
+        const tokenInput = document.getElementById('github-token-input');
+        const toggleBtn = document.getElementById('toggle-token-btn');
+        
+        if (tokenInput && toggleBtn) {
+            tokenInput.type = tokenInput.type === 'password' ? 'text' : 'password';
+            toggleBtn.textContent = tokenInput.type === 'password' ? '👁️ Show' : '🔒 Hide';
+        }
+    }
+    
+    showTokenStatus(type, message) {
+        const statusDiv = document.getElementById('token-status');
+        if (!statusDiv) return;
+        
+        statusDiv.style.display = 'block';
+        statusDiv.className = type === 'success' ? 'success-message' : 'error-message';
+        statusDiv.textContent = message;
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
+    }
+    
+    async fetchEnvVars() {
+        try {
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_get_env_vars',
+                arguments: {}
+            });
+            
+            if (!result.error) {
+                this.displayEnvVars(result.env_vars);
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching env vars:', error);
+        }
+    }
+    
+    displayEnvVars(envVars) {
+        const displayDiv = document.getElementById('env-vars-display');
+        if (!displayDiv) return;
+        
+        displayDiv.style.display = 'block';
+        let html = '<div style="max-height: 300px; overflow-y: auto; margin-top: 10px; padding: 10px; background: #f9fafb; border-radius: 4px;">';
+        html += '<table style="width: 100%; font-size: 12px;"><thead><tr style="background: #e5e7eb;"><th style="padding: 8px;">Variable</th><th style="padding: 8px;">Value</th></tr></thead><tbody>';
+        
+        for (const [key, value] of Object.entries(envVars)) {
+            html += `<tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 8px;">${key}</td><td style="padding: 8px;">${value || '<span style="color: #9ca3af;">Not set</span>'}</td></tr>`;
+        }
+        
+        html += '</tbody></table></div>';
+        displayDiv.innerHTML = html;
+    }
+    
+    // ==================== Autoscaler & Runner Management ====================
+    
+    async configureAutoscaler() {
+        const enabled = document.getElementById('autoscaler-enabled')?.value === 'true';
+        const pollInterval = parseInt(document.getElementById('autoscaler-poll-interval')?.value) || 120;
+        const maxRunners = document.getElementById('autoscaler-max-runners')?.value;
+        const sinceDays = parseInt(document.getElementById('autoscaler-since-days')?.value) || 1;
+        const owner = document.getElementById('autoscaler-owner')?.value.trim();
+        
+        try {
+            const args = { enabled, poll_interval: pollInterval, since_days: sinceDays };
+            if (maxRunners) args.max_runners = parseInt(maxRunners);
+            if (owner) args.owner = owner;
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_configure_autoscaler',
+                arguments: args
+            });
+            
+            if (!result.error) {
+                showToast(result.message || 'Autoscaler configured', 'success');
+                this.displayAutoscalerStatus(result);
+            } else {
+                showToast(`Error: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error:', error);
+            showToast(`Failed: ${error.message}`, 'error');
+        }
+    }
+    
+    async getAutoscalerStatus() {
+        try {
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_autoscaler_status',
+                arguments: {}
+            });
+            
+            if (!result.error) {
+                this.displayAutoscalerStatus(result);
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error:', error);
+        }
+    }
+    
+    displayAutoscalerStatus(status) {
+        const displayDiv = document.getElementById('autoscaler-status-display');
+        if (!displayDiv) return;
+        
+        const config = status.config || {};
+        let html = '<div style="background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 8px; padding: 15px; margin-top: 10px;">';
+        html += '<div style="display: grid; gap: 8px; font-size: 14px;">';
+        html += `<div><strong>Status:</strong> <span style="color: ${status.enabled ? '#10b981' : '#ef4444'};">${status.enabled ? '✓ Enabled' : '✗ Disabled'}</span></div>`;
+        html += `<div><strong>Poll Interval:</strong> ${config.poll_interval}s</div>`;
+        html += `<div><strong>Max Runners:</strong> ${config.max_runners}</div>`;
+        html += '</div></div>';
+        displayDiv.innerHTML = html;
+    }
+    
+    async listActiveRunners() {
+        try {
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_list_active_runners',
+                arguments: { include_docker: true }
+            });
+            
+            if (!result.error) {
+                this.displayActiveRunners(result.active_runners || []);
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error:', error);
+        }
+    }
+    
+    displayActiveRunners(runners) {
+        const container = document.getElementById('active-runners-container');
+        if (!container) return;
+        
+        if (runners.length === 0) {
+            container.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No active runners</p>';
+            return;
+        }
+        
+        let html = '<div style="display: grid; gap: 15px;">';
+        for (const runner of runners) {
+            const p2p = runner.p2p_status || {};
+            html += `
+                <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <h4 style="margin: 0;">${runner.name}</h4>
+                        <span style="color: #10b981;">● ONLINE</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div><strong>ID:</strong> ${runner.id}</div>
+                        <div><strong>P2P Cache:</strong> <span style="color: #10b981;">✓ Enabled</span></div>
+                    </div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    async trackRunners() {
+        const repo = document.getElementById('runner-repo-input')?.value.trim();
+        const org = document.getElementById('runner-org-input')?.value.trim();
+        
+        if (!repo && !org) {
+            showToast('Please specify repo or org', 'error');
+            return;
+        }
+        
+        try {
+            const args = {};
+            if (repo) args.repo = repo;
+            if (org) args.org = org;
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_list_runners',
+                arguments: args
+            });
+            
+            if (!result.error) {
+                showToast(`Found ${result.runners?.length || 0} runner(s)`, 'success');
+                if (result.runners) this.renderRunners(result.runners);
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error:', error);
+        }
+    }
+    
+    async getRunnerDetails() {
+        const repo = document.getElementById('runner-repo-input')?.value.trim();
+        const org = document.getElementById('runner-org-input')?.value.trim();
+        
+        if (!repo && !org) {
+            showToast('Please specify repo or org', 'error');
+            return;
+        }
+        
+        try {
+            const args = {};
+            if (repo) args.repo = repo;
+            if (org) args.org = org;
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_get_runner_details',
+                arguments: args
+            });
+            
+            if (!result.error) {
+                showToast(`Retrieved details for ${result.total_count} runner(s)`, 'success');
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error:', error);
+        }
+    }
+    
+    async showP2PStats() {
+        try {
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_get_cache_stats',
+                arguments: {}
+            });
+            
+            if (!result.error) {
+                const agg = result.aggregate || {};
+                alert(`P2P Stats:\nTotal API Calls: ${agg.total_api_calls || 0}\nTotal Cache Hits: ${agg.total_cache_hits || 0}\nConnected Peers: ${agg.total_peers || 0}`);
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error:', error);
+        }
+    }
+    
+    async refreshActiveRunners() {
+        await this.listActiveRunners();
+    }
 }
+
+// Global instance
 
 // Global instance
 let githubManager = null;
@@ -644,201 +905,18 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = GitHubWorkflowsManager;
 }
 
-    // Configure autoscaler
-    async configureAutoscaler() {
-        const enabled = document.getElementById('autoscaler-enabled').value === 'true';
-        const pollInterval = parseInt(document.getElementById('autoscaler-poll-interval').value) || 120;
-        const maxRunners = document.getElementById('autoscaler-max-runners').value;
-        const sinceDays = parseInt(document.getElementById('autoscaler-since-days').value) || 1;
-        const owner = document.getElementById('autoscaler-owner').value.trim();
-        
-        try {
-            console.log('[GitHub Workflows] Configuring autoscaler via MCP SDK...');
-            const args = {
-                enabled,
-                poll_interval: pollInterval,
-                since_days: sinceDays
-            };
-            
-            if (maxRunners) args.max_runners = parseInt(maxRunners);
-            if (owner) args.owner = owner;
-            
-            const result = await this.mcp.request('tools/call', {
-                name: 'gh_configure_autoscaler',
-                arguments: args
-            });
-            
-            if (result.error) {
-                showToast(`Error: ${result.error}`, 'error');
-            } else {
-                showToast(result.message || 'Autoscaler configured successfully', 'success');
-                this.displayAutoscalerStatus(result);
-            }
-        } catch (error) {
-            console.error('[GitHub Workflows] Error configuring autoscaler:', error);
-            showToast(`Failed to configure autoscaler: ${error.message}`, 'error');
-        }
+// Initialize and load status on page load
+document.addEventListener('DOMContentLoaded', () => {
+    if (githubManager && document.getElementById('github-workflows')) {
+        setTimeout(() => {
+            githubManager.getAutoscalerStatus?.();
+            githubManager.listActiveRunners?.();
+        }, 1500);
     }
-    
-    // Get autoscaler status
-    async getAutoscalerStatus() {
-        try {
-            console.log('[GitHub Workflows] Getting autoscaler status via MCP SDK...');
-            const result = await this.mcp.request('tools/call', {
-                name: 'gh_autoscaler_status',
-                arguments: {}
-            });
-            
-            if (result.error) {
-                showToast(`Error: ${result.error}`, 'error');
-            } else {
-                this.displayAutoscalerStatus(result);
-                showToast('Autoscaler status retrieved', 'success');
-            }
-        } catch (error) {
-            console.error('[GitHub Workflows] Error getting autoscaler status:', error);
-            showToast(`Failed to get autoscaler status: ${error.message}`, 'error');
-        }
-    }
-    
-    // Display autoscaler status
-    displayAutoscalerStatus(status) {
-        const displayDiv = document.getElementById('autoscaler-status-display');
-        if (!displayDiv) return;
-        
-        const config = status.config || {};
-        const p2pCache = status.p2p_cache || {};
-        
-        let html = '<div style="background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 8px; padding: 15px; margin-top: 10px;">';
-        html += '<h4 style="margin: 0 0 10px 0; color: #0369a1;">Current Status</h4>';
-        html += '<div style="display: grid; gap: 8px; font-size: 14px;">';
-        html += `<div><strong>Status:</strong> <span style="color: ${status.enabled ? '#10b981' : '#ef4444'};">${status.enabled ? '✓ Enabled' : '✗ Disabled'}</span></div>`;
-        html += `<div><strong>Poll Interval:</strong> ${config.poll_interval}s</div>`;
-        html += `<div><strong>Max Runners:</strong> ${config.max_runners}</div>`;
-        html += `<div><strong>Monitor Days:</strong> ${config.since_days}</div>`;
-        html += `<div><strong>Owner:</strong> ${config.owner || 'All accessible repos'}</div>`;
-        html += `<div><strong>P2P Cache:</strong> <span style="color: #10b981;">✓ ${p2pCache.description || 'Enabled'}</span></div>`;
-        html += '</div></div>';
-        
-        displayDiv.innerHTML = html;
-    }
-    
-    // List active runners
-    async listActiveRunners() {
-        const repo = document.getElementById('runner-repo-input')?.value.trim();
-        const org = document.getElementById('runner-org-input')?.value.trim();
-        
-        try {
-            console.log('[GitHub Workflows] Listing active runners via MCP SDK...');
-            const args = { include_docker: true };
-            if (repo) args.repo = repo;
-            if (org) args.org = org;
-            
-            const result = await this.mcp.request('tools/call', {
-                name: 'gh_list_active_runners',
-                arguments: args
-            });
-            
-            if (result.error) {
-                console.error('[GitHub Workflows] Error:', result.error);
-            } else {
-                this.displayActiveRunners(result.active_runners || []);
-                showToast(`Found ${result.total_active} active runner(s)`, 'success');
-            }
-        } catch (error) {
-            console.error('[GitHub Workflows] Error listing active runners:', error);
-            showToast(`Failed to list active runners: ${error.message}`, 'error');
-        }
-    }
-    
-    // Display active runners with P2P status
-    displayActiveRunners(runners) {
-        const container = document.getElementById('active-runners-container');
-        if (!container) return;
-        
-        if (runners.length === 0) {
-            container.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No active runners found. Runners will appear here when they are online and processing jobs.</p>';
-            return;
-        }
-        
-        let html = '<div style="display: grid; gap: 15px;">';
-        
-        for (const runner of runners) {
-            const p2p = runner.p2p_status || {};
-            const docker = runner.docker_status || {};
-            const statusColor = runner.status === 'online' ? '#10b981' : '#ef4444';
-            
-            html += `
-                <div style="border: 2px solid ${runner.busy ? '#f59e0b' : '#e5e7eb'}; border-radius: 8px; padding: 15px; background: ${runner.busy ? '#fffbeb' : '#ffffff'};">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h4 style="margin: 0; font-size: 16px; color: #1f2937;">
-                            🖥️ ${runner.name}
-                            ${runner.busy ? '<span style="margin-left: 10px; padding: 4px 8px; background: #f59e0b; color: white; border-radius: 4px; font-size: 12px;">BUSY</span>' : ''}
-                        </h4>
-                        <span style="color: ${statusColor}; font-weight: 700; font-size: 14px;">● ${runner.status.toUpperCase()}</span>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 14px; color: #4b5563;">
-                        <div>
-                            <div style="margin-bottom: 5px;"><strong>ID:</strong> ${runner.id}</div>
-                            <div style="margin-bottom: 5px;"><strong>OS:</strong> ${runner.os || 'N/A'}</div>
-                            <div><strong>Labels:</strong> ${runner.labels?.map(l => `<span style="background: #e0e7ff; padding: 2px 6px; border-radius: 3px; margin-right: 3px;">${l.name}</span>`).join('') || 'None'}</div>
-                        </div>
-                        <div style="border-left: 2px solid #e5e7eb; padding-left: 15px;">
-                            <div style="margin-bottom: 8px; font-weight: 600; color: #0369a1;">📡 P2P Cache Status</div>
-                            <div style="margin-bottom: 5px;"><span style="color: #10b981;">✓</span> Cache Enabled: ${p2p.cache_enabled ? 'Yes' : 'No'}</div>
-                            <div style="margin-bottom: 5px;"><span style="color: #10b981;">✓</span> libp2p Bootstrapped: ${p2p.libp2p_bootstrapped ? 'Yes' : 'No'}</div>
-                            <div style="margin-bottom: 5px;">Peer Discovery: ${p2p.peer_discovery || 'N/A'}</div>
-                            ${docker.in_container ? '<div style="margin-top: 8px;"><span style="background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-size: 12px;">🐳 Docker Container</span></div>' : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-        
-        html += '</div>';
-        container.innerHTML = html;
-    }
-    
-    // Show P2P stats modal
-    async showP2PStats() {
-        try {
-            const cacheStats = await this.mcp.request('tools/call', {
-                name: 'gh_get_cache_stats',
-                arguments: {}
-            });
-            
-            if (cacheStats.error) {
-                showToast('Unable to fetch P2P stats', 'error');
-                return;
-            }
-            
-            const aggregate = cacheStats.aggregate || {};
-            let message = `P2P Network Stats:\n\n`;
-            message += `Total API Calls (All Peers): ${aggregate.total_api_calls || 0}\n`;
-            message += `Total Cache Hits (All Peers): ${aggregate.total_cache_hits || 0}\n`;
-            message += `Connected Peers: ${aggregate.total_peers || 0}\n`;
-            message += `\nCache Hit Rate: ${(cacheStats.hit_rate * 100).toFixed(1)}%\n`;
-            message += `API Calls Saved: ${cacheStats.api_calls_saved || 0}`;
-            
-            alert(message);
-        } catch (error) {
-            console.error('[GitHub Workflows] Error showing P2P stats:', error);
-            showToast('Failed to fetch P2P stats', 'error');
-        }
-    }
-    
-    // Refresh active runners alias
-    async refreshActiveRunners() {
-        await this.listActiveRunners();
-    }
-}
+});
 
-// Update the initialization to load autoscaler status
-const originalInitialize = GitHubWorkflowsManager.prototype.initialize;
-GitHubWorkflowsManager.prototype.initialize = async function() {
-    await originalInitialize.call(this);
-    // Auto-load autoscaler status
-    setTimeout(() => this.getAutoscalerStatus(), 1000);
-    // Auto-load active runners
-    setTimeout(() => this.listActiveRunners(), 1500);
-};
+// Helper for collapsible sections
+function toggleSection(sectionId) {
+    const el = document.getElementById(sectionId);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
