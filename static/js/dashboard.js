@@ -43,8 +43,8 @@ function showTab(tabName) {
         }
     });
     
-    // Remove active class from all tab buttons
-    const tabButtons = document.querySelectorAll('.tab-button');
+    // Remove active class from all tab buttons (support both .tab-button and .nav-tab)
+    const tabButtons = document.querySelectorAll('.tab-button, .nav-tab');
     tabButtons.forEach(button => {
         if (button) {
             button.classList.remove('active');
@@ -89,6 +89,15 @@ function initializeTab(tabName) {
             break;
         case 'queue-monitor':
             refreshQueue();
+            break;
+        case 'github-workflows':
+            // GitHub workflows tab initialization handled by github-workflows.js
+            if (typeof githubManager !== 'undefined' && githubManager) {
+                console.log('[Dashboard] Initializing GitHub Workflows tab');
+                githubManager.initialize();
+            } else {
+                console.warn('[Dashboard] GitHub Workflows manager not available');
+            }
             break;
         case 'mcp-tools':
             refreshTools();

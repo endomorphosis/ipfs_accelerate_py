@@ -76,7 +76,8 @@ body {
     font-size: 0.9em;
 }
 
-.tabs {
+.tabs,
+.nav-tabs {
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
@@ -84,7 +85,8 @@ body {
     justify-content: center;
 }
 
-.tab-button {
+.tab-button,
+.nav-tab {
     background: rgba(255, 255, 255, 0.2);
     border: none;
     border-radius: 25px;
@@ -96,12 +98,14 @@ body {
     font-weight: 500;
 }
 
-.tab-button:hover {
+.tab-button:hover,
+.nav-tab:hover {
     background: rgba(255, 255, 255, 0.3);
     transform: translateY(-2px);
 }
 
-.tab-button.active {
+.tab-button.active,
+.nav-tab.active {
     background: rgba(255, 255, 255, 0.9);
     color: #2c3e50;
     font-weight: 600;
