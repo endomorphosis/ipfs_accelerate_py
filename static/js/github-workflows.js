@@ -643,3 +643,202 @@ document.addEventListener('DOMContentLoaded', () => {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = GitHubWorkflowsManager;
 }
+
+    // Configure autoscaler
+    async configureAutoscaler() {
+        const enabled = document.getElementById('autoscaler-enabled').value === 'true';
+        const pollInterval = parseInt(document.getElementById('autoscaler-poll-interval').value) || 120;
+        const maxRunners = document.getElementById('autoscaler-max-runners').value;
+        const sinceDays = parseInt(document.getElementById('autoscaler-since-days').value) || 1;
+        const owner = document.getElementById('autoscaler-owner').value.trim();
+        
+        try {
+            console.log('[GitHub Workflows] Configuring autoscaler via MCP SDK...');
+            const args = {
+                enabled,
+                poll_interval: pollInterval,
+                since_days: sinceDays
+            };
+            
+            if (maxRunners) args.max_runners = parseInt(maxRunners);
+            if (owner) args.owner = owner;
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_configure_autoscaler',
+                arguments: args
+            });
+            
+            if (result.error) {
+                showToast(`Error: ${result.error}`, 'error');
+            } else {
+                showToast(result.message || 'Autoscaler configured successfully', 'success');
+                this.displayAutoscalerStatus(result);
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error configuring autoscaler:', error);
+            showToast(`Failed to configure autoscaler: ${error.message}`, 'error');
+        }
+    }
+    
+    // Get autoscaler status
+    async getAutoscalerStatus() {
+        try {
+            console.log('[GitHub Workflows] Getting autoscaler status via MCP SDK...');
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_autoscaler_status',
+                arguments: {}
+            });
+            
+            if (result.error) {
+                showToast(`Error: ${result.error}`, 'error');
+            } else {
+                this.displayAutoscalerStatus(result);
+                showToast('Autoscaler status retrieved', 'success');
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error getting autoscaler status:', error);
+            showToast(`Failed to get autoscaler status: ${error.message}`, 'error');
+        }
+    }
+    
+    // Display autoscaler status
+    displayAutoscalerStatus(status) {
+        const displayDiv = document.getElementById('autoscaler-status-display');
+        if (!displayDiv) return;
+        
+        const config = status.config || {};
+        const p2pCache = status.p2p_cache || {};
+        
+        let html = '<div style="background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 8px; padding: 15px; margin-top: 10px;">';
+        html += '<h4 style="margin: 0 0 10px 0; color: #0369a1;">Current Status</h4>';
+        html += '<div style="display: grid; gap: 8px; font-size: 14px;">';
+        html += `<div><strong>Status:</strong> <span style="color: ${status.enabled ? '#10b981' : '#ef4444'};">${status.enabled ? '✓ Enabled' : '✗ Disabled'}</span></div>`;
+        html += `<div><strong>Poll Interval:</strong> ${config.poll_interval}s</div>`;
+        html += `<div><strong>Max Runners:</strong> ${config.max_runners}</div>`;
+        html += `<div><strong>Monitor Days:</strong> ${config.since_days}</div>`;
+        html += `<div><strong>Owner:</strong> ${config.owner || 'All accessible repos'}</div>`;
+        html += `<div><strong>P2P Cache:</strong> <span style="color: #10b981;">✓ ${p2pCache.description || 'Enabled'}</span></div>`;
+        html += '</div></div>';
+        
+        displayDiv.innerHTML = html;
+    }
+    
+    // List active runners
+    async listActiveRunners() {
+        const repo = document.getElementById('runner-repo-input')?.value.trim();
+        const org = document.getElementById('runner-org-input')?.value.trim();
+        
+        try {
+            console.log('[GitHub Workflows] Listing active runners via MCP SDK...');
+            const args = { include_docker: true };
+            if (repo) args.repo = repo;
+            if (org) args.org = org;
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_list_active_runners',
+                arguments: args
+            });
+            
+            if (result.error) {
+                console.error('[GitHub Workflows] Error:', result.error);
+            } else {
+                this.displayActiveRunners(result.active_runners || []);
+                showToast(`Found ${result.total_active} active runner(s)`, 'success');
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error listing active runners:', error);
+            showToast(`Failed to list active runners: ${error.message}`, 'error');
+        }
+    }
+    
+    // Display active runners with P2P status
+    displayActiveRunners(runners) {
+        const container = document.getElementById('active-runners-container');
+        if (!container) return;
+        
+        if (runners.length === 0) {
+            container.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No active runners found. Runners will appear here when they are online and processing jobs.</p>';
+            return;
+        }
+        
+        let html = '<div style="display: grid; gap: 15px;">';
+        
+        for (const runner of runners) {
+            const p2p = runner.p2p_status || {};
+            const docker = runner.docker_status || {};
+            const statusColor = runner.status === 'online' ? '#10b981' : '#ef4444';
+            
+            html += `
+                <div style="border: 2px solid ${runner.busy ? '#f59e0b' : '#e5e7eb'}; border-radius: 8px; padding: 15px; background: ${runner.busy ? '#fffbeb' : '#ffffff'};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="margin: 0; font-size: 16px; color: #1f2937;">
+                            🖥️ ${runner.name}
+                            ${runner.busy ? '<span style="margin-left: 10px; padding: 4px 8px; background: #f59e0b; color: white; border-radius: 4px; font-size: 12px;">BUSY</span>' : ''}
+                        </h4>
+                        <span style="color: ${statusColor}; font-weight: 700; font-size: 14px;">● ${runner.status.toUpperCase()}</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 14px; color: #4b5563;">
+                        <div>
+                            <div style="margin-bottom: 5px;"><strong>ID:</strong> ${runner.id}</div>
+                            <div style="margin-bottom: 5px;"><strong>OS:</strong> ${runner.os || 'N/A'}</div>
+                            <div><strong>Labels:</strong> ${runner.labels?.map(l => `<span style="background: #e0e7ff; padding: 2px 6px; border-radius: 3px; margin-right: 3px;">${l.name}</span>`).join('') || 'None'}</div>
+                        </div>
+                        <div style="border-left: 2px solid #e5e7eb; padding-left: 15px;">
+                            <div style="margin-bottom: 8px; font-weight: 600; color: #0369a1;">📡 P2P Cache Status</div>
+                            <div style="margin-bottom: 5px;"><span style="color: #10b981;">✓</span> Cache Enabled: ${p2p.cache_enabled ? 'Yes' : 'No'}</div>
+                            <div style="margin-bottom: 5px;"><span style="color: #10b981;">✓</span> libp2p Bootstrapped: ${p2p.libp2p_bootstrapped ? 'Yes' : 'No'}</div>
+                            <div style="margin-bottom: 5px;">Peer Discovery: ${p2p.peer_discovery || 'N/A'}</div>
+                            ${docker.in_container ? '<div style="margin-top: 8px;"><span style="background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-size: 12px;">🐳 Docker Container</span></div>' : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    // Show P2P stats modal
+    async showP2PStats() {
+        try {
+            const cacheStats = await this.mcp.request('tools/call', {
+                name: 'gh_get_cache_stats',
+                arguments: {}
+            });
+            
+            if (cacheStats.error) {
+                showToast('Unable to fetch P2P stats', 'error');
+                return;
+            }
+            
+            const aggregate = cacheStats.aggregate || {};
+            let message = `P2P Network Stats:\n\n`;
+            message += `Total API Calls (All Peers): ${aggregate.total_api_calls || 0}\n`;
+            message += `Total Cache Hits (All Peers): ${aggregate.total_cache_hits || 0}\n`;
+            message += `Connected Peers: ${aggregate.total_peers || 0}\n`;
+            message += `\nCache Hit Rate: ${(cacheStats.hit_rate * 100).toFixed(1)}%\n`;
+            message += `API Calls Saved: ${cacheStats.api_calls_saved || 0}`;
+            
+            alert(message);
+        } catch (error) {
+            console.error('[GitHub Workflows] Error showing P2P stats:', error);
+            showToast('Failed to fetch P2P stats', 'error');
+        }
+    }
+    
+    // Refresh active runners alias
+    async refreshActiveRunners() {
+        await this.listActiveRunners();
+    }
+}
+
+// Update the initialization to load autoscaler status
+const originalInitialize = GitHubWorkflowsManager.prototype.initialize;
+GitHubWorkflowsManager.prototype.initialize = async function() {
+    await originalInitialize.call(this);
+    // Auto-load autoscaler status
+    setTimeout(() => this.getAutoscalerStatus(), 1000);
+    // Auto-load active runners
+    setTimeout(() => this.listActiveRunners(), 1500);
+};
