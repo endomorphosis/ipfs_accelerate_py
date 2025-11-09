@@ -874,4 +874,254 @@ def register_github_tools(mcp: FastMCP) -> None:
                 "timestamp": time.time()
             }
     
-    logger.info("GitHub CLI tools registered successfully")
+    @mcp.tool()
+    def gh_capture_error(
+        error_type: str,
+        error_message: str,
+        stack_trace: Optional[str] = None,
+        context: Optional[Dict] = None,
+        severity: str = "medium"
+    ) -> Dict[str, Any]:
+        """
+        Capture an error and distribute it to P2P peers for aggregation.
+        
+        The error will be shared across all peers via libp2p and aggregated
+        for intelligent GitHub issue creation.
+        
+        Args:
+            error_type: Type of error (e.g., 'APIError', 'NetworkError')
+            error_message: Error message describing what happened
+            stack_trace: Optional full stack trace
+            context: Optional dict with additional context (method, endpoint, etc.)
+            severity: Error severity level ('low', 'medium', 'high', 'critical')
+            
+        Returns:
+            Dict with error signature and capture status
+        """
+        try:
+            from ipfs_accelerate_py.github_cli.error_aggregator import ErrorAggregator
+            from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
+            
+            # Get repo from environment or github_ops
+            repo = os.environ.get("GITHUB_REPOSITORY", "unknown/repo")
+            
+            # Initialize peer registry if not already done
+            if not hasattr(github_ops, '_peer_registry'):
+                github_ops._peer_registry = P2PPeerRegistry(repo=repo)
+            
+            # Initialize error aggregator if not already done
+            if not hasattr(github_ops, '_error_aggregator'):
+                github_ops._error_aggregator = ErrorAggregator(
+                    repo=repo,
+                    peer_registry=github_ops._peer_registry,
+                    enable_auto_issue_creation=False  # Manual mode by default
+                )
+            
+            # Capture the error
+            signature = github_ops._error_aggregator.capture_error(
+                error_type=error_type,
+                error_message=error_message,
+                stack_trace=stack_trace,
+                context=context,
+                severity=severity
+            )
+            
+            return {
+                "status": "success",
+                "signature": signature,
+                "message": "Error captured and distributed to peers",
+                "severity": severity,
+                "tool": "gh_capture_error",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in gh_capture_error: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_capture_error",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def gh_get_error_statistics() -> Dict[str, Any]:
+        """
+        Get statistics about captured and aggregated errors across all peers.
+        
+        Returns:
+            Dict with error statistics including counts by type, severity, and peer
+        """
+        try:
+            if not hasattr(github_ops, '_error_aggregator'):
+                return {
+                    "status": "not_initialized",
+                    "message": "Error aggregator not initialized yet",
+                    "tool": "gh_get_error_statistics",
+                    "timestamp": time.time()
+                }
+            
+            stats = github_ops._error_aggregator.get_error_statistics()
+            
+            return {
+                "status": "success",
+                "statistics": stats,
+                "tool": "gh_get_error_statistics",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in gh_get_error_statistics: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_get_error_statistics",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def gh_bundle_errors(create_issues: bool = False) -> Dict[str, Any]:
+        """
+        Bundle aggregated errors and optionally create GitHub issues.
+        
+        Collects errors from all P2P peers, deduplicates them, checks against
+        existing GitHub issues, and can create new issues for errors that meet
+        the threshold and aren't already reported.
+        
+        Args:
+            create_issues: Whether to automatically create GitHub issues for bundled errors
+            
+        Returns:
+            Dict with bundling summary including counts and issues created
+        """
+        try:
+            if not hasattr(github_ops, '_error_aggregator'):
+                return {
+                    "status": "not_initialized",
+                    "message": "Error aggregator not initialized yet",
+                    "tool": "gh_bundle_errors",
+                    "timestamp": time.time()
+                }
+            
+            # Temporarily enable auto-issue creation if requested
+            original_auto_create = github_ops._error_aggregator.enable_auto_issue_creation
+            github_ops._error_aggregator.enable_auto_issue_creation = create_issues
+            
+            try:
+                summary = github_ops._error_aggregator.bundle_and_report_errors()
+            finally:
+                # Restore original setting
+                github_ops._error_aggregator.enable_auto_issue_creation = original_auto_create
+            
+            return {
+                "status": "success",
+                "summary": summary,
+                "tool": "gh_bundle_errors",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in gh_bundle_errors: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_bundle_errors",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def gh_start_error_bundling(
+        bundle_interval_minutes: int = 15,
+        min_error_count: int = 3,
+        enable_auto_issue_creation: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Start automatic error bundling in the background.
+        
+        Errors will be automatically collected from peers, deduplicated, and
+        bundled at regular intervals. Issues can optionally be auto-created.
+        
+        Args:
+            bundle_interval_minutes: How often to bundle errors (default: 15 minutes)
+            min_error_count: Minimum error occurrences before creating issue (default: 3)
+            enable_auto_issue_creation: Whether to auto-create GitHub issues (default: False)
+            
+        Returns:
+            Dict with bundling configuration
+        """
+        try:
+            from ipfs_accelerate_py.github_cli.error_aggregator import ErrorAggregator
+            from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
+            
+            # Get repo from environment or github_ops
+            repo = os.environ.get("GITHUB_REPOSITORY", "unknown/repo")
+            
+            # Initialize peer registry if not already done
+            if not hasattr(github_ops, '_peer_registry'):
+                github_ops._peer_registry = P2PPeerRegistry(repo=repo)
+            
+            # Initialize or update error aggregator
+            github_ops._error_aggregator = ErrorAggregator(
+                repo=repo,
+                peer_registry=github_ops._peer_registry,
+                bundle_interval_minutes=bundle_interval_minutes,
+                min_error_count=min_error_count,
+                enable_auto_issue_creation=enable_auto_issue_creation
+            )
+            
+            # Start bundling thread
+            github_ops._error_aggregator.start_bundling()
+            
+            return {
+                "status": "success",
+                "message": "Error bundling started",
+                "config": {
+                    "bundle_interval_minutes": bundle_interval_minutes,
+                    "min_error_count": min_error_count,
+                    "auto_issue_creation": enable_auto_issue_creation,
+                    "repo": repo
+                },
+                "tool": "gh_start_error_bundling",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in gh_start_error_bundling: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_start_error_bundling",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def gh_stop_error_bundling() -> Dict[str, Any]:
+        """
+        Stop automatic error bundling.
+        
+        Returns:
+            Dict with stop status
+        """
+        try:
+            if not hasattr(github_ops, '_error_aggregator'):
+                return {
+                    "status": "not_running",
+                    "message": "Error bundling was not running",
+                    "tool": "gh_stop_error_bundling",
+                    "timestamp": time.time()
+                }
+            
+            github_ops._error_aggregator.stop_bundling_thread()
+            
+            return {
+                "status": "success",
+                "message": "Error bundling stopped",
+                "tool": "gh_stop_error_bundling",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in gh_stop_error_bundling: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_stop_error_bundling",
+                "timestamp": time.time()
+            }
+    
+    logger.info("GitHub CLI tools (including error aggregation) registered successfully")

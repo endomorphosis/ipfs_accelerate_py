@@ -1473,6 +1473,193 @@ class MCPDashboard:
                     "error": str(e),
                     "timestamp": time.time()
                 }
+        
+        elif tool_name == 'gh_capture_error':
+            error_type = args.get('error_type')
+            error_message = args.get('error_message')
+            stack_trace = args.get('stack_trace')
+            context = args.get('context')
+            severity = args.get('severity', 'medium')
+            # Capture and distribute error via P2P
+            try:
+                from ipfs_accelerate_py.github_cli.error_aggregator import ErrorAggregator
+                from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
+                
+                # Get repo from environment
+                repo = os.environ.get("GITHUB_REPOSITORY", "unknown/repo")
+                
+                # Initialize peer registry if needed
+                if not hasattr(github_ops, '_peer_registry'):
+                    github_ops._peer_registry = P2PPeerRegistry(repo=repo)
+                
+                # Initialize error aggregator if needed
+                if not hasattr(github_ops, '_error_aggregator'):
+                    github_ops._error_aggregator = ErrorAggregator(
+                        repo=repo,
+                        peer_registry=github_ops._peer_registry,
+                        enable_auto_issue_creation=False
+                    )
+                
+                signature = github_ops._error_aggregator.capture_error(
+                    error_type=error_type,
+                    error_message=error_message,
+                    stack_trace=stack_trace,
+                    context=context,
+                    severity=severity
+                )
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "signature": signature,
+                    "message": "Error captured and distributed to peers",
+                    "severity": severity,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_capture_error: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_get_error_statistics':
+            # Get error statistics across all peers
+            try:
+                if not hasattr(github_ops, '_error_aggregator'):
+                    return {
+                        "tool": tool_name,
+                        "status": "not_initialized",
+                        "message": "Error aggregator not initialized yet",
+                        "timestamp": time.time()
+                    }
+                
+                stats = github_ops._error_aggregator.get_error_statistics()
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "statistics": stats,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_get_error_statistics: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_bundle_errors':
+            create_issues = args.get('create_issues', False)
+            # Bundle aggregated errors and optionally create GitHub issues
+            try:
+                if not hasattr(github_ops, '_error_aggregator'):
+                    return {
+                        "tool": tool_name,
+                        "status": "not_initialized",
+                        "message": "Error aggregator not initialized yet",
+                        "timestamp": time.time()
+                    }
+                
+                # Temporarily enable auto-issue creation if requested
+                original_auto_create = github_ops._error_aggregator.enable_auto_issue_creation
+                github_ops._error_aggregator.enable_auto_issue_creation = create_issues
+                
+                try:
+                    summary = github_ops._error_aggregator.bundle_and_report_errors()
+                finally:
+                    github_ops._error_aggregator.enable_auto_issue_creation = original_auto_create
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "summary": summary,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_bundle_errors: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_start_error_bundling':
+            bundle_interval_minutes = args.get('bundle_interval_minutes', 15)
+            min_error_count = args.get('min_error_count', 3)
+            enable_auto_issue_creation = args.get('enable_auto_issue_creation', False)
+            # Start automatic error bundling
+            try:
+                from ipfs_accelerate_py.github_cli.error_aggregator import ErrorAggregator
+                from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
+                
+                # Get repo from environment
+                repo = os.environ.get("GITHUB_REPOSITORY", "unknown/repo")
+                
+                # Initialize peer registry if needed
+                if not hasattr(github_ops, '_peer_registry'):
+                    github_ops._peer_registry = P2PPeerRegistry(repo=repo)
+                
+                # Initialize or update error aggregator
+                github_ops._error_aggregator = ErrorAggregator(
+                    repo=repo,
+                    peer_registry=github_ops._peer_registry,
+                    bundle_interval_minutes=bundle_interval_minutes,
+                    min_error_count=min_error_count,
+                    enable_auto_issue_creation=enable_auto_issue_creation
+                )
+                
+                # Start bundling thread
+                github_ops._error_aggregator.start_bundling()
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "message": "Error bundling started",
+                    "config": {
+                        "bundle_interval_minutes": bundle_interval_minutes,
+                        "min_error_count": min_error_count,
+                        "auto_issue_creation": enable_auto_issue_creation,
+                        "repo": repo
+                    },
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_start_error_bundling: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_stop_error_bundling':
+            # Stop automatic error bundling
+            try:
+                if not hasattr(github_ops, '_error_aggregator'):
+                    return {
+                        "tool": tool_name,
+                        "status": "not_running",
+                        "message": "Error bundling was not running",
+                        "timestamp": time.time()
+                    }
+                
+                github_ops._error_aggregator.stop_bundling_thread()
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "message": "Error bundling stopped",
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_stop_error_bundling: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
             
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
