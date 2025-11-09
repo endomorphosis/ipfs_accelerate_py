@@ -948,6 +948,59 @@ class MCPDashboard:
                 
                 logger.info(f"JSON-RPC request: method={method}, params={params}")
                 
+                # Handle tools/call method for MCP SDK
+                if method == 'tools/call':
+                    tool_name = params.get('name')
+                    tool_args = params.get('arguments', {})
+                    
+                    logger.info(f"Calling tool: {tool_name} with args: {tool_args}")
+                    
+                    # Import GitHub operations
+                    try:
+                        from ipfs_accelerate_py.shared import SharedCore, GitHubOperations
+                        shared_core = SharedCore()
+                        github_ops = GitHubOperations(shared_core)
+                    except ImportError as e:
+                        logger.error(f"Failed to import GitHub operations: {e}")
+                        return jsonify({
+                            'jsonrpc': '2.0',
+                            'error': {
+                                'code': -32603,
+                                'message': f'GitHub operations not available: {str(e)}'
+                            },
+                            'id': request_id
+                        }), 500
+                    
+                    # Map tool names to GitHub operations
+                    try:
+                        result = self._call_github_tool(github_ops, tool_name, tool_args)
+                        return jsonify({
+                            'jsonrpc': '2.0',
+                            'result': result,
+                            'id': request_id
+                        })
+                    except ValueError as e:
+                        logger.error(f"Tool not found: {tool_name}")
+                        return jsonify({
+                            'jsonrpc': '2.0',
+                            'error': {
+                                'code': -32601,
+                                'message': f'Tool not found: {tool_name}'
+                            },
+                            'id': request_id
+                        }), 404
+                    except Exception as e:
+                        logger.error(f"Error calling tool {tool_name}: {e}", exc_info=True)
+                        return jsonify({
+                            'jsonrpc': '2.0',
+                            'error': {
+                                'code': -32603,
+                                'message': f'Tool execution error: {str(e)}'
+                            },
+                            'id': request_id
+                        }), 500
+                
+                # Legacy direct method calls for model tools
                 # Lazy import MCP tools wrapper
                 try:
                     from ipfs_accelerate_py.mcp.tools.model_tools_wrapper import (
@@ -956,24 +1009,17 @@ class MCPDashboard:
                         get_model_details_tool,
                         get_model_stats_tool
                     )
+                    
+                    # Map methods to tool functions
+                    tools = {
+                        'search_models': search_models_tool,
+                        'recommend_models': recommend_models_tool,
+                        'get_model_details': get_model_details_tool,
+                        'get_model_stats': get_model_stats_tool
+                    }
                 except ImportError as e:
-                    logger.error(f"Failed to import MCP tools: {e}")
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'error': {
-                            'code': -32603,
-                            'message': f'Internal error: MCP tools not available - {str(e)}'
-                        },
-                        'id': request_id
-                    }), 500
-                
-                # Map methods to tool functions
-                tools = {
-                    'search_models': search_models_tool,
-                    'recommend_models': recommend_models_tool,
-                    'get_model_details': get_model_details_tool,
-                    'get_model_stats': get_model_stats_tool
-                }
+                    logger.warning(f"Model tools wrapper not available: {e}")
+                    tools = {}
                 
                 if method not in tools:
                     return jsonify({
@@ -1024,6 +1070,198 @@ class MCPDashboard:
                     },
                     'id': None
                 }), 400
+    
+    def _call_github_tool(self, github_ops, tool_name: str, args: dict):
+        """Call a GitHub tool with the given arguments.
+        
+        Args:
+            github_ops: GitHubOperations instance
+            tool_name: Name of the tool to call
+            args: Arguments to pass to the tool
+            
+        Returns:
+            Tool execution result
+            
+        Raises:
+            ValueError: If tool_name is not recognized
+        """
+        import time
+        
+        # Map tool names to GitHub operations methods
+        if tool_name == 'gh_auth_status':
+            result = github_ops.get_auth_status()
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_list_repos':
+            owner = args.get('owner')
+            limit = args.get('limit', 30)
+            result = github_ops.list_repos(owner=owner, limit=limit)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_list_workflow_runs':
+            repo = args.get('repo')
+            status = args.get('status')
+            limit = args.get('limit', 20)
+            result = github_ops.list_workflow_runs(repo=repo, status=status, limit=limit)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_get_workflow_run':
+            repo = args.get('repo')
+            run_id = args.get('run_id')
+            result = github_ops.get_workflow_run(repo=repo, run_id=run_id)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_create_workflow_queues':
+            since_days = args.get('since_days', 1)
+            owner = args.get('owner')
+            result = github_ops.create_workflow_queues(since_days=since_days, owner=owner)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_list_runners':
+            owner = args.get('owner')
+            repo = args.get('repo')
+            result = github_ops.list_runners(owner=owner, repo=repo)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_provision_runners':
+            count = args.get('count', 1)
+            owner = args.get('owner')
+            labels = args.get('labels', [])
+            result = github_ops.provision_runners(count=count, owner=owner, labels=labels)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_get_cache_stats':
+            # Get cache statistics
+            try:
+                from ipfs_accelerate_py.github_cli.cache import GitHubCache
+                cache = GitHubCache()
+                stats = cache.get_stats()
+                return {
+                    "tool": tool_name,
+                    "timestamp": time.time(),
+                    **stats
+                }
+            except Exception as e:
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+                
+        elif tool_name == 'gh_get_workflow_details':
+            repo = args.get('repo')
+            workflow_id = args.get('workflow_id')
+            limit = args.get('limit', 10)
+            # Get detailed workflow information
+            result = github_ops.get_workflow_details(repo=repo, workflow_id=workflow_id, limit=limit)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_invalidate_cache':
+            pattern = args.get('pattern', '')
+            # Invalidate cache entries matching pattern
+            try:
+                from ipfs_accelerate_py.github_cli.cache import GitHubCache
+                cache = GitHubCache()
+                cleared = cache.clear(pattern=pattern)
+                return {
+                    "tool": tool_name,
+                    "cleared_entries": cleared,
+                    "pattern": pattern,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+                
+        elif tool_name == 'gh_get_rate_limit':
+            # Get GitHub API rate limit
+            result = github_ops.get_rate_limit()
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_set_token':
+            token = args.get('token')
+            # Set GitHub token
+            result = github_ops.set_token(token=token)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_get_env_vars':
+            # Get environment variables
+            result = github_ops.get_env_vars()
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_set_env_var':
+            name = args.get('name')
+            value = args.get('value')
+            # Set environment variable
+            result = github_ops.set_env_var(name=name, value=value)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_get_runner_details':
+            owner = args.get('owner')
+            repo = args.get('repo')
+            runner_id = args.get('runner_id')
+            # Get detailed runner information
+            result = github_ops.get_runner_details(owner=owner, repo=repo, runner_id=runner_id)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_autoscaler_status':
+            # Get autoscaler status
+            result = github_ops.get_autoscaler_status()
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_configure_autoscaler':
+            enabled = args.get('enabled')
+            poll_interval = args.get('poll_interval')
+            max_runners = args.get('max_runners')
+            monitor_days = args.get('monitor_days')
+            owner = args.get('owner')
+            # Configure autoscaler
+            result = github_ops.configure_autoscaler(
+                enabled=enabled,
+                poll_interval=poll_interval,
+                max_runners=max_runners,
+                monitor_days=monitor_days,
+                owner=owner
+            )
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_list_active_runners':
+            owner = args.get('owner')
+            repo = args.get('repo')
+            # List active runners with P2P status
+            result = github_ops.list_active_runners(owner=owner, repo=repo)
+            result["tool"] = tool_name
+            return result
+            
+        elif tool_name == 'gh_bootstrap_runner_libp2p':
+            runner_id = args.get('runner_id')
+            owner = args.get('owner')
+            repo = args.get('repo')
+            # Bootstrap runner with libp2p
+            result = github_ops.bootstrap_runner_libp2p(runner_id=runner_id, owner=owner, repo=repo)
+            result["tool"] = tool_name
+            return result
+            
+        else:
+            raise ValueError(f"Unknown tool: {tool_name}")
     
     def _get_fallback_architecture_distribution(self, models):
         """Get architecture distribution from fallback models."""
