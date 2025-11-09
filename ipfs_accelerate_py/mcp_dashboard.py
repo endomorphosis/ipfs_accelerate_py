@@ -1269,6 +1269,38 @@ class MCPDashboard:
             result["tool"] = tool_name
             return result
             
+        elif tool_name == 'get_queue_status':
+            # Get comprehensive queue status for all endpoints
+            try:
+                from ipfs_accelerate_py.mcp.tools.enhanced_inference import get_queue_status
+                result = get_queue_status()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"Error getting queue status: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+                
+        elif tool_name == 'get_queue_history':
+            # Get queue performance history and trends
+            try:
+                from ipfs_accelerate_py.mcp.tools.enhanced_inference import get_queue_history
+                result = get_queue_history()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"Error getting queue history: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
     
