@@ -120,11 +120,11 @@
                     <h3>📊 Performance Metrics</h3>
                     <div class="info-row">
                         <span>CPU Usage:</span>
-                        <span>17%</span>
+                        <span data-metric="cpu">Loading...</span>
                     </div>
                     <div class="info-row">
                         <span>Memory Usage:</span>
-                        <span>26%</span>
+                        <span data-metric="memory">Loading...</span>
                     </div>
                     <div class="info-row">
                         <span>Queue Length:</span>
@@ -135,6 +135,59 @@
                         <span>584ms</span>
                     </div>
                     <button class="btn btn-secondary" onclick="refreshMetrics()">📈 Refresh Metrics</button>
+                </div>
+
+                <div class="card">
+                    <h3>👤 User Information</h3>
+                    <div class="info-row">
+                        <span>Username:</span>
+                        <span id="username" data-info="username">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Authentication:</span>
+                        <span id="auth-status">Checking...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Token Type:</span>
+                        <span id="token-type">-</span>
+                    </div>
+                    <button class="btn btn-info" onclick="refreshUserInfo()">🔄 Refresh User</button>
+                </div>
+
+                <div class="card">
+                    <h3>💾 Cache Statistics</h3>
+                    <div id="cache-stats" data-info="cache">
+                        <div class="info-row">
+                            <span>Total Entries:</span>
+                            <span id="cache-entries">Loading...</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Cache Size:</span>
+                            <span id="cache-size">Loading...</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Hit Rate:</span>
+                            <span id="cache-hit-rate">Loading...</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-success" onclick="refreshCacheStats()">📊 Refresh Cache</button>
+                </div>
+
+                <div class="card">
+                    <h3>🌐 P2P Peer System</h3>
+                    <div class="info-row">
+                        <span>Status:</span>
+                        <span id="peer-status">Checking...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Active Peers:</span>
+                        <span id="peer-count" data-info="peers">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>P2P Enabled:</span>
+                        <span id="p2p-enabled">Loading...</span>
+                    </div>
+                    <button class="btn btn-primary" onclick="refreshPeerStatus()">🔄 Refresh Peers</button>
                 </div>
             </div>
         </div>
