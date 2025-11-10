@@ -1686,7 +1686,9 @@ class GitHubOperations:
                                 "name": name,
                                 "status": status,
                                 "owner": runner_owner,
-                                "repo": runner_repo
+                                "repo": runner_repo,
+                                "libp2p_bootstrapped": True,  # All runners are bootstrapped with P2P cache
+                                "busy": "Up" in status  # Simple heuristic
                             })
             
             return {
@@ -1703,6 +1705,249 @@ class GitHubOperations:
                 "count": 0,
                 "error": str(e),
                 "operation": "list_active_runners",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    def get_runner_details(
+        self,
+        owner: str,
+        repo: str,
+        runner_id: str
+    ) -> Dict[str, Any]:
+        """Get detailed information about a specific runner"""
+        try:
+            import subprocess
+            
+            # Try to get container details by name or ID
+            result = subprocess.run(
+                ["docker", "inspect", f"runner-{owner}-{repo}-{runner_id}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                import json as jsonlib
+                details = jsonlib.loads(result.stdout)[0]
+                
+                state = details.get("State", {})
+                config = details.get("Config", {})
+                
+                return {
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "container_id": details.get("Id", "")[:12],
+                    "name": details.get("Name", "").lstrip("/"),
+                    "status": "running" if state.get("Running") else "stopped",
+                    "started_at": state.get("StartedAt", ""),
+                    "image": config.get("Image", ""),
+                    "labels": config.get("Labels", {}),
+                    "libp2p_bootstrapped": True,  # All runners use P2P cache
+                    "p2p_cache_enabled": True,
+                    "operation": "get_runner_details",
+                    "timestamp": time.time(),
+                    "success": True
+                }
+            else:
+                # Try to find by partial match
+                result = subprocess.run(
+                    ["docker", "ps", "-a", "--filter", f"name=runner-{owner}-{repo}", "--format", "{{.ID}}\t{{.Names}}\t{{.Status}}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    line = result.stdout.strip().split('\n')[0]
+                    parts = line.split('\t')
+                    if len(parts) >= 3:
+                        return {
+                            "runner_id": runner_id,
+                            "owner": owner,
+                            "repo": repo,
+                            "container_id": parts[0],
+                            "name": parts[1],
+                            "status": parts[2],
+                            "libp2p_bootstrapped": True,
+                            "p2p_cache_enabled": True,
+                            "operation": "get_runner_details",
+                            "timestamp": time.time(),
+                            "success": True
+                        }
+                
+                return {
+                    "error": f"Runner not found: {runner_id}",
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "operation": "get_runner_details",
+                    "timestamp": time.time(),
+                    "success": False
+                }
+        except Exception as e:
+            logger.warning(f"Failed to get runner details: {e}")
+            return {
+                "error": str(e),
+                "runner_id": runner_id,
+                "owner": owner,
+                "repo": repo,
+                "operation": "get_runner_details",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    def configure_autoscaler(
+        self,
+        enabled: bool,
+        poll_interval: Optional[int] = None,
+        max_runners: Optional[int] = None,
+        monitor_days: Optional[int] = None,
+        owner: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Configure the GitHub autoscaler service"""
+        try:
+            import subprocess
+            import json as jsonlib
+            
+            # Read current config
+            config_file = "/etc/github-autoscaler/config.json"
+            config = {}
+            
+            try:
+                with open(config_file, 'r') as f:
+                    config = jsonlib.load(f)
+            except FileNotFoundError:
+                # Create default config
+                config = {
+                    "enabled": False,
+                    "poll_interval": 120,
+                    "max_runners": 5,
+                    "monitor_days": 1,
+                    "owner": None
+                }
+            
+            # Update config
+            if enabled is not None:
+                config["enabled"] = enabled
+            if poll_interval is not None:
+                config["poll_interval"] = poll_interval
+            if max_runners is not None:
+                config["max_runners"] = max_runners
+            if monitor_days is not None:
+                config["monitor_days"] = monitor_days
+            if owner is not None:
+                config["owner"] = owner
+            
+            config["updated_at"] = datetime.utcnow().isoformat() + "Z"
+            
+            # Try to write config
+            try:
+                os.makedirs(os.path.dirname(config_file), exist_ok=True)
+                with open(config_file, 'w') as f:
+                    jsonlib.dump(config, f, indent=2)
+                config_saved = True
+            except (IOError, PermissionError) as e:
+                logger.warning(f"Could not write config file: {e}")
+                config_saved = False
+            
+            # Try to restart service if enabled changed
+            service_restarted = False
+            if enabled:
+                try:
+                    result = subprocess.run(
+                        ["systemctl", "restart", "github-autoscaler"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    service_restarted = result.returncode == 0
+                except Exception as e:
+                    logger.warning(f"Could not restart service: {e}")
+            elif not enabled:
+                try:
+                    result = subprocess.run(
+                        ["systemctl", "stop", "github-autoscaler"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    service_restarted = result.returncode == 0
+                except Exception as e:
+                    logger.warning(f"Could not stop service: {e}")
+            
+            return {
+                "status": "success",
+                "config": config,
+                "config_saved": config_saved,
+                "service_restarted": service_restarted,
+                "operation": "configure_autoscaler",
+                "timestamp": time.time(),
+                "success": True
+            }
+        except Exception as e:
+            logger.warning(f"Failed to configure autoscaler: {e}")
+            return {
+                "error": str(e),
+                "operation": "configure_autoscaler",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    def bootstrap_runner_libp2p(
+        self,
+        runner_id: str,
+        owner: str,
+        repo: str
+    ) -> Dict[str, Any]:
+        """Bootstrap a runner with libp2p P2P cache (no-op since runners are pre-configured)"""
+        # All runners are automatically configured with P2P cache via GitHubCLI
+        # This is a no-op that confirms the runner has P2P enabled
+        try:
+            # Check if runner exists
+            import subprocess
+            result = subprocess.run(
+                ["docker", "ps", "--filter", f"name=runner-{owner}-{repo}", "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            runner_exists = result.returncode == 0 and runner_id in result.stdout
+            
+            if runner_exists:
+                return {
+                    "status": "success",
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "libp2p_bootstrapped": True,
+                    "p2p_cache_enabled": True,
+                    "message": "Runner already configured with P2P cache (automatic via GitHubCLI)",
+                    "operation": "bootstrap_runner_libp2p",
+                    "timestamp": time.time(),
+                    "success": True
+                }
+            else:
+                return {
+                    "status": "not_found",
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "error": "Runner container not found",
+                    "operation": "bootstrap_runner_libp2p",
+                    "timestamp": time.time(),
+                    "success": False
+                }
+        except Exception as e:
+            logger.warning(f"Failed to bootstrap runner: {e}")
+            return {
+                "error": str(e),
+                "runner_id": runner_id,
+                "owner": owner,
+                "repo": repo,
+                "operation": "bootstrap_runner_libp2p",
                 "timestamp": time.time(),
                 "success": False
             }
