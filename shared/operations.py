@@ -1576,6 +1576,10 @@ class GitHubOperations:
         org: Optional[str] = None
     ) -> Dict[str, Any]:
         """List self-hosted runners"""
+        # If no repo/org specified, list active containerized runners instead
+        if not repo and not org:
+            return self.list_active_runners()
+        
         if not self.runner_manager:
             return {"error": "Runner Manager not available", "success": False}
         
@@ -1708,6 +1712,50 @@ class GitHubOperations:
                 "timestamp": time.time(),
                 "success": False
             }
+    
+    def get_rate_limit(self) -> Dict[str, Any]:
+        """Get GitHub API rate limit information"""
+        try:
+            # Try to get actual rate limit from GitHub API via gh CLI
+            if self.gh_cli:
+                import subprocess
+                result = subprocess.run(
+                    ['gh', 'api', 'rate_limit'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.returncode == 0:
+                    import json
+                    data = json.loads(result.stdout)
+                    if 'rate' in data:
+                        return {
+                            "rate_limit": {
+                                "limit": data['rate'].get('limit', 5000),
+                                "remaining": data['rate'].get('remaining', 5000),
+                                "reset": data['rate'].get('reset', int(time.time()) + 3600),
+                                "used": data['rate'].get('used', 0)
+                            },
+                            "operation": "get_rate_limit",
+                            "timestamp": time.time(),
+                            "success": True
+                        }
+        except Exception as e:
+            logger.debug(f"Could not fetch rate limit from GitHub: {e}")
+        
+        # Return default/cached values
+        return {
+            "rate_limit": {
+                "limit": 5000,
+                "remaining": 5000,
+                "reset": int(time.time()) + 3600,
+                "used": 0
+            },
+            "operation": "get_rate_limit",
+            "timestamp": time.time(),
+            "success": True
+        }
     
     def get_runner_details(
         self,

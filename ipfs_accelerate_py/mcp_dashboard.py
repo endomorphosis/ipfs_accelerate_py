@@ -1180,7 +1180,7 @@ class MCPDashboard:
             owner = args.get('owner')
             repo = args.get('repo')
             try:
-                result = github_ops.list_runners(owner=owner, repo=repo)
+                result = github_ops.list_runners(org=owner, repo=repo)
                 result["tool"] = tool_name
                 return result
             except Exception as e:
