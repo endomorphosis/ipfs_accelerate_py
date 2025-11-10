@@ -179,6 +179,7 @@ class GitHubAPICache:
         self._p2p_bootstrap_peers = p2p_bootstrap_peers or []
         self._p2p_connected_peers: Dict[str, Any] = {}
         self._event_loop = None
+        self._max_bootstrap_peers = 10  # Limit bootstrap peers to prevent connection overload
         
         # Peer discovery
         self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
@@ -1038,6 +1039,30 @@ class GitHubAPICache:
             # P2P will continue initializing in background
             self._p2p_thread_running = True
     
+    def _validate_multiaddr(self, addr: Optional[str]) -> bool:
+        """
+        Validate a libp2p multiaddr format.
+        
+        Args:
+            addr: Multiaddr string to validate
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        if not addr or not isinstance(addr, str):
+            return False
+        
+        # Basic format validation
+        # Must start with /ip4 or /ip6
+        # Must contain /tcp/ and /p2p/
+        if not (addr.startswith('/ip4') or addr.startswith('/ip6')):
+            return False
+        
+        if '/tcp/' not in addr or '/p2p/' not in addr:
+            return False
+        
+        return True
+    
     def _get_public_ip(self) -> str:
         """Get public IP address for P2P multiaddr."""
         import urllib.request
@@ -1090,19 +1115,37 @@ class GitHubAPICache:
                         discovered_peers = self._peer_registry.discover_peers(max_peers=10)
                         logger.info(f"✓ Discovered {len(discovered_peers)} peer(s)")
                         
-                        # Add to bootstrap list
+                        # Add to bootstrap list (with limit and validation)
                         for peer in discovered_peers:
                             if peer.get("peer_id") != peer_id:  # Don't connect to self
-                                self._p2p_bootstrap_peers.append(peer["multiaddr"])
+                                multiaddr = peer.get("multiaddr")
+                                if self._validate_multiaddr(multiaddr):
+                                    # Check if we haven't exceeded max bootstrap peers
+                                    if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
+                                        # Check for duplicates before adding
+                                        if multiaddr not in self._p2p_bootstrap_peers:
+                                            self._p2p_bootstrap_peers.append(multiaddr)
+                                else:
+                                    logger.warning(f"Invalid multiaddr format: {multiaddr}")
                     else:
                         logger.warning("⚠ Failed to register with peer discovery")
                 except Exception as e:
                     logger.warning(f"⚠ Peer discovery error: {e}")
             
-            # Connect to bootstrap peers
+            # Deduplicate bootstrap peers before connecting
+            self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
+            logger.info(f"Connecting to {len(self._p2p_bootstrap_peers)} bootstrap peer(s)...")
+            
+            # Connect to bootstrap peers with timeout
             for peer_addr in self._p2p_bootstrap_peers:
                 try:
-                    await self._connect_to_peer(peer_addr)
+                    # Add timeout to prevent hanging connections
+                    await asyncio.wait_for(
+                        self._connect_to_peer(peer_addr),
+                        timeout=15.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"Timeout connecting to bootstrap peer {peer_addr}")
                 except Exception as e:
                     logger.warning(f"Failed to connect to bootstrap peer {peer_addr}: {e}")
         
@@ -1236,11 +1279,15 @@ class GitHubAPICache:
 
 # Global cache instance (can be configured at module level)
 _global_cache: Optional[GitHubAPICache] = None
+_global_cache_lock = Lock()
 
 
 def get_global_cache(**kwargs) -> GitHubAPICache:
     """
-    Get or create the global GitHub API cache instance.
+    Get or create the global GitHub API cache instance with thread-safe initialization.
+    
+    Uses double-checked locking pattern to ensure only one instance is created
+    even when called concurrently from multiple threads.
     
     Automatically reads P2P configuration from environment variables:
     - CACHE_ENABLE_P2P: Enable P2P cache sharing (default: true)
@@ -1257,33 +1304,37 @@ def get_global_cache(**kwargs) -> GitHubAPICache:
     """
     global _global_cache
     
+    # First check without lock for performance (double-checked locking)
     if _global_cache is None:
-        # Read from environment if not provided
-        if 'enable_p2p' not in kwargs:
-            kwargs['enable_p2p'] = os.environ.get('CACHE_ENABLE_P2P', 'true').lower() == 'true'
-        
-        if 'p2p_listen_port' not in kwargs:
-            kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9100'))
-        
-        if 'p2p_bootstrap_peers' not in kwargs:
-            peers_str = os.environ.get('CACHE_BOOTSTRAP_PEERS', '')
-            if peers_str:
-                kwargs['p2p_bootstrap_peers'] = [p.strip() for p in peers_str.split(',') if p.strip()]
-        
-        if 'default_ttl' not in kwargs:
-            kwargs['default_ttl'] = int(os.environ.get('CACHE_DEFAULT_TTL', '300'))
-        
-        if 'cache_dir' not in kwargs and 'CACHE_DIR' in os.environ:
-            kwargs['cache_dir'] = os.environ['CACHE_DIR']
-        
-        _global_cache = GitHubAPICache(**kwargs)
+        with _global_cache_lock:
+            # Second check with lock to ensure only one thread creates the instance
+            if _global_cache is None:
+                # Read from environment if not provided
+                if 'enable_p2p' not in kwargs:
+                    kwargs['enable_p2p'] = os.environ.get('CACHE_ENABLE_P2P', 'true').lower() == 'true'
+                
+                if 'p2p_listen_port' not in kwargs:
+                    kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9100'))
+                
+                if 'p2p_bootstrap_peers' not in kwargs:
+                    peers_str = os.environ.get('CACHE_BOOTSTRAP_PEERS', '')
+                    if peers_str:
+                        kwargs['p2p_bootstrap_peers'] = [p.strip() for p in peers_str.split(',') if p.strip()]
+                
+                if 'default_ttl' not in kwargs:
+                    kwargs['default_ttl'] = int(os.environ.get('CACHE_DEFAULT_TTL', '300'))
+                
+                if 'cache_dir' not in kwargs and 'CACHE_DIR' in os.environ:
+                    kwargs['cache_dir'] = os.environ['CACHE_DIR']
+                
+                _global_cache = GitHubAPICache(**kwargs)
     
     return _global_cache
 
 
 def configure_cache(**kwargs) -> GitHubAPICache:
     """
-    Configure the global cache with custom settings.
+    Configure the global cache with custom settings in a thread-safe manner.
     
     Args:
         **kwargs: Arguments to pass to GitHubAPICache constructor
@@ -1292,5 +1343,6 @@ def configure_cache(**kwargs) -> GitHubAPICache:
         Configured GitHubAPICache instance
     """
     global _global_cache
-    _global_cache = GitHubAPICache(**kwargs)
+    with _global_cache_lock:
+        _global_cache = GitHubAPICache(**kwargs)
     return _global_cache
