@@ -50,6 +50,7 @@ body {
     text-align: center;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     min-width: 120px;
+    display: inline-table;
 }
 
 .status-indicator {

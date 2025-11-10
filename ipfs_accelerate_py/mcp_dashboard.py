@@ -124,6 +124,13 @@ class MCPDashboard:
             """Serve static files."""
             return send_from_directory(self.app.static_folder, filename)
         
+        @self.app.route('/favicon.ico')
+        def favicon():
+            """Serve favicon."""
+            # Return a simple empty response with proper content type
+            # Browser will use default icon
+            return '', 204
+        
         @self.app.route('/api/mcp/models/autocomplete')
         def autocomplete_models():
             """Autocomplete models API endpoint for workflow editor."""
