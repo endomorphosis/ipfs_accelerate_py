@@ -332,6 +332,82 @@ class GitHubAPICache:
                 validation['updatedAt'] = data.get('updatedAt')
                 validation['pushedAt'] = data.get('pushedAt')
         
+        # Issue operations - use updatedAt/state/comments
+        elif 'issue' in operation:
+            if isinstance(data, list):
+                for issue in data:
+                    if isinstance(issue, dict):
+                        issue_id = str(issue.get('number', issue.get('id', '')))
+                        validation[issue_id] = {
+                            'state': issue.get('state'),
+                            'updatedAt': issue.get('updatedAt') or issue.get('updated_at'),
+                            'comments': issue.get('comments', 0)
+                        }
+            elif isinstance(data, dict):
+                validation['state'] = data.get('state')
+                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+                validation['comments'] = data.get('comments', 0)
+        
+        # Pull request operations - use updatedAt/state/mergeable/reviews
+        elif 'pull' in operation or 'pr' in operation:
+            if isinstance(data, list):
+                for pr in data:
+                    if isinstance(pr, dict):
+                        pr_id = str(pr.get('number', pr.get('id', '')))
+                        validation[pr_id] = {
+                            'state': pr.get('state'),
+                            'updatedAt': pr.get('updatedAt') or pr.get('updated_at'),
+                            'mergeable': pr.get('mergeable') or pr.get('mergeableState'),
+                            'reviews': pr.get('reviews', {}).get('totalCount', 0) if isinstance(pr.get('reviews'), dict) else 0
+                        }
+            elif isinstance(data, dict):
+                validation['state'] = data.get('state')
+                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+                validation['mergeable'] = data.get('mergeable') or data.get('mergeableState')
+                validation['reviews'] = data.get('reviews', {}).get('totalCount', 0) if isinstance(data.get('reviews'), dict) else 0
+        
+        # Comment operations - use updatedAt/body hash
+        elif 'comment' in operation:
+            if isinstance(data, list):
+                for comment in data:
+                    if isinstance(comment, dict):
+                        comment_id = str(comment.get('id', ''))
+                        validation[comment_id] = {
+                            'updatedAt': comment.get('updatedAt') or comment.get('updated_at'),
+                            'bodyLength': len(comment.get('body', ''))
+                        }
+            elif isinstance(data, dict):
+                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+                validation['bodyLength'] = len(data.get('body', ''))
+        
+        # Commit operations - use sha
+        elif 'commit' in operation:
+            if isinstance(data, list):
+                for commit in data:
+                    if isinstance(commit, dict):
+                        commit_sha = commit.get('sha') or commit.get('oid', '')
+                        validation[commit_sha] = {
+                            'sha': commit_sha,
+                            'date': commit.get('committedDate') or commit.get('commit', {}).get('committer', {}).get('date')
+                        }
+            elif isinstance(data, dict):
+                validation['sha'] = data.get('sha') or data.get('oid', '')
+                validation['date'] = data.get('committedDate') or data.get('commit', {}).get('committer', {}).get('date')
+        
+        # Release operations - use tag/publishedAt
+        elif 'release' in operation:
+            if isinstance(data, list):
+                for release in data:
+                    if isinstance(release, dict):
+                        release_id = str(release.get('id', release.get('tagName', '')))
+                        validation[release_id] = {
+                            'tagName': release.get('tagName') or release.get('tag_name'),
+                            'publishedAt': release.get('publishedAt') or release.get('published_at')
+                        }
+            elif isinstance(data, dict):
+                validation['tagName'] = data.get('tagName') or data.get('tag_name')
+                validation['publishedAt'] = data.get('publishedAt') or data.get('published_at')
+        
         # Workflow operations - use updatedAt/status/conclusion
         elif 'workflow' in operation:
             if isinstance(data, list):
@@ -361,6 +437,68 @@ class GitHubAPICache:
             elif isinstance(data, dict):
                 validation['status'] = data.get('status')
                 validation['busy'] = data.get('busy')
+        
+        # Branch operations - use sha/protection
+        elif 'branch' in operation:
+            if isinstance(data, list):
+                for branch in data:
+                    if isinstance(branch, dict):
+                        branch_name = branch.get('name', '')
+                        validation[branch_name] = {
+                            'name': branch_name,
+                            'protected': branch.get('protected', False),
+                            'sha': branch.get('commit', {}).get('sha', '') if isinstance(branch.get('commit'), dict) else ''
+                        }
+            elif isinstance(data, dict):
+                validation['name'] = data.get('name', '')
+                validation['protected'] = data.get('protected', False)
+                validation['sha'] = data.get('commit', {}).get('sha', '') if isinstance(data.get('commit'), dict) else ''
+        
+        # Tag operations - use name/sha
+        elif 'tag' in operation:
+            if isinstance(data, list):
+                for tag in data:
+                    if isinstance(tag, dict):
+                        tag_name = tag.get('name', '')
+                        validation[tag_name] = {
+                            'name': tag_name,
+                            'sha': tag.get('commit', {}).get('sha', '') if isinstance(tag.get('commit'), dict) else ''
+                        }
+            elif isinstance(data, dict):
+                validation['name'] = data.get('name', '')
+                validation['sha'] = data.get('commit', {}).get('sha', '') if isinstance(data.get('commit'), dict) else ''
+        
+        # Deployment operations - use updatedAt/state
+        elif 'deployment' in operation:
+            if isinstance(data, list):
+                for deployment in data:
+                    if isinstance(deployment, dict):
+                        deployment_id = str(deployment.get('id', ''))
+                        validation[deployment_id] = {
+                            'id': deployment_id,
+                            'state': deployment.get('state'),
+                            'updatedAt': deployment.get('updatedAt') or deployment.get('updated_at')
+                        }
+            elif isinstance(data, dict):
+                validation['id'] = str(data.get('id', ''))
+                validation['state'] = data.get('state')
+                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+        
+        # Check/status operations - use status/conclusion
+        elif 'check' in operation or 'status' in operation:
+            if isinstance(data, list):
+                for check in data:
+                    if isinstance(check, dict):
+                        check_id = str(check.get('id', check.get('name', '')))
+                        validation[check_id] = {
+                            'status': check.get('status'),
+                            'conclusion': check.get('conclusion'),
+                            'completedAt': check.get('completedAt') or check.get('completed_at')
+                        }
+            elif isinstance(data, dict):
+                validation['status'] = data.get('status')
+                validation['conclusion'] = data.get('conclusion')
+                validation['completedAt'] = data.get('completedAt') or data.get('completed_at')
         
         # Copilot operations - hash the prompt for deterministic results
         elif operation.startswith('copilot_'):
