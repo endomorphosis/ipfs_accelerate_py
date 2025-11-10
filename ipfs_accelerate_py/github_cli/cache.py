@@ -1236,11 +1236,15 @@ class GitHubAPICache:
 
 # Global cache instance (can be configured at module level)
 _global_cache: Optional[GitHubAPICache] = None
+_global_cache_lock = Lock()
 
 
 def get_global_cache(**kwargs) -> GitHubAPICache:
     """
-    Get or create the global GitHub API cache instance.
+    Get or create the global GitHub API cache instance with thread-safe initialization.
+    
+    Uses double-checked locking pattern to ensure only one instance is created
+    even when called concurrently from multiple threads.
     
     Automatically reads P2P configuration from environment variables:
     - CACHE_ENABLE_P2P: Enable P2P cache sharing (default: true)
@@ -1257,33 +1261,37 @@ def get_global_cache(**kwargs) -> GitHubAPICache:
     """
     global _global_cache
     
+    # First check without lock for performance (double-checked locking)
     if _global_cache is None:
-        # Read from environment if not provided
-        if 'enable_p2p' not in kwargs:
-            kwargs['enable_p2p'] = os.environ.get('CACHE_ENABLE_P2P', 'true').lower() == 'true'
-        
-        if 'p2p_listen_port' not in kwargs:
-            kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9100'))
-        
-        if 'p2p_bootstrap_peers' not in kwargs:
-            peers_str = os.environ.get('CACHE_BOOTSTRAP_PEERS', '')
-            if peers_str:
-                kwargs['p2p_bootstrap_peers'] = [p.strip() for p in peers_str.split(',') if p.strip()]
-        
-        if 'default_ttl' not in kwargs:
-            kwargs['default_ttl'] = int(os.environ.get('CACHE_DEFAULT_TTL', '300'))
-        
-        if 'cache_dir' not in kwargs and 'CACHE_DIR' in os.environ:
-            kwargs['cache_dir'] = os.environ['CACHE_DIR']
-        
-        _global_cache = GitHubAPICache(**kwargs)
+        with _global_cache_lock:
+            # Second check with lock to ensure only one thread creates the instance
+            if _global_cache is None:
+                # Read from environment if not provided
+                if 'enable_p2p' not in kwargs:
+                    kwargs['enable_p2p'] = os.environ.get('CACHE_ENABLE_P2P', 'true').lower() == 'true'
+                
+                if 'p2p_listen_port' not in kwargs:
+                    kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9100'))
+                
+                if 'p2p_bootstrap_peers' not in kwargs:
+                    peers_str = os.environ.get('CACHE_BOOTSTRAP_PEERS', '')
+                    if peers_str:
+                        kwargs['p2p_bootstrap_peers'] = [p.strip() for p in peers_str.split(',') if p.strip()]
+                
+                if 'default_ttl' not in kwargs:
+                    kwargs['default_ttl'] = int(os.environ.get('CACHE_DEFAULT_TTL', '300'))
+                
+                if 'cache_dir' not in kwargs and 'CACHE_DIR' in os.environ:
+                    kwargs['cache_dir'] = os.environ['CACHE_DIR']
+                
+                _global_cache = GitHubAPICache(**kwargs)
     
     return _global_cache
 
 
 def configure_cache(**kwargs) -> GitHubAPICache:
     """
-    Configure the global cache with custom settings.
+    Configure the global cache with custom settings in a thread-safe manner.
     
     Args:
         **kwargs: Arguments to pass to GitHubAPICache constructor
@@ -1292,5 +1300,6 @@ def configure_cache(**kwargs) -> GitHubAPICache:
         Configured GitHubAPICache instance
     """
     global _global_cache
-    _global_cache = GitHubAPICache(**kwargs)
+    with _global_cache_lock:
+        _global_cache = GitHubAPICache(**kwargs)
     return _global_cache
