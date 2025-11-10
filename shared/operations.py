@@ -1615,6 +1615,97 @@ class GitHubOperations:
             "timestamp": time.time(),
             "success": True
         }
+    
+    def get_autoscaler_status(self) -> Dict[str, Any]:
+        """Get the status of the GitHub autoscaler service"""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["systemctl", "status", "github-autoscaler", "--no-pager"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            is_active = "active (running)" in result.stdout
+            
+            return {
+                "active": is_active,
+                "status": result.stdout.split('\n')[2].strip() if len(result.stdout.split('\n')) > 2 else "unknown",
+                "operation": "get_autoscaler_status",
+                "timestamp": time.time(),
+                "success": True
+            }
+        except Exception as e:
+            logger.warning(f"Failed to get autoscaler status: {e}")
+            return {
+                "active": False,
+                "error": str(e),
+                "operation": "get_autoscaler_status",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    def list_active_runners(
+        self,
+        owner: Optional[str] = None,
+        repo: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """List active containerized runners"""
+        try:
+            import subprocess
+            
+            # Get docker containers with runner- prefix
+            result = subprocess.run(
+                ["docker", "ps", "--filter", "name=runner-", "--format", "{{.ID}}\t{{.Names}}\t{{.Status}}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            runners = []
+            if result.returncode == 0 and result.stdout.strip():
+                for line in result.stdout.strip().split('\n'):
+                    parts = line.split('\t')
+                    if len(parts) >= 3:
+                        container_id, name, status = parts[0], parts[1], parts[2]
+                        # Extract repo from container name (format: runner-owner-repo-xxx)
+                        name_parts = name.split('-')
+                        if len(name_parts) >= 3:
+                            runner_owner = name_parts[1] if len(name_parts) > 1 else ""
+                            runner_repo = name_parts[2] if len(name_parts) > 2 else ""
+                            
+                            # Filter by owner/repo if specified
+                            if owner and runner_owner != owner:
+                                continue
+                            if repo and runner_repo != repo:
+                                continue
+                            
+                            runners.append({
+                                "container_id": container_id,
+                                "name": name,
+                                "status": status,
+                                "owner": runner_owner,
+                                "repo": runner_repo
+                            })
+            
+            return {
+                "runners": runners,
+                "count": len(runners),
+                "operation": "list_active_runners",
+                "timestamp": time.time(),
+                "success": True
+            }
+        except Exception as e:
+            logger.warning(f"Failed to list active runners: {e}")
+            return {
+                "runners": [],
+                "count": 0,
+                "error": str(e),
+                "operation": "list_active_runners",
+                "timestamp": time.time(),
+                "success": False
+            }
 
 
 class CopilotOperations:

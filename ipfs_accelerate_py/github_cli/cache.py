@@ -700,7 +700,7 @@ class GitHubAPICache:
             self._stats["api_calls_made"] += 1
             logger.debug(f"API call count: {self._stats['api_calls_made']}")
             
-            return stats
+            return self._stats
     
     def _sanitize_filename(self, key: str) -> str:
         """Sanitize a cache key for use as a filename."""
