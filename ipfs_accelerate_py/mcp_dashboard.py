@@ -1327,6 +1327,21 @@ class MCPDashboard:
                     "used": 0,
                     "timestamp": time.time()
                 }
+        
+        elif tool_name == 'gh_get_auth_status':
+            # Get GitHub authentication status (includes token info and P2P status)
+            try:
+                result = github_ops.get_auth_status()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"gh_get_auth_status failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "success": False,
+                    "timestamp": time.time()
+                }
             
         elif tool_name == 'gh_set_token':
             token = args.get('token')

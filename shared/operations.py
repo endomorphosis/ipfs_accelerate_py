@@ -1455,7 +1455,20 @@ class GitHubOperations:
         self._gh_cli = None
         self._workflow_queue = None
         self._runner_manager = None
+        self._cache = None
         
+    @property
+    def cache(self):
+        """Lazy load global P2P cache"""
+        if self._cache is None:
+            try:
+                from ipfs_accelerate_py.github_cli.cache import get_global_cache
+                self._cache = get_global_cache()
+            except Exception as e:
+                logger.debug(f"P2P cache not available: {e}")
+                self._cache = None
+        return self._cache
+    
     @property
     def gh_cli(self):
         """Lazy load GitHub CLI wrapper"""
@@ -1493,13 +1506,50 @@ class GitHubOperations:
         return self._runner_manager
     
     def get_auth_status(self) -> Dict[str, Any]:
-        """Get GitHub authentication status"""
+        """
+        Get GitHub authentication status with token info.
+        
+        This information is cached via P2P so all runners and dashboards
+        can see the current auth state.
+        """
+        # Check cache first (30 second TTL for auth status)
+        if self.cache:
+            cached = self.cache.get("gh_auth_status")
+            if cached and isinstance(cached, dict):
+                return cached
+        
         if not self.gh_cli:
             return {"error": "GitHub CLI not available", "success": False}
         
+        # Get base auth status from gh CLI
         result = self.gh_cli.get_auth_status()
+        
+        # Add token information
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            result["has_token"] = True
+            result["token_source"] = "environment"
+            # Mask token for security (show first 10 and last 10 chars)
+            if len(token) > 20:
+                result["token_masked"] = f"{token[:10]}...{token[-10:]}"
+        else:
+            result["has_token"] = False
+            result["token_source"] = "gh_cli"
+        
+        # Add P2P cache info if available
+        if self.cache:
+            cache_stats = self.cache.get_stats()
+            result["p2p_enabled"] = cache_stats.get("p2p_enabled", False)
+            result["p2p_peer_id"] = cache_stats.get("peer_id", "N/A")
+            result["p2p_connected_peers"] = cache_stats.get("connected_peers", 0)
+        
         result["operation"] = "get_auth_status"
         result["timestamp"] = time.time()
+        
+        # Cache the result for P2P sharing (30 second TTL)
+        if self.cache:
+            self.cache.put("gh_auth_status", result, ttl=30)
+        
         return result
     
     def list_repos(self, owner: Optional[str] = None, limit: int = 30) -> Dict[str, Any]:
@@ -1556,41 +1606,82 @@ class GitHubOperations:
         owner: Optional[str] = None,
         since_days: int = 1
     ) -> Dict[str, Any]:
-        """Create workflow queues for repositories with recent activity"""
+        """
+        Create workflow queues for repositories with recent activity.
+        
+        Results are cached via P2P so runners and other services can
+        see the current workflow state without making API calls.
+        """
+        # Check cache first (60 second TTL for workflow queues)
+        cache_key = f"workflow_queues:owner={owner}:days={since_days}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug(f"Returning cached workflow queues for {owner}")
+                return cached
+        
         if not self.workflow_queue:
             return {"error": "Workflow Queue not available", "success": False}
         
         queues = self.workflow_queue.create_workflow_queues(owner=owner, since_days=since_days)
-        return {
+        result = {
             "queues": queues,
             "repo_count": len(queues),
             "total_workflows": sum(len(workflows) for workflows in queues.values()),
             "operation": "create_workflow_queues",
             "timestamp": time.time(),
-            "success": True
+            "success": True,
+            "cached": False
         }
+        
+        # Cache the result for P2P sharing (60 second TTL)
+        if self.cache:
+            self.cache.put(cache_key, result, ttl=60)
+            logger.debug(f"Cached workflow queues for {owner} (60s TTL)")
+        
+        return result
     
     def list_runners(
         self,
         repo: Optional[str] = None,
         org: Optional[str] = None
     ) -> Dict[str, Any]:
-        """List self-hosted runners"""
+        """
+        List self-hosted runners.
+        
+        Results are cached via P2P so all services can see runner state.
+        """
         # If no repo/org specified, list active containerized runners instead
         if not repo and not org:
             return self.list_active_runners()
+        
+        # Check cache first (30 second TTL for runner list)
+        cache_key = f"runners:repo={repo}:org={org}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug(f"Returning cached runners for repo={repo}, org={org}")
+                return cached
         
         if not self.runner_manager:
             return {"error": "Runner Manager not available", "success": False}
         
         runners = self.runner_manager.list_runners(repo=repo, org=org)
-        return {
+        result = {
             "runners": runners,
             "count": len(runners),
             "operation": "list_runners",
             "timestamp": time.time(),
-            "success": True
+            "success": True,
+            "cached": False
         }
+        
+        # Cache the result for P2P sharing (30 second TTL)
+        if self.cache:
+            self.cache.put(cache_key, result, ttl=30)
+            logger.debug(f"Cached runner list (30s TTL)")
+        
+        return result
     
     def provision_runners(
         self,
@@ -1655,7 +1746,20 @@ class GitHubOperations:
         owner: Optional[str] = None,
         repo: Optional[str] = None
     ) -> Dict[str, Any]:
-        """List active containerized runners"""
+        """
+        List active containerized runners.
+        
+        Results are cached via P2P so all services see the same runner state.
+        """
+        # Check cache first (15 second TTL for active runners)
+        cache_key = f"active_runners:owner={owner}:repo={repo}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug(f"Returning cached active runners")
+                cached["cached"] = True
+                return cached
+        
         try:
             import subprocess
             
@@ -1695,13 +1799,22 @@ class GitHubOperations:
                                 "busy": "Up" in status  # Simple heuristic
                             })
             
-            return {
+            result = {
                 "runners": runners,
                 "count": len(runners),
                 "operation": "list_active_runners",
                 "timestamp": time.time(),
-                "success": True
+                "success": True,
+                "cached": False
             }
+            
+            # Cache the result for P2P sharing (15 second TTL)
+            if self.cache:
+                self.cache.put(cache_key, result, ttl=15)
+                logger.debug(f"Cached active runners list (15s TTL)")
+            
+            return result
+            
         except Exception as e:
             logger.warning(f"Failed to list active runners: {e}")
             return {

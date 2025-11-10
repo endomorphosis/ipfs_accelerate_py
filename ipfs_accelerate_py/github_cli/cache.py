@@ -36,13 +36,15 @@ except ImportError:
     default_backend = None
 
 # Try to import multiformats for content-addressed caching
+# Note: multiformats provides its own multihash submodule, separate from pymultihash
 try:
-    from multiformats import CID, multihash
+    from multiformats import CID
+    from multiformats import multihash as multiformats_multihash
     HAVE_MULTIFORMATS = True
 except ImportError:
     HAVE_MULTIFORMATS = False
     CID = None
-    multihash = None
+    multiformats_multihash = None
 
 # Try to import libp2p for P2P cache sharing
 try:
@@ -116,7 +118,7 @@ class GitHubAPICache:
         max_cache_size: int = 1000,
         enable_persistence: bool = True,
         enable_p2p: bool = True,
-        p2p_listen_port: int = 9000,
+        p2p_listen_port: int = 9100,  # Default P2P port (avoiding 9000 for MCP server)
         p2p_bootstrap_peers: Optional[List[str]] = None,
         github_repo: Optional[str] = None,
         enable_peer_discovery: bool = True
@@ -210,13 +212,17 @@ class GitHubAPICache:
             self._load_from_disk()
         
         # Initialize P2P if enabled
+        logger.info(f"P2P Configuration: enable_p2p={self.enable_p2p}, HAVE_LIBP2P={HAVE_LIBP2P}, port={p2p_listen_port}")
         if self.enable_p2p:
             try:
+                logger.info(f"Starting P2P initialization on port {p2p_listen_port}...")
                 self._init_p2p()
                 logger.info(f"✓ P2P cache sharing enabled on port {p2p_listen_port}")
             except Exception as e:
                 logger.warning(f"⚠ Failed to initialize P2P: {e}")
                 self.enable_p2p = False
+        else:
+            logger.info(f"P2P cache sharing disabled (enable_p2p={enable_p2p}, HAVE_LIBP2P={HAVE_LIBP2P})")
     
     def __del__(self):
         """Cleanup when cache is destroyed."""
@@ -282,8 +288,8 @@ class GitHubAPICache:
             hasher.update(content_bytes)
             digest = hasher.digest()
             
-            # Wrap in multihash
-            mh = multihash.wrap(digest, 'sha2-256')
+            # Wrap in multihash (using multiformats' multihash, not pymultihash)
+            mh = multiformats_multihash.wrap(digest, 'sha2-256')
             # Create CID
             cid = CID('base32', 1, 'raw', mh)
             return str(cid)
@@ -920,17 +926,17 @@ class GitHubAPICache:
     async def _start_p2p_host(self) -> None:
         """Start libp2p host for P2P cache sharing."""
         try:
-            # Create libp2p host
-            self._p2p_host = await new_host()
+            # Create libp2p host with listen addresses
+            # Note: new_host() is synchronous but needs to be called from async context for some operations
+            from multiaddr import Multiaddr
+            listen_multiaddr = Multiaddr(f"/ip4/0.0.0.0/tcp/{self._p2p_listen_port}")
+            
+            self._p2p_host = new_host(listen_addrs=[listen_multiaddr])
             
             # Set stream handler for cache protocol
             self._p2p_host.set_stream_handler(self._p2p_protocol, self._handle_cache_stream)
             
-            # Start listening
-            listen_addr = f"/ip4/0.0.0.0/tcp/{self._p2p_listen_port}"
-            await self._p2p_host.get_network().listen(listen_addr)
-            
-            logger.info(f"P2P host started, listening on {listen_addr}")
+            logger.info(f"P2P host started, listening on port {self._p2p_listen_port}")
             logger.info(f"Peer ID: {self._p2p_host.get_id().pretty()}")
             
             # Register with peer discovery if enabled
@@ -1119,7 +1125,7 @@ def get_global_cache(**kwargs) -> GitHubAPICache:
             kwargs['enable_p2p'] = os.environ.get('CACHE_ENABLE_P2P', 'true').lower() == 'true'
         
         if 'p2p_listen_port' not in kwargs:
-            kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9000'))
+            kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9100'))
         
         if 'p2p_bootstrap_peers' not in kwargs:
             peers_str = os.environ.get('CACHE_BOOTSTRAP_PEERS', '')

@@ -188,6 +188,12 @@ class DockerRunnerLauncher:
             "-e=RUNNER_WORKDIR=/tmp/_work",
             "-e=EPHEMERAL=true",  # Runner will self-destruct after one job
             
+            # P2P Cache configuration (so runners can query workflow/state via cache)
+            f"-e=GITHUB_TOKEN={os.environ.get('GITHUB_TOKEN', '')}",
+            f"-e=CACHE_ENABLE_P2P={os.environ.get('CACHE_ENABLE_P2P', 'true')}",
+            f"-e=CACHE_LISTEN_PORT={os.environ.get('CACHE_LISTEN_PORT', '9100')}",
+            f"-e=BOOTSTRAP_PEERS={os.environ.get('BOOTSTRAP_PEERS', '/ip4/127.0.0.1/tcp/9100')}",
+            
             # Runner image
             self.runner_image
         ]
