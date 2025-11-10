@@ -3611,7 +3611,7 @@ class MCPDashboard:
             debug: Enable debug mode
         """
         logger.info(f"Starting MCP Dashboard on http://{self.host}:{self.port}/mcp")
-        self.app.run(host=self.host, port=self.port, debug=debug)
+        self.app.run(host=self.host, port=self.port, debug=debug, threaded=True)
 
 
 if __name__ == '__main__':

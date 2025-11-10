@@ -1521,36 +1521,85 @@ class GitHubOperations:
         if not self.gh_cli:
             return {"error": "GitHub CLI not available", "success": False}
         
-        # Get base auth status from gh CLI
-        result = self.gh_cli.get_auth_status()
-        
-        # Add token information
-        token = os.environ.get("GITHUB_TOKEN")
-        if token:
-            result["has_token"] = True
-            result["token_source"] = "environment"
-            # Mask token for security (show first 10 and last 10 chars)
-            if len(token) > 20:
-                result["token_masked"] = f"{token[:10]}...{token[-10:]}"
-        else:
-            result["has_token"] = False
-            result["token_source"] = "gh_cli"
-        
-        # Add P2P cache info if available
-        if self.cache:
-            cache_stats = self.cache.get_stats()
-            result["p2p_enabled"] = cache_stats.get("p2p_enabled", False)
-            result["p2p_peer_id"] = cache_stats.get("peer_id", "N/A")
-            result["p2p_connected_peers"] = cache_stats.get("connected_peers", 0)
-        
-        result["operation"] = "get_auth_status"
-        result["timestamp"] = time.time()
-        
-        # Cache the result for P2P sharing (30 second TTL)
-        if self.cache:
-            self.cache.put("gh_auth_status", result, ttl=30)
-        
-        return result
+        try:
+            # Get base auth status from gh CLI
+            result = self.gh_cli.get_auth_status()
+            
+            # Add token information
+            token = os.environ.get("GITHUB_TOKEN")
+            if token:
+                result["has_token"] = True
+                result["token_source"] = "environment"
+                # Mask token for security (show first 10 and last 10 chars)
+                if len(token) > 20:
+                    result["token_masked"] = f"{token[:10]}...{token[-10:]}"
+            else:
+                result["has_token"] = False
+                result["token_source"] = "gh_cli"
+            
+            # Add P2P cache info if available
+            if self.cache:
+                cache_stats = self.cache.get_stats()
+                result["p2p_enabled"] = cache_stats.get("p2p_enabled", False)
+                result["p2p_peer_id"] = cache_stats.get("peer_id", "N/A")
+                result["p2p_connected_peers"] = cache_stats.get("connected_peers", 0)
+            
+            # Try to add rate limit info (non-blocking)
+            try:
+                rate_limit_result = self.get_rate_limit()
+                if rate_limit_result and "rate_limit" in rate_limit_result:
+                    result["rate_limit"] = rate_limit_result["rate_limit"]
+            except Exception as e:
+                logger.debug(f"Could not fetch rate limit: {e}")
+            
+            result["operation"] = "get_auth_status"
+            result["timestamp"] = time.time()
+            result["success"] = result.get("authenticated", False)
+            
+            # Cache the result for P2P sharing (30 second TTL)
+            if self.cache:
+                self.cache.put("gh_auth_status", result, ttl=30)
+            
+            return result
+            
+        except Exception as e:
+            # Handle rate limiting and other errors gracefully
+            error_msg = str(e)
+            
+            # Build a partial result even on error
+            result = {
+                "error": error_msg,
+                "success": False,
+                "authenticated": False,
+                "operation": "get_auth_status",
+                "timestamp": time.time()
+            }
+            
+            # Still try to add token info even if gh CLI failed
+            token = os.environ.get("GITHUB_TOKEN")
+            if token:
+                result["has_token"] = True
+                result["token_source"] = "environment"
+                if len(token) > 20:
+                    result["token_masked"] = f"{token[:10]}...{token[-10:]}"
+            else:
+                result["has_token"] = False
+            
+            # Add P2P cache info if available
+            if self.cache:
+                try:
+                    cache_stats = self.cache.get_stats()
+                    result["p2p_enabled"] = cache_stats.get("p2p_enabled", False)
+                    result["p2p_peer_id"] = cache_stats.get("peer_id", "N/A")
+                    result["p2p_connected_peers"] = cache_stats.get("connected_peers", 0)
+                except Exception:
+                    pass
+            
+            # Cache error result too (shorter TTL - 10 seconds)
+            if self.cache:
+                self.cache.put("gh_auth_status", result, ttl=10)
+            
+            return result
     
     def list_repos(self, owner: Optional[str] = None, limit: int = 30) -> Dict[str, Any]:
         """List GitHub repositories"""

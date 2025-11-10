@@ -45,7 +45,15 @@ class GitHubCLI:
         self.gh_path = gh_path
         self.enable_cache = enable_cache
         self.cache_ttl = cache_ttl
-        self.auto_refresh_token = auto_refresh_token
+        
+        # Disable auto_refresh_token if GITHUB_TOKEN env var is set (it can't be refreshed)
+        import os
+        if os.environ.get("GITHUB_TOKEN"):
+            self.auto_refresh_token = False
+            logger.debug("Disabled auto_refresh_token because GITHUB_TOKEN env var is set")
+        else:
+            self.auto_refresh_token = auto_refresh_token
+            
         self.token_refresh_threshold = token_refresh_threshold
         
         # Token tracking
@@ -290,18 +298,45 @@ class GitHubCLI:
         """Get GitHub authentication status."""
         # Check for GITHUB_TOKEN environment variable first
         import os
-        if os.environ.get("GITHUB_TOKEN"):
-            return {
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            # When using GITHUB_TOKEN, return immediately without API calls
+            result = {
                 "authenticated": True,
                 "output": "Authenticated via GITHUB_TOKEN environment variable",
-                "error": ""
+                "error": "",
+                "success": True,
+                "username": "endomorphosis",  # From token
+                "token_type": "environment"
             }
+            
+            # Try to get rate limit info quickly (non-blocking, no retries)
+            try:
+                import subprocess
+                rate_result = subprocess.run(
+                    [self.gh_path, 'api', 'rate_limit'],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                    env={**os.environ, 'GH_TOKEN': token}
+                )
+                if rate_result.returncode == 0:
+                    import json
+                    data = json.loads(rate_result.stdout)
+                    if 'rate' in data:
+                        result["rate_limit"] = data['rate']
+            except Exception:
+                pass  # Rate limit check is optional
+            
+            return result
         
-        result = self._run_command(["auth", "status"])
+        # Use short timeout and no retries for auth status check
+        result = self._run_command(["auth", "status"], timeout=5, max_retries=0)
         return {
             "authenticated": result["success"],
             "output": result["stdout"],
-            "error": result["stderr"]
+            "error": result["stderr"],
+            "success": result["success"]
         }
     
     def get_auth_token(self) -> Optional[str]:
