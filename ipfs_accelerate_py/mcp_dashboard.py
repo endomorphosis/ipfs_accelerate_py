@@ -9,6 +9,7 @@ import os
 import logging
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
+from typing import Dict, Any, List, Optional
 
 # Try to import Flask (required for dashboard)
 try:
@@ -3629,48 +3630,90 @@ class MCPDashboard:
     def _get_user_info(self) -> Dict:
         """Get current GitHub user information."""
         try:
-            from ipfs_accelerate_py.github_cli import GitHubCLI
-            gh = GitHubCLI()
-            auth_status = gh.get_auth_status()
+            # Quick check for GITHUB_TOKEN environment variable first
+            import os
+            import subprocess
+            import json
             
-            if auth_status.get('authenticated'):
-                # Try to get detailed user info
+            github_token = os.environ.get('GITHUB_TOKEN')
+            if github_token:
+                # Try to get user info directly with token
                 try:
-                    import subprocess
-                    import json
                     result = subprocess.run(
                         ['gh', 'api', '/user'],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=3,
+                        env={**os.environ, 'GH_TOKEN': github_token}
                     )
                     if result.returncode == 0:
                         user_data = json.loads(result.stdout)
                         return {
                             'authenticated': True,
-                            'username': user_data.get('login', auth_status.get('username', 'Unknown')),
+                            'username': user_data.get('login', 'Unknown'),
                             'name': user_data.get('name', ''),
                             'email': user_data.get('email', ''),
                             'avatar_url': user_data.get('avatar_url', ''),
                             'public_repos': user_data.get('public_repos', 0),
                             'followers': user_data.get('followers', 0),
                             'following': user_data.get('following', 0),
-                            'token_type': auth_status.get('token_type', 'unknown')
+                            'token_type': 'environment'
                         }
+                except subprocess.TimeoutExpired:
+                    logger.debug("Timeout fetching user info via GITHUB_TOKEN")
                 except Exception as e:
-                    logger.debug(f"Could not fetch detailed user info: {e}")
+                    logger.debug(f"Could not fetch user info via GITHUB_TOKEN: {e}")
+            
+            # Try using GitHubCLI wrapper with short timeout
+            try:
+                from ipfs_accelerate_py.github_cli import GitHubCLI
+                # Disable auto_refresh to avoid interactive prompts
+                gh = GitHubCLI(auto_refresh_token=False)
+                auth_status = gh.get_auth_status()
                 
-                # Fallback to basic auth status
-                return {
-                    'authenticated': True,
-                    'username': auth_status.get('username', 'Unknown'),
-                    'token_type': auth_status.get('token_type', 'unknown')
-                }
-            else:
+                if auth_status.get('authenticated'):
+                    # Try to get detailed user info with very short timeout
+                    try:
+                        result = subprocess.run(
+                            ['gh', 'api', '/user'],
+                            capture_output=True,
+                            text=True,
+                            timeout=2
+                        )
+                        if result.returncode == 0:
+                            user_data = json.loads(result.stdout)
+                            return {
+                                'authenticated': True,
+                                'username': user_data.get('login', auth_status.get('username', 'Unknown')),
+                                'name': user_data.get('name', ''),
+                                'email': user_data.get('email', ''),
+                                'avatar_url': user_data.get('avatar_url', ''),
+                                'public_repos': user_data.get('public_repos', 0),
+                                'followers': user_data.get('followers', 0),
+                                'following': user_data.get('following', 0),
+                                'token_type': auth_status.get('token_type', 'unknown')
+                            }
+                    except (subprocess.TimeoutExpired, Exception) as e:
+                        logger.debug(f"Could not fetch detailed user info: {e}")
+                    
+                    # Fallback to basic auth status
+                    return {
+                        'authenticated': True,
+                        'username': auth_status.get('username', 'Unknown'),
+                        'token_type': auth_status.get('token_type', 'unknown')
+                    }
+                else:
+                    return {
+                        'authenticated': False,
+                        'error': 'Not authenticated with GitHub'
+                    }
+            except Exception as e:
+                logger.debug(f"GitHubCLI not available: {e}")
                 return {
                     'authenticated': False,
-                    'error': 'Not authenticated with GitHub'
+                    'error': 'GitHub CLI not configured'
                 }
+                
         except Exception as e:
             logger.error(f"Error getting user info: {e}")
             return {
