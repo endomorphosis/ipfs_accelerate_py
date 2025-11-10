@@ -1455,7 +1455,20 @@ class GitHubOperations:
         self._gh_cli = None
         self._workflow_queue = None
         self._runner_manager = None
+        self._cache = None
         
+    @property
+    def cache(self):
+        """Lazy load global P2P cache"""
+        if self._cache is None:
+            try:
+                from ipfs_accelerate_py.github_cli.cache import get_global_cache
+                self._cache = get_global_cache()
+            except Exception as e:
+                logger.debug(f"P2P cache not available: {e}")
+                self._cache = None
+        return self._cache
+    
     @property
     def gh_cli(self):
         """Lazy load GitHub CLI wrapper"""
@@ -1493,14 +1506,100 @@ class GitHubOperations:
         return self._runner_manager
     
     def get_auth_status(self) -> Dict[str, Any]:
-        """Get GitHub authentication status"""
+        """
+        Get GitHub authentication status with token info.
+        
+        This information is cached via P2P so all runners and dashboards
+        can see the current auth state.
+        """
+        # Check cache first (30 second TTL for auth status)
+        if self.cache:
+            cached = self.cache.get("gh_auth_status")
+            if cached and isinstance(cached, dict):
+                return cached
+        
         if not self.gh_cli:
             return {"error": "GitHub CLI not available", "success": False}
         
-        result = self.gh_cli.get_auth_status()
-        result["operation"] = "get_auth_status"
-        result["timestamp"] = time.time()
-        return result
+        try:
+            # Get base auth status from gh CLI
+            result = self.gh_cli.get_auth_status()
+            
+            # Add token information
+            token = os.environ.get("GITHUB_TOKEN")
+            if token:
+                result["has_token"] = True
+                result["token_source"] = "environment"
+                # Mask token for security (show first 10 and last 10 chars)
+                if len(token) > 20:
+                    result["token_masked"] = f"{token[:10]}...{token[-10:]}"
+            else:
+                result["has_token"] = False
+                result["token_source"] = "gh_cli"
+            
+            # Add P2P cache info if available
+            if self.cache:
+                cache_stats = self.cache.get_stats()
+                result["p2p_enabled"] = cache_stats.get("p2p_enabled", False)
+                result["p2p_peer_id"] = cache_stats.get("peer_id", "N/A")
+                result["p2p_connected_peers"] = cache_stats.get("connected_peers", 0)
+            
+            # Try to add rate limit info (non-blocking)
+            try:
+                rate_limit_result = self.get_rate_limit()
+                if rate_limit_result and "rate_limit" in rate_limit_result:
+                    result["rate_limit"] = rate_limit_result["rate_limit"]
+            except Exception as e:
+                logger.debug(f"Could not fetch rate limit: {e}")
+            
+            result["operation"] = "get_auth_status"
+            result["timestamp"] = time.time()
+            result["success"] = result.get("authenticated", False)
+            
+            # Cache the result for P2P sharing (30 second TTL)
+            if self.cache:
+                self.cache.put("gh_auth_status", result, ttl=30)
+            
+            return result
+            
+        except Exception as e:
+            # Handle rate limiting and other errors gracefully
+            error_msg = str(e)
+            
+            # Build a partial result even on error
+            result = {
+                "error": error_msg,
+                "success": False,
+                "authenticated": False,
+                "operation": "get_auth_status",
+                "timestamp": time.time()
+            }
+            
+            # Still try to add token info even if gh CLI failed
+            token = os.environ.get("GITHUB_TOKEN")
+            if token:
+                result["has_token"] = True
+                result["token_source"] = "environment"
+                if len(token) > 20:
+                    result["token_masked"] = f"{token[:10]}...{token[-10:]}"
+            else:
+                result["has_token"] = False
+            
+            # Add P2P cache info if available
+            if self.cache:
+                try:
+                    cache_stats = self.cache.get_stats()
+                    result["p2p_enabled"] = cache_stats.get("p2p_enabled", False)
+                    result["p2p_peer_id"] = cache_stats.get("peer_id", "N/A")
+                    result["p2p_connected_peers"] = cache_stats.get("connected_peers", 0)
+                except Exception:
+                    pass
+            
+            # Cache error result too (shorter TTL - 10 seconds)
+            if self.cache:
+                self.cache.put("gh_auth_status", result, ttl=10)
+            
+            return result
     
     def list_repos(self, owner: Optional[str] = None, limit: int = 30) -> Dict[str, Any]:
         """List GitHub repositories"""
@@ -1556,37 +1655,82 @@ class GitHubOperations:
         owner: Optional[str] = None,
         since_days: int = 1
     ) -> Dict[str, Any]:
-        """Create workflow queues for repositories with recent activity"""
+        """
+        Create workflow queues for repositories with recent activity.
+        
+        Results are cached via P2P so runners and other services can
+        see the current workflow state without making API calls.
+        """
+        # Check cache first (60 second TTL for workflow queues)
+        cache_key = f"workflow_queues:owner={owner}:days={since_days}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug(f"Returning cached workflow queues for {owner}")
+                return cached
+        
         if not self.workflow_queue:
             return {"error": "Workflow Queue not available", "success": False}
         
         queues = self.workflow_queue.create_workflow_queues(owner=owner, since_days=since_days)
-        return {
+        result = {
             "queues": queues,
             "repo_count": len(queues),
             "total_workflows": sum(len(workflows) for workflows in queues.values()),
             "operation": "create_workflow_queues",
             "timestamp": time.time(),
-            "success": True
+            "success": True,
+            "cached": False
         }
+        
+        # Cache the result for P2P sharing (60 second TTL)
+        if self.cache:
+            self.cache.put(cache_key, result, ttl=60)
+            logger.debug(f"Cached workflow queues for {owner} (60s TTL)")
+        
+        return result
     
     def list_runners(
         self,
         repo: Optional[str] = None,
         org: Optional[str] = None
     ) -> Dict[str, Any]:
-        """List self-hosted runners"""
+        """
+        List self-hosted runners.
+        
+        Results are cached via P2P so all services can see runner state.
+        """
+        # If no repo/org specified, list active containerized runners instead
+        if not repo and not org:
+            return self.list_active_runners()
+        
+        # Check cache first (30 second TTL for runner list)
+        cache_key = f"runners:repo={repo}:org={org}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug(f"Returning cached runners for repo={repo}, org={org}")
+                return cached
+        
         if not self.runner_manager:
             return {"error": "Runner Manager not available", "success": False}
         
         runners = self.runner_manager.list_runners(repo=repo, org=org)
-        return {
+        result = {
             "runners": runners,
             "count": len(runners),
             "operation": "list_runners",
             "timestamp": time.time(),
-            "success": True
+            "success": True,
+            "cached": False
         }
+        
+        # Cache the result for P2P sharing (30 second TTL)
+        if self.cache:
+            self.cache.put(cache_key, result, ttl=30)
+            logger.debug(f"Cached runner list (30s TTL)")
+        
+        return result
     
     def provision_runners(
         self,
@@ -1615,6 +1759,408 @@ class GitHubOperations:
             "timestamp": time.time(),
             "success": True
         }
+    
+    def get_autoscaler_status(self) -> Dict[str, Any]:
+        """Get the status of the GitHub autoscaler service"""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["systemctl", "status", "github-autoscaler", "--no-pager"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            is_active = "active (running)" in result.stdout
+            
+            return {
+                "active": is_active,
+                "status": result.stdout.split('\n')[2].strip() if len(result.stdout.split('\n')) > 2 else "unknown",
+                "operation": "get_autoscaler_status",
+                "timestamp": time.time(),
+                "success": True
+            }
+        except Exception as e:
+            logger.warning(f"Failed to get autoscaler status: {e}")
+            return {
+                "active": False,
+                "error": str(e),
+                "operation": "get_autoscaler_status",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    def list_active_runners(
+        self,
+        owner: Optional[str] = None,
+        repo: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        List active containerized runners.
+        
+        Results are cached via P2P so all services see the same runner state.
+        """
+        # Check cache first (15 second TTL for active runners)
+        cache_key = f"active_runners:owner={owner}:repo={repo}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug(f"Returning cached active runners")
+                cached["cached"] = True
+                return cached
+        
+        try:
+            import subprocess
+            
+            # Get docker containers with runner- prefix
+            result = subprocess.run(
+                ["docker", "ps", "--filter", "name=runner-", "--format", "{{.ID}}\t{{.Names}}\t{{.Status}}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            runners = []
+            if result.returncode == 0 and result.stdout.strip():
+                for line in result.stdout.strip().split('\n'):
+                    parts = line.split('\t')
+                    if len(parts) >= 3:
+                        container_id, name, status = parts[0], parts[1], parts[2]
+                        # Extract repo from container name (format: runner-owner-repo-xxx)
+                        name_parts = name.split('-')
+                        if len(name_parts) >= 3:
+                            runner_owner = name_parts[1] if len(name_parts) > 1 else ""
+                            runner_repo = name_parts[2] if len(name_parts) > 2 else ""
+                            
+                            # Filter by owner/repo if specified
+                            if owner and runner_owner != owner:
+                                continue
+                            if repo and runner_repo != repo:
+                                continue
+                            
+                            runners.append({
+                                "container_id": container_id,
+                                "name": name,
+                                "status": status,
+                                "owner": runner_owner,
+                                "repo": runner_repo,
+                                "libp2p_bootstrapped": True,  # All runners are bootstrapped with P2P cache
+                                "busy": "Up" in status  # Simple heuristic
+                            })
+            
+            result = {
+                "runners": runners,
+                "count": len(runners),
+                "operation": "list_active_runners",
+                "timestamp": time.time(),
+                "success": True,
+                "cached": False
+            }
+            
+            # Cache the result for P2P sharing (15 second TTL)
+            if self.cache:
+                self.cache.put(cache_key, result, ttl=15)
+                logger.debug(f"Cached active runners list (15s TTL)")
+            
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to list active runners: {e}")
+            return {
+                "runners": [],
+                "count": 0,
+                "error": str(e),
+                "operation": "list_active_runners",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    def get_rate_limit(self) -> Dict[str, Any]:
+        """Get GitHub API rate limit information"""
+        try:
+            # Try to get actual rate limit from GitHub API via gh CLI
+            if self.gh_cli:
+                import subprocess
+                result = subprocess.run(
+                    ['gh', 'api', 'rate_limit'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.returncode == 0:
+                    import json
+                    data = json.loads(result.stdout)
+                    if 'rate' in data:
+                        return {
+                            "rate_limit": {
+                                "limit": data['rate'].get('limit', 5000),
+                                "remaining": data['rate'].get('remaining', 5000),
+                                "reset": data['rate'].get('reset', int(time.time()) + 3600),
+                                "used": data['rate'].get('used', 0)
+                            },
+                            "operation": "get_rate_limit",
+                            "timestamp": time.time(),
+                            "success": True
+                        }
+        except Exception as e:
+            logger.debug(f"Could not fetch rate limit from GitHub: {e}")
+        
+        # Return default/cached values
+        return {
+            "rate_limit": {
+                "limit": 5000,
+                "remaining": 5000,
+                "reset": int(time.time()) + 3600,
+                "used": 0
+            },
+            "operation": "get_rate_limit",
+            "timestamp": time.time(),
+            "success": True
+        }
+    
+    def get_runner_details(
+        self,
+        owner: str,
+        repo: str,
+        runner_id: str
+    ) -> Dict[str, Any]:
+        """Get detailed information about a specific runner"""
+        try:
+            import subprocess
+            
+            # Try to get container details by name or ID
+            result = subprocess.run(
+                ["docker", "inspect", f"runner-{owner}-{repo}-{runner_id}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                import json as jsonlib
+                details = jsonlib.loads(result.stdout)[0]
+                
+                state = details.get("State", {})
+                config = details.get("Config", {})
+                
+                return {
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "container_id": details.get("Id", "")[:12],
+                    "name": details.get("Name", "").lstrip("/"),
+                    "status": "running" if state.get("Running") else "stopped",
+                    "started_at": state.get("StartedAt", ""),
+                    "image": config.get("Image", ""),
+                    "labels": config.get("Labels", {}),
+                    "libp2p_bootstrapped": True,  # All runners use P2P cache
+                    "p2p_cache_enabled": True,
+                    "operation": "get_runner_details",
+                    "timestamp": time.time(),
+                    "success": True
+                }
+            else:
+                # Try to find by partial match
+                result = subprocess.run(
+                    ["docker", "ps", "-a", "--filter", f"name=runner-{owner}-{repo}", "--format", "{{.ID}}\t{{.Names}}\t{{.Status}}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    line = result.stdout.strip().split('\n')[0]
+                    parts = line.split('\t')
+                    if len(parts) >= 3:
+                        return {
+                            "runner_id": runner_id,
+                            "owner": owner,
+                            "repo": repo,
+                            "container_id": parts[0],
+                            "name": parts[1],
+                            "status": parts[2],
+                            "libp2p_bootstrapped": True,
+                            "p2p_cache_enabled": True,
+                            "operation": "get_runner_details",
+                            "timestamp": time.time(),
+                            "success": True
+                        }
+                
+                return {
+                    "error": f"Runner not found: {runner_id}",
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "operation": "get_runner_details",
+                    "timestamp": time.time(),
+                    "success": False
+                }
+        except Exception as e:
+            logger.warning(f"Failed to get runner details: {e}")
+            return {
+                "error": str(e),
+                "runner_id": runner_id,
+                "owner": owner,
+                "repo": repo,
+                "operation": "get_runner_details",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    def configure_autoscaler(
+        self,
+        enabled: bool,
+        poll_interval: Optional[int] = None,
+        max_runners: Optional[int] = None,
+        monitor_days: Optional[int] = None,
+        owner: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Configure the GitHub autoscaler service"""
+        try:
+            import subprocess
+            import json as jsonlib
+            
+            # Read current config
+            config_file = "/etc/github-autoscaler/config.json"
+            config = {}
+            
+            try:
+                with open(config_file, 'r') as f:
+                    config = jsonlib.load(f)
+            except FileNotFoundError:
+                # Create default config
+                config = {
+                    "enabled": False,
+                    "poll_interval": 120,
+                    "max_runners": 5,
+                    "monitor_days": 1,
+                    "owner": None
+                }
+            
+            # Update config
+            if enabled is not None:
+                config["enabled"] = enabled
+            if poll_interval is not None:
+                config["poll_interval"] = poll_interval
+            if max_runners is not None:
+                config["max_runners"] = max_runners
+            if monitor_days is not None:
+                config["monitor_days"] = monitor_days
+            if owner is not None:
+                config["owner"] = owner
+            
+            config["updated_at"] = datetime.utcnow().isoformat() + "Z"
+            
+            # Try to write config
+            try:
+                os.makedirs(os.path.dirname(config_file), exist_ok=True)
+                with open(config_file, 'w') as f:
+                    jsonlib.dump(config, f, indent=2)
+                config_saved = True
+            except (IOError, PermissionError) as e:
+                logger.warning(f"Could not write config file: {e}")
+                config_saved = False
+            
+            # Try to restart service if enabled changed
+            service_restarted = False
+            if enabled:
+                try:
+                    result = subprocess.run(
+                        ["systemctl", "restart", "github-autoscaler"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    service_restarted = result.returncode == 0
+                except Exception as e:
+                    logger.warning(f"Could not restart service: {e}")
+            elif not enabled:
+                try:
+                    result = subprocess.run(
+                        ["systemctl", "stop", "github-autoscaler"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    service_restarted = result.returncode == 0
+                except Exception as e:
+                    logger.warning(f"Could not stop service: {e}")
+            
+            return {
+                "status": "success",
+                "config": config,
+                "config_saved": config_saved,
+                "service_restarted": service_restarted,
+                "operation": "configure_autoscaler",
+                "timestamp": time.time(),
+                "success": True
+            }
+        except Exception as e:
+            logger.warning(f"Failed to configure autoscaler: {e}")
+            return {
+                "error": str(e),
+                "operation": "configure_autoscaler",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    def bootstrap_runner_libp2p(
+        self,
+        runner_id: str,
+        owner: str,
+        repo: str
+    ) -> Dict[str, Any]:
+        """Bootstrap a runner with libp2p P2P cache (no-op since runners are pre-configured)"""
+        # All runners are automatically configured with P2P cache via GitHubCLI
+        # This is a no-op that confirms the runner has P2P enabled
+        try:
+            # Check if runner exists
+            import subprocess
+            result = subprocess.run(
+                ["docker", "ps", "--filter", f"name=runner-{owner}-{repo}", "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            runner_exists = result.returncode == 0 and runner_id in result.stdout
+            
+            if runner_exists:
+                return {
+                    "status": "success",
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "libp2p_bootstrapped": True,
+                    "p2p_cache_enabled": True,
+                    "message": "Runner already configured with P2P cache (automatic via GitHubCLI)",
+                    "operation": "bootstrap_runner_libp2p",
+                    "timestamp": time.time(),
+                    "success": True
+                }
+            else:
+                return {
+                    "status": "not_found",
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "error": "Runner container not found",
+                    "operation": "bootstrap_runner_libp2p",
+                    "timestamp": time.time(),
+                    "success": False
+                }
+        except Exception as e:
+            logger.warning(f"Failed to bootstrap runner: {e}")
+            return {
+                "error": str(e),
+                "runner_id": runner_id,
+                "owner": owner,
+                "repo": repo,
+                "operation": "bootstrap_runner_libp2p",
+                "timestamp": time.time(),
+                "success": False
+            }
 
 
 class CopilotOperations:

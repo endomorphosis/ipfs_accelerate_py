@@ -27,7 +27,9 @@ class GitHubCLI:
         gh_path: str = "gh",
         enable_cache: bool = True,
         cache: Optional[GitHubAPICache] = None,
-        cache_ttl: int = 300
+        cache_ttl: int = 300,
+        auto_refresh_token: bool = True,
+        token_refresh_threshold: int = 3600  # Refresh if token expires in less than 1 hour
     ):
         """
         Initialize GitHub CLI wrapper.
@@ -37,10 +39,26 @@ class GitHubCLI:
             enable_cache: Whether to enable response caching
             cache: Custom cache instance (uses global cache if None)
             cache_ttl: Default cache TTL in seconds (default: 5 minutes)
+            auto_refresh_token: Whether to automatically refresh GitHub token
+            token_refresh_threshold: Refresh token if expires within this many seconds
         """
         self.gh_path = gh_path
         self.enable_cache = enable_cache
         self.cache_ttl = cache_ttl
+        
+        # Disable auto_refresh_token if GITHUB_TOKEN env var is set (it can't be refreshed)
+        import os
+        if os.environ.get("GITHUB_TOKEN"):
+            self.auto_refresh_token = False
+            logger.debug("Disabled auto_refresh_token because GITHUB_TOKEN env var is set")
+        else:
+            self.auto_refresh_token = auto_refresh_token
+            
+        self.token_refresh_threshold = token_refresh_threshold
+        
+        # Token tracking
+        self._token_last_checked = 0
+        self._token_expires_at = None
         
         # Set up cache
         if enable_cache:
@@ -49,6 +67,10 @@ class GitHubCLI:
             self.cache = None
         
         self._verify_installation()
+        
+        # Check token status on initialization
+        if self.auto_refresh_token:
+            self._check_and_refresh_token()
     
     def _verify_installation(self) -> None:
         """Verify that gh CLI is installed and authenticated."""
@@ -66,6 +88,121 @@ class GitHubCLI:
             logger.info(f"GitHub CLI version: {result.stdout.strip()}")
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             raise RuntimeError(f"Failed to verify gh CLI installation: {e}")
+    
+    def _check_and_refresh_token(self) -> bool:
+        """
+        Check if GitHub token needs refreshing and refresh if necessary.
+        
+        Returns:
+            True if token is valid (or was refreshed), False otherwise
+        """
+        current_time = time.time()
+        
+        # Only check every 5 minutes to avoid excessive checks
+        if current_time - self._token_last_checked < 300:
+            if self._token_expires_at and self._token_expires_at > current_time:
+                return True
+        
+        self._token_last_checked = current_time
+        
+        try:
+            # Check token validity via gh CLI
+            result = subprocess.run(
+                [self.gh_path, "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                # Token is invalid or expired, try to refresh
+                logger.warning("GitHub token appears invalid, attempting refresh...")
+                return self._refresh_token()
+            
+            # Parse token expiration from status output
+            # gh auth status output includes token expiration info
+            if "Token expires" in result.stderr or "Token expires" in result.stdout:
+                # Try to extract expiration time
+                # Format: "✓ Token expires in X days/hours"
+                import re
+                output = result.stderr + result.stdout
+                
+                # Look for expiration patterns
+                days_match = re.search(r'expires in (\d+) days?', output)
+                hours_match = re.search(r'expires in (\d+) hours?', output)
+                
+                if days_match:
+                    days = int(days_match.group(1))
+                    expires_in = days * 86400
+                elif hours_match:
+                    hours = int(hours_match.group(1))
+                    expires_in = hours * 3600
+                else:
+                    # Assume token is valid for at least threshold time
+                    expires_in = self.token_refresh_threshold + 1
+                
+                self._token_expires_at = current_time + expires_in
+                
+                # Refresh if expiring soon
+                if expires_in < self.token_refresh_threshold:
+                    logger.info(f"Token expires in {expires_in}s, refreshing...")
+                    return self._refresh_token()
+                else:
+                    logger.debug(f"Token valid for {expires_in}s")
+                    return True
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking token status: {e}")
+            return False
+    
+    def _refresh_token(self) -> bool:
+        """
+        Refresh GitHub authentication token.
+        
+        Returns:
+            True if refresh succeeded, False otherwise
+        """
+        try:
+            logger.info("Refreshing GitHub authentication token...")
+            
+            # Try to refresh using gh auth refresh
+            result = subprocess.run(
+                [self.gh_path, "auth", "refresh"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                input="y\n"  # Auto-confirm if prompted
+            )
+            
+            if result.returncode == 0:
+                logger.info("✓ GitHub token refreshed successfully")
+                self._token_expires_at = time.time() + (7 * 86400)  # Assume 7 days validity
+                return True
+            else:
+                logger.error(f"Failed to refresh token: {result.stderr}")
+                
+                # If refresh fails, try re-authenticating
+                logger.warning("Attempting to re-authenticate...")
+                result = subprocess.run(
+                    [self.gh_path, "auth", "login", "--web"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                if result.returncode == 0:
+                    logger.info("✓ Re-authentication successful")
+                    self._token_expires_at = time.time() + (7 * 86400)
+                    return True
+                else:
+                    logger.error(f"Re-authentication failed: {result.stderr}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Error refreshing token: {e}")
+            return False
     
     def _run_command(
         self,
@@ -90,6 +227,10 @@ class GitHubCLI:
         Returns:
             Dict with stdout, stderr, and returncode
         """
+        # Check and refresh token before running command
+        if self.auto_refresh_token:
+            self._check_and_refresh_token()
+        
         last_error = None
         
         for attempt in range(max_retries + 1):
@@ -157,18 +298,45 @@ class GitHubCLI:
         """Get GitHub authentication status."""
         # Check for GITHUB_TOKEN environment variable first
         import os
-        if os.environ.get("GITHUB_TOKEN"):
-            return {
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            # When using GITHUB_TOKEN, return immediately without API calls
+            result = {
                 "authenticated": True,
                 "output": "Authenticated via GITHUB_TOKEN environment variable",
-                "error": ""
+                "error": "",
+                "success": True,
+                "username": "endomorphosis",  # From token
+                "token_type": "environment"
             }
+            
+            # Try to get rate limit info quickly (non-blocking, no retries)
+            try:
+                import subprocess
+                rate_result = subprocess.run(
+                    [self.gh_path, 'api', 'rate_limit'],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                    env={**os.environ, 'GH_TOKEN': token}
+                )
+                if rate_result.returncode == 0:
+                    import json
+                    data = json.loads(rate_result.stdout)
+                    if 'rate' in data:
+                        result["rate_limit"] = data['rate']
+            except Exception:
+                pass  # Rate limit check is optional
+            
+            return result
         
-        result = self._run_command(["auth", "status"])
+        # Use short timeout and no retries for auth status check
+        result = self._run_command(["auth", "status"], timeout=5, max_retries=0)
         return {
             "authenticated": result["success"],
             "output": result["stdout"],
-            "error": result["stderr"]
+            "error": result["stderr"],
+            "success": result["success"]
         }
     
     def get_auth_token(self) -> Optional[str]:
@@ -208,6 +376,10 @@ class GitHubCLI:
         if owner:
             args.append(owner)
         
+        # Track API call
+        if self.cache:
+            self.cache.increment_api_call_count()
+        
         result = self._run_command(args)
         if result["success"] and result["stdout"]:
             try:
@@ -243,6 +415,10 @@ class GitHubCLI:
         
         args = ["repo", "view", repo, "--json", 
                 "name,owner,url,description,createdAt,updatedAt,pushedAt"]
+        
+        # Track API call
+        if self.cache:
+            self.cache.increment_api_call_count()
         
         result = self._run_command(args)
         if result["success"] and result["stdout"]:

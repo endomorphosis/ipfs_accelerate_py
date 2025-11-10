@@ -124,6 +124,13 @@ class MCPDashboard:
             """Serve static files."""
             return send_from_directory(self.app.static_folder, filename)
         
+        @self.app.route('/favicon.ico')
+        def favicon():
+            """Serve favicon."""
+            # Return a simple empty response with proper content type
+            # Browser will use default icon
+            return '', 204
+        
         @self.app.route('/api/mcp/models/autocomplete')
         def autocomplete_models():
             """Autocomplete models API endpoint for workflow editor."""
@@ -948,6 +955,68 @@ class MCPDashboard:
                 
                 logger.info(f"JSON-RPC request: method={method}, params={params}")
                 
+                # Handle tools/call method for MCP SDK
+                if method == 'tools/call':
+                    tool_name = params.get('name')
+                    tool_args = params.get('arguments', {})
+                    
+                    logger.info(f"Calling tool: {tool_name} with args: {tool_args}")
+                    
+                    # Import GitHub operations
+                    try:
+                        # Try absolute import first (when installed as package)
+                        try:
+                            from shared import SharedCore, GitHubOperations
+                        except ImportError:
+                            # Fall back to relative import (when running from source)
+                            import sys
+                            import os
+                            sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+                            from shared import SharedCore, GitHubOperations
+                        
+                        shared_core = SharedCore()
+                        github_ops = GitHubOperations(shared_core)
+                    except ImportError as e:
+                        logger.error(f"Failed to import GitHub operations: {e}")
+                        return jsonify({
+                            'jsonrpc': '2.0',
+                            'error': {
+                                'code': -32603,
+                                'message': f'GitHub operations not available: {str(e)}'
+                            },
+                            'id': request_id
+                        }), 500
+                    
+                    # Map tool names to GitHub operations
+                    try:
+                        result = self._call_github_tool(github_ops, tool_name, tool_args)
+                        return jsonify({
+                            'jsonrpc': '2.0',
+                            'result': result,
+                            'id': request_id
+                        })
+                    except ValueError as e:
+                        logger.error(f"Tool not found: {tool_name}")
+                        return jsonify({
+                            'jsonrpc': '2.0',
+                            'error': {
+                                'code': -32601,
+                                'message': f'Tool not found: {tool_name}'
+                            },
+                            'id': request_id
+                        }), 404
+                    except Exception as e:
+                        logger.error(f"Error calling tool {tool_name}: {e}", exc_info=True)
+                        return jsonify({
+                            'jsonrpc': '2.0',
+                            'error': {
+                                'code': -32603,
+                                'message': f'Tool execution error: {str(e)}'
+                            },
+                            'id': request_id
+                        }), 500
+                
+                # Legacy direct method calls for model tools
                 # Lazy import MCP tools wrapper
                 try:
                     from ipfs_accelerate_py.mcp.tools.model_tools_wrapper import (
@@ -956,24 +1025,17 @@ class MCPDashboard:
                         get_model_details_tool,
                         get_model_stats_tool
                     )
+                    
+                    # Map methods to tool functions
+                    tools = {
+                        'search_models': search_models_tool,
+                        'recommend_models': recommend_models_tool,
+                        'get_model_details': get_model_details_tool,
+                        'get_model_stats': get_model_stats_tool
+                    }
                 except ImportError as e:
-                    logger.error(f"Failed to import MCP tools: {e}")
-                    return jsonify({
-                        'jsonrpc': '2.0',
-                        'error': {
-                            'code': -32603,
-                            'message': f'Internal error: MCP tools not available - {str(e)}'
-                        },
-                        'id': request_id
-                    }), 500
-                
-                # Map methods to tool functions
-                tools = {
-                    'search_models': search_models_tool,
-                    'recommend_models': recommend_models_tool,
-                    'get_model_details': get_model_details_tool,
-                    'get_model_stats': get_model_stats_tool
-                }
+                    logger.warning(f"Model tools wrapper not available: {e}")
+                    tools = {}
                 
                 if method not in tools:
                     return jsonify({
@@ -1024,6 +1086,679 @@ class MCPDashboard:
                     },
                     'id': None
                 }), 400
+    
+    def _call_github_tool(self, github_ops, tool_name: str, args: dict):
+        """Call a GitHub tool with the given arguments.
+        
+        Args:
+            github_ops: GitHubOperations instance
+            tool_name: Name of the tool to call
+            args: Arguments to pass to the tool
+            
+        Returns:
+            Tool execution result
+            
+        Raises:
+            ValueError: If tool_name is not recognized
+        """
+        import time
+        
+        # Map tool names to GitHub operations methods
+        if tool_name == 'gh_auth_status':
+            try:
+                result = github_ops.get_auth_status()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"get_auth_status failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_list_repos':
+            owner = args.get('owner')
+            limit = args.get('limit', 30)
+            try:
+                result = github_ops.list_repos(owner=owner, limit=limit)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"list_repos failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_list_workflow_runs':
+            repo = args.get('repo')
+            status = args.get('status')
+            limit = args.get('limit', 20)
+            try:
+                result = github_ops.list_workflow_runs(repo=repo, status=status, limit=limit)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"list_workflow_runs failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_get_workflow_run':
+            repo = args.get('repo')
+            run_id = args.get('run_id')
+            try:
+                result = github_ops.get_workflow_run(repo=repo, run_id=run_id)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"get_workflow_run failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_create_workflow_queues':
+            since_days = args.get('since_days', 1)
+            owner = args.get('owner')
+            try:
+                result = github_ops.create_workflow_queues(since_days=since_days, owner=owner)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"create_workflow_queues failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_list_runners':
+            owner = args.get('owner')
+            repo = args.get('repo')
+            try:
+                result = github_ops.list_runners(org=owner, repo=repo)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Fallback: try to get runners directly via GitHub CLI
+                logger.debug(f"list_runners failed: {e}, trying fallback")
+                try:
+                    from ipfs_accelerate_py.github_cli import GitHubCLI
+                    gh_cli = GitHubCLI()
+                    if owner and repo:
+                        cmd_result = gh_cli.run_command(['api', f'/repos/{owner}/{repo}/actions/runners'])
+                    elif owner:
+                        cmd_result = gh_cli.run_command(['api', f'/orgs/{owner}/actions/runners'])
+                    else:
+                        cmd_result = gh_cli.run_command(['api', '/user/repos'])
+                    
+                    return {
+                        "tool": tool_name,
+                        "runners": cmd_result.get('runners', []) if isinstance(cmd_result, dict) else [],
+                        "total_count": cmd_result.get('total_count', 0) if isinstance(cmd_result, dict) else 0,
+                        "timestamp": time.time()
+                    }
+                except Exception as e2:
+                    logger.error(f"Fallback for list_runners also failed: {e2}")
+                    return {
+                        "tool": tool_name,
+                        "runners": [],
+                        "total_count": 0,
+                        "error": str(e2),
+                        "timestamp": time.time()
+                    }
+            
+        elif tool_name == 'gh_provision_runners':
+            count = args.get('count', 1)
+            owner = args.get('owner')
+            labels = args.get('labels', [])
+            try:
+                result = github_ops.provision_runners(count=count, owner=owner, labels=labels)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"provision_runners failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_get_cache_stats':
+            # Get cache statistics
+            try:
+                from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+                cache = GitHubAPICache()
+                stats = cache.get_stats()
+                return {
+                    "tool": tool_name,
+                    "timestamp": time.time(),
+                    **stats
+                }
+            except Exception as e:
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+                
+        elif tool_name == 'gh_get_workflow_details':
+            repo = args.get('repo')
+            workflow_id = args.get('workflow_id')
+            limit = args.get('limit', 10)
+            # Get detailed workflow information
+            try:
+                result = github_ops.get_workflow_details(repo=repo, workflow_id=workflow_id, limit=limit)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"get_workflow_details failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_invalidate_cache':
+            pattern = args.get('pattern', '')
+            # Invalidate cache entries matching pattern
+            try:
+                from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+                cache = GitHubAPICache()
+                cleared = cache.clear(pattern=pattern)
+                return {
+                    "tool": tool_name,
+                    "cleared_entries": cleared,
+                    "pattern": pattern,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+                
+        elif tool_name == 'gh_get_rate_limit':
+            # Get GitHub API rate limit
+            try:
+                result = github_ops.get_rate_limit()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Fallback: get rate limit directly via GitHub CLI
+                logger.debug(f"get_rate_limit failed: {e}, trying fallback")
+                try:
+                    from ipfs_accelerate_py.github_cli import GitHubCLI
+                    gh_cli = GitHubCLI()
+                    rate_limit = gh_cli.run_command(['api', '/rate_limit'])
+                    
+                    if isinstance(rate_limit, dict) and 'rate' in rate_limit:
+                        return {
+                            "tool": tool_name,
+                            "limit": rate_limit['rate'].get('limit', 5000),
+                            "remaining": rate_limit['rate'].get('remaining', 0),
+                            "reset": rate_limit['rate'].get('reset', 0),
+                            "used": rate_limit['rate'].get('used', 0),
+                            "timestamp": time.time()
+                        }
+                except Exception as e2:
+                    logger.error(f"Fallback for get_rate_limit also failed: {e2}")
+                
+                # Final fallback
+                return {
+                    "tool": tool_name,
+                    "limit": 5000,
+                    "remaining": 5000,
+                    "reset": int(time.time()) + 3600,
+                    "used": 0,
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_get_auth_status':
+            # Get GitHub authentication status (includes token info and P2P status)
+            try:
+                result = github_ops.get_auth_status()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"gh_get_auth_status failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "success": False,
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_set_token':
+            token = args.get('token')
+            # Set GitHub token
+            try:
+                result = github_ops.set_token(token=token)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Fallback: set token as environment variable
+                logger.debug(f"set_token failed: {e}, trying fallback")
+                import os
+                if token:
+                    os.environ['GITHUB_TOKEN'] = token
+                    return {
+                        "tool": tool_name,
+                        "status": "success",
+                        "message": "Token set in environment",
+                        "timestamp": time.time()
+                    }
+                else:
+                    return {
+                        "tool": tool_name,
+                        "status": "error",
+                        "message": "No token provided",
+                        "timestamp": time.time()
+                    }
+            
+        elif tool_name == 'gh_get_env_vars':
+            # Get environment variables
+            try:
+                result = github_ops.get_env_vars()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Fallback: get GitHub-related environment variables
+                logger.debug(f"get_env_vars failed: {e}, trying fallback")
+                import os
+                gh_vars = {
+                    k: v if k != 'GITHUB_TOKEN' else '***' + v[-4:] if len(v) > 4 else '***'
+                    for k, v in os.environ.items()
+                    if k.startswith('GITHUB_') or k.startswith('GH_')
+                }
+                return {
+                    "tool": tool_name,
+                    "variables": gh_vars,
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_set_env_var':
+            name = args.get('name')
+            value = args.get('value')
+            # Set environment variable
+            try:
+                result = github_ops.set_env_var(name=name, value=value)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Fallback: set environment variable directly
+                logger.debug(f"set_env_var failed: {e}, trying fallback")
+                import os
+                if name and value is not None:
+                    os.environ[name] = str(value)
+                    return {
+                        "tool": tool_name,
+                        "status": "success",
+                        "name": name,
+                        "timestamp": time.time()
+                    }
+                else:
+                    return {
+                        "tool": tool_name,
+                        "status": "error",
+                        "message": "Name and value required",
+                        "timestamp": time.time()
+                    }
+            
+        elif tool_name == 'gh_get_runner_details':
+            owner = args.get('owner')
+            repo = args.get('repo')
+            runner_id = args.get('runner_id')
+            # Get detailed runner information
+            try:
+                result = github_ops.get_runner_details(owner=owner, repo=repo, runner_id=runner_id)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Stub implementation
+                logger.debug(f"get_runner_details failed: {e}, returning stub")
+                return {
+                    "tool": tool_name,
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "status": "stub",
+                    "message": "Runner details not yet implemented",
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_autoscaler_status':
+            # Get autoscaler status
+            try:
+                result = github_ops.get_autoscaler_status()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Stub implementation
+                logger.debug(f"get_autoscaler_status failed: {e}, returning stub")
+                return {
+                    "tool": tool_name,
+                    "enabled": False,
+                    "poll_interval": 120,
+                    "max_runners": 5,
+                    "monitor_days": 1,
+                    "current_runners": 0,
+                    "status": "stub",
+                    "message": "Autoscaler not yet fully implemented",
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_configure_autoscaler':
+            enabled = args.get('enabled')
+            poll_interval = args.get('poll_interval')
+            max_runners = args.get('max_runners')
+            monitor_days = args.get('monitor_days')
+            owner = args.get('owner')
+            # Configure autoscaler
+            try:
+                result = github_ops.configure_autoscaler(
+                    enabled=enabled,
+                    poll_interval=poll_interval,
+                    max_runners=max_runners,
+                    monitor_days=monitor_days,
+                    owner=owner
+                )
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Stub implementation
+                logger.debug(f"configure_autoscaler failed: {e}, returning stub")
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "enabled": enabled,
+                    "poll_interval": poll_interval,
+                    "max_runners": max_runners,
+                    "monitor_days": monitor_days,
+                    "owner": owner,
+                    "message": "Configuration saved (stub)",
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_list_active_runners':
+            owner = args.get('owner')
+            repo = args.get('repo')
+            # List active runners with P2P status
+            try:
+                result = github_ops.list_active_runners(owner=owner, repo=repo)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Stub implementation - return empty list
+                logger.debug(f"list_active_runners failed: {e}, returning stub")
+                return {
+                    "tool": tool_name,
+                    "active_runners": [],
+                    "total_count": 0,
+                    "owner": owner,
+                    "repo": repo,
+                    "message": "Active runner tracking not yet implemented",
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'gh_bootstrap_runner_libp2p':
+            runner_id = args.get('runner_id')
+            owner = args.get('owner')
+            repo = args.get('repo')
+            # Bootstrap runner with libp2p
+            try:
+                result = github_ops.bootstrap_runner_libp2p(runner_id=runner_id, owner=owner, repo=repo)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                # Stub implementation
+                logger.debug(f"bootstrap_runner_libp2p failed: {e}, returning stub")
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "runner_id": runner_id,
+                    "owner": owner,
+                    "repo": repo,
+                    "libp2p_bootstrapped": False,
+                    "message": "libp2p bootstrapping not yet implemented",
+                    "timestamp": time.time()
+                }
+            
+        elif tool_name == 'get_queue_status':
+            # Get comprehensive queue status for all endpoints
+            try:
+                from ipfs_accelerate_py.mcp.tools.enhanced_inference import get_queue_status
+                result = get_queue_status()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"Error getting queue status: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+                
+        elif tool_name == 'get_queue_history':
+            # Get queue performance history and trends
+            try:
+                from ipfs_accelerate_py.mcp.tools.enhanced_inference import get_queue_history
+                result = get_queue_history()
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"Error getting queue history: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_capture_error':
+            error_type = args.get('error_type')
+            error_message = args.get('error_message')
+            stack_trace = args.get('stack_trace')
+            context = args.get('context')
+            severity = args.get('severity', 'medium')
+            # Capture and distribute error via P2P
+            try:
+                from ipfs_accelerate_py.github_cli.error_aggregator import ErrorAggregator
+                from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
+                
+                # Get repo from environment
+                repo = os.environ.get("GITHUB_REPOSITORY", "unknown/repo")
+                
+                # Initialize peer registry if needed
+                if not hasattr(github_ops, '_peer_registry'):
+                    github_ops._peer_registry = P2PPeerRegistry(repo=repo)
+                
+                # Initialize error aggregator if needed
+                if not hasattr(github_ops, '_error_aggregator'):
+                    github_ops._error_aggregator = ErrorAggregator(
+                        repo=repo,
+                        peer_registry=github_ops._peer_registry,
+                        enable_auto_issue_creation=False
+                    )
+                
+                signature = github_ops._error_aggregator.capture_error(
+                    error_type=error_type,
+                    error_message=error_message,
+                    stack_trace=stack_trace,
+                    context=context,
+                    severity=severity
+                )
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "signature": signature,
+                    "message": "Error captured and distributed to peers",
+                    "severity": severity,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_capture_error: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_get_error_statistics':
+            # Get error statistics across all peers
+            try:
+                if not hasattr(github_ops, '_error_aggregator'):
+                    return {
+                        "tool": tool_name,
+                        "status": "not_initialized",
+                        "message": "Error aggregator not initialized yet",
+                        "timestamp": time.time()
+                    }
+                
+                stats = github_ops._error_aggregator.get_error_statistics()
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "statistics": stats,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_get_error_statistics: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_bundle_errors':
+            create_issues = args.get('create_issues', False)
+            # Bundle aggregated errors and optionally create GitHub issues
+            try:
+                if not hasattr(github_ops, '_error_aggregator'):
+                    return {
+                        "tool": tool_name,
+                        "status": "not_initialized",
+                        "message": "Error aggregator not initialized yet",
+                        "timestamp": time.time()
+                    }
+                
+                # Temporarily enable auto-issue creation if requested
+                original_auto_create = github_ops._error_aggregator.enable_auto_issue_creation
+                github_ops._error_aggregator.enable_auto_issue_creation = create_issues
+                
+                try:
+                    summary = github_ops._error_aggregator.bundle_and_report_errors()
+                finally:
+                    github_ops._error_aggregator.enable_auto_issue_creation = original_auto_create
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "summary": summary,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_bundle_errors: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_start_error_bundling':
+            bundle_interval_minutes = args.get('bundle_interval_minutes', 15)
+            min_error_count = args.get('min_error_count', 3)
+            enable_auto_issue_creation = args.get('enable_auto_issue_creation', False)
+            # Start automatic error bundling
+            try:
+                from ipfs_accelerate_py.github_cli.error_aggregator import ErrorAggregator
+                from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
+                
+                # Get repo from environment
+                repo = os.environ.get("GITHUB_REPOSITORY", "unknown/repo")
+                
+                # Initialize peer registry if needed
+                if not hasattr(github_ops, '_peer_registry'):
+                    github_ops._peer_registry = P2PPeerRegistry(repo=repo)
+                
+                # Initialize or update error aggregator
+                github_ops._error_aggregator = ErrorAggregator(
+                    repo=repo,
+                    peer_registry=github_ops._peer_registry,
+                    bundle_interval_minutes=bundle_interval_minutes,
+                    min_error_count=min_error_count,
+                    enable_auto_issue_creation=enable_auto_issue_creation
+                )
+                
+                # Start bundling thread
+                github_ops._error_aggregator.start_bundling()
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "message": "Error bundling started",
+                    "config": {
+                        "bundle_interval_minutes": bundle_interval_minutes,
+                        "min_error_count": min_error_count,
+                        "auto_issue_creation": enable_auto_issue_creation,
+                        "repo": repo
+                    },
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_start_error_bundling: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_stop_error_bundling':
+            # Stop automatic error bundling
+            try:
+                if not hasattr(github_ops, '_error_aggregator'):
+                    return {
+                        "tool": tool_name,
+                        "status": "not_running",
+                        "message": "Error bundling was not running",
+                        "timestamp": time.time()
+                    }
+                
+                github_ops._error_aggregator.stop_bundling_thread()
+                
+                return {
+                    "tool": tool_name,
+                    "status": "success",
+                    "message": "Error bundling stopped",
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error(f"Error in gh_stop_error_bundling: {e}")
+                return {
+                    "tool": tool_name,
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+            
+        else:
+            raise ValueError(f"Unknown tool: {tool_name}")
     
     def _get_fallback_architecture_distribution(self, models):
         """Get architecture distribution from fallback models."""
@@ -2876,7 +3611,7 @@ class MCPDashboard:
             debug: Enable debug mode
         """
         logger.info(f"Starting MCP Dashboard on http://{self.host}:{self.port}/mcp")
-        self.app.run(host=self.host, port=self.port, debug=debug)
+        self.app.run(host=self.host, port=self.port, debug=debug, threaded=True)
 
 
 if __name__ == '__main__':

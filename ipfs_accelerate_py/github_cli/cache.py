@@ -36,13 +36,15 @@ except ImportError:
     default_backend = None
 
 # Try to import multiformats for content-addressed caching
+# Note: multiformats provides its own multihash submodule, separate from pymultihash
 try:
-    from multiformats import CID, multihash
+    from multiformats import CID
+    from multiformats import multihash as multiformats_multihash
     HAVE_MULTIFORMATS = True
 except ImportError:
     HAVE_MULTIFORMATS = False
     CID = None
-    multihash = None
+    multiformats_multihash = None
 
 # Try to import libp2p for P2P cache sharing
 try:
@@ -116,7 +118,7 @@ class GitHubAPICache:
         max_cache_size: int = 1000,
         enable_persistence: bool = True,
         enable_p2p: bool = True,
-        p2p_listen_port: int = 9000,
+        p2p_listen_port: int = 9100,  # Default P2P port (avoiding 9000 for MCP server)
         p2p_bootstrap_peers: Optional[List[str]] = None,
         github_repo: Optional[str] = None,
         enable_peer_discovery: bool = True
@@ -158,7 +160,16 @@ class GitHubAPICache:
             "peer_hits": 0,
             "expirations": 0,
             "evictions": 0,
-            "api_calls_saved": 0
+            "api_calls_saved": 0,
+            "api_calls_made": 0  # Track actual API calls made
+        }
+        
+        # Aggregate stats from all peers
+        self._aggregate_stats = {
+            "total_api_calls": 0,
+            "total_cache_hits": 0,
+            "peer_stats": {},  # Map of peer_id -> stats
+            "last_sync": 0
         }
         
         # P2P networking
@@ -201,13 +212,17 @@ class GitHubAPICache:
             self._load_from_disk()
         
         # Initialize P2P if enabled
+        logger.info(f"P2P Configuration: enable_p2p={self.enable_p2p}, HAVE_LIBP2P={HAVE_LIBP2P}, port={p2p_listen_port}")
         if self.enable_p2p:
             try:
+                logger.info(f"Starting P2P initialization on port {p2p_listen_port}...")
                 self._init_p2p()
                 logger.info(f"✓ P2P cache sharing enabled on port {p2p_listen_port}")
             except Exception as e:
                 logger.warning(f"⚠ Failed to initialize P2P: {e}")
                 self.enable_p2p = False
+        else:
+            logger.info(f"P2P cache sharing disabled (enable_p2p={enable_p2p}, HAVE_LIBP2P={HAVE_LIBP2P})")
     
     def __del__(self):
         """Cleanup when cache is destroyed."""
@@ -273,8 +288,8 @@ class GitHubAPICache:
             hasher.update(content_bytes)
             digest = hasher.digest()
             
-            # Wrap in multihash
-            mh = multihash.wrap(digest, 'sha2-256')
+            # Wrap in multihash (using multiformats' multihash, not pymultihash)
+            mh = multiformats_multihash.wrap(digest, 'sha2-256')
             # Create CID
             cid = CID('base32', 1, 'raw', mh)
             return str(cid)
@@ -317,6 +332,82 @@ class GitHubAPICache:
                 validation['updatedAt'] = data.get('updatedAt')
                 validation['pushedAt'] = data.get('pushedAt')
         
+        # Issue operations - use updatedAt/state/comments
+        elif 'issue' in operation:
+            if isinstance(data, list):
+                for issue in data:
+                    if isinstance(issue, dict):
+                        issue_id = str(issue.get('number', issue.get('id', '')))
+                        validation[issue_id] = {
+                            'state': issue.get('state'),
+                            'updatedAt': issue.get('updatedAt') or issue.get('updated_at'),
+                            'comments': issue.get('comments', 0)
+                        }
+            elif isinstance(data, dict):
+                validation['state'] = data.get('state')
+                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+                validation['comments'] = data.get('comments', 0)
+        
+        # Pull request operations - use updatedAt/state/mergeable/reviews
+        elif 'pull' in operation or 'pr' in operation:
+            if isinstance(data, list):
+                for pr in data:
+                    if isinstance(pr, dict):
+                        pr_id = str(pr.get('number', pr.get('id', '')))
+                        validation[pr_id] = {
+                            'state': pr.get('state'),
+                            'updatedAt': pr.get('updatedAt') or pr.get('updated_at'),
+                            'mergeable': pr.get('mergeable') or pr.get('mergeableState'),
+                            'reviews': pr.get('reviews', {}).get('totalCount', 0) if isinstance(pr.get('reviews'), dict) else 0
+                        }
+            elif isinstance(data, dict):
+                validation['state'] = data.get('state')
+                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+                validation['mergeable'] = data.get('mergeable') or data.get('mergeableState')
+                validation['reviews'] = data.get('reviews', {}).get('totalCount', 0) if isinstance(data.get('reviews'), dict) else 0
+        
+        # Comment operations - use updatedAt/body hash
+        elif 'comment' in operation:
+            if isinstance(data, list):
+                for comment in data:
+                    if isinstance(comment, dict):
+                        comment_id = str(comment.get('id', ''))
+                        validation[comment_id] = {
+                            'updatedAt': comment.get('updatedAt') or comment.get('updated_at'),
+                            'bodyLength': len(comment.get('body', ''))
+                        }
+            elif isinstance(data, dict):
+                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+                validation['bodyLength'] = len(data.get('body', ''))
+        
+        # Commit operations - use sha
+        elif 'commit' in operation:
+            if isinstance(data, list):
+                for commit in data:
+                    if isinstance(commit, dict):
+                        commit_sha = commit.get('sha') or commit.get('oid', '')
+                        validation[commit_sha] = {
+                            'sha': commit_sha,
+                            'date': commit.get('committedDate') or commit.get('commit', {}).get('committer', {}).get('date')
+                        }
+            elif isinstance(data, dict):
+                validation['sha'] = data.get('sha') or data.get('oid', '')
+                validation['date'] = data.get('committedDate') or data.get('commit', {}).get('committer', {}).get('date')
+        
+        # Release operations - use tag/publishedAt
+        elif 'release' in operation:
+            if isinstance(data, list):
+                for release in data:
+                    if isinstance(release, dict):
+                        release_id = str(release.get('id', release.get('tagName', '')))
+                        validation[release_id] = {
+                            'tagName': release.get('tagName') or release.get('tag_name'),
+                            'publishedAt': release.get('publishedAt') or release.get('published_at')
+                        }
+            elif isinstance(data, dict):
+                validation['tagName'] = data.get('tagName') or data.get('tag_name')
+                validation['publishedAt'] = data.get('publishedAt') or data.get('published_at')
+        
         # Workflow operations - use updatedAt/status/conclusion
         elif 'workflow' in operation:
             if isinstance(data, list):
@@ -346,6 +437,68 @@ class GitHubAPICache:
             elif isinstance(data, dict):
                 validation['status'] = data.get('status')
                 validation['busy'] = data.get('busy')
+        
+        # Branch operations - use sha/protection
+        elif 'branch' in operation:
+            if isinstance(data, list):
+                for branch in data:
+                    if isinstance(branch, dict):
+                        branch_name = branch.get('name', '')
+                        validation[branch_name] = {
+                            'name': branch_name,
+                            'protected': branch.get('protected', False),
+                            'sha': branch.get('commit', {}).get('sha', '') if isinstance(branch.get('commit'), dict) else ''
+                        }
+            elif isinstance(data, dict):
+                validation['name'] = data.get('name', '')
+                validation['protected'] = data.get('protected', False)
+                validation['sha'] = data.get('commit', {}).get('sha', '') if isinstance(data.get('commit'), dict) else ''
+        
+        # Tag operations - use name/sha
+        elif 'tag' in operation:
+            if isinstance(data, list):
+                for tag in data:
+                    if isinstance(tag, dict):
+                        tag_name = tag.get('name', '')
+                        validation[tag_name] = {
+                            'name': tag_name,
+                            'sha': tag.get('commit', {}).get('sha', '') if isinstance(tag.get('commit'), dict) else ''
+                        }
+            elif isinstance(data, dict):
+                validation['name'] = data.get('name', '')
+                validation['sha'] = data.get('commit', {}).get('sha', '') if isinstance(data.get('commit'), dict) else ''
+        
+        # Deployment operations - use updatedAt/state
+        elif 'deployment' in operation:
+            if isinstance(data, list):
+                for deployment in data:
+                    if isinstance(deployment, dict):
+                        deployment_id = str(deployment.get('id', ''))
+                        validation[deployment_id] = {
+                            'id': deployment_id,
+                            'state': deployment.get('state'),
+                            'updatedAt': deployment.get('updatedAt') or deployment.get('updated_at')
+                        }
+            elif isinstance(data, dict):
+                validation['id'] = str(data.get('id', ''))
+                validation['state'] = data.get('state')
+                validation['updatedAt'] = data.get('updatedAt') or data.get('updated_at')
+        
+        # Check/status operations - use status/conclusion
+        elif 'check' in operation or 'status' in operation:
+            if isinstance(data, list):
+                for check in data:
+                    if isinstance(check, dict):
+                        check_id = str(check.get('id', check.get('name', '')))
+                        validation[check_id] = {
+                            'status': check.get('status'),
+                            'conclusion': check.get('conclusion'),
+                            'completedAt': check.get('completedAt') or check.get('completed_at')
+                        }
+            elif isinstance(data, dict):
+                validation['status'] = data.get('status')
+                validation['conclusion'] = data.get('conclusion')
+                validation['completedAt'] = data.get('completedAt') or data.get('completed_at')
         
         # Copilot operations - hash the prompt for deterministic results
         elif operation.startswith('copilot_'):
@@ -513,15 +666,23 @@ class GitHubAPICache:
             logger.info(f"Invalidated {len(keys_to_delete)} cache entries matching '{pattern}'")
             return len(keys_to_delete)
     
-    def clear(self) -> None:
-        """Clear all cache entries."""
+    def clear(self) -> int:
+        """
+        Clear all cache entries.
+        
+        Returns:
+            Number of entries cleared
+        """
         with self._lock:
+            count = len(self._cache)
             self._cache.clear()
             self._stats = {
                 "hits": 0,
                 "misses": 0,
+                "peer_hits": 0,
                 "expirations": 0,
-                "evictions": 0
+                "evictions": 0,
+                "api_calls_saved": 0
             }
             
             # Clear disk cache if persistence enabled
@@ -529,7 +690,8 @@ class GitHubAPICache:
                 for cache_file in self.cache_dir.glob("*.json"):
                     cache_file.unlink()
             
-            logger.info("Cleared all cache entries")
+            logger.info(f"Cleared {count} cache entries")
+            return count
     
     def get_stats(self) -> Dict[str, Any]:
         """
@@ -565,8 +727,124 @@ class GitHubAPICache:
                 stats["connected_peers"] = len(self._p2p_connected_peers)
                 if self._p2p_host:
                     stats["peer_id"] = self._p2p_host.get_id().pretty()
+                
+                # Include aggregate stats from all peers
+                stats["aggregate"] = self._get_aggregate_stats()
             
             return stats
+    
+    def _get_aggregate_stats(self) -> Dict[str, Any]:
+        """
+        Get aggregate statistics across all P2P peers.
+        
+        Returns:
+            Dictionary with aggregate statistics
+        """
+        with self._lock:
+            # Sync with peers if needed (every 60 seconds)
+            current_time = time.time()
+            if current_time - self._aggregate_stats["last_sync"] > 60:
+                self._sync_stats_with_peers()
+            
+            return {
+                "total_api_calls": self._aggregate_stats["total_api_calls"],
+                "total_cache_hits": self._aggregate_stats["total_cache_hits"],
+                "total_peers": len(self._aggregate_stats["peer_stats"]) + 1,  # +1 for self
+                "peer_breakdown": self._aggregate_stats["peer_stats"],
+                "last_synced": self._aggregate_stats["last_sync"]
+            }
+    
+    def _sync_stats_with_peers(self) -> None:
+        """
+        Sync statistics with connected P2P peers.
+        
+        Broadcasts local stats and receives stats from peers to build aggregate view.
+        """
+        if not self.enable_p2p or not self._p2p_connected_peers:
+            return
+        
+        try:
+            # Prepare local stats for sharing
+            local_stats = {
+                "api_calls_made": self._stats["api_calls_made"],
+                "cache_hits": self._stats["hits"] + self._stats["peer_hits"],
+                "timestamp": time.time()
+            }
+            
+            # Broadcast stats to peers
+            self._broadcast_stats(local_stats)
+            
+            # Update aggregate with local stats
+            peer_id = self._p2p_host.get_id().pretty() if self._p2p_host else "local"
+            self._aggregate_stats["peer_stats"][peer_id] = local_stats
+            
+            # Calculate totals
+            total_calls = self._stats["api_calls_made"]
+            total_hits = self._stats["hits"] + self._stats["peer_hits"]
+            
+            for peer_stats in self._aggregate_stats["peer_stats"].values():
+                total_calls += peer_stats.get("api_calls_made", 0)
+                total_hits += peer_stats.get("cache_hits", 0)
+            
+            self._aggregate_stats["total_api_calls"] = total_calls
+            self._aggregate_stats["total_cache_hits"] = total_hits
+            self._aggregate_stats["last_sync"] = time.time()
+            
+            logger.debug(f"Synced stats: {total_calls} total API calls across {len(self._aggregate_stats['peer_stats'])} peers")
+            
+        except Exception as e:
+            logger.warning(f"Failed to sync stats with peers: {e}")
+    
+    def _broadcast_stats(self, stats: Dict[str, Any]) -> None:
+        """
+        Broadcast statistics to all connected P2P peers.
+        
+        Args:
+            stats: Statistics dictionary to broadcast
+        """
+        if not self.enable_p2p or not self._p2p_connected_peers:
+            return
+        
+        try:
+            # Encrypt stats if encryption is enabled
+            if self._cipher:
+                stats_json = json.dumps(stats)
+                encrypted_stats = self._cipher.encrypt(stats_json.encode())
+                message = base64.b64encode(encrypted_stats).decode()
+            else:
+                message = json.dumps(stats)
+            
+            # Send stats to each connected peer
+            # Note: This would need to be implemented with actual P2P message sending
+            # For now, this is a placeholder for the P2P protocol
+            logger.debug(f"Broadcasting stats to {len(self._p2p_connected_peers)} peers")
+            
+        except Exception as e:
+            logger.warning(f"Failed to broadcast stats: {e}")
+    
+    def _handle_peer_stats(self, peer_id: str, stats: Dict[str, Any]) -> None:
+        """
+        Handle incoming statistics from a peer.
+        
+        Args:
+            peer_id: Peer ID
+            stats: Statistics from peer
+        """
+        with self._lock:
+            self._aggregate_stats["peer_stats"][peer_id] = stats
+            logger.debug(f"Received stats from peer {peer_id[:16]}...")
+    
+    def increment_api_call_count(self) -> None:
+        """
+        Increment the count of API calls made.
+        
+        Should be called whenever an actual API call is made (not cached).
+        """
+        with self._lock:
+            self._stats["api_calls_made"] += 1
+            logger.debug(f"API call count: {self._stats['api_calls_made']}")
+            
+            return self._stats
     
     def _sanitize_filename(self, key: str) -> str:
         """Sanitize a cache key for use as a filename."""
@@ -786,17 +1064,17 @@ class GitHubAPICache:
     async def _start_p2p_host(self) -> None:
         """Start libp2p host for P2P cache sharing."""
         try:
-            # Create libp2p host
-            self._p2p_host = await new_host()
+            # Create libp2p host with listen addresses
+            # Note: new_host() is synchronous but needs to be called from async context for some operations
+            from multiaddr import Multiaddr
+            listen_multiaddr = Multiaddr(f"/ip4/0.0.0.0/tcp/{self._p2p_listen_port}")
+            
+            self._p2p_host = new_host(listen_addrs=[listen_multiaddr])
             
             # Set stream handler for cache protocol
             self._p2p_host.set_stream_handler(self._p2p_protocol, self._handle_cache_stream)
             
-            # Start listening
-            listen_addr = f"/ip4/0.0.0.0/tcp/{self._p2p_listen_port}"
-            await self._p2p_host.get_network().listen(listen_addr)
-            
-            logger.info(f"P2P host started, listening on {listen_addr}")
+            logger.info(f"P2P host started, listening on port {self._p2p_listen_port}")
             logger.info(f"Peer ID: {self._p2p_host.get_id().pretty()}")
             
             # Register with peer discovery if enabled
@@ -985,7 +1263,7 @@ def get_global_cache(**kwargs) -> GitHubAPICache:
             kwargs['enable_p2p'] = os.environ.get('CACHE_ENABLE_P2P', 'true').lower() == 'true'
         
         if 'p2p_listen_port' not in kwargs:
-            kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9000'))
+            kwargs['p2p_listen_port'] = int(os.environ.get('CACHE_LISTEN_PORT', '9100'))
         
         if 'p2p_bootstrap_peers' not in kwargs:
             peers_str = os.environ.get('CACHE_BOOTSTRAP_PEERS', '')
