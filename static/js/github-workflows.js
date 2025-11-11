@@ -25,6 +25,8 @@ class GitHubWorkflowsManager {
         await Promise.all([
             this.fetchWorkflows(),
             this.fetchRunners(),
+            this.fetchIssues(),
+            this.fetchPullRequests(),
             this.fetchCacheStats(),
             this.fetchRateLimit()
         ]);
@@ -107,6 +109,88 @@ class GitHubWorkflowsManager {
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching runners:', error);
+        }
+    }
+
+    // Fetch issues from all repositories using MCP tools
+    async fetchIssues() {
+        try {
+            if (this.mcp) {
+                // Use MCP SDK to call gh_list_all_issues tool
+                console.log('[GitHub Workflows] Calling gh_list_all_issues via MCP SDK...');
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_all_issues',
+                    arguments: {
+                        state: 'open',
+                        limit_per_repo: 20
+                    }
+                });
+                
+                console.log('[GitHub Workflows] Received issues data:', result);
+                
+                if (result && result.issues) {
+                    this.issues = result.issues;
+                    this.renderIssues();
+                    console.log(`[GitHub Workflows] Loaded ${result.total_issues} issues from ${result.repo_count} repos`);
+                } else if (result && result.error) {
+                    console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                } else {
+                    console.error('[GitHub Workflows] Invalid response from MCP tool');
+                }
+            } else {
+                // Fallback to direct API
+                console.warn('[GitHub Workflows] Falling back to direct API call');
+                const response = await fetch('/api/github/issues');
+                if (response.ok) {
+                    this.issues = await response.json();
+                    this.renderIssues();
+                } else {
+                    console.error('[GitHub Workflows] Failed to fetch issues:', response.statusText);
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching issues:', error);
+        }
+    }
+
+    // Fetch pull requests from all repositories using MCP tools
+    async fetchPullRequests() {
+        try {
+            if (this.mcp) {
+                // Use MCP SDK to call gh_list_all_pull_requests tool
+                console.log('[GitHub Workflows] Calling gh_list_all_pull_requests via MCP SDK...');
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_all_pull_requests',
+                    arguments: {
+                        state: 'open',
+                        limit_per_repo: 20
+                    }
+                });
+                
+                console.log('[GitHub Workflows] Received pull requests data:', result);
+                
+                if (result && result.pull_requests) {
+                    this.pullRequests = result.pull_requests;
+                    this.renderPullRequests();
+                    console.log(`[GitHub Workflows] Loaded ${result.total_prs} PRs from ${result.repo_count} repos`);
+                } else if (result && result.error) {
+                    console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                } else {
+                    console.error('[GitHub Workflows] Invalid response from MCP tool');
+                }
+            } else {
+                // Fallback to direct API
+                console.warn('[GitHub Workflows] Falling back to direct API call');
+                const response = await fetch('/api/github/pull-requests');
+                if (response.ok) {
+                    this.pullRequests = await response.json();
+                    this.renderPullRequests();
+                } else {
+                    console.error('[GitHub Workflows] Failed to fetch pull requests:', response.statusText);
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching pull requests:', error);
         }
     }
 
@@ -249,6 +333,94 @@ class GitHubWorkflowsManager {
         container.innerHTML = html;
     }
 
+    // Render issues in the dashboard
+    renderIssues() {
+        const container = document.getElementById('github-issues-container');
+        if (!container) return;
+
+        let html = '<div class="issues-list">';
+        let totalIssues = 0;
+
+        if (!this.issues || Object.keys(this.issues).length === 0) {
+            html += '<p class="empty-state">No open issues found</p>';
+        } else {
+            for (const [repo, issues] of Object.entries(this.issues)) {
+                totalIssues += issues.length;
+                html += `<div class="repo-section">`;
+                html += `<h5 class="repo-title">${repo} (${issues.length})</h5>`;
+                
+                for (const issue of issues.slice(0, 5)) { // Show max 5 issues per repo
+                    const createdDate = new Date(issue.createdAt).toLocaleDateString();
+                    html += `
+                        <div class="issue-item">
+                            <div class="issue-info">
+                                <a href="${issue.url}" target="_blank" class="issue-title">
+                                    #${issue.number}: ${escapeHtml(issue.title)}
+                                </a>
+                                <div class="issue-meta">
+                                    <span class="issue-author">by ${issue.author.login}</span>
+                                    <span class="issue-date">${createdDate}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                if (issues.length > 5) {
+                    html += `<p class="more-items">...and ${issues.length - 5} more</p>`;
+                }
+                html += `</div>`;
+            }
+        }
+
+        html += `<div class="summary">Total: ${totalIssues} open issues</div></div>`;
+        container.innerHTML = html;
+    }
+
+    // Render pull requests in the dashboard  
+    renderPullRequests() {
+        const container = document.getElementById('github-prs-container');
+        if (!container) return;
+
+        let html = '<div class="prs-list">';
+        let totalPRs = 0;
+
+        if (!this.pullRequests || Object.keys(this.pullRequests).length === 0) {
+            html += '<p class="empty-state">No open pull requests found</p>';
+        } else {
+            for (const [repo, prs] of Object.entries(this.pullRequests)) {
+                totalPRs += prs.length;
+                html += `<div class="repo-section">`;
+                html += `<h5 class="repo-title">${repo} (${prs.length})</h5>`;
+                
+                for (const pr of prs.slice(0, 5)) { // Show max 5 PRs per repo
+                    const createdDate = new Date(pr.createdAt).toLocaleDateString();
+                    html += `
+                        <div class="pr-item">
+                            <div class="pr-info">
+                                <a href="${pr.url}" target="_blank" class="pr-title">
+                                    #${pr.number}: ${escapeHtml(pr.title)}
+                                </a>
+                                <div class="pr-meta">
+                                    <span class="pr-author">by ${pr.author.login}</span>
+                                    <span class="pr-date">${createdDate}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                if (prs.length > 5) {
+                    html += `<p class="more-items">...and ${prs.length - 5} more</p>`;
+                }
+                html += `</div>`;
+            }
+        }
+
+        html += `<div class="summary">Total: ${totalPRs} open pull requests</div></div>`;
+        container.innerHTML = html;
+    }
+
     // View workflow details
     async viewWorkflowDetails(repo) {
         const workflows = this.workflows[repo];
@@ -387,6 +559,8 @@ class GitHubWorkflowsManager {
             await Promise.all([
                 this.fetchWorkflows(),
                 this.fetchRunners(),
+                this.fetchIssues(),
+                this.fetchPullRequests(),
                 this.fetchCacheStats(),
                 this.fetchRateLimit()
             ]);
@@ -783,23 +957,40 @@ class GitHubWorkflowsManager {
         if (!container) return;
         
         if (runners.length === 0) {
-            container.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No active runners</p>';
+            container.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No active runners found. Click "Track" to load runners.</p>';
             return;
         }
         
         let html = '<div style="display: grid; gap: 15px;">';
         for (const runner of runners) {
             const p2p = runner.p2p_status || {};
+            const status = runner.status || 'unknown';
+            const statusColor = status === 'online' ? '#10b981' : status === 'offline' ? '#ef4444' : '#f59e0b';
+            const statusText = status.toUpperCase();
+            const busy = runner.busy ? '(Busy)' : '(Idle)';
+            const os = runner.os || 'Unknown OS';
+            const labels = runner.labels || [];
+            
             html += `
-                <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <h4 style="margin: 0;">${runner.name}</h4>
-                        <span style="color: #10b981;">● ONLINE</span>
+                <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; background: ${status === 'online' ? '#f0fdf4' : '#fff'};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0;">${escapeHtml(runner.name || 'Unknown Runner')}</h4>
+                        <span style="color: ${statusColor}; font-weight: bold;">● ${statusText} ${busy}</span>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div><strong>ID:</strong> ${runner.id}</div>
-                        <div><strong>P2P Cache:</strong> <span style="color: #10b981;">✓ Enabled</span></div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                        <div><strong>ID:</strong> ${runner.id || 'N/A'}</div>
+                        <div><strong>OS:</strong> ${os}</div>
+                        <div><strong>P2P Cache:</strong> <span style="color: ${p2p.cache_enabled ? '#10b981' : '#6b7280'};">${p2p.cache_enabled ? '✓ Enabled' : '✗ Disabled'}</span></div>
+                        <div><strong>Libp2p:</strong> <span style="color: ${p2p.libp2p_bootstrapped ? '#10b981' : '#6b7280'};">${p2p.libp2p_bootstrapped ? '✓ Bootstrapped' : '✗ Not bootstrapped'}</span></div>
                     </div>
+                    ${labels.length > 0 ? `
+                    <div style="margin-top: 10px;">
+                        <strong style="font-size: 12px;">Labels:</strong>
+                        <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;">
+                            ${labels.map(l => `<span style="background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 4px; font-size: 11px;">${escapeHtml(typeof l === 'string' ? l : l.name || l)}</span>`).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -811,27 +1002,42 @@ class GitHubWorkflowsManager {
         const repo = document.getElementById('runner-repo-input')?.value.trim();
         const org = document.getElementById('runner-org-input')?.value.trim();
         
-        if (!repo && !org) {
-            showToast('Please specify repo or org', 'error');
-            return;
-        }
-        
         try {
-            const args = {};
-            if (repo) args.repo = repo;
-            if (org) args.org = org;
+            let result;
             
-            const result = await this.mcp.request('tools/call', {
-                name: 'gh_list_runners',
-                arguments: args
-            });
-            
-            if (!result.error) {
-                showToast(`Found ${result.runners?.length || 0} runner(s)`, 'success');
-                if (result.runners) this.renderRunners(result.runners);
+            // If no repo/org specified, list active runners with P2P info
+            if (!repo && !org) {
+                result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_active_runners',
+                    arguments: { include_docker: true }
+                });
+                
+                if (!result.error) {
+                    const runners = result.active_runners || [];
+                    showToast(`Found ${runners.length} active runner(s)`, 'success');
+                    this.displayActiveRunners(runners);
+                }
+            } else {
+                // If repo/org specified, list all runners for that scope
+                const args = {};
+                if (repo) args.repo = repo;
+                if (org) args.org = org;
+                
+                result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_runners',
+                    arguments: args
+                });
+                
+                if (!result.error) {
+                    const runners = result.runners || [];
+                    showToast(`Found ${runners.length} runner(s)`, 'success');
+                    // Display in the active runners section
+                    this.displayActiveRunners(runners);
+                }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error:', error);
+            showToast('Error fetching runners', 'error');
         }
     }
     

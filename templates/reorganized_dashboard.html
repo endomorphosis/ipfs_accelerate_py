@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPFS Accelerate MCP Server Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/github-workflows.css">
+    <!-- Error Reporting -->
+    <script src="/static/js/error-reporter.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 IPFS Accelerate MCP Server</h1>
+            <p>Comprehensive AI Inference • Model Management • Performance Monitoring</p>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <div id="server-status" class="status-indicator online"></div>
+                <div class="status-label">Server Status</div>
+            </div>
+            <div class="status-item">
+                <div id="port-number" class="status-value">3001</div>
+                <div class="status-label">Port</div>
+            </div>
+            <div class="status-item">
+                <div id="active-connections" class="status-value">1</div>
+                <div class="status-label">Active Connections</div>
+            </div>
+            <div class="status-item">
+                <div id="uptime" class="status-value">6s</div>
+                <div class="status-label">Uptime</div>
+            </div>
+            <div class="status-item">
+                <div id="total-requests" class="status-value">3</div>
+                <div class="status-label">Total Requests</div>
+            </div>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('overview')">🏠 Overview</button>
+            <button class="nav-tab" onclick="showTab('ai-inference')">🤖 AI Inference</button>
+            <button class="nav-tab" onclick="showTab('model-manager')">📚 Model Manager</button>
+            <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
+            <button class="nav-tab" onclick="showTab('github-workflows')">⚡ GitHub Workflows</button>
+            <button class="nav-tab" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
+            <button class="nav-tab" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
+            <button class="nav-tab" onclick="showTab('system-logs')">📝 System Logs</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="overview" class="tab-content active">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>🔧 MCP Server Status</h3>
+                    <div class="info-row">
+                        <span>Status:</span>
+                        <span class="status-running">Running</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Transport:</span>
+                        <span>HTTP + WebSocket</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Available Tools:</span>
+                        <span>15</span>
+                    </div>
+                    <div class="info-row">
+                        <span>API Version:</span>
+                        <span>v1.0.0</span>
+                    </div>
+                    <button class="btn btn-primary" onclick="refreshStatus()">🔄 Refresh Status</button>
+                </div>
+
+                <div class="card">
+                    <h3>🤖 AI Capabilities</h3>
+                    <div class="capability-item">
+                        <span>Text Processing:</span>
+                        <span class="badge badge-active">Active</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Audio Processing:</span>
+                        <span class="badge badge-active">Active</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Vision Processing:</span>
+                        <span class="badge badge-active">Active</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Multimodal:</span>
+                        <span class="badge badge-active">Active</span>
+                    </div>
+                    <button class="btn btn-success" onclick="showTab('ai-inference')">⚡ Test Inference</button>
+                </div>
+
+                <div class="card">
+                    <h3>📚 Model Information</h3>
+                    <div class="info-row">
+                        <span>Loaded Models:</span>
+                        <span id="loaded-models-count">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Available Models:</span>
+                        <span id="available-models-count">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Storage Backend:</span>
+                        <span>JSON + Vector Index</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Cache Status:</span>
+                        <span class="badge badge-enabled">Enabled</span>
+                    </div>
+                    <button class="btn btn-info" onclick="showTab('model-manager')">📖 View Models</button>
+                </div>
+
+                <div class="card">
+                    <h3>📊 Performance Metrics</h3>
+                    <div class="info-row">
+                        <span>CPU Usage:</span>
+                        <span data-metric="cpu">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Memory Usage:</span>
+                        <span data-metric="memory">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Queue Length:</span>
+                        <span>0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Avg Response Time:</span>
+                        <span>584ms</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="refreshMetrics()">📈 Refresh Metrics</button>
+                </div>
+
+                <div class="card">
+                    <h3>👤 User Information</h3>
+                    <div class="info-row">
+                        <span>Username:</span>
+                        <span id="username" data-info="username">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Authentication:</span>
+                        <span id="auth-status">Checking...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Token Type:</span>
+                        <span id="token-type">-</span>
+                    </div>
+                    <button class="btn btn-info" onclick="refreshUserInfo()">🔄 Refresh User</button>
+                </div>
+
+                <div class="card">
+                    <h3>💾 Cache Statistics</h3>
+                    <div id="cache-stats" data-info="cache">
+                        <div class="info-row">
+                            <span>Total Entries:</span>
+                            <span id="cache-entries">Loading...</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Cache Size:</span>
+                            <span id="cache-size">Loading...</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Hit Rate:</span>
+                            <span id="cache-hit-rate">Loading...</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-success" onclick="refreshCacheStats()">📊 Refresh Cache</button>
+                </div>
+
+                <div class="card">
+                    <h3>🌐 P2P Peer System</h3>
+                    <div class="info-row">
+                        <span>Status:</span>
+                        <span id="peer-status">Checking...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Active Peers:</span>
+                        <span id="peer-count" data-info="peers">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>P2P Enabled:</span>
+                        <span id="p2p-enabled">Loading...</span>
+                    </div>
+                    <button class="btn btn-primary" onclick="refreshPeerStatus()">🔄 Refresh Peers</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Inference Tab -->
+        <div id="ai-inference" class="tab-content">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>🤖 AI Inference Testing</h3>
+                    <div class="form-group">
+                        <label for="inference-type">Inference Type:</label>
+                        <select id="inference-type" onchange="updateInferenceForm()">
+                            <option value="text-generation">Text Generation</option>
+                            <option value="text-classification">Text Classification</option>
+                            <option value="text-embeddings">Text Embeddings</option>
+                            <option value="translation">Translation</option>
+                            <option value="summarization">Summarization</option>
+                            <option value="question-answering">Question Answering</option>
+                            <option value="audio-transcription">Audio Transcription</option>
+                            <option value="audio-classification">Audio Classification</option>
+                            <option value="speech-synthesis">Speech Synthesis (TTS)</option>
+                            <option value="audio-generation">Audio Generation</option>
+                            <option value="image-classification">Image Classification</option>
+                            <option value="object-detection">Object Detection</option>
+                            <option value="image-segmentation">Image Segmentation</option>
+                            <option value="image-generation">Image Generation</option>
+                            <option value="image-captioning">Image Captioning</option>
+                            <option value="visual-qa">Visual Q&A</option>
+                            <option value="document-processing">Document Processing</option>
+                            <option value="code-generation">Code Generation</option>
+                            <option value="time-series">Time Series Forecasting</option>
+                            <option value="tabular-data">Tabular Data Processing</option>
+                        </select>
+                    </div>
+                    
+                    <div id="inference-form">
+                        <!-- Dynamic form will be populated here -->
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-success" onclick="runInference()">⚡ Run Inference</button>
+                        <button class="btn btn-secondary" onclick="clearInferenceForm()">🧹 Clear</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🎯 Inference Results</h3>
+                    <div id="inference-results">
+                        <p>Ready to run inference...</p>
+                        <p>Try these examples:</p>
+                        <ul>
+                            <li>Text: "Explain quantum computing"</li>
+                            <li>Classification: "This product is amazing!"</li>
+                            <li>Translation: "Hello world" → Spanish</li>
+                            <li>Summarization: Long article text</li>
+                        </ul>
+                    </div>
+                    <div class="result-metadata">
+                        <div class="info-row">
+                            <span>Execution Time:</span>
+                            <span id="execution-time">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Model Used:</span>
+                            <span id="model-used">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Manager Tab -->
+        <div id="model-manager" class="tab-content">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>🤗 HuggingFace Model Search</h3>
+                    <div class="form-group">
+                        <label for="hf-search">Search HuggingFace Hub:</label>
+                        <input type="text" id="hf-search" placeholder="Enter model name (e.g., llama, bert, gpt)" />
+                    </div>
+                    <div class="form-group">
+                        <label for="task-filter">Filter by Task:</label>
+                        <select id="task-filter">
+                            <option value="">All Tasks</option>
+                            <option value="text-generation">Text Generation</option>
+                            <option value="text-classification">Text Classification</option>
+                            <option value="question-answering">Question Answering</option>
+                            <option value="text2text-generation">Text-to-Text Generation</option>
+                            <option value="automatic-speech-recognition">Speech Recognition</option>
+                            <option value="text-to-speech">Text-to-Speech</option>
+                            <option value="image-classification">Image Classification</option>
+                            <option value="object-detection">Object Detection</option>
+                            <option value="image-segmentation">Image Segmentation</option>
+                            <option value="text-to-image">Text-to-Image</option>
+                            <option value="image-to-text">Image-to-Text</option>
+                            <option value="code-generation">Code Generation</option>
+                            <option value="time-series-forecasting">Time Series Forecasting</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="size-filter">Model Size Filter:</label>
+                        <select id="size-filter">
+                            <option value="">All Sizes</option>
+                            <option value="tiny">Tiny (< 100M params)</option>
+                            <option value="small">Small (100M - 1B params)</option>
+                            <option value="medium">Medium (1B - 10B params)</option>
+                            <option value="large">Large (10B+ params)</option>
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="searchHuggingFace()">🔍 Search HF Hub</button>
+                        <button class="btn btn-secondary" onclick="clearHFResults()">🗑️ Clear Results</button>
+                    </div>
+                    <div id="hf-search-results">
+                        <!-- Search results will appear here -->
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🔧 Hardware Compatibility Testing</h3>
+                    <div class="form-group">
+                        <label for="test-model-id">Model ID:</label>
+                        <input type="text" id="test-model-id" placeholder="Enter model ID or select from search results" />
+                    </div>
+                    <div class="form-group">
+                        <label>Hardware Platforms to Test:</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" value="cpu" checked> CPU</label>
+                            <label><input type="checkbox" value="cuda"> CUDA (NVIDIA)</label>
+                            <label><input type="checkbox" value="rocm"> ROCm (AMD)</label>
+                            <label><input type="checkbox" value="openvino"> OpenVINO (Intel)</label>
+                            <label><input type="checkbox" value="mps"> MPS (Apple Silicon)</label>
+                            <label><input type="checkbox" value="webgpu"> WebGPU</label>
+                            <label><input type="checkbox" value="directml"> DirectML</label>
+                            <label><input type="checkbox" value="onnx"> ONNX Runtime</label>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="batch-size">Batch Size:</label>
+                            <input type="number" id="batch-size" value="1" min="1" max="32" />
+                        </div>
+                        <div class="form-group">
+                            <label for="seq-length">Sequence Length:</label>
+                            <input type="number" id="seq-length" value="512" min="64" max="2048" />
+                        </div>
+                        <div class="form-group">
+                            <label for="precision">Precision:</label>
+                            <select id="precision">
+                                <option value="FP32">FP32</option>
+                                <option value="FP16">FP16</option>
+                                <option value="INT8">INT8</option>
+                                <option value="INT4">INT4</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-success" onclick="testModelCompatibility()">🧪 Test Compatibility</button>
+                    <div id="compatibility-results">
+                        <!-- Test results will appear here -->
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📊 Model Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="total-indexed-models">0</div>
+                            <div class="stat-label">Total Indexed Models</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="hf-models-count">0</div>
+                            <div class="stat-label">HuggingFace Models</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="compatible-models">0</div>
+                            <div class="stat-label">Compatible Models</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="tested-models">0</div>
+                            <div class="stat-label">Tested Models</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coverage Analysis Tab -->
+        <div id="coverage" class="tab-content">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>🎯 Model-Hardware Coverage Analysis</h3>
+                    <div id="coverage-matrix">
+                        <!-- Coverage matrix will be populated here -->
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="refreshCoverageMatrix()">🔄 Refresh Matrix</button>
+                        <button class="btn btn-success" onclick="testMissingPlatforms()">⚡ Test Missing Platforms</button>
+                        <button class="btn btn-warning" onclick="autoFillCriticalGaps()">🎯 Auto-Fill Critical Gaps</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>💾 Parquet Data Management</h3>
+                    <div class="info-row">
+                        <span>Current Data File:</span>
+                        <span id="current-parquet-file">benchmark_results_2024-01-15.parquet</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Total Records:</span>
+                        <span id="total-records">247</span>
+                    </div>
+                    <div class="info-row">
+                        <span>File Size:</span>
+                        <span id="file-size">2.1 MB</span>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-info" onclick="exportParquetData()">📊 Export Data</button>
+                        <button class="btn btn-secondary" onclick="backupParquetData()">💾 Backup Data</button>
+                        <button class="btn btn-warning" onclick="analyzeTrends()">📈 Analyze Trends</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📈 Coverage Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value">247</div>
+                            <div class="stat-label">Total Models Tested</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">8</div>
+                            <div class="stat-label">Hardware Platforms</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">73%</div>
+                            <div class="stat-label">Coverage Percentage</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="last-test-date">2024-01-15</div>
+                            <div class="stat-label">Last Test Date</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue Monitor Tab -->
+        <div id="queue-monitor" class="tab-content">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>📊 Queue Status</h3>
+                    <div class="info-row">
+                        <span>Pending Jobs:</span>
+                        <span id="pending-jobs">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Running Jobs:</span>
+                        <span id="running-jobs">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Completed Jobs:</span>
+                        <span id="completed-jobs">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Failed Jobs:</span>
+                        <span id="failed-jobs">0</span>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="refreshQueue()">🔄 Refresh Queue</button>
+                        <button class="btn btn-warning" onclick="clearQueue()">🗑️ Clear Queue</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>👷 Worker Management</h3>
+                    <div class="info-row">
+                        <span>Active Workers:</span>
+                        <span id="active-workers">1</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Worker Pool Size:</span>
+                        <span id="worker-pool-size">4</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Average Job Time:</span>
+                        <span id="avg-job-time">-</span>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-success" onclick="addWorker()">➕ Add Worker</button>
+                        <button class="btn btn-danger" onclick="removeWorker()">➖ Remove Worker</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📈 Queue Analytics</h3>
+                    <div class="info-row">
+                        <span>Jobs/Hour:</span>
+                        <span id="jobs-per-hour">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Success Rate:</span>
+                        <span id="success-rate">100%</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Peak Queue Size:</span>
+                        <span id="peak-queue-size">0</span>
+                    </div>
+                    <button class="btn btn-info" onclick="exportQueueStats()">📊 Export Stats</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MCP Tools Tab -->
+        <div id="mcp-tools" class="tab-content">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>🔧 Available MCP Tools</h3>
+                    <div class="tools-grid">
+                        <div class="tool-tag">text_generation</div>
+                        <div class="tool-tag">text_classification</div>
+                        <div class="tool-tag">text_embeddings</div>
+                        <div class="tool-tag">audio_transcription</div>
+                        <div class="tool-tag">image_classification</div>
+                        <div class="tool-tag">visual_qa</div>
+                        <div class="tool-tag">model_search</div>
+                        <div class="tool-tag">model_recommend</div>
+                        <div class="tool-tag">queue_status</div>
+                        <div class="tool-tag">performance_stats</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="refreshTools()">🔄 Refresh Tools</button>
+                </div>
+
+                <div class="card">
+                    <h3>🔌 API Endpoints</h3>
+                    <div class="endpoint-list">
+                        <div class="endpoint-item">
+                            <span class="method">GET</span>
+                            <span class="path">/api/mcp/*</span>
+                            <span class="desc">MCP Server</span>
+                        </div>
+                        <div class="endpoint-item">
+                            <span class="method">POST</span>
+                            <span class="path">/api/models/search</span>
+                            <span class="desc">Model Search</span>
+                        </div>
+                        <div class="endpoint-item">
+                            <span class="method">POST</span>
+                            <span class="path">/api/models/test</span>
+                            <span class="desc">Hardware Testing</span>
+                        </div>
+                        <div class="endpoint-item">
+                            <span class="method">GET</span>
+                            <span class="path">/api/queue/*</span>
+                            <span class="desc">Queue API</span>
+                        </div>
+                        <div class="endpoint-item">
+                            <span class="method">POST</span>
+                            <span class="path">/api/inference/*</span>
+                            <span class="desc">Inference API</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-success" onclick="testAPIs()">⚡ Test APIs</button>
+                </div>
+
+                <div class="card">
+                    <h3>⚙️ Server Configuration</h3>
+                    <div class="info-row">
+                        <span>Max Queue Size:</span>
+                        <span>1000</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Request Timeout:</span>
+                        <span>30s</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Cache TTL:</span>
+                        <span>3600s</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Log Level:</span>
+                        <span>INFO</span>
+                    </div>
+                    <button class="btn btn-warning" onclick="editConfig()">⚙️ Edit Config</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- GitHub Workflows Tab -->
+        <!-- GitHub Workflows Tab (Reorganized) -->
+        <div id="github-workflows" class="tab-content">
+            
+            <!-- Quick Actions Bar -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; margin-bottom: 20px; color: white;">
+                <h2 style="margin: 0 0 15px 0; font-size: 24px;">⚡ GitHub Actions Control Center</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <button class="btn btn-light" onclick="githubManager?.fetchWorkflows()" style="background: white; color: #667eea; border: none; padding: 10px;">🔄 Refresh All</button>
+                    <button class="btn btn-light" onclick="githubManager?.getAutoscalerStatus()" style="background: white; color: #667eea; border: none; padding: 10px;">📊 Get Status</button>
+                    <button class="btn btn-light" onclick="githubManager?.fetchCacheStats()" style="background: white; color: #667eea; border: none; padding: 10px;">💾 Cache Stats</button>
+                    <button class="btn btn-light" onclick="githubManager?.listActiveRunners()" style="background: white; color: #667eea; border: none; padding: 10px;">🖥️ Active Runners</button>
+                </div>
+            </div>
+            
+            <!-- Collapsible Section: Configuration -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div onclick="toggleSection('config-section')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0;">⚙️ Configuration & Authentication</h3>
+                    <span style="font-size: 20px;">▼</span>
+                </div>
+                <div id="config-section" style="display: none; margin-top: 15px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <!-- GitHub Authentication -->
+                        <div style="border-left: 4px solid #667eea; padding-left: 15px;">
+                            <h4 style="margin: 0 0 10px 0; color: #667eea;">🔐 GitHub Token</h4>
+                            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                                <input type="password" id="github-token-input" placeholder="ghp_xxxxxxxxxxxx" 
+                                       style="flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" />
+                                <button class="btn btn-primary" onclick="githubManager?.setGitHubToken()">Set</button>
+                                <button class="btn btn-secondary" onclick="githubManager?.toggleTokenVisibility()" id="toggle-token-btn">👁️</button>
+                            </div>
+                            <div id="token-status" style="display: none; padding: 10px; border-radius: 4px; font-size: 14px;"></div>
+                            <button class="btn btn-info" onclick="githubManager?.fetchEnvVars()" style="margin-top: 10px;">📋 View Env Vars</button>
+                            <div id="env-vars-display" style="display: none; margin-top: 10px;"></div>
+                        </div>
+                        
+                        <!-- Autoscaler Configuration -->
+                        <div style="border-left: 4px solid #f59e0b; padding-left: 15px;">
+                            <h4 style="margin: 0 0 10px 0; color: #f59e0b;">🤖 Autoscaler</h4>
+                            <div style="display: grid; gap: 10px;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="font-size: 12px; color: #6b7280;">Status</label>
+                                        <select id="autoscaler-enabled" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
+                                            <option value="true">Enabled</option>
+                                            <option value="false">Disabled</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 12px; color: #6b7280;">Poll (sec)</label>
+                                        <input type="number" id="autoscaler-poll-interval" value="120" min="30" 
+                                               style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;" />
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="font-size: 12px; color: #6b7280;">Max Runners</label>
+                                        <input type="number" id="autoscaler-max-runners" placeholder="Auto" 
+                                               style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 12px; color: #6b7280;">Days</label>
+                                        <input type="number" id="autoscaler-since-days" value="1" min="1" 
+                                               style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;" />
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" onclick="githubManager?.configureAutoscaler()">💾 Save Config</button>
+                                <div id="autoscaler-status-display"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stats Overview -->
+            <div class="dashboard-grid" style="margin-bottom: 20px;">
+                <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h3 style="margin: 0 0 10px 0;">📊 Cache Performance</h3>
+                    <div id="github-cache-stats">
+                        <p class="loading-message" style="color: white;">Loading...</p>
+                    </div>
+                </div>
+                
+                <div class="card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+                    <h3 style="margin: 0 0 10px 0;">⚡ API Rate Limit</h3>
+                    <div id="github-rate-limit">
+                        <p class="loading-message" style="color: white;">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Active Runners -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">🚀 Active Runners (P2P Enabled)</h3>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="runner-repo-input" placeholder="owner/repo (optional)" 
+                               style="padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; width: 180px;" />
+                        <input type="text" id="runner-org-input" placeholder="org (optional)" 
+                               style="padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; width: 130px;" />
+                        <button class="btn btn-primary" onclick="githubManager?.trackRunners()" title="Click to load runners. Leave inputs empty for all active runners.">Track</button>
+                    </div>
+                </div>
+                <div id="active-runners-container">
+                    <p style="color: #6b7280; padding: 20px; text-align: center;">Click "Track" to load active runners</p>
+                </div>
+            </div>
+            
+            <!-- Collapsible Section: Workflows & All Runners -->
+            <div class="card">
+                <div onclick="toggleSection('workflows-section')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0;">📋 Workflows & All Runners</h3>
+                    <span style="font-size: 20px;">▼</span>
+                </div>
+                <div id="workflows-section" style="display: none; margin-top: 15px;">
+                    <div class="dashboard-grid">
+                        <div>
+                            <h4>⚙️ Active Workflows</h4>
+                            <div id="github-workflows-container">
+                                <p class="loading-message">Loading workflows...</p>
+                            </div>
+                            <button class="btn btn-primary" onclick="githubManager?.fetchWorkflows()" style="margin-top: 10px;">🔄 Refresh</button>
+                        </div>
+                        
+                        <div>
+                            <h4>🖥️ All Self-Hosted Runners</h4>
+                            <div id="github-runners-container">
+                                <p class="loading-message">Loading runners...</p>
+                            </div>
+                            <button class="btn btn-primary" onclick="githubManager?.fetchRunners()" style="margin-top: 10px;">🔄 Refresh</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- System Logs Tab -->
+        <div id="system-logs" class="tab-content">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">📝 System Logs</h3>
+                    <button class="btn btn-primary" onclick="refreshSystemLogs()">🔄 Refresh</button>
+                </div>
+                <div id="log-container" class="log-container">
+                    <div class="log-placeholder">
+                        <p class="text-muted">Loading system logs...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MCP SDK and GitHub Workflows Integration -->
+    <script src="/static/js/mcp-sdk.js"></script>
+    <script src="/static/js/github-workflows.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    
+    <!-- Initialize Error Reporting -->
+    <script>
+        // Initialize error reporting when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                // Install global error handlers
+                installGlobalErrorHandler('dashboard');
+                console.log('✓ Error reporting initialized for dashboard');
+            } catch (error) {
+                console.warn('Failed to initialize error reporting:', error);
+            }
+        });
+    </script>
+</body>
+</html>
