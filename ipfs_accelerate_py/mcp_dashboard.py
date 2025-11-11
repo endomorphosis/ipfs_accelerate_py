@@ -1266,8 +1266,8 @@ class MCPDashboard:
         elif tool_name == 'gh_get_cache_stats':
             # Get cache statistics
             try:
-                from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
-                cache = GitHubAPICache()
+                from ipfs_accelerate_py.github_cli.cache import get_global_cache
+                cache = get_global_cache()
                 stats = cache.get_stats()
                 return {
                     "tool": tool_name,
@@ -1303,8 +1303,8 @@ class MCPDashboard:
             pattern = args.get('pattern', '')
             # Invalidate cache entries matching pattern
             try:
-                from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
-                cache = GitHubAPICache()
+                from ipfs_accelerate_py.github_cli.cache import get_global_cache
+                cache = get_global_cache()
                 cleared = cache.clear(pattern=pattern)
                 return {
                     "tool": tool_name,
