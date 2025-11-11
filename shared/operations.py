@@ -1607,9 +1607,24 @@ class GitHubOperations:
             return {"error": "GitHub CLI not available", "success": False}
         
         repos = self.gh_cli.list_repos(owner=owner, limit=limit)
+        
+        # Check if we got any repos or if there was an error
+        if repos is None or (isinstance(repos, list) and len(repos) == 0):
+            # Check if this is due to authentication issues
+            auth_status = self.gh_cli.get_auth_status()
+            if not auth_status.get("success") or not auth_status.get("authenticated"):
+                return {
+                    "error": "GitHub authentication required. Please run 'gh auth login' or set GITHUB_TOKEN environment variable.",
+                    "success": False,
+                    "operation": "list_repos",
+                    "timestamp": time.time()
+                }
+            # Empty list might be legitimate (user has no repos)
+            # Only return error if we're not authenticated
+        
         return {
             "repos": repos,
-            "count": len(repos),
+            "count": len(repos) if repos else 0,
             "operation": "list_repos",
             "timestamp": time.time(),
             "success": True
