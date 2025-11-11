@@ -226,6 +226,112 @@ class IPFSAccelerateCLI:
             logger.error(f"✗ Error checking MCP server status: {e}")
             return 1
     
+    def run_mcp_user_info(self, args):
+        """Get GitHub user information"""
+        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+        
+        try:
+            user_info = get_user_info()
+            
+            if args.json:
+                print(json.dumps(user_info, indent=2))
+            else:
+                if user_info.get('authenticated'):
+                    logger.info("✓ GitHub User Information:")
+                    logger.info(f"  Username: {user_info.get('username', 'Unknown')}")
+                    if user_info.get('name'):
+                        logger.info(f"  Name: {user_info.get('name')}")
+                    if user_info.get('email'):
+                        logger.info(f"  Email: {user_info.get('email')}")
+                    logger.info(f"  Token Type: {user_info.get('token_type', 'unknown')}")
+                    if user_info.get('public_repos') is not None:
+                        logger.info(f"  Public Repos: {user_info.get('public_repos')}")
+                else:
+                    logger.warning("✗ Not authenticated with GitHub")
+                    if user_info.get('error'):
+                        logger.warning(f"  Error: {user_info['error']}")
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting user info: {e}")
+            return 1
+    
+    def run_mcp_cache_stats(self, args):
+        """Get cache statistics"""
+        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
+        
+        try:
+            cache_stats = get_cache_stats()
+            
+            if args.json:
+                print(json.dumps(cache_stats, indent=2))
+            else:
+                if cache_stats.get('available'):
+                    logger.info("✓ GitHub API Cache Statistics:")
+                    logger.info(f"  Total Entries: {cache_stats.get('total_entries', 0)}")
+                    logger.info(f"  Cache Size: {cache_stats.get('total_size_mb', 0):.2f} MB")
+                    logger.info(f"  Hit Rate: {cache_stats.get('hit_rate', 0)*100:.1f}%")
+                    logger.info(f"  Total Hits: {cache_stats.get('total_hits', 0)}")
+                    logger.info(f"  Total Misses: {cache_stats.get('total_misses', 0)}")
+                    logger.info(f"  P2P Enabled: {'Yes' if cache_stats.get('p2p_enabled') else 'No'}")
+                    if cache_stats.get('p2p_enabled'):
+                        logger.info(f"  P2P Peers: {cache_stats.get('p2p_peers', 0)}")
+                else:
+                    logger.warning("✗ Cache not available")
+                    if cache_stats.get('error'):
+                        logger.warning(f"  Error: {cache_stats['error']}")
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting cache stats: {e}")
+            return 1
+    
+    def run_mcp_peer_status(self, args):
+        """Get P2P peer system status"""
+        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+        
+        try:
+            peer_status = get_peer_status()
+            
+            if args.json:
+                print(json.dumps(peer_status, indent=2))
+            else:
+                logger.info("P2P Peer System Status:")
+                logger.info(f"  Enabled: {'Yes' if peer_status.get('enabled') else 'No'}")
+                logger.info(f"  Active: {'Yes' if peer_status.get('active') else 'No'}")
+                logger.info(f"  Peer Count: {peer_status.get('peer_count', 0)}")
+                
+                if peer_status.get('peers'):
+                    logger.info("  Connected Peers:")
+                    for peer in peer_status['peers']:
+                        logger.info(f"    - {peer.get('peer_id')} ({peer.get('runner_name')})")
+                elif not peer_status.get('enabled'):
+                    logger.info("  (P2P cache sharing is not enabled)")
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting peer status: {e}")
+            return 1
+    
+    def run_mcp_metrics(self, args):
+        """Get system metrics"""
+        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_system_metrics
+        
+        try:
+            metrics = get_system_metrics()
+            
+            if args.json:
+                print(json.dumps(metrics, indent=2))
+            else:
+                logger.info("✓ System Metrics:")
+                logger.info(f"  CPU Usage: {metrics.get('cpu_percent', 0)}%")
+                logger.info(f"  Memory Usage: {metrics.get('memory_percent', 0)}%")
+                logger.info(f"  Memory Used: {metrics.get('memory_used_gb', 0):.2f} GB / {metrics.get('memory_total_gb', 0):.2f} GB")
+                logger.info(f"  Uptime: {metrics.get('uptime', 'unknown')}")
+                logger.info(f"  Active Connections: {metrics.get('active_connections', 0)}")
+                logger.info(f"  Process ID: {metrics.get('pid', 0)}")
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting system metrics: {e}")
+            return 1
+    
     def _start_integrated_mcp_server(self, args):
         """Start the integrated MCP server with dashboard, model manager, and queue monitoring"""
         import asyncio
@@ -1076,6 +1182,19 @@ Examples:
         status_parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
         status_parser.add_argument('--port', type=int, default=9000, help='Server port (default: 9000)')
         
+        # Dashboard data commands
+        user_info_parser = mcp_subparsers.add_parser('user-info', help='Get GitHub user information')
+        user_info_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
+        cache_stats_parser = mcp_subparsers.add_parser('cache-stats', help='Get cache statistics')
+        cache_stats_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
+        peer_status_parser = mcp_subparsers.add_parser('peer-status', help='Get P2P peer system status')
+        peer_status_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
+        metrics_parser = mcp_subparsers.add_parser('metrics', help='Get system metrics')
+        metrics_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
         # Parse arguments
         args = parser.parse_args()
         
@@ -1098,6 +1217,14 @@ Examples:
                 return cli.run_mcp_dashboard(args)
             elif args.mcp_command == 'status':
                 return cli.run_mcp_status(args)
+            elif args.mcp_command == 'user-info':
+                return cli.run_mcp_user_info(args)
+            elif args.mcp_command == 'cache-stats':
+                return cli.run_mcp_cache_stats(args)
+            elif args.mcp_command == 'peer-status':
+                return cli.run_mcp_peer_status(args)
+            elif args.mcp_command == 'metrics':
+                return cli.run_mcp_metrics(args)
             else:
                 mcp_parser.print_help()
                 return 1

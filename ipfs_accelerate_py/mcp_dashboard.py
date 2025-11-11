@@ -120,22 +120,26 @@ class MCPDashboard:
         @self.app.route('/api/mcp/user')
         def user_info():
             """Get current user information."""
-            return jsonify(self._get_user_info())
+            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+            return jsonify(get_user_info())
         
         @self.app.route('/api/mcp/cache/stats')
         def cache_stats():
             """Get cache statistics."""
-            return jsonify(self._get_cache_stats())
+            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
+            return jsonify(get_cache_stats())
         
         @self.app.route('/api/mcp/peers')
         def peer_status():
             """Get P2P peer system status."""
-            return jsonify(self._get_peer_status())
+            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+            return jsonify(get_peer_status())
         
         @self.app.route('/api/mcp/metrics')
         def system_metrics():
             """Get real system metrics."""
-            return jsonify(self._get_system_metrics())
+            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_system_metrics
+            return jsonify(get_system_metrics(start_time=self._start_time))
         
         @self.app.route('/mcp/models')
         def models():
@@ -3626,246 +3630,6 @@ class MCPDashboard:
         """
         
         return html
-    
-    def _get_user_info(self) -> Dict:
-        """Get current GitHub user information."""
-        try:
-            # Quick check for GITHUB_TOKEN environment variable first
-            import os
-            import subprocess
-            import json
-            
-            github_token = os.environ.get('GITHUB_TOKEN')
-            if github_token:
-                # Try to get user info directly with token
-                try:
-                    result = subprocess.run(
-                        ['gh', 'api', '/user'],
-                        capture_output=True,
-                        text=True,
-                        timeout=3,
-                        env={**os.environ, 'GH_TOKEN': github_token}
-                    )
-                    if result.returncode == 0:
-                        user_data = json.loads(result.stdout)
-                        return {
-                            'authenticated': True,
-                            'username': user_data.get('login', 'Unknown'),
-                            'name': user_data.get('name', ''),
-                            'email': user_data.get('email', ''),
-                            'avatar_url': user_data.get('avatar_url', ''),
-                            'public_repos': user_data.get('public_repos', 0),
-                            'followers': user_data.get('followers', 0),
-                            'following': user_data.get('following', 0),
-                            'token_type': 'environment'
-                        }
-                except subprocess.TimeoutExpired:
-                    logger.debug("Timeout fetching user info via GITHUB_TOKEN")
-                except Exception as e:
-                    logger.debug(f"Could not fetch user info via GITHUB_TOKEN: {e}")
-            
-            # Try using GitHubCLI wrapper with short timeout
-            try:
-                from ipfs_accelerate_py.github_cli import GitHubCLI
-                # Disable auto_refresh to avoid interactive prompts
-                gh = GitHubCLI(auto_refresh_token=False)
-                auth_status = gh.get_auth_status()
-                
-                if auth_status.get('authenticated'):
-                    # Try to get detailed user info with very short timeout
-                    try:
-                        result = subprocess.run(
-                            ['gh', 'api', '/user'],
-                            capture_output=True,
-                            text=True,
-                            timeout=2
-                        )
-                        if result.returncode == 0:
-                            user_data = json.loads(result.stdout)
-                            return {
-                                'authenticated': True,
-                                'username': user_data.get('login', auth_status.get('username', 'Unknown')),
-                                'name': user_data.get('name', ''),
-                                'email': user_data.get('email', ''),
-                                'avatar_url': user_data.get('avatar_url', ''),
-                                'public_repos': user_data.get('public_repos', 0),
-                                'followers': user_data.get('followers', 0),
-                                'following': user_data.get('following', 0),
-                                'token_type': auth_status.get('token_type', 'unknown')
-                            }
-                    except (subprocess.TimeoutExpired, Exception) as e:
-                        logger.debug(f"Could not fetch detailed user info: {e}")
-                    
-                    # Fallback to basic auth status
-                    return {
-                        'authenticated': True,
-                        'username': auth_status.get('username', 'Unknown'),
-                        'token_type': auth_status.get('token_type', 'unknown')
-                    }
-                else:
-                    return {
-                        'authenticated': False,
-                        'error': 'Not authenticated with GitHub'
-                    }
-            except Exception as e:
-                logger.debug(f"GitHubCLI not available: {e}")
-                return {
-                    'authenticated': False,
-                    'error': 'GitHub CLI not configured'
-                }
-                
-        except Exception as e:
-            logger.error(f"Error getting user info: {e}")
-            return {
-                'authenticated': False,
-                'error': str(e)
-            }
-    
-    def _get_cache_stats(self) -> Dict:
-        """Get GitHub API cache statistics."""
-        try:
-            from ipfs_accelerate_py.github_cli.cache import get_global_cache
-            cache = get_global_cache()
-            stats = cache.get_stats()
-            return {
-                'available': True,
-                'total_entries': stats.get('total_entries', 0),
-                'total_size_mb': stats.get('total_size_bytes', 0) / (1024 * 1024),
-                'hit_rate': stats.get('hit_rate', 0),
-                'total_hits': stats.get('hits', 0),
-                'total_misses': stats.get('misses', 0),
-                'total_requests': stats.get('hits', 0) + stats.get('misses', 0),
-                'cache_dir': str(stats.get('cache_dir', '')),
-                'p2p_enabled': stats.get('p2p_enabled', False),
-                'p2p_peers': stats.get('p2p_peers', 0)
-            }
-        except Exception as e:
-            logger.error(f"Error getting cache stats: {e}")
-            return {
-                'available': False,
-                'error': str(e)
-            }
-    
-    def _get_peer_status(self) -> Dict:
-        """Get P2P peer system status."""
-        try:
-            from ipfs_accelerate_py.github_cli.cache import get_global_cache
-            cache = get_global_cache()
-            
-            # Get cache stats which include P2P info
-            stats = cache.get_stats()
-            
-            # Try to get more detailed P2P info if available
-            peer_info = {
-                'enabled': stats.get('p2p_enabled', False),
-                'active': stats.get('p2p_enabled', False),
-                'peer_count': stats.get('p2p_peers', 0),
-                'peers': []
-            }
-            
-            # Try to get peer registry info if available
-            try:
-                import os
-                repo = os.environ.get('GITHUB_REPOSITORY', '')
-                if repo and peer_info['enabled']:
-                    from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
-                    registry = P2PPeerRegistry(repo=repo)
-                    
-                    # Get registered peers
-                    peers = registry.list_peers()
-                    peer_info['peers'] = [
-                        {
-                            'peer_id': p.get('peer_id', 'unknown'),
-                            'runner_name': p.get('metadata', {}).get('runner_name', 'unknown'),
-                            'listen_port': p.get('listen_port', 0),
-                            'last_seen': p.get('last_seen', '')
-                        }
-                        for p in peers
-                    ]
-                    peer_info['peer_count'] = len(peers)
-            except Exception as e:
-                logger.debug(f"Could not get detailed peer info: {e}")
-            
-            return peer_info
-        except Exception as e:
-            logger.error(f"Error getting peer status: {e}")
-            return {
-                'enabled': False,
-                'active': False,
-                'peer_count': 0,
-                'peers': [],
-                'error': str(e)
-            }
-    
-    def _get_system_metrics(self) -> Dict:
-        """Get real system metrics."""
-        import time
-        import os
-        
-        try:
-            # Try to import psutil for detailed metrics
-            try:
-                import psutil
-                
-                # Get CPU usage
-                cpu_percent = psutil.cpu_percent(interval=0.1)
-                
-                # Get memory info
-                memory = psutil.virtual_memory()
-                memory_percent = memory.percent
-                memory_used_gb = memory.used / (1024 ** 3)
-                memory_total_gb = memory.total / (1024 ** 3)
-                
-                # Get process info for uptime
-                process = psutil.Process(os.getpid())
-                uptime_seconds = time.time() - process.create_time()
-                
-                # Get connection count (approximate from open files/sockets)
-                connections = len(process.connections())
-                
-            except ImportError:
-                # Fallback to basic metrics if psutil not available
-                logger.debug("psutil not available, using basic metrics")
-                cpu_percent = 0
-                memory_percent = 0
-                memory_used_gb = 0
-                memory_total_gb = 0
-                uptime_seconds = time.time() - getattr(self, '_start_time', time.time())
-                connections = 1  # At least the dashboard connection
-            
-            # Format uptime
-            if uptime_seconds < 60:
-                uptime = f"{int(uptime_seconds)}s"
-            elif uptime_seconds < 3600:
-                uptime = f"{int(uptime_seconds / 60)}m"
-            elif uptime_seconds < 86400:
-                uptime = f"{int(uptime_seconds / 3600)}h"
-            else:
-                uptime = f"{int(uptime_seconds / 86400)}d"
-            
-            return {
-                'cpu_percent': round(cpu_percent, 1),
-                'memory_percent': round(memory_percent, 1),
-                'memory_used_gb': round(memory_used_gb, 2),
-                'memory_total_gb': round(memory_total_gb, 2),
-                'uptime': uptime,
-                'uptime_seconds': int(uptime_seconds),
-                'active_connections': connections,
-                'pid': os.getpid()
-            }
-        except Exception as e:
-            logger.error(f"Error getting system metrics: {e}")
-            # Return fallback data
-            return {
-                'cpu_percent': 0,
-                'memory_percent': 0,
-                'memory_used_gb': 0,
-                'memory_total_gb': 0,
-                'uptime': 'unknown',
-                'uptime_seconds': 0,
-                'active_connections': 0,
-                'error': str(e)
-            }
 
     def run(self, debug: bool = False) -> None:
         """Run the MCP dashboard.
