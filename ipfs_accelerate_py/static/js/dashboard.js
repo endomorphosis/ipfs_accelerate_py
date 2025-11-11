@@ -6,6 +6,18 @@ let searchResults = [];
 let compatibilityResults = [];
 let autoRefreshInterval = null;
 
+// Utility function for HTML escaping
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
 // Utility function for user notifications
 function showToast(message, type = 'info', duration = 3000) {
     console.log(`[Dashboard] ${type.toUpperCase()}: ${message}`);
@@ -1149,33 +1161,68 @@ function editConfig() {
 }
 
 // Logs Functions
+function refreshSystemLogs() {
+    console.log('Refreshing system logs...');
+    const logContainer = document.getElementById('log-container');
+    if (!logContainer) return;
+    
+    // Show loading state
+    logContainer.innerHTML = '<div class="log-placeholder"><p class="text-muted">Loading system logs...</p></div>';
+    
+    // Fetch logs with parameters
+    const params = new URLSearchParams({
+        lines: 100,
+        service: 'ipfs-accelerate'
+    });
+    
+    fetch(`/api/mcp/logs?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            console.log('System logs loaded:', data);
+            if (data.logs && data.logs.length > 0) {
+                let html = '<div class="log-entries">';
+                data.logs.forEach(log => {
+                    const levelEmoji = {
+                        'ERROR': '❌',
+                        'CRITICAL': '🔥',
+                        'WARNING': '⚠️',
+                        'INFO': 'ℹ️',
+                        'DEBUG': '🔍'
+                    }[log.level] || '📝';
+                    
+                    const levelClass = log.level.toLowerCase();
+                    html += `
+                        <div class="log-entry log-${levelClass}">
+                            <span class="log-emoji">${levelEmoji}</span>
+                            <span class="log-timestamp">${log.timestamp}</span>
+                            <span class="log-level log-level-${levelClass}">${log.level}</span>
+                            <span class="log-message">${escapeHtml(log.message)}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                html += `<div class="log-footer">Total: ${data.total} entries | Service: ${data.service}</div>`;
+                logContainer.innerHTML = html;
+                
+                // Auto-scroll to bottom
+                logContainer.scrollTop = logContainer.scrollHeight;
+            } else {
+                logContainer.innerHTML = '<div class="log-placeholder"><p class="text-muted">No logs available</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing system logs:', error);
+            logContainer.innerHTML = `
+                <div class="log-placeholder">
+                    <p class="text-danger">❌ Failed to load logs: ${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        });
+}
+
 function refreshLogs() {
-    console.log('Refreshing logs...');
-    const logOutput = document.getElementById('log-output');
-    if (logOutput) {
-        fetch('/api/mcp/logs')
-            .then(response => response.json())
-            .then(data => {
-                console.log('Logs loaded:', data);
-                if (data.logs) {
-                    logOutput.innerHTML = '';
-                    data.logs.forEach(log => {
-                        const logEntry = document.createElement('div');
-                        logEntry.className = 'log-entry';
-                        logEntry.textContent = `${log.timestamp} - ${log.level} - ${log.message}`;
-                        logOutput.appendChild(logEntry);
-                    });
-                    logOutput.scrollTop = logOutput.scrollHeight;
-                }
-            })
-            .catch(error => {
-                console.error('Error refreshing logs:', error);
-                const errorEntry = document.createElement('div');
-                errorEntry.className = 'log-entry';
-                errorEntry.textContent = `${new Date().toISOString()} - ERROR - Failed to load logs: ${error.message}`;
-                logOutput.appendChild(errorEntry);
-            });
-    }
+    // Alias for refreshSystemLogs for backward compatibility
+    refreshSystemLogs();
 }
 
 function clearLogs() {

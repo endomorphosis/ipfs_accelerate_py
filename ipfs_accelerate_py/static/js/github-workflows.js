@@ -25,6 +25,8 @@ class GitHubWorkflowsManager {
         await Promise.all([
             this.fetchWorkflows(),
             this.fetchRunners(),
+            this.fetchIssues(),
+            this.fetchPullRequests(),
             this.fetchCacheStats(),
             this.fetchRateLimit()
         ]);
@@ -107,6 +109,88 @@ class GitHubWorkflowsManager {
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching runners:', error);
+        }
+    }
+
+    // Fetch issues from all repositories using MCP tools
+    async fetchIssues() {
+        try {
+            if (this.mcp) {
+                // Use MCP SDK to call gh_list_all_issues tool
+                console.log('[GitHub Workflows] Calling gh_list_all_issues via MCP SDK...');
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_all_issues',
+                    arguments: {
+                        state: 'open',
+                        limit_per_repo: 20
+                    }
+                });
+                
+                console.log('[GitHub Workflows] Received issues data:', result);
+                
+                if (result && result.issues) {
+                    this.issues = result.issues;
+                    this.renderIssues();
+                    console.log(`[GitHub Workflows] Loaded ${result.total_issues} issues from ${result.repo_count} repos`);
+                } else if (result && result.error) {
+                    console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                } else {
+                    console.error('[GitHub Workflows] Invalid response from MCP tool');
+                }
+            } else {
+                // Fallback to direct API
+                console.warn('[GitHub Workflows] Falling back to direct API call');
+                const response = await fetch('/api/github/issues');
+                if (response.ok) {
+                    this.issues = await response.json();
+                    this.renderIssues();
+                } else {
+                    console.error('[GitHub Workflows] Failed to fetch issues:', response.statusText);
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching issues:', error);
+        }
+    }
+
+    // Fetch pull requests from all repositories using MCP tools
+    async fetchPullRequests() {
+        try {
+            if (this.mcp) {
+                // Use MCP SDK to call gh_list_all_pull_requests tool
+                console.log('[GitHub Workflows] Calling gh_list_all_pull_requests via MCP SDK...');
+                const result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_all_pull_requests',
+                    arguments: {
+                        state: 'open',
+                        limit_per_repo: 20
+                    }
+                });
+                
+                console.log('[GitHub Workflows] Received pull requests data:', result);
+                
+                if (result && result.pull_requests) {
+                    this.pullRequests = result.pull_requests;
+                    this.renderPullRequests();
+                    console.log(`[GitHub Workflows] Loaded ${result.total_prs} PRs from ${result.repo_count} repos`);
+                } else if (result && result.error) {
+                    console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                } else {
+                    console.error('[GitHub Workflows] Invalid response from MCP tool');
+                }
+            } else {
+                // Fallback to direct API
+                console.warn('[GitHub Workflows] Falling back to direct API call');
+                const response = await fetch('/api/github/pull-requests');
+                if (response.ok) {
+                    this.pullRequests = await response.json();
+                    this.renderPullRequests();
+                } else {
+                    console.error('[GitHub Workflows] Failed to fetch pull requests:', response.statusText);
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching pull requests:', error);
         }
     }
 
@@ -249,6 +333,94 @@ class GitHubWorkflowsManager {
         container.innerHTML = html;
     }
 
+    // Render issues in the dashboard
+    renderIssues() {
+        const container = document.getElementById('github-issues-container');
+        if (!container) return;
+
+        let html = '<div class="issues-list">';
+        let totalIssues = 0;
+
+        if (!this.issues || Object.keys(this.issues).length === 0) {
+            html += '<p class="empty-state">No open issues found</p>';
+        } else {
+            for (const [repo, issues] of Object.entries(this.issues)) {
+                totalIssues += issues.length;
+                html += `<div class="repo-section">`;
+                html += `<h5 class="repo-title">${repo} (${issues.length})</h5>`;
+                
+                for (const issue of issues.slice(0, 5)) { // Show max 5 issues per repo
+                    const createdDate = new Date(issue.createdAt).toLocaleDateString();
+                    html += `
+                        <div class="issue-item">
+                            <div class="issue-info">
+                                <a href="${issue.url}" target="_blank" class="issue-title">
+                                    #${issue.number}: ${escapeHtml(issue.title)}
+                                </a>
+                                <div class="issue-meta">
+                                    <span class="issue-author">by ${issue.author.login}</span>
+                                    <span class="issue-date">${createdDate}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                if (issues.length > 5) {
+                    html += `<p class="more-items">...and ${issues.length - 5} more</p>`;
+                }
+                html += `</div>`;
+            }
+        }
+
+        html += `<div class="summary">Total: ${totalIssues} open issues</div></div>`;
+        container.innerHTML = html;
+    }
+
+    // Render pull requests in the dashboard  
+    renderPullRequests() {
+        const container = document.getElementById('github-prs-container');
+        if (!container) return;
+
+        let html = '<div class="prs-list">';
+        let totalPRs = 0;
+
+        if (!this.pullRequests || Object.keys(this.pullRequests).length === 0) {
+            html += '<p class="empty-state">No open pull requests found</p>';
+        } else {
+            for (const [repo, prs] of Object.entries(this.pullRequests)) {
+                totalPRs += prs.length;
+                html += `<div class="repo-section">`;
+                html += `<h5 class="repo-title">${repo} (${prs.length})</h5>`;
+                
+                for (const pr of prs.slice(0, 5)) { // Show max 5 PRs per repo
+                    const createdDate = new Date(pr.createdAt).toLocaleDateString();
+                    html += `
+                        <div class="pr-item">
+                            <div class="pr-info">
+                                <a href="${pr.url}" target="_blank" class="pr-title">
+                                    #${pr.number}: ${escapeHtml(pr.title)}
+                                </a>
+                                <div class="pr-meta">
+                                    <span class="pr-author">by ${pr.author.login}</span>
+                                    <span class="pr-date">${createdDate}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                if (prs.length > 5) {
+                    html += `<p class="more-items">...and ${prs.length - 5} more</p>`;
+                }
+                html += `</div>`;
+            }
+        }
+
+        html += `<div class="summary">Total: ${totalPRs} open pull requests</div></div>`;
+        container.innerHTML = html;
+    }
+
     // View workflow details
     async viewWorkflowDetails(repo) {
         const workflows = this.workflows[repo];
@@ -387,6 +559,8 @@ class GitHubWorkflowsManager {
             await Promise.all([
                 this.fetchWorkflows(),
                 this.fetchRunners(),
+                this.fetchIssues(),
+                this.fetchPullRequests(),
                 this.fetchCacheStats(),
                 this.fetchRateLimit()
             ]);
@@ -470,7 +644,7 @@ class GitHubWorkflowsManager {
 
         const hitRate = (this.cacheStats.hit_rate * 100).toFixed(1);
         const p2pStatus = this.cacheStats.p2p_enabled ? '✓ Enabled' : '✗ Disabled';
-        const multiformatsStatus = this.cacheStats.content_addressing?.multiformats_available ? '✓ IPLD/Multiformats' : '✗ Unavailable';
+        const multiformatsStatus = this.cacheStats.content_addressing_available ? '✓ Available' : '✗ Unavailable';
         
         container.innerHTML = `
             <div class="cache-stats-grid">
@@ -531,10 +705,11 @@ class GitHubWorkflowsManager {
             return;
         }
 
-        const core = this.rateLimit.resources?.core || {};
+        // Support both flat structure and nested resources.core structure
+        const core = this.rateLimit.resources?.core || this.rateLimit;
         const remaining = core.remaining || 0;
         const limit = core.limit || 5000;
-        const resetDate = core.reset ? new Date(core.reset * 1000).toLocaleTimeString() : 'Unknown';
+        const resetDate = core.reset ? new Date(core.reset * 1000).toLocaleString() : 'Unknown';
         const usagePercent = ((limit - remaining) / limit * 100).toFixed(1);
         
         const statusClass = remaining > 1000 ? 'status-good' : remaining > 100 ? 'status-warning' : 'status-critical';

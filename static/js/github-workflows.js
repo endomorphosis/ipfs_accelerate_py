@@ -470,7 +470,7 @@ class GitHubWorkflowsManager {
 
         const hitRate = (this.cacheStats.hit_rate * 100).toFixed(1);
         const p2pStatus = this.cacheStats.p2p_enabled ? '✓ Enabled' : '✗ Disabled';
-        const multiformatsStatus = this.cacheStats.content_addressing?.multiformats_available ? '✓ IPLD/Multiformats' : '✗ Unavailable';
+        const multiformatsStatus = this.cacheStats.content_addressing_available ? '✓ Available' : '✗ Unavailable';
         
         container.innerHTML = `
             <div class="cache-stats-grid">
@@ -531,10 +531,11 @@ class GitHubWorkflowsManager {
             return;
         }
 
-        const core = this.rateLimit.resources?.core || {};
+        // Support both flat structure and nested resources.core structure
+        const core = this.rateLimit.resources?.core || this.rateLimit;
         const remaining = core.remaining || 0;
         const limit = core.limit || 5000;
-        const resetDate = core.reset ? new Date(core.reset * 1000).toLocaleTimeString() : 'Unknown';
+        const resetDate = core.reset ? new Date(core.reset * 1000).toLocaleString() : 'Unknown';
         const usagePercent = ((limit - remaining) / limit * 100).toFixed(1);
         
         const statusClass = remaining > 1000 ? 'status-good' : remaining > 100 ? 'status-warning' : 'status-critical';

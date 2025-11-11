@@ -180,7 +180,8 @@ def get_cache_stats() -> Dict[str, Any]:
             'total_requests': stats.get('hits', 0) + stats.get('misses', 0),
             'cache_dir': str(stats.get('cache_dir', '')),
             'p2p_enabled': stats.get('p2p_enabled', False),
-            'p2p_peers': stats.get('p2p_peers', 0)
+            'p2p_peers': stats.get('p2p_peers', 0),
+            'content_addressing_available': stats.get('content_addressing_available', False)
         }
     except Exception as e:
         logger.error(f"Error getting cache stats: {e}")

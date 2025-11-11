@@ -687,11 +687,11 @@
             <!-- Collapsible Section: Workflows & All Runners -->
             <div class="card">
                 <div onclick="toggleSection('workflows-section')" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                    <h3 style="margin: 0;">📋 Workflows & All Runners</h3>
+                    <h3 style="margin: 0;">📋 Workflows, Issues & Pull Requests</h3>
                     <span style="font-size: 20px;">▼</span>
                 </div>
                 <div id="workflows-section" style="display: none; margin-top: 15px;">
-                    <div class="dashboard-grid">
+                    <div class="dashboard-grid" style="grid-template-columns: repeat(2, 1fr); gap: 20px;">
                         <div>
                             <h4>⚙️ Active Workflows</h4>
                             <div id="github-workflows-container">
@@ -707,27 +707,39 @@
                             </div>
                             <button class="btn btn-primary" onclick="githubManager?.fetchRunners()" style="margin-top: 10px;">🔄 Refresh</button>
                         </div>
+                        
+                        <div>
+                            <h4>🐛 Open Issues</h4>
+                            <div id="github-issues-container">
+                                <p class="loading-message">Loading issues...</p>
+                            </div>
+                            <button class="btn btn-primary" onclick="githubManager?.fetchIssues()" style="margin-top: 10px;">🔄 Refresh</button>
+                        </div>
+                        
+                        <div>
+                            <h4>🔄 Open Pull Requests</h4>
+                            <div id="github-prs-container">
+                                <p class="loading-message">Loading pull requests...</p>
+                            </div>
+                            <button class="btn btn-primary" onclick="githubManager?.fetchPullRequests()" style="margin-top: 10px;">🔄 Refresh</button>
+                        </div>
                     </div>
                 </div>
             </div>
             
         </div>
+
+        <!-- System Logs Tab -->
+        <div id="system-logs" class="tab-content">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">📝 System Logs</h3>
+                    <button class="btn btn-primary" onclick="refreshSystemLogs()">🔄 Refresh</button>
                 </div>
                 <div id="log-container" class="log-container">
-                    <div class="log-entry">
-                        <span class="log-timestamp">2024-01-15 10:30:15</span>
-                        <span class="log-level log-info">INFO</span>
-                        <span class="log-message">MCP Server started successfully on port 3001</span>
-                    </div>
-                    <div class="log-entry">
-                        <span class="log-timestamp">2024-01-15 10:30:16</span>
-                        <span class="log-level log-info">INFO</span>
-                        <span class="log-message">Dashboard interface available at http://localhost:3001</span>
-                    </div>
-                    <div class="log-entry">
-                        <span class="log-timestamp">2024-01-15 10:30:20</span>
-                        <span class="log-level log-info">INFO</span>
-                        <span class="log-message">WebSocket connection established</span>
+                    <!-- System logs will be populated dynamically via JavaScript -->
+                    <div class="log-placeholder">
+                        <p class="text-muted">Loading system logs...</p>
                     </div>
                 </div>
             </div>

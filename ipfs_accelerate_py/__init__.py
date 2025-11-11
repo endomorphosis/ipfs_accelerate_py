@@ -152,12 +152,21 @@ try:
 except ImportError:
     cli_main = None
 
+# Add system logs access
+try:
+    from .logs import get_system_logs, SystemLogs
+    export["get_system_logs"] = get_system_logs
+    export["SystemLogs"] = SystemLogs
+except ImportError:
+    get_system_logs = None
+    SystemLogs = None
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
     'install_depends', 'worker', 'ipfs_multiformats_py',
     'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
-    'model_manager_available', 'cli_main'
+    'model_manager_available', 'cli_main', 'get_system_logs', 'SystemLogs'
 ]
 
 # Package version

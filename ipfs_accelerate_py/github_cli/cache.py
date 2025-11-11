@@ -740,7 +740,8 @@ class GitHubAPICache:
                 "cache_size": len(self._cache),
                 "max_cache_size": self.max_cache_size,
                 "api_calls_saved": api_calls_saved,
-                "p2p_enabled": self.enable_p2p
+                "p2p_enabled": self.enable_p2p,
+                "content_addressing_available": HAVE_MULTIFORMATS
             }
             
             # Add P2P-specific stats if enabled
@@ -758,22 +759,24 @@ class GitHubAPICache:
         """
         Get aggregate statistics across all P2P peers.
         
+        NOTE: This method expects self._lock to already be held by the caller!
+        
         Returns:
             Dictionary with aggregate statistics
         """
-        with self._lock:
-            # Sync with peers if needed (every 60 seconds)
-            current_time = time.time()
-            if current_time - self._aggregate_stats["last_sync"] > 60:
-                self._sync_stats_with_peers()
-            
-            return {
-                "total_api_calls": self._aggregate_stats["total_api_calls"],
-                "total_cache_hits": self._aggregate_stats["total_cache_hits"],
-                "total_peers": len(self._aggregate_stats["peer_stats"]) + 1,  # +1 for self
-                "peer_breakdown": self._aggregate_stats["peer_stats"],
-                "last_synced": self._aggregate_stats["last_sync"]
-            }
+        # Lock is already held by caller (get_stats), don't acquire again
+        # Sync with peers if needed (every 60 seconds)
+        current_time = time.time()
+        if current_time - self._aggregate_stats["last_sync"] > 60:
+            self._sync_stats_with_peers()
+        
+        return {
+            "total_api_calls": self._aggregate_stats["total_api_calls"],
+            "total_cache_hits": self._aggregate_stats["total_cache_hits"],
+            "total_peers": len(self._aggregate_stats["peer_stats"]) + 1,  # +1 for self
+            "peer_breakdown": self._aggregate_stats["peer_stats"],
+            "last_synced": self._aggregate_stats["last_sync"]
+        }
     
     def _sync_stats_with_peers(self) -> None:
         """
@@ -864,8 +867,6 @@ class GitHubAPICache:
         with self._lock:
             self._stats["api_calls_made"] += 1
             logger.debug(f"API call count: {self._stats['api_calls_made']}")
-            
-            return self._stats
     
     def _sanitize_filename(self, key: str) -> str:
         """Sanitize a cache key for use as a filename."""

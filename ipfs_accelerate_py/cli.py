@@ -332,6 +332,71 @@ class IPFSAccelerateCLI:
             logger.error(f"Error getting system metrics: {e}")
             return 1
     
+    def run_mcp_logs(self, args):
+        """Get system logs"""
+        from ipfs_accelerate_py.logs import SystemLogs
+        
+        try:
+            logs_manager = SystemLogs(args.service)
+            
+            if args.stats:
+                # Show log statistics
+                stats = logs_manager.get_stats()
+                if args.json:
+                    print(json.dumps(stats, indent=2))
+                else:
+                    logger.info(f"\n📊 Log Statistics (last hour):")
+                    logger.info(f"Total logs: {stats['total']}")
+                    logger.info(f"\nBy level:")
+                    for level, count in stats['by_level'].items():
+                        if count > 0:
+                            logger.info(f"  {level}: {count}")
+                return 0
+            
+            if args.errors:
+                # Show recent errors
+                logs = logs_manager.get_recent_errors()
+                if args.json:
+                    print(json.dumps(logs, indent=2))
+                else:
+                    logger.info(f"\n🚨 Recent Errors (last 24 hours): {len(logs)} found\n")
+                    for log in logs:
+                        logger.info(f"[{log['timestamp']}] {log['level']}: {log['message']}")
+                return 0
+            
+            # Get logs
+            # Ensure level is a string or None, not a list
+            level = args.level
+            if isinstance(level, list):
+                level = level[0] if level else None
+            
+            logs = logs_manager.get_logs(
+                lines=args.lines,
+                since=args.since,
+                level=level,
+                follow=args.follow
+            )
+            
+            if args.json:
+                print(json.dumps(logs, indent=2))
+            else:
+                if not args.follow:
+                    logger.info(f"\n📝 System Logs ({len(logs)} entries):\n")
+                for log in logs:
+                    level_emoji = {
+                        'ERROR': '❌',
+                        'CRITICAL': '🔥',
+                        'WARNING': '⚠️',
+                        'INFO': 'ℹ️',
+                        'DEBUG': '🔍'
+                    }.get(log['level'], '📝')
+                    logger.info(f"{level_emoji} [{log['timestamp']}] {log['level']}: {log['message']}")
+            
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting system logs: {e}")
+            return 1
+    
     def _start_integrated_mcp_server(self, args):
         """Start the integrated MCP server with dashboard, model manager, and queue monitoring"""
         import asyncio
@@ -1195,6 +1260,18 @@ Examples:
         metrics_parser = mcp_subparsers.add_parser('metrics', help='Get system metrics')
         metrics_parser.add_argument('--json', action='store_true', help='Output as JSON')
         
+        # Logs command
+        logs_parser = mcp_subparsers.add_parser('logs', help='Get system logs')
+        logs_parser.add_argument('--service', default='ipfs-accelerate', help='Service name (default: ipfs-accelerate)')
+        logs_parser.add_argument('--lines', '-n', type=int, default=100, help='Number of lines (default: 100)')
+        logs_parser.add_argument('--since', help='Show logs since time (e.g., "1 hour ago")')
+        logs_parser.add_argument('--level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], 
+                               help='Filter by log level')
+        logs_parser.add_argument('--follow', '-f', action='store_true', help='Follow log output')
+        logs_parser.add_argument('--errors', action='store_true', help='Show only errors from last 24 hours')
+        logs_parser.add_argument('--stats', action='store_true', help='Show log statistics')
+        logs_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
         # Parse arguments
         args = parser.parse_args()
         
@@ -1225,6 +1302,8 @@ Examples:
                 return cli.run_mcp_peer_status(args)
             elif args.mcp_command == 'metrics':
                 return cli.run_mcp_metrics(args)
+            elif args.mcp_command == 'logs':
+                return cli.run_mcp_logs(args)
             else:
                 mcp_parser.print_help()
                 return 1
