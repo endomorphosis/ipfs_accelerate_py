@@ -957,23 +957,40 @@ class GitHubWorkflowsManager {
         if (!container) return;
         
         if (runners.length === 0) {
-            container.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No active runners</p>';
+            container.innerHTML = '<p style="color: #6b7280; padding: 20px; text-align: center;">No active runners found. Click "Track" to load runners.</p>';
             return;
         }
         
         let html = '<div style="display: grid; gap: 15px;">';
         for (const runner of runners) {
             const p2p = runner.p2p_status || {};
+            const status = runner.status || 'unknown';
+            const statusColor = status === 'online' ? '#10b981' : status === 'offline' ? '#ef4444' : '#f59e0b';
+            const statusText = status.toUpperCase();
+            const busy = runner.busy ? '(Busy)' : '(Idle)';
+            const os = runner.os || 'Unknown OS';
+            const labels = runner.labels || [];
+            
             html += `
-                <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <h4 style="margin: 0;">${runner.name}</h4>
-                        <span style="color: #10b981;">● ONLINE</span>
+                <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; background: ${status === 'online' ? '#f0fdf4' : '#fff'};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0;">${escapeHtml(runner.name || 'Unknown Runner')}</h4>
+                        <span style="color: ${statusColor}; font-weight: bold;">● ${statusText} ${busy}</span>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div><strong>ID:</strong> ${runner.id}</div>
-                        <div><strong>P2P Cache:</strong> <span style="color: #10b981;">✓ Enabled</span></div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                        <div><strong>ID:</strong> ${runner.id || 'N/A'}</div>
+                        <div><strong>OS:</strong> ${os}</div>
+                        <div><strong>P2P Cache:</strong> <span style="color: ${p2p.cache_enabled ? '#10b981' : '#6b7280'};">${p2p.cache_enabled ? '✓ Enabled' : '✗ Disabled'}</span></div>
+                        <div><strong>Libp2p:</strong> <span style="color: ${p2p.libp2p_bootstrapped ? '#10b981' : '#6b7280'};">${p2p.libp2p_bootstrapped ? '✓ Bootstrapped' : '✗ Not bootstrapped'}</span></div>
                     </div>
+                    ${labels.length > 0 ? `
+                    <div style="margin-top: 10px;">
+                        <strong style="font-size: 12px;">Labels:</strong>
+                        <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;">
+                            ${labels.map(l => `<span style="background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 4px; font-size: 11px;">${escapeHtml(typeof l === 'string' ? l : l.name || l)}</span>`).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -985,27 +1002,42 @@ class GitHubWorkflowsManager {
         const repo = document.getElementById('runner-repo-input')?.value.trim();
         const org = document.getElementById('runner-org-input')?.value.trim();
         
-        if (!repo && !org) {
-            showToast('Please specify repo or org', 'error');
-            return;
-        }
-        
         try {
-            const args = {};
-            if (repo) args.repo = repo;
-            if (org) args.org = org;
+            let result;
             
-            const result = await this.mcp.request('tools/call', {
-                name: 'gh_list_runners',
-                arguments: args
-            });
-            
-            if (!result.error) {
-                showToast(`Found ${result.runners?.length || 0} runner(s)`, 'success');
-                if (result.runners) this.renderRunners(result.runners);
+            // If no repo/org specified, list active runners with P2P info
+            if (!repo && !org) {
+                result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_active_runners',
+                    arguments: { include_docker: true }
+                });
+                
+                if (!result.error) {
+                    const runners = result.active_runners || [];
+                    showToast(`Found ${runners.length} active runner(s)`, 'success');
+                    this.displayActiveRunners(runners);
+                }
+            } else {
+                // If repo/org specified, list all runners for that scope
+                const args = {};
+                if (repo) args.repo = repo;
+                if (org) args.org = org;
+                
+                result = await this.mcp.request('tools/call', {
+                    name: 'gh_list_runners',
+                    arguments: args
+                });
+                
+                if (!result.error) {
+                    const runners = result.runners || [];
+                    showToast(`Found ${runners.length} runner(s)`, 'success');
+                    // Display in the active runners section
+                    this.displayActiveRunners(runners);
+                }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error:', error);
+            showToast('Error fetching runners', 'error');
         }
     }
     

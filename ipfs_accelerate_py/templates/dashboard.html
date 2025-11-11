@@ -672,15 +672,15 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <h3 style="margin: 0;">🚀 Active Runners (P2P Enabled)</h3>
                     <div style="display: flex; gap: 10px;">
-                        <input type="text" id="runner-repo-input" placeholder="owner/repo" 
-                               style="padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; width: 150px;" />
-                        <input type="text" id="runner-org-input" placeholder="org" 
-                               style="padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; width: 100px;" />
-                        <button class="btn btn-primary" onclick="githubManager?.trackRunners()">Track</button>
+                        <input type="text" id="runner-repo-input" placeholder="owner/repo (optional)" 
+                               style="padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; width: 180px;" />
+                        <input type="text" id="runner-org-input" placeholder="org (optional)" 
+                               style="padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; width: 130px;" />
+                        <button class="btn btn-primary" onclick="githubManager?.trackRunners()" title="Click to load runners. Leave inputs empty for all active runners.">Track</button>
                     </div>
                 </div>
                 <div id="active-runners-container">
-                    <p class="loading-message">Loading active runners...</p>
+                    <p style="color: #6b7280; padding: 20px; text-align: center;">Click "Track" to load active runners</p>
                 </div>
             </div>
             
