@@ -1699,10 +1699,12 @@ class GitHubOperations:
         List self-hosted runners.
         
         Results are cached via P2P so all services can see runner state.
+        
+        If no repo/org specified, fetches runners from all accessible repositories.
         """
-        # If no repo/org specified, list active containerized runners instead
+        # If no repo/org specified, aggregate runners from all accessible repos
         if not repo and not org:
-            return self.list_active_runners()
+            return self._list_all_runners()
         
         # Check cache first (30 second TTL for runner list)
         cache_key = f"runners:repo={repo}:org={org}"
@@ -1731,6 +1733,99 @@ class GitHubOperations:
             logger.debug(f"Cached runner list (30s TTL)")
         
         return result
+    
+    def _list_all_runners(self) -> Dict[str, Any]:
+        """
+        List all self-hosted runners from all accessible repositories and organizations.
+        
+        This method:
+        1. Checks cache for aggregated results
+        2. Gets authenticated user's repositories
+        3. Queries runners for each repository
+        4. Aggregates all runners and caches the result
+        """
+        # Check cache first (30 second TTL for aggregated runner list)
+        cache_key = "runners:all"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug("Returning cached aggregated runner list")
+                cached["cached"] = True
+                return cached
+        
+        if not self.runner_manager:
+            return {"error": "Runner Manager not available", "success": False}
+        
+        all_runners = []
+        repos_checked = 0
+        errors = []
+        
+        try:
+            # Get authenticated user info
+            auth_status = self.gh.get_auth_status() if self.gh else {}
+            username = auth_status.get("username", "endomorphosis")
+            
+            # Get list of repositories for the authenticated user
+            repos = self.runner_manager.list_repos(owner=username, limit=200)
+            logger.info(f"Fetching runners from {len(repos)} repositories for {username}")
+            
+            # Query runners for each repository
+            for repo_data in repos:
+                try:
+                    # Extract repo name in format "owner/repo"
+                    repo_name = repo_data.get("name")
+                    owner = repo_data.get("owner", {}).get("login") if isinstance(repo_data.get("owner"), dict) else username
+                    
+                    if not repo_name:
+                        continue
+                    
+                    full_repo = f"{owner}/{repo_name}"
+                    
+                    # Query runners for this repo
+                    repo_runners = self.runner_manager.list_runners(repo=full_repo, use_cache=True)
+                    
+                    # Add repo context to each runner
+                    for runner in repo_runners:
+                        runner["repository"] = full_repo
+                        runner["owner"] = owner
+                        all_runners.append(runner)
+                    
+                    repos_checked += 1
+                    
+                except Exception as e:
+                    logger.debug(f"Error fetching runners for repo {repo_data}: {e}")
+                    errors.append(str(e))
+            
+            result = {
+                "runners": all_runners,
+                "count": len(all_runners),
+                "repos_checked": repos_checked,
+                "operation": "list_all_runners",
+                "timestamp": time.time(),
+                "success": True,
+                "cached": False
+            }
+            
+            if errors:
+                result["partial_errors"] = errors[:5]  # Only include first 5 errors
+            
+            # Cache the aggregated result (30 second TTL)
+            if self.cache:
+                self.cache.put(cache_key, result, ttl=30)
+                logger.debug(f"Cached aggregated runner list: {len(all_runners)} runners from {repos_checked} repos")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error listing all runners: {e}")
+            return {
+                "error": str(e),
+                "runners": [],
+                "count": 0,
+                "operation": "list_all_runners",
+                "timestamp": time.time(),
+                "success": False
+            }
     
     def provision_runners(
         self,
