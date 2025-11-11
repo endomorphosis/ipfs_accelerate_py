@@ -1601,7 +1601,7 @@ class GitHubOperations:
             
             return result
     
-    def list_repos(self, owner: Optional[str] = None, limit: int = 30) -> Dict[str, Any]:
+    def list_repos(self, owner: Optional[str] = None, limit: int = 200) -> Dict[str, Any]:
         """List GitHub repositories"""
         if not self.gh_cli:
             return {"error": "GitHub CLI not available", "success": False}
@@ -2161,6 +2161,164 @@ class GitHubOperations:
                 "timestamp": time.time(),
                 "success": False
             }
+
+    def list_all_issues(
+        self,
+        owner: Optional[str] = None,
+        state: str = "open",
+        limit_per_repo: int = 50
+    ) -> Dict[str, Any]:
+        """
+        List issues across all accessible repositories.
+        
+        Args:
+            owner: Repository owner (user or organization), if None gets all accessible repos
+            state: Issue state (open, closed, all)  
+            limit_per_repo: Maximum issues to fetch per repository
+            
+        Returns:
+            Dict with issues from all repositories
+        """
+        # Check cache first (5 minute TTL for issues)
+        cache_key = f"all_issues:owner={owner}:state={state}:limit={limit_per_repo}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug(f"Returning cached issues for owner={owner}")
+                return cached
+
+        if not self.gh_cli:
+            return {"error": "GitHub CLI not available", "success": False}
+
+        all_issues = {}
+        repo_count = 0
+        total_issues = 0
+        
+        # Get list of all repositories
+        repos_result = self.list_repos(owner=owner, limit=200)
+        if not repos_result.get("success") or not repos_result.get("repos"):
+            return {
+                "error": "Failed to fetch repositories",
+                "success": False,
+                "timestamp": time.time()
+            }
+        
+        # For each repository, get issues
+        for repo in repos_result["repos"]:
+            repo_name = f"{repo['owner']['login']}/{repo['name']}"
+            try:
+                # Use GitHub CLI to get issues
+                args = ["issue", "list", "--repo", repo_name,
+                       "--state", state, "--limit", str(limit_per_repo),
+                       "--json", "number,title,state,createdAt,url,author"]
+                cmd_result = self.gh_cli._run_command(args)
+                
+                if cmd_result.get("success") and cmd_result.get("stdout"):
+                    import json
+                    issues = json.loads(cmd_result["stdout"])
+                    if issues:
+                        all_issues[repo_name] = issues
+                        total_issues += len(issues)
+                        repo_count += 1
+                        
+            except Exception as e:
+                logger.debug(f"Failed to get issues for {repo_name}: {e}")
+                continue
+        
+        result = {
+            "status": "success",
+            "issues": all_issues,
+            "repo_count": repo_count,
+            "total_issues": total_issues,
+            "operation": "list_all_issues",
+            "success": True,
+            "timestamp": time.time()
+        }
+        
+        # Cache the result (5 minute TTL)
+        if self.cache:
+            self.cache.put(cache_key, result, ttl=300)
+            
+        return result
+
+    def list_all_pull_requests(
+        self,
+        owner: Optional[str] = None,
+        state: str = "open",
+        limit_per_repo: int = 50
+    ) -> Dict[str, Any]:
+        """
+        List pull requests across all accessible repositories.
+        
+        Args:
+            owner: Repository owner (user or organization), if None gets all accessible repos
+            state: PR state (open, closed, merged, all)
+            limit_per_repo: Maximum PRs to fetch per repository
+            
+        Returns:
+            Dict with pull requests from all repositories
+        """
+        # Check cache first (5 minute TTL for PRs)
+        cache_key = f"all_prs:owner={owner}:state={state}:limit={limit_per_repo}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug(f"Returning cached PRs for owner={owner}")
+                return cached
+
+        if not self.gh_cli:
+            return {"error": "GitHub CLI not available", "success": False}
+
+        all_prs = {}
+        repo_count = 0
+        total_prs = 0
+        
+        # Get list of all repositories
+        repos_result = self.list_repos(owner=owner, limit=200)
+        if not repos_result.get("success") or not repos_result.get("repos"):
+            return {
+                "error": "Failed to fetch repositories", 
+                "success": False,
+                "timestamp": time.time()
+            }
+        
+        # For each repository, get pull requests
+        for repo in repos_result["repos"]:
+            repo_name = f"{repo['owner']['login']}/{repo['name']}"
+            try:
+                # Use GitHub CLI to get pull requests
+                args = ["pr", "list", "--repo", repo_name,
+                       "--state", state, "--limit", str(limit_per_repo),
+                       "--json", "number,title,state,createdAt,url,author"]
+                cmd_result = self.gh_cli._run_command(args)
+                
+                if cmd_result.get("success") and cmd_result.get("stdout"):
+                    import json
+                    prs = json.loads(cmd_result["stdout"])
+                    if prs:
+                        all_prs[repo_name] = prs
+                        total_prs += len(prs)
+                        repo_count += 1
+                        
+            except Exception as e:
+                logger.debug(f"Failed to get PRs for {repo_name}: {e}")
+                continue
+        
+        result = {
+            "status": "success", 
+            "pull_requests": all_prs,
+            "repo_count": repo_count,
+            "total_prs": total_prs,
+            "operation": "list_all_pull_requests",
+            "success": True,
+            "timestamp": time.time()
+        }
+        
+        # Cache the result (5 minute TTL)
+        if self.cache:
+            self.cache.put(cache_key, result, ttl=300)
+            
+        return result
 
 
 class CopilotOperations:

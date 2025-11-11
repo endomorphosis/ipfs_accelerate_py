@@ -63,6 +63,13 @@ def register_all_tools(mcp: Any) -> None:
                 logger.debug("Registered workflow tools")
             except Exception as e:
                 logger.warning(f"Workflow tools not registered: {e}")
+            
+            try:
+                from ipfs_accelerate_py.mcp.tools.dashboard_data import register_tools as register_dashboard_tools
+                register_dashboard_tools(mcp)
+                logger.debug("Registered dashboard data tools")
+            except Exception as e:
+                logger.warning(f"Dashboard data tools not registered: {e}")
         else:
             logger.warning("FastMCP decorators not available; only hardware and model tools registered in standalone mode")
 

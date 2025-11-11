@@ -63,7 +63,7 @@ def register_github_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     def gh_list_repos(
         owner: Optional[str] = None,
-        limit: int = 30
+        limit: int = 200
     ) -> Dict[str, Any]:
         """
         List GitHub repositories
@@ -1121,6 +1121,152 @@ def register_github_tools(mcp: FastMCP) -> None:
             return {
                 "error": str(e),
                 "tool": "gh_stop_error_bundling",
+                "timestamp": time.time()
+            }
+
+    @mcp.tool()
+    def gh_list_all_issues(
+        owner: Optional[str] = None,
+        state: str = "open",
+        limit_per_repo: int = 50
+    ) -> Dict[str, Any]:
+        """
+        List issues across all accessible repositories
+        
+        Args:
+            owner: Repository owner (user or organization), if None gets all accessible repos
+            state: Issue state (open, closed, all)
+            limit_per_repo: Maximum issues to fetch per repository
+            
+        Returns:
+            Dict with issues from all repositories
+        """
+        try:
+            all_issues = {}
+            repo_count = 0
+            total_issues = 0
+            
+            # Get list of all repositories
+            repos_result = github_ops.list_repos(owner=owner, limit=200)
+            if repos_result.get("success") and repos_result.get("repos"):
+                repos = repos_result["repos"]
+            else:
+                return {
+                    "error": "Failed to fetch repositories",
+                    "tool": "gh_list_all_issues",
+                    "timestamp": time.time()
+                }
+            
+            # For each repository, get issues
+            for repo in repos:
+                repo_name = f"{repo['owner']['login']}/{repo['name']}"
+                try:
+                    # Use GitHub CLI to get issues
+                    if github_ops.gh_cli:
+                        args = ["issue", "list", "--repo", repo_name, 
+                               "--state", state, "--limit", str(limit_per_repo),
+                               "--json", "number,title,state,createdAt,url,author"]
+                        cmd_result = github_ops.gh_cli._run_command(args)
+                        
+                        if cmd_result.get("success") and cmd_result.get("stdout"):
+                            import json
+                            issues = json.loads(cmd_result["stdout"])
+                            if issues:
+                                all_issues[repo_name] = issues
+                                total_issues += len(issues)
+                                repo_count += 1
+                                
+                except Exception as e:
+                    logger.debug(f"Failed to get issues for {repo_name}: {e}")
+                    continue
+            
+            return {
+                "status": "success",
+                "issues": all_issues,
+                "repo_count": repo_count,
+                "total_issues": total_issues,
+                "tool": "gh_list_all_issues",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in gh_list_all_issues: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_list_all_issues",
+                "timestamp": time.time()
+            }
+
+    @mcp.tool()
+    def gh_list_all_pull_requests(
+        owner: Optional[str] = None,
+        state: str = "open", 
+        limit_per_repo: int = 50
+    ) -> Dict[str, Any]:
+        """
+        List pull requests across all accessible repositories
+        
+        Args:
+            owner: Repository owner (user or organization), if None gets all accessible repos  
+            state: PR state (open, closed, merged, all)
+            limit_per_repo: Maximum PRs to fetch per repository
+            
+        Returns:
+            Dict with pull requests from all repositories
+        """
+        try:
+            all_prs = {}
+            repo_count = 0
+            total_prs = 0
+            
+            # Get list of all repositories
+            repos_result = github_ops.list_repos(owner=owner, limit=200)
+            if repos_result.get("success") and repos_result.get("repos"):
+                repos = repos_result["repos"]
+            else:
+                return {
+                    "error": "Failed to fetch repositories",
+                    "tool": "gh_list_all_pull_requests", 
+                    "timestamp": time.time()
+                }
+            
+            # For each repository, get pull requests
+            for repo in repos:
+                repo_name = f"{repo['owner']['login']}/{repo['name']}"
+                try:
+                    # Use GitHub CLI to get pull requests
+                    if github_ops.gh_cli:
+                        args = ["pr", "list", "--repo", repo_name,
+                               "--state", state, "--limit", str(limit_per_repo),
+                               "--json", "number,title,state,createdAt,url,author"]
+                        cmd_result = github_ops.gh_cli._run_command(args)
+                        
+                        if cmd_result.get("success") and cmd_result.get("stdout"):
+                            import json
+                            prs = json.loads(cmd_result["stdout"])
+                            if prs:
+                                all_prs[repo_name] = prs
+                                total_prs += len(prs)
+                                repo_count += 1
+                                
+                except Exception as e:
+                    logger.debug(f"Failed to get PRs for {repo_name}: {e}")
+                    continue
+            
+            return {
+                "status": "success",
+                "pull_requests": all_prs,
+                "repo_count": repo_count,
+                "total_prs": total_prs,
+                "tool": "gh_list_all_pull_requests",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in gh_list_all_pull_requests: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_list_all_pull_requests",
                 "timestamp": time.time()
             }
     

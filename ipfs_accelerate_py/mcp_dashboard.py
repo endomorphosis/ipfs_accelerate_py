@@ -9,6 +9,7 @@ import os
 import logging
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
+from typing import Dict, Any, List, Optional
 
 # Try to import Flask (required for dashboard)
 try:
@@ -43,13 +44,16 @@ class MCPDashboard:
         if not HAVE_FLASK:
             raise ImportError("Flask is required for the MCP Dashboard. Install with: pip install flask flask-cors")
         
+        import time
         self.port = port
         self.host = host
         self.mcp_server = mcp_server
+        self._start_time = time.time()  # Track when dashboard started
         
         # Set up Flask with proper template and static folders
-        template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates')
-        static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
+        # __file__ is in ipfs_accelerate_py/, so use dirname(__file__) for templates/static
+        template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
         
         self.app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
         CORS(self.app)
@@ -113,6 +117,30 @@ class MCPDashboard:
                     'total_models': self._get_model_count()
                 }
             })
+        
+        @self.app.route('/api/mcp/user')
+        def user_info():
+            """Get current user information."""
+            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+            return jsonify(get_user_info())
+        
+        @self.app.route('/api/mcp/cache/stats')
+        def cache_stats():
+            """Get cache statistics."""
+            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
+            return jsonify(get_cache_stats())
+        
+        @self.app.route('/api/mcp/peers')
+        def peer_status():
+            """Get P2P peer system status."""
+            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+            return jsonify(get_peer_status())
+        
+        @self.app.route('/api/mcp/metrics')
+        def system_metrics():
+            """Get real system metrics."""
+            from ipfs_accelerate_py.mcp.tools.dashboard_data import get_system_metrics
+            return jsonify(get_system_metrics(start_time=self._start_time))
         
         @self.app.route('/mcp/models')
         def models():
@@ -581,32 +609,40 @@ class MCPDashboard:
         
         @self.app.route('/api/mcp/logs')
         def get_logs():
-            """Get system logs."""
-            import datetime
-            # Simulate logs - in production, read from actual log files
-            logs = []
-            base_time = datetime.datetime.now()
+            """Get system logs from journalctl."""
+            from ipfs_accelerate_py.logs import get_system_logs
             
-            log_messages = [
-                "MCP Server started successfully",
-                "AI inference capabilities initialized",
-                "Model manager ready",
-                "Queue monitor active",
-                "Web dashboard accessible",
-                "API endpoints registered",
-                "Static file serving enabled",
-                "CORS enabled for cross-origin requests"
-            ]
+            # Get query parameters
+            lines = request.args.get('lines', default=100, type=int)
+            since = request.args.get('since', default=None, type=str)
+            level = request.args.get('level', default=None, type=str)
+            service = request.args.get('service', default='ipfs-accelerate', type=str)
             
-            for i, msg in enumerate(log_messages):
-                timestamp = (base_time - datetime.timedelta(minutes=len(log_messages)-i)).strftime('%Y-%m-%d %H:%M:%S')
-                logs.append({
-                    'timestamp': timestamp,
-                    'level': 'INFO',
-                    'message': msg
+            try:
+                logs = get_system_logs(
+                    service=service,
+                    lines=lines,
+                    since=since,
+                    level=level
+                )
+                
+                return jsonify({
+                    'logs': logs,
+                    'total': len(logs),
+                    'service': service,
+                    'filters': {
+                        'lines': lines,
+                        'since': since,
+                        'level': level
+                    }
                 })
-            
-            return jsonify({'logs': logs, 'total': len(logs)})
+            except Exception as e:
+                logger.error(f"Failed to get logs: {e}")
+                return jsonify({
+                    'error': str(e),
+                    'logs': [],
+                    'total': 0
+                }), 500
         
         @self.app.route('/api/mcp/workflows')
         def get_workflows():
@@ -1239,8 +1275,8 @@ class MCPDashboard:
         elif tool_name == 'gh_get_cache_stats':
             # Get cache statistics
             try:
-                from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
-                cache = GitHubAPICache()
+                from ipfs_accelerate_py.github_cli.cache import get_global_cache
+                cache = get_global_cache()
                 stats = cache.get_stats()
                 return {
                     "tool": tool_name,
@@ -1276,8 +1312,8 @@ class MCPDashboard:
             pattern = args.get('pattern', '')
             # Invalidate cache entries matching pattern
             try:
-                from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
-                cache = GitHubAPICache()
+                from ipfs_accelerate_py.github_cli.cache import get_global_cache
+                cache = get_global_cache()
                 cleared = cache.clear(pattern=pattern)
                 return {
                     "tool": tool_name,
@@ -1289,6 +1325,40 @@ class MCPDashboard:
                 return {
                     "tool": tool_name,
                     "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == 'gh_list_all_issues':
+            owner = args.get('owner')
+            state = args.get('state', 'open')
+            limit_per_repo = args.get('limit_per_repo', 50)
+            try:
+                result = github_ops.list_all_issues(owner=owner, state=state, limit_per_repo=limit_per_repo)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"gh_list_all_issues failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error", 
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+                
+        elif tool_name == 'gh_list_all_pull_requests':
+            owner = args.get('owner')
+            state = args.get('state', 'open')
+            limit_per_repo = args.get('limit_per_repo', 50)
+            try:
+                result = github_ops.list_all_pull_requests(owner=owner, state=state, limit_per_repo=limit_per_repo)
+                result["tool"] = tool_name
+                return result
+            except Exception as e:
+                logger.error(f"gh_list_all_pull_requests failed: {e}")
+                return {
+                    "tool": tool_name,
+                    "status": "error",
+                    "error": str(e), 
                     "timestamp": time.time()
                 }
                 

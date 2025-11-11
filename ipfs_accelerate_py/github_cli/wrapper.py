@@ -349,7 +349,7 @@ class GitHubCLI:
     def list_repos(
         self,
         owner: Optional[str] = None,
-        limit: int = 30,
+        limit: int = 200,
         visibility: str = "all",
         use_cache: bool = True
     ) -> List[Dict[str, Any]]:
@@ -572,8 +572,8 @@ class WorkflowQueue:
     def get_repos_with_recent_activity(
         self,
         owner: Optional[str] = None,
-        since_days: int = 1,
-        limit: int = 100
+        since_days: int = 7,
+        limit: int = 200
     ) -> List[str]:
         """
         Get list of repositories with recent activity.

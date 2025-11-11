@@ -338,6 +338,15 @@ class MCPJSONRPCServer:
             
             # Legacy aliases
             "list_methods": self._get_available_methods,
+            
+            # GitHub Tools
+            "gh_list_repos": self._gh_list_repos,
+            "gh_create_workflow_queues": self._gh_create_workflow_queues, 
+            "gh_list_runners": self._gh_list_runners,
+            "gh_list_all_issues": self._gh_list_all_issues,
+            "gh_list_all_pull_requests": self._gh_list_all_pull_requests,
+            "gh_get_cache_stats": self._gh_get_cache_stats,
+            "gh_get_rate_limit": self._gh_get_rate_limit,
         }
         
         logger.info(f"JSON-RPC server initialized with {len(self.methods)} methods")
@@ -432,6 +441,54 @@ class MCPJSONRPCServer:
                 logger.warning(f"Could not serve dashboard: {e}")
             
             return {"error": "Dashboard not found"}
+        
+        @self.app.get("/api/mcp/logs")
+        async def get_mcp_logs(lines: int = 50, service: str = "ipfs-accelerate"):
+            """Mock API endpoint for system logs to support dashboard functionality."""
+            try:
+                from datetime import datetime, timedelta
+                import random
+                
+                # Generate mock log entries for demonstration
+                mock_logs = []
+                log_levels = ["INFO", "WARNING", "DEBUG", "ERROR"]
+                log_messages = [
+                    "MCP server started successfully",
+                    "Dashboard interface initialized", 
+                    "JSON-RPC endpoint configured",
+                    "Static files mounted successfully",
+                    "Client connection established",
+                    "Processing request completed",
+                    "Cache updated successfully",
+                    "System health check passed"
+                ]
+                
+                current_time = datetime.now()
+                for i in range(min(lines, 20)):  # Limit to 20 entries max
+                    timestamp = current_time - timedelta(minutes=i*2)
+                    level = random.choice(log_levels)
+                    message = random.choice(log_messages)
+                    
+                    mock_logs.append({
+                        "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                        "level": level,
+                        "message": message,
+                        "service": service
+                    })
+                
+                return {
+                    "status": "success",
+                    "service": service,
+                    "total": len(mock_logs),
+                    "logs": mock_logs
+                }
+            except Exception as e:
+                logger.error(f"Error generating mock logs: {e}")
+                return {
+                    "status": "error", 
+                    "message": f"Failed to fetch logs: {str(e)}",
+                    "logs": []
+                }
         
         
         # Serve static files
@@ -1833,6 +1890,151 @@ class MCPJSONRPCServer:
         except Exception as e:
             logger.error(f"ipfs_accelerate_py model call failed: {e}")
             return None
+
+    # GitHub Tools Methods
+    async def _gh_list_repos(self, params: Dict) -> Dict:
+        """List GitHub repositories."""
+        try:
+            from shared.core import SharedCore
+            from shared.operations import GitHubOperations
+            shared_core = SharedCore()
+            github_ops = GitHubOperations(shared_core)
+            
+            owner = params.get('owner')
+            limit = params.get('limit', 200)
+            
+            result = github_ops.list_repos(owner=owner, limit=limit)
+            return result
+        except Exception as e:
+            logger.error(f"GitHub list_repos failed: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _gh_create_workflow_queues(self, params: Dict) -> Dict:
+        """Create workflow queues for repositories with recent activity."""
+        try:
+            from shared.core import SharedCore
+            from shared.operations import GitHubOperations
+            shared_core = SharedCore()
+            github_ops = GitHubOperations(shared_core)
+            
+            owner = params.get('owner')
+            since_days = params.get('since_days', 7)
+            
+            result = github_ops.create_workflow_queues(owner=owner, since_days=since_days)
+            return result
+        except Exception as e:
+            logger.error(f"GitHub create_workflow_queues failed: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _gh_list_runners(self, params: Dict) -> Dict:
+        """List GitHub self-hosted runners."""
+        try:
+            from shared.core import SharedCore
+            from shared.operations import GitHubOperations
+            shared_core = SharedCore()
+            github_ops = GitHubOperations(shared_core)
+            
+            repo = params.get('repo')
+            org = params.get('org')
+            
+            result = github_ops.list_runners(repo=repo, org=org)
+            return result
+        except Exception as e:
+            logger.error(f"GitHub list_runners failed: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _gh_list_all_issues(self, params: Dict) -> Dict:
+        """List issues across all accessible repositories."""
+        try:
+            from shared.core import SharedCore
+            from shared.operations import GitHubOperations
+            shared_core = SharedCore()
+            github_ops = GitHubOperations(shared_core)
+            
+            owner = params.get('owner')
+            state = params.get('state', 'open')
+            limit_per_repo = params.get('limit_per_repo', 50)
+            
+            result = github_ops.list_all_issues(owner=owner, state=state, limit_per_repo=limit_per_repo)
+            return result
+        except Exception as e:
+            logger.error(f"GitHub list_all_issues failed: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _gh_list_all_pull_requests(self, params: Dict) -> Dict:
+        """List pull requests across all accessible repositories."""
+        try:
+            from shared.core import SharedCore
+            from shared.operations import GitHubOperations
+            shared_core = SharedCore()
+            github_ops = GitHubOperations(shared_core)
+            
+            owner = params.get('owner')
+            state = params.get('state', 'open')
+            limit_per_repo = params.get('limit_per_repo', 50)
+            
+            result = github_ops.list_all_pull_requests(owner=owner, state=state, limit_per_repo=limit_per_repo)
+            return result
+        except Exception as e:
+            logger.error(f"GitHub list_all_pull_requests failed: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _gh_get_cache_stats(self, params: Dict) -> Dict:
+        """Get GitHub API cache statistics."""
+        try:
+            from ipfs_accelerate_py.github_cli.cache import get_global_cache
+            cache = get_global_cache()
+            stats = cache.get_stats()
+            return {
+                "success": True,
+                "timestamp": datetime.now().isoformat(),
+                **stats
+            }
+        except Exception as e:
+            logger.error(f"GitHub cache stats failed: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def _gh_get_rate_limit(self, params: Dict) -> Dict:
+        """Get GitHub API rate limit information."""
+        try:
+            from shared.core import SharedCore
+            from shared.operations import GitHubOperations
+            shared_core = SharedCore()
+            github_ops = GitHubOperations(shared_core)
+            
+            result = github_ops.get_rate_limit()
+            return result
+        except Exception as e:
+            logger.error(f"GitHub rate limit failed: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }
 
 def create_app() -> FastAPI:
     """Create and return the FastAPI application."""

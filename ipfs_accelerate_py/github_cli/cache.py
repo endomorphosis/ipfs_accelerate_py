@@ -180,6 +180,8 @@ class GitHubAPICache:
         self._p2p_connected_peers: Dict[str, Any] = {}
         self._event_loop = None
         self._max_bootstrap_peers = 10  # Limit bootstrap peers to prevent connection overload
+        self._p2p_init_lock = Lock()  # Lock to prevent concurrent P2P initialization
+        self._p2p_initialized = False  # Flag to track if P2P is already initialized
         
         # Peer discovery
         self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
@@ -241,15 +243,33 @@ class GitHubAPICache:
             except Exception as e:
                 logger.warning(f"Failed to save cache during shutdown: {e}")
         
-        # Stop P2P event loop
-        if self.enable_p2p and self._event_loop and hasattr(self, '_p2p_thread_running'):
+        # Close P2P host and cleanup connections
+        if self.enable_p2p:
             try:
-                if self._p2p_thread_running:
-                    self._event_loop.call_soon_threadsafe(self._event_loop.stop)
-                    self._p2p_thread_running = False
-                    logger.info("✓ P2P event loop stopped")
+                # Close all peer connections
+                if self._p2p_connected_peers:
+                    logger.info(f"Closing {len(self._p2p_connected_peers)} peer connections")
+                    self._p2p_connected_peers.clear()
+                
+                # Close P2P host
+                if self._p2p_host:
+                    try:
+                        # Note: libp2p host doesn't have a standard close() method
+                        # Just clear the reference
+                        self._p2p_host = None
+                        logger.info("✓ P2P host closed")
+                    except Exception as e:
+                        logger.warning(f"Failed to close P2P host: {e}")
+                
+                # Stop P2P event loop
+                if self._event_loop and hasattr(self, '_p2p_thread_running'):
+                    if self._p2p_thread_running:
+                        self._event_loop.call_soon_threadsafe(self._event_loop.stop)
+                        self._p2p_thread_running = False
+                        logger.info("✓ P2P event loop stopped")
+                        
             except Exception as e:
-                logger.warning(f"Failed to stop P2P event loop: {e}")
+                logger.warning(f"Failed to shutdown P2P cleanly: {e}")
     
     def _make_cache_key(self, operation: str, *args, **kwargs) -> str:
         """
@@ -720,7 +740,8 @@ class GitHubAPICache:
                 "cache_size": len(self._cache),
                 "max_cache_size": self.max_cache_size,
                 "api_calls_saved": api_calls_saved,
-                "p2p_enabled": self.enable_p2p
+                "p2p_enabled": self.enable_p2p,
+                "content_addressing_available": HAVE_MULTIFORMATS
             }
             
             # Add P2P-specific stats if enabled
@@ -738,22 +759,24 @@ class GitHubAPICache:
         """
         Get aggregate statistics across all P2P peers.
         
+        NOTE: This method expects self._lock to already be held by the caller!
+        
         Returns:
             Dictionary with aggregate statistics
         """
-        with self._lock:
-            # Sync with peers if needed (every 60 seconds)
-            current_time = time.time()
-            if current_time - self._aggregate_stats["last_sync"] > 60:
-                self._sync_stats_with_peers()
-            
-            return {
-                "total_api_calls": self._aggregate_stats["total_api_calls"],
-                "total_cache_hits": self._aggregate_stats["total_cache_hits"],
-                "total_peers": len(self._aggregate_stats["peer_stats"]) + 1,  # +1 for self
-                "peer_breakdown": self._aggregate_stats["peer_stats"],
-                "last_synced": self._aggregate_stats["last_sync"]
-            }
+        # Lock is already held by caller (get_stats), don't acquire again
+        # Sync with peers if needed (every 60 seconds)
+        current_time = time.time()
+        if current_time - self._aggregate_stats["last_sync"] > 60:
+            self._sync_stats_with_peers()
+        
+        return {
+            "total_api_calls": self._aggregate_stats["total_api_calls"],
+            "total_cache_hits": self._aggregate_stats["total_cache_hits"],
+            "total_peers": len(self._aggregate_stats["peer_stats"]) + 1,  # +1 for self
+            "peer_breakdown": self._aggregate_stats["peer_stats"],
+            "last_synced": self._aggregate_stats["last_sync"]
+        }
     
     def _sync_stats_with_peers(self) -> None:
         """
@@ -844,8 +867,6 @@ class GitHubAPICache:
         with self._lock:
             self._stats["api_calls_made"] += 1
             logger.debug(f"API call count: {self._stats['api_calls_made']}")
-            
-            return self._stats
     
     def _sanitize_filename(self, key: str) -> str:
         """Sanitize a cache key for use as a filename."""
@@ -1008,36 +1029,61 @@ class GitHubAPICache:
             return None
     
     def _init_p2p(self) -> None:
-        """Initialize P2P networking for cache sharing in a background thread."""
+        """Initialize P2P networking for cache sharing in a background thread (thread-safe)."""
         if not HAVE_LIBP2P:
             raise RuntimeError("libp2p not available, install with: pip install libp2p")
         
-        # Create a new event loop for the background thread
-        self._event_loop = asyncio.new_event_loop()
-        self._p2p_thread_running = False
-        
-        def run_event_loop():
-            """Run event loop in background thread."""
-            asyncio.set_event_loop(self._event_loop)
-            self._event_loop.run_forever()
-        
-        # Start event loop in background thread
-        import threading
-        self._p2p_thread = threading.Thread(target=run_event_loop, daemon=True, name="p2p-event-loop")
-        self._p2p_thread.start()
-        
-        # Schedule P2P host initialization (non-blocking)
-        future = asyncio.run_coroutine_threadsafe(self._start_p2p_host(), self._event_loop)
-        
-        # Wait up to 5 seconds for initialization (optional, can be removed for fully async init)
-        try:
-            future.result(timeout=5.0)
-            self._p2p_thread_running = True
-            logger.info("✓ P2P initialized successfully in background")
-        except Exception as e:
-            logger.warning(f"⚠ P2P initialization deferred (will complete in background): {e}")
-            # P2P will continue initializing in background
-            self._p2p_thread_running = True
+        # Use lock to ensure only one thread initializes P2P
+        with self._p2p_init_lock:
+            # Check if already initialized
+            if self._p2p_initialized or self._p2p_host is not None:
+                logger.debug("P2P already initialized, skipping")
+                return
+            
+            try:
+                # Create a new event loop for the background thread
+                self._event_loop = asyncio.new_event_loop()
+                self._p2p_thread_running = False
+                
+                def run_event_loop():
+                    """Run event loop in background thread."""
+                    try:
+                        asyncio.set_event_loop(self._event_loop)
+                        self._event_loop.run_forever()
+                    except Exception as e:
+                        logger.error(f"P2P event loop error: {e}")
+                    finally:
+                        # Cleanup event loop
+                        try:
+                            self._event_loop.close()
+                        except Exception:
+                            pass
+                
+                # Start event loop in background thread
+                import threading
+                self._p2p_thread = threading.Thread(target=run_event_loop, daemon=True, name="p2p-event-loop")
+                self._p2p_thread.start()
+                
+                # Schedule P2P host initialization (non-blocking)
+                future = asyncio.run_coroutine_threadsafe(self._start_p2p_host(), self._event_loop)
+                
+                # Wait up to 3 seconds for initialization (shorter timeout to prevent blocking)
+                try:
+                    future.result(timeout=3.0)
+                    self._p2p_thread_running = True
+                    self._p2p_initialized = True
+                    logger.info("✓ P2P initialized successfully in background")
+                except Exception as e:
+                    logger.warning(f"⚠ P2P initialization timeout (continuing in background): {e}")
+                    # P2P will continue initializing in background
+                    self._p2p_thread_running = True
+                    self._p2p_initialized = True  # Mark as initialized even if timeout
+                    
+            except Exception as e:
+                logger.error(f"Failed to initialize P2P: {e}")
+                self._p2p_initialized = False
+                self.enable_p2p = False
+                raise
     
     def _validate_multiaddr(self, addr: Optional[str]) -> bool:
         """

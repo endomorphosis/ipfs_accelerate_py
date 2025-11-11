@@ -6,6 +6,18 @@ let searchResults = [];
 let compatibilityResults = [];
 let autoRefreshInterval = null;
 
+// Utility function for HTML escaping
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
 // Utility function for user notifications
 function showToast(message, type = 'info', duration = 3000) {
     console.log(`[Dashboard] ${type.toUpperCase()}: ${message}`);
@@ -866,19 +878,81 @@ function autoFillCriticalGaps() {
 
 // Server Status Functions
 function refreshServerStatus() {
-    // Update server metrics with mock data
-    const connections = document.getElementById('active-connections');
-    const uptime = document.getElementById('uptime');
-    const requests = document.getElementById('total-requests');
+    // Fetch real system metrics
+    fetch('/api/mcp/metrics')
+        .then(response => response.json())
+        .then(data => {
+            const connections = document.getElementById('active-connections');
+            const uptime = document.getElementById('uptime');
+            const requests = document.getElementById('total-requests');
+            
+            if (connections) connections.textContent = data.active_connections || 0;
+            if (uptime) uptime.textContent = data.uptime || 'unknown';
+            // requests count would need to be tracked separately, keep existing for now
+            
+            // Update CPU and memory if elements exist
+            const cpuElement = document.querySelector('.cpu-usage, [data-metric="cpu"]');
+            if (cpuElement) cpuElement.textContent = `${data.cpu_percent || 0}%`;
+            
+            const memoryElement = document.querySelector('.memory-usage, [data-metric="memory"]');
+            if (memoryElement) memoryElement.textContent = `${data.memory_percent || 0}%`;
+        })
+        .catch(error => {
+            console.error('Error fetching system metrics:', error);
+        });
     
-    if (connections) connections.textContent = Math.floor(Math.random() * 10) + 1;
-    if (requests) requests.textContent = Math.floor(Math.random() * 1000) + 100;
+    // Fetch user info
+    fetch('/api/mcp/user')
+        .then(response => response.json())
+        .then(data => {
+            const userElement = document.getElementById('username') || document.querySelector('.username, [data-info="username"]');
+            if (userElement && data.authenticated) {
+                userElement.textContent = data.username || 'Unknown';
+                userElement.title = data.name || data.username || 'GitHub User';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching user info:', error);
+        });
     
-    // Update uptime
-    if (uptime) {
-        const minutes = Math.floor(Math.random() * 60) + 1;
-        uptime.textContent = `${minutes}m`;
-    }
+    // Fetch cache stats
+    fetch('/api/mcp/cache/stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.available) {
+                const cacheElement = document.getElementById('cache-stats') || document.querySelector('.cache-stats, [data-info="cache"]');
+                if (cacheElement) {
+                    cacheElement.innerHTML = `
+                        <div>Entries: ${data.total_entries || 0}</div>
+                        <div>Size: ${(data.total_size_mb || 0).toFixed(2)} MB</div>
+                        <div>Hit Rate: ${((data.hit_rate || 0) * 100).toFixed(1)}%</div>
+                    `;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching cache stats:', error);
+        });
+    
+    // Fetch peer status
+    fetch('/api/mcp/peers')
+        .then(response => response.json())
+        .then(data => {
+            const peerElement = document.getElementById('peer-count') || document.querySelector('.peer-count, [data-info="peers"]');
+            if (peerElement) {
+                peerElement.textContent = data.peer_count || 0;
+                if (data.enabled) {
+                    peerElement.classList.add('peer-active');
+                    peerElement.title = `P2P enabled with ${data.peer_count} peers`;
+                } else {
+                    peerElement.classList.remove('peer-active');
+                    peerElement.title = 'P2P not enabled';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching peer status:', error);
+        });
 }
 
 function refreshModels() {
@@ -901,7 +975,106 @@ function testInference() {
 }
 
 function refreshMetrics() {
-    alert('Refreshing performance metrics...');
+    fetch('/api/mcp/metrics')
+        .then(response => response.json())
+        .then(data => {
+            // Update CPU and memory
+            const cpuElement = document.querySelector('[data-metric="cpu"]');
+            if (cpuElement) cpuElement.textContent = `${data.cpu_percent || 0}%`;
+            
+            const memoryElement = document.querySelector('[data-metric="memory"]');
+            if (memoryElement) memoryElement.textContent = `${data.memory_percent || 0}%`;
+            
+            showToast('Performance metrics refreshed', 'success');
+        })
+        .catch(error => {
+            console.error('Error refreshing metrics:', error);
+            showToast('Failed to refresh metrics', 'error');
+        });
+}
+
+function refreshUserInfo() {
+    fetch('/api/mcp/user')
+        .then(response => response.json())
+        .then(data => {
+            const usernameElement = document.getElementById('username');
+            const authStatusElement = document.getElementById('auth-status');
+            const tokenTypeElement = document.getElementById('token-type');
+            
+            if (data.authenticated) {
+                if (usernameElement) usernameElement.textContent = data.username || 'Unknown';
+                if (authStatusElement) {
+                    authStatusElement.textContent = 'Authenticated';
+                    authStatusElement.classList.add('status-running');
+                }
+                if (tokenTypeElement) tokenTypeElement.textContent = data.token_type || 'unknown';
+                showToast(`Authenticated as ${data.username}`, 'success');
+            } else {
+                if (usernameElement) usernameElement.textContent = 'Not authenticated';
+                if (authStatusElement) {
+                    authStatusElement.textContent = 'Not authenticated';
+                    authStatusElement.classList.remove('status-running');
+                }
+                if (tokenTypeElement) tokenTypeElement.textContent = '-';
+                showToast('Not authenticated with GitHub', 'warning');
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing user info:', error);
+            showToast('Failed to refresh user info', 'error');
+        });
+}
+
+function refreshCacheStats() {
+    fetch('/api/mcp/cache/stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.available) {
+                const entriesElement = document.getElementById('cache-entries');
+                const sizeElement = document.getElementById('cache-size');
+                const hitRateElement = document.getElementById('cache-hit-rate');
+                
+                if (entriesElement) entriesElement.textContent = data.total_entries || 0;
+                if (sizeElement) sizeElement.textContent = `${(data.total_size_mb || 0).toFixed(2)} MB`;
+                if (hitRateElement) hitRateElement.textContent = `${((data.hit_rate || 0) * 100).toFixed(1)}%`;
+                
+                showToast('Cache statistics refreshed', 'success');
+            } else {
+                showToast('Cache not available', 'warning');
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing cache stats:', error);
+            showToast('Failed to refresh cache stats', 'error');
+        });
+}
+
+function refreshPeerStatus() {
+    fetch('/api/mcp/peers')
+        .then(response => response.json())
+        .then(data => {
+            const statusElement = document.getElementById('peer-status');
+            const countElement = document.getElementById('peer-count');
+            const enabledElement = document.getElementById('p2p-enabled');
+            
+            if (statusElement) {
+                statusElement.textContent = data.active ? 'Active' : 'Inactive';
+                if (data.active) {
+                    statusElement.classList.add('status-running');
+                } else {
+                    statusElement.classList.remove('status-running');
+                }
+            }
+            
+            if (countElement) countElement.textContent = data.peer_count || 0;
+            if (enabledElement) enabledElement.textContent = data.enabled ? 'Yes' : 'No';
+            
+            showToast(`P2P: ${data.peer_count || 0} peers`, 'success');
+        })
+        .catch(error => {
+            console.error('Error refreshing peer status:', error);
+            showToast('Failed to refresh peer status', 'error');
+        });
 }
 
 // Queue Functions
@@ -988,33 +1161,68 @@ function editConfig() {
 }
 
 // Logs Functions
+function refreshSystemLogs() {
+    console.log('Refreshing system logs...');
+    const logContainer = document.getElementById('log-container');
+    if (!logContainer) return;
+    
+    // Show loading state
+    logContainer.innerHTML = '<div class="log-placeholder"><p class="text-muted">Loading system logs...</p></div>';
+    
+    // Fetch logs with parameters
+    const params = new URLSearchParams({
+        lines: 100,
+        service: 'ipfs-accelerate'
+    });
+    
+    fetch(`/api/mcp/logs?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            console.log('System logs loaded:', data);
+            if (data.logs && data.logs.length > 0) {
+                let html = '<div class="log-entries">';
+                data.logs.forEach(log => {
+                    const levelEmoji = {
+                        'ERROR': '❌',
+                        'CRITICAL': '🔥',
+                        'WARNING': '⚠️',
+                        'INFO': 'ℹ️',
+                        'DEBUG': '🔍'
+                    }[log.level] || '📝';
+                    
+                    const levelClass = log.level.toLowerCase();
+                    html += `
+                        <div class="log-entry log-${levelClass}">
+                            <span class="log-emoji">${levelEmoji}</span>
+                            <span class="log-timestamp">${log.timestamp}</span>
+                            <span class="log-level log-level-${levelClass}">${log.level}</span>
+                            <span class="log-message">${escapeHtml(log.message)}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                html += `<div class="log-footer">Total: ${data.total} entries | Service: ${data.service}</div>`;
+                logContainer.innerHTML = html;
+                
+                // Auto-scroll to bottom
+                logContainer.scrollTop = logContainer.scrollHeight;
+            } else {
+                logContainer.innerHTML = '<div class="log-placeholder"><p class="text-muted">No logs available</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing system logs:', error);
+            logContainer.innerHTML = `
+                <div class="log-placeholder">
+                    <p class="text-danger">❌ Failed to load logs: ${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        });
+}
+
 function refreshLogs() {
-    console.log('Refreshing logs...');
-    const logOutput = document.getElementById('log-output');
-    if (logOutput) {
-        fetch('/api/mcp/logs')
-            .then(response => response.json())
-            .then(data => {
-                console.log('Logs loaded:', data);
-                if (data.logs) {
-                    logOutput.innerHTML = '';
-                    data.logs.forEach(log => {
-                        const logEntry = document.createElement('div');
-                        logEntry.className = 'log-entry';
-                        logEntry.textContent = `${log.timestamp} - ${log.level} - ${log.message}`;
-                        logOutput.appendChild(logEntry);
-                    });
-                    logOutput.scrollTop = logOutput.scrollHeight;
-                }
-            })
-            .catch(error => {
-                console.error('Error refreshing logs:', error);
-                const errorEntry = document.createElement('div');
-                errorEntry.className = 'log-entry';
-                errorEntry.textContent = `${new Date().toISOString()} - ERROR - Failed to load logs: ${error.message}`;
-                logOutput.appendChild(errorEntry);
-            });
-    }
+    // Alias for refreshSystemLogs for backward compatibility
+    refreshSystemLogs();
 }
 
 function clearLogs() {
