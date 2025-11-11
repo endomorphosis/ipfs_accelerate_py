@@ -1,0 +1,24 @@
+/* Inter Font Fallback CSS */
+/* This file provides a fallback when Google Fonts is not available */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Fallback font stack if Google Fonts fails */
+@font-face {
+  font-family: 'Inter-fallback';
+  src: local('system-ui'), local('-apple-system'), local('BlinkMacSystemFont'), local('Segoe UI'), local('sans-serif');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* CSS Custom Properties for font usage */
+:root {
+  --font-family-primary: 'Inter', 'Inter-fallback', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+  --font-family-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+/* Apply the font to common elements */
+body, .inter-font {
+  font-family: var(--font-family-primary);
+}
