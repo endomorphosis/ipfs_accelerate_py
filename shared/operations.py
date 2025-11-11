@@ -1736,13 +1736,14 @@ class GitHubOperations:
     
     def _list_all_runners(self) -> Dict[str, Any]:
         """
-        List all self-hosted runners from all accessible repositories and organizations.
+        List all self-hosted runners from recently active repositories and organizations.
         
         This method:
         1. Checks cache for aggregated results
-        2. Gets authenticated user's repositories
-        3. Queries runners for each repository
-        4. Aggregates all runners and caches the result
+        2. Uses GitHub token to determine authenticated user/org
+        3. Gets repositories updated in the past day
+        4. Queries runners for each active repository
+        5. Aggregates all runners and caches the result
         """
         # Check cache first (30 second TTL for aggregated runner list)
         cache_key = "runners:all"
@@ -1758,19 +1759,46 @@ class GitHubOperations:
         
         all_runners = []
         repos_checked = 0
+        repos_with_runners = 0
         errors = []
         
         try:
-            # Get authenticated user info
+            # Get authenticated user info from token
             auth_status = self.gh.get_auth_status() if self.gh else {}
-            username = auth_status.get("username", "endomorphosis")
+            username = auth_status.get("username")
             
-            # Get list of repositories for the authenticated user
+            if not username:
+                logger.warning("Could not determine authenticated user, defaulting to endomorphosis")
+                username = "endomorphosis"
+            
+            logger.info(f"Using authenticated user/org: {username}")
+            
+            # Get list of repositories updated in the past day
+            from datetime import datetime, timedelta
+            one_day_ago = datetime.utcnow() - timedelta(days=1)
+            
             repos = self.runner_manager.list_repos(owner=username, limit=200)
-            logger.info(f"Fetching runners from {len(repos)} repositories for {username}")
+            logger.info(f"Found {len(repos)} total repositories for {username}")
             
-            # Query runners for each repository
+            # Filter to repos updated in the past day
+            recent_repos = []
             for repo_data in repos:
+                try:
+                    updated_at = repo_data.get("updatedAt", "")
+                    if updated_at:
+                        # Parse ISO 8601 format: 2024-11-11T12:34:56Z
+                        repo_time = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                        if repo_time.replace(tzinfo=None) >= one_day_ago:
+                            recent_repos.append(repo_data)
+                except Exception as e:
+                    logger.debug(f"Error parsing update time for repo: {e}")
+                    # Include repo if we can't parse the date (better to include than miss)
+                    recent_repos.append(repo_data)
+            
+            logger.info(f"Filtering to {len(recent_repos)} repositories updated in past 24 hours")
+            
+            # Query runners for each recently active repository
+            for repo_data in recent_repos:
                 try:
                     # Extract repo name in format "owner/repo"
                     repo_name = repo_data.get("name")
@@ -1784,22 +1812,26 @@ class GitHubOperations:
                     # Query runners for this repo
                     repo_runners = self.runner_manager.list_runners(repo=full_repo, use_cache=True)
                     
-                    # Add repo context to each runner
-                    for runner in repo_runners:
-                        runner["repository"] = full_repo
-                        runner["owner"] = owner
-                        all_runners.append(runner)
+                    if repo_runners:
+                        repos_with_runners += 1
+                        # Add repo context to each runner
+                        for runner in repo_runners:
+                            runner["repository"] = full_repo
+                            runner["owner"] = owner
+                            all_runners.append(runner)
                     
                     repos_checked += 1
                     
                 except Exception as e:
-                    logger.debug(f"Error fetching runners for repo {repo_data}: {e}")
-                    errors.append(str(e))
+                    logger.debug(f"Error fetching runners for repo {full_repo}: {e}")
+                    errors.append(f"{full_repo}: {str(e)}")
             
             result = {
                 "runners": all_runners,
                 "count": len(all_runners),
                 "repos_checked": repos_checked,
+                "repos_with_runners": repos_with_runners,
+                "authenticated_user": username,
                 "operation": "list_all_runners",
                 "timestamp": time.time(),
                 "success": True,
@@ -1812,7 +1844,7 @@ class GitHubOperations:
             # Cache the aggregated result (30 second TTL)
             if self.cache:
                 self.cache.put(cache_key, result, ttl=30)
-                logger.debug(f"Cached aggregated runner list: {len(all_runners)} runners from {repos_checked} repos")
+                logger.info(f"Cached aggregated runner list: {len(all_runners)} runners from {repos_with_runners}/{repos_checked} repos")
             
             return result
             
