@@ -1610,17 +1610,40 @@ class GitHubOperations:
         
         # Check if we got any repos or if there was an error
         if repos is None or (isinstance(repos, list) and len(repos) == 0):
-            # Check if this is due to authentication issues
-            auth_status = self.gh_cli.get_auth_status()
-            if not auth_status.get("success") or not auth_status.get("authenticated"):
-                return {
-                    "error": "GitHub authentication required. Please run 'gh auth login' or set GITHUB_TOKEN environment variable.",
-                    "success": False,
-                    "operation": "list_repos",
-                    "timestamp": time.time()
-                }
-            # Empty list might be legitimate (user has no repos)
-            # Only return error if we're not authenticated
+            # Empty list - check if it's due to rate limits
+            # Both GraphQL and REST API have separate rate limits that can be exhausted
+            logger.debug(f"Empty repo list returned for owner={owner}, checking rate limit status")
+            
+            # Try to get rate limit info to provide better error message
+            try:
+                rate_limit_result = self.get_rate_limit()
+                if rate_limit_result and rate_limit_result.get("success"):
+                    rate_limit = rate_limit_result.get("rate_limit", {}).get("rate", {})
+                    remaining = rate_limit.get("remaining", 0)
+                    reset_timestamp = rate_limit.get("reset", 0)
+                    
+                    if remaining == 0:
+                        import datetime
+                        reset_time = datetime.datetime.fromtimestamp(reset_timestamp)
+                        return {
+                            "error": f"GitHub API rate limit exhausted (0/{rate_limit.get('limit', '?')}). Resets at {reset_time.strftime('%H:%M:%S %Z')}",
+                            "success": False,
+                            "operation": "list_repos",
+                            "timestamp": time.time(),
+                            "rate_limited": True,
+                            "rate_limit_reset": reset_timestamp
+                        }
+            except Exception as e:
+                logger.debug(f"Could not check rate limit: {e}")
+            
+            # Generic rate limit error if we can't get specific details
+            return {
+                "error": "GitHub API rate limit exceeded. Repository listing temporarily unavailable.",
+                "success": False,
+                "operation": "list_repos",
+                "timestamp": time.time(),
+                "rate_limited": True
+            }
         
         return {
             "repos": repos,
@@ -1779,7 +1802,7 @@ class GitHubOperations:
         
         try:
             # Get authenticated user info from token
-            auth_status = self.gh.get_auth_status() if self.gh else {}
+            auth_status = self.gh_cli.get_auth_status() if self.gh_cli else {}
             username = auth_status.get("username")
             
             if not username:
@@ -1796,15 +1819,35 @@ class GitHubOperations:
             repos_result = self.list_repos(owner=username, limit=200)
             if not repos_result.get("success") or not repos_result.get("repos"):
                 error_msg = repos_result.get("error", "Failed to fetch repositories")
-                logger.error(f"Error fetching repositories: {error_msg}")
-                return {
-                    "error": error_msg,
-                    "runners": [],
-                    "count": 0,
-                    "operation": "list_all_runners",
-                    "timestamp": time.time(),
-                    "success": False
-                }
+                
+                # Check if it's a rate limit issue
+                is_rate_limited = repos_result.get("rate_limited", False) or "rate limit" in error_msg.lower()
+                
+                if is_rate_limited:
+                    logger.warning(f"Rate limit hit while fetching repositories for runners: {error_msg}")
+                    # Return empty result gracefully with explanation
+                    return {
+                        "runners": [],
+                        "count": 0,
+                        "repos_checked": 0,
+                        "repos_with_runners": 0,
+                        "authenticated_user": username,
+                        "operation": "list_all_runners",
+                        "timestamp": time.time(),
+                        "success": True,  # Success=True but empty due to rate limit
+                        "rate_limited": True,
+                        "message": "GitHub API rate limit exceeded. Runner data unavailable until rate limit resets."
+                    }
+                else:
+                    logger.error(f"Error fetching repositories: {error_msg}")
+                    return {
+                        "error": error_msg,
+                        "runners": [],
+                        "count": 0,
+                        "operation": "list_all_runners",
+                        "timestamp": time.time(),
+                        "success": False
+                    }
             
             repos = repos_result["repos"]
             logger.info(f"Found {len(repos)} total repositories for {username}")
@@ -2353,8 +2396,24 @@ class GitHubOperations:
         # Get list of all repositories
         repos_result = self.list_repos(owner=owner, limit=200)
         if not repos_result.get("success") or not repos_result.get("repos"):
+            # Check if rate limited
+            is_rate_limited = repos_result.get("rate_limited", False)
+            error_msg = repos_result.get("error", "Failed to fetch repositories")
+            
+            if is_rate_limited or "rate limit" in error_msg.lower():
+                return {
+                    "status": "success",
+                    "success": True,
+                    "issues": {},
+                    "repo_count": 0,
+                    "total_issues": 0,
+                    "rate_limited": True,
+                    "message": "GitHub API rate limit exceeded. Issue data unavailable until rate limit resets.",
+                    "timestamp": time.time()
+                }
+            
             return {
-                "error": "Failed to fetch repositories",
+                "error": error_msg,
                 "success": False,
                 "timestamp": time.time()
             }
@@ -2432,8 +2491,24 @@ class GitHubOperations:
         # Get list of all repositories
         repos_result = self.list_repos(owner=owner, limit=200)
         if not repos_result.get("success") or not repos_result.get("repos"):
+            # Check if rate limited
+            is_rate_limited = repos_result.get("rate_limited", False)
+            error_msg = repos_result.get("error", "Failed to fetch repositories")
+            
+            if is_rate_limited or "rate limit" in error_msg.lower():
+                return {
+                    "status": "success",
+                    "success": True,
+                    "pull_requests": {},
+                    "repo_count": 0,
+                    "total_prs": 0,
+                    "rate_limited": True,
+                    "message": "GitHub API rate limit exceeded. Pull request data unavailable until rate limit resets.",
+                    "timestamp": time.time()
+                }
+            
             return {
-                "error": "Failed to fetch repositories", 
+                "error": error_msg,
                 "success": False,
                 "timestamp": time.time()
             }

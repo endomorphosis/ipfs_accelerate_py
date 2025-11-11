@@ -1151,11 +1151,31 @@ def register_github_tools(mcp: FastMCP) -> None:
             if repos_result.get("success") and repos_result.get("repos"):
                 repos = repos_result["repos"]
             else:
-                return {
-                    "error": "Failed to fetch repositories",
-                    "tool": "gh_list_all_issues",
-                    "timestamp": time.time()
-                }
+                # Check if it's a rate limit issue
+                is_rate_limited = repos_result.get("rate_limited", False)
+                error_msg = repos_result.get("error", "Failed to fetch repositories")
+                
+                if is_rate_limited or "rate limit" in error_msg.lower():
+                    # Return gracefully with empty data when rate limited
+                    return {
+                        "status": "success",
+                        "success": True,
+                        "issues": {},
+                        "repo_count": 0,
+                        "total_issues": 0,
+                        "tool": "gh_list_all_issues",
+                        "timestamp": time.time(),
+                        "rate_limited": True,
+                        "message": "GitHub API rate limit exceeded. Issue data unavailable until rate limit resets."
+                    }
+                else:
+                    # Non-rate-limit errors still return as errors
+                    return {
+                        "error": error_msg,
+                        "success": False,
+                        "tool": "gh_list_all_issues",
+                        "timestamp": time.time()
+                    }
             
             # For each repository, get issues
             for repo in repos:
@@ -1224,11 +1244,31 @@ def register_github_tools(mcp: FastMCP) -> None:
             if repos_result.get("success") and repos_result.get("repos"):
                 repos = repos_result["repos"]
             else:
-                return {
-                    "error": "Failed to fetch repositories",
-                    "tool": "gh_list_all_pull_requests", 
-                    "timestamp": time.time()
-                }
+                # Check if it's a rate limit issue
+                is_rate_limited = repos_result.get("rate_limited", False)
+                error_msg = repos_result.get("error", "Failed to fetch repositories")
+                
+                if is_rate_limited or "rate limit" in error_msg.lower():
+                    # Return gracefully with empty data when rate limited
+                    return {
+                        "status": "success",
+                        "success": True,
+                        "pull_requests": {},
+                        "repo_count": 0,
+                        "total_prs": 0,
+                        "tool": "gh_list_all_pull_requests", 
+                        "timestamp": time.time(),
+                        "rate_limited": True,
+                        "message": "GitHub API rate limit exceeded. Pull request data unavailable until rate limit resets."
+                    }
+                else:
+                    # Non-rate-limit errors still return as errors
+                    return {
+                        "error": error_msg,
+                        "success": False,
+                        "tool": "gh_list_all_pull_requests", 
+                        "timestamp": time.time()
+                    }
             
             # For each repository, get pull requests
             for repo in repos:
