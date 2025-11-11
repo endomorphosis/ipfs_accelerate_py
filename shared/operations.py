@@ -1777,7 +1777,21 @@ class GitHubOperations:
             from datetime import datetime, timedelta
             one_day_ago = datetime.utcnow() - timedelta(days=1)
             
-            repos = self.runner_manager.list_repos(owner=username, limit=200)
+            # Fetch repositories using the wrapper method
+            repos_result = self.list_repos(owner=username, limit=200)
+            if not repos_result.get("success") or not repos_result.get("repos"):
+                error_msg = repos_result.get("error", "Failed to fetch repositories")
+                logger.error(f"Error fetching repositories: {error_msg}")
+                return {
+                    "error": error_msg,
+                    "runners": [],
+                    "count": 0,
+                    "operation": "list_all_runners",
+                    "timestamp": time.time(),
+                    "success": False
+                }
+            
+            repos = repos_result["repos"]
             logger.info(f"Found {len(repos)} total repositories for {username}")
             
             # Filter to repos updated in the past day
