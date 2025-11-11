@@ -161,7 +161,9 @@ class GitHubAPICache:
             "expirations": 0,
             "evictions": 0,
             "api_calls_saved": 0,
-            "api_calls_made": 0  # Track actual API calls made
+            "api_calls_made": 0,  # Track actual REST API calls made
+            "graphql_api_calls_made": 0,  # Track GraphQL API calls separately
+            "graphql_cache_hits": 0  # Track GraphQL cache hits separately
         }
         
         # Aggregate stats from all peers
@@ -858,15 +860,32 @@ class GitHubAPICache:
             self._aggregate_stats["peer_stats"][peer_id] = stats
             logger.debug(f"Received stats from peer {peer_id[:16]}...")
     
-    def increment_api_call_count(self) -> None:
+    def increment_api_call_count(self, api_type: str = "rest") -> None:
         """
         Increment the count of API calls made.
+        
+        Args:
+            api_type: Type of API call ("rest" or "graphql")
         
         Should be called whenever an actual API call is made (not cached).
         """
         with self._lock:
-            self._stats["api_calls_made"] += 1
-            logger.debug(f"API call count: {self._stats['api_calls_made']}")
+            if api_type == "graphql":
+                self._stats["graphql_api_calls_made"] += 1
+                logger.debug(f"GraphQL API call count: {self._stats['graphql_api_calls_made']}")
+            else:
+                self._stats["api_calls_made"] += 1
+                logger.debug(f"REST API call count: {self._stats['api_calls_made']}")
+    
+    def increment_graphql_cache_hit(self) -> None:
+        """
+        Increment the count of GraphQL cache hits.
+        
+        Should be called when a GraphQL query is served from cache.
+        """
+        with self._lock:
+            self._stats["graphql_cache_hits"] += 1
+            logger.debug(f"GraphQL cache hits: {self._stats['graphql_cache_hits']}")
     
     def _sanitize_filename(self, key: str) -> str:
         """Sanitize a cache key for use as a filename."""

@@ -794,6 +794,21 @@ class GitHubWorkflowsManager {
                     <span class="detail-label">Cache Hits (P2P):</span>
                     <span class="detail-value">${this.cacheStats.peer_hits || 0}</span>
                 </div>
+                <div class="cache-detail-section" style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #e5e7eb;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">📊 API Statistics</h4>
+                    <div class="cache-detail-row">
+                        <span class="detail-label">REST API Calls:</span>
+                        <span class="detail-value">${this.cacheStats.api_calls_made || 0}</span>
+                    </div>
+                    <div class="cache-detail-row">
+                        <span class="detail-label">GraphQL API Calls:</span>
+                        <span class="detail-value">${this.cacheStats.graphql_api_calls_made || 0}</span>
+                    </div>
+                    <div class="cache-detail-row">
+                        <span class="detail-label">GraphQL Cache Hits:</span>
+                        <span class="detail-value">${this.cacheStats.graphql_cache_hits || 0}</span>
+                    </div>
+                </div>
                 ${this.cacheStats.aggregate ? this._renderAggregateStats(this.cacheStats.aggregate) : ''}
             </div>
         `;
@@ -811,35 +826,77 @@ class GitHubWorkflowsManager {
 
         // Support both flat structure and nested resources.core structure
         const core = this.rateLimit.resources?.core || this.rateLimit;
-        const remaining = core.remaining || 0;
-        const limit = core.limit || 5000;
-        const resetDate = core.reset ? new Date(core.reset * 1000).toLocaleString() : 'Unknown';
-        const usagePercent = ((limit - remaining) / limit * 100).toFixed(1);
+        const graphql = this.rateLimit.resources?.graphql || null;
         
-        const statusClass = remaining > 1000 ? 'status-good' : remaining > 100 ? 'status-warning' : 'status-critical';
+        const restRemaining = core.remaining || 0;
+        const restLimit = core.limit || 5000;
+        const restResetDate = core.reset ? new Date(core.reset * 1000).toLocaleString() : 'Unknown';
+        const restUsagePercent = ((restLimit - restRemaining) / restLimit * 100).toFixed(1);
+        
+        const statusClass = restRemaining > 1000 ? 'status-good' : restRemaining > 100 ? 'status-warning' : 'status-critical';
+        
+        let graphqlSection = '';
+        if (graphql) {
+            const graphqlRemaining = graphql.remaining || 0;
+            const graphqlLimit = graphql.limit || 5000;
+            const graphqlResetDate = graphql.reset ? new Date(graphql.reset * 1000).toLocaleString() : 'Unknown';
+            const graphqlUsagePercent = ((graphqlLimit - graphqlRemaining) / graphqlLimit * 100).toFixed(1);
+            const graphqlStatusClass = graphqlRemaining > 1000 ? 'status-good' : graphqlRemaining > 100 ? 'status-warning' : 'status-critical';
+            
+            graphqlSection = `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e5e7eb;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">GraphQL API</h4>
+                    <div class="rate-limit-summary">
+                        <div class="rate-limit-gauge ${graphqlStatusClass}">
+                            <div class="gauge-value">${graphqlRemaining}</div>
+                            <div class="gauge-label">Remaining</div>
+                            <div class="gauge-total">/ ${graphqlLimit}</div>
+                        </div>
+                        <div class="rate-limit-details">
+                            <div class="rate-limit-row">
+                                <span class="label">Usage:</span>
+                                <span class="value">${graphqlUsagePercent}%</span>
+                            </div>
+                            <div class="rate-limit-row">
+                                <span class="label">Resets at:</span>
+                                <span class="value">${graphqlResetDate}</span>
+                            </div>
+                            <div class="rate-limit-row">
+                                <span class="label">Used:</span>
+                                <span class="value">${graphqlLimit - graphqlRemaining}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
         
         container.innerHTML = `
-            <div class="rate-limit-summary">
-                <div class="rate-limit-gauge ${statusClass}">
-                    <div class="gauge-value">${remaining}</div>
-                    <div class="gauge-label">Remaining</div>
-                    <div class="gauge-total">/ ${limit}</div>
-                </div>
-                <div class="rate-limit-details">
-                    <div class="rate-limit-row">
-                        <span class="label">Usage:</span>
-                        <span class="value">${usagePercent}%</span>
+            <div>
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">REST API</h4>
+                <div class="rate-limit-summary">
+                    <div class="rate-limit-gauge ${statusClass}">
+                        <div class="gauge-value">${restRemaining}</div>
+                        <div class="gauge-label">Remaining</div>
+                        <div class="gauge-total">/ ${restLimit}</div>
                     </div>
-                    <div class="rate-limit-row">
-                        <span class="label">Resets at:</span>
-                        <span class="value">${resetDate}</span>
-                    </div>
-                    <div class="rate-limit-row">
-                        <span class="label">Used:</span>
-                        <span class="value">${limit - remaining}</span>
+                    <div class="rate-limit-details">
+                        <div class="rate-limit-row">
+                            <span class="label">Usage:</span>
+                            <span class="value">${restUsagePercent}%</span>
+                        </div>
+                        <div class="rate-limit-row">
+                            <span class="label">Resets at:</span>
+                            <span class="value">${restResetDate}</span>
+                        </div>
+                        <div class="rate-limit-row">
+                            <span class="label">Used:</span>
+                            <span class="value">${restLimit - restRemaining}</span>
+                        </div>
                     </div>
                 </div>
             </div>
+            ${graphqlSection}
         `;
     }
 
