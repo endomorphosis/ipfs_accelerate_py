@@ -19,6 +19,22 @@ class GitHubWorkflowsManager {
         console.log('[GitHub Workflows] Manager initialized with MCP SDK');
     }
 
+    // Safe HTML escaping - use global escapeHtml if available, otherwise use fallback
+    _escapeHtml(text) {
+        if (typeof escapeHtml !== 'undefined') {
+            return escapeHtml(text);
+        }
+        // Fallback if escapeHtml not loaded yet
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
     // Initialize the workflows manager
     async initialize() {
         console.log('[GitHub Workflows] Initializing with MCP SDK...');
@@ -51,12 +67,17 @@ class GitHubWorkflowsManager {
                 
                 if (result && result.queues) {
                     this.workflows = result.queues;
+                    this.workflowsError = null;
                     this.renderWorkflows();
                     console.log(`[GitHub Workflows] Loaded ${Object.keys(this.workflows).length} repositories`);
                 } else if (result && result.error) {
                     console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                    this.workflowsError = result.error;
+                    this.renderWorkflows();
                 } else {
                     console.error('[GitHub Workflows] Invalid response from MCP tool');
+                    this.workflowsError = 'Invalid response from server';
+                    this.renderWorkflows();
                 }
             } else {
                 // Fallback to direct API
@@ -64,13 +85,18 @@ class GitHubWorkflowsManager {
                 const response = await fetch('/api/github/workflows');
                 if (response.ok) {
                     this.workflows = await response.json();
+                    this.workflowsError = null;
                     this.renderWorkflows();
                 } else {
                     console.error('[GitHub Workflows] Failed to fetch workflows:', response.statusText);
+                    this.workflowsError = `Failed to fetch: ${response.statusText}`;
+                    this.renderWorkflows();
                 }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching workflows:', error);
+            this.workflowsError = error.message || 'Unknown error occurred';
+            this.renderWorkflows();
         }
     }
 
@@ -89,12 +115,17 @@ class GitHubWorkflowsManager {
                 
                 if (result && result.runners) {
                     this.runners = result.runners;
+                    this.runnersError = null;
                     this.renderRunners();
                     console.log(`[GitHub Workflows] Loaded ${this.runners.length} runners`);
                 } else if (result && result.error) {
                     console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                    this.runnersError = result.error;
+                    this.renderRunners();
                 } else {
                     console.error('[GitHub Workflows] Invalid response from MCP tool');
+                    this.runnersError = 'Invalid response from server';
+                    this.renderRunners();
                 }
             } else {
                 // Fallback to direct API
@@ -102,13 +133,18 @@ class GitHubWorkflowsManager {
                 const response = await fetch('/api/github/runners');
                 if (response.ok) {
                     this.runners = await response.json();
+                    this.runnersError = null;
                     this.renderRunners();
                 } else {
                     console.error('[GitHub Workflows] Failed to fetch runners:', response.statusText);
+                    this.runnersError = `Failed to fetch: ${response.statusText}`;
+                    this.renderRunners();
                 }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching runners:', error);
+            this.runnersError = error.message || 'Unknown error occurred';
+            this.renderRunners();
         }
     }
 
@@ -134,8 +170,12 @@ class GitHubWorkflowsManager {
                     console.log(`[GitHub Workflows] Loaded ${result.total_issues} issues from ${result.repo_count} repos`);
                 } else if (result && result.error) {
                     console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                    this.issuesError = result.error;
+                    this.renderIssues();
                 } else {
                     console.error('[GitHub Workflows] Invalid response from MCP tool');
+                    this.issuesError = 'Invalid response from server';
+                    this.renderIssues();
                 }
             } else {
                 // Fallback to direct API
@@ -146,10 +186,14 @@ class GitHubWorkflowsManager {
                     this.renderIssues();
                 } else {
                     console.error('[GitHub Workflows] Failed to fetch issues:', response.statusText);
+                    this.issuesError = `Failed to fetch: ${response.statusText}`;
+                    this.renderIssues();
                 }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching issues:', error);
+            this.issuesError = error.message || 'Unknown error occurred';
+            this.renderIssues();
         }
     }
 
@@ -175,8 +219,12 @@ class GitHubWorkflowsManager {
                     console.log(`[GitHub Workflows] Loaded ${result.total_prs} PRs from ${result.repo_count} repos`);
                 } else if (result && result.error) {
                     console.error('[GitHub Workflows] MCP tool returned error:', result.error);
+                    this.pullRequestsError = result.error;
+                    this.renderPullRequests();
                 } else {
                     console.error('[GitHub Workflows] Invalid response from MCP tool');
+                    this.pullRequestsError = 'Invalid response from server';
+                    this.renderPullRequests();
                 }
             } else {
                 // Fallback to direct API
@@ -187,10 +235,14 @@ class GitHubWorkflowsManager {
                     this.renderPullRequests();
                 } else {
                     console.error('[GitHub Workflows] Failed to fetch pull requests:', response.statusText);
+                    this.pullRequestsError = `Failed to fetch: ${response.statusText}`;
+                    this.renderPullRequests();
                 }
             }
         } catch (error) {
             console.error('[GitHub Workflows] Error fetching pull requests:', error);
+            this.pullRequestsError = error.message || 'Unknown error occurred';
+            this.renderPullRequests();
         }
     }
 
@@ -251,46 +303,62 @@ class GitHubWorkflowsManager {
         const container = document.getElementById('github-workflows-container');
         if (!container) return;
 
-        let html = '<div class="workflows-grid">';
-
-        for (const [repo, workflows] of Object.entries(this.workflows)) {
-            const running = workflows.filter(w => w.status === 'in_progress').length;
-            const failed = workflows.filter(w => w.conclusion === 'failure').length;
-            const success = workflows.filter(w => w.conclusion === 'success').length;
-
-            html += `
-                <div class="workflow-card">
-                    <div class="workflow-header">
-                        <h4>${repo}</h4>
-                        <span class="workflow-count">${workflows.length} workflows</span>
-                    </div>
-                    <div class="workflow-stats">
-                        <div class="stat">
-                            <span class="stat-icon">⚡</span>
-                            <span class="stat-value">${running}</span>
-                            <span class="stat-label">Running</span>
-                        </div>
-                        <div class="stat">
-                            <span class="stat-icon">❌</span>
-                            <span class="stat-value">${failed}</span>
-                            <span class="stat-label">Failed</span>
-                        </div>
-                        <div class="stat">
-                            <span class="stat-icon">✅</span>
-                            <span class="stat-value">${success}</span>
-                            <span class="stat-label">Success</span>
-                        </div>
-                    </div>
-                    <div class="workflow-actions">
-                        <button class="btn btn-sm btn-primary" onclick="githubManager.viewWorkflowDetails('${repo}')">
-                            View Details
-                        </button>
-                        <button class="btn btn-sm btn-secondary" onclick="githubManager.provisionRunner('${repo}')">
-                            Provision Runner
-                        </button>
-                    </div>
+        // Check if there's an error to display
+        if (this.workflowsError) {
+            container.innerHTML = `
+                <div style="padding: 20px; text-align: center;">
+                    <p style="color: #ef4444; margin-bottom: 10px;">⚠️ Error loading workflows</p>
+                    <p style="color: #6b7280; font-size: 14px;">${this._escapeHtml(this.workflowsError)}</p>
+                    <p style="color: #6b7280; font-size: 12px; margin-top: 10px;">Please check GitHub authentication and permissions.</p>
                 </div>
             `;
+            return;
+        }
+
+        let html = '<div class="workflows-grid">';
+
+        if (!this.workflows || Object.keys(this.workflows).length === 0) {
+            html += '<p class="empty-state">No active workflows found</p>';
+        } else {
+            for (const [repo, workflows] of Object.entries(this.workflows)) {
+                const running = workflows.filter(w => w.status === 'in_progress').length;
+                const failed = workflows.filter(w => w.conclusion === 'failure').length;
+                const success = workflows.filter(w => w.conclusion === 'success').length;
+
+                html += `
+                    <div class="workflow-card">
+                        <div class="workflow-header">
+                            <h4>${repo}</h4>
+                            <span class="workflow-count">${workflows.length} workflows</span>
+                        </div>
+                        <div class="workflow-stats">
+                            <div class="stat">
+                                <span class="stat-icon">⚡</span>
+                                <span class="stat-value">${running}</span>
+                                <span class="stat-label">Running</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-icon">❌</span>
+                                <span class="stat-value">${failed}</span>
+                                <span class="stat-label">Failed</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-icon">✅</span>
+                                <span class="stat-value">${success}</span>
+                                <span class="stat-label">Success</span>
+                            </div>
+                        </div>
+                        <div class="workflow-actions">
+                            <button class="btn btn-sm btn-primary" onclick="githubManager.viewWorkflowDetails('${repo}')">
+                                View Details
+                            </button>
+                            <button class="btn btn-sm btn-secondary" onclick="githubManager.provisionRunner('${repo}')">
+                                Provision Runner
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
         }
 
         html += '</div>';
@@ -302,9 +370,21 @@ class GitHubWorkflowsManager {
         const container = document.getElementById('github-runners-container');
         if (!container) return;
 
+        // Check if there's an error to display
+        if (this.runnersError) {
+            container.innerHTML = `
+                <div style="padding: 20px; text-align: center;">
+                    <p style="color: #ef4444; margin-bottom: 10px;">⚠️ Error loading runners</p>
+                    <p style="color: #6b7280; font-size: 14px;">${this._escapeHtml(this.runnersError)}</p>
+                    <p style="color: #6b7280; font-size: 12px; margin-top: 10px;">Please check GitHub authentication and permissions.</p>
+                </div>
+            `;
+            return;
+        }
+
         let html = '<div class="runners-list">';
 
-        if (this.runners.length === 0) {
+        if (!this.runners || this.runners.length === 0) {
             html += '<p class="empty-state">No self-hosted runners configured</p>';
         } else {
             for (const runner of this.runners) {
@@ -341,7 +421,16 @@ class GitHubWorkflowsManager {
         let html = '<div class="issues-list">';
         let totalIssues = 0;
 
-        if (!this.issues || Object.keys(this.issues).length === 0) {
+        // Check if there's an error to display
+        if (this.issuesError) {
+            html += `
+                <div style="padding: 20px; text-align: center;">
+                    <p style="color: #ef4444; margin-bottom: 10px;">⚠️ Error loading issues</p>
+                    <p style="color: #6b7280; font-size: 14px;">${this._escapeHtml(this.issuesError)}</p>
+                    <p style="color: #6b7280; font-size: 12px; margin-top: 10px;">Please check GitHub authentication and permissions.</p>
+                </div>
+            `;
+        } else if (!this.issues || Object.keys(this.issues).length === 0) {
             html += '<p class="empty-state">No open issues found</p>';
         } else {
             for (const [repo, issues] of Object.entries(this.issues)) {
@@ -355,7 +444,7 @@ class GitHubWorkflowsManager {
                         <div class="issue-item">
                             <div class="issue-info">
                                 <a href="${issue.url}" target="_blank" class="issue-title">
-                                    #${issue.number}: ${escapeHtml(issue.title)}
+                                    #${issue.number}: ${this._escapeHtml(issue.title)}
                                 </a>
                                 <div class="issue-meta">
                                     <span class="issue-author">by ${issue.author.login}</span>
@@ -373,7 +462,10 @@ class GitHubWorkflowsManager {
             }
         }
 
-        html += `<div class="summary">Total: ${totalIssues} open issues</div></div>`;
+        if (!this.issuesError) {
+            html += `<div class="summary">Total: ${totalIssues} open issues</div>`;
+        }
+        html += '</div>';
         container.innerHTML = html;
     }
 
@@ -385,7 +477,16 @@ class GitHubWorkflowsManager {
         let html = '<div class="prs-list">';
         let totalPRs = 0;
 
-        if (!this.pullRequests || Object.keys(this.pullRequests).length === 0) {
+        // Check if there's an error to display
+        if (this.pullRequestsError) {
+            html += `
+                <div style="padding: 20px; text-align: center;">
+                    <p style="color: #ef4444; margin-bottom: 10px;">⚠️ Error loading pull requests</p>
+                    <p style="color: #6b7280; font-size: 14px;">${this._escapeHtml(this.pullRequestsError)}</p>
+                    <p style="color: #6b7280; font-size: 12px; margin-top: 10px;">Please check GitHub authentication and permissions.</p>
+                </div>
+            `;
+        } else if (!this.pullRequests || Object.keys(this.pullRequests).length === 0) {
             html += '<p class="empty-state">No open pull requests found</p>';
         } else {
             for (const [repo, prs] of Object.entries(this.pullRequests)) {
@@ -399,7 +500,7 @@ class GitHubWorkflowsManager {
                         <div class="pr-item">
                             <div class="pr-info">
                                 <a href="${pr.url}" target="_blank" class="pr-title">
-                                    #${pr.number}: ${escapeHtml(pr.title)}
+                                    #${pr.number}: ${this._escapeHtml(pr.title)}
                                 </a>
                                 <div class="pr-meta">
                                     <span class="pr-author">by ${pr.author.login}</span>
@@ -417,7 +518,10 @@ class GitHubWorkflowsManager {
             }
         }
 
-        html += `<div class="summary">Total: ${totalPRs} open pull requests</div></div>`;
+        if (!this.pullRequestsError) {
+            html += `<div class="summary">Total: ${totalPRs} open pull requests</div>`;
+        }
+        html += '</div>';
         container.innerHTML = html;
     }
 
@@ -974,7 +1078,7 @@ class GitHubWorkflowsManager {
             html += `
                 <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; background: ${status === 'online' ? '#f0fdf4' : '#fff'};">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <h4 style="margin: 0;">${escapeHtml(runner.name || 'Unknown Runner')}</h4>
+                        <h4 style="margin: 0;">${this._escapeHtml(runner.name || 'Unknown Runner')}</h4>
                         <span style="color: ${statusColor}; font-weight: bold;">● ${statusText} ${busy}</span>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
@@ -987,7 +1091,7 @@ class GitHubWorkflowsManager {
                     <div style="margin-top: 10px;">
                         <strong style="font-size: 12px;">Labels:</strong>
                         <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;">
-                            ${labels.map(l => `<span style="background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 4px; font-size: 11px;">${escapeHtml(typeof l === 'string' ? l : l.name || l)}</span>`).join('')}
+                            ${labels.map(l => `<span style="background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 4px; font-size: 11px;">${this._escapeHtml(typeof l === 'string' ? l : l.name || l)}</span>`).join('')}
                         </div>
                     </div>
                     ` : ''}
