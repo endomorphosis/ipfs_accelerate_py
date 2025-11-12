@@ -783,6 +783,111 @@ class GitHubWorkflowsManager {
         showToast('Runners refreshed', 'success');
     }
 
+    // View API Call Log
+    async viewAPICallLog() {
+        try {
+            console.log('[GitHub Workflows] Fetching API call log...');
+            showToast('Loading API call log...', 'info');
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_get_api_call_log',
+                arguments: {
+                    limit: 50
+                }
+            });
+            
+            console.log('[GitHub Workflows] API call log:', result);
+            
+            if (result && result.api_calls) {
+                this.displayAPICallLog(result);
+            } else {
+                showToast('No API call log available', 'warning');
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching API call log:', error);
+            showToast('Error fetching API call log', 'error');
+        }
+    }
+
+    // Display API Call Log Modal
+    displayAPICallLog(logData) {
+        const calls = logData.api_calls || [];
+        const summary = logData.summary || {};
+        const totalStats = logData.total_stats || {};
+        
+        let html = `
+            <div class="modal-overlay" onclick="githubManager.closeModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <h3>📋 GitHub API Call Log</h3>
+                        <button class="close-btn" onclick="githubManager.closeModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0;">📊 Total Statistics</h4>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                                <div><strong>🔹 REST API Calls:</strong> ${totalStats.rest_total || 0}</div>
+                                <div><strong>🔸 GraphQL API Calls:</strong> ${totalStats.graphql_total || 0}</div>
+                                <div><strong>🔍 CodeQL API Calls:</strong> ${totalStats.code_scanning_total || 0}</div>
+                                <div><strong>💾 Cache Hits:</strong> ${totalStats.cache_hits || 0}</div>
+                                <div><strong>❌ Cache Misses:</strong> ${totalStats.cache_misses || 0}</div>
+                                <div><strong>🎯 Hit Rate:</strong> ${(totalStats.hit_rate * 100).toFixed(1)}%</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <h4 style="margin: 0 0 10px 0;">Recent API Calls (Last ${calls.length})</h4>
+                            <div style="font-size: 12px; color: #6b7280; margin-bottom: 10px;">
+                                Showing: ${summary.rest || 0} REST, ${summary.graphql || 0} GraphQL, ${summary.code_scanning || 0} CodeQL
+                            </div>
+                        </div>
+                        
+                        <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                <thead style="position: sticky; top: 0; background: #f9fafb; border-bottom: 2px solid #e5e7eb;">
+                                    <tr>
+                                        <th style="padding: 8px; text-align: left; font-weight: 600;">Time</th>
+                                        <th style="padding: 8px; text-align: left; font-weight: 600;">API Type</th>
+                                        <th style="padding: 8px; text-align: left; font-weight: 600;">Operation</th>
+                                        <th style="padding: 8px; text-align: right; font-weight: 600;">#</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `;
+        
+        // Display calls in reverse order (newest first)
+        for (let i = calls.length - 1; i >= 0; i--) {
+            const call = calls[i];
+            const time = new Date(call.timestamp * 1000).toLocaleTimeString();
+            const icon = call.api_type === 'graphql' ? '🔸' : call.api_type === 'code_scanning' ? '🔍' : '🔹';
+            const bgColor = i % 2 === 0 ? '#ffffff' : '#f9fafb';
+            
+            html += `
+                <tr style="background: ${bgColor}; border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 8px;">${time}</td>
+                    <td style="padding: 8px;">${icon} ${call.api_type}</td>
+                    <td style="padding: 8px; font-family: monospace; font-size: 11px;">${this._escapeHtml(call.operation)}</td>
+                    <td style="padding: 8px; text-align: right; color: #6b7280;">${call.count}</td>
+                </tr>
+            `;
+        }
+        
+        html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="githubManager.closeModal()">Close</button>
+                        <button class="btn btn-primary" onclick="githubManager.viewAPICallLog()">🔄 Refresh</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', html);
+    }
+
     // Start auto-refresh
     startAutoRefresh(interval = 30000) {
         if (this.updateInterval) {
@@ -928,16 +1033,25 @@ class GitHubWorkflowsManager {
                 <div class="cache-detail-section" style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #e5e7eb;">
                     <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">📊 API Statistics</h4>
                     <div class="cache-detail-row">
-                        <span class="detail-label">REST API Calls:</span>
+                        <span class="detail-label">🔹 REST API Calls:</span>
                         <span class="detail-value">${this.cacheStats.api_calls_made || 0}</span>
                     </div>
                     <div class="cache-detail-row">
-                        <span class="detail-label">GraphQL API Calls:</span>
+                        <span class="detail-label">🔸 GraphQL API Calls:</span>
                         <span class="detail-value">${this.cacheStats.graphql_api_calls_made || 0}</span>
                     </div>
                     <div class="cache-detail-row">
-                        <span class="detail-label">GraphQL Cache Hits:</span>
+                        <span class="detail-label">🔸 GraphQL Cache Hits:</span>
                         <span class="detail-value">${this.cacheStats.graphql_cache_hits || 0}</span>
+                    </div>
+                    <div class="cache-detail-row">
+                        <span class="detail-label">🔍 CodeQL API Calls:</span>
+                        <span class="detail-value">${this.cacheStats.code_scanning_api_calls || 0}</span>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-sm btn-info" onclick="githubManager.viewAPICallLog()" style="font-size: 12px; padding: 6px 12px;">
+                            📋 View API Call Log
+                        </button>
                     </div>
                 </div>
                 ${this.cacheStats.aggregate ? this._renderAggregateStats(this.cacheStats.aggregate) : ''}

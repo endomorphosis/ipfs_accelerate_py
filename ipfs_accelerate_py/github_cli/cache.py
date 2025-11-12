@@ -889,22 +889,45 @@ class GitHubAPICache:
             self._aggregate_stats["peer_stats"][peer_id] = stats
             logger.debug(f"Received stats from peer {peer_id[:16]}...")
     
-    def increment_api_call_count(self, api_type: str = "rest") -> None:
+    def increment_api_call_count(self, api_type: str = "rest", operation: str = "unknown") -> None:
         """
-        Increment the count of API calls made.
+        Increment the count of API calls made and log the operation.
         
         Args:
-            api_type: Type of API call ("rest" or "graphql")
+            api_type: Type of API call ("rest", "graphql", or "code_scanning")
+            operation: Name of the operation being performed
         
         Should be called whenever an actual API call is made (not cached).
         """
         with self._lock:
+            # Track by API type
             if api_type == "graphql":
                 self._stats["graphql_api_calls_made"] += 1
-                logger.debug(f"GraphQL API call count: {self._stats['graphql_api_calls_made']}")
+                logger.info(f"📡 GraphQL API call #{self._stats['graphql_api_calls_made']}: {operation}")
+            elif api_type == "code_scanning":
+                if "code_scanning_api_calls" not in self._stats:
+                    self._stats["code_scanning_api_calls"] = 0
+                self._stats["code_scanning_api_calls"] += 1
+                logger.info(f"🔍 CodeQL API call #{self._stats['code_scanning_api_calls']}: {operation}")
             else:
                 self._stats["api_calls_made"] += 1
-                logger.debug(f"REST API call count: {self._stats['api_calls_made']}")
+                logger.info(f"📡 REST API call #{self._stats['api_calls_made']}: {operation}")
+            
+            # Add to API call log (keep last 100 calls)
+            if "api_call_log" not in self._stats:
+                self._stats["api_call_log"] = []
+            
+            import time
+            self._stats["api_call_log"].append({
+                "timestamp": time.time(),
+                "api_type": api_type,
+                "operation": operation,
+                "count": self._stats.get(f"{api_type}_api_calls_made" if api_type == "graphql" else "code_scanning_api_calls" if api_type == "code_scanning" else "api_calls_made", 0)
+            })
+            
+            # Keep only last 100 calls
+            if len(self._stats["api_call_log"]) > 100:
+                self._stats["api_call_log"] = self._stats["api_call_log"][-100:]
     
     def increment_graphql_cache_hit(self) -> None:
         """

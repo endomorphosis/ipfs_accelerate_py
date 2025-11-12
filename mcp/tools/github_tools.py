@@ -283,6 +283,63 @@ def register_github_tools(mcp: FastMCP) -> None:
             }
     
     @mcp.tool()
+    def gh_get_api_call_log(
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get recent GitHub API call log with details
+        
+        Args:
+            limit: Maximum number of recent calls to return (default: 50, max: 100)
+            
+        Returns:
+            Recent API calls with timestamps, types, and operations
+        """
+        try:
+            from ...ipfs_accelerate_py.github_cli import get_global_cache
+            cache = get_global_cache()
+            
+            stats = cache.get_stats()
+            api_log = stats.get('api_call_log', [])
+            
+            # Limit the results
+            limited_log = api_log[-min(limit, 100):]
+            
+            # Calculate summary statistics
+            rest_calls = sum(1 for call in limited_log if call['api_type'] == 'rest')
+            graphql_calls = sum(1 for call in limited_log if call['api_type'] == 'graphql')
+            code_scanning_calls = sum(1 for call in limited_log if call['api_type'] == 'code_scanning')
+            
+            return {
+                'api_calls': limited_log,
+                'total_calls_shown': len(limited_log),
+                'summary': {
+                    'rest': rest_calls,
+                    'graphql': graphql_calls,
+                    'code_scanning': code_scanning_calls
+                },
+                'total_stats': {
+                    'rest_total': stats.get('api_calls_made', 0),
+                    'graphql_total': stats.get('graphql_api_calls_made', 0),
+                    'code_scanning_total': stats.get('code_scanning_api_calls', 0),
+                    'cache_hits': stats.get('hits', 0),
+                    'cache_misses': stats.get('misses', 0),
+                    'hit_rate': stats.get('hit_rate', 0)
+                },
+                'tool': 'gh_get_api_call_log',
+                'timestamp': time.time(),
+                'success': True
+            }
+        except Exception as e:
+            logger.error(f"Error in gh_get_api_call_log: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_get_api_call_log",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    @mcp.tool()
     def gh_get_workflow_details(
         repo: str,
         run_id: str,

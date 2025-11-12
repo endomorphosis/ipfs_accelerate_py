@@ -385,9 +385,9 @@ class GitHubCLI:
             args = ["api", "user/repos", "--paginate", "--jq",
                    f".[] | select(.archived == false) | {{name, owner: .owner.login, url: .html_url, updatedAt: .updated_at}} | select(. != null) | @json"]
         
-        # Track API call
+        # Track API call with operation details
         if self.cache:
-            self.cache.increment_api_call_count()
+            self.cache.increment_api_call_count(api_type="rest", operation=f"list_repos(owner={owner}, limit={limit})")
         
         # Use REST API with no retries since it's faster
         result = self._run_command(args, max_retries=0)
@@ -455,9 +455,9 @@ class GitHubCLI:
         args = ["repo", "view", repo, "--json", 
                 "name,owner,url,description,createdAt,updatedAt,pushedAt"]
         
-        # Track API call
+        # Track API call with operation details
         if self.cache:
-            self.cache.increment_api_call_count()
+            self.cache.increment_api_call_count(api_type="rest", operation=f"get_repo_info(repo={repo})")
         
         result = self._run_command(args)
         if result["success"] and result["stdout"]:
