@@ -29,6 +29,9 @@ on:
 env:
   DOCKER_BUILDKIT: 1
   PYTHON_VERSION: '3.12'
+  # P2P Cache configuration - enables cache sharing between runners
+  CACHE_ENABLE_P2P: 'true'
+  CACHE_LISTEN_PORT: '9002'  # Different port for multiarch to avoid conflicts
 
 jobs:
   # Platform detection and setup
@@ -88,6 +91,16 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      
+    - name: Initialize P2P Cache
+      id: p2p-init
+      run: |
+        echo "🚀 Initializing P2P cache for multiarch runner communication..."
+        chmod +x .github/scripts/p2p_peer_bootstrap.sh
+        .github/scripts/p2p_peer_bootstrap.sh init
+        echo "CACHE_ENABLE_P2P=true" >> $GITHUB_ENV
+        echo "CACHE_LISTEN_PORT=9002" >> $GITHUB_ENV
+        echo "✓ P2P cache initialized for multiarch"
       
     - name: Set up QEMU for ARM64 emulation (if needed)
       if: matrix.platform == 'arm64'
