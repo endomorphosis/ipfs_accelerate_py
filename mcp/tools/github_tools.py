@@ -283,6 +283,63 @@ def register_github_tools(mcp: FastMCP) -> None:
             }
     
     @mcp.tool()
+    def gh_get_api_call_log(
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get recent GitHub API call log with details
+        
+        Args:
+            limit: Maximum number of recent calls to return (default: 50, max: 100)
+            
+        Returns:
+            Recent API calls with timestamps, types, and operations
+        """
+        try:
+            from ...ipfs_accelerate_py.github_cli import get_global_cache
+            cache = get_global_cache()
+            
+            stats = cache.get_stats()
+            api_log = stats.get('api_call_log', [])
+            
+            # Limit the results
+            limited_log = api_log[-min(limit, 100):]
+            
+            # Calculate summary statistics
+            rest_calls = sum(1 for call in limited_log if call['api_type'] == 'rest')
+            graphql_calls = sum(1 for call in limited_log if call['api_type'] == 'graphql')
+            code_scanning_calls = sum(1 for call in limited_log if call['api_type'] == 'code_scanning')
+            
+            return {
+                'api_calls': limited_log,
+                'total_calls_shown': len(limited_log),
+                'summary': {
+                    'rest': rest_calls,
+                    'graphql': graphql_calls,
+                    'code_scanning': code_scanning_calls
+                },
+                'total_stats': {
+                    'rest_total': stats.get('api_calls_made', 0),
+                    'graphql_total': stats.get('graphql_api_calls_made', 0),
+                    'code_scanning_total': stats.get('code_scanning_api_calls', 0),
+                    'cache_hits': stats.get('hits', 0),
+                    'cache_misses': stats.get('misses', 0),
+                    'hit_rate': stats.get('hit_rate', 0)
+                },
+                'tool': 'gh_get_api_call_log',
+                'timestamp': time.time(),
+                'success': True
+            }
+        except Exception as e:
+            logger.error(f"Error in gh_get_api_call_log: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_get_api_call_log",
+                "timestamp": time.time(),
+                "success": False
+            }
+    
+    @mcp.tool()
     def gh_get_workflow_details(
         repo: str,
         run_id: str,
@@ -354,6 +411,99 @@ def register_github_tools(mcp: FastMCP) -> None:
             return {
                 "error": str(e),
                 "tool": "gh_get_workflow_details",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
+    def gh_get_workflow_logs(
+        repo: str,
+        run_id: str,
+        job_id: Optional[str] = None,
+        tail_lines: int = 500
+    ) -> Dict[str, Any]:
+        """
+        Get logs for a workflow run or specific job
+        
+        Args:
+            repo: Repository in format "owner/repo"
+            run_id: Workflow run ID
+            job_id: Optional job ID to get specific job logs
+            tail_lines: Number of lines to return from end of log (default: 500)
+            
+        Returns:
+            Workflow or job logs
+        """
+        try:
+            if job_id:
+                # Get specific job logs
+                result = github_ops.gh_cli._run_command([
+                    'api',
+                    f'repos/{repo}/actions/jobs/{job_id}/logs',
+                    '-H', 'Accept: application/vnd.github.v3+json'
+                ])
+                
+                if result.get('success') and result.get('stdout'):
+                    logs = result['stdout']
+                    # Get last N lines
+                    log_lines = logs.split('\n')
+                    if len(log_lines) > tail_lines:
+                        logs = '\n'.join(log_lines[-tail_lines:])
+                    
+                    return {
+                        'logs': logs,
+                        'repo': repo,
+                        'run_id': run_id,
+                        'job_id': job_id,
+                        'lines_returned': len(logs.split('\n')),
+                        'tool': 'gh_get_workflow_logs',
+                        'timestamp': time.time(),
+                        'success': True
+                    }
+                else:
+                    return {
+                        'error': result.get('stderr', 'Failed to fetch job logs'),
+                        'repo': repo,
+                        'run_id': run_id,
+                        'job_id': job_id,
+                        'tool': 'gh_get_workflow_logs',
+                        'timestamp': time.time(),
+                        'success': False
+                    }
+            else:
+                # Get all logs for the workflow run
+                result = github_ops.gh_cli._run_command([
+                    'api',
+                    f'repos/{repo}/actions/runs/{run_id}/logs',
+                    '-H', 'Accept: application/vnd.github.v3+json'
+                ])
+                
+                if result.get('success'):
+                    # Note: This returns a redirect URL to download logs
+                    # We need to inform the user about this
+                    return {
+                        'info': 'Workflow run logs are available as a ZIP download',
+                        'download_command': f'gh api repos/{repo}/actions/runs/{run_id}/logs > logs.zip',
+                        'suggestion': 'Use gh_get_workflow_details with include_jobs=True to get individual job IDs, then fetch specific job logs',
+                        'repo': repo,
+                        'run_id': run_id,
+                        'tool': 'gh_get_workflow_logs',
+                        'timestamp': time.time(),
+                        'success': True
+                    }
+                else:
+                    return {
+                        'error': result.get('stderr', 'Failed to fetch workflow logs'),
+                        'repo': repo,
+                        'run_id': run_id,
+                        'tool': 'gh_get_workflow_logs',
+                        'timestamp': time.time(),
+                        'success': False
+                    }
+        except Exception as e:
+            logger.error(f"Error in gh_get_workflow_logs: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_get_workflow_logs",
                 "timestamp": time.time()
             }
     
@@ -1151,11 +1301,31 @@ def register_github_tools(mcp: FastMCP) -> None:
             if repos_result.get("success") and repos_result.get("repos"):
                 repos = repos_result["repos"]
             else:
-                return {
-                    "error": "Failed to fetch repositories",
-                    "tool": "gh_list_all_issues",
-                    "timestamp": time.time()
-                }
+                # Check if it's a rate limit issue
+                is_rate_limited = repos_result.get("rate_limited", False)
+                error_msg = repos_result.get("error", "Failed to fetch repositories")
+                
+                if is_rate_limited or "rate limit" in error_msg.lower():
+                    # Return gracefully with empty data when rate limited
+                    return {
+                        "status": "success",
+                        "success": True,
+                        "issues": {},
+                        "repo_count": 0,
+                        "total_issues": 0,
+                        "tool": "gh_list_all_issues",
+                        "timestamp": time.time(),
+                        "rate_limited": True,
+                        "message": "GitHub API rate limit exceeded. Issue data unavailable until rate limit resets."
+                    }
+                else:
+                    # Non-rate-limit errors still return as errors
+                    return {
+                        "error": error_msg,
+                        "success": False,
+                        "tool": "gh_list_all_issues",
+                        "timestamp": time.time()
+                    }
             
             # For each repository, get issues
             for repo in repos:
@@ -1224,11 +1394,31 @@ def register_github_tools(mcp: FastMCP) -> None:
             if repos_result.get("success") and repos_result.get("repos"):
                 repos = repos_result["repos"]
             else:
-                return {
-                    "error": "Failed to fetch repositories",
-                    "tool": "gh_list_all_pull_requests", 
-                    "timestamp": time.time()
-                }
+                # Check if it's a rate limit issue
+                is_rate_limited = repos_result.get("rate_limited", False)
+                error_msg = repos_result.get("error", "Failed to fetch repositories")
+                
+                if is_rate_limited or "rate limit" in error_msg.lower():
+                    # Return gracefully with empty data when rate limited
+                    return {
+                        "status": "success",
+                        "success": True,
+                        "pull_requests": {},
+                        "repo_count": 0,
+                        "total_prs": 0,
+                        "tool": "gh_list_all_pull_requests", 
+                        "timestamp": time.time(),
+                        "rate_limited": True,
+                        "message": "GitHub API rate limit exceeded. Pull request data unavailable until rate limit resets."
+                    }
+                else:
+                    # Non-rate-limit errors still return as errors
+                    return {
+                        "error": error_msg,
+                        "success": False,
+                        "tool": "gh_list_all_pull_requests", 
+                        "timestamp": time.time()
+                    }
             
             # For each repository, get pull requests
             for repo in repos:

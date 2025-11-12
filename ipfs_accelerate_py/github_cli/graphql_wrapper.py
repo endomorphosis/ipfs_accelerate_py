@@ -57,6 +57,10 @@ class GitHubGraphQL:
             Dict with 'success' bool and 'data' or 'error'
         """
         try:
+            # Track GraphQL API call
+            if self.cache:
+                self.cache.increment_api_call_count(api_type="graphql")
+            
             cmd = [self.gh_path, "api", "graphql", "-f", f"query={query}"]
             
             # Add variables if provided
@@ -127,6 +131,7 @@ class GitHubGraphQL:
                                           status=status, limit=limit)
             if cached_result is not None:
                 logger.debug(f"Using cached GraphQL workflow runs for {owner}/{repo}")
+                self.cache.increment_graphql_cache_hit()
                 return {"success": True, "data": cached_result}
         
         # Build GraphQL query
@@ -216,6 +221,7 @@ class GitHubGraphQL:
                                           owner=owner, repo=repo)
             if cached_result is not None:
                 logger.debug(f"Using cached GraphQL runners for {owner}/{repo or 'org'}")
+                self.cache.increment_graphql_cache_hit()
                 return {"success": True, "data": cached_result}
         
         # Build GraphQL query for org-level runners

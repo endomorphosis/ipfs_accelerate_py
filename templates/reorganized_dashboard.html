@@ -506,16 +506,7 @@
                 <div class="card">
                     <h3>🔧 Available MCP Tools</h3>
                     <div class="tools-grid">
-                        <div class="tool-tag">text_generation</div>
-                        <div class="tool-tag">text_classification</div>
-                        <div class="tool-tag">text_embeddings</div>
-                        <div class="tool-tag">audio_transcription</div>
-                        <div class="tool-tag">image_classification</div>
-                        <div class="tool-tag">visual_qa</div>
-                        <div class="tool-tag">model_search</div>
-                        <div class="tool-tag">model_recommend</div>
-                        <div class="tool-tag">queue_status</div>
-                        <div class="tool-tag">performance_stats</div>
+                        <div class="tool-tag" style="background: #e5e7eb; color: #6b7280;">Click "Refresh Tools" to load available MCP tools</div>
                     </div>
                     <button class="btn btn-primary" onclick="refreshTools()">🔄 Refresh Tools</button>
                 </div>
@@ -660,9 +651,8 @@
                 </div>
                 
                 <div class="card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
-                    <h3 style="margin: 0 0 10px 0;">⚡ API Rate Limit</h3>
                     <div id="github-rate-limit">
-                        <p class="loading-message" style="color: white;">Loading...</p>
+                        <p class="loading-message" style="color: white;">Loading rate limits...</p>
                     </div>
                 </div>
             </div>

@@ -97,12 +97,17 @@ body {
     transition: all 0.3s ease;
     backdrop-filter: blur(10px);
     font-weight: 500;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    white-space: nowrap;
 }
 
 .tab-button:hover,
 .nav-tab:hover {
     background: rgba(255, 255, 255, 0.3);
     transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .tab-button.active,
@@ -110,6 +115,7 @@ body {
     background: rgba(255, 255, 255, 0.9);
     color: #2c3e50;
     font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .tab-content {

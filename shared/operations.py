@@ -1456,6 +1456,12 @@ class GitHubOperations:
         self._workflow_queue = None
         self._runner_manager = None
         self._cache = None
+        # Rate limit tracking
+        self._rate_limited = False
+        self._rate_limit_reset_time = 0
+        self._pending_requests = []
+        self._last_request_time = 0
+        self._min_request_interval = 1.0  # Minimum seconds between requests when rate limited
         
     @property
     def cache(self):
@@ -1601,15 +1607,91 @@ class GitHubOperations:
             
             return result
     
+    def _should_backoff(self) -> bool:
+        """Check if we should back off due to rate limiting"""
+        current_time = time.time()
+        
+        # If we know we're rate limited and haven't passed reset time, back off
+        if self._rate_limited and current_time < self._rate_limit_reset_time:
+            return True
+        
+        # If rate limit has expired, clear the flag
+        if self._rate_limited and current_time >= self._rate_limit_reset_time:
+            logger.info("Rate limit reset time reached, clearing rate limit flag")
+            self._rate_limited = False
+            self._rate_limit_reset_time = 0
+        
+        # Enforce minimum interval between requests when previously rate limited
+        if self._last_request_time > 0:
+            time_since_last = current_time - self._last_request_time
+            if time_since_last < self._min_request_interval:
+                logger.debug(f"Backing off: {time_since_last:.2f}s since last request (min: {self._min_request_interval}s)")
+                return True
+        
+        return False
+    
+    def _mark_rate_limited(self, reset_time: Optional[int] = None):
+        """Mark that we've been rate limited"""
+        self._rate_limited = True
+        if reset_time:
+            self._rate_limit_reset_time = reset_time
+            logger.warning(f"Rate limited until {datetime.fromtimestamp(reset_time).strftime('%H:%M:%S')}")
+        else:
+            # Default to 60 seconds if no reset time provided
+            self._rate_limit_reset_time = time.time() + 60
+            logger.warning("Rate limited, backing off for 60 seconds")
+    
+    def _record_request(self):
+        """Record that we made a request"""
+        self._last_request_time = time.time()
+    
     def list_repos(self, owner: Optional[str] = None, limit: int = 200) -> Dict[str, Any]:
         """List GitHub repositories"""
         if not self.gh_cli:
             return {"error": "GitHub CLI not available", "success": False}
         
         repos = self.gh_cli.list_repos(owner=owner, limit=limit)
+        
+        # Check if we got any repos or if there was an error
+        if repos is None or (isinstance(repos, list) and len(repos) == 0):
+            # Empty list - check if it's due to rate limits
+            # Both GraphQL and REST API have separate rate limits that can be exhausted
+            logger.debug(f"Empty repo list returned for owner={owner}, checking rate limit status")
+            
+            # Try to get rate limit info to provide better error message
+            try:
+                rate_limit_result = self.get_rate_limit()
+                if rate_limit_result and rate_limit_result.get("success"):
+                    rate_limit = rate_limit_result.get("rate_limit", {}).get("rate", {})
+                    remaining = rate_limit.get("remaining", 0)
+                    reset_timestamp = rate_limit.get("reset", 0)
+                    
+                    if remaining == 0:
+                        import datetime
+                        reset_time = datetime.datetime.fromtimestamp(reset_timestamp)
+                        return {
+                            "error": f"GitHub API rate limit exhausted (0/{rate_limit.get('limit', '?')}). Resets at {reset_time.strftime('%H:%M:%S %Z')}",
+                            "success": False,
+                            "operation": "list_repos",
+                            "timestamp": time.time(),
+                            "rate_limited": True,
+                            "rate_limit_reset": reset_timestamp
+                        }
+            except Exception as e:
+                logger.debug(f"Could not check rate limit: {e}")
+            
+            # Generic rate limit error if we can't get specific details
+            return {
+                "error": "GitHub API rate limit exceeded. Repository listing temporarily unavailable.",
+                "success": False,
+                "operation": "list_repos",
+                "timestamp": time.time(),
+                "rate_limited": True
+            }
+        
         return {
             "repos": repos,
-            "count": len(repos),
+            "count": len(repos) if repos else 0,
             "operation": "list_repos",
             "timestamp": time.time(),
             "success": True
@@ -1699,10 +1781,12 @@ class GitHubOperations:
         List self-hosted runners.
         
         Results are cached via P2P so all services can see runner state.
+        
+        If no repo/org specified, fetches runners from all accessible repositories.
         """
-        # If no repo/org specified, list active containerized runners instead
+        # If no repo/org specified, aggregate runners from all accessible repos
         if not repo and not org:
-            return self.list_active_runners()
+            return self._list_all_runners()
         
         # Check cache first (30 second TTL for runner list)
         cache_key = f"runners:repo={repo}:org={org}"
@@ -1731,6 +1815,165 @@ class GitHubOperations:
             logger.debug(f"Cached runner list (30s TTL)")
         
         return result
+    
+    def _list_all_runners(self) -> Dict[str, Any]:
+        """
+        List all self-hosted runners from recently active repositories and organizations.
+        
+        This method:
+        1. Checks cache for aggregated results
+        2. Uses GitHub token to determine authenticated user/org
+        3. Gets repositories updated in the past day
+        4. Queries runners for each active repository
+        5. Aggregates all runners and caches the result
+        """
+        # Check cache first (30 second TTL for aggregated runner list)
+        cache_key = "runners:all"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached and isinstance(cached, dict):
+                logger.debug("Returning cached aggregated runner list")
+                cached["cached"] = True
+                return cached
+        
+        if not self.runner_manager:
+            return {"error": "Runner Manager not available", "success": False}
+        
+        all_runners = []
+        repos_checked = 0
+        repos_with_runners = 0
+        errors = []
+        
+        try:
+            # Get authenticated user info from token
+            auth_status = self.gh_cli.get_auth_status() if self.gh_cli else {}
+            username = auth_status.get("username")
+            
+            if not username:
+                logger.warning("Could not determine authenticated user, defaulting to endomorphosis")
+                username = "endomorphosis"
+            
+            logger.info(f"Using authenticated user/org: {username}")
+            
+            # Get list of repositories updated in the past day
+            from datetime import datetime, timedelta
+            one_day_ago = datetime.utcnow() - timedelta(days=1)
+            
+            # Fetch repositories using the wrapper method
+            repos_result = self.list_repos(owner=username, limit=200)
+            if not repos_result.get("success") or not repos_result.get("repos"):
+                error_msg = repos_result.get("error", "Failed to fetch repositories")
+                
+                # Check if it's a rate limit issue
+                is_rate_limited = repos_result.get("rate_limited", False) or "rate limit" in error_msg.lower()
+                
+                if is_rate_limited:
+                    logger.warning(f"Rate limit hit while fetching repositories for runners: {error_msg}")
+                    # Return empty result gracefully with explanation
+                    return {
+                        "runners": [],
+                        "count": 0,
+                        "repos_checked": 0,
+                        "repos_with_runners": 0,
+                        "authenticated_user": username,
+                        "operation": "list_all_runners",
+                        "timestamp": time.time(),
+                        "success": True,  # Success=True but empty due to rate limit
+                        "rate_limited": True,
+                        "message": "GitHub API rate limit exceeded. Runner data unavailable until rate limit resets."
+                    }
+                else:
+                    logger.error(f"Error fetching repositories: {error_msg}")
+                    return {
+                        "error": error_msg,
+                        "runners": [],
+                        "count": 0,
+                        "operation": "list_all_runners",
+                        "timestamp": time.time(),
+                        "success": False
+                    }
+            
+            repos = repos_result["repos"]
+            logger.info(f"Found {len(repos)} total repositories for {username}")
+            
+            # Filter to repos updated in the past day
+            recent_repos = []
+            for repo_data in repos:
+                try:
+                    updated_at = repo_data.get("updatedAt", "")
+                    if updated_at:
+                        # Parse ISO 8601 format: 2024-11-11T12:34:56Z
+                        repo_time = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                        if repo_time.replace(tzinfo=None) >= one_day_ago:
+                            recent_repos.append(repo_data)
+                except Exception as e:
+                    logger.debug(f"Error parsing update time for repo: {e}")
+                    # Include repo if we can't parse the date (better to include than miss)
+                    recent_repos.append(repo_data)
+            
+            logger.info(f"Filtering to {len(recent_repos)} repositories updated in past 24 hours")
+            
+            # Query runners for each recently active repository
+            for repo_data in recent_repos:
+                try:
+                    # Extract repo name in format "owner/repo"
+                    repo_name = repo_data.get("name")
+                    owner = repo_data.get("owner", {}).get("login") if isinstance(repo_data.get("owner"), dict) else username
+                    
+                    if not repo_name:
+                        continue
+                    
+                    full_repo = f"{owner}/{repo_name}"
+                    
+                    # Query runners for this repo
+                    repo_runners = self.runner_manager.list_runners(repo=full_repo, use_cache=True)
+                    
+                    if repo_runners:
+                        repos_with_runners += 1
+                        # Add repo context to each runner
+                        for runner in repo_runners:
+                            runner["repository"] = full_repo
+                            runner["owner"] = owner
+                            all_runners.append(runner)
+                    
+                    repos_checked += 1
+                    
+                except Exception as e:
+                    logger.debug(f"Error fetching runners for repo {full_repo}: {e}")
+                    errors.append(f"{full_repo}: {str(e)}")
+            
+            result = {
+                "runners": all_runners,
+                "count": len(all_runners),
+                "repos_checked": repos_checked,
+                "repos_with_runners": repos_with_runners,
+                "authenticated_user": username,
+                "operation": "list_all_runners",
+                "timestamp": time.time(),
+                "success": True,
+                "cached": False
+            }
+            
+            if errors:
+                result["partial_errors"] = errors[:5]  # Only include first 5 errors
+            
+            # Cache the aggregated result (30 second TTL)
+            if self.cache:
+                self.cache.put(cache_key, result, ttl=30)
+                logger.info(f"Cached aggregated runner list: {len(all_runners)} runners from {repos_with_runners}/{repos_checked} repos")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error listing all runners: {e}")
+            return {
+                "error": str(e),
+                "runners": [],
+                "count": 0,
+                "operation": "list_all_runners",
+                "timestamp": time.time(),
+                "success": False
+            }
     
     def provision_runners(
         self,
@@ -2194,24 +2437,88 @@ class GitHubOperations:
         repo_count = 0
         total_issues = 0
         
+        # Check if we should back off due to rate limiting
+        if self._should_backoff():
+            logger.info("Backing off due to rate limiting, returning cached/empty results")
+            return {
+                "status": "success",
+                "success": True,
+                "issues": {},
+                "repo_count": 0,
+                "total_issues": 0,
+                "rate_limited": True,
+                "message": "GitHub API rate limit active. Backing off to avoid process explosion. Data will refresh when rate limit resets.",
+                "timestamp": time.time()
+            }
+        
         # Get list of all repositories
         repos_result = self.list_repos(owner=owner, limit=200)
         if not repos_result.get("success") or not repos_result.get("repos"):
+            # Check if rate limited
+            is_rate_limited = repos_result.get("rate_limited", False)
+            error_msg = repos_result.get("error", "Failed to fetch repositories")
+            reset_time = repos_result.get("rate_limit_reset")
+            
+            if is_rate_limited or "rate limit" in error_msg.lower():
+                # Mark as rate limited to prevent subsequent requests
+                if reset_time:
+                    self._mark_rate_limited(reset_time)
+                else:
+                    self._mark_rate_limited()
+                
+                return {
+                    "status": "success",
+                    "success": True,
+                    "issues": {},
+                    "repo_count": 0,
+                    "total_issues": 0,
+                    "rate_limited": True,
+                    "message": "GitHub API rate limit exceeded. Issue data unavailable until rate limit resets.",
+                    "timestamp": time.time()
+                }
+            
             return {
-                "error": "Failed to fetch repositories",
+                "error": error_msg,
                 "success": False,
                 "timestamp": time.time()
             }
         
-        # For each repository, get issues
-        for repo in repos_result["repos"]:
+        # Limit the number of repos we'll query per request to avoid process explosion
+        MAX_REPOS_PER_REQUEST = 10
+        repos_to_query = repos_result["repos"][:MAX_REPOS_PER_REQUEST]
+        
+        if len(repos_result["repos"]) > MAX_REPOS_PER_REQUEST:
+            logger.info(f"Limiting issue fetch to {MAX_REPOS_PER_REQUEST} repos (out of {len(repos_result['repos'])} total)")
+        
+        # For each repository, get issues with backoff between requests
+        for i, repo in enumerate(repos_to_query):
             repo_name = f"{repo['owner']['login']}/{repo['name']}"
+            
+            # Check if we should back off before each request
+            if self._should_backoff():
+                logger.info(f"Rate limit detected, stopping after {i} repos")
+                break
+            
             try:
+                # Add small delay between requests to avoid overwhelming API
+                if i > 0:
+                    time.sleep(0.5)
+                
                 # Use GitHub CLI to get issues
                 args = ["issue", "list", "--repo", repo_name,
                        "--state", state, "--limit", str(limit_per_repo),
                        "--json", "number,title,state,createdAt,url,author"]
+                
+                self._record_request()
                 cmd_result = self.gh_cli._run_command(args)
+                
+                # Check for rate limit in response
+                if not cmd_result.get("success"):
+                    stderr = cmd_result.get("stderr", "")
+                    if "rate limit" in stderr.lower() or "API rate limit" in stderr:
+                        logger.warning(f"Rate limit hit while fetching issues for {repo_name}")
+                        self._mark_rate_limited()
+                        break
                 
                 if cmd_result.get("success") and cmd_result.get("stdout"):
                     import json
@@ -2273,24 +2580,88 @@ class GitHubOperations:
         repo_count = 0
         total_prs = 0
         
+        # Check if we should back off due to rate limiting
+        if self._should_backoff():
+            logger.info("Backing off due to rate limiting, returning cached/empty results")
+            return {
+                "status": "success",
+                "success": True,
+                "pull_requests": {},
+                "repo_count": 0,
+                "total_prs": 0,
+                "rate_limited": True,
+                "message": "GitHub API rate limit active. Backing off to avoid process explosion. Data will refresh when rate limit resets.",
+                "timestamp": time.time()
+            }
+        
         # Get list of all repositories
         repos_result = self.list_repos(owner=owner, limit=200)
         if not repos_result.get("success") or not repos_result.get("repos"):
+            # Check if rate limited
+            is_rate_limited = repos_result.get("rate_limited", False)
+            error_msg = repos_result.get("error", "Failed to fetch repositories")
+            reset_time = repos_result.get("rate_limit_reset")
+            
+            if is_rate_limited or "rate limit" in error_msg.lower():
+                # Mark as rate limited to prevent subsequent requests
+                if reset_time:
+                    self._mark_rate_limited(reset_time)
+                else:
+                    self._mark_rate_limited()
+                
+                return {
+                    "status": "success",
+                    "success": True,
+                    "pull_requests": {},
+                    "repo_count": 0,
+                    "total_prs": 0,
+                    "rate_limited": True,
+                    "message": "GitHub API rate limit exceeded. Pull request data unavailable until rate limit resets.",
+                    "timestamp": time.time()
+                }
+            
             return {
-                "error": "Failed to fetch repositories", 
+                "error": error_msg,
                 "success": False,
                 "timestamp": time.time()
             }
         
-        # For each repository, get pull requests
-        for repo in repos_result["repos"]:
+        # Limit the number of repos we'll query per request to avoid process explosion
+        MAX_REPOS_PER_REQUEST = 10
+        repos_to_query = repos_result["repos"][:MAX_REPOS_PER_REQUEST]
+        
+        if len(repos_result["repos"]) > MAX_REPOS_PER_REQUEST:
+            logger.info(f"Limiting PR fetch to {MAX_REPOS_PER_REQUEST} repos (out of {len(repos_result['repos'])} total)")
+        
+        # For each repository, get pull requests with backoff between requests
+        for i, repo in enumerate(repos_to_query):
             repo_name = f"{repo['owner']['login']}/{repo['name']}"
+            
+            # Check if we should back off before each request
+            if self._should_backoff():
+                logger.info(f"Rate limit detected, stopping after {i} repos")
+                break
+            
             try:
+                # Add small delay between requests to avoid overwhelming API
+                if i > 0:
+                    time.sleep(0.5)
+                
                 # Use GitHub CLI to get pull requests
                 args = ["pr", "list", "--repo", repo_name,
                        "--state", state, "--limit", str(limit_per_repo),
                        "--json", "number,title,state,createdAt,url,author"]
+                
+                self._record_request()
                 cmd_result = self.gh_cli._run_command(args)
+                
+                # Check for rate limit in response
+                if not cmd_result.get("success"):
+                    stderr = cmd_result.get("stderr", "")
+                    if "rate limit" in stderr.lower() or "API rate limit" in stderr:
+                        logger.warning(f"Rate limit hit while fetching PRs for {repo_name}")
+                        self._mark_rate_limited()
+                        break
                 
                 if cmd_result.get("success") and cmd_result.get("stdout"):
                     import json

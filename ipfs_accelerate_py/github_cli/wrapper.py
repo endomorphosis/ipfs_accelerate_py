@@ -372,27 +372,66 @@ class GitHubCLI:
                 logger.debug(f"Using cached repo list for owner={owner}")
                 return cached_result
         
-        args = ["repo", "list", "--json", "name,owner,url,updatedAt", "--limit", str(limit)]
+        # Use REST API instead of GraphQL to avoid separate rate limit
+        # gh repo list uses GraphQL which has its own (often exhausted) rate limit
+        # REST API: GET /user/repos or GET /users/{username}/repos
+        
         if owner:
-            args.append(owner)
+            # List repos for specific user/org
+            args = ["api", f"users/{owner}/repos", "--paginate", "--jq", 
+                   f".[] | select(.archived == false) | {{name, owner: .owner.login, url: .html_url, updatedAt: .updated_at}} | select(. != null) | @json"]
+        else:
+            # List authenticated user's repos
+            args = ["api", "user/repos", "--paginate", "--jq",
+                   f".[] | select(.archived == false) | {{name, owner: .owner.login, url: .html_url, updatedAt: .updated_at}} | select(. != null) | @json"]
         
-        # Track API call
+        # Track API call with operation details
         if self.cache:
-            self.cache.increment_api_call_count()
+            self.cache.increment_api_call_count(api_type="rest", operation=f"list_repos(owner={owner}, limit={limit})")
         
-        result = self._run_command(args)
+        # Use REST API with no retries since it's faster
+        result = self._run_command(args, max_retries=0)
         if result["success"] and result["stdout"]:
             try:
-                repos = json.loads(result["stdout"])
+                # Parse JSON lines from jq output
+                repos = []
+                for line in result["stdout"].strip().split('\n'):
+                    if line.strip():
+                        try:
+                            repo = json.loads(line)
+                            # Convert owner string to dict format for compatibility
+                            if isinstance(repo.get('owner'), str):
+                                repo['owner'] = {'login': repo['owner']}
+                            repos.append(repo)
+                        except json.JSONDecodeError:
+                            continue
+                
+                # Apply limit
+                repos = repos[:limit]
                 
                 # Cache the result
                 if use_cache and self.cache:
                     self.cache.put("list_repos", repos, ttl=self.cache_ttl, owner=owner, limit=limit, visibility=visibility)
                 
+                logger.info(f"Successfully fetched {len(repos)} repositories via REST API")
                 return repos
-            except json.JSONDecodeError:
-                logger.error(f"Failed to parse repo list: {result['stdout']}")
+            except Exception as e:
+                logger.error(f"Failed to parse repo list: {e}")
                 return []
+        else:
+            # Log the error if available
+            if result.get("stderr"):
+                # Check if it's a rate limit error
+                if "rate limit" in result["stderr"].lower() or "API rate limit" in result["stderr"]:
+                    logger.warning(f"REST API rate limit hit: {result['stderr']}")
+                    # Try to return stale cache data as fallback
+                    if self.cache:
+                        stale_data = self.cache.get_stale("list_repos", owner=owner, limit=limit, visibility=visibility)
+                        if stale_data is not None:
+                            logger.info(f"Returning stale cache data for repos (rate limit fallback)")
+                            return stale_data
+                else:
+                    logger.warning(f"Failed to list repos: {result['stderr']}")
         return []
     
     def get_repo_info(self, repo: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
@@ -416,9 +455,9 @@ class GitHubCLI:
         args = ["repo", "view", repo, "--json", 
                 "name,owner,url,description,createdAt,updatedAt,pushedAt"]
         
-        # Track API call
+        # Track API call with operation details
         if self.cache:
-            self.cache.increment_api_call_count()
+            self.cache.increment_api_call_count(api_type="rest", operation=f"get_repo_info(repo={repo})")
         
         result = self._run_command(args)
         if result["success"] and result["stdout"]:
@@ -433,6 +472,15 @@ class GitHubCLI:
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse repo info: {result['stdout']}")
                 return None
+        else:
+            # Check if it's a rate limit error and try stale cache
+            if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
+                logger.warning(f"API rate limit hit for get_repo_info: {result['stderr']}")
+                if self.cache:
+                    stale_data = self.cache.get_stale("get_repo_info", repo=repo)
+                    if stale_data is not None:
+                        logger.info(f"Returning stale cache data for repo info (rate limit fallback)")
+                        return stale_data
         return None
 
 
@@ -498,6 +546,15 @@ class WorkflowQueue:
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse workflow runs: {result['stdout']}")
                 return []
+        else:
+            # Check if it's a rate limit error and try stale cache
+            if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
+                logger.warning(f"API rate limit hit for list_workflow_runs: {result['stderr']}")
+                if self.gh.cache:
+                    stale_data = self.gh.cache.get_stale("list_workflow_runs", repo=repo, status=status, limit=limit, branch=branch)
+                    if stale_data is not None:
+                        logger.info(f"Returning stale cache data for workflow runs (rate limit fallback)")
+                        return stale_data
         return []
     
     def get_workflow_run(self, repo: str, run_id: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
@@ -535,6 +592,15 @@ class WorkflowQueue:
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse workflow run: {result['stdout']}")
                 return None
+        else:
+            # Check if it's a rate limit error and try stale cache
+            if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
+                logger.warning(f"API rate limit hit for get_workflow_run: {result['stderr']}")
+                if self.gh.cache:
+                    stale_data = self.gh.cache.get_stale("get_workflow_run", repo=repo, run_id=run_id)
+                    if stale_data is not None:
+                        logger.info(f"Returning stale cache data for workflow run (rate limit fallback)")
+                        return stale_data
         return None
     
     def list_failed_runs(

@@ -561,6 +561,9 @@ class GitHubWorkflowsManager {
                         <span>Created: ${new Date(workflow.createdAt).toLocaleString()}</span>
                         <span>Updated: ${new Date(workflow.updatedAt).toLocaleString()}</span>
                     </div>
+                    <div class="workflow-item-actions" style="margin-top: 10px; display: flex; gap: 8px;">
+                        <button class="btn btn-sm btn-primary" onclick="githubManager.viewWorkflowLogs('${repo}', '${workflow.databaseId}')" style="font-size: 12px; padding: 4px 12px;">📄 View Logs</button>
+                    </div>
                 </div>
             `;
         }
@@ -577,6 +580,134 @@ class GitHubWorkflowsManager {
         `;
 
         document.body.insertAdjacentHTML('beforeend', html);
+    }
+
+    // View workflow logs
+    async viewWorkflowLogs(repo, runId) {
+        try {
+            console.log('[GitHub Workflows] Fetching logs for:', repo, runId);
+            showToast('Fetching workflow logs...', 'info');
+            
+            // First, get workflow details to get job IDs
+            const detailsResult = await this.mcp.request('tools/call', {
+                name: 'gh_get_workflow_details',
+                arguments: {
+                    repo: repo,
+                    run_id: String(runId),
+                    include_jobs: true
+                }
+            });
+            
+            console.log('[GitHub Workflows] Workflow details:', detailsResult);
+            
+            if (detailsResult && detailsResult.jobs && detailsResult.jobs.length > 0) {
+                // Display jobs and allow user to select which one to view logs for
+                let html = `
+                    <div class="modal-overlay" onclick="githubManager.closeModal()">
+                        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+                            <div class="modal-header">
+                                <h3>Workflow Logs - ${repo} #${runId}</h3>
+                                <button class="close-btn" onclick="githubManager.closeModal()">×</button>
+                            </div>
+                            <div class="modal-body">
+                                <div style="margin-bottom: 20px;">
+                                    <h4 style="margin-bottom: 10px;">Select a job to view logs:</h4>
+                                    <div class="jobs-list" style="display: grid; gap: 10px;">
+                `;
+                
+                for (const job of detailsResult.jobs) {
+                    const statusClass = job.status === 'in_progress' ? 'status-running' : 
+                                      job.conclusion === 'success' ? 'status-success' : 
+                                      job.conclusion === 'failure' ? 'status-failure' : 'status-unknown';
+                    const statusIcon = job.conclusion === 'success' ? '✅' : 
+                                     job.conclusion === 'failure' ? '❌' : 
+                                     job.status === 'in_progress' ? '⏳' : '⚪';
+                    
+                    html += `
+                        <div class="job-item" style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; background: white;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-weight: 600; margin-bottom: 4px;">${statusIcon} ${this._escapeHtml(job.name)}</div>
+                                    <div style="font-size: 12px; color: #6b7280;">
+                                        Status: ${job.status} | Conclusion: ${job.conclusion || 'N/A'}
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-primary" onclick="githubManager.fetchJobLogs('${repo}', '${runId}', '${job.id}', '${this._escapeHtml(job.name)}')" style="font-size: 12px;">
+                                    View Logs
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                                    </div>
+                                </div>
+                                <div id="job-logs-container" style="display: none;">
+                                    <h4 style="margin-bottom: 10px;" id="job-logs-title">Job Logs</h4>
+                                    <pre id="job-logs-content" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 12px; line-height: 1.4; max-height: 500px; overflow-y: auto;"></pre>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" onclick="githubManager.closeModal()">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.insertAdjacentHTML('beforeend', html);
+            } else {
+                showToast('No jobs found for this workflow run', 'warning');
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching workflow logs:', error);
+            showToast('Error fetching workflow logs', 'error');
+        }
+    }
+
+    // Fetch specific job logs
+    async fetchJobLogs(repo, runId, jobId, jobName) {
+        try {
+            console.log('[GitHub Workflows] Fetching job logs:', repo, runId, jobId);
+            showToast('Loading job logs...', 'info');
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_get_workflow_logs',
+                arguments: {
+                    repo: repo,
+                    run_id: String(runId),
+                    job_id: String(jobId),
+                    tail_lines: 1000
+                }
+            });
+            
+            console.log('[GitHub Workflows] Job logs result:', result);
+            
+            const logsContainer = document.getElementById('job-logs-container');
+            const logsTitle = document.getElementById('job-logs-title');
+            const logsContent = document.getElementById('job-logs-content');
+            
+            if (logsContainer && logsTitle && logsContent) {
+                logsContainer.style.display = 'block';
+                logsTitle.textContent = `Logs for: ${jobName}`;
+                
+                if (result && result.logs) {
+                    logsContent.textContent = result.logs;
+                    showToast('Logs loaded successfully', 'success');
+                    // Scroll to logs
+                    logsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else if (result && result.error) {
+                    logsContent.textContent = `Error: ${result.error}`;
+                    showToast('Failed to load logs', 'error');
+                } else {
+                    logsContent.textContent = 'No logs available';
+                    showToast('No logs available', 'warning');
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching job logs:', error);
+            showToast('Error fetching job logs', 'error');
+        }
     }
 
     // Provision runner for a repository using MCP SDK
@@ -650,6 +781,111 @@ class GitHubWorkflowsManager {
     async refreshRunners() {
         await this.fetchRunners();
         showToast('Runners refreshed', 'success');
+    }
+
+    // View API Call Log
+    async viewAPICallLog() {
+        try {
+            console.log('[GitHub Workflows] Fetching API call log...');
+            showToast('Loading API call log...', 'info');
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_get_api_call_log',
+                arguments: {
+                    limit: 50
+                }
+            });
+            
+            console.log('[GitHub Workflows] API call log:', result);
+            
+            if (result && result.api_calls) {
+                this.displayAPICallLog(result);
+            } else {
+                showToast('No API call log available', 'warning');
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching API call log:', error);
+            showToast('Error fetching API call log', 'error');
+        }
+    }
+
+    // Display API Call Log Modal
+    displayAPICallLog(logData) {
+        const calls = logData.api_calls || [];
+        const summary = logData.summary || {};
+        const totalStats = logData.total_stats || {};
+        
+        let html = `
+            <div class="modal-overlay" onclick="githubManager.closeModal()">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <h3>📋 GitHub API Call Log</h3>
+                        <button class="close-btn" onclick="githubManager.closeModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0;">📊 Total Statistics</h4>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                                <div><strong>🔹 REST API Calls:</strong> ${totalStats.rest_total || 0}</div>
+                                <div><strong>🔸 GraphQL API Calls:</strong> ${totalStats.graphql_total || 0}</div>
+                                <div><strong>🔍 CodeQL API Calls:</strong> ${totalStats.code_scanning_total || 0}</div>
+                                <div><strong>💾 Cache Hits:</strong> ${totalStats.cache_hits || 0}</div>
+                                <div><strong>❌ Cache Misses:</strong> ${totalStats.cache_misses || 0}</div>
+                                <div><strong>🎯 Hit Rate:</strong> ${(totalStats.hit_rate * 100).toFixed(1)}%</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <h4 style="margin: 0 0 10px 0;">Recent API Calls (Last ${calls.length})</h4>
+                            <div style="font-size: 12px; color: #6b7280; margin-bottom: 10px;">
+                                Showing: ${summary.rest || 0} REST, ${summary.graphql || 0} GraphQL, ${summary.code_scanning || 0} CodeQL
+                            </div>
+                        </div>
+                        
+                        <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                <thead style="position: sticky; top: 0; background: #f9fafb; border-bottom: 2px solid #e5e7eb;">
+                                    <tr>
+                                        <th style="padding: 8px; text-align: left; font-weight: 600;">Time</th>
+                                        <th style="padding: 8px; text-align: left; font-weight: 600;">API Type</th>
+                                        <th style="padding: 8px; text-align: left; font-weight: 600;">Operation</th>
+                                        <th style="padding: 8px; text-align: right; font-weight: 600;">#</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `;
+        
+        // Display calls in reverse order (newest first)
+        for (let i = calls.length - 1; i >= 0; i--) {
+            const call = calls[i];
+            const time = new Date(call.timestamp * 1000).toLocaleTimeString();
+            const icon = call.api_type === 'graphql' ? '🔸' : call.api_type === 'code_scanning' ? '🔍' : '🔹';
+            const bgColor = i % 2 === 0 ? '#ffffff' : '#f9fafb';
+            
+            html += `
+                <tr style="background: ${bgColor}; border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 8px;">${time}</td>
+                    <td style="padding: 8px;">${icon} ${call.api_type}</td>
+                    <td style="padding: 8px; font-family: monospace; font-size: 11px;">${this._escapeHtml(call.operation)}</td>
+                    <td style="padding: 8px; text-align: right; color: #6b7280;">${call.count}</td>
+                </tr>
+            `;
+        }
+        
+        html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="githubManager.closeModal()">Close</button>
+                        <button class="btn btn-primary" onclick="githubManager.viewAPICallLog()">🔄 Refresh</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', html);
     }
 
     // Start auto-refresh
@@ -794,6 +1030,30 @@ class GitHubWorkflowsManager {
                     <span class="detail-label">Cache Hits (P2P):</span>
                     <span class="detail-value">${this.cacheStats.peer_hits || 0}</span>
                 </div>
+                <div class="cache-detail-section" style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #e5e7eb;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">📊 API Statistics</h4>
+                    <div class="cache-detail-row">
+                        <span class="detail-label">🔹 REST API Calls:</span>
+                        <span class="detail-value">${this.cacheStats.api_calls_made || 0}</span>
+                    </div>
+                    <div class="cache-detail-row">
+                        <span class="detail-label">🔸 GraphQL API Calls:</span>
+                        <span class="detail-value">${this.cacheStats.graphql_api_calls_made || 0}</span>
+                    </div>
+                    <div class="cache-detail-row">
+                        <span class="detail-label">🔸 GraphQL Cache Hits:</span>
+                        <span class="detail-value">${this.cacheStats.graphql_cache_hits || 0}</span>
+                    </div>
+                    <div class="cache-detail-row">
+                        <span class="detail-label">🔍 CodeQL API Calls:</span>
+                        <span class="detail-value">${this.cacheStats.code_scanning_api_calls || 0}</span>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-sm btn-info" onclick="githubManager.viewAPICallLog()" style="font-size: 12px; padding: 6px 12px;">
+                            📋 View API Call Log
+                        </button>
+                    </div>
+                </div>
                 ${this.cacheStats.aggregate ? this._renderAggregateStats(this.cacheStats.aggregate) : ''}
             </div>
         `;
@@ -811,35 +1071,138 @@ class GitHubWorkflowsManager {
 
         // Support both flat structure and nested resources.core structure
         const core = this.rateLimit.resources?.core || this.rateLimit;
-        const remaining = core.remaining || 0;
-        const limit = core.limit || 5000;
-        const resetDate = core.reset ? new Date(core.reset * 1000).toLocaleString() : 'Unknown';
-        const usagePercent = ((limit - remaining) / limit * 100).toFixed(1);
+        const graphql = this.rateLimit.resources?.graphql || null;
+        const codeScanning = this.rateLimit.resources?.code_scanning || null;
         
-        const statusClass = remaining > 1000 ? 'status-good' : remaining > 100 ? 'status-warning' : 'status-critical';
+        const restRemaining = core.remaining || 0;
+        const restLimit = core.limit || 5000;
+        const restResetDate = core.reset ? new Date(core.reset * 1000).toLocaleString() : 'Unknown';
+        const restUsagePercent = ((restLimit - restRemaining) / restLimit * 100).toFixed(1);
+        
+        const statusClass = restRemaining > 1000 ? 'status-good' : restRemaining > 100 ? 'status-warning' : 'status-critical';
+        
+        let graphqlSection = '';
+        let codeScanningSection = '';
+        if (graphql) {
+            const graphqlRemaining = graphql.remaining || 0;
+            const graphqlLimit = graphql.limit || 5000;
+            const graphqlResetDate = graphql.reset ? new Date(graphql.reset * 1000).toLocaleString() : 'Unknown';
+            const graphqlUsagePercent = ((graphqlLimit - graphqlRemaining) / graphqlLimit * 100).toFixed(1);
+            const graphqlStatusClass = graphqlRemaining > 1000 ? 'status-good' : graphqlRemaining > 100 ? 'status-warning' : 'status-critical';
+            
+            graphqlSection = `
+                <div style="margin-top: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔸 GraphQL API Rate Limit</h3>
+                    <div class="rate-limit-summary">
+                        <div class="rate-limit-gauge ${graphqlStatusClass}">
+                            <div class="gauge-value">${graphqlRemaining}</div>
+                            <div class="gauge-label">Remaining</div>
+                            <div class="gauge-total">/ ${graphqlLimit}</div>
+                        </div>
+                        <div class="rate-limit-details">
+                            <div class="rate-limit-row">
+                                <span class="label">Usage:</span>
+                                <span class="value">${graphqlUsagePercent}%</span>
+                            </div>
+                            <div class="rate-limit-row">
+                                <span class="label">Resets at:</span>
+                                <span class="value">${graphqlResetDate}</span>
+                            </div>
+                            <div class="rate-limit-row">
+                                <span class="label">Used:</span>
+                                <span class="value">${graphqlLimit - graphqlRemaining}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Show placeholder if GraphQL data not available
+            graphqlSection = `
+                <div style="margin-top: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔸 GraphQL API Rate Limit</h3>
+                    <div style="padding: 20px; text-align: center; color: #6b7280; font-size: 14px;">
+                        <p>GraphQL rate limit data not available in response</p>
+                        <p style="font-size: 12px; margin-top: 10px;">Make a GraphQL API call to populate this data</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Add CodeQL/Code Scanning section
+        if (codeScanning) {
+            const csRemaining = codeScanning.remaining || 0;
+            const csLimit = codeScanning.limit || 5000;
+            const csResetDate = codeScanning.reset ? new Date(codeScanning.reset * 1000).toLocaleString() : 'Unknown';
+            const csUsagePercent = ((csLimit - csRemaining) / csLimit * 100).toFixed(1);
+            const csStatusClass = csRemaining > 1000 ? 'status-good' : csRemaining > 100 ? 'status-warning' : 'status-critical';
+            
+            codeScanningSection = `
+                <div style="margin-top: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔍 CodeQL / Code Scanning API Rate Limit</h3>
+                    <div class="rate-limit-summary">
+                        <div class="rate-limit-gauge ${csStatusClass}">
+                            <div class="gauge-value">${csRemaining}</div>
+                            <div class="gauge-label">Remaining</div>
+                            <div class="gauge-total">/ ${csLimit}</div>
+                        </div>
+                        <div class="rate-limit-details">
+                            <div class="rate-limit-row">
+                                <span class="label">Usage:</span>
+                                <span class="value">${csUsagePercent}%</span>
+                            </div>
+                            <div class="rate-limit-row">
+                                <span class="label">Resets at:</span>
+                                <span class="value">${csResetDate}</span>
+                            </div>
+                            <div class="rate-limit-row">
+                                <span class="label">Used:</span>
+                                <span class="value">${csLimit - csRemaining}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Show placeholder if CodeQL data not available
+            codeScanningSection = `
+                <div style="margin-top: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔍 CodeQL / Code Scanning API Rate Limit</h3>
+                    <div style="padding: 20px; text-align: center; color: #6b7280; font-size: 14px;">
+                        <p>CodeQL rate limit data not available in response</p>
+                        <p style="font-size: 12px; margin-top: 10px;">Make a CodeQL API call to populate this data</p>
+                    </div>
+                </div>
+            `;
+        }
         
         container.innerHTML = `
-            <div class="rate-limit-summary">
-                <div class="rate-limit-gauge ${statusClass}">
-                    <div class="gauge-value">${remaining}</div>
-                    <div class="gauge-label">Remaining</div>
-                    <div class="gauge-total">/ ${limit}</div>
-                </div>
-                <div class="rate-limit-details">
-                    <div class="rate-limit-row">
-                        <span class="label">Usage:</span>
-                        <span class="value">${usagePercent}%</span>
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔹 REST API Rate Limit</h3>
+                <div class="rate-limit-summary">
+                    <div class="rate-limit-gauge ${statusClass}">
+                        <div class="gauge-value">${restRemaining}</div>
+                        <div class="gauge-label">Remaining</div>
+                        <div class="gauge-total">/ ${restLimit}</div>
                     </div>
-                    <div class="rate-limit-row">
-                        <span class="label">Resets at:</span>
-                        <span class="value">${resetDate}</span>
-                    </div>
-                    <div class="rate-limit-row">
-                        <span class="label">Used:</span>
-                        <span class="value">${limit - remaining}</span>
+                    <div class="rate-limit-details">
+                        <div class="rate-limit-row">
+                            <span class="label">Usage:</span>
+                            <span class="value">${restUsagePercent}%</span>
+                        </div>
+                        <div class="rate-limit-row">
+                            <span class="label">Resets at:</span>
+                            <span class="value">${restResetDate}</span>
+                        </div>
+                        <div class="rate-limit-row">
+                            <span class="label">Used:</span>
+                            <span class="value">${restLimit - restRemaining}</span>
+                        </div>
                     </div>
                 </div>
             </div>
+            ${graphqlSection}
+            ${codeScanningSection}
         `;
     }
 

@@ -161,7 +161,9 @@ class GitHubAPICache:
             "expirations": 0,
             "evictions": 0,
             "api_calls_saved": 0,
-            "api_calls_made": 0  # Track actual API calls made
+            "api_calls_made": 0,  # Track actual REST API calls made
+            "graphql_api_calls_made": 0,  # Track GraphQL API calls separately
+            "graphql_cache_hits": 0  # Track GraphQL cache hits separately
         }
         
         # Aggregate stats from all peers
@@ -577,6 +579,35 @@ class GitHubAPICache:
             logger.debug(f"Cache hit for {cache_key}")
             return entry.data
     
+    def get_stale(
+        self,
+        operation: str,
+        *args,
+        **kwargs
+    ) -> Optional[Any]:
+        """
+        Get a cached response even if expired - useful as fallback when API rate limit is hit.
+        
+        Args:
+            operation: Operation name
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+            
+        Returns:
+            Cached data or None if not found (ignores expiration)
+        """
+        cache_key = self._make_cache_key(operation, *args, **kwargs)
+        
+        with self._lock:
+            entry = self._cache.get(cache_key)
+            
+            if entry is None:
+                return None
+            
+            # Return data even if expired
+            logger.info(f"Using stale cache data for {cache_key} (API rate limit fallback)")
+            return entry.data
+    
     def put(
         self,
         operation: str,
@@ -858,15 +889,55 @@ class GitHubAPICache:
             self._aggregate_stats["peer_stats"][peer_id] = stats
             logger.debug(f"Received stats from peer {peer_id[:16]}...")
     
-    def increment_api_call_count(self) -> None:
+    def increment_api_call_count(self, api_type: str = "rest", operation: str = "unknown") -> None:
         """
-        Increment the count of API calls made.
+        Increment the count of API calls made and log the operation.
+        
+        Args:
+            api_type: Type of API call ("rest", "graphql", or "code_scanning")
+            operation: Name of the operation being performed
         
         Should be called whenever an actual API call is made (not cached).
         """
         with self._lock:
-            self._stats["api_calls_made"] += 1
-            logger.debug(f"API call count: {self._stats['api_calls_made']}")
+            # Track by API type
+            if api_type == "graphql":
+                self._stats["graphql_api_calls_made"] += 1
+                logger.info(f"📡 GraphQL API call #{self._stats['graphql_api_calls_made']}: {operation}")
+            elif api_type == "code_scanning":
+                if "code_scanning_api_calls" not in self._stats:
+                    self._stats["code_scanning_api_calls"] = 0
+                self._stats["code_scanning_api_calls"] += 1
+                logger.info(f"🔍 CodeQL API call #{self._stats['code_scanning_api_calls']}: {operation}")
+            else:
+                self._stats["api_calls_made"] += 1
+                logger.info(f"📡 REST API call #{self._stats['api_calls_made']}: {operation}")
+            
+            # Add to API call log (keep last 100 calls)
+            if "api_call_log" not in self._stats:
+                self._stats["api_call_log"] = []
+            
+            import time
+            self._stats["api_call_log"].append({
+                "timestamp": time.time(),
+                "api_type": api_type,
+                "operation": operation,
+                "count": self._stats.get(f"{api_type}_api_calls_made" if api_type == "graphql" else "code_scanning_api_calls" if api_type == "code_scanning" else "api_calls_made", 0)
+            })
+            
+            # Keep only last 100 calls
+            if len(self._stats["api_call_log"]) > 100:
+                self._stats["api_call_log"] = self._stats["api_call_log"][-100:]
+    
+    def increment_graphql_cache_hit(self) -> None:
+        """
+        Increment the count of GraphQL cache hits.
+        
+        Should be called when a GraphQL query is served from cache.
+        """
+        with self._lock:
+            self._stats["graphql_cache_hits"] += 1
+            logger.debug(f"GraphQL cache hits: {self._stats['graphql_cache_hits']}")
     
     def _sanitize_filename(self, key: str) -> str:
         """Sanitize a cache key for use as a filename."""
