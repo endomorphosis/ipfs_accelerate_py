@@ -349,6 +349,8 @@ jobs:
     runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     needs: test-docker
     if: github.event.inputs.build_gpu_images == 'true'
+    permissions:
+      contents: read
     
     steps:
     - name: Checkout code
