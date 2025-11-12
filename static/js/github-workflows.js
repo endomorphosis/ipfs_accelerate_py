@@ -958,6 +958,7 @@ class GitHubWorkflowsManager {
         // Support both flat structure and nested resources.core structure
         const core = this.rateLimit.resources?.core || this.rateLimit;
         const graphql = this.rateLimit.resources?.graphql || null;
+        const codeScanning = this.rateLimit.resources?.code_scanning || null;
         
         const restRemaining = core.remaining || 0;
         const restLimit = core.limit || 5000;
@@ -967,6 +968,7 @@ class GitHubWorkflowsManager {
         const statusClass = restRemaining > 1000 ? 'status-good' : restRemaining > 100 ? 'status-warning' : 'status-critical';
         
         let graphqlSection = '';
+        let codeScanningSection = '';
         if (graphql) {
             const graphqlRemaining = graphql.remaining || 0;
             const graphqlLimit = graphql.limit || 5000;
@@ -1013,6 +1015,53 @@ class GitHubWorkflowsManager {
             `;
         }
         
+        // Add CodeQL/Code Scanning section
+        if (codeScanning) {
+            const csRemaining = codeScanning.remaining || 0;
+            const csLimit = codeScanning.limit || 5000;
+            const csResetDate = codeScanning.reset ? new Date(codeScanning.reset * 1000).toLocaleString() : 'Unknown';
+            const csUsagePercent = ((csLimit - csRemaining) / csLimit * 100).toFixed(1);
+            const csStatusClass = csRemaining > 1000 ? 'status-good' : csRemaining > 100 ? 'status-warning' : 'status-critical';
+            
+            codeScanningSection = `
+                <div style="margin-top: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔍 CodeQL / Code Scanning API Rate Limit</h3>
+                    <div class="rate-limit-summary">
+                        <div class="rate-limit-gauge ${csStatusClass}">
+                            <div class="gauge-value">${csRemaining}</div>
+                            <div class="gauge-label">Remaining</div>
+                            <div class="gauge-total">/ ${csLimit}</div>
+                        </div>
+                        <div class="rate-limit-details">
+                            <div class="rate-limit-row">
+                                <span class="label">Usage:</span>
+                                <span class="value">${csUsagePercent}%</span>
+                            </div>
+                            <div class="rate-limit-row">
+                                <span class="label">Resets at:</span>
+                                <span class="value">${csResetDate}</span>
+                            </div>
+                            <div class="rate-limit-row">
+                                <span class="label">Used:</span>
+                                <span class="value">${csLimit - csRemaining}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Show placeholder if CodeQL data not available
+            codeScanningSection = `
+                <div style="margin-top: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔍 CodeQL / Code Scanning API Rate Limit</h3>
+                    <div style="padding: 20px; text-align: center; color: #6b7280; font-size: 14px;">
+                        <p>CodeQL rate limit data not available in response</p>
+                        <p style="font-size: 12px; margin-top: 10px;">Make a CodeQL API call to populate this data</p>
+                    </div>
+                </div>
+            `;
+        }
+        
         container.innerHTML = `
             <div style="margin-bottom: 20px;">
                 <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔹 REST API Rate Limit</h3>
@@ -1039,6 +1088,7 @@ class GitHubWorkflowsManager {
                 </div>
             </div>
             ${graphqlSection}
+            ${codeScanningSection}
         `;
     }
 
