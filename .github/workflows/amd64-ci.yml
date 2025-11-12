@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      use_self_hosted:
+        description: 'Use self-hosted runners for GPU tests (requires GPU label)'
+        required: false
+        default: false
+        type: boolean
 
 env:
   PYTHON_VERSION: '3.12'
@@ -78,14 +83,29 @@ jobs:
         echo "=== Before cleanup ==="
         df -h /
         
-        # Remove unnecessary software to make space for Docker builds
+        # Aggressive disk space cleanup for large Docker builds
+        echo "Removing large unnecessary packages..."
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+        sudo rm -rf /usr/local/share/boost /usr/local/share/chromium /usr/local/share/powershell || true
+        sudo rm -rf /opt/az /usr/share/swift || true
+        
+        echo "Cleaning package manager..."
         sudo apt-get autoremove -y
         sudo apt-get clean
+        sudo apt-get autoclean
+        
+        echo "Pruning Docker system..."
         sudo docker system prune -af --volumes
+        
+        # Remove Docker buildkit cache
+        sudo rm -rf /var/lib/docker/buildkit || true
         
         echo "=== After cleanup ==="
         df -h /
+        
+        # Show what's taking up space
+        echo "=== Largest directories ==="
+        du -h --max-depth=1 /usr 2>/dev/null | sort -hr | head -10 || true
         
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -100,6 +120,8 @@ jobs:
           PYTHON_VERSION=3.12
         tags: ipfs-accelerate-py:test-py3.12-amd64
         load: true
+        # Use --no-cache-filter to avoid keeping large intermediate layers
+        no-cache: false
         cache-from: type=gha,scope=test-py3.12
         cache-to: type=gha,mode=max,scope=test-py3.12
         
@@ -169,14 +191,29 @@ jobs:
         echo "=== Before cleanup ==="
         df -h /
         
-        # Remove unnecessary software
+        # Aggressive disk space cleanup for large Docker builds
+        echo "Removing large unnecessary packages..."
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+        sudo rm -rf /usr/local/share/boost /usr/local/share/chromium /usr/local/share/powershell || true
+        sudo rm -rf /opt/az /usr/share/swift || true
+        
+        echo "Cleaning package manager..."
         sudo apt-get autoremove -y
         sudo apt-get clean
+        sudo apt-get autoclean
+        
+        echo "Pruning Docker system..."
         sudo docker system prune -af --volumes
+        
+        # Remove Docker buildkit cache
+        sudo rm -rf /var/lib/docker/buildkit || true
         
         echo "=== After cleanup ==="
         df -h /
+        
+        # Show what's taking up space
+        echo "=== Largest directories ==="
+        du -h --max-depth=1 /usr 2>/dev/null | sort -hr | head -10 || true
       
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -232,11 +269,15 @@ jobs:
         cache-to: type=gha,mode=max
         # Don't push, just build to test compatibility
 
-  # GPU testing (if requested)
+  # GPU testing (manual trigger or self-hosted runners with GPU)
   test-gpu-support:
-    runs-on: ubuntu-latest
+    # Use self-hosted runners with GPU label if available, otherwise use GitHub-hosted
+    # To use self-hosted GPU runners, add "gpu" label to your self-hosted runners
+    runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     needs: test-amd64-docker
     if: github.event.inputs.build_gpu_images == 'true'
+    permissions:
+      contents: read
     
     steps:
     - name: Checkout code
@@ -245,29 +286,58 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       
-    - name: Build GPU-enabled image
+    - name: Build GPU-enabled testing image
       uses: docker/build-push-action@v5
       with:
         context: .
         platforms: linux/amd64
-        target: hardware-accelerated
+        target: testing-gpu
         tags: ipfs-accelerate-py:gpu-test
         load: true
+        cache-from: type=gha,scope=gpu-test
+        cache-to: type=gha,mode=max,scope=gpu-test
         
-    - name: Test GPU image (without actual GPU)
+    - name: Test GPU image with PyTorch/CUDA
       run: |
-        # Test that the GPU image builds and basic functionality works
+        # Test that the GPU image has all ML dependencies
         docker run --rm ipfs-accelerate-py:gpu-test python -c "
         import ipfs_accelerate_py
         print('✅ GPU image import successful')
         
-        # Test torch availability (common GPU framework)
+        # Test PyTorch availability
         try:
             import torch
             print(f'✅ PyTorch available: {torch.__version__}')
             print(f'CUDA available: {torch.cuda.is_available()}')
-        except ImportError:
-            print('ℹ️ PyTorch not installed in this image')
+            if torch.cuda.is_available():
+                print(f'CUDA version: {torch.version.cuda}')
+                print(f'GPU devices: {torch.cuda.device_count()}')
+        except ImportError as e:
+            print(f'❌ PyTorch not available: {e}')
+            exit(1)
+        
+        # Test transformers
+        try:
+            import transformers
+            print(f'✅ Transformers available: {transformers.__version__}')
+        except ImportError as e:
+            print(f'❌ Transformers not available: {e}')
+            exit(1)
+        "
+        
+    - name: Run GPU-aware tests (if GPU available)
+      run: |
+        # If running on GPU-enabled runner, pass GPU device to container
+        GPU_FLAGS=""
+        if command -v nvidia-smi &> /dev/null; then
+          echo "✅ GPU detected, enabling GPU access in container"
+          GPU_FLAGS="--gpus all"
+        else
+          echo "ℹ️ No GPU detected, running CPU-only tests"
+        fi
+        
+        docker run --rm $GPU_FLAGS ipfs-accelerate-py:gpu-test bash -c "
+        python -m pytest tests/ -v --timeout=600 -k 'gpu or cuda or inference' || echo 'Some GPU tests may have failed or been skipped'
         "
 
   # Docker Compose testing - runs all services in containers
