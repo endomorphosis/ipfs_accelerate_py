@@ -185,21 +185,29 @@ class GitHubAPICache:
         self._p2p_init_lock = Lock()  # Lock to prevent concurrent P2P initialization
         self._p2p_initialized = False  # Flag to track if P2P is already initialized
         
-        # Peer discovery
+        # Peer discovery - use simplified bootstrap helper
         self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
-        self.enable_peer_discovery = enable_peer_discovery and self.github_repo
+        self.enable_peer_discovery = enable_peer_discovery
         self._peer_registry = None
+        self._bootstrap_helper = None
         
         if self.enable_peer_discovery and self.enable_p2p:
             try:
-                from .p2p_peer_registry import P2PPeerRegistry
-                self._peer_registry = P2PPeerRegistry(
-                    repo=self.github_repo,
-                    peer_ttl_minutes=15
-                )
-                logger.info(f"✓ P2P peer discovery enabled for {self.github_repo}")
+                from .p2p_bootstrap_helper import SimplePeerBootstrap
+                self._bootstrap_helper = SimplePeerBootstrap()
+                
+                # Get bootstrap peers from environment and discovered peers
+                discovered_peers = self._bootstrap_helper.get_bootstrap_addrs(max_peers=10)
+                if discovered_peers:
+                    # Merge with explicitly provided bootstrap peers
+                    self._p2p_bootstrap_peers.extend(discovered_peers)
+                    # Remove duplicates
+                    self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
+                    logger.info(f"✓ P2P peer discovery enabled, found {len(discovered_peers)} peer(s)")
+                else:
+                    logger.info("✓ P2P peer discovery enabled (no peers discovered yet)")
             except Exception as e:
-                logger.warning(f"⚠ Peer discovery unavailable: {e}")
+                logger.warning(f"⚠ P2P bootstrap helper unavailable: {e}")
                 self.enable_peer_discovery = False
         
         # Encryption for P2P messages (using GitHub token as shared secret)
@@ -1220,30 +1228,30 @@ class GitHubAPICache:
             logger.info(f"Peer ID: {self._p2p_host.get_id().pretty()}")
             
             # Register with peer discovery if enabled
-            if self._peer_registry:
+            if self._bootstrap_helper:
                 try:
                     peer_id = self._p2p_host.get_id().pretty()
                     multiaddr = f"/ip4/{self._get_public_ip()}/tcp/{self._p2p_listen_port}/p2p/{peer_id}"
                     
-                    if self._peer_registry.register_peer(peer_id, self._p2p_listen_port, multiaddr):
+                    if self._bootstrap_helper.register_peer(peer_id, self._p2p_listen_port, multiaddr):
                         logger.info(f"✓ Registered with peer discovery: {multiaddr}")
                         
                         # Discover other peers
-                        discovered_peers = self._peer_registry.discover_peers(max_peers=10)
+                        discovered_peers = self._bootstrap_helper.discover_peers(max_peers=10)
                         logger.info(f"✓ Discovered {len(discovered_peers)} peer(s)")
                         
                         # Add to bootstrap list (with limit and validation)
                         for peer in discovered_peers:
                             if peer.get("peer_id") != peer_id:  # Don't connect to self
-                                multiaddr = peer.get("multiaddr")
-                                if self._validate_multiaddr(multiaddr):
+                                peer_multiaddr = peer.get("multiaddr")
+                                if self._validate_multiaddr(peer_multiaddr):
                                     # Check if we haven't exceeded max bootstrap peers
                                     if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
                                         # Check for duplicates before adding
-                                        if multiaddr not in self._p2p_bootstrap_peers:
-                                            self._p2p_bootstrap_peers.append(multiaddr)
+                                        if peer_multiaddr not in self._p2p_bootstrap_peers:
+                                            self._p2p_bootstrap_peers.append(peer_multiaddr)
                                 else:
-                                    logger.warning(f"Invalid multiaddr format: {multiaddr}")
+                                    logger.warning(f"Invalid multiaddr format: {peer_multiaddr}")
                     else:
                         logger.warning("⚠ Failed to register with peer discovery")
                 except Exception as e:
