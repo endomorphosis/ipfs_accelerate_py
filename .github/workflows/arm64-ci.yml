@@ -15,6 +15,11 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
+  # P2P Cache configuration - enables cache sharing between runners
+  CACHE_ENABLE_P2P: 'true'
+  CACHE_LISTEN_PORT: '9001'  # Different port for ARM64 to avoid conflicts
+  # Bootstrap peers - MCP server address for P2P cache
+  CACHE_BOOTSTRAP_PEERS: ${{ secrets.MCP_P2P_BOOTSTRAP_PEERS || '' }}
 
 jobs:
   arm64-containerized-tests:
@@ -23,6 +28,30 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      
+    - name: Install P2P dependencies
+      run: |
+        echo "📦 Installing P2P cache dependencies..."
+        pip install libp2p>=0.1.5 cryptography py-multiformats-cid || echo "⚠️ P2P dependencies not available, will use local cache only"
+        
+    - name: Initialize P2P Cache
+      id: p2p-init
+      run: |
+        echo "🚀 Initializing P2P cache for ARM64 runner communication..."
+        
+        # Export P2P configuration for subsequent steps
+        echo "CACHE_ENABLE_P2P=true" >> $GITHUB_ENV
+        echo "CACHE_LISTEN_PORT=9001" >> $GITHUB_ENV
+        
+        # Export bootstrap peers if configured
+        if [ -n "$CACHE_BOOTSTRAP_PEERS" ]; then
+          echo "CACHE_BOOTSTRAP_PEERS=$CACHE_BOOTSTRAP_PEERS" >> $GITHUB_ENV
+          echo "✓ P2P bootstrap peers configured: $CACHE_BOOTSTRAP_PEERS"
+        else
+          echo "⚠️  No bootstrap peers configured (set MCP_P2P_BOOTSTRAP_PEERS secret)"
+        fi
+        
+        echo "✓ P2P cache initialized for ARM64"
       
     - name: Set up QEMU for ARM64 emulation
       uses: docker/setup-qemu-action@v3
