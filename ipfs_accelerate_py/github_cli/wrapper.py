@@ -424,6 +424,12 @@ class GitHubCLI:
                 # Check if it's a rate limit error
                 if "rate limit" in result["stderr"].lower() or "API rate limit" in result["stderr"]:
                     logger.warning(f"REST API rate limit hit: {result['stderr']}")
+                    # Try to return stale cache data as fallback
+                    if self.cache:
+                        stale_data = self.cache.get_stale("list_repos", owner=owner, limit=limit, visibility=visibility)
+                        if stale_data is not None:
+                            logger.info(f"Returning stale cache data for repos (rate limit fallback)")
+                            return stale_data
                 else:
                     logger.warning(f"Failed to list repos: {result['stderr']}")
         return []
@@ -466,6 +472,15 @@ class GitHubCLI:
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse repo info: {result['stdout']}")
                 return None
+        else:
+            # Check if it's a rate limit error and try stale cache
+            if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
+                logger.warning(f"API rate limit hit for get_repo_info: {result['stderr']}")
+                if self.cache:
+                    stale_data = self.cache.get_stale("get_repo_info", repo=repo)
+                    if stale_data is not None:
+                        logger.info(f"Returning stale cache data for repo info (rate limit fallback)")
+                        return stale_data
         return None
 
 
@@ -531,6 +546,15 @@ class WorkflowQueue:
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse workflow runs: {result['stdout']}")
                 return []
+        else:
+            # Check if it's a rate limit error and try stale cache
+            if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
+                logger.warning(f"API rate limit hit for list_workflow_runs: {result['stderr']}")
+                if self.gh.cache:
+                    stale_data = self.gh.cache.get_stale("list_workflow_runs", repo=repo, status=status, limit=limit, branch=branch)
+                    if stale_data is not None:
+                        logger.info(f"Returning stale cache data for workflow runs (rate limit fallback)")
+                        return stale_data
         return []
     
     def get_workflow_run(self, repo: str, run_id: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
@@ -568,6 +592,15 @@ class WorkflowQueue:
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse workflow run: {result['stdout']}")
                 return None
+        else:
+            # Check if it's a rate limit error and try stale cache
+            if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
+                logger.warning(f"API rate limit hit for get_workflow_run: {result['stderr']}")
+                if self.gh.cache:
+                    stale_data = self.gh.cache.get_stale("get_workflow_run", repo=repo, run_id=run_id)
+                    if stale_data is not None:
+                        logger.info(f"Returning stale cache data for workflow run (rate limit fallback)")
+                        return stale_data
         return None
     
     def list_failed_runs(

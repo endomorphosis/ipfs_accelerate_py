@@ -579,6 +579,35 @@ class GitHubAPICache:
             logger.debug(f"Cache hit for {cache_key}")
             return entry.data
     
+    def get_stale(
+        self,
+        operation: str,
+        *args,
+        **kwargs
+    ) -> Optional[Any]:
+        """
+        Get a cached response even if expired - useful as fallback when API rate limit is hit.
+        
+        Args:
+            operation: Operation name
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+            
+        Returns:
+            Cached data or None if not found (ignores expiration)
+        """
+        cache_key = self._make_cache_key(operation, *args, **kwargs)
+        
+        with self._lock:
+            entry = self._cache.get(cache_key)
+            
+            if entry is None:
+                return None
+            
+            # Return data even if expired
+            logger.info(f"Using stale cache data for {cache_key} (API rate limit fallback)")
+            return entry.data
+    
     def put(
         self,
         operation: str,
