@@ -940,27 +940,66 @@ function exportQueueStats() {
 
 // MCP Tools Functions
 function refreshTools() {
-    console.log('Refreshing MCP tools...');
+    console.log('[Dashboard] Refreshing MCP tools...');
+    const toolsGrid = document.querySelector('.tools-grid');
+    
+    if (!toolsGrid) {
+        console.error('[Dashboard] Tools grid not found');
+        return;
+    }
+    
+    // Show loading state
+    toolsGrid.innerHTML = '<div class="tool-tag" style="background: #e5e7eb; color: #6b7280;">Loading tools...</div>';
+    
     fetch('/api/mcp/tools')
-        .then(response => response.json())
-        .then(data => {
-            console.log('Tools loaded:', data);
-            const toolsGrid = document.querySelector('.tools-grid');
-            if (toolsGrid && data.tools) {
-                toolsGrid.innerHTML = '';
-                data.tools.forEach(tool => {
-                    const toolTag = document.createElement('span');
-                    toolTag.className = 'tool-tag';
-                    toolTag.textContent = tool.name;
-                    toolTag.title = tool.description;
-                    toolsGrid.appendChild(toolTag);
-                });
-                console.log(`Successfully refreshed ${data.total} MCP tools!`);
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
+            return response.json();
+        })
+        .then(data => {
+            console.log('[Dashboard] Tools loaded:', data);
+            toolsGrid.innerHTML = '';
+            
+            // Handle different response formats
+            const tools = data.tools || data.data || [];
+            const total = data.total || tools.length;
+            
+            if (tools.length === 0) {
+                toolsGrid.innerHTML = '<div class="tool-tag" style="background: #fef3c7; color: #92400e;">⚠️ No MCP tools found. Check server configuration.</div>';
+                showToast('No MCP tools available', 'warning');
+                return;
+            }
+            
+            // Display each tool
+            tools.forEach(tool => {
+                const toolTag = document.createElement('div');
+                toolTag.className = 'tool-tag';
+                toolTag.textContent = tool.name || tool;
+                
+                // Add description as tooltip if available
+                if (tool.description) {
+                    toolTag.title = tool.description;
+                }
+                
+                // Add status indicator if available
+                if (tool.status === 'error' || tool.status === 'inactive') {
+                    toolTag.style.background = '#fee2e2';
+                    toolTag.style.color = '#991b1b';
+                    toolTag.textContent += ' ⚠️';
+                }
+                
+                toolsGrid.appendChild(toolTag);
+            });
+            
+            console.log(`[Dashboard] Successfully loaded ${total} MCP tools`);
+            showToast(`Loaded ${total} MCP tools`, 'success');
         })
         .catch(error => {
-            console.error('Error refreshing tools:', error);
-            alert('Failed to refresh tools: ' + error.message);
+            console.error('[Dashboard] Error refreshing tools:', error);
+            toolsGrid.innerHTML = `<div class="tool-tag" style="background: #fee2e2; color: #991b1b;">❌ Failed to load tools: ${error.message}</div>`;
+            showToast(`Failed to load MCP tools: ${error.message}`, 'error', 5000);
         });
 }
 
