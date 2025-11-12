@@ -48,14 +48,19 @@ except ImportError:
 
 # Try to import libp2p for P2P cache sharing
 try:
-    from libp2p import new_host
-    from libp2p.peer.peerinfo import info_from_p2p_addr
-    HAVE_LIBP2P = True
-    # INetStream is only used for type hints, so it's optional
-    try:
-        from libp2p.network.stream.net_stream_interface import INetStream
-    except ImportError:
-        INetStream = None  # Type hint only, not critical
+    # Apply libp2p compatibility patches first
+    from .libp2p_compat import ensure_libp2p_compatible
+    if ensure_libp2p_compatible():
+        from libp2p import new_host
+        from libp2p.peer.peerinfo import info_from_p2p_addr
+        HAVE_LIBP2P = True
+        # INetStream is only used for type hints, so it's optional
+        try:
+            from libp2p.network.stream.net_stream_interface import INetStream
+        except ImportError:
+            INetStream = None  # Type hint only, not critical
+    else:
+        raise ImportError("libp2p compatibility check failed")
 except ImportError:
     HAVE_LIBP2P = False
     new_host = None
@@ -1282,6 +1287,11 @@ class GitHubAPICache:
         """Connect to a peer by multiaddr."""
         if not self._p2p_host:
             return
+        
+        # Convert string to Multiaddr if needed
+        from multiaddr import Multiaddr
+        if isinstance(peer_addr, str):
+            peer_addr = Multiaddr(peer_addr)
         
         peer_info = info_from_p2p_addr(peer_addr)
         await self._p2p_host.connect(peer_info)
