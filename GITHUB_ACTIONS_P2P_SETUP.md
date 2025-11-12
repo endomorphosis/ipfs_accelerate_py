@@ -69,9 +69,22 @@ jobs:
     # Your other steps...
 ```
 
-## Static Bootstrap Peers
+## Bootstrap Peers
 
-For faster peer discovery, you can configure static bootstrap peers:
+### Automatic Fallback to libp2p Bootstrap Nodes
+
+If no custom bootstrap peers are configured and no other runners are discovered, the system automatically falls back to standard libp2p bootstrap nodes:
+
+- `/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN`
+- `/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa`
+- `/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb`
+- `/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt`
+
+This ensures runners can connect to the libp2p network even without explicit configuration.
+
+### Static Bootstrap Peers (Optional)
+
+For faster peer discovery within your organization, you can configure static bootstrap peers:
 
 ```yaml
 env:
@@ -80,6 +93,8 @@ env:
   # Comma-separated list of peer multiaddrs
   CACHE_BOOTSTRAP_PEERS: '/ip4/10.0.0.1/tcp/9000/p2p/QmPeer123...'
 ```
+
+**Note:** When custom bootstrap peers are provided via `CACHE_BOOTSTRAP_PEERS`, the libp2p fallback nodes are not used. This allows you to keep traffic within your private network if desired.
 
 ## Benefits
 
@@ -188,10 +203,11 @@ List discovered peers:
 **Problem:** Runners can't find each other
 
 **Solutions:**
-1. Check that all runners use the same cache directory
-2. Verify P2P is enabled (`CACHE_ENABLE_P2P=true`)
-3. Ensure bootstrap script is executable
-4. Check network connectivity between runners
+1. Check that P2P is enabled (`CACHE_ENABLE_P2P=true`)
+2. Verify the system is using libp2p bootstrap nodes (check logs for "Using standard libp2p bootstrap node(s)")
+3. If using custom `CACHE_BOOTSTRAP_PEERS`, verify the multiaddr format is correct
+4. Check network connectivity - libp2p bootstrap nodes require internet access
+5. Ensure libp2p dependencies are installed: `pip install libp2p cryptography py-multiformats-cid`
 
 ### Port Conflicts
 
