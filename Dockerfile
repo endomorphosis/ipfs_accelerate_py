@@ -131,6 +131,22 @@ ENV HOME=/home/appuser
 # Run tests by default
 CMD ["python", "-m", "pytest", "tests/", "--verbose", "--timeout=300"]
 
+# GPU Testing stage - includes PyTorch/CUDA for AI inference testing
+# Use this stage for GPU-enabled runners (self-hosted or GPU-enabled)
+FROM development AS testing-gpu
+ENV TESTING=1
+ENV TESTING_GPU=1
+
+# This stage inherits all ML dependencies from development including:
+# - PyTorch with CUDA support
+# - Transformers
+# - All AI/ML libraries needed for inference testing
+# Note: This stage is larger (~6GB) and should only be used on runners
+# with sufficient disk space (self-hosted runners recommended)
+
+# Run GPU-aware tests by default
+CMD ["python", "-m", "pytest", "tests/", "--verbose", "--timeout=600", "-k", "gpu or cuda or inference"]
+
 # Production build stage
 FROM base AS builder
 

@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      use_self_hosted:
+        description: 'Use self-hosted runners for GPU tests (requires GPU label)'
+        required: false
+        default: false
+        type: boolean
       performance_testing:
         description: 'Run performance benchmarks'
         required: false
@@ -340,7 +345,8 @@ jobs:
 
   # Hardware acceleration testing
   test-gpu-acceleration:
-    runs-on: ubuntu-latest
+    # Use self-hosted runners with GPU label if available, otherwise use GitHub-hosted
+    runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     needs: test-docker
     if: github.event.inputs.build_gpu_images == 'true'
     
@@ -351,14 +357,16 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       
-    - name: Build GPU-accelerated image
+    - name: Build GPU-enabled testing image
       uses: docker/build-push-action@v5
       with:
         context: .
         platforms: linux/amd64
-        target: hardware-accelerated
+        target: testing-gpu
         tags: ipfs-accelerate-py:gpu-test
         load: true
+        cache-from: type=gha,scope=gpu-test-multiarch
+        cache-to: type=gha,mode=max,scope=gpu-test-multiarch
         
     - name: Test GPU capabilities
       run: |
@@ -379,8 +387,9 @@ jobs:
             print(f'CUDA available: {torch.cuda.is_available()}')
             if torch.cuda.is_available():
                 print(f'CUDA devices: {torch.cuda.device_count()}')
-        except ImportError:
-            print('ℹ️ PyTorch not available')
+        except ImportError as e:
+            print(f'❌ PyTorch not available: {e}')
+            exit(1)
             
         # Test TensorFlow  
         try:
