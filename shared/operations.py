@@ -1456,6 +1456,12 @@ class GitHubOperations:
         self._workflow_queue = None
         self._runner_manager = None
         self._cache = None
+        # Rate limit tracking
+        self._rate_limited = False
+        self._rate_limit_reset_time = 0
+        self._pending_requests = []
+        self._last_request_time = 0
+        self._min_request_interval = 1.0  # Minimum seconds between requests when rate limited
         
     @property
     def cache(self):
@@ -1600,6 +1606,44 @@ class GitHubOperations:
                 self.cache.put("gh_auth_status", result, ttl=10)
             
             return result
+    
+    def _should_backoff(self) -> bool:
+        """Check if we should back off due to rate limiting"""
+        current_time = time.time()
+        
+        # If we know we're rate limited and haven't passed reset time, back off
+        if self._rate_limited and current_time < self._rate_limit_reset_time:
+            return True
+        
+        # If rate limit has expired, clear the flag
+        if self._rate_limited and current_time >= self._rate_limit_reset_time:
+            logger.info("Rate limit reset time reached, clearing rate limit flag")
+            self._rate_limited = False
+            self._rate_limit_reset_time = 0
+        
+        # Enforce minimum interval between requests when previously rate limited
+        if self._last_request_time > 0:
+            time_since_last = current_time - self._last_request_time
+            if time_since_last < self._min_request_interval:
+                logger.debug(f"Backing off: {time_since_last:.2f}s since last request (min: {self._min_request_interval}s)")
+                return True
+        
+        return False
+    
+    def _mark_rate_limited(self, reset_time: Optional[int] = None):
+        """Mark that we've been rate limited"""
+        self._rate_limited = True
+        if reset_time:
+            self._rate_limit_reset_time = reset_time
+            logger.warning(f"Rate limited until {datetime.fromtimestamp(reset_time).strftime('%H:%M:%S')}")
+        else:
+            # Default to 60 seconds if no reset time provided
+            self._rate_limit_reset_time = time.time() + 60
+            logger.warning("Rate limited, backing off for 60 seconds")
+    
+    def _record_request(self):
+        """Record that we made a request"""
+        self._last_request_time = time.time()
     
     def list_repos(self, owner: Optional[str] = None, limit: int = 200) -> Dict[str, Any]:
         """List GitHub repositories"""
@@ -2393,14 +2437,35 @@ class GitHubOperations:
         repo_count = 0
         total_issues = 0
         
+        # Check if we should back off due to rate limiting
+        if self._should_backoff():
+            logger.info("Backing off due to rate limiting, returning cached/empty results")
+            return {
+                "status": "success",
+                "success": True,
+                "issues": {},
+                "repo_count": 0,
+                "total_issues": 0,
+                "rate_limited": True,
+                "message": "GitHub API rate limit active. Backing off to avoid process explosion. Data will refresh when rate limit resets.",
+                "timestamp": time.time()
+            }
+        
         # Get list of all repositories
         repos_result = self.list_repos(owner=owner, limit=200)
         if not repos_result.get("success") or not repos_result.get("repos"):
             # Check if rate limited
             is_rate_limited = repos_result.get("rate_limited", False)
             error_msg = repos_result.get("error", "Failed to fetch repositories")
+            reset_time = repos_result.get("rate_limit_reset")
             
             if is_rate_limited or "rate limit" in error_msg.lower():
+                # Mark as rate limited to prevent subsequent requests
+                if reset_time:
+                    self._mark_rate_limited(reset_time)
+                else:
+                    self._mark_rate_limited()
+                
                 return {
                     "status": "success",
                     "success": True,
@@ -2418,15 +2483,42 @@ class GitHubOperations:
                 "timestamp": time.time()
             }
         
-        # For each repository, get issues
-        for repo in repos_result["repos"]:
+        # Limit the number of repos we'll query per request to avoid process explosion
+        MAX_REPOS_PER_REQUEST = 10
+        repos_to_query = repos_result["repos"][:MAX_REPOS_PER_REQUEST]
+        
+        if len(repos_result["repos"]) > MAX_REPOS_PER_REQUEST:
+            logger.info(f"Limiting issue fetch to {MAX_REPOS_PER_REQUEST} repos (out of {len(repos_result['repos'])} total)")
+        
+        # For each repository, get issues with backoff between requests
+        for i, repo in enumerate(repos_to_query):
             repo_name = f"{repo['owner']['login']}/{repo['name']}"
+            
+            # Check if we should back off before each request
+            if self._should_backoff():
+                logger.info(f"Rate limit detected, stopping after {i} repos")
+                break
+            
             try:
+                # Add small delay between requests to avoid overwhelming API
+                if i > 0:
+                    time.sleep(0.5)
+                
                 # Use GitHub CLI to get issues
                 args = ["issue", "list", "--repo", repo_name,
                        "--state", state, "--limit", str(limit_per_repo),
                        "--json", "number,title,state,createdAt,url,author"]
+                
+                self._record_request()
                 cmd_result = self.gh_cli._run_command(args)
+                
+                # Check for rate limit in response
+                if not cmd_result.get("success"):
+                    stderr = cmd_result.get("stderr", "")
+                    if "rate limit" in stderr.lower() or "API rate limit" in stderr:
+                        logger.warning(f"Rate limit hit while fetching issues for {repo_name}")
+                        self._mark_rate_limited()
+                        break
                 
                 if cmd_result.get("success") and cmd_result.get("stdout"):
                     import json
@@ -2488,14 +2580,35 @@ class GitHubOperations:
         repo_count = 0
         total_prs = 0
         
+        # Check if we should back off due to rate limiting
+        if self._should_backoff():
+            logger.info("Backing off due to rate limiting, returning cached/empty results")
+            return {
+                "status": "success",
+                "success": True,
+                "pull_requests": {},
+                "repo_count": 0,
+                "total_prs": 0,
+                "rate_limited": True,
+                "message": "GitHub API rate limit active. Backing off to avoid process explosion. Data will refresh when rate limit resets.",
+                "timestamp": time.time()
+            }
+        
         # Get list of all repositories
         repos_result = self.list_repos(owner=owner, limit=200)
         if not repos_result.get("success") or not repos_result.get("repos"):
             # Check if rate limited
             is_rate_limited = repos_result.get("rate_limited", False)
             error_msg = repos_result.get("error", "Failed to fetch repositories")
+            reset_time = repos_result.get("rate_limit_reset")
             
             if is_rate_limited or "rate limit" in error_msg.lower():
+                # Mark as rate limited to prevent subsequent requests
+                if reset_time:
+                    self._mark_rate_limited(reset_time)
+                else:
+                    self._mark_rate_limited()
+                
                 return {
                     "status": "success",
                     "success": True,
@@ -2513,15 +2626,42 @@ class GitHubOperations:
                 "timestamp": time.time()
             }
         
-        # For each repository, get pull requests
-        for repo in repos_result["repos"]:
+        # Limit the number of repos we'll query per request to avoid process explosion
+        MAX_REPOS_PER_REQUEST = 10
+        repos_to_query = repos_result["repos"][:MAX_REPOS_PER_REQUEST]
+        
+        if len(repos_result["repos"]) > MAX_REPOS_PER_REQUEST:
+            logger.info(f"Limiting PR fetch to {MAX_REPOS_PER_REQUEST} repos (out of {len(repos_result['repos'])} total)")
+        
+        # For each repository, get pull requests with backoff between requests
+        for i, repo in enumerate(repos_to_query):
             repo_name = f"{repo['owner']['login']}/{repo['name']}"
+            
+            # Check if we should back off before each request
+            if self._should_backoff():
+                logger.info(f"Rate limit detected, stopping after {i} repos")
+                break
+            
             try:
+                # Add small delay between requests to avoid overwhelming API
+                if i > 0:
+                    time.sleep(0.5)
+                
                 # Use GitHub CLI to get pull requests
                 args = ["pr", "list", "--repo", repo_name,
                        "--state", state, "--limit", str(limit_per_repo),
                        "--json", "number,title,state,createdAt,url,author"]
+                
+                self._record_request()
                 cmd_result = self.gh_cli._run_command(args)
+                
+                # Check for rate limit in response
+                if not cmd_result.get("success"):
+                    stderr = cmd_result.get("stderr", "")
+                    if "rate limit" in stderr.lower() or "API rate limit" in stderr:
+                        logger.warning(f"Rate limit hit while fetching PRs for {repo_name}")
+                        self._mark_rate_limited()
+                        break
                 
                 if cmd_result.get("success") and cmd_result.get("stdout"):
                     import json
