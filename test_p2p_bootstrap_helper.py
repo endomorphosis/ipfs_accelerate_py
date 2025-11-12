@@ -169,6 +169,48 @@ def test_stale_peer_cleanup():
     print("  ✓ Stale peer cleanup works correctly")
     return True
 
+def test_libp2p_bootstrap_fallback():
+    """Test that standard libp2p bootstrap nodes are used when no peers are found"""
+    print("Test 7: libp2p bootstrap fallback...")
+    
+    # Make sure no environment variable is set
+    env_backup = os.environ.get("CACHE_BOOTSTRAP_PEERS")
+    if "CACHE_BOOTSTRAP_PEERS" in os.environ:
+        del os.environ["CACHE_BOOTSTRAP_PEERS"]
+    
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            helper = SimplePeerBootstrap(cache_dir=Path(tmpdir))
+            
+            # Get bootstrap addresses with no registered peers and no env var
+            bootstrap_addrs = helper.get_bootstrap_addrs(max_peers=5)
+            
+            # Should fall back to libp2p bootstrap nodes
+            assert len(bootstrap_addrs) > 0, "Should have bootstrap addresses"
+            
+            # Check that we got the libp2p bootstrap nodes
+            expected_bootstrap_nodes = [
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
+            ]
+            
+            # At least one of the expected bootstrap nodes should be in the list
+            found_bootstrap_node = any(node in bootstrap_addrs for node in expected_bootstrap_nodes)
+            assert found_bootstrap_node, "Should include at least one libp2p bootstrap node"
+            
+            # Should not exceed max_peers
+            assert len(bootstrap_addrs) <= 5, f"Should not exceed max_peers (5), got {len(bootstrap_addrs)}"
+            
+    finally:
+        # Restore environment variable if it was set
+        if env_backup is not None:
+            os.environ["CACHE_BOOTSTRAP_PEERS"] = env_backup
+    
+    print("  ✓ libp2p bootstrap fallback works correctly")
+    return True
+
 def main():
     """Run all tests"""
     print("\n" + "="*60)
@@ -181,7 +223,8 @@ def main():
         test_peer_discovery,
         test_bootstrap_addrs,
         test_environment_variable_bootstrap,
-        test_stale_peer_cleanup
+        test_stale_peer_cleanup,
+        test_libp2p_bootstrap_fallback
     ]
     
     passed = 0
