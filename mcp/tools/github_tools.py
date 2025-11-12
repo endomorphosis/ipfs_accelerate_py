@@ -358,6 +358,99 @@ def register_github_tools(mcp: FastMCP) -> None:
             }
     
     @mcp.tool()
+    def gh_get_workflow_logs(
+        repo: str,
+        run_id: str,
+        job_id: Optional[str] = None,
+        tail_lines: int = 500
+    ) -> Dict[str, Any]:
+        """
+        Get logs for a workflow run or specific job
+        
+        Args:
+            repo: Repository in format "owner/repo"
+            run_id: Workflow run ID
+            job_id: Optional job ID to get specific job logs
+            tail_lines: Number of lines to return from end of log (default: 500)
+            
+        Returns:
+            Workflow or job logs
+        """
+        try:
+            if job_id:
+                # Get specific job logs
+                result = github_ops.gh_cli._run_command([
+                    'api',
+                    f'repos/{repo}/actions/jobs/{job_id}/logs',
+                    '-H', 'Accept: application/vnd.github.v3+json'
+                ])
+                
+                if result.get('success') and result.get('stdout'):
+                    logs = result['stdout']
+                    # Get last N lines
+                    log_lines = logs.split('\n')
+                    if len(log_lines) > tail_lines:
+                        logs = '\n'.join(log_lines[-tail_lines:])
+                    
+                    return {
+                        'logs': logs,
+                        'repo': repo,
+                        'run_id': run_id,
+                        'job_id': job_id,
+                        'lines_returned': len(logs.split('\n')),
+                        'tool': 'gh_get_workflow_logs',
+                        'timestamp': time.time(),
+                        'success': True
+                    }
+                else:
+                    return {
+                        'error': result.get('stderr', 'Failed to fetch job logs'),
+                        'repo': repo,
+                        'run_id': run_id,
+                        'job_id': job_id,
+                        'tool': 'gh_get_workflow_logs',
+                        'timestamp': time.time(),
+                        'success': False
+                    }
+            else:
+                # Get all logs for the workflow run
+                result = github_ops.gh_cli._run_command([
+                    'api',
+                    f'repos/{repo}/actions/runs/{run_id}/logs',
+                    '-H', 'Accept: application/vnd.github.v3+json'
+                ])
+                
+                if result.get('success'):
+                    # Note: This returns a redirect URL to download logs
+                    # We need to inform the user about this
+                    return {
+                        'info': 'Workflow run logs are available as a ZIP download',
+                        'download_command': f'gh api repos/{repo}/actions/runs/{run_id}/logs > logs.zip',
+                        'suggestion': 'Use gh_get_workflow_details with include_jobs=True to get individual job IDs, then fetch specific job logs',
+                        'repo': repo,
+                        'run_id': run_id,
+                        'tool': 'gh_get_workflow_logs',
+                        'timestamp': time.time(),
+                        'success': True
+                    }
+                else:
+                    return {
+                        'error': result.get('stderr', 'Failed to fetch workflow logs'),
+                        'repo': repo,
+                        'run_id': run_id,
+                        'tool': 'gh_get_workflow_logs',
+                        'timestamp': time.time(),
+                        'success': False
+                    }
+        except Exception as e:
+            logger.error(f"Error in gh_get_workflow_logs: {e}")
+            return {
+                "error": str(e),
+                "tool": "gh_get_workflow_logs",
+                "timestamp": time.time()
+            }
+    
+    @mcp.tool()
     def gh_invalidate_cache(
         pattern: Optional[str] = None
     ) -> Dict[str, Any]:

@@ -561,6 +561,9 @@ class GitHubWorkflowsManager {
                         <span>Created: ${new Date(workflow.createdAt).toLocaleString()}</span>
                         <span>Updated: ${new Date(workflow.updatedAt).toLocaleString()}</span>
                     </div>
+                    <div class="workflow-item-actions" style="margin-top: 10px; display: flex; gap: 8px;">
+                        <button class="btn btn-sm btn-primary" onclick="githubManager.viewWorkflowLogs('${repo}', '${workflow.databaseId}')" style="font-size: 12px; padding: 4px 12px;">📄 View Logs</button>
+                    </div>
                 </div>
             `;
         }
@@ -577,6 +580,134 @@ class GitHubWorkflowsManager {
         `;
 
         document.body.insertAdjacentHTML('beforeend', html);
+    }
+
+    // View workflow logs
+    async viewWorkflowLogs(repo, runId) {
+        try {
+            console.log('[GitHub Workflows] Fetching logs for:', repo, runId);
+            showToast('Fetching workflow logs...', 'info');
+            
+            // First, get workflow details to get job IDs
+            const detailsResult = await this.mcp.request('tools/call', {
+                name: 'gh_get_workflow_details',
+                arguments: {
+                    repo: repo,
+                    run_id: String(runId),
+                    include_jobs: true
+                }
+            });
+            
+            console.log('[GitHub Workflows] Workflow details:', detailsResult);
+            
+            if (detailsResult && detailsResult.jobs && detailsResult.jobs.length > 0) {
+                // Display jobs and allow user to select which one to view logs for
+                let html = `
+                    <div class="modal-overlay" onclick="githubManager.closeModal()">
+                        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+                            <div class="modal-header">
+                                <h3>Workflow Logs - ${repo} #${runId}</h3>
+                                <button class="close-btn" onclick="githubManager.closeModal()">×</button>
+                            </div>
+                            <div class="modal-body">
+                                <div style="margin-bottom: 20px;">
+                                    <h4 style="margin-bottom: 10px;">Select a job to view logs:</h4>
+                                    <div class="jobs-list" style="display: grid; gap: 10px;">
+                `;
+                
+                for (const job of detailsResult.jobs) {
+                    const statusClass = job.status === 'in_progress' ? 'status-running' : 
+                                      job.conclusion === 'success' ? 'status-success' : 
+                                      job.conclusion === 'failure' ? 'status-failure' : 'status-unknown';
+                    const statusIcon = job.conclusion === 'success' ? '✅' : 
+                                     job.conclusion === 'failure' ? '❌' : 
+                                     job.status === 'in_progress' ? '⏳' : '⚪';
+                    
+                    html += `
+                        <div class="job-item" style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; background: white;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-weight: 600; margin-bottom: 4px;">${statusIcon} ${this._escapeHtml(job.name)}</div>
+                                    <div style="font-size: 12px; color: #6b7280;">
+                                        Status: ${job.status} | Conclusion: ${job.conclusion || 'N/A'}
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-primary" onclick="githubManager.fetchJobLogs('${repo}', '${runId}', '${job.id}', '${this._escapeHtml(job.name)}')" style="font-size: 12px;">
+                                    View Logs
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                                    </div>
+                                </div>
+                                <div id="job-logs-container" style="display: none;">
+                                    <h4 style="margin-bottom: 10px;" id="job-logs-title">Job Logs</h4>
+                                    <pre id="job-logs-content" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 12px; line-height: 1.4; max-height: 500px; overflow-y: auto;"></pre>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" onclick="githubManager.closeModal()">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.insertAdjacentHTML('beforeend', html);
+            } else {
+                showToast('No jobs found for this workflow run', 'warning');
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching workflow logs:', error);
+            showToast('Error fetching workflow logs', 'error');
+        }
+    }
+
+    // Fetch specific job logs
+    async fetchJobLogs(repo, runId, jobId, jobName) {
+        try {
+            console.log('[GitHub Workflows] Fetching job logs:', repo, runId, jobId);
+            showToast('Loading job logs...', 'info');
+            
+            const result = await this.mcp.request('tools/call', {
+                name: 'gh_get_workflow_logs',
+                arguments: {
+                    repo: repo,
+                    run_id: String(runId),
+                    job_id: String(jobId),
+                    tail_lines: 1000
+                }
+            });
+            
+            console.log('[GitHub Workflows] Job logs result:', result);
+            
+            const logsContainer = document.getElementById('job-logs-container');
+            const logsTitle = document.getElementById('job-logs-title');
+            const logsContent = document.getElementById('job-logs-content');
+            
+            if (logsContainer && logsTitle && logsContent) {
+                logsContainer.style.display = 'block';
+                logsTitle.textContent = `Logs for: ${jobName}`;
+                
+                if (result && result.logs) {
+                    logsContent.textContent = result.logs;
+                    showToast('Logs loaded successfully', 'success');
+                    // Scroll to logs
+                    logsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else if (result && result.error) {
+                    logsContent.textContent = `Error: ${result.error}`;
+                    showToast('Failed to load logs', 'error');
+                } else {
+                    logsContent.textContent = 'No logs available';
+                    showToast('No logs available', 'warning');
+                }
+            }
+        } catch (error) {
+            console.error('[GitHub Workflows] Error fetching job logs:', error);
+            showToast('Error fetching job logs', 'error');
+        }
     }
 
     // Provision runner for a repository using MCP SDK
