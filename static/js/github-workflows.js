@@ -844,8 +844,8 @@ class GitHubWorkflowsManager {
             const graphqlStatusClass = graphqlRemaining > 1000 ? 'status-good' : graphqlRemaining > 100 ? 'status-warning' : 'status-critical';
             
             graphqlSection = `
-                <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e5e7eb;">
-                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">GraphQL API</h4>
+                <div style="margin-top: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔸 GraphQL API Rate Limit</h3>
                     <div class="rate-limit-summary">
                         <div class="rate-limit-gauge ${graphqlStatusClass}">
                             <div class="gauge-value">${graphqlRemaining}</div>
@@ -869,11 +869,22 @@ class GitHubWorkflowsManager {
                     </div>
                 </div>
             `;
+        } else {
+            // Show placeholder if GraphQL data not available
+            graphqlSection = `
+                <div style="margin-top: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔸 GraphQL API Rate Limit</h3>
+                    <div style="padding: 20px; text-align: center; color: #6b7280; font-size: 14px;">
+                        <p>GraphQL rate limit data not available in response</p>
+                        <p style="font-size: 12px; margin-top: 10px;">Make a GraphQL API call to populate this data</p>
+                    </div>
+                </div>
+            `;
         }
         
         container.innerHTML = `
-            <div>
-                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">REST API</h4>
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">🔹 REST API Rate Limit</h3>
                 <div class="rate-limit-summary">
                     <div class="rate-limit-gauge ${statusClass}">
                         <div class="gauge-value">${restRemaining}</div>
