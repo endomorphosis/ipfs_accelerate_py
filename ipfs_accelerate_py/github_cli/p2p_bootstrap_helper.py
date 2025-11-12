@@ -191,7 +191,8 @@ class SimplePeerBootstrap:
         """
         Get bootstrap multiaddrs for discovered peers.
         
-        Also includes environment variable bootstrap peers.
+        Also includes environment variable bootstrap peers and fallback to
+        standard libp2p bootstrap nodes if no other peers are available.
         
         Args:
             max_peers: Maximum number of bootstrap peers
@@ -217,6 +218,17 @@ class SimplePeerBootstrap:
             if multiaddr and multiaddr not in bootstrap_addrs:
                 bootstrap_addrs.append(multiaddr)
                 logger.info(f"  ✓ Discovered peer: {multiaddr}")
+        
+        # If no peers found, add standard libp2p bootstrap nodes as fallback
+        if not bootstrap_addrs:
+            libp2p_bootstrap_nodes = [
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
+            ]
+            bootstrap_addrs.extend(libp2p_bootstrap_nodes)
+            logger.info(f"  ℹ️  Using {len(libp2p_bootstrap_nodes)} standard libp2p bootstrap node(s)")
         
         return bootstrap_addrs[:max_peers]
     
