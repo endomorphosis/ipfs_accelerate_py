@@ -87,6 +87,30 @@ class MCPClient {
     }
 
     /**
+     * Check if an error is a transient network error that should be retried
+     */
+    _isRetriableError(error) {
+        // Network errors that are typically transient
+        const retriableErrors = [
+            'NetworkError',
+            'Failed to fetch',
+            'Network request failed',
+            'ERR_NETWORK_CHANGED',
+            'ERR_CONNECTION_REFUSED',
+            'ERR_CONNECTION_RESET',
+            'ECONNREFUSED',
+            'ECONNRESET',
+            'ETIMEDOUT'
+        ];
+        
+        const errorStr = error.toString();
+        return retriableErrors.some(pattern => errorStr.includes(pattern)) ||
+               error.name === 'AbortError' ||
+               error.name === 'NetworkError' ||
+               error.name === 'TypeError' && errorStr.includes('fetch');
+    }
+
+    /**
      * Make HTTP request with timeout and retry logic
      */
     async _makeHttpRequest(body) {
@@ -123,12 +147,25 @@ class MCPClient {
                 
             } catch (error) {
                 lastError = error;
-                if (attempt < this.options.retries - 1) {
-                    await this._delay(Math.pow(2, attempt) * 1000); // Exponential backoff
+                
+                // Log network errors for debugging
+                if (this._isRetriableError(error)) {
+                    console.warn(`[MCP SDK] Network error (attempt ${attempt + 1}/${this.options.retries}):`, error.message);
+                }
+                
+                // Retry on retriable errors or if we have retries left
+                if (attempt < this.options.retries - 1 && this._isRetriableError(error)) {
+                    const delay = Math.pow(2, attempt) * 1000;
+                    console.log(`[MCP SDK] Retrying in ${delay}ms...`);
+                    await this._delay(delay); // Exponential backoff
+                } else if (attempt < this.options.retries - 1) {
+                    // For non-retriable errors, use shorter delay
+                    await this._delay(500);
                 }
             }
         }
         
+        console.error('[MCP SDK] All retry attempts failed:', lastError);
         throw lastError;
     }
 

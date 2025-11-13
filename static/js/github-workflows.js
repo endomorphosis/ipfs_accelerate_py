@@ -35,19 +35,43 @@ class GitHubWorkflowsManager {
         return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
-    // Initialize the workflows manager
-    async initialize() {
+    // Initialize the workflows manager with retry logic
+    async initialize(retries = 3, initialDelay = 1000) {
         console.log('[GitHub Workflows] Initializing with MCP SDK...');
-        await Promise.all([
-            this.fetchWorkflows(),
-            this.fetchRunners(),
-            this.fetchIssues(),
-            this.fetchPullRequests(),
-            this.fetchCacheStats(),
-            this.fetchRateLimit()
-        ]);
-        this.startAutoRefresh();
-        console.log('[GitHub Workflows] Initialization complete');
+        
+        // Wait for initial delay to ensure server is ready
+        await new Promise(resolve => setTimeout(resolve, initialDelay));
+        
+        for (let attempt = 0; attempt < retries; attempt++) {
+            try {
+                await Promise.all([
+                    this.fetchWorkflows(),
+                    this.fetchRunners(),
+                    this.fetchIssues(),
+                    this.fetchPullRequests(),
+                    this.fetchCacheStats(),
+                    this.fetchRateLimit()
+                ]);
+                this.startAutoRefresh();
+                console.log('[GitHub Workflows] Initialization complete');
+                return; // Success
+            } catch (error) {
+                const isNetworkError = error.toString().includes('fetch') || 
+                                       error.toString().includes('NetworkError') ||
+                                       error.toString().includes('ERR_NETWORK') ||
+                                       error.name === 'AbortError';
+                
+                if (isNetworkError && attempt < retries - 1) {
+                    const delay = Math.pow(2, attempt) * 1000;
+                    console.warn(`[GitHub Workflows] Network error during initialization (attempt ${attempt + 1}/${retries}), retrying in ${delay}ms...`, error.message);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    console.error('[GitHub Workflows] Initialization failed after all retries:', error);
+                    // Don't throw - allow partial functionality
+                    return;
+                }
+            }
+        }
     }
 
     // Fetch workflows from the server using MCP tools
@@ -1561,8 +1585,8 @@ class GitHubWorkflowsManager {
 // Global instance
 let githubManager = null;
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize on page load with delay to ensure server is ready
+document.addEventListener('DOMContentLoaded', async () => {
     // Create MCP client for GitHub workflows
     const mcpClient = typeof MCPClient !== 'undefined' ? new MCPClient() : null;
     githubManager = new GitHubWorkflowsManager(mcpClient);
@@ -1570,7 +1594,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check if GitHub tab exists before initializing
     const githubTab = document.getElementById('github-workflows');
     if (githubTab) {
-        githubManager.initialize();
+        // Initialize with built-in retry and delay
+        await githubManager.initialize();
     }
 });
 
