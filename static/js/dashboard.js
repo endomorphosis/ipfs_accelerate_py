@@ -631,13 +631,26 @@ function updateSearchStats(data) {
     }
 }
 
-// Load database statistics
-function loadDatabaseStats() {
+// Load database statistics with retry logic
+async function loadDatabaseStats(retries = 3) {
     console.log('[Dashboard] Loading database statistics...');
     
-    fetch('/api/mcp/models/stats')
-        .then(response => response.json())
-        .then(data => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            
+            const response = await fetch('/api/mcp/models/stats', {
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
             console.log('[Dashboard] Database stats:', data);
             
             const totalIndexedSpan = document.getElementById('total-indexed');
@@ -653,11 +666,27 @@ function loadDatabaseStats() {
             if (data.fallback) {
                 console.warn('[Dashboard] Using fallback statistics');
             }
-        })
-        .catch(error => {
-            console.error('[Dashboard] Failed to load database stats:', error);
-            // Keep showing zeros on error
-        });
+            
+            // Success, break out of retry loop
+            return;
+            
+        } catch (error) {
+            const isNetworkError = error.toString().includes('fetch') || 
+                                   error.toString().includes('NetworkError') ||
+                                   error.toString().includes('ERR_NETWORK') ||
+                                   error.name === 'AbortError';
+            
+            if (isNetworkError && attempt < retries - 1) {
+                const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+                console.warn(`[Dashboard] Network error loading stats (attempt ${attempt + 1}/${retries}), retrying in ${delay}ms...`, error.message);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error('[Dashboard] Failed to load database stats after all retries:', error);
+                // Keep showing zeros on error
+                return;
+            }
+        }
+    }
 }
 
 // Hardware Compatibility Testing
@@ -1853,8 +1882,10 @@ document.addEventListener('DOMContentLoaded', function() {
         updateInferenceForm();
     }, 100);
     
-    // Load database statistics for search-stats section immediately
-    loadDatabaseStats();
+    // Load database statistics with delay to ensure server is ready
+    setTimeout(() => {
+        loadDatabaseStats();
+    }, 1000);
     
     // Initialize autocomplete on test-model-id input
     const testModelInput = document.getElementById('test-model-id');
