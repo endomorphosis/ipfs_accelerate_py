@@ -1,0 +1,138 @@
+name: Example P2P Code Generation
+
+# This is an example workflow that uses the P2P scheduler
+# to bypass GitHub API and execute on the peer-to-peer network
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_type:
+        description: 'Type of code generation task'
+        required: true
+        type: choice
+        options:
+          - python-module
+          - javascript-component
+          - rust-library
+          - documentation
+      description:
+        description: 'Task description'
+        required: true
+      priority:
+        description: 'Task priority (1-10, higher = more important)'
+        required: false
+        default: '5'
+        type: choice
+        options: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
+
+# Tag this workflow as P2P-only to completely bypass GitHub API
+# P2P peers will detect these tags and handle execution
+env:
+  WORKFLOW_TAGS: p2p-only,code-generation
+  P2P_BYPASS: true
+
+jobs:
+  submit-to-p2p:
+    # This job submits the task to P2P network
+    # It will run briefly on GitHub to submit, then P2P peers take over
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install ipfs-accelerate
+        run: |
+          pip install ipfs_accelerate_py
+      
+      - name: Check P2P scheduler availability
+        id: check_p2p
+        run: |
+          # Check if P2P scheduler is available
+          if ipfs-accelerate p2p-workflow status; then
+            echo "p2p_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "p2p_available=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Verify workflow should bypass GitHub
+        id: verify_tags
+        run: |
+          # Verify that this workflow should use P2P
+          RESULT=$(ipfs-accelerate p2p-workflow check-tags \
+            --tags p2p-only code-generation --json)
+          
+          SHOULD_BYPASS=$(echo $RESULT | jq -r '.should_bypass_github')
+          IS_P2P_ONLY=$(echo $RESULT | jq -r '.is_p2p_only')
+          
+          echo "should_bypass=$SHOULD_BYPASS" >> $GITHUB_OUTPUT
+          echo "is_p2p_only=$IS_P2P_ONLY" >> $GITHUB_OUTPUT
+          
+          echo "### P2P Workflow Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- Should Bypass GitHub: $SHOULD_BYPASS" >> $GITHUB_STEP_SUMMARY
+          echo "- P2P Only: $IS_P2P_ONLY" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Submit task to P2P scheduler
+        if: steps.verify_tags.outputs.should_bypass == 'true'
+        run: |
+          # Submit the code generation task to P2P network
+          ipfs-accelerate p2p-workflow submit \
+            --task-id "gh-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --workflow-id "${{ github.workflow }}" \
+            --name "Code Generation: ${{ github.event.inputs.task_type }} - ${{ github.event.inputs.description }}" \
+            --tags p2p-only code-generation \
+            --priority ${{ github.event.inputs.priority }}
+          
+          echo "### Task Submitted to P2P Network" >> $GITHUB_STEP_SUMMARY
+          echo "- Task ID: gh-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Type: ${{ github.event.inputs.task_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Priority: ${{ github.event.inputs.priority }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Description: ${{ github.event.inputs.description }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The task will be picked up and executed by P2P network peers." >> $GITHUB_STEP_SUMMARY
+      
+      - name: Get P2P scheduler status
+        run: |
+          # Display current P2P scheduler status
+          ipfs-accelerate p2p-workflow status
+          
+          # Get merkle clock state
+          echo "### Merkle Clock State" >> $GITHUB_STEP_SUMMARY
+          CLOCK=$(ipfs-accelerate p2p-workflow clock --json)
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          echo "$CLOCK" | jq '.' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      
+      - name: Fallback to GitHub execution
+        if: steps.verify_tags.outputs.should_bypass != 'true' || steps.check_p2p.outputs.p2p_available != 'true'
+        run: |
+          echo "::warning::P2P execution not available, running on GitHub instead"
+          echo "### Running on GitHub (Fallback)" >> $GITHUB_STEP_SUMMARY
+          echo "P2P scheduler was not available or workflow is not P2P-eligible." >> $GITHUB_STEP_SUMMARY
+          
+          # Execute task directly on GitHub
+          # (actual task execution would go here)
+          echo "Task would be executed on GitHub here..."
+
+  # This job would run on P2P peers, not on GitHub
+  # It's defined here for documentation purposes
+  execute-on-p2p:
+    needs: submit-to-p2p
+    # This won't actually run on GitHub - P2P peers handle execution
+    if: false  # Always skip on GitHub
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: P2P Execution Placeholder
+        run: |
+          echo "This step runs on P2P peers, not on GitHub"
+          echo "P2P peers will:"
+          echo "1. Pick up the task via: ipfs-accelerate p2p-workflow next"
+          echo "2. Execute the code generation task"
+          echo "3. Store results in IPFS"
+          echo "4. Mark complete via: ipfs-accelerate p2p-workflow complete"
