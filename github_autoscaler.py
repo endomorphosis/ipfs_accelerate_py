@@ -31,6 +31,20 @@ except ImportError:
     # Try alternative import path
     from github_cli import GitHubCLI, WorkflowQueue, RunnerManager, GitHubGraphQL
 
+# Import P2P components
+try:
+    from ipfs_accelerate_py.p2p_workflow_scheduler import P2PWorkflowScheduler
+    from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
+    HAVE_P2P_SCHEDULER = True
+except ImportError:
+    try:
+        from p2p_workflow_scheduler import P2PWorkflowScheduler
+        from p2p_workflow_discovery import P2PWorkflowDiscoveryService
+        HAVE_P2P_SCHEDULER = True
+    except ImportError:
+        HAVE_P2P_SCHEDULER = False
+        logger.warning("P2P workflow scheduler not available")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -53,7 +67,8 @@ class GitHubRunnerAutoscaler:
         poll_interval: int = 120,
         since_days: int = 1,
         max_runners: Optional[int] = None,
-        filter_by_arch: bool = True
+        filter_by_arch: bool = True,
+        enable_p2p: bool = True
     ):
         """
         Initialize the autoscaler.
@@ -64,12 +79,14 @@ class GitHubRunnerAutoscaler:
             since_days: Look at repos updated in last N days (default: 1)
             max_runners: Maximum runners to provision (default: system cores)
             filter_by_arch: Whether to filter workflows by architecture (default: True)
+            enable_p2p: Enable P2P workflow monitoring and autoscaling (default: True)
         """
         self.owner = owner
         self.poll_interval = poll_interval
         self.since_days = since_days
         self.max_runners = max_runners
         self.filter_by_arch = filter_by_arch
+        self.enable_p2p = enable_p2p and HAVE_P2P_SCHEDULER
         self.running = False
         
         # Initialize GitHub CLI components
@@ -88,6 +105,27 @@ class GitHubRunnerAutoscaler:
         
         # Note: Distributed P2P cache is automatically enabled in GitHubCLI
         # No separate initialization needed - it's built into the cache layer
+        
+        # Initialize P2P workflow discovery if enabled
+        self.p2p_discovery = None
+        if self.enable_p2p:
+            try:
+                # Create P2P scheduler
+                import socket
+                import uuid
+                peer_id = f"peer-autoscaler-{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
+                p2p_scheduler = P2PWorkflowScheduler(peer_id=peer_id)
+                
+                # Create discovery service
+                self.p2p_discovery = P2PWorkflowDiscoveryService(
+                    owner=self.owner,
+                    poll_interval=self.poll_interval,
+                    scheduler=p2p_scheduler
+                )
+                logger.info("✓ P2P workflow discovery enabled")
+            except Exception as e:
+                logger.warning(f"✗ Failed to initialize P2P discovery: {e}")
+                self.enable_p2p = False
         
         # Verify authentication
         auth_status = self.gh.get_auth_status()
@@ -113,6 +151,7 @@ class GitHubRunnerAutoscaler:
         logger.info(f"  System architecture: {system_arch}")
         logger.info(f"  Runner labels: {runner_labels}")
         logger.info(f"  Architecture filtering: {'enabled' if filter_by_arch else 'disabled'}")
+        logger.info(f"  P2P workflow monitoring: {'enabled' if self.enable_p2p else 'disabled'}")
         logger.info(f"  Docker isolation: enabled (see CONTAINERIZED_CI_SECURITY.md)")
     
     def _write_tokens_to_file(self, provisioning: Dict, system_arch: str, token_file: str = "/var/lib/github-runner-autoscaler/runner_tokens.json") -> None:
@@ -206,9 +245,25 @@ class GitHubRunnerAutoscaler:
         """
         Check workflow queues and provision runners if needed.
         Uses GraphQL API as fallback if REST API is rate-limited.
+        Also monitors P2P workflow scheduler for pending tasks.
         """
         try:
             logger.info("Checking workflow queues...")
+            
+            # Check P2P scheduler if enabled
+            p2p_pending = 0
+            p2p_assigned = 0
+            if self.enable_p2p and self.p2p_discovery:
+                try:
+                    # Run discovery cycle to find new P2P workflows
+                    p2p_stats = self.p2p_discovery.run_discovery_cycle()
+                    p2p_pending = p2p_stats['scheduler']['pending_tasks']
+                    p2p_assigned = p2p_stats['scheduler']['assigned_tasks']
+                    
+                    if p2p_pending > 0 or p2p_assigned > 0:
+                        logger.info(f"P2P workflows: {p2p_pending} pending, {p2p_assigned} assigned")
+                except Exception as e:
+                    logger.warning(f"Error checking P2P scheduler: {e}")
             
             # Get system architecture for filtering
             system_arch = self.runner_mgr.get_system_architecture()
@@ -259,18 +314,32 @@ class GitHubRunnerAutoscaler:
             if self.filter_by_arch:
                 logger.info(f"  (Filtered for {system_arch} architecture)")
             
+            # Add P2P tasks to the total workload for provisioning calculation
+            total_workload = total_workflows + p2p_pending + p2p_assigned
+            
             # Check if we need to provision runners
             # Always provision at least 1 runner per repo for availability
             if total_running == 0 and total_failed == 0 and total_workflows > 0:
                 logger.info("No workflows need runner provisioning, but maintaining base runners")
-            elif total_workflows == 0:
+            elif total_workflows == 0 and p2p_pending == 0:
                 logger.info("Provisioning minimum 1 runner per repository for availability")
+            
+            # Calculate runners needed for P2P tasks
+            # Each P2P task may need a runner
+            p2p_runners_needed = min(p2p_pending, self.max_runners // 2) if p2p_pending > 0 else 0
+            
+            # Adjust max_runners to account for P2P workload
+            effective_max_runners = max(1, self.max_runners - p2p_runners_needed)
+            
+            if p2p_runners_needed > 0:
+                logger.info(f"Allocating {p2p_runners_needed} runners for P2P tasks, "
+                          f"{effective_max_runners} for GitHub workflows")
             
             # Provision runners for queues (minimum 1 per repo, or 1+queued workflows when active)
             logger.info("Provisioning runners...")
             provisioning = self.runner_mgr.provision_runners_for_queue(
                 queues,
-                max_runners=self.max_runners,
+                max_runners=effective_max_runners,
                 min_runners_per_repo=1  # Guarantee at least 1 runner per repo
             )
             
@@ -293,6 +362,11 @@ class GitHubRunnerAutoscaler:
                         logger.info(f"    Note: Runners will use Docker containers for isolation")
             else:
                 logger.warning("No runners were provisioned")
+            
+            # Log P2P scheduler status summary
+            if self.enable_p2p and (p2p_pending > 0 or p2p_assigned > 0):
+                logger.info(f"P2P Summary: {p2p_pending} pending, {p2p_assigned} assigned, "
+                          f"{p2p_runners_needed} runners allocated for P2P")
             
         except Exception as e:
             logger.error(f"Error during check and scale: {e}", exc_info=True)
@@ -409,6 +483,11 @@ Requirements:
         help='Disable architecture-based workflow filtering (provision for all workflows)'
     )
     parser.add_argument(
+        '--no-p2p',
+        action='store_true',
+        help='Disable P2P workflow monitoring and autoscaling'
+    )
+    parser.add_argument(
         '--daemon',
         action='store_true',
         help='Run as background daemon (not yet implemented)'
@@ -427,7 +506,8 @@ Requirements:
             poll_interval=args.interval,
             since_days=args.since_days,
             max_runners=args.max_runners,
-            filter_by_arch=not args.no_arch_filter
+            filter_by_arch=not args.no_arch_filter,
+            enable_p2p=not args.no_p2p
         )
         
         autoscaler.start()
