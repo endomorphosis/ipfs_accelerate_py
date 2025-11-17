@@ -161,12 +161,38 @@ except ImportError:
     get_system_logs = None
     SystemLogs = None
 
+# Add P2P workflow scheduler access
+try:
+    from .p2p_workflow_scheduler import (
+        P2PWorkflowScheduler,
+        P2PTask,
+        WorkflowTag,
+        MerkleClock,
+        FibonacciHeap,
+        calculate_hamming_distance
+    )
+    export["P2PWorkflowScheduler"] = P2PWorkflowScheduler
+    export["P2PTask"] = P2PTask
+    export["WorkflowTag"] = WorkflowTag
+    export["MerkleClock"] = MerkleClock
+    export["FibonacciHeap"] = FibonacciHeap
+    export["calculate_hamming_distance"] = calculate_hamming_distance
+except ImportError:
+    P2PWorkflowScheduler = None
+    P2PTask = None
+    WorkflowTag = None
+    MerkleClock = None
+    FibonacciHeap = None
+    calculate_hamming_distance = None
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
     'install_depends', 'worker', 'ipfs_multiformats_py',
     'accelerate_with_browser', 'WebNNWebGPUAccelerator', 'get_accelerator',
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
-    'model_manager_available', 'cli_main', 'get_system_logs', 'SystemLogs'
+    'model_manager_available', 'cli_main', 'get_system_logs', 'SystemLogs',
+    'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
+    'FibonacciHeap', 'calculate_hamming_distance'
 ]
 
 # Package version
