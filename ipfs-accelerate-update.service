@@ -1,0 +1,11 @@
+[Unit]
+Description=IPFS Accelerate Auto-Update Service
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/barberb/ipfs_accelerate_py
+ExecStart=/home/barberb/ipfs_accelerate_py/update-and-restart.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ipfs-accelerate-update
