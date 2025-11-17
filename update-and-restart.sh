@@ -34,6 +34,24 @@ fi
 echo "$(date): Updates available, pulling changes" | tee -a "$LOG_FILE"
 git pull origin main | tee -a "$LOG_FILE"
 
+# Install/update dependencies
+echo "$(date): Checking and updating dependencies" | tee -a "$LOG_FILE"
+source "$WORK_DIR/.venv/bin/activate"
+
+# Install requirements.txt if it exists
+if [ -f "$WORK_DIR/requirements.txt" ]; then
+    echo "$(date): Installing dependencies from requirements.txt" | tee -a "$LOG_FILE"
+    pip install -q -r "$WORK_DIR/requirements.txt" 2>&1 | tee -a "$LOG_FILE"
+fi
+
+# Install package in editable mode (checks for setup.py or pyproject.toml)
+if [ -f "$WORK_DIR/setup.py" ] || [ -f "$WORK_DIR/pyproject.toml" ]; then
+    echo "$(date): Installing package in editable mode" | tee -a "$LOG_FILE"
+    pip install -q -e . 2>&1 | tee -a "$LOG_FILE"
+fi
+
+echo "$(date): Dependencies update complete" | tee -a "$LOG_FILE"
+
 # Restart the systemd service
 echo "$(date): Restarting ipfs-accelerate-mcp.service" | tee -a "$LOG_FILE"
 systemctl --user restart ipfs-accelerate-mcp.service
