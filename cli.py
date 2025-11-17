@@ -209,7 +209,25 @@ class IPFSAccelerateCLI:
             from ipfs_accelerate_py.mcp_dashboard import MCPDashboard  # requires Flask
 
             logger.info(f"Starting MCP Dashboard on port {args.port}")
-            dashboard = MCPDashboard(port=args.port, host=args.host)
+            
+            # Prepare autoscaler configuration
+            autoscaler_config = {
+                'owner': getattr(args, 'autoscaler_owner', None),
+                'interval': getattr(args, 'autoscaler_interval', 60),
+                'since_days': getattr(args, 'autoscaler_since_days', 1),
+                'max_runners': getattr(args, 'autoscaler_max_runners', None),
+                'filter_by_arch': True,
+                'enable_p2p': not getattr(args, 'no_p2p', False)
+            }
+            
+            # Create dashboard with autoscaler enabled by default
+            enable_autoscaler = not getattr(args, 'disable_autoscaler', False)
+            dashboard = MCPDashboard(
+                port=args.port, 
+                host=args.host,
+                enable_autoscaler=enable_autoscaler,
+                autoscaler_config=autoscaler_config
+            )
 
             # Open browser if requested
             if getattr(args, 'open_browser', False):
@@ -458,7 +476,8 @@ class IPFSAccelerateCLI:
                 owner=args.owner,
                 poll_interval=args.interval,
                 since_days=args.since_days,
-                max_runners=args.max_runners
+                max_runners=args.max_runners,
+                enable_p2p=not args.no_p2p if hasattr(args, 'no_p2p') else True
             )
             
             autoscaler.start()
@@ -469,6 +488,63 @@ class IPFSAccelerateCLI:
             return 0
         except Exception as e:
             logger.error(f"Failed to start autoscaler: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+    
+    def run_p2p_discovery(self, args):
+        """Start P2P workflow discovery service"""
+        logger.info("Starting P2P Workflow Discovery Service...")
+        
+        try:
+            from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
+            
+            service = P2PWorkflowDiscoveryService(
+                owner=args.owner,
+                poll_interval=args.interval
+            )
+            
+            service.start()
+            return 0
+            
+        except KeyboardInterrupt:
+            logger.info("Discovery service stopped by user")
+            return 0
+        except Exception as e:
+            logger.error(f"Failed to start discovery service: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+    
+    def run_p2p_discover_once(self, args):
+        """Run P2P workflow discovery once"""
+        try:
+            from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
+            
+            service = P2PWorkflowDiscoveryService(
+                owner=args.owner,
+                poll_interval=300
+            )
+            
+            logger.info("Running discovery cycle...")
+            stats = service.run_discovery_cycle()
+            
+            print(f"\nDiscovery Results:")
+            print(f"  Workflows discovered: {stats['discovered']}")
+            print(f"  Workflows submitted: {stats['submitted']}")
+            print(f"\nScheduler Status:")
+            print(f"  Pending tasks: {stats['scheduler']['pending_tasks']}")
+            print(f"  Assigned tasks: {stats['scheduler']['assigned_tasks']}")
+            print(f"  Completed tasks: {stats['scheduler']['completed_tasks']}")
+            print(f"  Known peers: {stats['scheduler']['known_peers']}")
+            
+            if args.output_json:
+                print(json.dumps(stats, indent=2))
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Failed to run discovery: {e}")
             import traceback
             traceback.print_exc()
             return 1
@@ -1353,6 +1429,8 @@ Examples:
                                  help='Monitor repos updated in last N days (default: 1)')
         start_parser.add_argument('--autoscaler-max-runners', type=int,
                                  help='Max runners for autoscaler (default: system cores)')
+        start_parser.add_argument('--no-p2p', action='store_true',
+                                 help='Disable P2P workflow monitoring in autoscaler')
         
         # MCP dashboard command
         dashboard_parser = mcp_subparsers.add_parser('dashboard', help='Start dashboard only')
@@ -1413,6 +1491,27 @@ Examples:
                                              help='Monitor repos updated in last N days (default: 1)')
         github_autoscaler_parser.add_argument('--max-runners', type=int,
                                              help='Max runners to provision (default: system cores)')
+        github_autoscaler_parser.add_argument('--no-p2p', action='store_true',
+                                             help='Disable P2P workflow monitoring')
+        
+        # GitHub P2P discovery command
+        github_p2p_parser = github_subparsers.add_parser('p2p-discover',
+                                                        help='Discover P2P workflows across repositories')
+        github_p2p_subparsers = github_p2p_parser.add_subparsers(dest='p2p_action', help='P2P discovery actions')
+        
+        # P2P monitor command (continuous)
+        p2p_monitor_parser = github_p2p_subparsers.add_parser('monitor',
+                                                              help='Continuously monitor for P2P workflows')
+        p2p_monitor_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        p2p_monitor_parser.add_argument('--interval', type=int, default=300,
+                                       help='Poll interval in seconds (default: 300)')
+        
+        # P2P discover once command
+        p2p_once_parser = github_p2p_subparsers.add_parser('once',
+                                                           help='Run discovery once and exit')
+        p2p_once_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        p2p_once_parser.add_argument('--output-json', action='store_true',
+                                    help='Output results as JSON')
         
         # Copilot commands
         copilot_parser = subparsers.add_parser('copilot', help='GitHub Copilot CLI operations')
@@ -1470,6 +1569,14 @@ Examples:
                 return cli.run_github_runners(args)
             elif args.github_command == 'autoscaler':
                 return cli.run_github_autoscaler(args)
+            elif args.github_command == 'p2p-discover':
+                if args.p2p_action == 'monitor':
+                    return cli.run_p2p_discovery(args)
+                elif args.p2p_action == 'once':
+                    return cli.run_p2p_discover_once(args)
+                else:
+                    github_p2p_parser.print_help()
+                    return 1
             else:
                 github_parser.print_help()
                 return 1
