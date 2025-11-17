@@ -18,6 +18,9 @@ Environment="VIRTUAL_ENV=/home/devel/ipfs_accelerate_py/ipfs_env"
 Environment="MCP_HOST=0.0.0.0"
 Environment="MCP_PORT=9000"
 
+# Update before starting
+ExecStartPre=/home/barberb/ipfs_accelerate_py/scripts/auto-update.sh
+
 # Start the MCP server using wrapper script
 ExecStart=/home/devel/ipfs_accelerate_py/start_mcp_server.sh
 

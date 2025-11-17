@@ -11,6 +11,7 @@ Group=barberb
 WorkingDirectory=/home/barberb/ipfs_accelerate_py
 Environment=VIRTUAL_ENV=/home/barberb/ipfs_accelerate_py/.venv
 Environment=PATH=/home/barberb/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/home/barberb/ipfs_accelerate_py/scripts/auto-update.sh
 ExecStart=/home/barberb/ipfs_accelerate_py/.venv/bin/ipfs-accelerate mcp start --host 0.0.0.0 --port 9000 --keep-running --autoscaler-owner endomorphosis
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always

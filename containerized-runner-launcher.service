@@ -18,6 +18,9 @@ SupplementaryGroups=docker
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 
+# Update before starting
+ExecStartPre=/home/barberb/ipfs_accelerate_py/scripts/auto-update.sh
+
 # Run the launcher
 ExecStart=/home/devel/.venvs/ipfs-accelerate/bin/python /home/devel/ipfs_accelerate_py/containerized_runner_launcher.py \
     --token-file=/var/lib/github-runner-autoscaler/runner_tokens.json \
