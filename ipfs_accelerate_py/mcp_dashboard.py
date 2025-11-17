@@ -33,13 +33,16 @@ logger = logging.getLogger(__name__)
 class MCPDashboard:
     """MCP Dashboard with links to various services."""
     
-    def __init__(self, port: int = 8899, host: str = '127.0.0.1', mcp_server=None):
+    def __init__(self, port: int = 8899, host: str = '127.0.0.1', mcp_server=None, 
+                 enable_autoscaler: bool = True, autoscaler_config: Optional[Dict[str, Any]] = None):
         """Initialize the MCP dashboard.
         
         Args:
             port: Port to run on
             host: Host to bind to
             mcp_server: Optional MCP server instance to get tools from
+            enable_autoscaler: Whether to start GitHub Actions autoscaler (default: True)
+            autoscaler_config: Configuration for autoscaler (owner, interval, etc.)
         """
         if not HAVE_FLASK:
             raise ImportError("Flask is required for the MCP Dashboard. Install with: pip install flask flask-cors")
@@ -49,6 +52,10 @@ class MCPDashboard:
         self.host = host
         self.mcp_server = mcp_server
         self._start_time = time.time()  # Track when dashboard started
+        self.enable_autoscaler = enable_autoscaler
+        self.autoscaler_config = autoscaler_config or {}
+        self.autoscaler_instance = None
+        self.autoscaler_thread = None
         
         # Set up Flask with proper template and static folders
         # __file__ is in ipfs_accelerate_py/, so use dirname(__file__) for templates/static
@@ -3674,6 +3681,64 @@ class MCPDashboard:
         
         return html
 
+    def _start_autoscaler(self) -> None:
+        """Start the GitHub Actions autoscaler in a background thread."""
+        if not self.enable_autoscaler:
+            logger.info("Autoscaler disabled by configuration")
+            return
+        
+        try:
+            # Import autoscaler - use parent directory import path
+            import sys
+            import os
+            parent_dir = os.path.dirname(os.path.dirname(__file__))
+            if parent_dir not in sys.path:
+                sys.path.insert(0, parent_dir)
+            
+            from github_autoscaler import GitHubRunnerAutoscaler
+            from ipfs_accelerate_py.github_cli import GitHubCLI
+            
+            # Check GitHub CLI authentication
+            try:
+                gh = GitHubCLI()
+                auth_status = gh.get_auth_status()
+                
+                if not auth_status.get("authenticated"):
+                    logger.warning("GitHub CLI not authenticated - autoscaler disabled")
+                    logger.warning("  To enable: gh auth login")
+                    return
+            except Exception as e:
+                logger.warning(f"Could not check GitHub authentication: {e}")
+                return
+            
+            logger.info("Starting GitHub Actions autoscaler in background...")
+            
+            # Create autoscaler with configuration
+            self.autoscaler_instance = GitHubRunnerAutoscaler(
+                owner=self.autoscaler_config.get('owner'),
+                poll_interval=self.autoscaler_config.get('interval', 60),
+                since_days=self.autoscaler_config.get('since_days', 1),
+                max_runners=self.autoscaler_config.get('max_runners'),
+                filter_by_arch=self.autoscaler_config.get('filter_by_arch', True),
+                enable_p2p=self.autoscaler_config.get('enable_p2p', True)
+            )
+            
+            def run_autoscaler():
+                try:
+                    self.autoscaler_instance.start(setup_signals=False)
+                except Exception as e:
+                    logger.error(f"Autoscaler error: {e}")
+            
+            import threading
+            self.autoscaler_thread = threading.Thread(target=run_autoscaler, daemon=True)
+            self.autoscaler_thread.start()
+            logger.info("✓ GitHub Actions autoscaler started")
+            
+        except ImportError as e:
+            logger.warning(f"GitHub autoscaler not available: {e}")
+        except Exception as e:
+            logger.warning(f"Could not start autoscaler: {e}")
+    
     def run(self, debug: bool = False) -> None:
         """Run the MCP dashboard.
         
@@ -3681,7 +3746,22 @@ class MCPDashboard:
             debug: Enable debug mode
         """
         logger.info(f"Starting MCP Dashboard on http://{self.host}:{self.port}/mcp")
-        self.app.run(host=self.host, port=self.port, debug=debug, threaded=True)
+        
+        # Start autoscaler before running the Flask app
+        self._start_autoscaler()
+        
+        try:
+            self.app.run(host=self.host, port=self.port, debug=debug, threaded=True)
+        except KeyboardInterrupt:
+            logger.info("Dashboard shutdown requested")
+            if self.autoscaler_instance:
+                logger.info("Stopping autoscaler...")
+                self.autoscaler_instance.stop()
+        except Exception as e:
+            logger.error(f"Dashboard error: {e}")
+            if self.autoscaler_instance:
+                self.autoscaler_instance.stop()
+            raise
 
 
 if __name__ == '__main__':

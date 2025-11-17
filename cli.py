@@ -209,7 +209,25 @@ class IPFSAccelerateCLI:
             from ipfs_accelerate_py.mcp_dashboard import MCPDashboard  # requires Flask
 
             logger.info(f"Starting MCP Dashboard on port {args.port}")
-            dashboard = MCPDashboard(port=args.port, host=args.host)
+            
+            # Prepare autoscaler configuration
+            autoscaler_config = {
+                'owner': getattr(args, 'autoscaler_owner', None),
+                'interval': getattr(args, 'autoscaler_interval', 60),
+                'since_days': getattr(args, 'autoscaler_since_days', 1),
+                'max_runners': getattr(args, 'autoscaler_max_runners', None),
+                'filter_by_arch': True,
+                'enable_p2p': not getattr(args, 'no_p2p', False)
+            }
+            
+            # Create dashboard with autoscaler enabled by default
+            enable_autoscaler = not getattr(args, 'disable_autoscaler', False)
+            dashboard = MCPDashboard(
+                port=args.port, 
+                host=args.host,
+                enable_autoscaler=enable_autoscaler,
+                autoscaler_config=autoscaler_config
+            )
 
             # Open browser if requested
             if getattr(args, 'open_browser', False):
@@ -1411,6 +1429,8 @@ Examples:
                                  help='Monitor repos updated in last N days (default: 1)')
         start_parser.add_argument('--autoscaler-max-runners', type=int,
                                  help='Max runners for autoscaler (default: system cores)')
+        start_parser.add_argument('--no-p2p', action='store_true',
+                                 help='Disable P2P workflow monitoring in autoscaler')
         
         # MCP dashboard command
         dashboard_parser = mcp_subparsers.add_parser('dashboard', help='Start dashboard only')
