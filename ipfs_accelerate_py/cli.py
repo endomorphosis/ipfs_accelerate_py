@@ -1184,6 +1184,221 @@ class IPFSAccelerateCLI:
         except Exception as e:
             logger.error(f"Error creating advanced dashboard: {e}")
             raise
+    
+    def run_p2p_status(self, args):
+        """Get P2P scheduler status"""
+        try:
+            from ipfs_accelerate_py.p2p_workflow_scheduler import P2PWorkflowScheduler
+            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
+            
+            scheduler = get_scheduler()
+            if scheduler is None:
+                logger.error("✗ P2P scheduler not available")
+                return 1
+            
+            status = scheduler.get_status()
+            
+            if args.json:
+                print(json.dumps(status, indent=2))
+            else:
+                logger.info("✓ P2P Workflow Scheduler Status:")
+                logger.info(f"  Peer ID: {status['peer_id']}")
+                logger.info(f"  Pending Tasks: {status['pending_tasks']}")
+                logger.info(f"  Assigned Tasks: {status['assigned_tasks']}")
+                logger.info(f"  Completed Tasks: {status['completed_tasks']}")
+                logger.info(f"  Queue Size: {status['queue_size']}")
+                logger.info(f"  Known Peers: {status['known_peers']}")
+                logger.info(f"  Merkle Clock Hash: {status['merkle_clock']['merkle_root']}")
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error getting P2P scheduler status: {e}")
+            return 1
+    
+    def run_p2p_submit(self, args):
+        """Submit a task to P2P scheduler"""
+        try:
+            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
+            from ipfs_accelerate_py.p2p_workflow_scheduler import P2PTask, WorkflowTag
+            
+            scheduler = get_scheduler()
+            if scheduler is None:
+                logger.error("✗ P2P scheduler not available")
+                return 1
+            
+            # Convert string tags to WorkflowTag enums
+            workflow_tags = []
+            for tag_str in args.tags:
+                try:
+                    enum_name = tag_str.upper().replace('-', '_')
+                    workflow_tags.append(WorkflowTag[enum_name])
+                except (KeyError, AttributeError):
+                    logger.warning(f"Unknown tag: {tag_str}, skipping")
+            
+            # Create and submit task
+            task = P2PTask(
+                task_id=args.task_id,
+                workflow_id=args.workflow_id,
+                name=args.name,
+                tags=workflow_tags,
+                priority=args.priority,
+                created_at=time.time()
+            )
+            
+            success = scheduler.submit_task(task)
+            
+            if success:
+                logger.info("✓ Task submitted successfully")
+                logger.info(f"  Task ID: {task.task_id}")
+                logger.info(f"  Task Hash: {task.task_hash}")
+                logger.info(f"  Priority: {task.priority}")
+                return 0
+            else:
+                logger.error("✗ Failed to submit task")
+                return 1
+                
+        except Exception as e:
+            logger.error(f"Error submitting task: {e}")
+            return 1
+    
+    def run_p2p_next(self, args):
+        """Get next task to execute"""
+        try:
+            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
+            
+            scheduler = get_scheduler()
+            if scheduler is None:
+                logger.error("✗ P2P scheduler not available")
+                return 1
+            
+            task = scheduler.get_next_task()
+            
+            if task is None:
+                if args.json:
+                    print(json.dumps({"task": None, "message": "No tasks available"}))
+                else:
+                    logger.info("No tasks available for this peer")
+                return 0
+            
+            task_info = {
+                "task_id": task.task_id,
+                "workflow_id": task.workflow_id,
+                "name": task.name,
+                "tags": [tag.value for tag in task.tags],
+                "priority": task.priority,
+                "task_hash": task.task_hash,
+                "assigned_peer": task.assigned_peer
+            }
+            
+            if args.json:
+                print(json.dumps({"task": task_info}, indent=2))
+            else:
+                logger.info("✓ Next task:")
+                logger.info(f"  Task ID: {task.task_id}")
+                logger.info(f"  Workflow ID: {task.workflow_id}")
+                logger.info(f"  Name: {task.name}")
+                logger.info(f"  Tags: {', '.join(tag.value for tag in task.tags)}")
+                logger.info(f"  Priority: {task.priority}")
+                logger.info(f"  Assigned Peer: {task.assigned_peer}")
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error getting next task: {e}")
+            return 1
+    
+    def run_p2p_complete(self, args):
+        """Mark task as complete"""
+        try:
+            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
+            
+            scheduler = get_scheduler()
+            if scheduler is None:
+                logger.error("✗ P2P scheduler not available")
+                return 1
+            
+            success = scheduler.mark_task_complete(args.task_id)
+            
+            if success:
+                logger.info(f"✓ Task {args.task_id} marked complete")
+                return 0
+            else:
+                logger.error(f"✗ Task {args.task_id} not found")
+                return 1
+                
+        except Exception as e:
+            logger.error(f"Error marking task complete: {e}")
+            return 1
+    
+    def run_p2p_check_tags(self, args):
+        """Check if tags should bypass GitHub"""
+        try:
+            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
+            from ipfs_accelerate_py.p2p_workflow_scheduler import WorkflowTag
+            
+            scheduler = get_scheduler()
+            if scheduler is None:
+                logger.error("✗ P2P scheduler not available")
+                return 1
+            
+            # Convert string tags to WorkflowTag enums
+            workflow_tags = []
+            for tag_str in args.tags:
+                try:
+                    enum_name = tag_str.upper().replace('-', '_')
+                    workflow_tags.append(WorkflowTag[enum_name])
+                except (KeyError, AttributeError):
+                    pass
+            
+            should_bypass = scheduler.should_bypass_github(workflow_tags)
+            is_p2p_only = scheduler.is_p2p_only(workflow_tags)
+            
+            result = {
+                "should_bypass_github": should_bypass,
+                "is_p2p_only": is_p2p_only,
+                "tags": args.tags
+            }
+            
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                logger.info("✓ Tag Check Results:")
+                logger.info(f"  Tags: {', '.join(args.tags)}")
+                logger.info(f"  Should Bypass GitHub: {'Yes' if should_bypass else 'No'}")
+                logger.info(f"  P2P Only: {'Yes' if is_p2p_only else 'No'}")
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error checking tags: {e}")
+            return 1
+    
+    def run_p2p_clock(self, args):
+        """Get merkle clock state"""
+        try:
+            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
+            
+            scheduler = get_scheduler()
+            if scheduler is None:
+                logger.error("✗ P2P scheduler not available")
+                return 1
+            
+            clock_data = scheduler.merkle_clock.to_dict()
+            
+            if args.json:
+                print(json.dumps(clock_data, indent=2))
+            else:
+                logger.info("✓ Merkle Clock State:")
+                logger.info(f"  Node ID: {clock_data['node_id']}")
+                logger.info(f"  Merkle Root: {clock_data['merkle_root']}")
+                logger.info(f"  Vector Clock: {clock_data['vector']}")
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error getting clock state: {e}")
+            return 1
 
 
 def main():
@@ -1272,6 +1487,41 @@ Examples:
         logs_parser.add_argument('--stats', action='store_true', help='Show log statistics')
         logs_parser.add_argument('--json', action='store_true', help='Output as JSON')
         
+        # P2P Workflow commands
+        p2p_parser = subparsers.add_parser('p2p-workflow', help='P2P workflow scheduler management')
+        p2p_subparsers = p2p_parser.add_subparsers(dest='p2p_command', help='P2P workflow commands')
+        
+        # P2P status command
+        p2p_status_parser = p2p_subparsers.add_parser('status', help='Get P2P scheduler status')
+        p2p_status_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
+        # P2P submit task command
+        p2p_submit_parser = p2p_subparsers.add_parser('submit', help='Submit a task to P2P scheduler')
+        p2p_submit_parser.add_argument('--task-id', required=True, help='Task ID')
+        p2p_submit_parser.add_argument('--workflow-id', required=True, help='Workflow ID')
+        p2p_submit_parser.add_argument('--name', required=True, help='Task name')
+        p2p_submit_parser.add_argument('--tags', nargs='+', default=['p2p-eligible'], 
+                                      help='Task tags (e.g., p2p-only, code-generation, web-scraping)')
+        p2p_submit_parser.add_argument('--priority', type=int, default=5, 
+                                      help='Task priority 1-10 (default: 5)')
+        
+        # P2P get next task command
+        p2p_next_parser = p2p_subparsers.add_parser('next', help='Get next task to execute')
+        p2p_next_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
+        # P2P mark task complete command
+        p2p_complete_parser = p2p_subparsers.add_parser('complete', help='Mark task as complete')
+        p2p_complete_parser.add_argument('--task-id', required=True, help='Task ID')
+        
+        # P2P check tags command
+        p2p_check_parser = p2p_subparsers.add_parser('check-tags', help='Check if tags should bypass GitHub')
+        p2p_check_parser.add_argument('--tags', nargs='+', required=True, help='Tags to check')
+        p2p_check_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
+        # P2P clock command
+        p2p_clock_parser = p2p_subparsers.add_parser('clock', help='Get merkle clock state')
+        p2p_clock_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        
         # Parse arguments
         args = parser.parse_args()
         
@@ -1306,6 +1556,22 @@ Examples:
                 return cli.run_mcp_logs(args)
             else:
                 mcp_parser.print_help()
+                return 1
+        elif args.command == 'p2p-workflow':
+            if args.p2p_command == 'status':
+                return cli.run_p2p_status(args)
+            elif args.p2p_command == 'submit':
+                return cli.run_p2p_submit(args)
+            elif args.p2p_command == 'next':
+                return cli.run_p2p_next(args)
+            elif args.p2p_command == 'complete':
+                return cli.run_p2p_complete(args)
+            elif args.p2p_command == 'check-tags':
+                return cli.run_p2p_check_tags(args)
+            elif args.p2p_command == 'clock':
+                return cli.run_p2p_clock(args)
+            else:
+                p2p_parser.print_help()
                 return 1
         else:
             parser.print_help()

@@ -64,7 +64,8 @@ def register_all_tools(mcp: FastMCP) -> None:
         "ipfs_network",
         "shared_tools",
         "github_tools",
-        "copilot_tools"
+        "copilot_tools",
+        "p2p_workflow_tools"
     ]
     
     # Track registered tool modules
@@ -89,6 +90,8 @@ def register_all_tools(mcp: FastMCP) -> None:
                 register_function = getattr(module, "register_github_tools", None)
             elif module_name == "copilot_tools":
                 register_function = getattr(module, "register_copilot_tools", None)
+            elif module_name == "p2p_workflow_tools":
+                register_function = getattr(module, "register_p2p_workflow_tools", None)
             else:
                 register_function = getattr(module, f"register_{module_name.replace('ipfs_', '')}_tools", None)
                 
