@@ -36,6 +36,8 @@ jobs:
     # This job submits the task to P2P network
     # It will run briefly on GitHub to submit, then P2P peers take over
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout repository
@@ -126,6 +128,8 @@ jobs:
     # This won't actually run on GitHub - P2P peers handle execution
     if: false  # Always skip on GitHub
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - name: P2P Execution Placeholder
