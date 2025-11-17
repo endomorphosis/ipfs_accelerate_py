@@ -72,3 +72,8 @@ readme_suggestions.py
 analysis_summary.txt
 documentation_analysis.json
 .env
+
+# actionlint tool
+actionlint
+actionlint_*
+LICENSE.txt

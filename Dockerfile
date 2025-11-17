@@ -27,6 +27,8 @@ RUN apt-get update && apt-get install -y \
     gnupg2 \
     software-properties-common \
     pkg-config \
+    # Cryptography libraries (required for fastecdsa and other crypto packages)
+    libgmp-dev \
     # Hardware acceleration libraries
     libblas-dev \
     liblapack-dev \
