@@ -126,7 +126,8 @@ class GitHubAPICache:
         p2p_listen_port: int = 9100,  # Default P2P port (avoiding 9000 for MCP server)
         p2p_bootstrap_peers: Optional[List[str]] = None,
         github_repo: Optional[str] = None,
-        enable_peer_discovery: bool = True
+        enable_peer_discovery: bool = True,
+        enable_universal_connectivity: bool = True
     ):
         """
         Initialize the GitHub API cache.
@@ -139,11 +140,15 @@ class GitHubAPICache:
             enable_p2p: Whether to enable P2P cache sharing via libp2p
             p2p_listen_port: Port for libp2p to listen on (default: 9000)
             p2p_bootstrap_peers: List of bootstrap peer multiaddrs
+            github_repo: GitHub repository for peer discovery (e.g., 'owner/repo')
+            enable_peer_discovery: Whether to use GitHub cache API for peer discovery
+            enable_universal_connectivity: Whether to enable universal connectivity patterns
         """
         self.default_ttl = default_ttl
         self.max_cache_size = max_cache_size
         self.enable_persistence = enable_persistence
         self.enable_p2p = enable_p2p and HAVE_LIBP2P
+        self.enable_universal_connectivity = enable_universal_connectivity
         
         # Set up cache directory
         if cache_dir:
@@ -189,6 +194,7 @@ class GitHubAPICache:
         self._max_bootstrap_peers = 10  # Limit bootstrap peers to prevent connection overload
         self._p2p_init_lock = Lock()  # Lock to prevent concurrent P2P initialization
         self._p2p_initialized = False  # Flag to track if P2P is already initialized
+        self._universal_connectivity = None  # Universal connectivity manager
         
         # Peer discovery - use simplified bootstrap helper
         self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
@@ -796,6 +802,10 @@ class GitHubAPICache:
                 
                 # Include aggregate stats from all peers
                 stats["aggregate"] = self._get_aggregate_stats()
+                
+                # Add universal connectivity stats if available
+                if self._universal_connectivity:
+                    stats["connectivity"] = self._universal_connectivity.get_connectivity_status()
             
             return stats
     
@@ -1226,6 +1236,31 @@ class GitHubAPICache:
             
             self._p2p_host = new_host(listen_addrs=[listen_multiaddr])
             
+            # Initialize universal connectivity if enabled
+            if self.enable_universal_connectivity:
+                try:
+                    from .p2p_connectivity import get_universal_connectivity, ConnectivityConfig
+                    
+                    config = ConnectivityConfig(
+                        enable_mdns=True,
+                        enable_dht=True,
+                        enable_relay=True,
+                        enable_autonat=True,
+                        enable_hole_punching=True
+                    )
+                    self._universal_connectivity = get_universal_connectivity(config)
+                    
+                    # Configure transports and discovery
+                    await self._universal_connectivity.configure_transports(self._p2p_host)
+                    await self._universal_connectivity.start_mdns_discovery(self._p2p_host)
+                    await self._universal_connectivity.configure_dht(self._p2p_host)
+                    await self._universal_connectivity.enable_autonat(self._p2p_host)
+                    await self._universal_connectivity.enable_hole_punching(self._p2p_host)
+                    
+                    logger.info("✓ Universal connectivity enabled")
+                except Exception as e:
+                    logger.warning(f"Universal connectivity not available: {e}")
+            
             # Set stream handler for cache protocol
             self._p2p_host.set_stream_handler(self._p2p_protocol, self._handle_cache_stream)
             
@@ -1245,18 +1280,45 @@ class GitHubAPICache:
                         discovered_peers = self._bootstrap_helper.discover_peers(max_peers=10)
                         logger.info(f"✓ Discovered {len(discovered_peers)} peer(s)")
                         
-                        # Add to bootstrap list (with limit and validation)
-                        for peer in discovered_peers:
-                            if peer.get("peer_id") != peer_id:  # Don't connect to self
-                                peer_multiaddr = peer.get("multiaddr")
-                                if self._validate_multiaddr(peer_multiaddr):
-                                    # Check if we haven't exceeded max bootstrap peers
-                                    if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
-                                        # Check for duplicates before adding
-                                        if peer_multiaddr not in self._p2p_bootstrap_peers:
-                                            self._p2p_bootstrap_peers.append(peer_multiaddr)
-                                else:
-                                    logger.warning(f"Invalid multiaddr format: {peer_multiaddr}")
+                        # Use universal connectivity for multi-method peer discovery if available
+                        if self._universal_connectivity:
+                            try:
+                                # Create a simple wrapper for the bootstrap helper
+                                class SimpleRegistry:
+                                    def __init__(self, helper):
+                                        self.helper = helper
+                                    def discover_peers(self, max_peers=10):
+                                        return self.helper.discover_peers(max_peers=max_peers)
+                                
+                                registry = SimpleRegistry(self._bootstrap_helper)
+                                multi_discovered = await self._universal_connectivity.discover_peers_multimethod(
+                                    github_registry=registry,
+                                    bootstrap_peers=self._p2p_bootstrap_peers
+                                )
+                                
+                                # Add discovered peers to bootstrap list
+                                for peer_multiaddr in multi_discovered:
+                                    if self._validate_multiaddr(peer_multiaddr):
+                                        if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
+                                            if peer_multiaddr not in self._p2p_bootstrap_peers:
+                                                self._p2p_bootstrap_peers.append(peer_multiaddr)
+                                
+                                logger.info(f"✓ Universal connectivity discovered {len(multi_discovered)} peer(s)")
+                            except Exception as e:
+                                logger.warning(f"Multi-method discovery failed: {e}")
+                        else:
+                            # Fallback to simple discovery
+                            for peer in discovered_peers:
+                                if peer.get("peer_id") != peer_id:  # Don't connect to self
+                                    peer_multiaddr = peer.get("multiaddr")
+                                    if self._validate_multiaddr(peer_multiaddr):
+                                        # Check if we haven't exceeded max bootstrap peers
+                                        if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
+                                            # Check for duplicates before adding
+                                            if peer_multiaddr not in self._p2p_bootstrap_peers:
+                                                self._p2p_bootstrap_peers.append(peer_multiaddr)
+                                    else:
+                                        logger.warning(f"Invalid multiaddr format: {peer_multiaddr}")
                     else:
                         logger.warning("⚠ Failed to register with peer discovery")
                 except Exception as e:
@@ -1266,14 +1328,27 @@ class GitHubAPICache:
             self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
             logger.info(f"Connecting to {len(self._p2p_bootstrap_peers)} bootstrap peer(s)...")
             
-            # Connect to bootstrap peers with timeout
+            # Connect to bootstrap peers with enhanced connectivity
             for peer_addr in self._p2p_bootstrap_peers:
                 try:
-                    # Add timeout to prevent hanging connections
-                    await asyncio.wait_for(
-                        self._connect_to_peer(peer_addr),
-                        timeout=15.0
-                    )
+                    if self._universal_connectivity:
+                        # Use universal connectivity with fallback strategies
+                        success = await asyncio.wait_for(
+                            self._universal_connectivity.attempt_connection(
+                                self._p2p_host,
+                                peer_addr,
+                                use_relay=True
+                            ),
+                            timeout=15.0
+                        )
+                        if not success:
+                            logger.warning(f"Failed to connect to peer {peer_addr}")
+                    else:
+                        # Fallback to direct connection
+                        await asyncio.wait_for(
+                            self._connect_to_peer(peer_addr),
+                            timeout=15.0
+                        )
                 except asyncio.TimeoutError:
                     logger.warning(f"Timeout connecting to bootstrap peer {peer_addr}")
                 except Exception as e:
