@@ -1067,31 +1067,57 @@ function editConfig() {
 // Logs Functions
 function refreshLogs() {
     console.log('Refreshing logs...');
-    const logOutput = document.getElementById('log-output');
-    if (logOutput) {
+    const logContainer = document.getElementById('log-container');
+    if (logContainer) {
+        logContainer.innerHTML = '<div class="log-placeholder"><p class="text-muted">Loading system logs...</p></div>';
         fetch('/api/mcp/logs')
             .then(response => response.json())
             .then(data => {
                 console.log('Logs loaded:', data);
-                if (data.logs) {
-                    logOutput.innerHTML = '';
+                if (data.logs && data.logs.length > 0) {
+                    logContainer.innerHTML = '';
                     data.logs.forEach(log => {
                         const logEntry = document.createElement('div');
-                        logEntry.className = 'log-entry';
-                        logEntry.textContent = `${log.timestamp} - ${log.level} - ${log.message}`;
-                        logOutput.appendChild(logEntry);
+                        const level = (log.level || 'INFO').toLowerCase();
+                        logEntry.className = `log-entry log-${level}`;
+                        
+                        // Create emoji icon based on level
+                        const emojiMap = {
+                            'error': '❌',
+                            'critical': '🔥',
+                            'warning': '⚠️',
+                            'info': 'ℹ️',
+                            'debug': '🔍'
+                        };
+                        const emoji = emojiMap[level] || '📝';
+                        
+                        // Build structured log entry
+                        logEntry.innerHTML = `
+                            <span class="log-emoji">${emoji}</span>
+                            <span class="log-timestamp">${log.timestamp || new Date().toISOString()}</span>
+                            <span class="log-level">${(log.level || 'INFO').toUpperCase()}</span>
+                            <span class="log-message">${log.message || ''}</span>
+                        `;
+                        
+                        logContainer.appendChild(logEntry);
                     });
-                    logOutput.scrollTop = logOutput.scrollHeight;
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                    showToast(`Loaded ${data.logs.length} log entries`, 'success');
+                } else {
+                    logContainer.innerHTML = '<div class="log-placeholder"><p class="text-muted">No logs available</p></div>';
                 }
             })
             .catch(error => {
                 console.error('Error refreshing logs:', error);
-                const errorEntry = document.createElement('div');
-                errorEntry.className = 'log-entry';
-                errorEntry.textContent = `${new Date().toISOString()} - ERROR - Failed to load logs: ${error.message}`;
-                logOutput.appendChild(errorEntry);
+                logContainer.innerHTML = `<div class="log-placeholder"><p class="text-danger">Failed to load logs: ${error.message}</p></div>`;
+                showToast('Failed to load logs', 'error');
             });
     }
+}
+
+// Alias for compatibility with HTML button
+function refreshSystemLogs() {
+    refreshLogs();
 }
 
 function clearLogs() {
@@ -1849,6 +1875,94 @@ function formatNumber(num) {
     return num.toString();
 }
 
+// User Info Functions
+async function refreshUserInfo() {
+    console.log('[Dashboard] Refreshing user info...');
+    const usernameEl = document.getElementById('username');
+    const authStatusEl = document.getElementById('auth-status');
+    const tokenTypeEl = document.getElementById('token-type');
+    
+    if (!usernameEl) return;
+    
+    usernameEl.textContent = 'Loading...';
+    if (authStatusEl) authStatusEl.textContent = 'Checking...';
+    
+    try {
+        const response = await fetch('/api/mcp/user');
+        const data = await response.json();
+        
+        if (data.authenticated) {
+            usernameEl.textContent = data.username || 'Unknown';
+            if (authStatusEl) authStatusEl.textContent = '✓ Authenticated';
+            if (tokenTypeEl) tokenTypeEl.textContent = data.token_type || 'unknown';
+        } else {
+            usernameEl.textContent = 'Not authenticated';
+            if (authStatusEl) authStatusEl.textContent = '✗ Not authenticated';
+            if (tokenTypeEl) tokenTypeEl.textContent = '-';
+        }
+    } catch (error) {
+        console.error('[Dashboard] Error refreshing user info:', error);
+        usernameEl.textContent = 'Error';
+        if (authStatusEl) authStatusEl.textContent = 'Error';
+    }
+}
+
+// Cache Stats Functions
+async function refreshCacheStats() {
+    console.log('[Dashboard] Refreshing cache stats...');
+    const entriesEl = document.getElementById('cache-entries');
+    const sizeEl = document.getElementById('cache-size');
+    const hitRateEl = document.getElementById('cache-hit-rate');
+    
+    if (!entriesEl) return;
+    
+    entriesEl.textContent = 'Loading...';
+    if (sizeEl) sizeEl.textContent = 'Loading...';
+    if (hitRateEl) hitRateEl.textContent = 'Loading...';
+    
+    try {
+        const response = await fetch('/api/mcp/cache/stats');
+        const data = await response.json();
+        
+        if (entriesEl) entriesEl.textContent = data.total_entries || '0';
+        if (sizeEl) sizeEl.textContent = data.cache_size || '0 MB';
+        if (hitRateEl) hitRateEl.textContent = data.hit_rate || '0%';
+    } catch (error) {
+        console.error('[Dashboard] Error refreshing cache stats:', error);
+        if (entriesEl) entriesEl.textContent = 'Error';
+        if (sizeEl) sizeEl.textContent = 'Error';
+        if (hitRateEl) hitRateEl.textContent = 'Error';
+    }
+}
+
+// Peer Status Functions
+async function refreshPeerStatus() {
+    console.log('[Dashboard] Refreshing peer status...');
+    const peerStatusEl = document.getElementById('peer-status');
+    const peerCountEl = document.getElementById('peer-count');
+    const p2pEnabledEl = document.getElementById('p2p-enabled');
+    
+    if (!peerStatusEl) return;
+    
+    peerStatusEl.textContent = 'Checking...';
+    if (peerCountEl) peerCountEl.textContent = 'Loading...';
+    if (p2pEnabledEl) p2pEnabledEl.textContent = 'Loading...';
+    
+    try {
+        const response = await fetch('/api/mcp/peers');
+        const data = await response.json();
+        
+        if (peerStatusEl) peerStatusEl.textContent = data.status || 'Unknown';
+        if (peerCountEl) peerCountEl.textContent = data.peer_count || '0';
+        if (p2pEnabledEl) p2pEnabledEl.textContent = data.p2p_enabled ? 'Yes' : 'No';
+    } catch (error) {
+        console.error('[Dashboard] Error refreshing peer status:', error);
+        if (peerStatusEl) peerStatusEl.textContent = 'Error';
+        if (peerCountEl) peerCountEl.textContent = 'Error';
+        if (p2pEnabledEl) p2pEnabledEl.textContent = 'Error';
+    }
+}
+
 // Auto-refresh functionality
 function startAutoRefresh() {
     if (autoRefreshInterval) {
@@ -1858,6 +1972,9 @@ function startAutoRefresh() {
     autoRefreshInterval = setInterval(() => {
         if (currentTab === 'overview') {
             refreshServerStatus();
+            refreshUserInfo();
+            refreshCacheStats();
+            refreshPeerStatus();
         } else if (currentTab === 'system-logs') {
             const autoRefreshCheckbox = document.getElementById('auto-refresh');
             if (autoRefreshCheckbox && autoRefreshCheckbox.checked) {
@@ -1873,6 +1990,11 @@ function startAutoRefresh() {
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize overview tab
     showTab('overview');
+    
+    // Load user info, cache stats, and peer status immediately
+    refreshUserInfo();
+    refreshCacheStats();
+    refreshPeerStatus();
     
     // Start auto-refresh
     startAutoRefresh();
