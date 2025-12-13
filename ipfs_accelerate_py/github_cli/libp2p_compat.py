@@ -18,14 +18,29 @@ def patch_libp2p_compatibility():
     """
     Patch libp2p compatibility issues with multihash module.
     
-    The libp2p library expects multihash.Func to be an enum-like class
-    with hash algorithm constants, but newer multihash versions use
-    multihash.constants.HASH_CODES dict instead.
+    The libp2p library expects pymultihash package to be installed.
+    If not available, this tries to create a compatibility layer using
+    the multiformats package.
     
-    This function creates a Func class and adds it to the multihash module.
+    Returns:
+        bool: True if compatibility is ensured, False otherwise
     """
     try:
-        import multihash
+        # First try to import pymultihash (the expected package for libp2p)
+        try:
+            import pymultihash
+            logger.debug("✓ pymultihash package available (native libp2p support)")
+            return True
+        except ImportError:
+            logger.debug("pymultihash not installed, trying compatibility layer")
+        
+        # Fall back to multiformats-based compatibility
+        try:
+            import multihash
+        except ImportError:
+            logger.error("Neither pymultihash nor multihash available")
+            logger.error("Install with: pip install pymultihash>=0.8.2")
+            return False
         
         # Check if Func already exists
         if hasattr(multihash, 'Func'):
@@ -140,17 +155,20 @@ def ensure_libp2p_compatible():
         # Apply compatibility patches
         if not patch_libp2p_compatibility():
             logger.warning("Could not apply libp2p compatibility patches")
+            logger.info("To enable P2P features, install: pip install libp2p>=0.4.0 pymultihash>=0.8.2")
             return False
         
         # Try to import libp2p to verify it works
-        from libp2p import new_host
-        logger.debug("✓ libp2p import successful")
+        try:
+            from libp2p import new_host
+            logger.debug("✓ libp2p import successful")
+            return True
+        except ImportError as e:
+            logger.warning(f"libp2p package not installed: {e}")
+            logger.info("To enable P2P features, install: pip install libp2p>=0.4.0 pymultihash>=0.8.2")
+            return False
         
-        return True
-        
-    except ImportError as e:
-        logger.warning(f"libp2p not available: {e}")
-        return False
     except Exception as e:
         logger.error(f"Error ensuring libp2p compatibility: {e}")
+        logger.info("To enable P2P features, install: pip install libp2p>=0.4.0 pymultihash>=0.8.2")
         return False

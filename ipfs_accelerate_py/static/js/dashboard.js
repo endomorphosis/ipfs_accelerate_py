@@ -73,6 +73,8 @@ function initializeTab(tabName) {
     switch (tabName) {
         case 'overview':
             refreshServerStatus();
+            refreshCacheStats();
+            refreshPeerStatus();
             break;
         case 'ai-inference':
             updateInferenceForm();
@@ -1893,6 +1895,98 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeModelAutocomplete(testModelInput);
     }
 });
+
+// Refresh P2P peer status from API
+async function refreshPeerStatus() {
+    try {
+        const response = await fetch('/api/mcp/peers');
+        const data = await response.json();
+        
+        // Update status indicator
+        const statusElem = document.getElementById('peer-status');
+        if (statusElem) {
+            if (data.enabled && data.active) {
+                statusElem.textContent = '✓ Active';
+                statusElem.style.color = '#10b981';
+            } else if (data.enabled) {
+                statusElem.textContent = '⚠ Enabled but not active';
+                statusElem.style.color = '#f59e0b';
+            } else {
+                statusElem.textContent = '✗ Disabled';
+                statusElem.style.color = '#6b7280';
+            }
+        }
+        
+        // Update peer count
+        const peerCountElem = document.getElementById('peer-count');
+        if (peerCountElem) {
+            peerCountElem.textContent = data.peer_count || 0;
+        }
+        
+        // Update P2P enabled status
+        const p2pEnabledElem = document.getElementById('p2p-enabled');
+        if (p2pEnabledElem) {
+            if (data.enabled) {
+                p2pEnabledElem.textContent = '✓ Enabled';
+                p2pEnabledElem.style.color = '#10b981';
+            } else {
+                p2pEnabledElem.textContent = '✗ Disabled';
+                p2pEnabledElem.style.color = '#6b7280';
+                
+                // Show reason if available
+                if (data.error) {
+                    p2pEnabledElem.title = `Error: ${data.error}`;
+                }
+            }
+        }
+        
+        console.log('[Dashboard] P2P peer status refreshed:', data);
+    } catch (error) {
+        console.error('[Dashboard] Error refreshing peer status:', error);
+        showToast('Failed to refresh peer status', 'error');
+        
+        // Show error state
+        const statusElem = document.getElementById('peer-status');
+        if (statusElem) {
+            statusElem.textContent = '⚠ Error loading';
+            statusElem.style.color = '#ef4444';
+        }
+    }
+}
+
+// Refresh cache statistics from API
+async function refreshCacheStats() {
+    try {
+        const response = await fetch('/api/mcp/cache/stats');
+        const data = await response.json();
+        
+        // Update cache entries
+        const entriesElem = document.getElementById('cache-entries');
+        if (entriesElem) {
+            entriesElem.textContent = data.total_entries || 0;
+        }
+        
+        // Update cache size
+        const sizeElem = document.getElementById('cache-size');
+        if (sizeElem) {
+            const sizeMB = data.total_size_mb || 0;
+            sizeElem.textContent = `${sizeMB.toFixed(2)} MB`;
+        }
+        
+        // Update hit rate
+        const hitRateElem = document.getElementById('cache-hit-rate');
+        if (hitRateElem) {
+            const hitRate = data.hit_rate || 0;
+            hitRateElem.textContent = `${(hitRate * 100).toFixed(1)}%`;
+        }
+        
+        console.log('[Dashboard] Cache stats refreshed:', data);
+        showToast('Cache stats refreshed', 'success', 2000);
+    } catch (error) {
+        console.error('[Dashboard] Error refreshing cache stats:', error);
+        showToast('Failed to refresh cache stats', 'error');
+    }
+}
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', function() {
