@@ -1067,31 +1067,57 @@ function editConfig() {
 // Logs Functions
 function refreshLogs() {
     console.log('Refreshing logs...');
-    const logOutput = document.getElementById('log-output');
-    if (logOutput) {
+    const logContainer = document.getElementById('log-container');
+    if (logContainer) {
+        logContainer.innerHTML = '<div class="log-placeholder"><p class="text-muted">Loading system logs...</p></div>';
         fetch('/api/mcp/logs')
             .then(response => response.json())
             .then(data => {
                 console.log('Logs loaded:', data);
-                if (data.logs) {
-                    logOutput.innerHTML = '';
+                if (data.logs && data.logs.length > 0) {
+                    logContainer.innerHTML = '';
                     data.logs.forEach(log => {
                         const logEntry = document.createElement('div');
-                        logEntry.className = 'log-entry';
-                        logEntry.textContent = `${log.timestamp} - ${log.level} - ${log.message}`;
-                        logOutput.appendChild(logEntry);
+                        const level = (log.level || 'INFO').toLowerCase();
+                        logEntry.className = `log-entry log-${level}`;
+                        
+                        // Create emoji icon based on level
+                        const emojiMap = {
+                            'error': '❌',
+                            'critical': '🔥',
+                            'warning': '⚠️',
+                            'info': 'ℹ️',
+                            'debug': '🔍'
+                        };
+                        const emoji = emojiMap[level] || '📝';
+                        
+                        // Build structured log entry
+                        logEntry.innerHTML = `
+                            <span class="log-emoji">${emoji}</span>
+                            <span class="log-timestamp">${log.timestamp || new Date().toISOString()}</span>
+                            <span class="log-level">${(log.level || 'INFO').toUpperCase()}</span>
+                            <span class="log-message">${log.message || ''}</span>
+                        `;
+                        
+                        logContainer.appendChild(logEntry);
                     });
-                    logOutput.scrollTop = logOutput.scrollHeight;
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                    showToast(`Loaded ${data.logs.length} log entries`, 'success');
+                } else {
+                    logContainer.innerHTML = '<div class="log-placeholder"><p class="text-muted">No logs available</p></div>';
                 }
             })
             .catch(error => {
                 console.error('Error refreshing logs:', error);
-                const errorEntry = document.createElement('div');
-                errorEntry.className = 'log-entry';
-                errorEntry.textContent = `${new Date().toISOString()} - ERROR - Failed to load logs: ${error.message}`;
-                logOutput.appendChild(errorEntry);
+                logContainer.innerHTML = `<div class="log-placeholder"><p class="text-danger">Failed to load logs: ${error.message}</p></div>`;
+                showToast('Failed to load logs', 'error');
             });
     }
+}
+
+// Alias for compatibility with HTML button
+function refreshSystemLogs() {
+    refreshLogs();
 }
 
 function clearLogs() {

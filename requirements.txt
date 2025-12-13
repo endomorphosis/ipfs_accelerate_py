@@ -8,6 +8,7 @@ requests>=2.28.0  # For error reporting to GitHub
 
 # P2P networking for distributed cache sharing
 libp2p>=0.4.0  # For peer-to-peer connectivity
+pymultihash>=0.8.2  # Required by libp2p for peer IDs
 
 # Optional dependencies for WebNN/WebGPU support
 # Uncomment the one that works best for your platform
