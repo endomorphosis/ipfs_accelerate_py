@@ -70,6 +70,13 @@ def register_all_tools(mcp: Any) -> None:
                 logger.debug("Registered dashboard data tools")
             except Exception as e:
                 logger.warning(f"Dashboard data tools not registered: {e}")
+            
+            try:
+                from ipfs_accelerate_py.mcp.tools.github_tools import register_tools as register_github_tools
+                register_github_tools(mcp)
+                logger.debug("Registered GitHub CLI tools")
+            except Exception as e:
+                logger.warning(f"GitHub CLI tools not registered: {e}")
         else:
             logger.warning("FastMCP decorators not available; only hardware and model tools registered in standalone mode")
 
