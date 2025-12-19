@@ -2,35 +2,47 @@
 """
 Comprehensive HuggingFace Hub Model Scraper
 
-This script will scrape ALL models from the HuggingFace Hub and populate
-the model manager with detailed metadata, performance characteristics,
-and hardware compatibility information.
+This script provides a unified interface to scrape ALL models from the HuggingFace Hub
+using the updated scraper architecture (EnhancedModelScraper and ProductionHFScraper).
 
 Features:
-- Comprehensive scraping of all HuggingFace models
+- Unified interface to new scraper architecture
+- Comprehensive scraping with mock or production modes
 - Intelligent batching and rate limiting
 - Progress saving and resume capability
 - Hardware compatibility analysis
 - Performance estimation
 - Bandit algorithm integration for recommendations
-- Offline mode with comprehensive mock data
+- Parquet storage with K-NN search indexing
 """
 
 import os
 import sys
-import json
-import time
-import logging
 import asyncio
-import requests
+import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 # Add current directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
-from ipfs_accelerate_py.model_manager import ModelManager
+# Import new scraper architecture
+try:
+    from enhanced_model_scraper import EnhancedModelScraper
+    from production_hf_scraper import ProductionHFScraper
+    SCRAPERS_AVAILABLE = True
+except ImportError:
+    SCRAPERS_AVAILABLE = False
+    print("⚠️ Enhanced scraper modules not available")
+
+# Import legacy modules for backward compatibility
+try:
+    from ipfs_accelerate_py.huggingface_hub_scanner import HuggingFaceHubScanner
+    from ipfs_accelerate_py.model_manager import ModelManager
+    LEGACY_AVAILABLE = True
+except ImportError:
+    LEGACY_AVAILABLE = False
+    print("⚠️ Legacy scraper modules not available")
 
 # Configure logging
 logging.basicConfig(
@@ -517,209 +529,126 @@ def scan_all_huggingface_models_batch_optimized(model_manager: ModelManager,
         return stats
 
 def main():
-    """Main function to scrape all HuggingFace models"""
+    """Main function using updated scraper architecture"""
     
     print("🚀 COMPREHENSIVE HuggingFace Hub Model Scraper")
     print("=" * 70)
-    print("This will scrape ALL models from HuggingFace Hub (potentially millions!)")
-    print("and populate the model manager with comprehensive metadata.")
-    print()
-    print("🌟 Features:")
-    print("   • Optimized batch processing for millions of models")
-    print("   • Intelligent resumption from interruptions") 
-    print("   • Real-time progress tracking and statistics")
-    print("   • Hardware compatibility analysis")
-    print("   • Performance estimation and categorization")
-    print("   • Bandit algorithm integration for recommendations")
+    print("Updated to use new scraper architecture:")
+    print("  • EnhancedModelScraper (base class with Parquet + K-NN)")
+    print("  • ProductionHFScraper (production API integration)")
     print()
     
-    # Initialize components
-    try:
-        model_manager = ModelManager()
-        print("✅ Model Manager initialized")
-        
-    except Exception as e:
-        print(f"❌ Failed to initialize model manager: {e}")
+    if not SCRAPERS_AVAILABLE:
+        print("❌ New scraper architecture not available")
+        print("Please ensure enhanced_model_scraper.py and production_hf_scraper.py are accessible")
         return 1
     
-    # Ask user for scan parameters
-    print("📋 Scan Configuration:")
-    try:
-        print("🔢 How many models do you want to scan?")
-        print("   • Enter a number (e.g., 10000) for a specific limit")
-        print("   • Press Enter to scan ALL models (potentially 750,000+)")
-        print("   • This could take hours or days for a complete scan!")
-        print()
-        
-        limit_input = input("Models to scan (Enter for ALL): ").strip()
-        if limit_input:
-            limit = int(limit_input)
-            print(f"   → Will scan up to {limit:,} models")
-        else:
-            limit = None
-            print("   → Will scan ALL models on HuggingFace Hub")
-            print("   ⚠️  WARNING: This is potentially 750,000+ models!")
-            confirm = input("   Are you sure? This could take days! (yes/no): ").strip().lower()
-            if confirm != 'yes':
-                print("   → Cancelled by user")
-                return 0
-            
-        batch_size_input = input("🔄 Batch size (default 1000, max 10000): ").strip()
-        if batch_size_input:
-            batch_size = min(int(batch_size_input), 10000)
-        else:
-            batch_size = 1000
-        print(f"   → Using batch size: {batch_size:,}")
-            
-    except KeyboardInterrupt:
-        print("\n❌ Cancelled by user")
-        return 0
-    except ValueError:
-        print("❌ Invalid number entered, using default settings")
-        limit = 10000  # Default to 10k models
-        batch_size = 1000
-    
-    print()
-    print("🎯 Starting MASSIVE HuggingFace Hub scan...")
-    print("   ⏰ This is a LARGE operation - may take hours or days!")
-    print("   💾 Progress automatically saved every batch")
-    print("   🛑 Press Ctrl+C to stop gracefully (progress preserved)")
+    print("🌟 Features:")
+    print("   • Parquet storage with Snappy compression")
+    print("   • K-NN search with 384-dim embeddings")
+    print("   • Real-time progress tracking and statistics")
+    print("   • Hardware compatibility analysis")
+    print("   • Performance estimation and scoring")
+    print("   • Mock and production modes")
     print()
     
-    # Start the scan
-    start_time = time.time()
+    # Get API token
+    hf_token = os.getenv("HF_TOKEN")
+    has_token = bool(hf_token)
+    
+    print(f"🔑 HuggingFace API Token: {'✅ Available' if has_token else '❌ Not found'}")
+    print(f"🌐 Network Access: {'✅ Production mode available' if has_token else '🎭 Mock mode only'}")
+    print()
+    
+    # Configuration
+    print("📋 Scraper Configuration:")
+    print("1. Mock mode (fast, synthetic models)")
+    print("2. Production mode (real HF API)" + (" ⚠️ Requires API token" if not has_token else ""))
+    print()
+    
     try:
-        # Use the optimized batch scanner for millions of models
-        results = scan_all_huggingface_models_batch_optimized(
-            model_manager=model_manager,
-            batch_size=batch_size,
-            total_limit=limit
-        )
+        mode = input("Select mode (1/2, default 1): ").strip() or "1"
         
-        print()
-        print("🎉 MASSIVE SCAN COMPLETED!")
-        print("=" * 70)
-        
-        # Display comprehensive results
-        total_processed = results.get('total_processed', 0)
-        total_added = results.get('total_added_to_manager', 0)
-        total_time = results.get('total_time', time.time() - start_time)
-        batches_completed = results.get('batches_completed', 0)
-        models_per_minute = results.get('models_per_minute', 0)
-        
-        print(f"📊 COMPREHENSIVE SCAN RESULTS:")
-        print(f"   • Total models processed: {total_processed:,}")
-        print(f"   • Models added to manager: {total_added:,}")
-        print(f"   • Batches completed: {batches_completed:,}")
-        print(f"   • Total scan time: {total_time/3600:.1f} hours ({total_time:.1f} seconds)")
-        print(f"   • Processing speed: {models_per_minute:.1f} models/minute")
-        print(f"   • Errors encountered: {results.get('errors', 0):,}")
-        print()
-        
-        # Task distribution
-        task_dist = results.get('task_distribution', {})
-        if task_dist:
-            print("🏷️  TOP TASK TYPES DISCOVERED:")
-            sorted_tasks = sorted(task_dist.items(), key=lambda x: x[1], reverse=True)[:15]
-            for task, count in sorted_tasks:
-                print(f"   • {task}: {count:,} models")
-            print()
-        
-        # Architecture distribution
-        arch_dist = results.get('architecture_distribution', {})
-        if arch_dist:
-            print("🏗️  TOP ARCHITECTURES DISCOVERED:")
-            sorted_archs = sorted(arch_dist.items(), key=lambda x: x[1], reverse=True)[:15]
-            for arch, count in sorted_archs:
-                print(f"   • {arch}: {count:,} models")
-            print()
-        
-        # Popular models
-        popular_models = results.get('popular_models', [])
-        if popular_models:
-            popular_models.sort(key=lambda x: x[1], reverse=True)
-            print("🌟 MOST POPULAR MODELS DISCOVERED:")
-            for model_id, downloads in popular_models[:10]:
-                print(f"   • {model_id}: {downloads:,} downloads")
-            print()
-        
-        # Large models
-        large_models = results.get('large_models', [])
-        if large_models:
-            large_models.sort(key=lambda x: x[1], reverse=True)
-            print("🐘 LARGEST MODELS DISCOVERED (>5GB):")
-            for model_id, size_mb in large_models[:10]:
-                print(f"   • {model_id}: {size_mb/1024:.1f} GB")
-            print()
-        
-        # Efficient models
-        efficient_models = results.get('efficiency_models', [])
-        if efficient_models:
-            efficient_models.sort(key=lambda x: x[1])
-            print("⚡ MOST EFFICIENT MODELS DISCOVERED (<500MB):")
-            for model_id, size_mb in efficient_models[:10]:
-                print(f"   • {model_id}: {size_mb:.1f} MB")
-            print()
-        
-        # Verify final model manager state
-        all_models = model_manager.list_models()
-        print(f"✅ MODEL MANAGER FINAL STATE: {len(all_models):,} models")
-        
-        # Show sample of what was added
-        if all_models:
-            print()
-            print("📋 SAMPLE OF MODELS ADDED TO MANAGER:")
-            sample_size = min(20, len(all_models))
-            for i, model in enumerate(all_models[:sample_size]):
-                arch = getattr(model, 'architecture', 'unknown')
-                task = getattr(model, 'task_type', 'unknown')
-                print(f"   {i+1:2d}. {model.model_id}")
-                print(f"       Architecture: {arch} | Task: {task}")
+        if mode == "1":
+            # Mock mode with EnhancedModelScraper
+            print("\n🎭 Running in Mock Mode")
+            print("-" * 50)
             
-            if len(all_models) > sample_size:
-                print(f"   ... and {len(all_models) - sample_size:,} more models!")
+            limit_input = input("Number of models (default 10000): ").strip()
+            limit = int(limit_input) if limit_input else 10000
+            
+            scraper = EnhancedModelScraper("scraped_model_data")
+            print(f"\n🚀 Generating {limit:,} synthetic models...")
+            
+            results = scraper.scrape_all_models(limit=limit, mock_mode=True)
+            
+            print(f"\n✅ Mock scraping completed!")
+            print(f"   • Models generated: {results['total_models']:,}")
+            print(f"   • Processing rate: {results['models_per_second']:.1f} models/sec")
+            print(f"   • Storage size: {results['storage_size_mb']:.1f} MB")
+            print(f"   • Search index: {'Built' if results['search_index_built'] else 'Not built'}")
+            
+        elif mode == "2" and has_token:
+            # Production mode with ProductionHFScraper
+            print("\n🌐 Running in Production Mode")
+            print("-" * 50)
+            
+            async def run_production():
+                limit_input = input("Number of models (Enter for ALL): ").strip()
+                limit = int(limit_input) if limit_input else None
+                
+                if limit is None:
+                    print("⚠️  WARNING: This will scrape ALL HuggingFace models (750K+)")
+                    print("   Estimated time: 2-4 hours")
+                    confirm = input("Continue? (yes/no): ").strip().lower()
+                    if confirm != 'yes':
+                        print("❌ Cancelled by user")
+                        return
+                
+                scraper = ProductionHFScraper("scraped_model_data", api_token=hf_token)
+                print(f"\n🚀 Starting production scraping...")
+                
+                results = await scraper.scrape_production_models(limit=limit)
+                
+                print(f"\n✅ Production scraping completed!")
+                print(f"   • Models scraped: {results['total_models']:,}")
+                print(f"   • Processing rate: {results['models_per_second']:.1f} models/sec")
+                print(f"   • Storage size: {results['storage_size_mb']:.1f} MB")
+                print(f"   • Search index: {'Built' if results['search_index_built'] else 'Not built'}")
+            
+            asyncio.run(run_production())
+            
+        else:
+            print("❌ Invalid mode or missing API token")
+            return 1
         
-        print()
-        print("🎯 SUCCESS: MASSIVE HuggingFace Hub scan completed!")
-        print("📊 Comprehensive model database populated in model manager")
-        print("🔍 Models now searchable in MCP dashboard at:")
-        print("   http://127.0.0.1:8900/mcp/models")
-        print()
-        print("💡 To start the MCP dashboard with full model discovery:")
-        print("   python -c \"from ipfs_accelerate_py.mcp_dashboard import MCPDashboard; MCPDashboard(port=8900).run()\"")
-        print()
-        print("🤖 The bandit algorithm now has access to comprehensive model data")
-        print("   for intelligent recommendations based on your specific needs!")
+        # Display statistics
+        print("\n📈 Final Statistics:")
+        if mode == "1":
+            stats = scraper.get_statistics()
+        else:
+            # For production mode, create a scraper instance to load stats
+            scraper = EnhancedModelScraper("scraped_model_data")
+            stats = scraper.get_statistics()
         
-        return 0
+        if 'total_models' in stats:
+            print(f"   • Total models: {stats['total_models']:,}")
+            print(f"   • Total authors: {stats.get('total_authors', 0):,}")
+            print(f"   • Total architectures: {stats.get('total_architectures', 0):,}")
+            print(f"   • Total task types: {stats.get('total_tasks', 0):,}")
+            print(f"   • Average model size: {stats.get('avg_model_size_mb', 0):.1f} MB")
+        
+        print("\n🎉 Scraping completed successfully!")
+        print(f"💾 Data saved to: scraped_model_data/")
+        print(f"🔍 Search index ready for K-NN queries")
+        print(f"📊 Parquet file available for analytics")
         
     except KeyboardInterrupt:
-        print()
-        print()
-        print("🛑 MASSIVE SCAN interrupted by user")
-        # Show partial results
-        try:
-            all_models = model_manager.list_models()
-            print(f"📊 PARTIAL RESULTS: {len(all_models):,} models added to model manager")
-            print("💾 Progress has been saved - you can resume later")
-        except:
-            pass
+        print("\n\n🛑 Interrupted by user")
         return 0
-        
     except Exception as e:
-        print()
-        print(f"❌ Error during MASSIVE scan: {e}")
-        logger.error(f"Massive scan failed: {e}", exc_info=True)
-        
-        # Try to show what we managed to get
-        try:
-            all_models = model_manager.list_models()
-            if all_models:
-                print(f"📊 PARTIAL RESULTS: {len(all_models):,} models were added before the error")
-                print("💾 Progress has been saved")
-        except:
-            pass
-        
+        print(f"\n❌ Error: {e}")
+        logger.error(f"Scraping failed: {e}", exc_info=True)
         return 1
 
 if __name__ == "__main__":
@@ -728,4 +657,6 @@ if __name__ == "__main__":
         sys.exit(exit_code)
     except KeyboardInterrupt:
         print("\n👋 Goodbye!")
+        sys.exit(0)
+
         sys.exit(0)
