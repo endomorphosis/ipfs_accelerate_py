@@ -77,3 +77,4 @@ documentation_analysis.json
 actionlint
 actionlint_*
 LICENSE.txt
+test_data/
