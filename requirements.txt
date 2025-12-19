@@ -7,7 +7,7 @@ urllib3<2  # ipfshttpclient currently incompatible with urllib3>=2
 requests>=2.28.0  # For error reporting to GitHub
 
 # P2P networking for distributed cache sharing
-libp2p>=0.4.0  # For peer-to-peer connectivity
+libp2p @ git+https://github.com/libp2p/py-libp2p@main  # For peer-to-peer connectivity (tracking upstream main)
 pymultihash>=0.8.2  # Required by libp2p for peer IDs
 
 # Optional dependencies for WebNN/WebGPU support

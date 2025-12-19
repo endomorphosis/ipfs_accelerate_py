@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import time
 import random
 from datetime import datetime, timedelta, timezone
@@ -45,12 +46,19 @@ class GitHubCLI:
         self.gh_path = gh_path
         self.enable_cache = enable_cache
         self.cache_ttl = cache_ttl
+
+        # Heuristic: if we're running without a TTY (common for systemd services),
+        # avoid any interactive authentication flows.
+        self._non_interactive = (not sys.stdin.isatty()) or bool(os.environ.get("IPFS_ACCELERATE_NONINTERACTIVE"))
         
         # Disable auto_refresh_token if GITHUB_TOKEN env var is set (it can't be refreshed)
-        import os
         if os.environ.get("GITHUB_TOKEN"):
             self.auto_refresh_token = False
             logger.debug("Disabled auto_refresh_token because GITHUB_TOKEN env var is set")
+        elif self._non_interactive and auto_refresh_token:
+            # In non-interactive contexts, token refresh attempts can trigger blocking auth flows.
+            self.auto_refresh_token = False
+            logger.debug("Disabled auto_refresh_token because running non-interactively")
         else:
             self.auto_refresh_token = auto_refresh_token
             
@@ -182,8 +190,12 @@ class GitHubCLI:
                 return True
             else:
                 logger.error(f"Failed to refresh token: {result.stderr}")
-                
-                # If refresh fails, try re-authenticating
+
+                # If refresh fails, only attempt interactive re-auth when running with a TTY.
+                if self._non_interactive:
+                    logger.warning("Skipping interactive re-authentication (non-interactive environment)")
+                    return False
+
                 logger.warning("Attempting to re-authenticate...")
                 result = subprocess.run(
                     [self.gh_path, "auth", "login", "--web"],
@@ -191,7 +203,7 @@ class GitHubCLI:
                     text=True,
                     timeout=60
                 )
-                
+
                 if result.returncode == 0:
                     logger.info("✓ Re-authentication successful")
                     self._token_expires_at = time.time() + (7 * 86400)

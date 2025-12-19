@@ -1941,25 +1941,39 @@ async function refreshPeerStatus() {
     const peerStatusEl = document.getElementById('peer-status');
     const peerCountEl = document.getElementById('peer-count');
     const p2pEnabledEl = document.getElementById('p2p-enabled');
+    const libp2pVersionEl = document.getElementById('libp2p-version');
     
     if (!peerStatusEl) return;
     
     peerStatusEl.textContent = 'Checking...';
     if (peerCountEl) peerCountEl.textContent = 'Loading...';
     if (p2pEnabledEl) p2pEnabledEl.textContent = 'Loading...';
+    if (libp2pVersionEl) libp2pVersionEl.textContent = 'Loading...';
     
     try {
         const response = await fetch('/api/mcp/peers');
         const data = await response.json();
-        
-        if (peerStatusEl) peerStatusEl.textContent = data.status || 'Unknown';
-        if (peerCountEl) peerCountEl.textContent = data.peer_count || '0';
-        if (p2pEnabledEl) p2pEnabledEl.textContent = data.p2p_enabled ? 'Yes' : 'No';
+
+        const statusText = data.status ?? (data.active ? 'Active' : (data.enabled ? 'Enabled' : 'Disabled'));
+        const peerCount = data.peer_count ?? data.p2p_peers ?? 0;
+        const p2pEnabled = (data.p2p_enabled ?? data.enabled) ? true : false;
+
+        if (peerStatusEl) peerStatusEl.textContent = statusText;
+        if (peerCountEl) peerCountEl.textContent = String(peerCount);
+        if (p2pEnabledEl) p2pEnabledEl.textContent = p2pEnabled ? 'Yes' : 'No';
+
+        if (libp2pVersionEl) {
+            const libp2p = data.libp2p || {};
+            const version = libp2p.version || libp2p.installed_version || null;
+            const ref = libp2p.vcs_ref || null;
+            libp2pVersionEl.textContent = version ? (ref ? `${version} (${ref.slice(0, 12)})` : version) : 'Unavailable';
+        }
     } catch (error) {
         console.error('[Dashboard] Error refreshing peer status:', error);
         if (peerStatusEl) peerStatusEl.textContent = 'Error';
         if (peerCountEl) peerCountEl.textContent = 'Error';
         if (p2pEnabledEl) p2pEnabledEl.textContent = 'Error';
+        if (libp2pVersionEl) libp2pVersionEl.textContent = 'Error';
     }
 }
 

@@ -336,7 +336,7 @@ class UniversalConnectivity:
         host,
         peer_addr: str,
         use_relay: bool = True
-    ) -> bool:
+    ) -> Optional[object]:
         """
         Attempt to connect to a peer with fallback strategies.
         
@@ -351,15 +351,26 @@ class UniversalConnectivity:
             use_relay: Whether to use circuit relay as fallback
             
         Returns:
-            True if connection succeeded
+            Connected peer info object if connection succeeded, else None.
         """
         try:
             # Try direct connection first
             logger.debug(f"Attempting direct connection to {peer_addr}")
-            # In actual implementation: await host.connect(peer_info)
-            
-            logger.info(f"✓ Connected directly to peer")
-            return True
+
+            from multiaddr import Multiaddr
+            from libp2p.peer.peerinfo import info_from_p2p_addr
+
+            ma = Multiaddr(peer_addr)
+            peer_info = info_from_p2p_addr(ma)
+            await host.connect(peer_info)
+
+            try:
+                self.discovered_peers.add(str(peer_addr))
+            except Exception:
+                pass
+
+            logger.info("✓ Connected directly to peer")
+            return peer_info
             
         except Exception as e:
             logger.debug(f"Direct connection failed: {e}")
@@ -368,10 +379,9 @@ class UniversalConnectivity:
             if use_relay and self.config.enable_relay and self.relay_peers:
                 try:
                     logger.debug(f"Attempting relay connection to {peer_addr}")
-                    # In actual implementation: connect through relay
-                    
-                    logger.info(f"✓ Connected via circuit relay")
-                    return True
+                    # Relay connection requires explicit relay protocol support.
+                    # Best-effort fallback is not implemented in this wrapper.
+                    raise RuntimeError("Circuit relay fallback not implemented")
                     
                 except Exception as relay_error:
                     logger.warning(f"Relay connection failed: {relay_error}")
@@ -380,12 +390,12 @@ class UniversalConnectivity:
             if self.config.enable_hole_punching:
                 try:
                     logger.debug(f"Attempting hole punching to {peer_addr}")
-                    # In actual implementation: attempt hole punching
+                    # Hole punching requires protocol support; not implemented here.
                     
                 except Exception as punch_error:
                     logger.debug(f"Hole punching failed: {punch_error}")
             
-            return False
+            return None
     
     def get_connectivity_status(self) -> Dict:
         """

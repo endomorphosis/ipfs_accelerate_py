@@ -154,10 +154,28 @@ class GitHubAPICache:
         if cache_dir:
             self.cache_dir = Path(cache_dir)
         else:
-            self.cache_dir = Path.home() / ".cache" / "github_cli"
-        
+            env_dir = os.environ.get("IPFS_ACCELERATE_CACHE_DIR")
+            self.cache_dir = Path(env_dir) if env_dir else (Path.home() / ".cache" / "github_cli")
+
         if self.enable_persistence:
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+                # mkdir(exist_ok=True) can succeed even when the directory is not writable.
+                # Under systemd ProtectHome=read-only, ~/.cache often exists but cannot be written.
+                write_probe = self.cache_dir / ".write_test"
+                try:
+                    with open(write_probe, "w") as f:
+                        f.write("ok")
+                    write_probe.unlink(missing_ok=True)  # type: ignore[arg-type]
+                except Exception as e:
+                    raise OSError(f"Cache directory not writable: {e}")
+            except OSError as e:
+                # Common under systemd with ProtectHome=read-only (Errno 30)
+                fallback = Path("/tmp") / "ipfs_accelerate_github_cli_cache"
+                logger.warning(f"⚠ Cache dir not writable ({self.cache_dir}): {e} - falling back to {fallback}")
+                self.cache_dir = fallback
+                self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         # In-memory cache
         self._cache: Dict[str, CacheEntry] = {}
@@ -788,15 +806,38 @@ class GitHubAPICache:
                 "total_requests": total_requests,
                 "hit_rate": hit_rate,
                 "cache_size": len(self._cache),
+                "total_entries": len(self._cache),
                 "max_cache_size": self.max_cache_size,
                 "api_calls_saved": api_calls_saved,
                 "p2p_enabled": self.enable_p2p,
-                "content_addressing_available": HAVE_MULTIFORMATS
+                "content_addressing_available": HAVE_MULTIFORMATS,
+                "cache_dir": str(self.cache_dir) if self.enable_persistence else "",
             }
+
+            # Best-effort disk stats for dashboard/debugging.
+            if self.enable_persistence:
+                total_size_bytes = 0
+                disk_entries = 0
+                try:
+                    if self.cache_dir.exists():
+                        for cache_file in self.cache_dir.glob("*.json"):
+                            disk_entries += 1
+                            try:
+                                total_size_bytes += cache_file.stat().st_size
+                            except OSError:
+                                pass
+                except Exception:
+                    pass
+                stats["disk_entries"] = disk_entries
+                stats["total_size_bytes"] = total_size_bytes
             
             # Add P2P-specific stats if enabled
             if self.enable_p2p:
-                stats["connected_peers"] = len(self._p2p_connected_peers)
+                connected_peers = len(self._p2p_connected_peers)
+                # Stable keys used by dashboard/API
+                stats["connected_peers"] = connected_peers
+                stats["p2p_peers"] = connected_peers
+                stats["bootstrap_peers_configured"] = len(self._p2p_bootstrap_peers)
                 if self._p2p_host:
                     stats["peer_id"] = self._p2p_host.get_id().pretty()
                 
@@ -972,6 +1013,7 @@ class GitHubAPICache:
         try:
             cache_file = self.cache_dir / f"{self._sanitize_filename(cache_key)}.json"
             cache_data = {
+                "cache_key": cache_key,
                 "data": entry.data,
                 "timestamp": entry.timestamp,
                 "ttl": entry.ttl,
@@ -1010,13 +1052,17 @@ class GitHubAPICache:
                     
                     # Only load non-expired entries
                     if not entry.is_expired():
-                        # Reconstruct cache key from filename
-                        cache_key = cache_file.stem
+                        # Use original cache key if available (v2 format), else fall back to stem (legacy)
+                        cache_key = cache_data.get("cache_key") or cache_file.stem
                         self._cache[cache_key] = entry
                         loaded_count += 1
                     else:
                         # Remove expired cache file
-                        cache_file.unlink()
+                        try:
+                            cache_file.unlink()
+                        except OSError:
+                            # If running with a read-only cache dir, just leave the file in place.
+                            pass
                         expired_count += 1
                 
                 except Exception as e:
@@ -1333,7 +1379,7 @@ class GitHubAPICache:
                 try:
                     if self._universal_connectivity:
                         # Use universal connectivity with fallback strategies
-                        success = await asyncio.wait_for(
+                        peer_info = await asyncio.wait_for(
                             self._universal_connectivity.attempt_connection(
                                 self._p2p_host,
                                 peer_addr,
@@ -1341,8 +1387,16 @@ class GitHubAPICache:
                             ),
                             timeout=15.0
                         )
-                        if not success:
+                        if not peer_info:
                             logger.warning(f"Failed to connect to peer {peer_addr}")
+                        else:
+                            try:
+                                peer_id = peer_info.peer_id.pretty()
+                                self._p2p_connected_peers[peer_id] = peer_info
+                                logger.info(f"Connected to peer: {peer_id}")
+                            except Exception:
+                                # Best-effort bookkeeping only
+                                pass
                     else:
                         # Fallback to direct connection
                         await asyncio.wait_for(

@@ -85,6 +85,38 @@ body {
     justify-content: center;
 }
 
+/* Dashboard uses custom tabs: <div class="nav-tabs"><button class="nav-tab">... */
+.nav-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.nav-tabs .nav-tab {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    border-radius: 25px;
+    padding: 12px 20px;
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    font-weight: 500;
+}
+
+.nav-tabs .nav-tab:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+.nav-tabs .nav-tab.active {
+    background: rgba(255, 255, 255, 0.9);
+    color: #2c3e50;
+    font-weight: 600;
+}
+
 .tab-button {
     background: rgba(255, 255, 255, 0.2);
     border: none;

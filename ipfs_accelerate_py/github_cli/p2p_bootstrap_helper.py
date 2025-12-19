@@ -46,10 +46,19 @@ class SimplePeerBootstrap:
             peer_ttl_minutes: How long peer entries are valid
         """
         if cache_dir is None:
-            cache_dir = Path.home() / ".cache" / "p2p_peers"
-        
+            # Allow overriding for hardened environments (e.g., systemd ProtectHome)
+            env_dir = os.environ.get("IPFS_ACCELERATE_P2P_CACHE_DIR")
+            cache_dir = Path(env_dir) if env_dir else (Path.home() / ".cache" / "p2p_peers")
+
         self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            # Common under systemd with ProtectHome=read-only (Errno 30)
+            fallback = Path("/tmp") / "ipfs_accelerate_p2p_peers"
+            logger.warning(f"⚠ P2P peer registry dir not writable ({self.cache_dir}): {e} - falling back to {fallback}")
+            self.cache_dir = fallback
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.peer_ttl = timedelta(minutes=peer_ttl_minutes)
         
         # Detect runner information
@@ -219,8 +228,18 @@ class SimplePeerBootstrap:
                 bootstrap_addrs.append(multiaddr)
                 logger.info(f"  ✓ Discovered peer: {multiaddr}")
         
-        # If no peers found, add standard libp2p bootstrap nodes as fallback
-        if not bootstrap_addrs:
+        # If no peers found, optionally add public libp2p bootstrap nodes.
+        # This is OFF by default because:
+        # - it can slow startup with repeated failed connect attempts
+        # - many environments cannot reach these nodes due to transport/NAT/firewall
+        # - it can be misleading ("discovered" peers that are not actually connectable)
+        enable_public_bootstrap = os.environ.get("IPFS_ACCELERATE_ENABLE_PUBLIC_BOOTSTRAP", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if not bootstrap_addrs and enable_public_bootstrap:
             libp2p_bootstrap_nodes = [
                 "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
                 "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
@@ -228,7 +247,9 @@ class SimplePeerBootstrap:
                 "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
             ]
             bootstrap_addrs.extend(libp2p_bootstrap_nodes)
-            logger.info(f"  ℹ️  Using {len(libp2p_bootstrap_nodes)} standard libp2p bootstrap node(s)")
+            logger.info(
+                f"  ℹ️  Using {len(libp2p_bootstrap_nodes)} public libp2p bootstrap node(s) (IPFS_ACCELERATE_ENABLE_PUBLIC_BOOTSTRAP=1)"
+            )
         
         return bootstrap_addrs[:max_peers]
     

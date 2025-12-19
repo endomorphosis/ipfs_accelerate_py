@@ -13,6 +13,8 @@ These functions can be used as:
 import os
 import time
 import logging
+import json
+import importlib.metadata
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.dashboard_data")
@@ -211,6 +213,37 @@ def get_peer_status() -> Dict[str, Any]:
         >>> if peer_status['enabled']:
         ...     print(f"Connected to {peer_status['peer_count']} peers")
     """
+    def _get_libp2p_info() -> Dict[str, Any]:
+        """Return installed libp2p version and (if available) VCS ref info."""
+        try:
+            dist = importlib.metadata.distribution("libp2p")
+        except importlib.metadata.PackageNotFoundError:
+            return {
+                "available": False,
+                "error": "libp2p not installed"
+            }
+
+        info: Dict[str, Any] = {
+            "available": True,
+            "version": dist.version,
+        }
+
+        # If installed from a VCS URL, pip writes direct_url.json into dist-info
+        try:
+            direct_url_text = dist.read_text("direct_url.json")
+            if direct_url_text:
+                direct_url = json.loads(direct_url_text)
+                info["direct_url"] = direct_url
+                vcs_info = direct_url.get("vcs_info") or {}
+                if isinstance(vcs_info, dict):
+                    info["vcs_ref"] = vcs_info.get("commit_id") or vcs_info.get("requested_revision")
+                    info["vcs"] = vcs_info.get("vcs")
+        except Exception:
+            # Best-effort only
+            pass
+
+        return info
+
     try:
         from ipfs_accelerate_py.github_cli.cache import get_global_cache
         cache = get_global_cache()
@@ -219,12 +252,35 @@ def get_peer_status() -> Dict[str, Any]:
         stats = cache.get_stats()
         
         # Try to get more detailed P2P info if available
+        enabled = bool(stats.get('p2p_enabled', False))
+        connected_peer_count = int(
+            (stats.get('connected_peers') if stats.get('connected_peers') is not None else stats.get('p2p_peers'))
+            or 0
+        )
+
         peer_info = {
-            'enabled': stats.get('p2p_enabled', False),
-            'active': stats.get('p2p_enabled', False),
-            'peer_count': stats.get('p2p_peers', 0),
-            'peers': []
+            # Back-compat fields
+            'enabled': enabled,
+            'active': enabled,
+            # peer_count is the libp2p network connected-peer count
+            'peer_count': connected_peer_count,
+            'peers': [],
+
+            # Frontend-friendly aliases
+            'p2p_enabled': enabled,
+            'status': 'Active' if enabled else 'Disabled',
+
+            # Explicit counters (useful for debugging/telemetry)
+            'connected_peer_count': connected_peer_count,
+            'registered_peer_count': 0,
+
+            # Diagnostics
+            'libp2p': _get_libp2p_info(),
         }
+
+        # Pass through universal-connectivity diagnostics if available
+        if isinstance(stats.get('connectivity'), dict):
+            peer_info['connectivity'] = stats.get('connectivity')
         
         # Try to get peer registry info if available
         try:
@@ -244,7 +300,8 @@ def get_peer_status() -> Dict[str, Any]:
                     }
                     for p in peers
                 ]
-                peer_info['peer_count'] = len(peers)
+                peer_info['registered_peer_count'] = len(peers)
+                peer_info['status'] = 'Active' if enabled else peer_info['status']
         except Exception as e:
             logger.debug(f"Could not get detailed peer info: {e}")
         
@@ -256,6 +313,9 @@ def get_peer_status() -> Dict[str, Any]:
             'active': False,
             'peer_count': 0,
             'peers': [],
+            'p2p_enabled': False,
+            'status': 'Error',
+            'libp2p': _get_libp2p_info(),
             'error': str(e)
         }
 
