@@ -1,16 +1,20 @@
-"""
-Enhanced P2P Connectivity Module
+"""ipfs_accelerate_py.github_cli.p2p_connectivity
 
-Implements libp2p universal-connectivity patterns for robust peer discovery
-and NAT traversal. Based on https://github.com/libp2p/universal-connectivity
+This module is a *pragmatic* connectivity helper inspired by the
+https://github.com/libp2p/universal-connectivity blueprints.
 
-Features:
-- Multiple transport protocols (TCP, QUIC, WebRTC)
-- Circuit relay for connectivity through intermediaries
-- mDNS for local network discovery
-- DHT for distributed peer routing
-- AutoNAT for reachability detection
-- Hole punching for direct NAT traversal
+Important:
+- The universal-connectivity demo uses a broad set of transports and protocols
+    (QUIC/WebRTC/WebTransport, relay v2, AutoNAT v2, DCUtR hole punching, etc.).
+- py-libp2p currently supports a smaller subset in typical deployments.
+
+In this repo we focus on what is currently reliable:
+- TCP multiaddr dialing (`host.connect(info_from_p2p_addr(...))`)
+- Best-effort discovery inputs (explicit bootstrap multiaddrs, local registry)
+
+Higher-level mesh convergence is handled in the cache layer via a peer-exchange
+protocol rather than relying on DHT/relay/hole-punching features that are not
+implemented here.
 """
 
 import asyncio
@@ -74,6 +78,18 @@ class UniversalConnectivity:
         self.discovered_peers: Set[str] = set()
         self.relay_peers: List[str] = []
         self.reachability_status: Optional[str] = None
+
+        # Track what this helper actually implements (vs. what is merely "enabled" in config).
+        self.implemented = {
+            "tcp": True,
+            "quic": False,
+            "webrtc": False,
+            "mdns": False,
+            "dht": False,
+            "relay": False,
+            "autonat": False,
+            "hole_punching": False,
+        }
         
         logger.info("Initialized universal connectivity manager")
         logger.info(f"  TCP: {self.config.enable_tcp}")
@@ -127,18 +143,9 @@ class UniversalConnectivity:
         if not self.config.enable_mdns:
             return
         
-        try:
-            # mDNS discovery implementation
-            # Note: Actual implementation would depend on libp2p version
-            logger.info("✓ mDNS discovery started")
-            logger.info(f"  Discovery interval: {self.config.mdns_interval}s")
-            logger.info(f"  TTL: {self.config.mdns_ttl}s")
-            
-            # Start periodic discovery
-            asyncio.create_task(self._mdns_discovery_loop(host))
-            
-        except Exception as e:
-            logger.warning(f"Failed to start mDNS discovery: {e}")
+        # py-libp2p mDNS support is not wired up in this helper yet.
+        # Keep this as a no-op to avoid misleading "started" logs.
+        return
     
     async def _mdns_discovery_loop(self, host) -> None:
         """Periodic mDNS discovery loop."""
@@ -164,14 +171,8 @@ class UniversalConnectivity:
         if not self.config.enable_dht:
             return
         
-        try:
-            # DHT configuration implementation
-            logger.info("✓ DHT configured")
-            logger.info(f"  Bucket size: {self.config.dht_bucket_size}")
-            logger.info(f"  Query timeout: {self.config.dht_query_timeout}s")
-            
-        except Exception as e:
-            logger.warning(f"Failed to configure DHT: {e}")
+        # DHT support is not implemented in this helper.
+        return
     
     async def setup_circuit_relay(self, host, relay_addrs: Optional[List[str]] = None) -> None:
         """
@@ -220,15 +221,8 @@ class UniversalConnectivity:
         if not self.config.enable_autonat:
             return
         
-        try:
-            # AutoNAT configuration implementation
-            logger.info("✓ AutoNAT enabled")
-            
-            # Start reachability detection
-            asyncio.create_task(self._check_reachability(host))
-            
-        except Exception as e:
-            logger.warning(f"Failed to enable AutoNAT: {e}")
+        # AutoNAT is not implemented in this helper.
+        return
     
     async def _check_reachability(self, host) -> None:
         """
@@ -262,12 +256,8 @@ class UniversalConnectivity:
         if not self.config.enable_hole_punching:
             return
         
-        try:
-            # Hole punching configuration implementation
-            logger.info("✓ Hole punching enabled")
-            
-        except Exception as e:
-            logger.warning(f"Failed to enable hole punching: {e}")
+        # Hole punching is not implemented in this helper.
+        return
     
     async def discover_peers_multimethod(
         self,
@@ -303,23 +293,7 @@ class UniversalConnectivity:
             except Exception as e:
                 logger.warning(f"GitHub discovery failed: {e}")
         
-        # Method 2: mDNS (local network)
-        if self.config.enable_mdns:
-            try:
-                # In actual implementation, query mDNS
-                # For now, this is a placeholder
-                pass
-            except Exception as e:
-                logger.warning(f"mDNS discovery failed: {e}")
-        
-        # Method 3: DHT (distributed)
-        if self.config.enable_dht:
-            try:
-                # In actual implementation, query DHT
-                # For now, this is a placeholder
-                pass
-            except Exception as e:
-                logger.warning(f"DHT discovery failed: {e}")
+        # mDNS/DHT discovery is not implemented here.
         
         # Method 4: Bootstrap peers
         if bootstrap_peers:
@@ -327,7 +301,7 @@ class UniversalConnectivity:
             logger.debug(f"Added {len(bootstrap_peers)} bootstrap peers")
         
         self.discovered_peers = discovered
-        logger.info(f"✓ Discovered {len(discovered)} peer(s) via multiple methods")
+        logger.info(f"✓ Discovered {len(discovered)} peer(s) via configured sources")
         
         return list(discovered)
     
@@ -421,7 +395,8 @@ class UniversalConnectivity:
             "nat_traversal": {
                 "autonat": self.config.enable_autonat,
                 "hole_punching": self.config.enable_hole_punching
-            }
+            },
+            "implemented": dict(self.implemented),
         }
 
 

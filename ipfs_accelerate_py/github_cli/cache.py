@@ -16,9 +16,11 @@ import time
 import hashlib
 import asyncio
 import base64
+from datetime import datetime, timezone
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 from threading import Lock
 
 # Try to import cryptography for message encryption
@@ -205,14 +207,20 @@ class GitHubAPICache:
         # P2P networking
         self._p2p_host = None
         self._p2p_protocol = "/github-cache/1.0.0"
+        self._p2p_peer_exchange_protocol = "/github-cache/peer-exchange/1.0.0"
         self._p2p_listen_port = p2p_listen_port
         self._p2p_bootstrap_peers = p2p_bootstrap_peers or []
         self._p2p_connected_peers: Dict[str, Any] = {}
+        self._p2p_known_peer_addrs: Set[str] = set(self._p2p_bootstrap_peers)
+        self._peer_exchange_last: Dict[str, float] = {}
+        self._peer_exchange_interval = 300  # seconds
         self._event_loop = None
         self._max_bootstrap_peers = 10  # Limit bootstrap peers to prevent connection overload
         self._p2p_init_lock = Lock()  # Lock to prevent concurrent P2P initialization
         self._p2p_initialized = False  # Flag to track if P2P is already initialized
         self._universal_connectivity = None  # Universal connectivity manager
+        self._last_bootstrap_refresh = 0  # Timestamp of last bootstrap refresh
+        self._bootstrap_refresh_interval = 300  # Re-bootstrap every 5 minutes (like rust-peer)
         
         # Peer discovery - use simplified bootstrap helper
         self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
@@ -838,6 +846,40 @@ class GitHubAPICache:
                 stats["connected_peers"] = connected_peers
                 stats["p2p_peers"] = connected_peers
                 stats["bootstrap_peers_configured"] = len(self._p2p_bootstrap_peers)
+
+                # Peer-exchange diagnostics (helps validate mesh convergence without DHT/relay)
+                stats["peer_exchange_protocol"] = getattr(self, "_p2p_peer_exchange_protocol", None)
+                stats["peer_exchange_interval_s"] = getattr(self, "_peer_exchange_interval", None)
+                peer_exchange_last_by_peer = getattr(self, "_peer_exchange_last", None)
+                latest_peer_exchange_ts = None
+                if isinstance(peer_exchange_last_by_peer, dict):
+                    try:
+                        ts_values = [
+                            v
+                            for v in peer_exchange_last_by_peer.values()
+                            if isinstance(v, (int, float))
+                        ]
+                        latest_peer_exchange_ts = max(ts_values) if ts_values else None
+                    except Exception:
+                        latest_peer_exchange_ts = None
+                    stats["peer_exchange_last_by_peer"] = peer_exchange_last_by_peer
+                elif isinstance(peer_exchange_last_by_peer, (int, float)):
+                    latest_peer_exchange_ts = peer_exchange_last_by_peer
+                    stats["peer_exchange_last_by_peer"] = None
+                else:
+                    stats["peer_exchange_last_by_peer"] = None
+
+                stats["peer_exchange_last"] = latest_peer_exchange_ts
+                if isinstance(latest_peer_exchange_ts, (int, float)):
+                    stats["peer_exchange_last_iso"] = datetime.fromtimestamp(
+                        latest_peer_exchange_ts, tz=timezone.utc
+                    ).isoformat()
+                else:
+                    stats["peer_exchange_last_iso"] = None
+
+                stats["known_peer_multiaddrs"] = len(
+                    getattr(self, "_p2p_known_peer_addrs", set()) or set()
+                )
                 if self._p2p_host:
                     stats["peer_id"] = self._p2p_host.get_id().pretty()
                 
@@ -1288,11 +1330,13 @@ class GitHubAPICache:
                     from .p2p_connectivity import get_universal_connectivity, ConnectivityConfig
                     
                     config = ConnectivityConfig(
-                        enable_mdns=True,
-                        enable_dht=True,
-                        enable_relay=True,
-                        enable_autonat=True,
-                        enable_hole_punching=True
+                        # Keep these disabled unless/until the helper grows real implementations.
+                        # We still keep the object around to provide diagnostics and a consistent API.
+                        enable_mdns=False,
+                        enable_dht=False,
+                        enable_relay=False,
+                        enable_autonat=False,
+                        enable_hole_punching=False
                     )
                     self._universal_connectivity = get_universal_connectivity(config)
                     
@@ -1309,6 +1353,13 @@ class GitHubAPICache:
             
             # Set stream handler for cache protocol
             self._p2p_host.set_stream_handler(self._p2p_protocol, self._handle_cache_stream)
+
+            # Peer exchange protocol: lets connected peers share additional peer multiaddrs.
+            # This is a pragmatic replacement for DHT/pubsub discovery in py-libp2p deployments.
+            self._p2p_host.set_stream_handler(
+                self._p2p_peer_exchange_protocol,
+                self._handle_peer_exchange_stream,
+            )
             
             logger.info(f"P2P host started, listening on port {self._p2p_listen_port}")
             logger.info(f"Peer ID: {self._p2p_host.get_id().pretty()}")
@@ -1372,6 +1423,7 @@ class GitHubAPICache:
             
             # Deduplicate bootstrap peers before connecting
             self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
+            self._p2p_known_peer_addrs.update(self._p2p_bootstrap_peers)
             logger.info(f"Connecting to {len(self._p2p_bootstrap_peers)} bootstrap peer(s)...")
             
             # Connect to bootstrap peers with enhanced connectivity
@@ -1407,6 +1459,13 @@ class GitHubAPICache:
                     logger.warning(f"Timeout connecting to bootstrap peer {peer_addr}")
                 except Exception as e:
                     logger.warning(f"Failed to connect to bootstrap peer {peer_addr}: {e}")
+            
+            # Record successful bootstrap time
+            self._last_bootstrap_refresh = time.time()
+            
+            # Start background task for periodic reconnection & bootstrap refresh
+            if self._event_loop:
+                asyncio.create_task(self._periodic_connection_maintenance())
         
         except Exception as e:
             logger.error(f"Failed to start P2P host: {e}")
@@ -1428,6 +1487,212 @@ class GitHubAPICache:
         peer_id = peer_info.peer_id.pretty()
         self._p2p_connected_peers[peer_id] = peer_info
         logger.info(f"Connected to peer: {peer_id}")
+
+        # Opportunistically perform peer exchange to learn additional multiaddrs.
+        try:
+            await asyncio.wait_for(self._peer_exchange_with_peer(peer_info), timeout=10.0)
+        except Exception:
+            pass
+    
+    async def _periodic_connection_maintenance(self) -> None:
+        """Periodically refresh bootstrap connections and prune dead peers."""
+        try:
+            while True:
+                await asyncio.sleep(60)  # Check every minute
+                
+                if not self._p2p_host:
+                    break
+                
+                current_time = time.time()
+                
+                # Periodic bootstrap refresh (every 5 minutes like rust-peer)
+                if current_time - self._last_bootstrap_refresh > self._bootstrap_refresh_interval:
+                    logger.info("Refreshing bootstrap peer connections...")
+                    reconnected = 0
+                    for peer_addr in self._p2p_bootstrap_peers[:5]:  # Only try first 5
+                        try:
+                            await asyncio.wait_for(self._connect_to_peer(peer_addr), timeout=10.0)
+                            reconnected += 1
+                        except Exception:
+                            pass  # Silent retry
+                    if reconnected > 0:
+                        logger.info(f"✓ Refreshed {reconnected} bootstrap connection(s)")
+                    self._last_bootstrap_refresh = current_time
+
+                # Periodic peer exchange with already-connected peers.
+                # This helps the mesh converge without DHT support.
+                for peer_id, peer_info in list(self._p2p_connected_peers.items()):
+                    last = self._peer_exchange_last.get(peer_id, 0)
+                    if current_time - last < self._peer_exchange_interval:
+                        continue
+                    try:
+                        await asyncio.wait_for(self._peer_exchange_with_peer(peer_info), timeout=10.0)
+                    except Exception:
+                        pass
+                
+                # Prune disconnected peers (basic cleanup)
+                if self._p2p_connected_peers:
+                    disconnected = []
+                    for peer_id in list(self._p2p_connected_peers.keys()):
+                        # In py-libp2p, we'd check connection state here if API allows
+                        # For now, we keep peers in the dict (best-effort)
+                        pass
+        except asyncio.CancelledError:
+            logger.debug("Connection maintenance task cancelled")
+        except Exception as e:
+            logger.warning(f"Error in connection maintenance: {e}")
+
+    def _get_advertised_multiaddrs(self) -> List[str]:
+        """Return best-effort dialable multiaddrs for this host."""
+        if not self._p2p_host:
+            return []
+
+        peer_id = self._p2p_host.get_id().pretty()
+        addrs: List[str] = []
+
+        # Prefer explicit operator-provided public IP.
+        env_ip = os.environ.get("IPFS_ACCELERATE_PUBLIC_IP")
+        if env_ip:
+            addrs.append(f"/ip4/{env_ip}/tcp/{self._p2p_listen_port}/p2p/{peer_id}")
+
+        # Fall back to detected public IP (best-effort, may fail under restricted egress).
+        try:
+            public_ip = self._get_public_ip()
+            if public_ip and public_ip != "127.0.0.1":
+                addrs.append(f"/ip4/{public_ip}/tcp/{self._p2p_listen_port}/p2p/{peer_id}")
+        except Exception:
+            pass
+
+        # If host exposes listen addrs, include them too.
+        try:
+            host_addrs = getattr(self._p2p_host, "get_addrs", None)
+            if callable(host_addrs):
+                for ma in host_addrs():
+                    try:
+                        s = str(ma)
+                        if s and "/p2p/" not in s:
+                            s = f"{s}/p2p/{peer_id}"
+                        if self._validate_multiaddr(s):
+                            addrs.append(s)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        # Deduplicate preserving order.
+        seen = set()
+        out = []
+        for a in addrs:
+            if a not in seen:
+                seen.add(a)
+                out.append(a)
+        return out
+
+    async def _handle_peer_exchange_stream(self, stream: 'INetStream') -> None:
+        """Handle inbound peer exchange request (encrypted if encryption enabled)."""
+        try:
+            payload = await stream.read()
+            message = self._decrypt_message(payload) if self._cipher else json.loads(payload.decode("utf-8"))
+
+            if not isinstance(message, dict):
+                await stream.write(b"ERROR")
+                return
+
+            # Learn sender's advertised addrs (best signal) and their known peers (gossip).
+            sender_addrs = message.get("addrs") or []
+            if isinstance(sender_addrs, list):
+                for addr in sender_addrs:
+                    if not isinstance(addr, str):
+                        continue
+                    if self._validate_multiaddr(addr):
+                        self._p2p_known_peer_addrs.add(addr)
+
+            peer_addrs = message.get("peers") or []
+            if isinstance(peer_addrs, list):
+                for addr in peer_addrs:
+                    if not isinstance(addr, str):
+                        continue
+                    if self._validate_multiaddr(addr):
+                        self._p2p_known_peer_addrs.add(addr)
+
+            # Keep bootstrap list fed with a bounded number of known addrs.
+            for addr in list(sorted(self._p2p_known_peer_addrs))[: self._max_bootstrap_peers]:
+                if addr not in self._p2p_bootstrap_peers and len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
+                    self._p2p_bootstrap_peers.append(addr)
+
+            # Respond with our current known peers + our advertised multiaddrs
+            response = {
+                "addrs": self._get_advertised_multiaddrs(),
+                "peers": list(sorted(self._p2p_known_peer_addrs))[:50],
+                "ts": time.time(),
+            }
+
+            resp_bytes = self._encrypt_message(response) if self._cipher else json.dumps(response).encode("utf-8")
+            await stream.write(resp_bytes)
+        except Exception as e:
+            logger.debug(f"Peer exchange handler error: {e}")
+            try:
+                await stream.write(b"ERROR")
+            except Exception:
+                pass
+        finally:
+            try:
+                await stream.close()
+            except Exception:
+                pass
+
+    async def _peer_exchange_with_peer(self, peer_info: Any) -> None:
+        """Exchange known peer multiaddrs with a connected peer."""
+        if not self._p2p_host:
+            return
+
+        peer_id = getattr(peer_info, "peer_id", None)
+        if peer_id is None:
+            return
+
+        peer_id_str = peer_id.pretty()
+        self._peer_exchange_last[peer_id_str] = time.time()
+
+        message = {
+            "addrs": self._get_advertised_multiaddrs(),
+            "peers": list(sorted(self._p2p_known_peer_addrs))[:50],
+            "ts": time.time(),
+        }
+        req_bytes = self._encrypt_message(message) if self._cipher else json.dumps(message).encode("utf-8")
+
+        stream = await self._p2p_host.new_stream(peer_id, [self._p2p_peer_exchange_protocol])
+        await stream.write(req_bytes)
+        resp = await stream.read()
+        await stream.close()
+
+        try:
+            data = self._decrypt_message(resp) if self._cipher else json.loads(resp.decode("utf-8"))
+        except Exception:
+            return
+
+        if not isinstance(data, dict):
+            return
+
+        # Merge peer's self-advertised addrs and known peers.
+        for addr in (data.get("addrs") or []):
+            if isinstance(addr, str) and self._validate_multiaddr(addr):
+                self._p2p_known_peer_addrs.add(addr)
+        for addr in (data.get("peers") or []):
+            if isinstance(addr, str) and self._validate_multiaddr(addr):
+                self._p2p_known_peer_addrs.add(addr)
+
+        # Attempt to connect to a small number of newly learned peers.
+        candidates = deque([a for a in self._p2p_known_peer_addrs if a not in self._p2p_bootstrap_peers])
+        attempts = 0
+        while candidates and attempts < 3:
+            addr = candidates.popleft()
+            if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
+                self._p2p_bootstrap_peers.append(addr)
+            try:
+                await asyncio.wait_for(self._connect_to_peer(addr), timeout=5.0)
+            except Exception:
+                pass
+            attempts += 1
     
     async def _handle_cache_stream(self, stream: 'INetStream') -> None:
         """Handle incoming encrypted cache entry from peer."""

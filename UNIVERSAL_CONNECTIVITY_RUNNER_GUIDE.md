@@ -60,13 +60,57 @@ Optional discovery / “universal connectivity” style features:
 ## 5) Troubleshooting checklist
 
 1. Check dashboard endpoints:
-   - `/api/mcp/cache/stats` for `hit_rate`, `cache_size`, `cache_dir`, `api_calls_made`
+   - `/api/mcp/cache/stats` for `hit_rate`, `cache_size`, `cache_dir`, `api_calls_made`, `bootstrap_peers_configured`
    - `/api/mcp/peers` for `peer_count` (connected) and `connectivity.discovered_peers`
+   - If you’re testing peer exchange, look for `known_peer_multiaddrs` and `peer_exchange_last_iso`
 
 2. Confirm the process is actually connecting:
    - You should see logs indicating connections and `peer_count > 0`.
+   - Look for "Refreshing bootstrap peer connections..." logs every 5 minutes (automatic reconnect).
 
 3. Confirm all peers share the same `GITHUB_TOKEN` (or disable encryption) if you expect cross-peer cache decryption.
 
 4. Ensure the cache dir is writable in the service context.
+
+5. Verify TCP connectivity between runners:
+   - `telnet <other-runner-ip> 9100` should succeed
+   - Check firewall/NAT rules allow bidirectional TCP on the configured port
+
+## 6) Connectivity Patterns Explained (from universal-connectivity)
+
+**What we implement (py-libp2p capabilities):**
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| TCP transport | ✅ Supported | Primary transport; requires direct reachability |
+| Identify protocol | ✅ Enabled | Peers exchange supported protocols/addresses |
+| Periodic bootstrap refresh | ✅ Implemented | Re-connects to bootstrap peers every 5 minutes |
+| Peer registry (file-based) | ✅ Implemented | Local discovery for same-host/LAN runners |
+| Connection keepalive | ✅ Basic | Periodic reconnect attempts maintain peer list |
+
+**What py-libp2p *has* but we don't currently use:**
+
+| Feature | Status | Next Steps |
+|---------|--------|------------|
+| mDNS (LAN discovery) | ⚠️  Available | Could enable for automatic LAN peer discovery |
+| Kademlia DHT | ⚠️  Partial | py-libp2p has DHT but not fully integrated here |
+| Circuit Relay v1 | ⚠️  Available | Could route connections through relay peers |
+| AutoNAT v1 | ⚠️  Available | Could detect external address automatically |
+
+**What universal-connectivity uses that py-libp2p lacks:**
+
+| Feature | Status | Impact |
+|---------|--------|--------|
+| QUIC / WebRTC / WebTransport | ❌ Not available | Limits browser + mobile peer support |
+| Circuit Relay v2 | ❌ Not available | More efficient relay protocol |
+| DCUtR (hole-punching) | ❌ Not available | NAT traversal without relay |
+| AutoNAT v2 | ❌ Not available | Better NAT detection |
+
+**Best practices for maintaining peer connectivity:**
+
+1. **Static bootstrap peers**: Always configure at least 2-3 known-reachable multiaddrs via `CACHE_BOOTSTRAP_PEERS`.
+2. **External address**: If behind NAT, set `EXTERNAL_IP` or configure port forwarding so other peers can reach you.
+3. **Symmetric connectivity**: If peer A can reach peer B, ensure B can also reach A (firewall rules, NAT hairpinning).
+4. **Monitor connection churn**: Watch logs for "Refreshing bootstrap..." and successful reconnects.
+5. **Shared encryption key**: All peers must use the same `GITHUB_TOKEN` to decrypt P2P messages.
 

@@ -278,6 +278,18 @@ def get_peer_status() -> Dict[str, Any]:
             'libp2p': _get_libp2p_info(),
         }
 
+        # Pass through peer-exchange debug fields if available
+        for k in (
+            'peer_exchange_protocol',
+            'peer_exchange_interval_s',
+            'peer_exchange_last',
+            'peer_exchange_last_iso',
+            'peer_exchange_last_by_peer',
+            'known_peer_multiaddrs',
+        ):
+            if k in stats:
+                peer_info[k] = stats.get(k)
+
         # Pass through universal-connectivity diagnostics if available
         if isinstance(stats.get('connectivity'), dict):
             peer_info['connectivity'] = stats.get('connectivity')
