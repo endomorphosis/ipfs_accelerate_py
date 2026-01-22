@@ -1,0 +1,233 @@
+name: Example - P2P Cache with Docker
+
+# This workflow demonstrates how to properly configure P2P cache
+# for GitHub Actions runners using Docker containers.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ example ]
+
+env:
+  # P2P Cache Configuration
+  CACHE_ENABLE_P2P: 'true'
+  CACHE_LISTEN_PORT: '9000'
+  # Bootstrap peers should be set as repository secret
+  # Format: /ip4/<ip>/tcp/<port>/p2p/<peer-id>
+  CACHE_BOOTSTRAP_PEERS: ${{ secrets.MCP_P2P_BOOTSTRAP_PEERS || '' }}
+
+jobs:
+  # Option 1: Host Network Mode (Simplest)
+  test-with-host-network:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install P2P Dependencies
+      run: |
+        echo "📦 Installing P2P cache dependencies..."
+        pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+    
+    - name: Run Cache Connectivity Diagnostic
+      run: |
+        echo "🔍 Running cache connectivity diagnostic..."
+        python test_docker_runner_cache_connectivity.py || true
+    
+    - name: Build Docker Image
+      run: |
+        docker build -t myapp:test .
+    
+    - name: Run Tests with Host Network (P2P Cache Enabled)
+      run: |
+        # Use --network host to enable P2P cache connectivity
+        docker run --rm \
+          --network host \
+          -e CACHE_ENABLE_P2P=true \
+          -e CACHE_LISTEN_PORT=9000 \
+          -e CACHE_BOOTSTRAP_PEERS="${CACHE_BOOTSTRAP_PEERS}" \
+          -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+          myapp:test \
+          python -m pytest tests/ -v
+    
+    - name: Check Cache Statistics
+      run: |
+        docker run --rm \
+          --network host \
+          -e CACHE_ENABLE_P2P=true \
+          myapp:test \
+          python -c "
+from ipfs_accelerate_py.github_cli.cache import get_global_cache
+stats = get_global_cache().get_stats()
+print(f'Cache hit rate: {stats[\"hit_rate\"]:.1%}')
+print(f'API calls saved: {stats[\"api_calls_saved\"]}')
+print(f'Cache size: {stats[\"cache_size\"]}')
+"
+
+  # Option 2: Bridge Network with Host IP (More Secure)
+  test-with-bridge-network:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install P2P Dependencies
+      run: |
+        pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+    
+    - name: Get Docker Host IP
+      id: hostip
+      run: |
+        # Get Docker bridge gateway IP (usually 172.17.0.1)
+        HOST_IP=$(docker network inspect bridge | jq -r '.[0].IPAM.Config[0].Gateway')
+        echo "HOST_IP=${HOST_IP}" >> $GITHUB_OUTPUT
+        echo "Docker host IP: ${HOST_IP}"
+    
+    - name: Configure Bootstrap Peers with Host IP
+      id: bootstrap
+      run: |
+        # If MCP_P2P_BOOTSTRAP_PEERS secret is set, use it
+        # Otherwise, use host IP (note: this requires MCP peer ID)
+        if [ -n "${{ env.CACHE_BOOTSTRAP_PEERS }}" ]; then
+          echo "Using configured bootstrap peers"
+          echo "BOOTSTRAP_PEERS=${{ env.CACHE_BOOTSTRAP_PEERS }}" >> $GITHUB_OUTPUT
+        else
+          # Format: /ip4/<host-ip>/tcp/<port>/p2p/<peer-id>
+          # Note: You'll need to set MCP_PEER_ID as a secret
+          echo "BOOTSTRAP_PEERS=/ip4/${{ steps.hostip.outputs.HOST_IP }}/tcp/9100/p2p/${{ secrets.MCP_PEER_ID }}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Build Docker Image
+      run: |
+        docker build -t myapp:test .
+    
+    - name: Run Tests with Bridge Network (P2P Cache Enabled)
+      run: |
+        # Use bridge network with host IP for bootstrap peers
+        docker run --rm \
+          -p 9000:9000 \
+          -e CACHE_ENABLE_P2P=true \
+          -e CACHE_LISTEN_PORT=9000 \
+          -e CACHE_BOOTSTRAP_PEERS="${{ steps.bootstrap.outputs.BOOTSTRAP_PEERS }}" \
+          -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+          myapp:test \
+          python -m pytest tests/ -v
+
+  # Option 3: Without P2P (Fallback)
+  test-without-p2p:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker Image
+      run: |
+        docker build -t myapp:test .
+    
+    - name: Run Tests Without P2P Cache
+      run: |
+        # Run without P2P cache (local cache only)
+        docker run --rm \
+          -e CACHE_ENABLE_P2P=false \
+          myapp:test \
+          python -m pytest tests/ -v
+
+  # Option 4: Docker Compose (Multiple Services)
+  test-with-docker-compose:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install P2P Dependencies
+      run: |
+        pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+    
+    - name: Start MCP Server
+      run: |
+        # Start MCP server in background
+        docker-compose -f docker-compose.ci.yml up -d mcp-server
+        
+        # Wait for MCP server to be ready
+        timeout 30 bash -c 'until docker-compose -f docker-compose.ci.yml exec -T mcp-server nc -z localhost 9100; do sleep 1; done'
+    
+    - name: Get MCP Peer ID
+      id: peer_id
+      run: |
+        # Get peer ID from MCP server logs
+        PEER_ID=$(docker-compose -f docker-compose.ci.yml logs mcp-server | grep -oP 'Peer ID: \K[A-Za-z0-9]+' | head -1)
+        echo "PEER_ID=${PEER_ID}" >> $GITHUB_OUTPUT
+        echo "MCP Peer ID: ${PEER_ID}"
+    
+    - name: Run Tests with Docker Compose
+      run: |
+        # Set bootstrap peers using service DNS name
+        export CACHE_BOOTSTRAP_PEERS="/dns4/mcp-server/tcp/9100/p2p/${{ steps.peer_id.outputs.PEER_ID }}"
+        
+        # Run tests using docker-compose
+        docker-compose -f docker-compose.ci.yml run --rm \
+          -e CACHE_ENABLE_P2P=true \
+          -e CACHE_LISTEN_PORT=9000 \
+          -e CACHE_BOOTSTRAP_PEERS \
+          -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+          test-runner
+    
+    - name: Show Cache Statistics
+      run: |
+        docker-compose -f docker-compose.ci.yml run --rm test-runner \
+          python -c "
+from ipfs_accelerate_py.github_cli.cache import get_global_cache
+stats = get_global_cache().get_stats()
+print('=== P2P Cache Statistics ===')
+print(f'Hit rate: {stats[\"hit_rate\"]:.1%}')
+print(f'Total requests: {stats.get(\"total_requests\", 0)}')
+print(f'Cache hits: {stats.get(\"hits\", 0)}')
+print(f'Cache misses: {stats.get(\"misses\", 0)}')
+print(f'API calls saved: {stats.get(\"api_calls_saved\", 0)}')
+print(f'Connected peers: {len(stats.get(\"connected_peers\", []))}')
+"
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        docker-compose -f docker-compose.ci.yml down -v
+
+  # Validation Job - Runs diagnostic across all options
+  validate-cache:
+    runs-on: ubuntu-latest
+    needs: [test-with-host-network, test-with-bridge-network, test-without-p2p]
+    if: always()
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Dependencies
+      run: |
+        pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+    
+    - name: Run Full Diagnostic
+      run: |
+        echo "🔍 Running full cache connectivity diagnostic..."
+        python test_docker_runner_cache_connectivity.py
+    
+    - name: Generate Report
+      run: |
+        echo "=== Cache Configuration Report ===" > cache-report.txt
+        echo "" >> cache-report.txt
+        echo "Environment Variables:" >> cache-report.txt
+        echo "  CACHE_ENABLE_P2P: ${CACHE_ENABLE_P2P}" >> cache-report.txt
+        echo "  CACHE_LISTEN_PORT: ${CACHE_LISTEN_PORT}" >> cache-report.txt
+        echo "  CACHE_BOOTSTRAP_PEERS: ${CACHE_BOOTSTRAP_PEERS:-Not configured}" >> cache-report.txt
+        echo "" >> cache-report.txt
+        echo "Workflow Jobs:" >> cache-report.txt
+        echo "  ✅ test-with-host-network: ${{ needs.test-with-host-network.result }}" >> cache-report.txt
+        echo "  ✅ test-with-bridge-network: ${{ needs.test-with-bridge-network.result }}" >> cache-report.txt
+        echo "  ✅ test-without-p2p: ${{ needs.test-without-p2p.result }}" >> cache-report.txt
+        
+        cat cache-report.txt
+    
+    - name: Upload Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: cache-connectivity-report
+        path: cache-report.txt
