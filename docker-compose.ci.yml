@@ -1,0 +1,69 @@
+version: '3.8'
+
+# Docker Compose configuration for CI/CD with P2P cache
+# This file demonstrates how to set up services for cache connectivity testing
+
+services:
+  # MCP Server - Manages P2P cache
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: testing
+    command: python ipfs_mcp/mcp_server.py
+    ports:
+      - "9100:9100"
+    environment:
+      CACHE_ENABLE_P2P: "true"
+      CACHE_LISTEN_PORT: "9100"
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    networks:
+      - cache-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9100"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Test Runner - Executes tests with P2P cache enabled
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: testing
+    environment:
+      CACHE_ENABLE_P2P: "true"
+      CACHE_LISTEN_PORT: "9000"
+      # Use DNS name of MCP server
+      CACHE_BOOTSTRAP_PEERS: "/dns4/mcp-server/tcp/9100/p2p/${MCP_PEER_ID:-}"
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+    networks:
+      - cache-network
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    # Override default command - can be specified in workflow
+    command: python -c "print('Test runner ready')"
+
+  # Alternative: Runner with host network (for local development)
+  test-runner-host:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: testing
+    network_mode: host
+    environment:
+      CACHE_ENABLE_P2P: "true"
+      CACHE_LISTEN_PORT: "9001"
+      CACHE_BOOTSTRAP_PEERS: "/ip4/127.0.0.1/tcp/9100/p2p/${MCP_PEER_ID:-}"
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    command: python -c "print('Test runner (host network) ready')"
+
+networks:
+  cache-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
