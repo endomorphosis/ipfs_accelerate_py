@@ -15,7 +15,6 @@ if errorlevel 1 (
     echo Please install Python 3.8+ from python.org
     echo Make sure to check "Add Python to PATH" during installation
     echo.
-    pause
     exit /b 1
 )
 
@@ -29,7 +28,6 @@ if not exist "venv\" (
     python -m venv venv
     if errorlevel 1 (
         echo [ERROR] Failed to create virtual environment
-        pause
         exit /b 1
     )
     echo [OK] Virtual environment created
@@ -51,21 +49,25 @@ echo.
 REM Check if dependencies are installed
 echo [INFO] Checking dependencies...
 python -c "import cryptography" >nul 2>&1
+if errorlevel 1 goto :install_deps
+goto :deps_done
+
+:install_deps
+echo [WARN] Dependencies not installed, installing now...
+echo.
+python -m pip install --upgrade pip
+pip install cryptography py-multiformats-cid
+
+REM Try to install libp2p (may fail on Windows)
+echo [INFO] Attempting to install libp2p (may not work on Windows)...
+pip install "libp2p^>=0.4.0" "pymultihash^>=0.8.2" 2>nul
 if errorlevel 1 (
-    echo [WARN] Dependencies not installed, installing now...
-    echo.
-    python -m pip install --upgrade pip
-    pip install cryptography py-multiformats-cid
-    
-    REM Try to install libp2p (may fail on Windows)
-    echo [INFO] Attempting to install libp2p (may not work on Windows)...
-    pip install libp2p>=0.4.0 pymultihash>=0.8.2 2>nul
-    if errorlevel 1 (
-        echo [WARN] libp2p installation failed (expected on Windows)
-        echo [INFO] Will continue without P2P support
-    )
-    echo.
+    echo [WARN] libp2p installation failed (expected on Windows)
+    echo [INFO] Will continue without P2P support
 )
+echo.
+
+:deps_done
 
 echo [OK] Dependencies checked
 echo.
@@ -74,6 +76,9 @@ REM Run the cross-platform test
 echo [INFO] Running cross-platform test...
 echo ============================================
 echo.
+
+REM Avoid heavy core imports that can pull optional IPFS dependencies
+set IPFS_ACCEL_SKIP_CORE=1
 
 python test_cross_platform_cache.py
 
@@ -105,4 +110,3 @@ if errorlevel 1 (
 )
 
 echo.
-pause

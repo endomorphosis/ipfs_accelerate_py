@@ -17,7 +17,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Enable P2P
 os.environ['CACHE_ENABLE_P2P'] = 'true'
-os.environ['P2P_LISTEN_PORT'] = '9000'
+# Use the cache module's expected env var
+os.environ['CACHE_LISTEN_PORT'] = os.environ.get('CACHE_LISTEN_PORT', '9000')
+# Backward-compatible alias (some scripts still reference this)
+os.environ['P2P_LISTEN_PORT'] = os.environ.get('P2P_LISTEN_PORT', os.environ['CACHE_LISTEN_PORT'])
 
 from ipfs_accelerate_py.github_cli.cache import get_global_cache
 

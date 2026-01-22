@@ -188,8 +188,9 @@ class TestP2PCachePropagation:
             )
             
             # Mock decryption
+            cache_key = cache._make_cache_key("list_repos", owner="testowner", limit=5)
             test_message = {
-                "key": "list_repos:owner=testowner:limit=5",
+                "key": cache_key,
                 "entry": {
                     "data": [{"name": "repo1"}],
                     "timestamp": time.time(),
