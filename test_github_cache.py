@@ -6,7 +6,18 @@ This script demonstrates the cache improvements for GitHub CLI wrapper.
 """
 
 import time
-from ipfs_accelerate_py.github_cli import GitHubCLI, configure_cache
+import sys
+from pathlib import Path
+
+# Ensure the repo root's parent is on sys.path so `ipfs_accelerate_py` resolves
+# to the repo-root package (and not the top-level `ipfs_accelerate_py.py` file).
+repo_root = Path(__file__).resolve().parent
+sys.path.insert(0, str(repo_root.parent))
+
+from ipfs_accelerate_py.ipfs_accelerate_py.github_cli import (  # type: ignore
+    GitHubCLI,
+    configure_cache,
+)
 
 
 def test_cache_performance():
@@ -97,14 +108,15 @@ def test_cache_performance():
 
 def test_cache_with_workflows():
     """Test caching with workflow operations."""
-    from ipfs_accelerate_py.github_cli import WorkflowQueue
+    from ipfs_accelerate_py.ipfs_accelerate_py.github_cli import WorkflowQueue
     
     print("\n" + "=" * 60)
     print("Workflow Queue Cache Test")
     print("=" * 60)
     
     # Get global cache for statistics
-    from ipfs_accelerate_py.github_cli import get_global_cache
+    from ipfs_accelerate_py.ipfs_accelerate_py.github_cli import get_global_cache
+
     cache = get_global_cache()
     
     # Initialize workflow queue

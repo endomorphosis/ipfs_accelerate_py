@@ -17,10 +17,16 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from typing import Dict, Any
 
-# Add to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Ensure the repo root's parent is on sys.path so `ipfs_accelerate_py` resolves
+# to the repo-root package (and not the top-level `ipfs_accelerate_py.py` file).
+repo_root = Path(__file__).resolve().parent
+sys.path.insert(0, str(repo_root.parent))
 
-from ipfs_accelerate_py.github_cli import GitHubCLI, get_global_cache, configure_cache
+from ipfs_accelerate_py.ipfs_accelerate_py.github_cli import (  # type: ignore
+    GitHubCLI,
+    get_global_cache,
+    configure_cache,
+)
 
 
 class TestGitHubActionsP2PCache:
@@ -460,6 +466,11 @@ def main():
     """Main test runner."""
     test_suite = TestGitHubActionsP2PCache()
     return test_suite.run_all_tests()
+
+
+def test_github_actions_p2p_cache_suite():
+    """Pytest entrypoint for the script-style integration suite."""
+    assert main() == 0
 
 
 if __name__ == "__main__":

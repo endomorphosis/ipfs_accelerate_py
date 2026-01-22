@@ -9,6 +9,7 @@ import os
 import sys
 import logging
 from pathlib import Path
+import importlib.util
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
@@ -16,7 +17,37 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # Add the project root to the Python path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PKG_DIR = REPO_ROOT / "ipfs_accelerate_py"
+sys.path.insert(0, str(REPO_ROOT))
+
+
+def _force_real_ipfs_accelerate_package() -> None:
+    """Force-load the real package directory as `ipfs_accelerate_py`.
+
+    The repo contains repo-local `ipfs_accelerate_py.py` files (both at the
+    repo root and within `test/`) that can shadow the actual
+    `ipfs_accelerate_py/` package directory during imports.
+    """
+
+    init_py = PKG_DIR / "__init__.py"
+    if not init_py.exists():
+        return
+
+    spec = importlib.util.spec_from_file_location(
+        "ipfs_accelerate_py",
+        init_py,
+        submodule_search_locations=[str(PKG_DIR)],
+    )
+    if spec is None or spec.loader is None:
+        return
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["ipfs_accelerate_py"] = module
+    spec.loader.exec_module(module)
+
+
+_force_real_ipfs_accelerate_package()
 
 # Import fixtures
 from test.common.fixtures import *
