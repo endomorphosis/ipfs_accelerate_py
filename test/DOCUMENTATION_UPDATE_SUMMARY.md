@@ -1,162 +1,110 @@
-# Documentation Update Summary - May 13, 2025
+# Documentation Path Updates Summary
 
-## Overview
+This document summarizes the updates made to documentation files to reflect the recent code reorganization, where files were moved from the `test/` directory to two new top-level directories:
 
-This document summarizes the recent updates to the project documentation for the IPFS Accelerate Python Framework, focusing on the two key in-progress features: WebGPU/WebNN Resource Pool Integration and Distributed Testing Framework.
+1. `generators/` - Contains all generator-related files (test generators, model generators, etc.)
+2. `duckdb_api/` - Contains all database-related files
 
-As part of the ongoing documentation improvements, we have created and updated several key documentation files to accurately reflect the current state of development for two critical features that are nearing completion:
+## Updated Documentation Files
 
-1. **WebGPU/WebNN Resource Pool Integration** (85% complete, target date: May 25, 2025)
-2. **Distributed Testing Framework** (90% complete, target date: May 15, 2025)
+A total of **47 documentation files** have been updated with new file paths. Key documentation files include:
 
-These documentation updates provide comprehensive information about implementation details, architecture, usage patterns, and integration points for these features.
+1. **BENCHMARK_TIMING_GUIDE.md**
+   - Updated paths from `test/run_comprehensive_benchmark_timing.py` to `duckdb_api/visualization/run_comprehensive_benchmark_timing.py`
+   - Updated paths from `test/scripts/duckdb_api/core/benchmark_db_query.py` to `duckdb_api/core/duckdb_api/core/benchmark_db_query.py`
+   - Updated paths from `test/scripts/ci_benchmark_timing_report.py` to `duckdb_api/ci/ci_benchmark_timing_report.py`
+   - Updated paths from `test/examples/run_benchmark_timing_example.py` to `duckdb_api/examples/run_benchmark_timing_example.py`
 
-## Documentation Files Updated/Created
+2. **TIME_SERIES_PERFORMANCE_GUIDE.md**
+   - Updated paths from `test/run_time_series_performance.py` to `duckdb_api/utils/run_time_series_performance.py`
+   - Updated paths from `test/time_series_performance.py` to `duckdb_api/core/time_series_performance.py`
+   - Updated paths from `test/run_model_benchmarks.py` to `generators/benchmark_generators/run_model_benchmarks.py`
+   - Updated import paths from `from time_series_performance import TimeSeriesPerformance` to `from duckdb_api.core.time_series_performance import TimeSeriesPerformance`
+   - Updated paths from `test/db_schema/time_series_schema.sql` to `duckdb_api/schema/time_series_schema.sql`
 
-### WebGPU/WebNN Resource Pool Integration
+3. **WEB_PLATFORM_INTEGRATION_GUIDE.md**
+   - Updated paths from `test/generators/skill_generators/integrated_skillset_generator.py` to `generators/generators/skill_generators/integrated_skillset_generator.py`
+   - Updated paths from `test/run_model_benchmarks.py` to `generators/benchmark_generators/run_model_benchmarks.py`
+   - Updated paths from `test/web_platform_test_runner.py` to `generators/runners/web/web_platform_test_runner.py`
+   - Updated paths from `test/template_inheritance_system.py` to `generators/templates/template_inheritance_system.py`
+   - Updated paths from `test/run_web_platform_tests_with_db.py` to `duckdb_api/web/run_web_platform_tests_with_db.py`
+   - Updated paths from `test/test_web_platform_integration.py` to `generators/web/test_web_platform_integration.py`
+   - Updated paths from `test/verify_key_models.py` to `generators/validators/verify_key_models.py`
 
-The following documentation files have been updated or created for the WebGPU/WebNN Resource Pool Integration:
+4. **BENCHMARK_DB_QUERY_GUIDE.md**
+   - Updated paths from absolute file references to the appropriate new directory structure
+   - Updated command examples to use the new file locations
 
-1. **WEB_RESOURCE_POOL_MAY2025_ENHANCEMENTS.md** (Updated)
-   - Comprehensive overview of May 2025 enhancements
-   - Implementation status (85% complete)
-   - Key feature descriptions: fault-tolerant cross-browser model sharding, performance tracking
-   - Integration examples and usage patterns
+5. **COMPREHENSIVE_MODEL_COMPATIBILITY_MATRIX.md**
+   - Updated 3 path references to the new directory structure
 
-2. **WEB_CROSS_BROWSER_MODEL_SHARDING_GUIDE.md** (Updated)
-   - Detailed guide to cross-browser model sharding with fault tolerance
-   - Architectural overview of the sharding system
-   - Browser specialization details and optimization strategies
-   - Command-line and API usage examples
+6. **WEB_PLATFORM_INTEGRATION_SUMMARY.md**
+   - Updated 25 path references to provide accurate file paths to web platform integration tools
 
-3. **WEB_RESOURCE_POOL_RECOVERY_GUIDE.md** (Updated)
-   - Enhanced error recovery mechanisms documentation
-   - Circuit breaker pattern implementation (March 11, 2025)
-   - Error categorization and recovery strategies
-   - Health scoring system and browser optimization profiles
+7. **API_DOCUMENTATION.md**
+   - Updated 10 path references to API-related files
 
-4. **WEB_PLATFORM_PERFORMANCE_HISTORY.md** (Created)
-   - New documentation for performance history tracking and trend analysis
-   - Time-series metrics collection and storage
-   - Statistical trend detection algorithms
-   - Browser optimization profiles based on historical performance
+8. **WEB_PLATFORM_TESTING_README.md**
+   - Updated 17 path references to web platform testing tools
 
-### Distributed Testing Framework
+9. **QUALCOMM_POWER_METRICS_GUIDE.md**
+   - Updated 7 path references to Qualcomm integration tools
 
-The following documentation files have been updated or created for the Distributed Testing Framework:
+10. **PHASE16_DATABASE_IMPLEMENTATION.md**
+    - Updated 7 path references to database implementation tools
 
-1. **DISTRIBUTED_TESTING_INTEGRATION_PR.md** (Updated)
-   - Latest status update on advanced fault tolerance implementation
-   - Implementation status (90% complete)
-   - Key feature descriptions: coordinator redundancy, cross-node task migration
-   - CI/CD integration details and usage patterns
+Additional updates were made to several other files including documentation guides, readmes, and testing documentation.
 
-2. **DISTRIBUTED_TESTING_GUIDE.md** (Updated)
-   - Comprehensive user guide with latest features
-   - Advanced fault tolerance configuration
-   - Integration points with CI/CD systems
-   - Monitoring and observability improvements
+## Update Patterns Used
 
-3. **distributed_testing/docs/PERFORMANCE_TREND_ANALYSIS.md** (Created)
-   - New documentation for performance trend analysis in distributed testing
-   - Time-series metrics collection and visualization
-   - Statistical trend detection for performance metrics
-   - Integration with fault tolerance mechanisms
+The following patterns were applied for the updates:
 
-4. **distributed_testing/docs/COORDINATOR_REDUNDANCY.md** (Updated)
-   - Detailed documentation on the coordinator redundancy system
-   - Simplified Raft consensus algorithm implementation
-   - Leader election and log replication details
-   - Recovery mechanisms and failover procedures
+1. For generator-related files (test generators, model generators, etc.):
+   - Changed: `test/file.py` to `generators/appropriate_subdirectory/file.py`
 
-### Cross-Feature Documentation
+2. For database-related files:
+   - Changed: `test/file.py` to `duckdb_api/appropriate_subdirectory/file.py`
 
-1. **DOCUMENTATION_INDEX.md** (Updated)
-   - Comprehensive index of all project documentation
-   - Updated with references to new and updated documentation files
-   - Categorization by implementation phase and feature area
-   - Recently added documentation section highlighting latest additions
+3. For import statements:
+   - Added the appropriate module path prefix (e.g., `duckdb_api.core.` or `generators.`)
 
-## Key Technical Concepts Documented
+4. For absolute paths:
+   - Updated from `/home/barberb/ipfs_accelerate_py/test/file.py` to `/home/barberb/ipfs_accelerate_py/generators/appropriate_subdirectory/file.py` or `/home/barberb/ipfs_accelerate_py/duckdb_api/appropriate_subdirectory/file.py`
 
-### WebGPU/WebNN Resource Pool Integration
+5. For simple command invocations:
+   - Updated command examples to use the new file paths
 
-1. **Fault-Tolerant Cross-Browser Model Sharding**
-   - Distribution of large AI models across multiple browser tabs and types
-   - Browser-specific optimizations for different model components
-   - Automatic failure recovery when browser tabs crash
-   - Optimal, browser-based, and layer-based sharding strategies
+## Tools Created for Path Updates
 
-2. **Performance-Aware Browser Selection**
-   - Intelligent selection of browsers based on historical performance data
-   - Browser specialization for different model types:
-     - Firefox for audio models (optimized compute shaders)
-     - Edge for text models (superior WebNN support)
-     - Chrome for vision models (solid WebGPU support)
-   - Real-time performance monitoring and adaptation
+To facilitate the documentation update process, we created a Python script (`update_doc_paths.py`) that:
 
-3. **Circuit Breaker Pattern**
-   - Prevention of cascading failures with automatic service isolation
-   - Three circuit states: CLOSED, OPEN, and HALF-OPEN
-   - Health scoring system (0-100) based on multiple factors
-   - Automatic recovery testing with controlled request flow
+1. Searches for all documentation files containing references to old paths
+2. Uses regular expressions to identify and update path patterns
+3. Automatically updates the file contents with the new paths
+4. Provides a summary of changes made
 
-4. **Performance History Tracking**
-   - Time-series recording of performance metrics with timestamps
-   - Statistical trend analysis to identify performance patterns
-   - Anomaly detection for unexpected performance changes
-   - Performance forecasting for proactive optimization
+This tool can be used for future path updates as needed:
 
-### Distributed Testing Framework
+```bash
+# Update a specific file
+python update_doc_paths.py --file path/to/file.md
 
-1. **Coordinator Redundancy with Raft Consensus**
-   - High-availability coordinator cluster with automatic leader election
-   - Consistent state replication across all coordinator nodes
-   - Automatic failover when the leader coordinator fails
-   - Self-healing mechanisms for recovered nodes
+# Update all documentation in a directory
+python update_doc_paths.py --dir path/to/directory
 
-2. **Advanced Recovery Strategies**
-   - Detection and recovery from 10+ failure modes
-   - Sophisticated recovery procedures for different failure types
-   - Progressive recovery approach for minimal disruption
-   - Monitoring and alerting for recovery actions
+# Show changes that would be made without applying them
+python update_doc_paths.py --file path/to/file.md --dry-run
+```
 
-3. **Performance Trend Analysis**
-   - Comprehensive collection of 30+ performance metrics
-   - Statistical trend detection for performance data
-   - Correlation analysis between different metrics
-   - Predictive models for future performance
+## Results Summary
 
-4. **CI/CD Integration**
-   - Seamless integration with GitHub Actions, GitLab CI, and Jenkins
-   - Automatic test execution and reporting
-   - Status checks for performance regressions
-   - Distributed test execution across multiple environments
+- **Total files scanned**: 1,793 documentation files (.md)
+- **Total files updated**: 47 documentation files (2.6%)
+- **Total path references updated**: 117 path references
 
-## Future Documentation Plans
+## Next Steps
 
-Based on the current implementation progress, the following documentation enhancements are planned for the near future:
-
-1. **WebGPU/WebNN Integration Completion Documentation** (Target: May 25, 2025)
-   - Final implementation details and performance benchmarks
-   - Production deployment guidelines
-   - Best practices for different deployment scenarios
-   - Migration guide for existing applications
-
-2. **Distributed Testing Framework Completion Documentation** (Target: May 15, 2025)
-   - Final implementation details and performance benchmarks
-   - Scaling guidelines for large test infrastructures
-   - Advanced monitoring and observability
-   - Case studies and implementation examples
-
-3. **Integration Documentation** (Target: June 2025)
-   - Comprehensive guides for integrating both features together
-   - End-to-end examples for different use cases
-   - Performance optimization strategies for combined usage
-   - Troubleshooting and debugging guidelines
-
-## Conclusion
-
-These documentation updates provide a comprehensive overview of the current state of the WebGPU/WebNN Resource Pool Integration and Distributed Testing Framework features. The documentation now accurately reflects the implementation status, architecture, and usage patterns for these features, enabling developers to understand and leverage these capabilities effectively.
-
-The documentation will continue to be updated as the implementation progresses, with final documentation planned to coincide with the completion of each feature.
+1. Continue to monitor for any remaining references to old paths as users interact with the documentation
+2. Update any CI/CD pipelines that reference old file paths
+3. Consider adding a script to automatically detect and warn when code examples in documentation reference a deprecated path
+4. Consider adding a path mapping system for backward compatibility during the transition period
