@@ -195,9 +195,11 @@ class IntegratedAnalysisSystem:
         # Initialize service
         if not DUCKDB_AVAILABLE:
             raise ImportError("DuckDB is required for the IntegratedAnalysisSystem")
-        
+
+        # Default to an in-memory DuckDB database if none was provided.
+        # This keeps the system usable for unit tests and lightweight usage.
         if connection is None and db_path is None:
-            raise ValueError("Either db_path or connection must be provided")
+            db_path = ":memory:"
         
         self.service = ResultAggregatorService(
             db_path=db_path,

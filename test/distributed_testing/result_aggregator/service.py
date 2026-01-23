@@ -521,19 +521,18 @@ class ResultAggregatorService:
             return {}
         
         try:
-            # Start building the query
-            base_query = """
-            SELECT {select_clause}
+            base_from = """
             FROM test_results t
             JOIN performance_metrics m ON t.id = m.result_id
             """
-            
-            params = []
-            
+
+            params: List[Any] = []
+            where_clause = ""
+
             # Apply filters
             if filter_criteria:
-                conditions = []
-                
+                conditions: List[str] = []
+
                 for key, value in filter_criteria.items():
                     if key == "test_type":
                         conditions.append("t.test_type = ?")
@@ -556,9 +555,9 @@ class ResultAggregatorService:
                     elif key == "metric_name":
                         conditions.append("m.metric_name = ?")
                         params.append(value)
-                
+
                 if conditions:
-                    base_query += " WHERE " + " AND ".join(conditions)
+                    where_clause = " WHERE " + " AND ".join(conditions)
             
             # Determine aggregation function
             if aggregation_type == "mean":
@@ -598,10 +597,28 @@ class ResultAggregatorService:
                     elif field == "metric_name":
                         select_parts.append("m.metric_name")
             
+            query_params: List[Any] = list(params)
+
+            # If grouping and no explicit metrics were provided, pivot all observed metrics.
+            pivot_metrics = False
+            if group_by and not metrics:
+                pivot_metrics = True
+                metric_rows = self.db.execute(
+                    "SELECT DISTINCT m.metric_name " + base_from + where_clause,
+                    params,
+                ).fetchall()
+                metrics = [row[0] for row in metric_rows if row and row[0]]
+
             # Add metrics
             if metrics:
                 for metric in metrics:
-                    select_parts.append(f"{agg_func}(CASE WHEN m.metric_name = '{metric}' THEN m.metric_value ELSE NULL END) AS {metric}")
+                    # Parameterize the metric name to keep the query safe.
+                    alias = str(metric)
+                    safe_alias = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in alias)
+                    select_parts.append(
+                        f"{agg_func}(CASE WHEN m.metric_name = ? THEN m.metric_value ELSE NULL END) AS {safe_alias}"
+                    )
+                    query_params.append(metric)
             else:
                 select_parts.append("m.metric_name")
                 select_parts.append(f"{agg_func}(m.metric_value) AS value")
@@ -634,16 +651,27 @@ class ResultAggregatorService:
             elif not metrics:
                 # If no specific metrics requested, group by metric_name
                 group_by_clause = " GROUP BY m.metric_name"
-            
+
             # Complete query
-            query = base_query.format(select_clause=select_clause) + group_by_clause
-            
+            query = "SELECT {select_clause} ".format(select_clause=select_clause) + base_from + where_clause + group_by_clause
+
             # Execute query
-            rows = self.db.execute(query, params).fetchall()
+            rows = self.db.execute(query, query_params).fetchall()
             
             # Process results
             if not group_by:
                 # Simple aggregation
+                if metrics:
+                    if not rows:
+                        return {}
+                    row = rows[0]
+                    results: Dict[str, Any] = {}
+                    for idx, metric in enumerate(metrics):
+                        alias = str(metric)
+                        safe_alias = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in alias)
+                        results[safe_alias] = row[idx]
+                    return results
+
                 results = {}
                 for row in rows:
                     metric_name = row[0]
@@ -657,11 +685,13 @@ class ResultAggregatorService:
                     result = {}
                     for i, field in enumerate(group_by):
                         result[field] = row[i]
-                    
+
                     if metrics:
-                        # Add specific metrics
+                        # Add pivoted/specified metrics
                         for j, metric in enumerate(metrics):
-                            result[metric] = row[len(group_by) + j]
+                            alias = str(metric)
+                            safe_alias = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in alias)
+                            result[safe_alias] = row[len(group_by) + j]
                     else:
                         # Add generic value
                         result["metric_name"] = row[len(group_by)]

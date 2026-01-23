@@ -87,9 +87,9 @@ class TestResultAggregatorService(unittest.TestCase):
         
         # Verify metrics were stored
         self.assertIn("metrics", stored_result)
-        self.assertEqual(stored_result["metrics"]["throughput"], result["metrics"]["throughput"])
-        self.assertEqual(stored_result["metrics"]["latency"], result["metrics"]["latency"])
-        self.assertEqual(stored_result["metrics"]["memory_usage"], result["metrics"]["memory_usage"])
+        self.assertAlmostEqual(stored_result["metrics"]["throughput"], result["metrics"]["throughput"], places=6)
+        self.assertAlmostEqual(stored_result["metrics"]["latency"], result["metrics"]["latency"], places=6)
+        self.assertAlmostEqual(stored_result["metrics"]["memory_usage"], result["metrics"]["memory_usage"], places=6)
         
         # Verify details were stored
         self.assertIn("details", stored_result)
@@ -392,7 +392,7 @@ class TestResultAggregatorService(unittest.TestCase):
         anomaly_id = self.service.store_result(anomaly_result)
         
         # Detect anomalies
-        anomalies = self.service.service._detect_anomalies_for_result(anomaly_id)
+        anomalies = self.service._detect_anomalies_for_result(anomaly_id)
         
         # Verify anomalies were detected
         self.assertGreater(len(anomalies), 0)

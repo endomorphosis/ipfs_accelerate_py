@@ -112,10 +112,13 @@ class ResultAggregatorIntegration:
                 )
                 
                 # Register for periodic analysis
-                self.coordinator.plugin_manager.register_hook(
-                    HookType.PERIODIC,
-                    self._hook_periodic_analysis
-                )
+                if hasattr(HookType, "PERIODIC"):
+                    self.coordinator.plugin_manager.register_hook(
+                        HookType.PERIODIC,
+                        self._hook_periodic_analysis
+                    )
+                else:
+                    logger.info("HookType.PERIODIC not available; skipping periodic hook registration")
                 
                 logger.info("Registered with coordinator through plugin manager")
             else:
