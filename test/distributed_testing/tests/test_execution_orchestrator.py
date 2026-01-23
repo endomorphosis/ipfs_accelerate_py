@@ -12,6 +12,7 @@ import os
 import logging
 import anyio
 import time
+import concurrent.futures
 from unittest.mock import patch, MagicMock
 from typing import Dict, List, Set, Optional, Tuple, Any, Union
 
@@ -274,8 +275,20 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         test_id = self.orchestrator.execution_groups["group_0"].test_ids[0]
         self.orchestrator.execute_test(test_id, "worker1")
         
-        # Execute all tests with limited concurrency
-        with patch('concurrent.futures.ThreadPoolExecutor'):
+        # Execute all tests with limited concurrency.
+        # Use completed futures so concurrent.futures.as_completed() doesn't block.
+        with patch('concurrent.futures.ThreadPoolExecutor') as mock_executor:
+            mock_executor_instance = MagicMock()
+            mock_executor.return_value = mock_executor_instance
+            mock_executor_instance.__enter__.return_value = mock_executor_instance
+            mock_executor_instance.__exit__.return_value = None
+
+            def submit_completed(fn, *args, **kwargs):
+                fut = concurrent.futures.Future()
+                fut.set_result(fn(*args, **kwargs))
+                return fut
+
+            mock_executor_instance.submit.side_effect = submit_completed
             self.orchestrator.execute_all_tests()
         
         # Verify hooks were called
@@ -291,7 +304,15 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         # Setup mock executor
         mock_executor_instance = MagicMock()
         mock_executor.return_value = mock_executor_instance
-        mock_executor_instance.submit.side_effect = lambda fn, *args, **kwargs: MagicMock()
+        mock_executor_instance.__enter__.return_value = mock_executor_instance
+        mock_executor_instance.__exit__.return_value = None
+
+        def submit_completed(fn, *args, **kwargs):
+            fut = concurrent.futures.Future()
+            fut.set_result(fn(*args, **kwargs))
+            return fut
+
+        mock_executor_instance.submit.side_effect = submit_completed
         
         # Patch update_group_status to mark all groups as completed after first call
         original_update_group_status = self.orchestrator.update_group_status
