@@ -574,26 +574,29 @@ class TestCoordinatorRedundancy(unittest.TestCase):
     
     def test_persistent_state(self):
         """Test persistent state save and load."""
-        # Set some state
-        self.redundancy_manager.current_term = 5
-        self.redundancy_manager.voted_for = "node-2"
-        self.redundancy_manager.log_entries = [{"term": 1, "command": "test"}]
-        
-        # Save state
-        self.redundancy_manager._save_persistent_state()
-        
-        # Reset state
-        self.redundancy_manager.current_term = 0
-        self.redundancy_manager.voted_for = None
-        self.redundancy_manager.log_entries = []
-        
-        # Load state
-        self.redundancy_manager._load_persistent_state()
-        
-        # Check state was restored
-        self.assertEqual(self.redundancy_manager.current_term, 5)
-        self.assertEqual(self.redundancy_manager.voted_for, "node-2")
-        self.assertEqual(len(self.redundancy_manager.log_entries), 1)
+        async def run_test():
+            # Set some state
+            self.redundancy_manager.current_term = 5
+            self.redundancy_manager.voted_for = "node-2"
+            self.redundancy_manager.log_entries = [{"term": 1, "command": "test"}]
+
+            # Save state
+            await self.redundancy_manager._save_persistent_state()
+
+            # Reset state
+            self.redundancy_manager.current_term = 0
+            self.redundancy_manager.voted_for = None
+            self.redundancy_manager.log_entries = []
+
+            # Load state
+            await self.redundancy_manager._load_persistent_state()
+
+            # Check state was restored
+            self.assertEqual(self.redundancy_manager.current_term, 5)
+            self.assertEqual(self.redundancy_manager.voted_for, "node-2")
+            self.assertEqual(len(self.redundancy_manager.log_entries), 1)
+
+        anyio.run(run_test)
         self.assertEqual(self.redundancy_manager.log_entries[0]["term"], 1)
 
 if __name__ == "__main__":

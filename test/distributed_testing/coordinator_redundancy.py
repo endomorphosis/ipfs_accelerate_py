@@ -83,7 +83,7 @@ class RedundancyManager:
     
     def __init__(
         self,
-        coordinator_or_node_id,
+        coordinator_or_node_id=None,
         cluster_nodes: List[str] | str | None = None,
         node_id: str | int | None = None,
         db_path: Optional[str] | List[Dict[str, Any]] = None,
@@ -478,14 +478,6 @@ class RedundancyManager:
             self.running = False
             with _LEGACY_CLUSTER_LOCK:
                 _LEGACY_CLUSTER_REGISTRY.pop(self.node_id, None)
-
-                if _LEGACY_CLUSTER_REGISTRY:
-                    leader_id = sorted(_LEGACY_CLUSTER_REGISTRY.keys())[0]
-                    term = max((m.current_term for m in _LEGACY_CLUSTER_REGISTRY.values()), default=0) or 1
-                    for node_key, manager in _LEGACY_CLUSTER_REGISTRY.items():
-                        manager.current_term = term
-                        manager.leader_id = leader_id
-                        manager.current_role = NodeRole.LEADER if node_key == leader_id else NodeRole.FOLLOWER
             return
 
         self.running = False
@@ -641,7 +633,7 @@ class RedundancyManager:
         self.last_heartbeat = time.time()
         
         # Save persistent state
-        await self._save_persistent_state()
+        self._save_persistent_state_sync()
         
         logger.info(f"Starting election for term {self.current_term}")
 
@@ -688,7 +680,7 @@ class RedundancyManager:
             self.voted_for = None
             
             # Save persistent state
-            await self._save_persistent_state()
+            self._save_persistent_state_sync()
         
         # Transition to follower state
         self.current_role = NodeRole.FOLLOWER
@@ -1185,10 +1177,11 @@ class RedundancyManager:
         if term > self.current_term:
             self.current_term = term
             self.voted_for = None
-            await self._become_follower(term, leader_id)
+            # RequestVote doesn't identify a leader; just step down.
+            await self._become_follower(term, None)
             
             # Save persistent state
-            await self._save_persistent_state()
+            self._save_persistent_state_sync()
         
         # Determine whether to grant vote
         vote_granted = False
@@ -1212,7 +1205,7 @@ class RedundancyManager:
                 self.last_heartbeat = time.time()
                 
                 # Save persistent state
-                await self._save_persistent_state()
+                self._save_persistent_state_sync()
                 
                 logger.info(f"Granted vote to {candidate_id} for term {term}")
         
@@ -1248,7 +1241,7 @@ class RedundancyManager:
             await self._become_follower(term)
             
             # Save persistent state
-            await self._save_persistent_state()
+            self._save_persistent_state_sync()
         
         # Reply false if term < currentTerm
         if term < self.current_term:
@@ -1278,7 +1271,7 @@ class RedundancyManager:
                 self.log_entries = self.log_entries[:prev_log_index - 1]
                 
                 # Save persistent state
-                await self._save_persistent_state()
+                self._save_persistent_state_sync()
                 
                 return {
                     'term': self.current_term,
@@ -1304,7 +1297,7 @@ class RedundancyManager:
             self.log_entries.extend(entries[append_start_idx:])
             
             # Save persistent state
-            await self._save_persistent_state()
+            self._save_persistent_state_sync()
             
             logger.debug(f"Appended {len(entries[append_start_idx:])} entries to log")
         
@@ -1339,7 +1332,7 @@ class RedundancyManager:
             await self._become_follower(term)
             
             # Save persistent state
-            await self._save_persistent_state()
+            self._save_persistent_state_sync()
         
         # Ignore if term < currentTerm
         if term < self.current_term:
@@ -1437,7 +1430,7 @@ class RedundancyManager:
         self.log_entries.append(log_entry)
         
         # Save persistent state
-        await self._save_persistent_state()
+        self._save_persistent_state_sync()
         
         logger.debug(f"Appended log entry: {command.get('type')}")
         
