@@ -22,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger('test_p2p_networking')
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 def test_p2p_initialization():
     """Test 1: P2P cache can initialize with networking enabled"""
@@ -34,7 +34,7 @@ def test_p2p_initialization():
         # Set environment to enable P2P
         os.environ['CACHE_ENABLE_P2P'] = 'true'
         
-        from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+        from ipfs_accelerate_py.ipfs_accelerate_py.github_cli.cache import GitHubAPICache
         
         logger.info("Creating cache with P2P enabled...")
         cache = GitHubAPICache(enable_p2p=True)
@@ -69,7 +69,7 @@ def test_encryption_with_p2p():
     try:
         os.environ['CACHE_ENABLE_P2P'] = 'true'
         
-        from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+        from ipfs_accelerate_py.ipfs_accelerate_py.github_cli.cache import GitHubAPICache
         
         cache = GitHubAPICache(enable_p2p=True)
         
@@ -123,7 +123,7 @@ def test_cache_broadcast_mechanism():
     try:
         os.environ['CACHE_ENABLE_P2P'] = 'true'
         
-        from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+        from ipfs_accelerate_py.ipfs_accelerate_py.github_cli.cache import GitHubAPICache
         
         cache = GitHubAPICache(enable_p2p=True)
         
@@ -165,8 +165,8 @@ def test_github_cli_with_p2p():
     try:
         os.environ['CACHE_ENABLE_P2P'] = 'true'
         
-        from ipfs_accelerate_py.github_cli.wrapper import GitHubCLI
-        from ipfs_accelerate_py.github_cli.cache import get_global_cache
+        from ipfs_accelerate_py.ipfs_accelerate_py.github_cli.wrapper import GitHubCLI
+        from ipfs_accelerate_py.ipfs_accelerate_py.github_cli.cache import get_global_cache
         
         logger.info("Creating GitHubCLI with P2P enabled...")
         cli = GitHubCLI()
@@ -238,7 +238,7 @@ def test_p2p_stream_protocol():
     logger.info("="*70)
     
     try:
-        from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+        from ipfs_accelerate_py.ipfs_accelerate_py.github_cli.cache import GitHubAPICache
         
         cache = GitHubAPICache()
         

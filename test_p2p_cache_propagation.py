@@ -13,10 +13,10 @@ from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 
 # Add to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ipfs_accelerate_py.github_cli import configure_cache
-from ipfs_accelerate_py.github_cli.cache import CacheEntry
+from ipfs_accelerate_py.ipfs_accelerate_py.github_cli import configure_cache
+from ipfs_accelerate_py.ipfs_accelerate_py.github_cli.cache import CacheEntry
 
 
 class TestP2PCachePropagation:
@@ -482,6 +482,12 @@ def main():
     """Main test runner."""
     test_suite = TestP2PCachePropagation()
     return test_suite.run_all_tests()
+
+
+def test_p2p_cache_propagation_suite():
+    """Pytest wrapper to run the script-style suite."""
+    rc = main()
+    assert rc == 0
 
 
 if __name__ == "__main__":
