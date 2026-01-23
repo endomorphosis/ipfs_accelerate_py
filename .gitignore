@@ -1,6 +1,7 @@
 *.json
 *.duckdb
 .venv-wsl
+.venv-win311
 *benchmark_report_*
 *benchmark_status_*
 *comprehensive_benchmark_report*

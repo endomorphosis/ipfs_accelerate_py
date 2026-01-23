@@ -23,6 +23,8 @@ import os
 import random
 import socket
 import ipaddress
+import threading
+import time
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
 
@@ -103,6 +105,9 @@ class UniversalConnectivity:
         self._mdns_service_info = None
         self._mdns_service_name = os.environ.get("CACHE_MDNS_SERVICE", "universal-connectivity")
         self._mdns_service_type = os.environ.get("CACHE_MDNS_TYPE", "_ipfs-accelerate-cache._tcp.local.")
+        self._mdns_thread = None
+        self._mdns_stop = None
+        self._mdns_error = None
         self._dht = None
         self._dht_bootstrap_interval = int(os.environ.get("CACHE_DHT_BOOTSTRAP_INTERVAL", "300"))
         self._dht_bootstrap_task = None
@@ -175,53 +180,103 @@ class UniversalConnectivity:
             return
 
         try:
-            from multiaddr import Multiaddr
-
-            self._mdns_zeroconf = Zeroconf()
-
-            peer_id = host.get_id().pretty()
-            listen_port = None
-            try:
-                listen_addrs = list(getattr(host, "get_addrs", lambda: [])())
-                if listen_addrs:
-                    ma = Multiaddr(str(listen_addrs[0]))
-                    listen_port = ma.value_for_protocol("tcp") if ma else None
-            except Exception:
-                listen_port = None
-
-            if listen_port is None:
-                listen_port = int(os.environ.get("CACHE_LISTEN_PORT", "9100"))
-
-            advertised = os.environ.get("CACHE_ADVERTISE_IP")
-            if not advertised:
-                advertised = self._detect_local_ip()
-
-            multiaddr = f"/ip4/{advertised}/tcp/{listen_port}/p2p/{peer_id}"
-
-            props = {
-                b"peer_id": peer_id.encode("utf-8"),
-                b"multiaddr": multiaddr.encode("utf-8"),
-            }
-
-            service_name = f"{self._mdns_service_name}-{peer_id[:8]}.{self._mdns_service_type}"
-            self._mdns_service_info = ServiceInfo(
-                self._mdns_service_type,
-                service_name,
-                addresses=[socket.inet_aton(advertised)],
-                port=int(listen_port),
-                properties=props,
-                server=f"{self._mdns_service_name}.local.",
-            )
-            self._mdns_zeroconf.register_service(self._mdns_service_info)
+            if self._mdns_thread and self._mdns_thread.is_alive():
+                return
 
             loop = asyncio.get_running_loop()
-            listener = _MDNSListener(self, host, loop)
-            self._mdns_browser = ServiceBrowser(self._mdns_zeroconf, self._mdns_service_type, listener)
+            self._mdns_stop = threading.Event()
 
-            self.implemented["mdns"] = True
-            logger.info("✓ mDNS discovery enabled")
+            def _runner() -> None:
+                try:
+                    from multiaddr import Multiaddr
+
+                    self._mdns_zeroconf = Zeroconf()
+
+                    service_type = self._mdns_service_type
+                    try:
+                        type_label = service_type.split(".")[0].lstrip("_")
+                        if len(type_label.encode("utf-8")) > 15:
+                            service_type = "_ipfsaccel._tcp.local."
+                            self._mdns_service_type = service_type
+                    except Exception:
+                        service_type = "_ipfsaccel._tcp.local."
+                        self._mdns_service_type = service_type
+
+                    peer_id = host.get_id().pretty()
+                    listen_port = None
+                    try:
+                        listen_addrs = list(getattr(host, "get_addrs", lambda: [])())
+                        if listen_addrs:
+                            ma = Multiaddr(str(listen_addrs[0]))
+                            listen_port = ma.value_for_protocol("tcp") if ma else None
+                    except Exception:
+                        listen_port = None
+
+                    if listen_port is None:
+                        listen_port = int(os.environ.get("CACHE_LISTEN_PORT", "9100"))
+
+                    advertised = os.environ.get("CACHE_ADVERTISE_IP")
+                    if not advertised:
+                        advertised = self._detect_local_ip()
+
+                    try:
+                        ip = ipaddress.ip_address(advertised)
+                        if ip.version != 4:
+                            advertised = self._detect_local_ip()
+                    except Exception:
+                        advertised = self._detect_local_ip()
+                        try:
+                            ipaddress.ip_address(advertised)
+                        except Exception:
+                            advertised = "127.0.0.1"
+
+                    multiaddr = f"/ip4/{advertised}/tcp/{listen_port}/p2p/{peer_id}"
+
+                    props = {
+                        b"peer_id": peer_id.encode("utf-8"),
+                        b"multiaddr": multiaddr.encode("utf-8"),
+                    }
+
+                    instance_name = f"ipfsaccel-{peer_id[:8]}"[:15]
+                    service_name = f"{instance_name}.{self._mdns_service_type}"
+                    self._mdns_service_info = ServiceInfo(
+                        service_type,
+                        service_name,
+                        addresses=[socket.inet_aton(advertised)],
+                        port=int(listen_port),
+                        properties=props,
+                        server=f"{self._mdns_service_name}.local.",
+                    )
+                    self._mdns_zeroconf.register_service(self._mdns_service_info)
+
+                    listener = _MDNSListener(self, host, loop)
+                    self._mdns_browser = ServiceBrowser(self._mdns_zeroconf, service_type, listener)
+
+                    self.implemented["mdns"] = True
+                    logger.info("✓ mDNS discovery enabled (threaded)")
+
+                    while not self._mdns_stop.is_set():
+                        time.sleep(1)
+
+                except Exception as e:
+                    self._mdns_error = e
+                    self.implemented["mdns"] = False
+                    logger.warning(f"Failed to start mDNS discovery: {e!r}")
+                finally:
+                    try:
+                        if self._mdns_zeroconf and self._mdns_service_info:
+                            try:
+                                self._mdns_zeroconf.unregister_service(self._mdns_service_info)
+                            except Exception:
+                                pass
+                            self._mdns_zeroconf.close()
+                    except Exception:
+                        pass
+
+            self._mdns_thread = threading.Thread(target=_runner, daemon=True, name="mdns-zeroconf")
+            self._mdns_thread.start()
         except Exception as e:
-            logger.warning(f"Failed to start mDNS discovery: {e}")
+            logger.warning(f"Failed to start mDNS discovery: {e!r}")
     
     async def _mdns_discovery_loop(self, host) -> None:
         """Periodic mDNS discovery loop."""
@@ -600,6 +655,34 @@ class UniversalConnectivity:
         except Exception:
             return "127.0.0.1"
 
+    def get_connectivity_status(self) -> Dict:
+        """
+        Get current connectivity status.
+
+        Returns:
+            Dictionary with connectivity information
+        """
+        return {
+            "discovered_peers": len(self.discovered_peers),
+            "relay_peers": len(self.relay_peers),
+            "reachability": self.reachability_status,
+            "transports": {
+                "tcp": self.config.enable_tcp,
+                "quic": self.config.enable_quic,
+                "webrtc": self.config.enable_webrtc,
+            },
+            "discovery": {
+                "mdns": self.config.enable_mdns,
+                "dht": self.config.enable_dht,
+                "relay": self.config.enable_relay,
+            },
+            "nat_traversal": {
+                "autonat": self.config.enable_autonat,
+                "hole_punching": self.config.enable_hole_punching,
+            },
+            "implemented": dict(self.implemented),
+        }
+
 
 class _MDNSListener:
     """Zeroconf listener for mDNS peer discovery."""
@@ -655,34 +738,6 @@ class _MDNSListener:
 
     def update_service(self, zeroconf, service_type, name) -> None:
         return
-    
-    def get_connectivity_status(self) -> Dict:
-        """
-        Get current connectivity status.
-        
-        Returns:
-            Dictionary with connectivity information
-        """
-        return {
-            "discovered_peers": len(self.discovered_peers),
-            "relay_peers": len(self.relay_peers),
-            "reachability": self.reachability_status,
-            "transports": {
-                "tcp": self.config.enable_tcp,
-                "quic": self.config.enable_quic,
-                "webrtc": self.config.enable_webrtc
-            },
-            "discovery": {
-                "mdns": self.config.enable_mdns,
-                "dht": self.config.enable_dht,
-                "relay": self.config.enable_relay
-            },
-            "nat_traversal": {
-                "autonat": self.config.enable_autonat,
-                "hole_punching": self.config.enable_hole_punching
-            },
-            "implemented": dict(self.implemented),
-        }
 
 
 # Global instance
