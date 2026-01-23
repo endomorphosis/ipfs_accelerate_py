@@ -16,6 +16,7 @@ Usage:
 import anyio
 import json
 import logging
+import inspect
 import os
 import time
 from datetime import datetime, timedelta
@@ -534,7 +535,7 @@ class ResultAggregatorIntegration:
             # Call all registered callbacks
             for callback in self.notification_callbacks:
                 try:
-                    if inspect.iscoroutinefunction(  # Added import inspectcallback):
+                    if inspect.iscoroutinefunction(callback):
                         await callback(notification)
                     else:
                         callback(notification)
@@ -549,7 +550,7 @@ class ResultAggregatorIntegration:
                 
                 try:
                     # Check if the notify method is async
-                    if inspect.iscoroutinefunction(  # Added import inspectself.coordinator.notify):
+                    if inspect.iscoroutinefunction(self.coordinator.notify):
                         await self.coordinator.notify(severity, message, details)
                     else:
                         self.coordinator.notify(severity, message, details)

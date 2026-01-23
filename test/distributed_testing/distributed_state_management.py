@@ -431,6 +431,7 @@ class DistributedStateManager:
         self.session = None
         self.running = False
         self.tasks = set()
+        self._task_group = None
         
         # Load state from disk
         self._load_state_from_disk()
@@ -523,8 +524,11 @@ class DistributedStateManager:
         # Create aiohttp session
         self.session = aiohttp.ClientSession()
         
-        # Start sync loop
-        self.tasks.add(# TODO: Replace with task group - asyncio.create_task(self._sync_loop()))
+        # Start sync loop (anyio task group)
+        if self._task_group is None:
+            self._task_group = anyio.create_task_group()
+            await self._task_group.__aenter__()
+        self._task_group.start_soon(self._sync_loop)
         
         logger.info(f"DistributedStateManager started for node {self.node_id}")
     
@@ -535,10 +539,11 @@ class DistributedStateManager:
             
         self.running = False
         
-        # Cancel all tasks
-        for task in self.tasks:
-            task.cancel()
-            
+        # Cancel background tasks
+        if self._task_group is not None:
+            self._task_group.cancel_scope.cancel()
+            await self._task_group.__aexit__(None, None, None)
+            self._task_group = None
         self.tasks.clear()
         
         # Close session
@@ -568,7 +573,7 @@ class DistributedStateManager:
                         self.last_sync_time = time.time()
                         self.sync_in_progress = False
                 
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 break
             except Exception as e:
                 logger.error(f"Error in sync loop: {e}")

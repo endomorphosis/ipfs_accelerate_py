@@ -304,25 +304,14 @@ class TestDistributedTestingWorkerAsync:
             try:
                 await anyio.sleep(10)
                 return {"name": "test_custom_task", "success": True}
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 raise
         
         with patch.object(worker, '_execute_custom_task', side_effect=mock_execute_custom_task):
-            # Start task execution asynchronously
-            task_future = # TODO: Replace with task group - asyncio.create_task(worker._execute_task(task))
-            
-            # Wait a bit to ensure the task is running
-            await anyio.sleep(0.1)
-            
-            # Cancel the task
-            task_future.cancel()
-            
-            # Wait for task completion (or cancellation)
-            try:
-                result = await task_future
-                assert False, "Task should have been cancelled"
-            except asyncio.CancelledError:
-                pass
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(worker._execute_task, task)
+                await anyio.sleep(0.1)
+                tg.cancel_scope.cancel()
     
     @pytest.mark.asyncio
     async def test_check_health(self, worker_setup):

@@ -90,10 +90,8 @@ class CircuitBreaker:
         try:
             if self.state == CircuitState.HALF_OPEN:
                 # Set timeout for half-open test
-                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
-                    func(*args, **kwargs),
-                    timeout=self.half_open_timeout
-                )
+                with anyio.fail_after(self.half_open_timeout):
+                    result = await func(*args, **kwargs)
             else:
                 # Normal execution
                 result = await func(*args, **kwargs)

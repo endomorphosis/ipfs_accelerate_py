@@ -535,8 +535,9 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
 def run_tests():
     """Run the integration tests."""
     try:
-        # Run async tests
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         
         # Create test suite
         suite = unittest.TestSuite()

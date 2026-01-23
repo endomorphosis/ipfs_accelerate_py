@@ -417,39 +417,31 @@ class ArtifactRetriever:
         Returns:
             Dictionary mapping artifact names to (path, metadata) tuples
         """
-        tasks = []
-        
+        # Keep this implementation simple and anyio-friendly: run sequentially.
+        # (Parallelization can be reintroduced later via an anyio TaskGroup.)
+        results: Dict[str, Tuple[Optional[str], Optional[ArtifactMetadata]]] = {}
+
         for artifact in artifacts:
             test_run_id = artifact.get("test_run_id")
             artifact_name = artifact.get("artifact_name")
             provider_name = artifact.get("provider_name")
-            
+
             if not test_run_id or not artifact_name or not provider_name:
                 logger.warning(f"Skipping artifact with missing required fields: {artifact}")
                 continue
-            
-            task = # TODO: Replace with task group - asyncio.create_task(
-                self.retrieve_artifact(
+
+            try:
+                result = await self.retrieve_artifact(
                     test_run_id=test_run_id,
                     artifact_name=artifact_name,
                     provider_name=provider_name,
-                    use_cache=use_cache
+                    use_cache=use_cache,
                 )
-            )
-            tasks.append((artifact_name, task))
-        
-        results = {}
-        for artifact_name, task in tasks:
-            try:
-                result = await task
-                if result:
-                    results[artifact_name] = result
-                else:
-                    results[artifact_name] = (None, None)
+                results[artifact_name] = result if result else (None, None)
             except Exception as e:
                 logger.error(f"Error retrieving artifact {artifact_name}: {str(e)}")
                 results[artifact_name] = (None, None)
-        
+
         return results
     
     async def analyze_metrics_trend(

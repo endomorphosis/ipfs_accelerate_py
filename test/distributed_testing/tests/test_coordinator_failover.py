@@ -223,8 +223,9 @@ class TestCoordinatorFailover(unittest.TestCase):
             raise unittest.SkipTest("aiohttp is required for these tests")
             
         # Create event loop for async tests
-        cls.event_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        # TODO: Remove event loop management - asyncio.set_event_loop(cls.event_loop)
+        import asyncio
+        cls.event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(cls.event_loop)
         
     @classmethod
     def tearDownClass(cls):

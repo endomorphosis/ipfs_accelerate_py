@@ -376,38 +376,39 @@ class TestE2EIntegratedSystem(unittest.TestCase):
         self.logger.info("Setting up mock workers...")
         workers = await self._setup_mock_workers(coordinator, count=3)
         
-        # Start the components
-        self.logger.info("Starting coordinator...")
-        coordinator_task = # TODO: Replace with task group - asyncio.create_task(coordinator.run())
-        
-        self.logger.info("Starting dynamic resource manager...")
-        resource_manager_task = # TODO: Replace with task group - asyncio.create_task(resource_manager.run())
-        
-        self.logger.info("Starting performance trend analyzer...")
-        performance_analyzer_task = # TODO: Replace with task group - asyncio.create_task(performance_analyzer.run())
-        
-        # Wait for components to initialize
-        await anyio.sleep(1)
-        
-        # Submit test tasks
-        self.logger.info("Submitting test tasks...")
-        task_ids = await self._submit_test_tasks(coordinator)
-        
-        # Give time for tasks to be processed
-        self.logger.info("Waiting for tasks to be processed...")
-        await anyio.sleep(5)
-        
-        # Verify that tasks were assigned to workers
-        task_assignments = coordinator.get_task_assignments()
-        self.logger.info(f"Task assignments: {task_assignments}")
-        self.assertTrue(len(task_assignments) > 0, "No tasks were assigned to workers")
-        
-        # Verify that resource manager scaled appropriately
-        worker_states = resource_manager.get_worker_states()
-        self.logger.info(f"Worker states: {worker_states}")
-        self.assertGreaterEqual(len(worker_states), 2, "Resource manager did not provision enough workers")
-        
-        # Simulate task completion
+        async with anyio.create_task_group() as tg:
+            # Start the components
+            self.logger.info("Starting coordinator...")
+            tg.start_soon(coordinator.run)
+            
+            self.logger.info("Starting dynamic resource manager...")
+            tg.start_soon(resource_manager.run)
+            
+            self.logger.info("Starting performance trend analyzer...")
+            tg.start_soon(performance_analyzer.run)
+            
+            # Wait for components to initialize
+            await anyio.sleep(1)
+            
+            # Submit test tasks
+            self.logger.info("Submitting test tasks...")
+            task_ids = await self._submit_test_tasks(coordinator)
+            
+            # Give time for tasks to be processed
+            self.logger.info("Waiting for tasks to be processed...")
+            await anyio.sleep(5)
+            
+            # Verify that tasks were assigned to workers
+            task_assignments = coordinator.get_task_assignments()
+            self.logger.info(f"Task assignments: {task_assignments}")
+            self.assertTrue(len(task_assignments) > 0, "No tasks were assigned to workers")
+            
+            # Verify that resource manager scaled appropriately
+            worker_states = resource_manager.get_worker_states()
+            self.logger.info(f"Worker states: {worker_states}")
+            self.assertGreaterEqual(len(worker_states), 2, "Resource manager did not provision enough workers")
+            
+            # Simulate task completion
         for task_id in task_ids:
             for worker in workers:
                 if task_id in coordinator.get_worker_tasks(worker.worker_id):
@@ -501,21 +502,9 @@ class TestE2EIntegratedSystem(unittest.TestCase):
         trends = performance_analyzer.get_identified_trends()
         self.logger.info(f"Identified trends: {trends}")
         
-        # Stop all tasks
-        self.logger.info("Stopping all components...")
-        coordinator_task.cancel()
-        resource_manager_task.cancel()
-        performance_analyzer_task.cancel()
-        
-        try:
-            await # TODO: Replace with task group - asyncio.gather(
-                coordinator_task, 
-                resource_manager_task, 
-                performance_analyzer_task, 
-                return_exceptions=True
-            )
-        except asyncio.CancelledError:
-            pass
+            # Stop all tasks
+            self.logger.info("Stopping all components...")
+            tg.cancel_scope.cancel()
         
         self.logger.info("End-to-end test completed successfully")
 

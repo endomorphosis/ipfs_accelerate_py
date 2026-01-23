@@ -561,10 +561,8 @@ class PerformanceBasedErrorRecovery:
         try:
             # Execute strategy with timeout
             error_dict = self._convert_error_report(error_report)
-            success = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
-                strategy.execute(error_dict),
-                timeout=timeout
-            )
+            with anyio.fail_after(timeout):
+                success = await strategy.execute(error_dict)
             
             # Record execution time
             execution_time = time.time() - start_time

@@ -101,8 +101,9 @@ class TestRedundancyManager(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment."""
-        self.event_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        # TODO: Remove event loop management - asyncio.set_event_loop(self.event_loop)
+        import asyncio
+        self.event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.event_loop)
         
         # Create temporary directories for the nodes
         self.temp_dirs = [tempfile.mkdtemp() for _ in range(3)]

@@ -429,8 +429,13 @@ class AsyncTestCase(unittest.TestCase):
     
     def run_async(self, test_method, *args, **kwargs):
         """Run an async test method."""
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-        return loop.run_until_complete(test_method(*args, **kwargs))
+        async def _runner():
+            result = test_method(*args, **kwargs)
+            if anyio.iscoroutine(result):
+                return await result
+            return result
+
+        return anyio.run(_runner)
 
 
 class TestLoadBalancerResourcePoolIntegrationAsync(AsyncTestCase, TestLoadBalancerResourcePoolIntegration):

@@ -717,55 +717,29 @@ class ExecutionOrchestrator:
         logger.info(f"Starting async execution of {len(self.execution_contexts)} tests "
                    f"with {self.max_workers} workers using {self.strategy.name} strategy")
         
-        # Track test execution tasks
-        active_tasks = set()
-        
         # Main execution loop
         while True:
             # Update group status
             self.update_group_status()
             
-            # Select tests for execution if we have available workers
-            if len(active_tasks) < self.max_workers:
-                available_workers = self.max_workers - len(active_tasks)
-                selected_tests = self.select_tests_for_execution()[:available_workers]
-                
-                if selected_tests:
-                    # Start tasks for selected tests
-                    for test_id in selected_tests:
-                        # Generate a worker ID
-                        worker_id = f"worker_{uuid.uuid4().hex[:8]}"
-                        
-                        # Add to active workers
-                        self.active_workers[worker_id] = test_id
-                        
-                        # Create task
-                        task = # TODO: Replace with task group - asyncio.create_task(self.execute_test_async(test_id, worker_id))
-                        active_tasks.add(task)
-                        
-                        # Track max parallelism
-                        current_parallelism = len(self.active_workers)
-                        self.metrics["max_parallelism"] = max(self.metrics["max_parallelism"], current_parallelism)
-                    
-                    logger.debug(f"Executing {len(selected_tests)} tests, "
-                               f"{len(self.execution_queue)} remaining in queue")
-            
-            # Wait for tasks to complete
-            if active_tasks:
-                done, active_tasks = await asyncio.wait(
-                    active_tasks, 
-                    timeout=1.0,
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-                
-                # Handle completed tasks
-                for task in done:
+            # Select tests for execution up to max_workers.
+            # Note: This executes sequentially to avoid asyncio task management.
+            selected_tests = self.select_tests_for_execution()[: self.max_workers]
+            if selected_tests:
+                for test_id in selected_tests:
+                    worker_id = f"worker_{uuid.uuid4().hex[:8]}"
+                    self.active_workers[worker_id] = test_id
+
+                    current_parallelism = len(self.active_workers)
+                    self.metrics["max_parallelism"] = max(self.metrics["max_parallelism"], current_parallelism)
+
                     try:
-                        await task
+                        await self.execute_test_async(test_id, worker_id)
                     except Exception as e:
                         logger.error(f"Error in async test execution: {str(e)}")
+                    finally:
+                        self.active_workers.pop(worker_id, None)
             else:
-                # No active tasks, wait a bit
                 await anyio.sleep(0.1)
             
             # Check if all tests are completed
@@ -774,7 +748,7 @@ class ExecutionOrchestrator:
                 for context in self.execution_contexts.values()
             )
             
-            if all_completed and not active_tasks:
+            if all_completed:
                 logger.info("All tests completed")
                 break
             
@@ -788,10 +762,6 @@ class ExecutionOrchestrator:
                     for test_id in self.execution_queue:
                         self.execution_contexts[test_id].status = ExecutionStatus.SKIPPED
                         self.metrics["skipped_tests"] += 1
-                    
-                    # Cancel active tasks
-                    for task in active_tasks:
-                        task.cancel()
                     
                     # Mark active tests as failed
                     for worker_id, test_id in self.active_workers.items():
