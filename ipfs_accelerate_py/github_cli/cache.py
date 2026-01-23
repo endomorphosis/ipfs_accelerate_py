@@ -72,6 +72,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+
 @dataclass
 class CacheEntry:
     """Represents a cached API response with content-based validation."""
@@ -209,7 +210,14 @@ class GitHubAPICache:
         self._p2p_protocol = "/github-cache/1.0.0"
         self._p2p_peer_exchange_protocol = "/github-cache/peer-exchange/1.0.0"
         self._p2p_listen_port = p2p_listen_port
-        self._p2p_bootstrap_peers = p2p_bootstrap_peers or []
+        if p2p_bootstrap_peers:
+            self._p2p_bootstrap_peers = p2p_bootstrap_peers
+        else:
+            try:
+                from .p2p_connectivity import DEFAULT_BOOTSTRAP_PEERS as _DEFAULT_BOOTSTRAP_PEERS
+                self._p2p_bootstrap_peers = list(_DEFAULT_BOOTSTRAP_PEERS)
+            except Exception:
+                self._p2p_bootstrap_peers = []
         self._p2p_connected_peers: Dict[str, Any] = {}
         self._p2p_known_peer_addrs: Set[str] = set(self._p2p_bootstrap_peers)
         self._peer_exchange_last: Dict[str, float] = {}
@@ -221,6 +229,10 @@ class GitHubAPICache:
         self._universal_connectivity = None  # Universal connectivity manager
         self._last_bootstrap_refresh = 0  # Timestamp of last bootstrap refresh
         self._bootstrap_refresh_interval = 300  # Re-bootstrap every 5 minutes (like rust-peer)
+        self._last_discovery_refresh = 0
+        self._discovery_refresh_interval = int(os.environ.get("CACHE_DISCOVERY_REFRESH_INTERVAL", "120"))
+        self._min_connected_peers = int(os.environ.get("CACHE_MIN_CONNECTED_PEERS", "1"))
+        self._max_discovery_connect_attempts = int(os.environ.get("CACHE_DISCOVERY_CONNECT_ATTEMPTS", "3"))
         
         # Peer discovery - use simplified bootstrap helper
         self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
@@ -1329,14 +1341,20 @@ class GitHubAPICache:
                 try:
                     from .p2p_connectivity import get_universal_connectivity, ConnectivityConfig
                     
+                    def _env_bool(name: str, default: bool) -> bool:
+                        val = os.environ.get(name)
+                        if val is None:
+                            return default
+                        return val.lower() in {"1", "true", "yes", "on"}
+
                     config = ConnectivityConfig(
-                        # Keep these disabled unless/until the helper grows real implementations.
-                        # We still keep the object around to provide diagnostics and a consistent API.
-                        enable_mdns=False,
-                        enable_dht=False,
-                        enable_relay=False,
-                        enable_autonat=False,
-                        enable_hole_punching=False
+                        enable_mdns=_env_bool("CACHE_ENABLE_MDNS", True),
+                        enable_dht=_env_bool("CACHE_ENABLE_DHT", True),
+                        enable_relay=_env_bool("CACHE_ENABLE_RELAY", True),
+                        enable_autonat=_env_bool("CACHE_ENABLE_AUTONAT", True),
+                        enable_hole_punching=_env_bool("CACHE_ENABLE_HOLE_PUNCHING", True),
+                        enable_quic=_env_bool("CACHE_ENABLE_QUIC", False),
+                        enable_webrtc=_env_bool("CACHE_ENABLE_WEBRTC", False),
                     )
                     self._universal_connectivity = get_universal_connectivity(config)
                     
@@ -1344,6 +1362,9 @@ class GitHubAPICache:
                     await self._universal_connectivity.configure_transports(self._p2p_host)
                     await self._universal_connectivity.start_mdns_discovery(self._p2p_host)
                     await self._universal_connectivity.configure_dht(self._p2p_host)
+                    relay_env = os.environ.get("CACHE_RELAY_PEERS", "")
+                    relay_peers = [p.strip() for p in relay_env.split(",") if p.strip()]
+                    await self._universal_connectivity.setup_circuit_relay(self._p2p_host, relay_peers)
                     await self._universal_connectivity.enable_autonat(self._p2p_host)
                     await self._universal_connectivity.enable_hole_punching(self._p2p_host)
                     
@@ -1519,6 +1540,21 @@ class GitHubAPICache:
                         logger.info(f"✓ Refreshed {reconnected} bootstrap connection(s)")
                     self._last_bootstrap_refresh = current_time
 
+                # Periodic multi-method discovery refresh (mDNS + GitHub registry + bootstrap hints)
+                if self._universal_connectivity and current_time - self._last_discovery_refresh > self._discovery_refresh_interval:
+                    try:
+                        await self._refresh_discovery_and_connect()
+                    except Exception as e:
+                        logger.debug(f"Discovery refresh failed: {e}")
+                    self._last_discovery_refresh = current_time
+
+                # Ensure we maintain a minimum number of connected peers (best-effort)
+                if self._min_connected_peers > 0:
+                    try:
+                        await self._ensure_min_connections()
+                    except Exception as e:
+                        logger.debug(f"Min-connection check failed: {e}")
+
                 # Periodic peer exchange with already-connected peers.
                 # This helps the mesh converge without DHT support.
                 for peer_id, peer_info in list(self._p2p_connected_peers.items()):
@@ -1541,6 +1577,98 @@ class GitHubAPICache:
             logger.debug("Connection maintenance task cancelled")
         except Exception as e:
             logger.warning(f"Error in connection maintenance: {e}")
+
+    async def _refresh_discovery_and_connect(self) -> None:
+        """Refresh discovery sources and attempt connections to newly learned peers."""
+        if not self._universal_connectivity or not self._p2p_host:
+            return
+
+        # Build a simple registry wrapper for the bootstrap helper
+        registry = None
+        if self._bootstrap_helper:
+            class SimpleRegistry:
+                def __init__(self, helper):
+                    self.helper = helper
+                def discover_peers(self, max_peers=10):
+                    return self.helper.discover_peers(max_peers=max_peers)
+
+            registry = SimpleRegistry(self._bootstrap_helper)
+
+        discovered = await self._universal_connectivity.discover_peers_multimethod(
+            github_registry=registry,
+            bootstrap_peers=self._p2p_bootstrap_peers
+        )
+
+        for addr in discovered:
+            if self._validate_multiaddr(addr):
+                self._p2p_known_peer_addrs.add(addr)
+                if addr not in self._p2p_bootstrap_peers and len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
+                    self._p2p_bootstrap_peers.append(addr)
+
+        # Try connecting to a few newly learned peers
+        attempts = 0
+        for addr in list(self._p2p_known_peer_addrs):
+            if attempts >= self._max_discovery_connect_attempts:
+                break
+            try:
+                if self._universal_connectivity:
+                    peer_info = await asyncio.wait_for(
+                        self._universal_connectivity.attempt_connection(
+                            self._p2p_host,
+                            addr,
+                            use_relay=True
+                        ),
+                        timeout=10.0
+                    )
+                    if peer_info is not None:
+                        try:
+                            peer_id = peer_info.peer_id.pretty()
+                            self._p2p_connected_peers[peer_id] = peer_info
+                        except Exception:
+                            pass
+                else:
+                    await asyncio.wait_for(self._connect_to_peer(addr), timeout=10.0)
+                attempts += 1
+            except Exception:
+                continue
+
+    async def _ensure_min_connections(self) -> None:
+        """Best-effort to keep at least a minimum number of connections."""
+        if not self._p2p_host:
+            return
+
+        connected = len(self._p2p_connected_peers)
+        if connected >= self._min_connected_peers:
+            return
+
+        needed = self._min_connected_peers - connected
+        candidates = list(self._p2p_known_peer_addrs)
+
+        attempts = 0
+        for addr in candidates:
+            if attempts >= needed:
+                break
+            try:
+                if self._universal_connectivity:
+                    peer_info = await asyncio.wait_for(
+                        self._universal_connectivity.attempt_connection(
+                            self._p2p_host,
+                            addr,
+                            use_relay=True
+                        ),
+                        timeout=10.0
+                    )
+                    if peer_info is not None:
+                        try:
+                            peer_id = peer_info.peer_id.pretty()
+                            self._p2p_connected_peers[peer_id] = peer_info
+                        except Exception:
+                            pass
+                else:
+                    await asyncio.wait_for(self._connect_to_peer(addr), timeout=10.0)
+                attempts += 1
+            except Exception:
+                continue
 
     def _get_advertised_multiaddrs(self) -> List[str]:
         """Return best-effort dialable multiaddrs for this host."""
