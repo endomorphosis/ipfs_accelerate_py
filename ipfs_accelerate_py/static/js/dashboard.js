@@ -1913,25 +1913,63 @@ async function refreshCacheStats() {
     const entriesEl = document.getElementById('cache-entries');
     const sizeEl = document.getElementById('cache-size');
     const hitRateEl = document.getElementById('cache-hit-rate');
+    const peerHitsEl = document.getElementById('cache-peer-hits');
+    const connectedPeersEl = document.getElementById('cache-connected-peers');
+    const peerExchangeLastEl = document.getElementById('cache-peer-exchange-last');
     
     if (!entriesEl) return;
     
     entriesEl.textContent = 'Loading...';
     if (sizeEl) sizeEl.textContent = 'Loading...';
     if (hitRateEl) hitRateEl.textContent = 'Loading...';
+    if (peerHitsEl) peerHitsEl.textContent = 'Loading...';
+    if (connectedPeersEl) connectedPeersEl.textContent = 'Loading...';
+    if (peerExchangeLastEl) peerExchangeLastEl.textContent = 'Loading...';
     
     try {
         const response = await fetch('/api/mcp/cache/stats');
         const data = await response.json();
-        
-        if (entriesEl) entriesEl.textContent = data.total_entries || '0';
-        if (sizeEl) sizeEl.textContent = data.cache_size || '0 MB';
-        if (hitRateEl) hitRateEl.textContent = data.hit_rate || '0%';
+
+        if (entriesEl) entriesEl.textContent = String(data.total_entries ?? 0);
+
+        // Prefer formatted fields; fall back to numeric sizes
+        if (sizeEl) {
+            if (typeof data.cache_size === 'string') {
+                sizeEl.textContent = data.cache_size;
+            } else if (typeof data.total_size_mb === 'number') {
+                sizeEl.textContent = `${data.total_size_mb.toFixed(2)} MB`;
+            } else {
+                sizeEl.textContent = '0.00 MB';
+            }
+        }
+
+        if (hitRateEl) {
+            if (typeof data.hit_rate_display === 'string') {
+                hitRateEl.textContent = data.hit_rate_display;
+            } else if (typeof data.hit_rate_percent === 'number') {
+                hitRateEl.textContent = `${data.hit_rate_percent.toFixed(1)}%`;
+            } else if (typeof data.hit_rate === 'number') {
+                hitRateEl.textContent = `${(data.hit_rate * 100).toFixed(1)}%`;
+            } else {
+                hitRateEl.textContent = '0.0%';
+            }
+        }
+
+        if (peerHitsEl) peerHitsEl.textContent = String(data.peer_hits ?? 0);
+        if (connectedPeersEl) peerHitsEl && (connectedPeersEl.textContent = String(data.connected_peers ?? data.p2p_peers ?? 0));
+
+        if (peerExchangeLastEl) {
+            const iso = data.peer_exchange_last_iso;
+            peerExchangeLastEl.textContent = iso ? iso : '—';
+        }
     } catch (error) {
         console.error('[Dashboard] Error refreshing cache stats:', error);
         if (entriesEl) entriesEl.textContent = 'Error';
         if (sizeEl) sizeEl.textContent = 'Error';
         if (hitRateEl) hitRateEl.textContent = 'Error';
+        if (peerHitsEl) peerHitsEl.textContent = 'Error';
+        if (connectedPeersEl) connectedPeersEl.textContent = 'Error';
+        if (peerExchangeLastEl) peerExchangeLastEl.textContent = 'Error';
     }
 }
 
@@ -1942,6 +1980,9 @@ async function refreshPeerStatus() {
     const peerCountEl = document.getElementById('peer-count');
     const p2pEnabledEl = document.getElementById('p2p-enabled');
     const libp2pVersionEl = document.getElementById('libp2p-version');
+    const peerIdEl = document.getElementById('p2p-peer-id');
+    const knownAddrsEl = document.getElementById('p2p-known-addrs');
+    const registryPeerCountEl = document.getElementById('registry-peer-count');
     
     if (!peerStatusEl) return;
     
@@ -1949,6 +1990,9 @@ async function refreshPeerStatus() {
     if (peerCountEl) peerCountEl.textContent = 'Loading...';
     if (p2pEnabledEl) p2pEnabledEl.textContent = 'Loading...';
     if (libp2pVersionEl) libp2pVersionEl.textContent = 'Loading...';
+    if (peerIdEl) peerIdEl.textContent = 'Loading...';
+    if (knownAddrsEl) knownAddrsEl.textContent = 'Loading...';
+    if (registryPeerCountEl) registryPeerCountEl.textContent = 'Loading...';
     
     try {
         const response = await fetch('/api/mcp/peers');
@@ -1968,12 +2012,29 @@ async function refreshPeerStatus() {
             const ref = libp2p.vcs_ref || null;
             libp2pVersionEl.textContent = version ? (ref ? `${version} (${ref.slice(0, 12)})` : version) : 'Unavailable';
         }
+
+        if (peerIdEl) {
+            peerIdEl.textContent = data.peer_id || '—';
+        }
+
+        if (knownAddrsEl) {
+            const count = data.known_peer_multiaddrs;
+            knownAddrsEl.textContent = (typeof count === 'number' || typeof count === 'string') ? String(count) : '—';
+        }
+
+        if (registryPeerCountEl) {
+            const count = data.registered_peer_count;
+            registryPeerCountEl.textContent = (typeof count === 'number' || typeof count === 'string') ? String(count) : '—';
+        }
     } catch (error) {
         console.error('[Dashboard] Error refreshing peer status:', error);
         if (peerStatusEl) peerStatusEl.textContent = 'Error';
         if (peerCountEl) peerCountEl.textContent = 'Error';
         if (p2pEnabledEl) p2pEnabledEl.textContent = 'Error';
         if (libp2pVersionEl) libp2pVersionEl.textContent = 'Error';
+        if (peerIdEl) peerIdEl.textContent = 'Error';
+        if (knownAddrsEl) knownAddrsEl.textContent = 'Error';
+        if (registryPeerCountEl) registryPeerCountEl.textContent = 'Error';
     }
 }
 

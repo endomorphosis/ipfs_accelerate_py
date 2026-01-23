@@ -172,18 +172,45 @@ def get_cache_stats() -> Dict[str, Any]:
         from ipfs_accelerate_py.github_cli.cache import get_global_cache
         cache = get_global_cache()
         stats = cache.get_stats()
+
+        total_size_bytes = float(stats.get('total_size_bytes', 0) or 0)
+        total_size_mb = total_size_bytes / (1024 * 1024)
+
+        # hit_rate is 0..1 in the cache layer
+        hit_rate_float = float(stats.get('hit_rate', 0) or 0)
+        hit_rate_percent = max(0.0, min(1.0, hit_rate_float)) * 100.0
+
+        connected_peers = int(
+            (stats.get('connected_peers') if stats.get('connected_peers') is not None else stats.get('p2p_peers'))
+            or 0
+        )
+
         return {
             'available': True,
             'total_entries': stats.get('total_entries', 0),
-            'total_size_mb': stats.get('total_size_bytes', 0) / (1024 * 1024),
-            'hit_rate': stats.get('hit_rate', 0),
+            'total_size_mb': total_size_mb,
+            # Back-compat numeric hit rate (0..1)
+            'hit_rate': hit_rate_float,
+            # Dashboard-friendly formatted strings
+            'cache_size': f"{total_size_mb:.2f} MB",
+            'hit_rate_percent': hit_rate_percent,
+            'hit_rate_display': f"{hit_rate_percent:.1f}%",
             'total_hits': stats.get('hits', 0),
             'total_misses': stats.get('misses', 0),
             'total_requests': stats.get('hits', 0) + stats.get('misses', 0),
             'cache_dir': str(stats.get('cache_dir', '')),
             'p2p_enabled': stats.get('p2p_enabled', False),
-            'p2p_peers': stats.get('p2p_peers', 0),
-            'content_addressing_available': stats.get('content_addressing_available', False)
+            'p2p_peers': connected_peers,
+            'connected_peers': connected_peers,
+            'content_addressing_available': stats.get('content_addressing_available', False),
+
+            # P2P cache sharing metrics
+            'local_hits': stats.get('local_hits', stats.get('hits', 0)),
+            'peer_hits': stats.get('peer_hits', 0),
+            'peer_id': stats.get('peer_id'),
+            'known_peer_multiaddrs': stats.get('known_peer_multiaddrs'),
+            'peer_exchange_last_iso': stats.get('peer_exchange_last_iso'),
+            'peer_exchange_last': stats.get('peer_exchange_last'),
         }
     except Exception as e:
         logger.error(f"Error getting cache stats: {e}")

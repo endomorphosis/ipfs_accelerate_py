@@ -169,6 +169,18 @@
                             <span>Hit Rate:</span>
                             <span id="cache-hit-rate">Loading...</span>
                         </div>
+                        <div class="info-row">
+                            <span>Peer Hits:</span>
+                            <span id="cache-peer-hits">Loading...</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Connected Peers:</span>
+                            <span id="cache-connected-peers">Loading...</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Peer Exchange:</span>
+                            <span id="cache-peer-exchange-last">Loading...</span>
+                        </div>
                     </div>
                     <button class="btn btn-success" onclick="refreshCacheStats()">📊 Refresh Cache</button>
                 </div>
@@ -190,6 +202,18 @@
                     <div class="info-row">
                         <span>P2P Enabled:</span>
                         <span id="p2p-enabled">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Peer ID:</span>
+                        <span id="p2p-peer-id">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Known Addrs:</span>
+                        <span id="p2p-known-addrs">Loading...</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Registry Peers:</span>
+                        <span id="registry-peer-count">Loading...</span>
                     </div>
                     <button class="btn btn-primary" onclick="refreshPeerStatus()">🔄 Refresh Peers</button>
                 </div>
