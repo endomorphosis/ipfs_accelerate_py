@@ -184,13 +184,20 @@ class IntegratedAnalysisSystem:
             ImportError: If required dependencies are not available
             ValueError: If database configuration is invalid
         """
-        self.db_path = db_path
         self.config = config or {}
         # Keep flags reflecting user intent; optional components may still be unavailable.
         self.enable_ml = bool(enable_ml)
         self.enable_visualization = enable_visualization and VISUALIZATION_AVAILABLE
         self.enable_real_time_analysis = enable_real_time_analysis
         self.analysis_interval = analysis_interval
+
+        # Initialize attributes early so cleanup is safe even if init fails.
+        self.service = None
+        self.coordinator_integration = None
+        self.ml_anomaly_detector = None
+        self.analysis_thread = None
+        self.stop_analysis = threading.Event()
+        self.notification_handlers = []
         
         # Initialize service
         if not DUCKDB_AVAILABLE:
@@ -200,26 +207,20 @@ class IntegratedAnalysisSystem:
         # This keeps the system usable for unit tests and lightweight usage.
         if connection is None and db_path is None:
             db_path = ":memory:"
+
+        self.db_path = db_path
         
         self.service = ResultAggregatorService(
-            db_path=db_path,
-            enable_ml=enable_ml,
-            enable_visualization=enable_visualization
+            db_path=self.db_path,
+            enable_ml=self.enable_ml,
+            enable_visualization=self.enable_visualization,
         )
-        
-        # Initialize coordinator integration
-        self.coordinator_integration = None
-        
+
         # Initialize additional components
-        if self.enable_ml:
-            self.ml_anomaly_detector = MLAnomalyDetector() if ML_AVAILABLE else None
-        
-        # Thread for background analysis
-        self.analysis_thread = None
-        self.stop_analysis = threading.Event()
-        
-        # Initialize notification handlers
-        self.notification_handlers = []
+        if self.enable_ml and ML_AVAILABLE:
+            # The ML detector needs either a db_path or a connection.
+            # Use the same DB path as the core service.
+            self.ml_anomaly_detector = MLAnomalyDetector(db_path=self.db_path)
         
         logger.info("Integrated Analysis System initialized")
     
@@ -285,10 +286,11 @@ class IntegratedAnalysisSystem:
     
     def _stop_analysis_thread(self):
         """Stop the background analysis thread."""
-        if self.analysis_thread is not None and self.analysis_thread.is_alive():
+        analysis_thread = getattr(self, "analysis_thread", None)
+        if analysis_thread is not None and analysis_thread.is_alive():
             self.stop_analysis.set()
             # Ensure the thread is fully stopped before closing DB connections.
-            self.analysis_thread.join()
+            analysis_thread.join()
             logger.info("Stopped periodic analysis thread")
         self.analysis_thread = None
     
@@ -1408,14 +1410,15 @@ class IntegratedAnalysisSystem:
         """Close all connections and stop background processes."""
         try:
             # Stop analysis thread
-            self._stop_analysis_thread()
+            if hasattr(self, "analysis_thread"):
+                self._stop_analysis_thread()
             
             # Unregister from coordinator
-            if self.coordinator_integration:
+            if getattr(self, "coordinator_integration", None):
                 self.coordinator_integration.close()
             
             # Close service
-            if self.service:
+            if getattr(self, "service", None):
                 self.service.close()
             
             logger.info("Integrated Analysis System closed")

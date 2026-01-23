@@ -24,9 +24,17 @@ logging.basicConfig(
 logger = logging.getLogger("enhanced_error_handling")
 
 # Import error handling and recovery components
-from distributed_error_handler import DistributedErrorHandler, ErrorReport
-from error_recovery_strategies import EnhancedErrorRecoveryManager
-from error_recovery_with_performance_tracking import PerformanceBasedErrorRecovery
+# Prefer package-relative imports so this module works when imported as
+# `distributed_testing.*` (pytest/anyio), while keeping a fallback for
+# script-style execution.
+try:
+    from .distributed_error_handler import DistributedErrorHandler, ErrorReport
+    from .error_recovery_strategies import EnhancedErrorRecoveryManager
+    from .error_recovery_with_performance_tracking import PerformanceBasedErrorRecovery
+except Exception:  # pragma: no cover
+    from distributed_error_handler import DistributedErrorHandler, ErrorReport
+    from error_recovery_strategies import EnhancedErrorRecoveryManager
+    from error_recovery_with_performance_tracking import PerformanceBasedErrorRecovery
 
 
 class EnhancedErrorHandlingIntegration:

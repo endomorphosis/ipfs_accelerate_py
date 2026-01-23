@@ -21,11 +21,10 @@ import pytest
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
-    pytest.skip(
-        "Coordinator redundancy tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to run.",
-        allow_module_level=True,
-    )
+from integration_mode import integration_enabled, integration_opt_in_message
+
+if not integration_enabled():
+    pytest.skip(integration_opt_in_message(), allow_module_level=True)
 
 pytest.importorskip("aiohttp")
 

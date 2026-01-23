@@ -20,15 +20,14 @@ import sys
 
 import pytest
 
-if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
-    pytest.skip(
-        "Fault-tolerance tests are integration-heavy; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to enable.",
-        allow_module_level=True,
-    )
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from integration_mode import integration_enabled, integration_opt_in_message
+
+if not integration_enabled():
+    pytest.skip(integration_opt_in_message(), allow_module_level=True)
 
 pytest.importorskip("aiohttp")
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from distributed_state_management import DistributedStateManager, StatePartition
 from error_recovery_strategies import (
@@ -374,7 +373,7 @@ class TestErrorRecoveryStrategies(unittest.TestCase):
         async def run_test():
             return await retry_strategy.execute(error_info)
         
-        result = anyio.run(run_test())
+        result = anyio.run(run_test)
         
         # Check results
         self.assertTrue(result)
@@ -402,8 +401,8 @@ class TestErrorRecoveryStrategies(unittest.TestCase):
         
         async def run_test():
             return await worker_strategy.execute(error_info)
-        
-        result = anyio.run(run_test())
+
+        result = anyio.run(run_test)
         
         # Check results
         self.assertTrue(result)
@@ -549,7 +548,7 @@ class TestCoordinatorRedundancy(unittest.TestCase):
             self.assertEqual(self.redundancy_manager.next_index["http://localhost:8080"], 1)
             self.assertEqual(self.redundancy_manager.match_index["http://localhost:8080"], 0)
         
-        anyio.run(run_test())
+        anyio.run(run_test)
     
     @patch('time.time')
     def test_become_follower(self, mock_time):
@@ -571,7 +570,7 @@ class TestCoordinatorRedundancy(unittest.TestCase):
             self.assertEqual(self.redundancy_manager.current_term, 2)
             self.assertIsNone(self.redundancy_manager.voted_for)
         
-        anyio.run(run_test())
+        anyio.run(run_test)
     
     def test_persistent_state(self):
         """Test persistent state save and load."""

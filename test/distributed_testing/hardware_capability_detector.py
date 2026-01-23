@@ -820,13 +820,19 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
             fingerprint = self.generate_hardware_fingerprint(capabilities)
             
             # Store worker hardware information
+            next_worker_row = self.db_connection.execute(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM worker_hardware"
+            ).fetchone()
+            worker_row_id = int(next_worker_row[0]) if next_worker_row else 1
+
             self.db_connection.execute("""
                 INSERT INTO worker_hardware (
-                    worker_id, hostname, os_type, os_version, 
+                    id, worker_id, hostname, os_type, os_version, 
                     cpu_count, total_memory_gb, fingerprint, last_updated, metadata
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
+                worker_row_id,
                 capabilities.worker_id,
                 capabilities.hostname,
                 capabilities.os_type,
@@ -851,14 +857,20 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                 scores = {k: v.value if isinstance(v, Enum) else v for k, v in hw.scores.items()}
                 
                 # Insert hardware capability
+                next_cap_row = self.db_connection.execute(
+                    "SELECT COALESCE(MAX(id), 0) + 1 FROM hardware_capabilities"
+                ).fetchone()
+                capability_row_id = int(next_cap_row[0]) if next_cap_row else 1
+
                 self.db_connection.execute("""
                     INSERT INTO hardware_capabilities (
-                        worker_id, hardware_type, vendor, model, version, driver_version,
+                        id, worker_id, hardware_type, vendor, model, version, driver_version,
                         compute_units, cores, memory_gb, supported_precisions, capabilities, scores,
                         last_updated
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, [
+                    capability_row_id,
                     capabilities.worker_id,
                     hardware_type,
                     vendor,
@@ -1127,14 +1139,19 @@ class HardwareCapabilityDetector(BaseHardwareCapabilityDetector):
                 
                 # Sort workers by preferred hardware types
                 sorted_worker_ids = []
+                seen_worker_ids = set()
                 for hw_type in preferred_hw_strs:
                     if hw_type in workers_by_hw_type:
-                        sorted_worker_ids.extend(workers_by_hw_type[hw_type])
+                        for worker_id in workers_by_hw_type[hw_type]:
+                            if worker_id not in seen_worker_ids:
+                                sorted_worker_ids.append(worker_id)
+                                seen_worker_ids.add(worker_id)
                 
                 # Add any remaining workers that weren't in the preferred list
                 for worker_id in worker_ids:
-                    if worker_id not in sorted_worker_ids:
+                    if worker_id not in seen_worker_ids:
                         sorted_worker_ids.append(worker_id)
+                        seen_worker_ids.add(worker_id)
                 
                 worker_ids = sorted_worker_ids
             

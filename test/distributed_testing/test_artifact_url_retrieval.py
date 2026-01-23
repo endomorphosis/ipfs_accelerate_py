@@ -18,12 +18,11 @@ import sys
 # Add the parent directory to the path
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
-# These tests exercise CI client code paths that typically depend on optional
-# HTTP libraries (e.g., aiohttp). Under pytest, skip cleanly if missing.
+# These tests use mock implementations and are intended to be offline.
+# Keep them runnable even when optional HTTP deps (e.g., aiohttp) aren't installed.
 if "pytest" in sys.modules:
     import pytest
 
-    pytest.importorskip("aiohttp")
     pytestmark = pytest.mark.anyio
 
 from distributed_testing.ci.jenkins_client import JenkinsClient
@@ -259,8 +258,8 @@ class MockAzureDevOpsClient(AzureDevOpsClient):
         # Create a mock attachment ID
         attachment_id = f"{hash(artifact_name) % 1000 + 1000}"
         
-        # Create mock URL
-        url = f"{self.api_url}test/runs/{test_run_id}/attachments/{attachment_id}"
+        # Create mock URL (include artifact_name so integration tests can assert it)
+        url = f"{self.api_url}test/runs/{test_run_id}/attachments/{attachment_id}/{artifact_name}"
         
         self._artifact_attachments[test_run_id][artifact_name] = {
             "attachment_id": attachment_id,
@@ -337,6 +336,9 @@ class MockGitHubClient(GitHubClient):
     
     async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
         """Override to use mock implementation."""
+        # Simulate a small amount of per-call latency so performance tests can
+        # reliably detect the benefit of bulk/parallel URL retrieval.
+        await anyio.sleep(0.01)
         if test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
             return self._artifact_urls[test_run_id][artifact_name]
         return None

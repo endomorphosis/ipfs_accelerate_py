@@ -132,6 +132,7 @@ setup(
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
 			"pytest-asyncio>=0.21.0",
+			"nvidia-ml-py",
 		],
 		"webnn": [
 			"playwright>=1.31.0",

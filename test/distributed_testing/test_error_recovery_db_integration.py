@@ -18,6 +18,8 @@ from datetime import datetime, timedelta
 import random
 import pytest
 
+pytestmark = pytest.mark.anyio
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -28,13 +30,30 @@ logger = logging.getLogger("test_error_recovery_db")
 # Import required modules
 try:
     import duckdb
-    from distributed_error_handler import DistributedErrorHandler, ErrorType, ErrorSeverity
-    from error_recovery_strategies import EnhancedErrorRecoveryManager
-    from error_recovery_with_performance_tracking import PerformanceBasedErrorRecovery
-    from enhanced_error_handling_integration import install_enhanced_error_handling
+    try:
+        # Prefer package imports when collected by pytest
+        from distributed_testing.distributed_error_handler import (
+            DistributedErrorHandler,
+            ErrorType,
+            ErrorSeverity,
+        )
+        from distributed_testing.error_recovery_strategies import EnhancedErrorRecoveryManager
+        from distributed_testing.error_recovery_with_performance_tracking import (
+            PerformanceBasedErrorRecovery,
+        )
+        from distributed_testing.enhanced_error_handling_integration import (
+            install_enhanced_error_handling,
+        )
+    except ImportError:
+        # Fallback for running this file directly from this directory
+        from distributed_error_handler import DistributedErrorHandler, ErrorType, ErrorSeverity
+        from error_recovery_strategies import EnhancedErrorRecoveryManager
+        from error_recovery_with_performance_tracking import PerformanceBasedErrorRecovery
+        from enhanced_error_handling_integration import install_enhanced_error_handling
 except ImportError as e:
     pytest.skip(
-        f"Skipping distributed error recovery DB integration tests (missing optional deps): {e}",
+        f"Skipping distributed error recovery DB integration tests (missing optional deps): {e}. "
+        "Tip: install test dependencies with `pip install -e '.[testing]'`.",
         allow_module_level=True,
     )
 

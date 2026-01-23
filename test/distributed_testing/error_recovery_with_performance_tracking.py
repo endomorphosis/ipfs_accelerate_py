@@ -41,12 +41,33 @@ logging.basicConfig(
 logger = logging.getLogger("performance_recovery")
 
 # Import existing error handler and strategies
-from distributed_error_handler import DistributedErrorHandler, ErrorReport
-from error_recovery_strategies import (
-    ErrorCategory, RecoveryStrategy, EnhancedErrorRecoveryManager,
-    RetryStrategy, WorkerRecoveryStrategy, DatabaseRecoveryStrategy,
-    CoordinatorRecoveryStrategy, SystemRecoveryStrategy
-)
+# Prefer package-relative imports so this module works when imported as
+# `distributed_testing.*` (pytest/anyio), while keeping a fallback for
+# script-style execution.
+try:
+    from .distributed_error_handler import DistributedErrorHandler, ErrorReport
+    from .error_recovery_strategies import (
+        ErrorCategory,
+        RecoveryStrategy,
+        EnhancedErrorRecoveryManager,
+        RetryStrategy,
+        WorkerRecoveryStrategy,
+        DatabaseRecoveryStrategy,
+        CoordinatorRecoveryStrategy,
+        SystemRecoveryStrategy,
+    )
+except Exception:  # pragma: no cover
+    from distributed_error_handler import DistributedErrorHandler, ErrorReport
+    from error_recovery_strategies import (
+        ErrorCategory,
+        RecoveryStrategy,
+        EnhancedErrorRecoveryManager,
+        RetryStrategy,
+        WorkerRecoveryStrategy,
+        DatabaseRecoveryStrategy,
+        CoordinatorRecoveryStrategy,
+        SystemRecoveryStrategy,
+    )
 
 class RecoveryPerformanceMetric(Enum):
     """Performance metrics for recovery strategies."""
@@ -629,14 +650,15 @@ class PerformanceBasedErrorRecovery:
                 next_level = min(recovery_level + 1, ProgressiveRecoveryLevel.LEVEL_5.value)
                 self.error_recovery_levels[error_id] = next_level
                 
-                # Record progression
-                self._record_progression(
-                    error_id=error_id,
-                    old_level=recovery_level,
-                    new_level=next_level,
-                    strategy_id=strategy_id,
-                    success=success
-                )
+                # Record progression only when the level actually changes
+                if next_level != recovery_level:
+                    self._record_progression(
+                        error_id=error_id,
+                        old_level=recovery_level,
+                        new_level=next_level,
+                        strategy_id=strategy_id,
+                        success=success
+                    )
                 
                 # If not at max level, retry with escalated strategy
                 if next_level <= ProgressiveRecoveryLevel.LEVEL_5.value and next_level > recovery_level:
@@ -692,15 +714,16 @@ class PerformanceBasedErrorRecovery:
             next_level = min(recovery_level + 1, ProgressiveRecoveryLevel.LEVEL_5.value)
             self.error_recovery_levels[error_id] = next_level
             
-            # Record progression
-            self._record_progression(
-                error_id=error_id,
-                old_level=recovery_level,
-                new_level=next_level,
-                strategy_id=strategy_id,
-                success=False,
-                details={"timeout": True}
-            )
+            # Record progression only when the level actually changes
+            if next_level != recovery_level:
+                self._record_progression(
+                    error_id=error_id,
+                    old_level=recovery_level,
+                    new_level=next_level,
+                    strategy_id=strategy_id,
+                    success=False,
+                    details={"timeout": True}
+                )
             
             # If not at max level, retry with escalated strategy
             if next_level <= ProgressiveRecoveryLevel.LEVEL_5.value and next_level > recovery_level:
@@ -756,15 +779,16 @@ class PerformanceBasedErrorRecovery:
             next_level = min(recovery_level + 1, ProgressiveRecoveryLevel.LEVEL_5.value)
             self.error_recovery_levels[error_id] = next_level
             
-            # Record progression
-            self._record_progression(
-                error_id=error_id,
-                old_level=recovery_level,
-                new_level=next_level,
-                strategy_id=strategy_id,
-                success=False,
-                details={"exception": str(e)}
-            )
+            # Record progression only when the level actually changes
+            if next_level != recovery_level:
+                self._record_progression(
+                    error_id=error_id,
+                    old_level=recovery_level,
+                    new_level=next_level,
+                    strategy_id=strategy_id,
+                    success=False,
+                    details={"exception": str(e)}
+                )
             
             # If not at max level, retry with escalated strategy
             if next_level <= ProgressiveRecoveryLevel.LEVEL_5.value and next_level > recovery_level:
@@ -1169,21 +1193,26 @@ class PerformanceBasedErrorRecovery:
             # Check for related_entities.task_id or similar
             if hasattr(context, 'related_entities'):
                 related = context.related_entities
+
+                def _related_get(key: str):
+                    if isinstance(related, dict):
+                        return related.get(key)
+                    return getattr(related, key, None)
                 
                 # Check for task_id field
-                if hasattr(related, 'task_id'):
-                    task_id = related.task_id
+                task_id = _related_get('task_id')
+                if task_id:
                     if isinstance(task_id, list):
                         affected_tasks.update(task_id)
                     else:
                         affected_tasks.add(str(task_id))
                 
                 # Check for task_ids field
-                if hasattr(related, 'task_ids'):
-                    task_ids = related.task_ids
+                task_ids = _related_get('task_ids')
+                if task_ids:
                     if isinstance(task_ids, list):
                         affected_tasks.update(task_ids)
-                    elif task_ids:
+                    else:
                         affected_tasks.add(str(task_ids))
             
             # Handle different context formats
@@ -1206,7 +1235,11 @@ class PerformanceBasedErrorRecovery:
                 # Try to extract worker_id
                 worker_id = None
                 if hasattr(error_report, 'context') and hasattr(error_report.context, 'related_entities'):
-                    worker_id = getattr(error_report.context.related_entities, 'worker_id', None)
+                    rel = error_report.context.related_entities
+                    if isinstance(rel, dict):
+                        worker_id = rel.get('worker_id')
+                    else:
+                        worker_id = getattr(rel, 'worker_id', None)
                 
                 if worker_id:
                     # Get all tasks assigned to this worker

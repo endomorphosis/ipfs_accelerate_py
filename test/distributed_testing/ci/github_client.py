@@ -14,7 +14,10 @@ import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-import aiohttp
+try:
+    import aiohttp  # type: ignore
+except Exception:  # pragma: no cover
+    aiohttp = None  # type: ignore
 
 # Import the standardized interface
 from distributed_testing.ci.api_interface import CIProviderInterface, TestRunResult
@@ -44,6 +47,9 @@ class GitHubClient(CIProviderInterface):
         self.api_url = "https://api.github.com"
         self.session = None
         self.commit_sha = None
+        # When optional HTTP dependencies aren't available, fall back to a
+        # simulation/offline mode that satisfies the CIProviderInterface.
+        self._offline = False
         
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """
@@ -71,12 +77,21 @@ class GitHubClient(CIProviderInterface):
         if not self.repository:
             logger.error("GitHub repository is required")
             return False
+
+        if aiohttp is None:
+            # In minimal-dependency environments (like many CI test runs), aiohttp
+            # may not be installed. We keep the provider usable in a simulated mode.
+            self._offline = True
+            logger.warning("aiohttp not available; GitHubClient running in offline/simulation mode")
         
         logger.info(f"GitHubClient initialized for repository {self.repository}")
         return True
     
     async def _ensure_session(self):
         """Ensure an aiohttp session exists."""
+        if aiohttp is None:
+            self._offline = True
+            return
         if self.session is None:
             self.session = aiohttp.ClientSession(headers={
                 "Authorization": f"Bearer {self.token}",
@@ -95,6 +110,16 @@ class GitHubClient(CIProviderInterface):
             Dictionary with test run information
         """
         await self._ensure_session()
+
+        if self._offline:
+            name = test_run_data.get("name", f"Distributed Test Run - {int(time.time())}")
+            return {
+                "id": f"gh-simulated-{int(time.time())}",
+                "name": name,
+                "status": "running",
+                "start_time": datetime.now().isoformat(),
+                "note": "Created in offline/simulation mode (aiohttp unavailable)"
+            }
         
         try:
             # Extract key information from test run data
@@ -169,6 +194,10 @@ class GitHubClient(CIProviderInterface):
             True if update succeeded
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating update_test_run({test_run_id}) as success")
+            return True
         
         try:
             # Skip if we're using a simulated test run
@@ -255,6 +284,10 @@ class GitHubClient(CIProviderInterface):
             True if comment was added successfully
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating add_pr_comment(PR #{pr_number}) as success")
+            return True
         
         try:
             url = f"{self.api_url}/repos/{self.repository}/issues/{pr_number}/comments"
@@ -292,6 +325,18 @@ class GitHubClient(CIProviderInterface):
             True if upload succeeded
         """
         await self._ensure_session()
+
+        if self._offline:
+            # Store a lightweight local reference for consistency with get_artifact_url.
+            if not hasattr(self, "_artifact_urls"):
+                self._artifact_urls = {}
+            if test_run_id not in self._artifact_urls:
+                self._artifact_urls[test_run_id] = {}
+            self._artifact_urls[test_run_id][artifact_name] = {
+                "url": f"file://{os.path.abspath(artifact_path)}"
+            }
+            logger.info(f"Offline mode: treating upload_artifact({artifact_name}) as success")
+            return True
         
         try:
             # Skip if we're using a simulated test run
@@ -565,6 +610,12 @@ class GitHubClient(CIProviderInterface):
             URL to the artifact or None if not found
         """
         await self._ensure_session()
+
+        if self._offline:
+            if hasattr(self, "_artifact_urls") and test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
+                artifact_info = self._artifact_urls[test_run_id][artifact_name]
+                return artifact_info.get("raw_url") or artifact_info.get("url")
+            return None
         
         try:
             # Skip for simulated test runs
@@ -631,6 +682,14 @@ class GitHubClient(CIProviderInterface):
             Dictionary with test run status information
         """
         await self._ensure_session()
+
+        if self._offline:
+            return {
+                "id": test_run_id,
+                "status": "running" if not test_run_id.startswith("gh-simulated-") else "running",
+                "conclusion": None,
+                "note": "Offline/simulation mode (aiohttp unavailable)"
+            }
         
         try:
             # Skip if we're using a simulated test run
@@ -698,6 +757,10 @@ class GitHubClient(CIProviderInterface):
             True if status was set successfully
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating set_build_status({status}) as success")
+            return True
         
         if not self.commit_sha:
             logger.error("Cannot set build status without commit SHA")

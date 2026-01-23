@@ -9,6 +9,18 @@ from datetime import datetime
 import importlib.util
 import logging
 
+# Allow `ipfs_accelerate_py` to behave as a package even when this module file
+# is imported (it co-exists with the `ipfs_accelerate_py/` package directory).
+# This unblocks imports like `ipfs_accelerate_py.github_cli`.
+try:  # pragma: no cover
+    from pathlib import Path
+
+    _pkg_dir = Path(__file__).resolve().parent / "ipfs_accelerate_py"
+    if _pkg_dir.is_dir():
+        __path__ = [str(_pkg_dir)]  # type: ignore
+except Exception:
+    pass
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,

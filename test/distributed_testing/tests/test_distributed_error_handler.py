@@ -170,7 +170,7 @@ def test_retry_policy_calculation():
     assert policy_dict["skip_if_severity_above"] == "high"
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_retry_operation_success(error_handler):
     """Test successful retry after initial failures."""
     # Mock function that fails twice then succeeds
@@ -201,7 +201,7 @@ async def test_retry_operation_success(error_handler):
     assert attempt == 3  # Function should have been called 3 times
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_retry_operation_failure(error_handler):
     """Test retry operation that ultimately fails."""
     # Mock function that always fails
@@ -320,7 +320,7 @@ def test_safe_execute(error_handler):
     assert any(e.message == "Error with 2 and 3" for e in errors)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_safe_execute_async(error_handler):
     """Test safe execute async wrapper."""
     # Async function that works

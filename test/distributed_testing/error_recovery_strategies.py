@@ -20,6 +20,7 @@ Usage:
 """
 
 import anyio
+import inspect
 import json
 import logging
 import time
@@ -218,8 +219,8 @@ class RetryStrategy(RecoveryStrategy):
                 result = operation(*args, **kwargs)
                 
                 # Handle async operations
-                if asyncio.iscoroutine(result):
-                    result = await result
+                if inspect.isawaitable(result):
+                    await result
                 
                 # Success!
                 return True
@@ -246,7 +247,7 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
         Args:
             coordinator: Reference to the coordinator instance
         """
-        super().__init__(coordinator, "worker_recovery", RecoveryLevel.MEDIUM)
+        super().__init__(coordinator, "worker", RecoveryLevel.MEDIUM)
     
     async def _execute_impl(self, error_info: Dict[str, Any]) -> bool:
         """
@@ -1508,7 +1509,8 @@ class EnhancedErrorRecoveryManager:
             if "offline" in error_message.lower() or "disconnected" in error_message.lower():
                 category = ErrorCategory.WORKER_OFFLINE.value
             elif "crash" in error_message.lower():
-                category = ErrorCategory.WORKER_CRASH.value
+                # Treat crashes as offline conditions for recovery decisions.
+                category = ErrorCategory.WORKER_OFFLINE.value
             elif "resource" in error_message.lower() or "memory" in error_message.lower():
                 category = ErrorCategory.WORKER_RESOURCE.value
             else:

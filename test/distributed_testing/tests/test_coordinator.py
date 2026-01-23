@@ -15,7 +15,6 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
-import pytest_asyncio
 
 websockets = pytest.importorskip("websockets")
 pytest.importorskip("aiohttp")
@@ -106,7 +105,7 @@ class TestDistributedTestingCoordinator(unittest.TestCase):
             self.assertIsNone(coordinator.plugin_manager)
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 async def coordinator_setup():
     """Set up coordinator for async tests with mocked dependencies."""
     # Mock all dependencies
@@ -141,7 +140,7 @@ async def coordinator_setup():
 class TestCoordinatorAsync:
     """Async test cases for the DistributedTestingCoordinator class."""
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_handle_worker_registration(self, coordinator_setup):
         """Test handling worker registration."""
         coordinator = coordinator_setup
@@ -190,7 +189,7 @@ class TestCoordinatorAsync:
             assert call_args[1]["status"] == "success"
             assert call_args[1]["worker_id"] == "test_worker_id"
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_handle_worker_heartbeat(self, coordinator_setup):
         """Test handling worker heartbeat."""
         coordinator = coordinator_setup
@@ -253,7 +252,7 @@ class TestCoordinatorAsync:
             assert call_args[1]["type"] == "heartbeat_response"
             assert call_args[1]["status"] == "success"
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_handle_task_result(self, coordinator_setup):
         """Test handling task result."""
         coordinator = coordinator_setup
@@ -352,7 +351,7 @@ class TestCoordinatorAsync:
             assert call_args[1]["type"] == "task_result_response"
             assert call_args[1]["status"] == "success"
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_handle_task_error(self, coordinator_setup):
         """Test handling task error."""
         coordinator = coordinator_setup
@@ -431,7 +430,7 @@ class TestCoordinatorAsync:
             # Verify response was sent
             coordinator._send_response.assert_called_once()
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_authenticate_worker_api_key(self, coordinator_setup):
         """Test worker authentication with API key."""
         coordinator = coordinator_setup
@@ -474,7 +473,7 @@ class TestCoordinatorAsync:
             assert call_args[1]["status"] == "success"
             assert "token" in call_args[1]
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_authenticate_worker_token(self, coordinator_setup):
         """Test worker authentication with token."""
         coordinator = coordinator_setup
@@ -512,7 +511,7 @@ class TestCoordinatorAsync:
             assert call_args[1]["type"] == "auth_response"
             assert call_args[1]["status"] == "success"
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_authenticate_worker_failed(self, coordinator_setup):
         """Test failed worker authentication."""
         coordinator = coordinator_setup
@@ -552,7 +551,7 @@ class TestCoordinatorAsync:
             assert call_args[1]["status"] == "failure"
             assert "message" in call_args[1]
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_find_worker_for_task(self, coordinator_setup):
         """Test finding a worker for a task."""
         coordinator = coordinator_setup
@@ -625,7 +624,7 @@ class TestCoordinatorAsync:
             worker_id = coordinator._find_worker_for_task(gpu_task)
             assert worker_id == "worker2"
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_assign_task_to_worker(self, coordinator_setup):
         """Test assigning a task to a worker."""
         coordinator = coordinator_setup

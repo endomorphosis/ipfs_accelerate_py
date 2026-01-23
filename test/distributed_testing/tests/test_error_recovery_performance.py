@@ -148,7 +148,7 @@ class MockEnhancedErrorRecoveryManager(EnhancedErrorRecoveryManager):
         self.strategies["system_recovery"] = MockRecoveryStrategy("system_recovery", "critical", True, 0.5)
 
 
-class TestPerformanceBasedErrorRecovery(unittest.TestCase):
+class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
     """Tests for the PerformanceBasedErrorRecovery class."""
     
     def setUp(self):
@@ -241,33 +241,31 @@ class TestPerformanceBasedErrorRecovery(unittest.TestCase):
             {"error_type": ErrorType.NETWORK, "component": "test"}
         )
         
-        # Reset strategy execution flags
+        # Force all strategies to fail so progressive recovery escalates to max
         for strategy in self.recovery_manager.strategies.values():
             strategy.executed = False
-        
-        # Mock strategy to ensure failure
-        strategy = self.recovery_manager.strategies["retry"]
-        strategy.success = False
+            strategy.success = False
         
         # Test recovery
         success, info = await self.recovery_system.recover(error_report)
         
-        # Check results
+        # Check results (implementation escalates within a single call)
         self.assertFalse(success)
-        self.assertEqual(info["strategy_id"], "retry")
         self.assertEqual(info["error_type"], "network")
-        self.assertTrue(strategy.executed)
+        self.assertEqual(info["recovery_level"], ProgressiveRecoveryLevel.LEVEL_5.value)
+        self.assertEqual(info["strategy_id"], "system_recovery")
         
         # Check that performance was recorded
         records = self.db_connection.execute("""
         SELECT * FROM recovery_performance
         """).fetchall()
         
-        self.assertEqual(len(records), 1)
-        self.assertEqual(records[0][1], "retry")  # strategy_id
-        self.assertEqual(records[0][2], "retry")  # strategy_name
-        self.assertEqual(records[0][3], "network")  # error_type
-        self.assertEqual(records[0][5], False)  # success
+        # One record per level (LEVEL_1..LEVEL_5)
+        self.assertEqual(len(records), ProgressiveRecoveryLevel.LEVEL_5.value)
+        self.assertEqual(records[-1][1], "system_recovery")  # strategy_id
+        self.assertEqual(records[-1][2], "system_recovery")  # strategy_name
+        self.assertEqual(records[-1][3], "network")  # error_type
+        self.assertEqual(records[-1][5], False)  # success
     
     async def test_progressive_recovery(self):
         """Test progressive recovery with escalation."""
@@ -277,46 +275,23 @@ class TestPerformanceBasedErrorRecovery(unittest.TestCase):
             {"error_type": ErrorType.NETWORK, "component": "test"}
         )
         
-        # Reset strategy execution flags
+        # Force all strategies to fail
         for strategy in self.recovery_manager.strategies.values():
             strategy.executed = False
-            strategy.success = False  # All strategies will fail
-        
-        # Mock first recovery with failure (level 1)
-        strategy1 = self.recovery_manager.strategies["retry"]
-        strategy1.success = False
-        
-        # Test recovery (should escalate after failure)
+            strategy.success = False
+
+        # Test recovery (should escalate through all levels within one call)
         success, info = await self.recovery_system.recover(error_report)
-        
-        # Check first level
+
         self.assertFalse(success)
-        self.assertEqual(info["recovery_level"], 1)
-        self.assertEqual(info["strategy_id"], "retry")
-        self.assertTrue(strategy1.executed)
-        
-        # Check that error level was escalated
-        self.assertEqual(self.recovery_system.error_recovery_levels[error_report.error_id], 2)
-        
-        # Reset strategy execution flags
-        for strategy in self.recovery_manager.strategies.values():
-            strategy.executed = False
-        
-        # Second attempt should use level 2 strategies
-        strategy2 = self.recovery_manager.strategies["worker_restart"]
-        strategy2.success = False
-        
-        # Test second recovery (should escalate again)
-        success, info = await self.recovery_system.recover(error_report)
-        
-        # Check second level
-        self.assertFalse(success)
-        self.assertEqual(info["recovery_level"], 2)
-        self.assertEqual(info["strategy_id"], "worker_restart")
-        self.assertTrue(strategy2.executed)
-        
-        # Check that error level was escalated again
-        self.assertEqual(self.recovery_system.error_recovery_levels[error_report.error_id], 3)
+        self.assertEqual(info["recovery_level"], ProgressiveRecoveryLevel.LEVEL_5.value)
+        self.assertEqual(info["strategy_id"], "system_recovery")
+
+        # Max level should be recorded for this error
+        self.assertEqual(
+            self.recovery_system.error_recovery_levels[error_report.error_id],
+            ProgressiveRecoveryLevel.LEVEL_5.value,
+        )
         
         # Check that progression was recorded
         records = self.db_connection.execute("""
@@ -325,15 +300,15 @@ class TestPerformanceBasedErrorRecovery(unittest.TestCase):
         
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0][0], error_report.error_id)  # error_id
-        self.assertEqual(records[0][1], 3)  # current_level
+        self.assertEqual(records[0][1], ProgressiveRecoveryLevel.LEVEL_5.value)  # current_level
         
         # Check history JSON
         history = json.loads(records[0][2])
-        self.assertEqual(len(history), 2)
+        self.assertEqual(len(history), ProgressiveRecoveryLevel.LEVEL_5.value - 1)
         self.assertEqual(history[0]["old_level"], 1)
         self.assertEqual(history[0]["new_level"], 2)
-        self.assertEqual(history[1]["old_level"], 2)
-        self.assertEqual(history[1]["new_level"], 3)
+        self.assertEqual(history[-1]["old_level"], 4)
+        self.assertEqual(history[-1]["new_level"], 5)
     
     async def test_strategy_selection(self):
         """Test strategy selection based on performance history."""

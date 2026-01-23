@@ -440,7 +440,15 @@ class TestCoordinatorHardwareMonitoringIntegration(unittest.TestCase):
 class TestHardwareMonitoringEndToEnd(unittest.TestCase):
     """End-to-end tests for hardware monitoring system."""
 
-    @unittest.skipIf(not os.environ.get('RUN_LONG_TESTS'), "Skipping long-running end-to-end test")
+    @unittest.skipIf(
+        not (
+            os.environ.get('RUN_LONG_TESTS')
+            or os.environ.get('IPFS_ACCEL_RUN_INTEGRATION_TESTS_SIMULATED')
+            or os.environ.get('IPFS_ACCEL_RUN_INTEGRATION_TESTS_REAL')
+            or os.environ.get('IPFS_ACCEL_RUN_INTEGRATION_TESTS')
+        ),
+        "Long-running test is opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS_SIMULATED=1 or IPFS_ACCEL_RUN_INTEGRATION_TESTS_REAL=1 (or RUN_LONG_TESTS=1) to run.",
+    )
     def test_end_to_end_demo(self):
         """Test end-to-end demo functionality."""
         # Path to demo script

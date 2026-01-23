@@ -328,32 +328,63 @@ class StatePartition:
         Returns:
             List of conflicting keys
         """
-        conflicts = []
-        
-        # Apply all transactions from other partition
-        for transaction in other.transaction_log:
-            # Skip already applied transactions
-            if any(tx.get("id") == transaction.get("id") for tx in self.transaction_log):
-                continue
-            
-            # Apply transaction
-            self.apply_transaction(transaction)
-        
-        # Check for conflicts
-        for key, value in other.data.items():
-            if key in self.data and self.data[key] != value:
+        conflicts: List[str] = []
+
+        # Detect conflicts against the pre-merge state.
+        local_snapshot = dict(self.data)
+        for key, other_value in other.data.items():
+            if key in local_snapshot and local_snapshot[key] != other_value:
                 conflicts.append(key)
-        
-        # If conflicts, use more recent values
-        if conflicts and other.last_modified > self.last_modified:
+
+        other_is_newer = other.last_modified > self.last_modified
+        existing_tx_ids = {tx.get("id") for tx in self.transaction_log if isinstance(tx, dict)}
+
+        def _affected_keys(transaction: Dict[str, Any]) -> Set[str]:
+            tx_type = transaction.get("type")
+            if tx_type in {"update", "delete"}:
+                key = transaction.get("key")
+                return {key} if isinstance(key, str) else set()
+            if tx_type == "batch_update":
+                updates = transaction.get("updates")
+                return set(updates.keys()) if isinstance(updates, dict) else set()
+            if tx_type == "clear":
+                # Treat as affecting everything.
+                return {"__all__"}
+            return set()
+
+        # Apply missing transactions, skipping older conflicting updates.
+        for transaction in other.transaction_log:
+            if not isinstance(transaction, dict):
+                continue
+            tx_id = transaction.get("id")
+            if tx_id in existing_tx_ids:
+                continue
+
+            keys = _affected_keys(transaction)
+            affects_all = "__all__" in keys
+            affects_conflict = affects_all or any(key in conflicts for key in keys)
+
+            if affects_conflict and not other_is_newer:
+                # Keep local (newer) values; do not apply older conflicting transactions.
+                continue
+
+            self.apply_transaction(transaction)
+
+        # Ensure any missing keys from the other partition are present.
+        for key, value in other.data.items():
+            if key not in self.data:
+                self.data[key] = value
+
+        # For conflicts where other is newer, ensure we adopt their final values.
+        if conflicts and other_is_newer:
             for key in conflicts:
                 self.data[key] = other.data[key]
-        
-        # Update version and checksum
+
+        # Update version and checksum.
         self.version = max(self.version, other.version) + 1
         self.last_modified = time.time()
         self._update_checksum()
-        
+
         return conflicts
     
     def _update_checksum(self):

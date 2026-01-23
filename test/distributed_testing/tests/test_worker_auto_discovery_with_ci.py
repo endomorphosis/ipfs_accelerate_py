@@ -28,14 +28,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Add parent directory to path to import from distributed_testing
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add /test to sys.path so that `distributed_testing` resolves to `test/distributed_testing`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
-    pytest.skip(
-        "Worker auto-discovery + CI integration tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to enable.",
-        allow_module_level=True,
-    )
+from distributed_testing.integration_mode import integration_enabled, integration_opt_in_message
+
+if not integration_enabled():
+    pytest.skip(integration_opt_in_message(), allow_module_level=True)
 
 pytest.importorskip("aiohttp")
 
@@ -99,6 +98,15 @@ class MockCIProvider(CIProviderInterface):
             "name": artifact_name
         })
         return True
+
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str):
+        """Return a stable local URL for an uploaded artifact (mock)."""
+        for artifact in self.artifacts.get(test_run_id, []):
+            if artifact.get("name") == artifact_name:
+                path = artifact.get("path")
+                if path:
+                    return f"file://{os.path.abspath(path)}"
+        return None
     
     async def get_test_run_status(self, test_run_id):
         """Get test run status."""
@@ -150,12 +158,19 @@ class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
         self.mock_socket = self.socket_patcher.start()
         
         # Patch worker connection methods to avoid actual network connections
-        self.worker_connect_patcher = patch.object(Worker, '_setup_connection', new_callable=AsyncMock)
+        self.worker_connect_patcher = patch.object(
+            Worker,
+            '_connect_to_coordinator',
+            new_callable=AsyncMock,
+            create=True,
+        )
         self.mock_worker_connect = self.worker_connect_patcher.start()
         
         # Patch coordinator startup methods to avoid actual network server
         self.coordinator_start_patcher = patch.object(DistributedTestingCoordinator, '_setup_server', new_callable=AsyncMock)
         self.mock_coordinator_start = self.coordinator_start_patcher.start()
+        # `_setup_server()` normally returns (site, runner); keep that contract.
+        self.mock_coordinator_start.return_value = (None, None)
         
         # Create a coordinator with worker auto-discovery enabled
         self.coordinator = DistributedTestingCoordinator(
@@ -261,7 +276,9 @@ class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
     async def test_ci_integration_with_auto_discovery(self, mock_assign_task):
         """Test CI integration with worker auto-discovery."""
         # Set up mock assignment function that simulates task completion
-        mock_assign_task.side_effect = lambda task_id, worker_id: self.coordinator._mark_task_completed(task_id, {"status": "completed"})
+        mock_assign_task.side_effect = lambda task, worker_id: self.coordinator._mark_task_completed(
+            task["task_id"], {"status": "completed"}
+        )
         
         # Create workers
         workers = await self.create_test_workers(2)
@@ -351,7 +368,14 @@ class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
         
         # Verify that artifacts were uploaded
         self.assertEqual(len(artifacts), 1)
-        self.assertEqual(len(self.mock_provider.artifacts[test_run_id]), 1)
+        uploaded_names = [a.get("name") for a in self.mock_provider.artifacts.get(test_run_id, [])]
+        self.assertGreaterEqual(len(uploaded_names), 4)
+        self.assertIn("worker_info.json", uploaded_names)
+        self.assertTrue(
+            any(name in uploaded_names for name in (f"{test_run_id}_report.markdown", f"{test_run_id}_report.md"))
+        )
+        self.assertIn(f"{test_run_id}_report.html", uploaded_names)
+        self.assertIn(f"{test_run_id}_report.json", uploaded_names)
         
         # Update final status
         await self.mock_provider.update_test_run(

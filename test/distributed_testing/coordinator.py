@@ -55,43 +55,58 @@ except Exception:  # pragma: no cover
 try:
     from .security import SecurityManager  # type: ignore
 except Exception:  # pragma: no cover
-    class SecurityManager:  # type: ignore
-        async def verify_token(self, *_args, **_kwargs):
-            return False
+    try:  # Allow importing as a top-level module (e.g. `import coordinator`)
+        from security import SecurityManager  # type: ignore
+    except Exception:  # pragma: no cover
+        class SecurityManager:  # type: ignore
+            async def verify_token(self, *_args, **_kwargs):
+                return False
 
-        async def verify_api_key(self, *_args, **_kwargs):
-            return False
+            async def verify_api_key(self, *_args, **_kwargs):
+                return False
 
-        async def generate_token(self, *_args, **_kwargs):
-            return ""
+            async def generate_token(self, *_args, **_kwargs):
+                return ""
 
 try:
     from .health_monitor import HealthMonitor  # type: ignore
 except Exception:  # pragma: no cover
-    class HealthMonitor:  # type: ignore
-        pass
+    try:  # Allow importing as a top-level module (e.g. `import coordinator`)
+        from health_monitor import HealthMonitor  # type: ignore
+    except Exception:  # pragma: no cover
+        class HealthMonitor:  # type: ignore
+            pass
 
 try:
     from .task_scheduler import TaskScheduler  # type: ignore
 except Exception:  # pragma: no cover
-    class TaskScheduler:  # type: ignore
-        pass
+    try:  # Allow importing as a top-level module (e.g. `import coordinator`)
+        from task_scheduler import TaskScheduler  # type: ignore
+    except Exception:  # pragma: no cover
+        class TaskScheduler:  # type: ignore
+            pass
 
 try:
     from .load_balancer import AdaptiveLoadBalancer  # type: ignore
 except Exception:  # pragma: no cover
-    class AdaptiveLoadBalancer:  # type: ignore
-        def select_worker_for_task(self, _task, workers):
-            for worker_id, info in (workers or {}).items():
-                if isinstance(info, dict) and info.get("status") == "idle":
-                    return worker_id
-            return None
+    try:  # Allow importing as a top-level module (e.g. `import coordinator`)
+        from load_balancer import AdaptiveLoadBalancer  # type: ignore
+    except Exception:  # pragma: no cover
+        class AdaptiveLoadBalancer:  # type: ignore
+            def select_worker_for_task(self, _task, workers):
+                for worker_id, info in (workers or {}).items():
+                    if isinstance(info, dict) and info.get("status") == "idle":
+                        return worker_id
+                return None
 
 try:
     from .plugin_architecture import PluginManager  # type: ignore
 except Exception:  # pragma: no cover
-    class PluginManager:  # type: ignore
-        pass
+    try:  # Allow importing as a top-level module (e.g. `import coordinator`)
+        from plugin_architecture import PluginManager  # type: ignore
+    except Exception:  # pragma: no cover
+        class PluginManager:  # type: ignore
+            pass
 
 
 class NodeRole(Enum):
@@ -335,6 +350,30 @@ class TestCoordinator:
         else:
             self.election_thread = None
 
+    def _heartbeat_loop(self) -> None:
+        """Background heartbeat loop for the lightweight coordinator.
+
+        The full-featured coordinator overrides this logic. For the minimal
+        `TestCoordinator`, keep this loop inert and cooperative with shutdown.
+        """
+        while not self.stop_event.is_set():
+            self.stop_event.wait(self.heartbeat_interval)
+
+    def _assignment_loop(self) -> None:
+        """Background assignment loop for the lightweight coordinator."""
+        while not self.stop_event.is_set():
+            self.stop_event.wait(1)
+
+    def _cleanup_loop(self) -> None:
+        """Background cleanup loop for the lightweight coordinator."""
+        while not self.stop_event.is_set():
+            self.stop_event.wait(5)
+
+    def _election_loop(self) -> None:
+        """Background leader election loop (noop for TestCoordinator)."""
+        while not self.stop_event.is_set():
+            self.stop_event.wait(1)
+
     async def _handle_task_completed(self, task_id: str, worker_id: str, result: Dict[str, Any], execution_time: float):
         """Async hook used by integrations/tests to mark a task as completed."""
         # Update running_tasks and task status in the dict-based API
@@ -453,10 +492,12 @@ class DistributedTestingCoordinator(TestCoordinator):
 
         # Sub-components (patched in unit tests)
         self.security_manager = SecurityManager()
-        self.health_monitor = HealthMonitor() if enable_health_monitor else None
+        # HealthMonitor requires a coordinator reference.
+        self.health_monitor = HealthMonitor(self) if enable_health_monitor else None
         self.task_scheduler = TaskScheduler() if enable_advanced_scheduler else None
-        self.load_balancer = AdaptiveLoadBalancer() if enable_load_balancer else None
-        self.plugin_manager = PluginManager() if enable_plugins else None
+        # AdaptiveLoadBalancer requires a coordinator reference.
+        self.load_balancer = AdaptiveLoadBalancer(self) if enable_load_balancer else None
+        self.plugin_manager = PluginManager(self) if enable_plugins else None
 
         self._server_runner = None
         self._server_site = None
@@ -495,6 +536,94 @@ class DistributedTestingCoordinator(TestCoordinator):
     async def _send_task(self, ws, message: Dict[str, Any]):
         return await self._send_response(ws, {"type": "task", **message})
 
+    async def register_task(self, task_data: Dict[str, Any]) -> str:
+        """Register a task using the schema expected by integration tests.
+
+        The test suite uses a higher-level task schema (name/priority/parameters/metadata)
+        than the minimal `submit_task()` helper. We store the richer structure while
+        still integrating with the coordinator's dict-based task tracking.
+        """
+        task_id = task_data.get("task_id") or f"task-{uuid.uuid4().hex[:8]}"
+
+        task: Dict[str, Any] = {
+            "task_id": task_id,
+            "name": task_data.get("name", task_id),
+            "type": task_data.get("type", "test"),
+            "priority": int(task_data.get("priority", 0) or 0),
+            "parameters": task_data.get("parameters") or {},
+            "metadata": task_data.get("metadata") or {},
+            # Keep a config field for internal assignment helpers.
+            "config": {"parameters": task_data.get("parameters") or {}, "metadata": task_data.get("metadata") or {}},
+            "status": "pending",
+            "created": datetime.datetime.now().isoformat(),
+            "result": None,
+            "result_metadata": {},
+        }
+
+        self.tasks[task_id] = task
+        self.pending_tasks.add(task_id)
+
+        worker_id = self._find_worker_for_task(task)
+        if worker_id:
+            await self._assign_task_to_worker(task, worker_id)
+        return task_id
+
+    async def update_task_status(self, task_id: str, status: str, result: Dict[str, Any] | None = None) -> bool:
+        """Update task status/result used by CI coordinator integration tests."""
+        task = self.tasks.get(task_id)
+        if not isinstance(task, dict):
+            return False
+
+        task["status"] = status
+        task["updated"] = datetime.datetime.now().isoformat()
+        if result is not None:
+            task["result"] = result
+
+        if status == "completed":
+            self.completed_tasks.add(task_id)
+            self.pending_tasks.discard(task_id)
+            self.running_tasks.pop(task_id, None)
+        elif status == "failed":
+            self.failed_tasks.add(task_id)
+            self.pending_tasks.discard(task_id)
+            self.running_tasks.pop(task_id, None)
+
+        return True
+
+    async def process_test_result(self, test_result) -> bool:
+        """Attach a test result's metadata to the originating task.
+
+        The integration tests expect artifacts uploaded by the reporter to be
+        attached to the coordinator task under `result_metadata`.
+        """
+        task_id = None
+        if hasattr(test_result, "metadata") and isinstance(test_result.metadata, dict):
+            task_id = test_result.metadata.get("task_id")
+
+        task = self.tasks.get(task_id) if task_id else None
+        if not isinstance(task, dict):
+            # Fallback: match by test_run_id stored in task metadata.
+            test_run_id = getattr(test_result, "test_run_id", None)
+            if test_run_id:
+                for candidate in self.tasks.values():
+                    if isinstance(candidate, dict) and isinstance(candidate.get("metadata"), dict):
+                        if candidate["metadata"].get("test_run_id") == test_run_id:
+                            task = candidate
+                            break
+
+        if not isinstance(task, dict):
+            return False
+
+        # Store a shallow copy to avoid surprising aliasing.
+        metadata = getattr(test_result, "metadata", {})
+        task["result_metadata"] = dict(metadata) if isinstance(metadata, dict) else {}
+        return True
+
+    async def get_task(self, task_id: str) -> Dict[str, Any] | None:
+        """Return the task dict for the given task_id."""
+        task = self.tasks.get(task_id)
+        return task if isinstance(task, dict) else None
+
     def get_registered_workers(self) -> List[str]:
         return list(self.workers.keys())
 
@@ -504,26 +633,6 @@ class DistributedTestingCoordinator(TestCoordinator):
             return worker.get("capabilities")
         return None
 
-    def register_worker(self, *args, **kwargs):
-        """Register a worker.
-
-        Supports both legacy signature (hostname, ip, capabilities) and the
-        dict-based signature used in tests (worker_id, capabilities).
-        """
-        if len(args) == 2 and isinstance(args[0], str) and isinstance(args[1], dict):
-            worker_id, capabilities = args
-            self.workers[worker_id] = {
-                "worker_id": worker_id,
-                "hostname": worker_id,
-                "capabilities": capabilities,
-                "status": "idle",
-                "connected": True,
-                "last_heartbeat": datetime.datetime.now().isoformat(),
-            }
-            return worker_id
-
-        # Fallback to the legacy API
-        return super().register_worker(*args, **kwargs)
 
     def _find_worker_for_task(self, task: Dict[str, Any]) -> Optional[str]:
         if self.load_balancer and hasattr(self.load_balancer, "select_worker_for_task"):
@@ -709,34 +818,72 @@ class DistributedTestingCoordinator(TestCoordinator):
 
         await self._send_response(ws, {"type": "auth_response", "status": "failure", "message": "Unsupported auth_type"})
         return False
-    
-    def register_worker(self, hostname: str, ip_address: str, capabilities: Dict[str, Any]) -> str:
+
+    def register_worker(self, *args, **kwargs) -> str:
+        """Register a worker.
+
+        Supports two calling conventions:
+        - Test/integration style: `register_worker(worker_id, capabilities)`
+        - Legacy/stateful style: `register_worker(hostname, ip_address, capabilities)`
+
+        Returns the worker_id used for registration.
         """
-        Register a new worker.
-        
-        Args:
-            hostname: The hostname of the worker
-            ip_address: The IP address of the worker
-            capabilities: The capabilities of the worker
-            
-        Returns:
-            The ID of the registered worker
-        """
-        with self.state_lock:
+
+        worker_id: str
+        hostname: str
+        ip_address: str
+        capabilities: Dict[str, Any]
+
+        # Test/integration style: (worker_id, capabilities)
+        if len(args) == 2 and isinstance(args[0], str) and isinstance(args[1], dict):
+            worker_id, capabilities = args
+            hostname = worker_id
+            ip_address = "127.0.0.1"
+        else:
+            # Legacy/stateful style: (hostname, ip_address, capabilities) or kwargs
+            if len(args) == 3 and isinstance(args[0], str) and isinstance(args[1], str) and isinstance(args[2], dict):
+                hostname, ip_address, capabilities = args
+            else:
+                hostname = kwargs.get("hostname")
+                ip_address = kwargs.get("ip_address")
+                capabilities = kwargs.get("capabilities")
+
+            if not isinstance(hostname, str) or not isinstance(ip_address, str) or not isinstance(capabilities, dict):
+                raise TypeError(
+                    "register_worker expected (worker_id: str, capabilities: dict) or (hostname: str, ip_address: str, capabilities: dict)"
+                )
+
             worker_id = str(uuid.uuid4())
-            worker = Worker(
-                id=worker_id,
-                hostname=hostname,
-                ip_address=ip_address,
-                capabilities=capabilities
-            )
-            self.state.workers[worker_id] = worker
-            self.statistics['workers_registered'] += 1
-            self.statistics['workers_active'] += 1
-            
-            logger.info(f"Registered worker {worker_id} ({hostname}, {ip_address})")
-            
-            return worker_id
+
+        # Keep the dict-based worker registry (used by the test suite) updated.
+        self.workers[worker_id] = {
+            "worker_id": worker_id,
+            "hostname": hostname,
+            "ip_address": ip_address,
+            "capabilities": capabilities,
+            "status": "idle",
+            "connected": True,
+            "last_heartbeat": datetime.datetime.now().isoformat(),
+        }
+
+        # Also register into the stateful coordinator view when available.
+        state_lock = getattr(self, "state_lock", None)
+        if state_lock is not None and hasattr(self, "state") and hasattr(self.state, "workers"):
+            with state_lock:
+                self.state.workers[worker_id] = Worker(
+                    id=worker_id,
+                    hostname=hostname,
+                    ip_address=ip_address,
+                    capabilities=capabilities,
+                )
+
+                stats = getattr(self, "statistics", None)
+                if isinstance(stats, dict):
+                    stats["workers_registered"] = int(stats.get("workers_registered", 0) or 0) + 1
+                    stats["workers_active"] = int(stats.get("workers_active", 0) or 0) + 1
+
+        logger.info(f"Registered worker {worker_id} ({hostname}, {ip_address})")
+        return worker_id
     
     def unregister_worker(self, worker_id: str) -> bool:
         """

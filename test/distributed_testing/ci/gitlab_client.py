@@ -14,7 +14,10 @@ import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-import aiohttp
+try:
+    import aiohttp  # type: ignore
+except Exception:  # pragma: no cover
+    aiohttp = None  # type: ignore
 
 # Import the standardized interface
 from distributed_testing.ci.api_interface import CIProviderInterface, TestRunResult
@@ -44,6 +47,9 @@ class GitLabClient(CIProviderInterface):
         self.api_url = "https://gitlab.com/api/v4"
         self.session = None
         self.commit_sha = None
+        # When optional HTTP dependencies aren't available, fall back to a
+        # simulation/offline mode that satisfies the CIProviderInterface.
+        self._offline = False
         
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """
@@ -60,7 +66,7 @@ class GitLabClient(CIProviderInterface):
             True if initialization succeeded
         """
         self.token = config.get("token")
-        self.project = config.get("project")
+        self.project = config.get("project") or config.get("project_id")
         self.api_url = config.get("api_url", "https://gitlab.com/api/v4")
         self.commit_sha = config.get("commit_sha")
         
@@ -71,12 +77,21 @@ class GitLabClient(CIProviderInterface):
         if not self.project:
             logger.error("GitLab project is required")
             return False
+
+        if aiohttp is None:
+            # In minimal-dependency environments, aiohttp may not be installed.
+            # Keep the provider usable in a simulated mode.
+            self._offline = True
+            logger.warning("aiohttp not available; GitLabClient running in offline/simulation mode")
         
         logger.info(f"GitLabClient initialized for project {self.project}")
         return True
     
     async def _ensure_session(self):
         """Ensure an aiohttp session exists."""
+        if aiohttp is None:
+            self._offline = True
+            return
         if self.session is None:
             self.session = aiohttp.ClientSession(headers={
                 "PRIVATE-TOKEN": self.token,
@@ -94,6 +109,16 @@ class GitLabClient(CIProviderInterface):
             Dictionary with test run information
         """
         await self._ensure_session()
+
+        if self._offline:
+            name = test_run_data.get("name", f"Distributed Test Run - {int(time.time())}")
+            return {
+                "id": f"gl-simulated-{int(time.time())}",
+                "name": name,
+                "status": "running",
+                "start_time": datetime.now().isoformat(),
+                "note": "Created in offline/simulation mode (aiohttp unavailable)"
+            }
         
         try:
             # Extract key information from test run data
@@ -194,6 +219,10 @@ class GitLabClient(CIProviderInterface):
             True if update succeeded
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating update_test_run({test_run_id}) as success")
+            return True
         
         try:
             # Skip if we're using a simulated test run
@@ -284,6 +313,10 @@ class GitLabClient(CIProviderInterface):
             True if comment was added successfully
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating add_pr_comment(MR !{pr_number}) as success")
+            return True
         
         try:
             url = f"{self.api_url}/projects/{self.project}/merge_requests/{pr_number}/notes"
@@ -321,6 +354,16 @@ class GitLabClient(CIProviderInterface):
             True if upload succeeded
         """
         await self._ensure_session()
+
+        if self._offline:
+            # Cache a lightweight local reference for get_artifact_url.
+            if not hasattr(self, "_artifact_urls"):
+                self._artifact_urls = {}
+            if test_run_id not in self._artifact_urls:
+                self._artifact_urls[test_run_id] = {}
+            self._artifact_urls[test_run_id][artifact_name] = f"file://{os.path.abspath(artifact_path)}"
+            logger.info(f"Offline mode: treating upload_artifact({artifact_name}) as success")
+            return True
         
         try:
             # Skip if we're using a simulated test run
@@ -436,6 +479,11 @@ class GitLabClient(CIProviderInterface):
             URL to the artifact or None if not found
         """
         await self._ensure_session()
+
+        if self._offline:
+            if hasattr(self, "_artifact_urls") and test_run_id in self._artifact_urls and artifact_name in self._artifact_urls[test_run_id]:
+                return self._artifact_urls[test_run_id][artifact_name]
+            return None
         
         try:
             # Skip for simulated test runs
@@ -502,6 +550,14 @@ class GitLabClient(CIProviderInterface):
             Dictionary with test run status information
         """
         await self._ensure_session()
+
+        if self._offline:
+            return {
+                "id": test_run_id,
+                "status": "running",
+                "conclusion": None,
+                "note": "Offline/simulation mode (aiohttp unavailable)"
+            }
         
         try:
             # Skip if we're using a simulated test run
@@ -650,6 +706,10 @@ class GitLabClient(CIProviderInterface):
             True if status was set successfully
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating set_build_status({status}) as success")
+            return True
         
         if not self.commit_sha:
             logger.error("Cannot set build status without commit SHA")

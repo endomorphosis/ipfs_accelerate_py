@@ -28,7 +28,10 @@ import psutil
 import websockets
 
 # Import security module
-from security import SecurityManager
+try:
+    from .security import SecurityManager  # type: ignore
+except Exception:  # pragma: no cover
+    from security import SecurityManager
 
 # Configure logging
 logging.basicConfig(
@@ -43,7 +46,6 @@ logger = logging.getLogger(__name__)
 
 try:
     # Try to import GPU-related libraries if available
-    import torch
     import torch.cuda as cuda
     HAS_TORCH = True
 except ImportError:
@@ -780,7 +782,16 @@ class DistributedTestingWorker:
         try:
             # Execute task based on type
             if task_type in self.task_executors:
-                result = await self.task_executors[task_type](task)
+                executor = self.task_executors[task_type]
+                # The executor mapping is initialized at worker construction time.
+                # Tests (and some runtime integrations) patch methods like
+                # `_execute_benchmark_task` on the instance; refresh the executor
+                # from the instance attribute so patched methods are invoked.
+                executor_name = getattr(executor, "__name__", None)
+                if executor_name and hasattr(self, executor_name):
+                    executor = getattr(self, executor_name)
+
+                result = await executor(task)
             else:
                 # Unknown task type
                 raise ValueError(f"Unknown task type: {task_type}")
@@ -800,7 +811,7 @@ class DistributedTestingWorker:
             
             logger.info(f"Task {task_id} completed successfully in {execution_time:.2f} seconds")
             
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             # Task was cancelled
             task["status"] = "cancelled"
             task["ended"] = datetime.now().isoformat()

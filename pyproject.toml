@@ -51,6 +51,27 @@ minimal = [
   "tqdm>=4.64.0",
   "numpy>=1.23.0",
 ]
+
+# Feature-scoped extras (optional runtime capabilities)
+distributed = [
+  "aiohttp>=3.8.1",
+  "websockets>=10.1",
+  "networkx>=2.8",
+]
+monitoring = [
+  "psutil>=5.9.0",
+  "py-cpuinfo>=9.0.0",
+  "nvidia-ml-py",
+]
+analysis = [
+  "pandas>=2.0.0",
+  "numpy>=1.23.0",
+]
+viz = [
+  "matplotlib>=3.7.0",
+  "seaborn>=0.13.0",
+  "plotly>=5.22.0",
+]
 full = [
   "torch>=2.1",
   "transformers>=4.46",
@@ -71,6 +92,8 @@ testing = [
   "websockets>=10.1",
   "networkx>=2.8",
   "psutil>=5.9.0",
+  "py-cpuinfo>=9.0.0",
+  "nvidia-ml-py",
   "pandas>=2.0.0",
   "requests>=2.31.0",
 ]
@@ -85,11 +108,6 @@ webnn = [
   "playwright>=1.31.0",
   "aiohttp>=3.8.1",
   "websockets>=10.1",
-]
-viz = [
-  "matplotlib>=3.7.0",
-  "seaborn>=0.13.0",
-  "plotly>=5.22.0",
 ]
 all = [
   # aggregate without native P2P by default

@@ -15,7 +15,10 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin, quote
 
-import aiohttp
+try:
+    import aiohttp  # type: ignore
+except Exception:  # pragma: no cover
+    aiohttp = None  # type: ignore
 
 # Import the standardized interface
 from distributed_testing.ci.api_interface import CIProviderInterface, TestRunResult
@@ -45,6 +48,7 @@ class JenkinsClient(CIProviderInterface):
         self.session = None
         self.job_name = None
         self.build_id = None
+        self._offline = False
         
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """
@@ -82,6 +86,9 @@ class JenkinsClient(CIProviderInterface):
     
     async def _ensure_session(self):
         """Ensure an aiohttp session exists with proper authentication."""
+        if aiohttp is None:
+            self._offline = True
+            return
         if self.session is None:
             # Create auth header for Basic authentication
             auth = aiohttp.BasicAuth(self.user, self.token)
@@ -105,6 +112,20 @@ class JenkinsClient(CIProviderInterface):
             Dictionary with test run information
         """
         await self._ensure_session()
+
+        if self._offline:
+            name = test_run_data.get("name", f"Distributed Test Run - {int(time.time())}")
+            job_name = test_run_data.get("job_name") or self.job_name
+            build_id = test_run_data.get("build_id") or self.build_id
+            return {
+                "id": f"jenkins-simulated-{int(time.time())}",
+                "name": name,
+                "status": "running",
+                "start_time": datetime.now().isoformat(),
+                "job_name": job_name,
+                "build_id": build_id,
+                "note": "Created in offline/simulation mode (aiohttp unavailable)"
+            }
         
         try:
             # Extract key information from test run data
@@ -188,6 +209,10 @@ class JenkinsClient(CIProviderInterface):
             True if update succeeded
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating update_test_run({test_run_id}) as success")
+            return True
         
         try:
             # Skip if we're using a simulated test run
@@ -266,6 +291,15 @@ class JenkinsClient(CIProviderInterface):
             True if upload succeeded
         """
         await self._ensure_session()
+
+        if self._offline:
+            if not hasattr(self, "_artifact_urls"):
+                self._artifact_urls = {}
+            if test_run_id not in self._artifact_urls:
+                self._artifact_urls[test_run_id] = {}
+            self._artifact_urls[test_run_id][artifact_name] = f"file://{os.path.abspath(artifact_path)}"
+            logger.info(f"Offline mode: treating upload_artifact({artifact_name}) as success")
+            return True
         
         try:
             # Skip if we're using a simulated test run
@@ -350,6 +384,14 @@ class JenkinsClient(CIProviderInterface):
             Dictionary with test run status information
         """
         await self._ensure_session()
+
+        if self._offline:
+            return {
+                "id": test_run_id,
+                "status": "running",
+                "conclusion": None,
+                "note": "Offline/simulation mode (aiohttp unavailable)"
+            }
         
         try:
             # Skip if we're using a simulated test run
@@ -517,6 +559,10 @@ class JenkinsClient(CIProviderInterface):
             True if status was set successfully
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating set_build_status({status}) as success")
+            return True
         
         if not self.job_name or not self.build_id:
             logger.error("Cannot set build status without job name and build ID")

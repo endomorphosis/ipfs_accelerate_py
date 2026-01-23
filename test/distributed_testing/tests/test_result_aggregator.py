@@ -208,7 +208,7 @@ class TestResultAggregatorService(unittest.TestCase):
         # Verify metrics for each worker
         for group in grouped:
             worker_id = group["worker_id"]
-            worker_num = int(worker_id.split("_")[1])
+            worker_num = int(worker_id.split("_")[-1])
             
             # Just basic verification that the grouping worked
             self.assertIn("throughput", group)

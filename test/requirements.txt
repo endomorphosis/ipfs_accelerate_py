@@ -5,6 +5,11 @@ pytest-cov>=4.1.0
 pytest-timeout>=2.1.0
 pytest-xdist>=3.3.1
 
+# Distributed testing (enables additional tests that otherwise skip)
+aiohttp>=3.9.0
+websockets>=12.0
+networkx>=3.2.0
+
 # Hardware dependencies (conditional)
 torch>=2.0.0; platform_system != "Darwin" or platform_machine != "arm64"  # CPU/CUDA/ROCm
 torch>=2.0.0; platform_system == "Darwin" and platform_machine == "arm64"  # MPS (Apple Silicon)

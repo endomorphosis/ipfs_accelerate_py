@@ -19,16 +19,18 @@ import unittest
 from typing import Dict, List, Any, Optional
 from unittest.mock import MagicMock, patch
 
+from distributed_testing.integration_mode import (
+    integration_enabled,
+    integration_opt_in_message,
+)
+
 # This module is an integration test suite that may require optional
 # dependencies and external capabilities. Keep it opt-in under pytest.
 if "pytest" in sys.modules:
     import pytest
 
-    if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
-        pytest.skip(
-            "Integration tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to run.",
-            allow_module_level=True,
-        )
+    if not integration_enabled():
+        pytest.skip(integration_opt_in_message(), allow_module_level=True)
 
     pytest.importorskip("psutil")
 

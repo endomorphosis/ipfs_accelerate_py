@@ -69,6 +69,7 @@ class ErrorType(Enum):
     AUTHORIZATION = "authorization"    # Authorization issues
     
     # Coordination errors
+    WORKER = "worker"               # Worker/agent failures
     COORDINATION = "coordination"   # Worker coordination issues
     SCHEDULING = "scheduling"       # Test scheduling issues
     STATE = "state"                 # State management issues

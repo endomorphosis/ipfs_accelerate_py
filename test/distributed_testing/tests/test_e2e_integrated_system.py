@@ -29,16 +29,17 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
 
-# Add the project root to the Python path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
+# Add the /test directory to the Python path so that the `distributed_testing`
+# package resolves to `test/distributed_testing`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
+from distributed_testing.integration_mode import real_integration_enabled, integration_opt_in_message
+
+if not real_integration_enabled():
     pytest.skip(
-        "End-to-end integration tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to run.",
+        "E2E integrated system test requires REAL integration mode; " + integration_opt_in_message(),
         allow_module_level=True,
     )
-
-pytest.importorskip("aiohttp")
 
 # Import the components to test
 from distributed_testing.coordinator import TestCoordinator
@@ -520,7 +521,7 @@ class TestE2EIntegratedSystem(unittest.TestCase):
 
     def test_e2e_integrated_system(self):
         """Test the complete integrated system end-to-end."""
-        anyio.run(self._run_integrated_test())
+        anyio.run(self._run_integrated_test)
 
 
 if __name__ == "__main__":

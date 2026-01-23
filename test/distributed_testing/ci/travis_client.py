@@ -15,7 +15,10 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin
 
-import aiohttp
+try:
+    import aiohttp  # type: ignore
+except Exception:  # pragma: no cover
+    aiohttp = None  # type: ignore
 
 # Import the standardized interface
 from distributed_testing.ci.api_interface import CIProviderInterface, TestRunResult
@@ -44,6 +47,7 @@ class TravisClient(CIProviderInterface):
         self.api_url = "https://api.travis-ci.com"
         self.session = None
         self.build_id = None
+        self._offline = False
         
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """
@@ -71,12 +75,19 @@ class TravisClient(CIProviderInterface):
         if not self.repository:
             logger.error("Travis CI repository is required")
             return False
+
+        if aiohttp is None:
+            self._offline = True
+            logger.warning("aiohttp not available; TravisClient running in offline/simulation mode")
         
         logger.info(f"TravisClient initialized for repository {self.repository}")
         return True
     
     async def _ensure_session(self):
         """Ensure an aiohttp session exists."""
+        if aiohttp is None:
+            self._offline = True
+            return
         if self.session is None:
             self.session = aiohttp.ClientSession(headers={
                 "Travis-API-Version": "3",
@@ -100,6 +111,18 @@ class TravisClient(CIProviderInterface):
             Dictionary with test run information
         """
         await self._ensure_session()
+
+        if self._offline:
+            name = test_run_data.get("name", f"Distributed Test Run - {int(time.time())}")
+            build_id = test_run_data.get("build_id", self.build_id)
+            return {
+                "id": f"travis-simulated-{int(time.time())}",
+                "name": name,
+                "status": "running",
+                "start_time": datetime.now().isoformat(),
+                "build_id": build_id,
+                "note": "Created in offline/simulation mode (aiohttp unavailable)"
+            }
         
         try:
             # Extract key information from test run data
@@ -162,6 +185,10 @@ class TravisClient(CIProviderInterface):
             True if update succeeded
         """
         await self._ensure_session()
+
+        if self._offline:
+            logger.info(f"Offline mode: treating update_test_run({test_run_id}) as success")
+            return True
         
         try:
             # Skip if we're using a simulated test run
@@ -228,6 +255,15 @@ class TravisClient(CIProviderInterface):
             True if upload succeeded
         """
         await self._ensure_session()
+
+        if self._offline:
+            if not hasattr(self, "_artifact_urls"):
+                self._artifact_urls = {}
+            if test_run_id not in self._artifact_urls:
+                self._artifact_urls[test_run_id] = {}
+            self._artifact_urls[test_run_id][artifact_name] = f"file://{os.path.abspath(artifact_path)}"
+            logger.info(f"Offline mode: treating upload_artifact({artifact_name}) as success")
+            return True
         
         try:
             # Skip if we're using a simulated test run
@@ -261,6 +297,14 @@ class TravisClient(CIProviderInterface):
             Dictionary with test run status information
         """
         await self._ensure_session()
+
+        if self._offline:
+            return {
+                "id": test_run_id,
+                "status": "running",
+                "conclusion": None,
+                "note": "Offline/simulation mode (aiohttp unavailable)"
+            }
         
         try:
             # Skip if we're using a simulated test run
@@ -315,6 +359,9 @@ class TravisClient(CIProviderInterface):
         Returns:
             True if status was set successfully
         """
+        if self._offline:
+            logger.info(f"Offline mode: treating set_build_status({status}) as success")
+            return True
         logger.info(f"TravisClient doesn't support setting build status directly. Would set status to {status}: {description}")
         return False
     

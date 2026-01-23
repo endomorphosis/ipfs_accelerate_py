@@ -21,11 +21,10 @@ import pytest
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
-    pytest.skip(
-        "Coordinator failover tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to run.",
-        allow_module_level=True,
-    )
+from integration_mode import integration_enabled, integration_opt_in_message
+
+if not integration_enabled():
+    pytest.skip(integration_opt_in_message(), allow_module_level=True)
 
 pytest.importorskip("aiohttp")
 
@@ -47,6 +46,25 @@ class FailoverSimulator:
         self.processes = []
         self.temp_dirs = [tempfile.mkdtemp() for _ in range(node_count)]
         self.db_paths = [os.path.join(temp_dir, "coordinator.duckdb") for temp_dir in self.temp_dirs]
+
+        # Subprocesses are launched via `python -m distributed_testing.coordinator`.
+        # That module is located under the repository's `test/` directory, so we
+        # ensure the subprocess working directory / PYTHONPATH includes it.
+        self._test_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir)
+        )
+
+    def _subprocess_env(self):
+        test_root = self._test_root
+        pythonpath = os.environ.get("PYTHONPATH", "")
+        if pythonpath:
+            pythonpath = f"{test_root}{os.pathsep}{pythonpath}"
+        else:
+            pythonpath = test_root
+        env = dict(os.environ)
+        env["PYTHONPATH"] = pythonpath
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        return env
         
     async def start_cluster(self):
         """Start a cluster of coordinator nodes."""
@@ -73,7 +91,9 @@ class FailoverSimulator:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                cwd=self._test_root,
+                env=self._subprocess_env(),
             )
             self.processes.append(process)
             
@@ -113,7 +133,9 @@ class FailoverSimulator:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                cwd=self._test_root,
+                env=self._subprocess_env(),
             )
             self.processes[node_index] = process
             logger.info(f"Restarted node {node_index+1}")

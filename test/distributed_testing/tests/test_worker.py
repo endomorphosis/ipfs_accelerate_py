@@ -10,12 +10,20 @@ import anyio
 import json
 import logging
 import os
+import sys
 import unittest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
 websockets = pytest.importorskip("websockets")
+
+_THIS_DIR = os.path.dirname(__file__)
+_PARENT_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
+if _PARENT_DIR not in sys.path:
+    sys.path.insert(0, _PARENT_DIR)
+
 from security import SecurityManager
 
 from worker import DistributedTestingWorker
@@ -61,7 +69,7 @@ class TestDistributedTestingWorker(unittest.TestCase):
 class TestDistributedTestingWorkerAsync:
     """Async test cases for the DistributedTestingWorker class."""
 
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def worker_setup(self):
         """Set up worker and mocked connection for testing."""
         coordinator_url = "http://localhost:8080"
