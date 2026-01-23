@@ -18,7 +18,7 @@ This module provides:
 Usage (two laptops)
 -------------------
 Laptop A (server):
-  ./\.venv/bin/python -m test.integration.test_p2p_remote_host_connectivity \
+    ./.venv/bin/python -m test.integration.test_p2p_remote_host_connectivity \
     --serve --port 9100 --advertise-ip <LAN_IP>
 
 It prints a line like:
@@ -26,7 +26,7 @@ It prints a line like:
 
 Laptop B (client test):
   P2P_REMOTE_MULTIADDR="/ip4/<LAN_IP>/tcp/9100/p2p/<PEER_ID>" \
-    ./\.venv/bin/python -m pytest -c test/pytest.ini -vv \
+        ./.venv/bin/python -m pytest -c test/pytest.ini -vv \
     test/integration/test_p2p_remote_host_connectivity.py::test_remote_host_probe
 
 Notes
@@ -38,7 +38,6 @@ Notes
 from __future__ import annotations
 
 import argparse
-import asyncio
 import inspect
 import json
 import os
@@ -96,6 +95,8 @@ async def run_probe_server(
     advertise_ip: Optional[str],
     exit_after_one: bool,
 ) -> None:
+    import trio
+
     try:
         from libp2p import new_host
         from multiaddr import Multiaddr
@@ -112,7 +113,7 @@ async def run_probe_server(
     # Print an easy-to-copy env var assignment.
     print(f"P2P_PROBE_MULTIADDR={advertised}", flush=True)
 
-    done = asyncio.Event()
+    done = trio.Event()
 
     async def _handler(stream) -> None:
         request_bytes = b""
@@ -146,7 +147,7 @@ async def run_probe_server(
         await done.wait()
     else:
         # Run forever.
-        await asyncio.Event().wait()
+        await trio.sleep_forever()
 
     try:
         await host.close()
@@ -155,6 +156,8 @@ async def run_probe_server(
 
 
 async def probe_remote(remote_multiaddr: str, timeout_s: float = 10.0) -> Tuple[str, str, ProbeResponse]:
+    import trio
+
     try:
         from libp2p import new_host
         from libp2p.peer.peerinfo import info_from_p2p_addr
@@ -171,9 +174,11 @@ async def probe_remote(remote_multiaddr: str, timeout_s: float = 10.0) -> Tuple[
         raise ValueError("Remote multiaddr must include /p2p/<peer_id>")
 
     peer_info = info_from_p2p_addr(ma)
-    await asyncio.wait_for(host.connect(peer_info), timeout=timeout_s)
+    with trio.fail_after(timeout_s):
+        await host.connect(peer_info)
 
-    stream = await asyncio.wait_for(host.new_stream(peer_info.peer_id, [PROBE_PROTOCOL]), timeout=timeout_s)
+    with trio.fail_after(timeout_s):
+        stream = await host.new_stream(peer_info.peer_id, [PROBE_PROTOCOL])
 
     req = {
         "from_peer_id": local_peer_id,
@@ -182,8 +187,10 @@ async def probe_remote(remote_multiaddr: str, timeout_s: float = 10.0) -> Tuple[
         "ts": time.time(),
     }
 
-    await asyncio.wait_for(stream.write(json.dumps(req, sort_keys=True).encode("utf-8")), timeout=timeout_s)
-    raw = await asyncio.wait_for(stream.read(4096), timeout=timeout_s)
+    with trio.fail_after(timeout_s):
+        await stream.write(json.dumps(req, sort_keys=True).encode("utf-8"))
+    with trio.fail_after(timeout_s):
+        raw = await stream.read(4096)
     await stream.close()
 
     try:
@@ -212,13 +219,16 @@ def _main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.serve:
-        asyncio.run(
-            run_probe_server(
+        import trio
+
+        async def _serve() -> None:
+            await run_probe_server(
                 port=args.port,
                 advertise_ip=args.advertise_ip,
                 exit_after_one=args.exit_after_one,
             )
-        )
+
+        trio.run(_serve)
         return 0
 
     # Client mode: read from env.
@@ -226,7 +236,9 @@ def _main(argv: Optional[list[str]] = None) -> int:
     if not remote:
         raise SystemExit("Set P2P_REMOTE_MULTIADDR or use --serve")
 
-    local_peer_id, expected_remote_peer_id, resp = asyncio.run(probe_remote(remote))
+    import trio
+
+    local_peer_id, expected_remote_peer_id, resp = trio.run(probe_remote, remote)
     print(f"local_peer_id={local_peer_id}")
     print(f"expected_remote_peer_id={expected_remote_peer_id}")
     print(f"remote_peer_id={resp.peer_id}")
@@ -253,7 +265,9 @@ def test_remote_host_probe():
         pytest.skip("Set P2P_REMOTE_MULTIADDR from the server output")
 
     try:
-        local_peer_id, expected_remote_peer_id, resp = asyncio.run(probe_remote(remote))
+        import trio
+
+        local_peer_id, expected_remote_peer_id, resp = trio.run(probe_remote, remote)
     except Exception as e:
         pytest.fail(f"Remote probe failed: {e}")
         return
