@@ -112,6 +112,7 @@ class UniversalConnectivity:
         self._dht = None
         self._dht_bootstrap_interval = int(os.environ.get("CACHE_DHT_BOOTSTRAP_INTERVAL", "300"))
         self._dht_bootstrap_task = None
+        self._portal = None
 
         # Track what this helper actually implements (vs. what is merely "enabled" in config).
         self.implemented = {
@@ -132,6 +133,10 @@ class UniversalConnectivity:
         logger.info(f"  DHT: {self.config.enable_dht}")
         logger.info(f"  Relay: {self.config.enable_relay}")
         logger.info(f"  AutoNAT: {self.config.enable_autonat}")
+
+    def set_portal(self, portal) -> None:
+        """Attach an AnyIO blocking portal for cross-thread scheduling."""
+        self._portal = portal
     
     async def configure_transports(self, host) -> None:
         """
@@ -184,7 +189,6 @@ class UniversalConnectivity:
             if self._mdns_thread and self._mdns_thread.is_alive():
                 return
 
-            loop = asyncio.get_running_loop()
             self._mdns_stop = threading.Event()
 
             def _runner() -> None:
@@ -250,7 +254,7 @@ class UniversalConnectivity:
                     )
                     self._mdns_zeroconf.register_service(self._mdns_service_info)
 
-                    listener = _MDNSListener(self, host, loop)
+                    listener = _MDNSListener(self, host, self._portal)
                     self._mdns_browser = ServiceBrowser(self._mdns_zeroconf, service_type, listener)
 
                     self.implemented["mdns"] = True
@@ -286,8 +290,10 @@ class UniversalConnectivity:
                 # Perform mDNS discovery
                 # In actual implementation, this would use libp2p's mDNS service
                 await anyio.sleep(self.config.mdns_interval)
+                await anyio.sleep(self.config.mdns_interval)
             except Exception as e:
                 logger.error(f"mDNS discovery error: {e}")
+                await anyio.sleep(self.config.mdns_interval)
                 await anyio.sleep(self.config.mdns_interval)
     
     async def configure_dht(self, host) -> None:
@@ -334,6 +340,7 @@ class UniversalConnectivity:
         while True:
             try:
                 await anyio.sleep(self._dht_bootstrap_interval)
+                await anyio.sleep(self._dht_bootstrap_interval)
                 if not self._dht:
                     continue
 
@@ -342,10 +349,11 @@ class UniversalConnectivity:
                 bootstrap = getattr(self._dht, "bootstrap", None)
                 if callable(bootstrap):
                     result = bootstrap()
-                    if asyncio.iscoroutine(result):
+                    if inspect.isawaitable(result):
                         await result
 
                 logger.debug("DHT bootstrap tick completed")
+            except anyio.get_cancelled_exc_class():
             except anyio.get_cancelled_exc_class():
                 break
             except Exception as e:
@@ -370,7 +378,7 @@ class UniversalConnectivity:
             for peer_id in peer_ids:
                 try:
                     result = add_peer(peer_id)
-                    if asyncio.iscoroutine(result):
+                    if inspect.isawaitable(result):
                         await result
                 except Exception:
                     continue
@@ -427,7 +435,7 @@ class UniversalConnectivity:
             reserve = getattr(host, "reserve_relay", None)
             if callable(reserve):
                 result = reserve(peer_info)
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
                     await result
                 logger.debug("Relay reservation attempted via host.reserve_relay")
                 return
@@ -437,7 +445,7 @@ class UniversalConnectivity:
             reserve = getattr(relay, "reserve", None) if relay else None
             if callable(reserve):
                 result = reserve(peer_info)
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
                     await result
                 logger.debug("Relay reservation attempted via host.relay.reserve")
         except Exception as e:
@@ -617,6 +625,7 @@ class UniversalConnectivity:
                 try:
                     logger.debug(f"Attempting hole punching to {peer_addr}")
                     # Best-effort: retry direct connection after brief jitter
+                    await anyio.sleep(0.5 + random.random())
                     await anyio.sleep(0.5 + random.random())
                     await host.connect(peer_info)
                     logger.info("✓ Hole punching fallback succeeded")

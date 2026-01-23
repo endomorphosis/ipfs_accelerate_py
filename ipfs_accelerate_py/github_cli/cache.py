@@ -15,6 +15,7 @@ import os
 import time
 import hashlib
 import anyio
+import anyio
 import base64
 import threading
 from datetime import datetime, timezone
@@ -223,7 +224,8 @@ class GitHubAPICache:
         self._p2p_known_peer_addrs: Set[str] = set(self._p2p_bootstrap_peers)
         self._peer_exchange_last: Dict[str, float] = {}
         self._peer_exchange_interval = 300  # seconds
-        self._event_loop = None
+        self._p2p_portal = None
+        self._p2p_thread_running = False
         self._max_bootstrap_peers = 10  # Limit bootstrap peers to prevent connection overload
         self._p2p_init_lock = Lock()  # Lock to prevent concurrent P2P initialization
         self._p2p_initialized = False  # Flag to track if P2P is already initialized
