@@ -174,6 +174,22 @@ class IPFSAccelerateCLI:
                 logger.warning(f"Failed to load Copilot operations: {e}")
                 self._copilot_ops = None
         return self._copilot_ops
+    
+    @property
+    def copilot_sdk_ops(self):
+        """Lazy load Copilot SDK operations"""
+        if not hasattr(self, '_copilot_sdk_ops'):
+            self._copilot_sdk_ops = None
+        
+        if self._copilot_sdk_ops is None:
+            _load_heavy_imports()
+            try:
+                from shared import CopilotSDKOperations
+                self._copilot_sdk_ops = CopilotSDKOperations(shared_core)
+            except Exception as e:
+                logger.warning(f"Failed to load Copilot SDK operations: {e}")
+                self._copilot_sdk_ops = None
+        return self._copilot_sdk_ops
         
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
@@ -466,6 +482,111 @@ class IPFSAccelerateCLI:
         else:
             if result.get('success'):
                 print(f"Suggested Git command:\n{result.get('suggestion', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_create_session(self, args):
+        """Create a new Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.create_session(
+            model=args.model,
+            streaming=args.streaming
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Session created successfully")
+                print(f"Session ID: {result.get('session_id')}")
+                print(f"Model: {result.get('model')}")
+                print(f"Streaming: {result.get('streaming')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_send_message(self, args):
+        """Send a message to a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.send_message(
+            session_id=args.session_id,
+            prompt=args.prompt,
+            use_cache=not args.no_cache
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Response from session {args.session_id}:")
+                for msg in result.get('messages', []):
+                    print(f"\n[{msg.get('type')}]:")
+                    print(msg.get('content', ''))
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_stream_message(self, args):
+        """Stream a message response from a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.stream_message(
+            session_id=args.session_id,
+            prompt=args.prompt
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Streaming response from session {args.session_id}:")
+                print(result.get('full_text', ''))
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_list_sessions(self, args):
+        """List all active Copilot SDK sessions"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.list_sessions()
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                sessions = result.get('sessions', [])
+                print(f"Active sessions: {result.get('count', 0)}")
+                for session_id in sessions:
+                    print(f"  - {session_id}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_destroy_session(self, args):
+        """Destroy a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.destroy_session(args.session_id)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Session {args.session_id} destroyed successfully")
             else:
                 logger.error(f"Error: {result.get('error', 'Unknown error')}")
         return 0 if result.get('success') else 1
@@ -1598,6 +1719,38 @@ Examples:
         copilot_git_parser = copilot_subparsers.add_parser('git', help='Get Git command suggestions')
         copilot_git_parser.add_argument('prompt', help='Natural language description')
         
+        # Copilot SDK commands
+        copilot_sdk_parser = subparsers.add_parser('copilot-sdk', help='GitHub Copilot SDK operations')
+        copilot_sdk_subparsers = copilot_sdk_parser.add_subparsers(dest='copilot_sdk_command', help='Copilot SDK commands')
+        
+        # Copilot SDK create session command
+        sdk_create_parser = copilot_sdk_subparsers.add_parser('create-session', help='Create a Copilot SDK session')
+        sdk_create_parser.add_argument('--model', help='Model to use (e.g., gpt-4o, gpt-5)', default=None)
+        sdk_create_parser.add_argument('--streaming', action='store_true', help='Enable streaming responses')
+        sdk_create_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK send message command
+        sdk_send_parser = copilot_sdk_subparsers.add_parser('send', help='Send message to session')
+        sdk_send_parser.add_argument('session_id', help='Session ID')
+        sdk_send_parser.add_argument('prompt', help='Message to send')
+        sdk_send_parser.add_argument('--no-cache', action='store_true', help='Disable caching')
+        sdk_send_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK stream message command
+        sdk_stream_parser = copilot_sdk_subparsers.add_parser('stream', help='Stream message response')
+        sdk_stream_parser.add_argument('session_id', help='Session ID')
+        sdk_stream_parser.add_argument('prompt', help='Message to send')
+        sdk_stream_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK list sessions command
+        sdk_list_parser = copilot_sdk_subparsers.add_parser('list-sessions', help='List active sessions')
+        sdk_list_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK destroy session command
+        sdk_destroy_parser = copilot_sdk_subparsers.add_parser('destroy-session', help='Destroy a session')
+        sdk_destroy_parser.add_argument('session_id', help='Session ID to destroy')
+        sdk_destroy_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
         # Parse arguments
         args = parser.parse_args()
         
@@ -1658,6 +1811,21 @@ Examples:
                 return cli.run_copilot_git(args)
             else:
                 copilot_parser.print_help()
+                return 1
+        
+        elif args.command == 'copilot-sdk':
+            if args.copilot_sdk_command == 'create-session':
+                return cli.run_copilot_sdk_create_session(args)
+            elif args.copilot_sdk_command == 'send':
+                return cli.run_copilot_sdk_send_message(args)
+            elif args.copilot_sdk_command == 'stream':
+                return cli.run_copilot_sdk_stream_message(args)
+            elif args.copilot_sdk_command == 'list-sessions':
+                return cli.run_copilot_sdk_list_sessions(args)
+            elif args.copilot_sdk_command == 'destroy-session':
+                return cli.run_copilot_sdk_destroy_session(args)
+            else:
+                copilot_sdk_parser.print_help()
                 return 1
         
         else:
