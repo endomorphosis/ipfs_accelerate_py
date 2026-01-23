@@ -107,7 +107,7 @@ async def run_probe_server(
     listen_ma = Multiaddr(f"/ip4/0.0.0.0/tcp/{port}")
     host = await _maybe_await(new_host())
 
-    local_peer_id = _peer_id_pretty(host.get_id())
+        host = await _maybe_await(new_host(listen_addrs=[listen_ma]))
     advertise_ip = advertise_ip or os.environ.get("P2P_ADVERTISE_IP") or _guess_advertise_ip()
 
     done = trio.Event()
@@ -142,7 +142,16 @@ async def run_probe_server(
 
     async with host.run([listen_ma]):
         # Optionally run this host as a circuit relay v2 HOP.
+        async with host.run([listen_ma]):
+            advertised = f"/ip4/{advertise_ip}/tcp/{port}/p2p/{local_peer_id}"
+            # Print an easy-to-copy env var assignment after the listener is active.
+            print(f"P2P_PROBE_MULTIADDR={advertised}", flush=True)
         # This is the key ingredient for NATed peers to be reachable without port-forwarding.
+            if exit_after_one:
+                await done.wait()
+            else:
+                # Run forever.
+                await trio.sleep_forever()
         if relay_hop:
             try:
                 from libp2p.relay.circuit_v2 import CircuitV2Protocol
