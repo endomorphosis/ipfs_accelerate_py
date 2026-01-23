@@ -65,7 +65,10 @@ class MockSession:
     def __init__(self, urls_status=None):
         self.urls_status = urls_status or {}
     
-    async def head(self, url, timeout=None, allow_redirects=None):
+    def head(self, url, timeout=None, allow_redirects=None):
+        # aiohttp's session.head() returns an awaitable async-context-manager.
+        # For the validator, it's sufficient to return an object that supports
+        # async enter/exit and exposes .status.
         status = self.urls_status.get(url, 200)
         return MockHTTPResponse(url, status)
     
@@ -93,6 +96,9 @@ class MockCIProvider:
 
 class _TestURLValidatorBase(unittest.TestCase):
     """Test the URL validation functionality."""
+
+    # Prevent pytest/unittest from collecting this base class directly.
+    __test__ = False
     
     def setUp(self):
         """Set up test environment."""
@@ -262,13 +268,16 @@ class _TestURLValidatorBase(unittest.TestCase):
     
     async def test_global_validator_functions(self):
         """Test global validator functions."""
-        # Override the session in the global validator
-        from distributed_testing.ci.url_validator import _global_validator
-        if _global_validator:
-            await _global_validator.close()
-        
-        _global_validator = ArtifactURLValidator(session=MockSession(self.urls_status))
-        await _global_validator.initialize()
+        # Override the session in the global validator (must set module global).
+        import distributed_testing.ci.url_validator as url_validator_module
+
+        if url_validator_module._global_validator:
+            await url_validator_module._global_validator.close()
+
+        url_validator_module._global_validator = ArtifactURLValidator(
+            session=MockSession(self.urls_status)
+        )
+        await url_validator_module._global_validator.initialize()
         
         # Validate a URL
         is_valid, status_code, error_message = await validate_url(
@@ -305,11 +314,11 @@ class _TestURLValidatorBase(unittest.TestCase):
         await validator.initialize()
         
         # Override the global validator
-        from distributed_testing.ci.url_validator import _global_validator
-        if _global_validator:
-            await _global_validator.close()
-        
-        _global_validator = validator
+        import distributed_testing.ci.url_validator as url_validator_module
+        if url_validator_module._global_validator:
+            await url_validator_module._global_validator.close()
+
+        url_validator_module._global_validator = validator
         
         # Test get_artifact_urls with validation
         ci_provider.urls = {

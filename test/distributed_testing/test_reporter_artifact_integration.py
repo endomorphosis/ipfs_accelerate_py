@@ -14,6 +14,9 @@ import tempfile
 import sys
 from typing import Dict, Any, Optional, List
 import unittest
+import shutil
+
+import pytest
 
 # Add the parent directory to the path
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
@@ -39,6 +42,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# Allow module-level async tests to run under pytest-asyncio strict mode.
+pytestmark = pytest.mark.anyio
 
 
 class TestReporterArtifactIntegration(unittest.TestCase):
@@ -76,8 +83,8 @@ class TestReporterArtifactIntegration(unittest.TestCase):
                 os.unlink(file_path)
         
         # Remove temporary directories
-        os.rmdir(self.report_dir)
-        os.rmdir(self.artifact_dir)
+        shutil.rmtree(self.report_dir, ignore_errors=True)
+        shutil.rmtree(self.artifact_dir, ignore_errors=True)
 
     def create_test_artifacts(self):
         """Create temporary test artifacts for testing."""
@@ -93,8 +100,8 @@ class TestReporterArtifactIntegration(unittest.TestCase):
                 f.write(artifact["content"])
             self.artifact_files.append(file_path)
 
-    async def test_with_provider(self, provider_name):
-        """Test the TestResultReporter integration with a specific provider."""
+    async def _run_with_provider(self, provider_name):
+        """Run the integration flow with a specific provider (async helper)."""
         logger.info(f"Testing TestResultReporter integration with {provider_name}...")
         
         # Create mock CI provider
@@ -336,10 +343,19 @@ class TestReporterArtifactIntegration(unittest.TestCase):
         
         logger.info(f"All tests passed for {provider_name} provider!")
 
+    def test_with_provider(self):
+        """Run the integration flow for all mock providers."""
+
+        async def _runner():
+            for provider_name in self.provider_map:
+                await self._run_with_provider(provider_name)
+
+        anyio.run(_runner)
+
     async def run_all_provider_tests(self):
         """Run tests for all providers."""
         for provider_name in self.provider_map:
-            await self.test_with_provider(provider_name)
+            await self._run_with_provider(provider_name)
 
 
 async def test_parallel_url_retrieval_performance():
@@ -370,10 +386,13 @@ async def test_parallel_url_retrieval_performance():
     artifact_names = [f"test_artifact_{i}.json" for i in range(20)]
     
     # Upload mock artifacts
+    dummy_path = os.path.join(artifact_dir, "dummy.txt")
+    with open(dummy_path, "w") as f:
+        f.write("dummy")
     for name in artifact_names:
         await provider.upload_artifact(
             test_run_id=test_run_id,
-            artifact_path=os.path.join(artifact_dir, "dummy.txt"),
+            artifact_path=dummy_path,
             artifact_name=name
         )
     
@@ -413,8 +432,8 @@ async def test_parallel_url_retrieval_performance():
     
     # Clean up
     await provider.close()
-    os.rmdir(report_dir)
-    os.rmdir(artifact_dir)
+    shutil.rmtree(report_dir, ignore_errors=True)
+    shutil.rmtree(artifact_dir, ignore_errors=True)
     
     assert speedup > 1.5, f"Expected significant speedup (>1.5x), got {speedup:.2f}x"
     logger.info("Parallel URL retrieval performance test passed")
@@ -530,8 +549,11 @@ async def test_edge_cases():
         
         # Upload some artifacts first
         test_run_id = "test-failures-123"
-        await provider.upload_artifact(test_run_id, os.path.join(artifact_dir, "dummy.txt"), "test.json")
-        await provider.upload_artifact(test_run_id, os.path.join(artifact_dir, "dummy.txt"), "failing.json")
+        dummy_path = os.path.join(artifact_dir, "dummy.txt")
+        with open(dummy_path, "w") as f:
+            f.write("dummy")
+        await provider.upload_artifact(test_run_id, dummy_path, "test.json")
+        await provider.upload_artifact(test_run_id, dummy_path, "failing.json")
         
         # Try to get URLs with one failing
         urls = await reporter.get_artifact_urls(
@@ -551,8 +573,8 @@ async def test_edge_cases():
         
     finally:
         # Clean up temporary directories
-        os.rmdir(report_dir)
-        os.rmdir(artifact_dir)
+        shutil.rmtree(report_dir, ignore_errors=True)
+        shutil.rmtree(artifact_dir, ignore_errors=True)
     
     logger.info("All edge case tests passed")
 

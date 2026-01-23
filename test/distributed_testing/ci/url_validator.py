@@ -9,6 +9,7 @@ still accessible and implements health monitoring for artifact availability.
 from __future__ import annotations
 
 import anyio
+import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
@@ -179,6 +180,10 @@ class ArtifactURLValidator:
         for attempt in range(self.max_retries):
             try:
                 if self._session is None:
+                    if aiohttp is None:
+                        raise RuntimeError(
+                            "aiohttp is required to validate URLs when no custom session is provided"
+                        )
                     # Create a temporary session if not initialized
                     async with aiohttp.ClientSession() as session:
                         is_valid, status_code, error_message = await self._check_url(url, session)
@@ -454,7 +459,8 @@ class ArtifactURLValidator:
         # Add summary section
         md += "## Summary\n\n"
         md += f"- Total URLs: {report['total_urls']}\n"
-        md += f"- Valid URLs: {report['valid_urls']} ({report['valid_urls']/report['total_urls']*100:.1f}% if report['total_urls'] > 0 else 0)\n"
+        valid_percent = (report['valid_urls'] / report['total_urls'] * 100.0) if report['total_urls'] > 0 else 0.0
+        md += f"- Valid URLs: {report['valid_urls']} ({valid_percent:.1f}%)\n"
         md += f"- Invalid URLs: {report['invalid_urls']}\n"
         md += f"- Overall Availability: {report['overall_availability']:.1f}%\n\n"
         
