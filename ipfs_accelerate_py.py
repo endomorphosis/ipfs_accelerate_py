@@ -1,4 +1,4 @@
-import asyncio
+import anyio
 import os
 import sys
 import json
@@ -457,7 +457,9 @@ class ipfs_accelerate_py:
             
             # Initialize structures for this model
             if model not in init_results["queue"]:
-                init_results["queue"][model] = asyncio.Queue(128)
+                # Create memory object streams for queue functionality (send, receive)
+                send_stream, receive_stream = anyio.create_memory_object_stream(max_buffer_size=128)
+                init_results["queue"][model] = {"send": send_stream, "receive": receive_stream}
             if model not in init_results["queues"]:
                 init_results["queues"][model] = {}
             if model not in init_results["batch_sizes"]:
@@ -631,12 +633,12 @@ class ipfs_accelerate_py:
         # Process the input
         try:
             # Check if handler is async
-            if asyncio.iscoroutinefunction(handler):
+            import inspect
+            if inspect.iscoroutinefunction(handler):
                 result = await handler(input_data)
             else:
-                # Run sync handler in executor to avoid blocking
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(None, handler, input_data)
+                # Run sync handler in thread to avoid blocking
+                result = await anyio.to_thread.run_sync(handler, input_data)
                 
             return result
         except Exception as e:
@@ -655,15 +657,8 @@ class ipfs_accelerate_py:
         Returns:
             Any: The processed output.
         """
-        # Create event loop if not already running
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-        # Run async process function
-        return loop.run_until_complete(self.process_async(model, input_data, endpoint_type))
+        # Run async process function using anyio
+        return anyio.from_thread.run(self.process_async, model, input_data, endpoint_type)
     
     async def _select_best_endpoint(self, model: str) -> str:
         """
@@ -731,7 +726,7 @@ class ipfs_accelerate_py:
         logger.info(f"Querying IPFS for CID: {cid}")
         
         # Simulate IPFS query
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Return mock data
         return f"Mock IPFS content for CID: {cid}".encode()
@@ -750,7 +745,7 @@ class ipfs_accelerate_py:
         logger.info(f"Storing data to IPFS (length: {len(data)} bytes)")
         
         # Simulate IPFS storage
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Generate mock CID
         import hashlib
@@ -772,7 +767,7 @@ class ipfs_accelerate_py:
         logger.info(f"Finding providers for model: {model}")
         
         # Simulate provider discovery
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Return mock provider list
         return [
@@ -795,7 +790,7 @@ class ipfs_accelerate_py:
         logger.info(f"Connecting to provider: {provider_id}")
         
         # Simulate connection
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Return mock success
         return True
@@ -857,7 +852,7 @@ class ipfs_accelerate_py:
                 
                 # Simulate waiting for result
                 logger.info(f"Waiting for inference result from IPFS network: {request_cid}")
-                await asyncio.sleep(1.0)
+                await anyio.sleep(1.0)
                 
                 # Mock inference result
                 if "bert" in model.lower():

@@ -1,6 +1,6 @@
 from typing import Union
 import uvicorn
-import asyncio
+import anyio
 from fastapi import FastAPI, BackgroundTasks
 from ipfs_accelerate_py import ipfs_accelerate_py
 # Import MCP integration
@@ -46,14 +46,16 @@ async def lifespan(app: FastAPI):
         while True:
             try:
                 await model_server.resources["ipfs_accelerate_py"].create_background_tasks()
-                await asyncio.sleep(10)  # Example task
+                await anyio.sleep(10)  # Example task
             except Exception as e:
                 print("error in background task")
                 print(e)
-                await asyncio.sleep(10)
-    task = asyncio.create_task(background_task())
-    yield
-    task.cancel()
+                await anyio.sleep(10)
+    
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(background_task)
+        yield
+        tg.cancel_scope.cancel()
     
 app = FastAPI(lifespan=lifespan, port=9999)
 # app = FastAPI(port=9999)

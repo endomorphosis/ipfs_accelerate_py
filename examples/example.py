@@ -7,7 +7,7 @@ for hardware-accelerated machine learning inference with automatic failover
 to IPFS network-based inference when local hardware is insufficient.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 from ipfs_accelerate_py import ipfs_accelerate_py
@@ -112,7 +112,7 @@ async def run_example():
 
 def main():
     """Run the example."""
-    asyncio.run(run_example())
+    anyio.run(run_example)
 
 if __name__ == "__main__":
     main()
