@@ -7,7 +7,7 @@ including the TestResultReporter, CIProviderInterface implementations, and the
 integration with the coordinator.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os

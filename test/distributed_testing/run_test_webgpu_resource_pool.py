@@ -15,7 +15,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import random
@@ -140,7 +140,7 @@ async def test_concurrent_models(integration, model_list):
     tasks = []
     
     for model_name, model, model_config in models:
-        task = asyncio.create_task(
+        task = # TODO: Replace with task group - asyncio.create_task(
             model(model_config["input_example"])
         )
         tasks.append((model_name, task))
@@ -410,7 +410,7 @@ async def test_stress(integration, model_list, duration, fault_injection):
         total_operations += 1
         
         # Brief pause to avoid flooding
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
     
     # Log results
     elapsed = time.time() - start_time
@@ -603,7 +603,7 @@ async def main():
     await integration.initialize()
     
     # Setup signal handlers for graceful shutdown
-    loop = asyncio.get_event_loop()
+    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
     
     should_exit = False
     
@@ -668,4 +668,4 @@ async def main():
     logger.info("Tests completed, shutting down")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

@@ -7,7 +7,7 @@ It includes classes and utilities for artifact management, ensuring consistent b
 regardless of the underlying CI/CD system.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import json

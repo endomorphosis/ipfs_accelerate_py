@@ -28,7 +28,7 @@ Examples:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -386,7 +386,7 @@ class TaskSubmitter:
                 if status in ["completed", "failed", "cancelled"]:
                     return status_data
             
-            await asyncio.sleep(poll_interval)
+            await anyio.sleep(poll_interval)
         
         logger.error(f"Timeout waiting for task {task_id} completion")
         return None
@@ -477,7 +477,7 @@ async def periodic_task_submission(
             # Sleep until next submission
             if max_iterations is None or iteration < max_iterations:
                 logger.info(f"Waiting {interval} seconds until next submission")
-                await asyncio.sleep(interval)
+                await anyio.sleep(interval)
     except asyncio.CancelledError:
         logger.info("Periodic task submission cancelled")
     except Exception as e:
@@ -703,7 +703,7 @@ def main():
         parser.error("--test-file is required when using --submit-test")
     
     # Run the submitter
-    return asyncio.run(run_task_submitter(args))
+    return anyio.run(run_task_submitter(args))
 
 
 if __name__ == "__main__":

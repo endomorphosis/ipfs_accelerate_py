@@ -475,10 +475,10 @@ def main()))))))):
     
     # Run async main function
     if sys.version_info >= ()))))))3, 7):
-        result = asyncio.run()))))))main_async()))))))args))
+        result = anyio.run()))))))main_async()))))))args))
     else:
         # For Python 3.6 or lower
-        loop = asyncio.get_event_loop())))))))
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop())))))))
         result = loop.run_until_complete()))))))main_async()))))))args))
     
     # Return appropriate exit code

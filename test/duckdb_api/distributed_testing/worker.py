@@ -23,7 +23,7 @@ import time
 import uuid
 import socket
 import platform
-import asyncio
+import anyio
 import logging
 import argparse
 import threading
@@ -1389,8 +1389,8 @@ class WorkerClient:
             if self.connected and self.authenticated:
                 try:
                     # Create event loop for async calls
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                    loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+                    # TODO: Remove event loop management - asyncio.set_event_loop(loop)
                     
                     # Send heartbeat
                     heartbeat_success = loop.run_until_complete(self._send_heartbeat())
@@ -1413,7 +1413,7 @@ class WorkerClient:
                 if not connected:
                     # Wait before retrying
                     logger.info(f"Connection failed, retrying in {self.reconnect_interval}s...")
-                    await asyncio.sleep(self.reconnect_interval)
+                    await anyio.sleep(self.reconnect_interval)
                     continue
             
             try:
@@ -1426,7 +1426,7 @@ class WorkerClient:
                 self.state = WORKER_STATE_DISCONNECTED
                 
                 if self.should_reconnect:
-                    await asyncio.sleep(self.reconnect_interval)
+                    await anyio.sleep(self.reconnect_interval)
             except Exception as e:
                 logger.error(f"Error in message processing: {e}")
                 traceback.print_exc()
@@ -1436,7 +1436,7 @@ class WorkerClient:
                 self.state = WORKER_STATE_ERROR
                 
                 if self.should_reconnect:
-                    await asyncio.sleep(self.reconnect_interval)
+                    await anyio.sleep(self.reconnect_interval)
         
         # Cleanup
         await self._cleanup()
@@ -1490,7 +1490,7 @@ class WorkerClient:
             logger.debug("No task available")
             
             # Request a new task after a short delay
-            await asyncio.sleep(5.0)
+            await anyio.sleep(5.0)
             await self._request_task()
             return
             
@@ -1544,8 +1544,8 @@ class WorkerClient:
             self.state = WORKER_STATE_ACTIVE
             
             # Create event loop for async calls
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
             
             # Report result
             loop.run_until_complete(self._report_task_result(result))
@@ -1564,8 +1564,8 @@ class WorkerClient:
             self.state = WORKER_STATE_ACTIVE
             
             # Create event loop for async calls
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
             
             # Report error
             loop.run_until_complete(self._report_task_error(task_id, str(e)))
@@ -1812,12 +1812,12 @@ def main():
     )
     
     # Set up signal handlers
-    loop = asyncio.get_event_loop()
+    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
     
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(
             sig,
-            lambda: asyncio.create_task(worker.stop())
+            lambda: # TODO: Replace with task group - asyncio.create_task(worker.stop())
         )
     
     # Run worker

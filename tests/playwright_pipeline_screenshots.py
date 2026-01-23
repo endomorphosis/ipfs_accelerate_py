@@ -12,7 +12,7 @@ This script uses Playwright to:
 import os
 import sys
 import time
-import asyncio
+import anyio
 import subprocess
 import signal
 from pathlib import Path
@@ -55,7 +55,7 @@ class KitchenSinkScreenshotTester:
         
         # Wait for server to start
         print("⏳ Waiting for server to start...")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Check if server is running
         try:
@@ -68,11 +68,11 @@ class KitchenSinkScreenshotTester:
                                 print("✅ Server is running!")
                                 return True
                     except:
-                        await asyncio.sleep(2)
+                        await anyio.sleep(2)
                         
         except ImportError:
             # Fallback without aiohttp
-            await asyncio.sleep(10)
+            await anyio.sleep(10)
             return True
             
         return False
@@ -546,7 +546,7 @@ if __name__ == "__main__":
     print("=" * 60)
     
     try:
-        result = asyncio.run(main())
+        result = anyio.run(main())
         exit_code = 0 if result else 1
     except Exception as e:
         print(f"❌ Failed to run tests: {e}")

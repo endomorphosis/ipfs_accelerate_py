@@ -22,7 +22,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 import logging
 import tempfile
@@ -651,4 +651,4 @@ async def main():
         return 1
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(anyio.run(main()))

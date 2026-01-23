@@ -7,7 +7,7 @@ including peer discovery, pubsub, and DHT operations.
 
 import os
 import json
-import asyncio
+import anyio
 from typing import Dict, Any, List, Optional, cast
 
 # Try imports with fallbacks
@@ -53,7 +53,7 @@ def register_network_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client(ctx)
             
             # Get node ID information
-            result = await asyncio.to_thread(ipfs.id)
+            result = await anyio.to_thread.run_sync(ipfs.id)
             
             return {
                 "id": result.get("ID", ""),
@@ -83,7 +83,7 @@ def register_network_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client(ctx)
             
             # Get swarm peers
-            result = await asyncio.to_thread(ipfs.swarm_peers)
+            result = await anyio.to_thread.run_sync(ipfs.swarm_peers)
             
             # Format the peers into a cleaner structure
             peers = []
@@ -118,7 +118,7 @@ def register_network_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client(ctx)
             
             # Connect to the peer
-            result = await asyncio.to_thread(ipfs.swarm_connect, addr)
+            result = await anyio.to_thread.run_sync(ipfs.swarm_connect, addr)
             
             return {
                 "success": True,
@@ -158,7 +158,7 @@ def register_network_tools(mcp: FastMCP) -> None:
                 message_bytes = message
             
             # Publish the message
-            await asyncio.to_thread(ipfs.pubsub_pub, topic, message_bytes)
+            await anyio.to_thread.run_sync(ipfs.pubsub_pub, topic, message_bytes)
             
             return {
                 "success": True,
@@ -191,7 +191,7 @@ def register_network_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client(ctx)
             
             # Find the peer
-            result = await asyncio.to_thread(ipfs.dht_findpeer, peer_id)
+            result = await anyio.to_thread.run_sync(ipfs.dht_findpeer, peer_id)
             
             # Format the addresses
             addresses = []
@@ -226,7 +226,7 @@ def register_network_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client(ctx)
             
             # Find providers
-            result = await asyncio.to_thread(ipfs.dht_findprovs, cid, num_providers=num_providers)
+            result = await anyio.to_thread.run_sync(ipfs.dht_findprovs, cid, num_providers=num_providers)
             
             # Format the providers
             providers = []
@@ -257,4 +257,4 @@ if __name__ == "__main__":
         register_network_tools(mcp)
         # Implement test code here if needed
     
-    asyncio.run(test_tools())
+    anyio.run(test_tools())

@@ -16,7 +16,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os

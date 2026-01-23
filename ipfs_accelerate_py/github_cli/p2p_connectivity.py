@@ -17,7 +17,7 @@ protocol rather than relying on DHT/relay/hole-punching features that are not
 implemented here.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import random
@@ -284,10 +284,10 @@ class UniversalConnectivity:
             try:
                 # Perform mDNS discovery
                 # In actual implementation, this would use libp2p's mDNS service
-                await asyncio.sleep(self.config.mdns_interval)
+                await anyio.sleep(self.config.mdns_interval)
             except Exception as e:
                 logger.error(f"mDNS discovery error: {e}")
-                await asyncio.sleep(self.config.mdns_interval)
+                await anyio.sleep(self.config.mdns_interval)
     
     async def configure_dht(self, host) -> None:
         """
@@ -321,7 +321,7 @@ class UniversalConnectivity:
             # Start periodic bootstrap/seed loop (best-effort)
             if self._dht_bootstrap_task is None:
                 try:
-                    self._dht_bootstrap_task = asyncio.create_task(self._dht_bootstrap_loop(host))
+                    self._dht_bootstrap_task = # TODO: Replace with task group - asyncio.create_task(self._dht_bootstrap_loop(host))
                 except Exception:
                     pass
         except Exception as e:
@@ -332,7 +332,7 @@ class UniversalConnectivity:
         """Best-effort DHT bootstrap loop to keep routing tables fresh."""
         while True:
             try:
-                await asyncio.sleep(self._dht_bootstrap_interval)
+                await anyio.sleep(self._dht_bootstrap_interval)
                 if not self._dht:
                     continue
 
@@ -616,7 +616,7 @@ class UniversalConnectivity:
                 try:
                     logger.debug(f"Attempting hole punching to {peer_addr}")
                     # Best-effort: retry direct connection after brief jitter
-                    await asyncio.sleep(0.5 + random.random())
+                    await anyio.sleep(0.5 + random.random())
                     await host.connect(peer_info)
                     logger.info("✓ Hole punching fallback succeeded")
                     return peer_info
@@ -713,7 +713,7 @@ class _MDNSListener:
 
             # jitter to avoid thundering herd
             async def _connect():
-                await asyncio.sleep(0.2 + random.random())
+                await anyio.sleep(0.2 + random.random())
                 try:
                     from multiaddr import Multiaddr
                     from libp2p.peer.peerinfo import info_from_p2p_addr

@@ -21,7 +21,7 @@ Options:
 import os
 import sys
 import argparse
-import asyncio
+import anyio
 import json
 from pathlib import Path
 from datetime import datetime
@@ -327,7 +327,7 @@ async def run_example(args):
 def main():
     """Main function to run the example."""
     args = parse_args()
-    asyncio.run(run_example(args))
+    anyio.run(run_example(args))
     print("\nExample completed successfully!")
 
 if __name__ == "__main__":

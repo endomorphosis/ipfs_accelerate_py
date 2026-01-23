@@ -6,7 +6,7 @@ This module provides a connector for interacting with JIRA's API to create issue
 update statuses, add comments, and manage test results.
 """
 
-import asyncio
+import anyio
 import logging
 import time
 from datetime import datetime
@@ -269,7 +269,7 @@ class JiraConnector(ExternalSystemInterface):
                 seconds = self.rate_limit_sleep
                 
             logger.warning(f"JIRA rate limit hit, pausing for {seconds} seconds")
-            await asyncio.sleep(seconds)
+            await anyio.sleep(seconds)
         
         return response
     

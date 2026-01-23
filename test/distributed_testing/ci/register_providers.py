@@ -8,7 +8,7 @@ and automatic registration with the artifact handling system.
 """
 
 import logging
-import asyncio
+import anyio
 from typing import Dict, Any, Optional
 
 from distributed_testing.ci.api_interface import CIProviderFactory, CIProviderInterface

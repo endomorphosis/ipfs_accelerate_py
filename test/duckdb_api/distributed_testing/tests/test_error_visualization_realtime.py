@@ -7,7 +7,7 @@ real-time error updates to the Error Visualization Dashboard.
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import random
@@ -287,7 +287,7 @@ async def run_error_generator(dashboard_url: str, count: int, interval: float, c
         
         # Wait for the specified interval
         if i < count - 1:  # Don't wait after the last error
-            await asyncio.sleep(interval)
+            await anyio.sleep(interval)
     
     logger.info(f"Error generator completed ({count} errors reported)")
 
@@ -301,7 +301,7 @@ def main():
     args = parser.parse_args()
     
     # Run the error generator
-    asyncio.run(run_error_generator(args.url, args.count, args.interval, args.critical_percent))
+    anyio.run(run_error_generator(args.url, args.count, args.interval, args.critical_percent))
 
 if __name__ == '__main__':
     main()

@@ -6,7 +6,7 @@ This script tests all inference types available in the CLI and MCP server,
 and attempts to use Playwright for browser automation testing.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -422,7 +422,7 @@ class ComprehensiveAITester:
         # Run browser automation test
         if self.browser_available:
             try:
-                browser_result = asyncio.run(self.test_browser_automation())
+                browser_result = anyio.run(self.test_browser_automation())
                 results["browser_automation"] = browser_result
             except Exception as e:
                 results["browser_automation"] = {"success": False, "error": str(e)}

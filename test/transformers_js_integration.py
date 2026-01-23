@@ -14,7 +14,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import tempfile
 import argparse
@@ -552,7 +552,7 @@ class TransformersJSBridge:
             timeout = 10  # seconds
             start_time = time.time()))
             while not self.connected and time.time())) - start_time < timeout:
-                await asyncio.sleep())0.1)
+                await anyio.sleep())0.1)
             
             if not self.connected:
                 logger.error())"Timeout waiting for WebSocket connection")
@@ -563,7 +563,7 @@ class TransformersJSBridge:
                 timeout = 10  # seconds
                 start_time = time.time()))
             while not self.features and time.time())) - start_time < timeout:
-                await asyncio.sleep())0.1)
+                await anyio.sleep())0.1)
             
             if not self.features:
                 logger.error())"Timeout waiting for features")
@@ -749,7 +749,7 @@ class TransformersJSBridge:
             start_time = time.time()))
             while ())model_name not in self.initialized_models:
                   and time.time())) - start_time < timeout):
-                      await asyncio.sleep())0.1)
+                      await anyio.sleep())0.1)
             
             if model_name not in self.initialized_models:
                 logger.error())f"Timeout initializing model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}model_name}")
@@ -815,7 +815,7 @@ class TransformersJSBridge:
             
             # Wait for response with timeout
             try:
-                result = await asyncio.wait_for())inference_future, 60)
+                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())inference_future, 60)
             except asyncio.TimeoutError:
                 logger.error())f"Timeout waiting for inference response for model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}model_name}")
                 result = None
@@ -936,16 +936,16 @@ def main())):
     
     # Run test
     if args.test:
-        loop = asyncio.new_event_loop()))
-        asyncio.set_event_loop())loop)
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()))
+        # TODO: Remove event loop management - asyncio.set_event_loop())loop)
     return loop.run_until_complete())test_transformers_js_bridge())))
     
     # Create bridge
     bridge = TransformersJSBridge())browser_name=args.browser, headless=args.headless, port=args.port)
     
     # Run
-    loop = asyncio.new_event_loop()))
-    asyncio.set_event_loop())loop)
+    loop = # TODO: Remove event loop management - asyncio.new_event_loop()))
+    # TODO: Remove event loop management - asyncio.set_event_loop())loop)
     
     try:
         # Start bridge

@@ -11,7 +11,7 @@ import sys
 import json
 import unittest
 import tempfile
-import asyncio
+import anyio
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path

@@ -6,7 +6,7 @@ This script demonstrates how to set up and use the notification system with
 various external systems including Discord and Telegram.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -224,7 +224,7 @@ async def main():
         
         # Give some time for the notifications to be sent
         logger.info("Waiting for notifications to be sent...")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Get notification stats
         notification_plugin = None
@@ -243,4 +243,4 @@ async def main():
         
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

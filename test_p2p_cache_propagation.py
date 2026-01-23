@@ -119,7 +119,7 @@ class TestP2PCachePropagation:
             
             # Mock P2P components
             cache._p2p_host = Mock()
-            cache._event_loop = asyncio.new_event_loop()
+            cache._event_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
             
             # Mock connected peers
             peer1 = Mock()
@@ -214,7 +214,7 @@ class TestP2PCachePropagation:
             async def run_handler():
                 await cache._handle_cache_stream(stream)
             
-            loop = asyncio.new_event_loop()
+            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
             loop.run_until_complete(run_handler())
             loop.close()
             

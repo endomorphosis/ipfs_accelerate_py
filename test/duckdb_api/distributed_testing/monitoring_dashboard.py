@@ -16,7 +16,7 @@ import time
 import uuid
 import logging
 import threading
-import asyncio
+import anyio
 import traceback
 from typing import Dict, List, Optional, Any, Union, Callable
 from datetime import datetime, timedelta
@@ -1445,7 +1445,7 @@ class MonitoringDashboard:
             # Enter message loop
             while not self.stop_event.is_set():
                 try:
-                    message = await asyncio.wait_for(
+                    message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                         self.coordinator_websocket.recv(), timeout=1.0
                     )
                     await self._process_coordinator_message(message)
@@ -1471,8 +1471,8 @@ class MonitoringDashboard:
     def _connect_to_coordinator(self):
         """Connect to coordinator server in a background thread."""
         # Create a new event loop for the thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
         
         while not self.stop_event.is_set():
             # Try to connect

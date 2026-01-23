@@ -5,7 +5,7 @@ Test script for standardized artifact handling.
 This script tests the artifact handling system with different CI providers.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import json
@@ -299,4 +299,4 @@ async def main():
     logger.info("All tests passed!")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

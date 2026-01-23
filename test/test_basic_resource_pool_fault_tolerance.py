@@ -25,7 +25,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import argparse
 from pathlib import Path
@@ -393,4 +393,4 @@ async def main():
     return 0 if results["summary"]["overall_success"] else 1
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(anyio.run(main()))

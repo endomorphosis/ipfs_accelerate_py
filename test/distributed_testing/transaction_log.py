@@ -9,7 +9,7 @@ recovery in distributed systems.
 import time
 import json
 import logging
-import asyncio
+import anyio
 from typing import Dict, List, Any, Optional
 
 # Configure logging
@@ -191,7 +191,7 @@ class TransactionLog:
             }
             
             # Write to file
-            async with asyncio.Lock():
+            async with anyio.Lock():
                 with open(f"{self.persistence_path}/{self.log_id}_transactions.json", "w") as f:
                     json.dump(snapshot, f)
             

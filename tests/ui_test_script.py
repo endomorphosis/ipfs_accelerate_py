@@ -4,7 +4,7 @@ Kitchen Sink UI Testing Script with Playwright
 Tests the UI/UX and captures screenshots for debugging and improvement
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import json
@@ -590,4 +590,4 @@ async def main():
     await tester.run_all_tests()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

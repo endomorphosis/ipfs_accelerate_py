@@ -16,7 +16,7 @@ import unittest
 import tempfile
 import threading
 import subprocess
-import asyncio
+import anyio
 import random
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -65,8 +65,8 @@ class LoadBalancerFaultToleranceTest(unittest.TestCase):
         cls.coordinator_url = f"ws://{cls.coordinator_host}:{cls.coordinator_port}"
         
         # Start the coordinator with load balancer in a separate thread
-        cls.coordinator_started = asyncio.Event()
-        cls.coordinator_stopped = asyncio.Event()
+        cls.coordinator_started = anyio.Event()
+        cls.coordinator_stopped = anyio.Event()
         cls.coordinator_thread = threading.Thread(
             target=cls._run_coordinator_with_load_balancer,
             daemon=True
@@ -119,8 +119,8 @@ class LoadBalancerFaultToleranceTest(unittest.TestCase):
         """Run the coordinator with load balancer in a separate thread."""
         try:
             # Setup the event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
             
             # Import and apply patches
             from duckdb_api.distributed_testing.coordinator_patch import apply_patches, remove_patches

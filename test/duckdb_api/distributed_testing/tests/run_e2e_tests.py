@@ -18,7 +18,7 @@ Options:
 """
 
 import argparse
-import asyncio
+import anyio
 import datetime
 import json
 import os
@@ -417,5 +417,5 @@ async def main():
     return 0 if failed == 0 else 1
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

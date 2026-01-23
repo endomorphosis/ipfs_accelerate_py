@@ -11,7 +11,7 @@ import sys
 import json
 import time
 import logging
-import asyncio
+import anyio
 import argparse
 from pathlib import Path
 from datetime import datetime

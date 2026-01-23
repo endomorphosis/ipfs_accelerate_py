@@ -11,7 +11,7 @@ import sys
 import json
 import logging
 import time
-import asyncio
+import anyio
 from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
@@ -531,4 +531,4 @@ if __name__ == "__main__":
     
     # Run async example
     print("\nRunning asynchronous example:")
-    asyncio.run(example_async())
+    anyio.run(example_async())

@@ -13,7 +13,7 @@ Usage:
 
 import os
 import sys
-import asyncio
+import anyio
 import argparse
 import logging
 import datetime
@@ -482,7 +482,7 @@ def main():
     # Run tests
     try:
         logger.info("Starting cross-browser model sharding tests")
-        batch_results = asyncio.run(run_batch_tests(args))
+        batch_results = anyio.run(run_batch_tests(args))
         
         # Print summary
         print_batch_summary(batch_results)
@@ -505,12 +505,12 @@ def main():
                     try:
                         with open(result["output_path"], 'r') as f:
                             test_result = json.load(f)
-                            asyncio.run(collector.record_test_result(test_result))
+                            anyio.run(collector.record_test_result(test_result))
                     except Exception as e:
                         logger.error(f"Error importing test result: {e}")
             
             # Run analysis
-            analysis = asyncio.run(collector.analyze_fault_tolerance_performance())
+            analysis = anyio.run(collector.analyze_fault_tolerance_performance())
             
             # Save analysis
             analysis_path = os.path.join(args.output_dir, "analysis.json")
@@ -523,19 +523,19 @@ def main():
                 logger.info("Generating visualizations")
                 
                 # Generate recovery time visualization
-                asyncio.run(collector.generate_fault_tolerance_visualization(
+                anyio.run(collector.generate_fault_tolerance_visualization(
                     output_path=os.path.join(args.output_dir, "recovery_time.png"),
                     metric="recovery_time"
                 ))
                 
                 # Generate success rate visualization
-                asyncio.run(collector.generate_fault_tolerance_visualization(
+                anyio.run(collector.generate_fault_tolerance_visualization(
                     output_path=os.path.join(args.output_dir, "success_rate.png"),
                     metric="success_rate"
                 ))
                 
                 # Generate performance impact visualization
-                asyncio.run(collector.generate_fault_tolerance_visualization(
+                anyio.run(collector.generate_fault_tolerance_visualization(
                     output_path=os.path.join(args.output_dir, "performance_impact.png"),
                     metric="performance_impact"
                 ))

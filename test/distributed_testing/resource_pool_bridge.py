@@ -10,7 +10,7 @@ Usage:
     distributed testing framework and the browser-based resource pool.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -167,7 +167,7 @@ class ResourcePoolBridgeIntegration:
                 }
                 
                 # Simulate browser initialization (would connect to actual browser in real implementation)
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
                 self.connection_pool[browser_id]['status'] = 'ready'
                 
                 logger.info(f"Initialized browser connection: {browser_id} ({browser_type})")
@@ -276,7 +276,7 @@ class ResourcePoolBridgeIntegration:
                     )
             
             # Simulate model loading (would load actual model in browser in real implementation)
-            await asyncio.sleep(0.2)
+            await anyio.sleep(0.2)
             
             # Update model status
             self.active_models[model_id]['status'] = 'ready'
@@ -497,7 +497,7 @@ class ResourcePoolBridgeIntegration:
                     }
                     
                     # Simulate browser initialization
-                    await asyncio.sleep(0.1)
+                    await anyio.sleep(0.1)
                     self.connection_pool[browser_id]['status'] = 'ready'
                     
                     logger.info(f"Added new browser connection: {browser_id} ({browser_type})")
@@ -628,7 +628,7 @@ class ResourcePoolBridgeIntegration:
                     self.connection_pool[source_browser_id]['active_models'].remove(model_id)
             
             # Simulate migration (would handle actual migration in real implementation)
-            await asyncio.sleep(0.3)
+            await anyio.sleep(0.3)
             
             # Add to target browser
             self.connection_pool[target_browser_id]['active_models'].add(model_id)
@@ -701,7 +701,7 @@ class ModelProxy:
         
         # In a real implementation, would send the inputs to the browser and get results
         # For now, just return a dummy result based on input
-        await asyncio.sleep(0.5)  # Simulate processing time
+        await anyio.sleep(0.5)  # Simulate processing time
         
         if isinstance(inputs, dict):
             return {"result": f"Processed {inputs}", "model_id": self.model_id}

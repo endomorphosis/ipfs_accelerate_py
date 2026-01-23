@@ -346,7 +346,7 @@ class test_hf_detr:
                         }
             
             # Create queue
-                        queue = asyncio.Queue())64)
+                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())64)
                         batch_size = 1  # For audio models
             
             # Return components
@@ -420,7 +420,7 @@ class test_hf_detr:
             }
         
         # Create queue and batch_size
-            queue = asyncio.Queue())64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())64)
             batch_size = 1  # Single item processing for WebNN typically
         
                 return model, processor, handler, queue, batch_size
@@ -488,7 +488,7 @@ class test_hf_detr:
             }
         
         # Create queue and batch_size
-            queue = asyncio.Queue())64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())64)
             batch_size = 1  # Single item processing for WebGPU typically
         
                 return model, processor, handler, queue, batch_size

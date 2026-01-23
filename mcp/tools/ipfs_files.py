@@ -7,7 +7,7 @@ including adding, reading, listing, and pinning files.
 
 import os
 import json
-import asyncio
+import anyio
 import base64
 import logging
 from typing import Dict, Any, List, Optional, Union, cast
@@ -139,7 +139,7 @@ def register_files_tools(mcp: FastMCP) -> None:
             await ctx.report_progress(0.2, 1)
             
             # Use ipfs client to add the file
-            result = await asyncio.to_thread(
+            result = await anyio.to_thread.run_sync(
                 ipfs.add_file,
                 path,
                 wrap_with_directory=wrap_with_directory
@@ -183,7 +183,7 @@ def register_files_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client_async(ctx)
             
             # Use ipfs client to read the file
-            content = await asyncio.to_thread(
+            content = await anyio.to_thread.run_sync(
                 ipfs.cat,
                 cid,
                 offset=offset,
@@ -223,7 +223,7 @@ def register_files_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client_async(ctx)
             
             # Use ipfs client to list the directory
-            result = await asyncio.to_thread(ipfs.ls, cid)
+            result = await anyio.to_thread.run_sync(ipfs.ls, cid)
             
             # Process the result into a standardized format
             entries = []
@@ -259,10 +259,10 @@ def register_files_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client_async(ctx)
             
             # Use ipfs client to create a directory in MFS
-            await asyncio.to_thread(ipfs.files_mkdir, path, parents=True)
+            await anyio.to_thread.run_sync(ipfs.files_mkdir, path, parents=True)
             
             # Get info about the created directory
-            stat_result = await asyncio.to_thread(ipfs.files_stat, path)
+            stat_result = await anyio.to_thread.run_sync(ipfs.files_stat, path)
             
             return {
                 "path": path,
@@ -299,10 +299,10 @@ def register_files_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client_async(ctx)
             
             # Use ipfs client to pin the content
-            await asyncio.to_thread(ipfs.pin_add, cid, recursive=recursive)
+            await anyio.to_thread.run_sync(ipfs.pin_add, cid, recursive=recursive)
             
             # Get info about the pinned content
-            pin_ls = await asyncio.to_thread(ipfs.pin_ls, cid)
+            pin_ls = await anyio.to_thread.run_sync(ipfs.pin_ls, cid)
             
             return {
                 "cid": cid,
@@ -340,7 +340,7 @@ def register_files_tools(mcp: FastMCP) -> None:
             
             # Check if the content is pinned
             try:
-                pin_ls = await asyncio.to_thread(ipfs.pin_ls, cid)
+                pin_ls = await anyio.to_thread.run_sync(ipfs.pin_ls, cid)
                 if cid not in pin_ls.get("Keys", {}):
                     return {
                         "cid": cid,
@@ -356,7 +356,7 @@ def register_files_tools(mcp: FastMCP) -> None:
                 }
             
             # Use ipfs client to unpin the content
-            await asyncio.to_thread(ipfs.pin_rm, cid, recursive=recursive)
+            await anyio.to_thread.run_sync(ipfs.pin_rm, cid, recursive=recursive)
             
             return {
                 "cid": cid,
@@ -395,7 +395,7 @@ def register_files_tools(mcp: FastMCP) -> None:
             content_bytes = content.encode('utf-8')
             
             # Use ipfs client to write to the file
-            await asyncio.to_thread(
+            await anyio.to_thread.run_sync(
                 ipfs.files_write,
                 path,
                 content_bytes,
@@ -404,7 +404,7 @@ def register_files_tools(mcp: FastMCP) -> None:
             )
             
             # Get info about the written file
-            stat_result = await asyncio.to_thread(ipfs.files_stat, path)
+            stat_result = await anyio.to_thread.run_sync(ipfs.files_stat, path)
             
             return {
                 "path": path,
@@ -440,7 +440,7 @@ def register_files_tools(mcp: FastMCP) -> None:
             ipfs = await get_ipfs_client_async(ctx)
             
             # Use ipfs client to read the file
-            content = await asyncio.to_thread(
+            content = await anyio.to_thread.run_sync(
                 ipfs.files_read,
                 path,
                 offset=offset,
@@ -477,4 +477,4 @@ if __name__ == "__main__":
         register_files_tools(mcp)
         # Implement test code here if needed
     
-    asyncio.run(test_tools())
+    anyio.run(test_tools())

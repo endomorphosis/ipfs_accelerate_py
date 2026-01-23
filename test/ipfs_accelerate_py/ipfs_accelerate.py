@@ -3,7 +3,7 @@ import requests
 import json
 import os
 import sys
-import asyncio
+import anyio
 import random
 import ipfs_kit_py
 import ipfs_model_manager_py
@@ -269,7 +269,7 @@ class ipfs_accelerate_py:
                     pass    
         for model in models:
             if model not in self.queues:
-                self.resources["queue"][model] = asyncio.Queue(128)
+                self.resources["queue"][model] = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(128)
             if model not in list(self.resources["consumer_tasks"].keys()):
                 self.resources["consumer_tasks"][model] = {}
         if type(endpoint_list) == list:
@@ -670,7 +670,7 @@ class ipfs_accelerate_py:
                                 if handler is None:
                                     handler = self.resources["endpoint_handler"][model][backend]
                                     
-                                self.resources["consumer_tasks"][model][endpoint] = asyncio.create_task(
+                                self.resources["consumer_tasks"][model][endpoint] = # TODO: Replace with task group - asyncio.create_task(
                                     self.endpoint_consumer(
                                         self.resources["queues"][model][backend], 
                                         64, 
@@ -679,7 +679,7 @@ class ipfs_accelerate_py:
                                     )
                                 )
                             if model in list(self.resources["endpoint_handler"].keys()):
-                                self.resources["queue_tasks"][model][backend] = asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
+                                self.resources["queue_tasks"][model][backend] = # TODO: Replace with task group - asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
         return None
     
     async def model_consumer(self, queue, batch_size, model):
@@ -691,7 +691,7 @@ class ipfs_accelerate_py:
             try:
                 if queue.empty():
                     if len(batch) == 0:
-                        await asyncio.sleep(0.1)
+                        await anyio.sleep(0.1)
                 else:
                     queue_length = queue.qsize()
                     endpoint_queue_lengths = {}
@@ -749,16 +749,16 @@ class ipfs_accelerate_py:
                 while len(self.resources["caches"][model]["items"]) == 0:
                     if model in list(self.resources["queue"].keys()):
                         if self.resources["queue"][model].empty():
-                            await asyncio.sleep(0.1)
+                            await anyio.sleep(0.1)
                         else:
                             print("queue not empty")
-                            await asyncio.sleep(0.1)       
+                            await anyio.sleep(0.1)       
                 for item in range(len(batch_data)):
                     ipfs_cid = self.ipfs_multiformats.get_cid(batch_data[item])
                     if ipfs_cid in list(self.resources["caches"][model]["items"].keys()):
                         return_results.append({ipfs_cid: self.resources["caches"][model]["items"][ipfs_cid]})
                         del self.resources["caches"][model]["items"][ipfs_cid]
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
         return return_results
     
     async def endpoint_consumer(self, queue, batch_size, model_name, endpoint):
@@ -773,7 +773,7 @@ class ipfs_accelerate_py:
             try:
                 if queue.empty():
                     if len(batch) == 0:
-                        await asyncio.sleep(0.1)
+                        await anyio.sleep(0.1)
                     else:
                         # Process batch
                         items = []
@@ -1236,7 +1236,7 @@ class ipfs_accelerate_py:
                 async def handler_wrapper(input_data):
                     try:
                         # Try to call as async function
-                        if asyncio.iscoroutinefunction(handler):
+                        if inspect.iscoroutinefunction(  # Added import inspecthandler):
                             return await handler(input_data)
                         else:
                             # Call as sync function
@@ -1349,7 +1349,7 @@ class ipfs_accelerate_py:
                 else:
                     # Fallback to direct access
                     raw_handler = self.resources["endpoint_handler"][model][endpoint]
-                    if asyncio.iscoroutinefunction(raw_handler):
+                    if inspect.iscoroutinefunction(  # Added import inspectraw_handler):
                         return await raw_handler(data)
                     else:
                         return raw_handler(data)
@@ -1491,5 +1491,5 @@ if __name__ == "__main__":
             resources["local_endpoints"].append([model, endpoint, 32768])
 
     ipfs_accelerate_py = ipfs_accelerate_py(resources, metadata)
-    asyncio.run(ipfs_accelerate_py.__test__(resources, metadata))
+    anyio.run(ipfs_accelerate_py.__test__(resources, metadata))
     print("test complete")

@@ -23,7 +23,7 @@ import sys
 import time
 import json
 import logging
-import asyncio
+import anyio
 import threading
 from typing import Dict, List, Any, Optional, Tuple, Union, Callable, Set
 
@@ -726,10 +726,10 @@ class ConnectionPoolIntegration:
             Tuple of (connection_id, connection_info)
         """
         try:
-            loop = asyncio.get_event_loop()
+            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
             
         return loop.run_until_complete(self.get_connection(
             model_type=model_type, 
@@ -1609,4 +1609,4 @@ if __name__ == "__main__":
     )
     
     # Run test
-    asyncio.run(test_pool())
+    anyio.run(test_pool())

@@ -15,7 +15,7 @@ import sys
 import time
 import json
 import logging
-import asyncio
+import anyio
 import tempfile
 import unittest
 import random
@@ -276,7 +276,7 @@ class TestErrorVisualizationE2E(unittest.IsolatedAsyncioTestCase):
                 
                 # Still tasks to complete
                 if len(completed_tasks) < len(task_ids):
-                    await asyncio.sleep(1)
+                    await anyio.sleep(1)
         
         logger.info(f"Completed {len(completed_tasks)} of {len(task_ids)} tasks")
     

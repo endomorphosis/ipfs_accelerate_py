@@ -10,7 +10,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import requests
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -488,7 +488,7 @@ def main():
     tester = ComprehensiveSystemTester(args.server_url)
     
     # Run the test
-    asyncio.run(tester.run_comprehensive_test())
+    anyio.run(tester.run_comprehensive_test())
 
 if __name__ == "__main__":
     main()

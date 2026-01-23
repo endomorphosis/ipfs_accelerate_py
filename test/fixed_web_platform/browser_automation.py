@@ -718,7 +718,7 @@ class BrowserAutomation:
         """
         try:
             # Wait a moment for browser to initialize
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             # If we have Selenium driver, we can check for hardware acceleration
             if hasattr(self, 'driver') and self.driver:

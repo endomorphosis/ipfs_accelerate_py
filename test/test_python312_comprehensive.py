@@ -197,10 +197,10 @@ class Python312CompatibilityTester:
             import asyncio
             
             async def test_async():
-                await asyncio.sleep(0.001)
+                await anyio.sleep(0.001)
                 return "async working"
             
-            result = asyncio.run(test_async())
+            result = anyio.run(test_async())
             logger.info("✅ Async/await functionality working")
             
             # Test for deprecated API usage

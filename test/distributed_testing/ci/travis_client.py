@@ -6,7 +6,7 @@ This module provides a client for interacting with Travis CI's API to report tes
 update build status, and add artifacts.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import json

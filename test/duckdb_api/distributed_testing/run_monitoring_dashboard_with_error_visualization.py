@@ -10,7 +10,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import os
 import sys
 import logging
@@ -85,7 +85,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        anyio.run(main())
     except KeyboardInterrupt:
         print("\nShutting down dashboard...")
     except Exception as e:

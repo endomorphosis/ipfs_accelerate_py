@@ -7,7 +7,7 @@ It shows how to create and manage test runs, work with artifacts, add PR comment
 It showcases the standardized API architecture and the history tracking features.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -169,7 +169,7 @@ async def main():
             task_ids.append(task_id)
             
             # Simulate task execution
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
             
             # Complete or fail task (fail every 5th task)
             if i % 5 != 4:
@@ -270,7 +270,7 @@ async def main():
                     task_data
                 )
                 
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
                 
                 await coordinator.plugin_manager.invoke_hook(
                     HookType.TASK_COMPLETED,
@@ -390,4 +390,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

@@ -585,7 +585,7 @@ def with_retry(max_retries: int = 3, initial_delay: float = 1.0,
                     
                         if retry > 0:
                             import asyncio
-                            await asyncio.sleep(delay)
+                            await anyio.sleep(delay)
                             delay *= backoff_factor
                             
                         return await func(*args, **kwargs)

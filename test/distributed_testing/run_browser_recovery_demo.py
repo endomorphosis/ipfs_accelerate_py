@@ -13,7 +13,7 @@ Usage:
 import os
 import sys
 import argparse
-import asyncio
+import anyio
 import logging
 
 # Configure logging
@@ -85,7 +85,7 @@ def main():
     print()
     
     # Run the demo
-    asyncio.run(run_demo())
+    anyio.run(run_demo())
 
 if __name__ == "__main__":
     main()

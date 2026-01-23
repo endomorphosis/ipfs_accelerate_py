@@ -15,7 +15,7 @@ import sys
 import json
 import logging
 import argparse
-import asyncio
+import anyio
 import signal
 from datetime import datetime
 from pathlib import Path
@@ -109,13 +109,13 @@ async def run_coordinator_demo(args):
     # Start the coordinator
     try:
         # Hook SIGINT for graceful shutdown
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         
         # Register shutdown handler
         for signal_name in ('SIGINT', 'SIGTERM'):
             loop.add_signal_handler(
                 getattr(signal, signal_name),
-                lambda: asyncio.create_task(shutdown(coordinator))
+                lambda: # TODO: Replace with task group - asyncio.create_task(shutdown(coordinator))
             )
         
         # Start coordinator server
@@ -126,7 +126,7 @@ async def run_coordinator_demo(args):
         
         # Keep the server running
         while True:
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
     except asyncio.CancelledError:
         logger.info("Server shutting down")
@@ -142,7 +142,7 @@ async def shutdown(coordinator):
     await coordinator.stop()
     
     # Stop the event loop
-    asyncio.get_event_loop().stop()
+    # TODO: Remove event loop management - asyncio.get_event_loop().stop()
 
 
 async def run_simulated_tasks(args):
@@ -700,13 +700,13 @@ def main():
     
     if args.run_coordinator:
         # Run the coordinator server
-        asyncio.run(run_coordinator_demo(args))
+        anyio.run(run_coordinator_demo(args))
     elif args.run_simulation:
         # Run the simulation
-        asyncio.run(run_simulated_tasks(args))
+        anyio.run(run_simulated_tasks(args))
     else:
         # By default, run the simulation
-        asyncio.run(run_simulated_tasks(args))
+        anyio.run(run_simulated_tasks(args))
 
 
 if __name__ == "__main__":

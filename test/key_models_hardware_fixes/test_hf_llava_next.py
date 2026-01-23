@@ -4,7 +4,7 @@ import json
 import time
 import torch
 import numpy as np
-import asyncio
+import anyio
 from unittest.mock import MagicMock, patch
 from PIL import Image
 
@@ -250,7 +250,7 @@ class test_hf_llava_next:
                 processor = unittest.mock.MagicMock())))))))))))
                 model = unittest.mock.MagicMock())))))))))))
                 handler = self.create_cuda_multimodal_endpoint_handler()))))))))))model, processor, model_name, device_label)
-            return model, processor, handler, asyncio.Queue()))))))))))32), 4
+            return model, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))32), 4
                 
             # Get the CUDA device
             device = test_utils.get_cuda_device()))))))))))device_label) if hasattr()))))))))))test_utils, "get_cuda_device") else torch.device()))))))))))device_label):
@@ -259,7 +259,7 @@ class test_hf_llava_next:
                 processor = unittest.mock.MagicMock())))))))))))
                 model = unittest.mock.MagicMock())))))))))))
                 handler = self.create_cuda_multimodal_endpoint_handler()))))))))))model, processor, model_name, device_label)
-                return model, processor, handler, asyncio.Queue()))))))))))32), 4
+                return model, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))32), 4
                 
             # We'll simulate a successful CUDA implementation for testing purposes
             # since we don't have access to authenticate with Hugging Face
@@ -349,7 +349,7 @@ class test_hf_llava_next:
                 }
                 
                 print()))))))))))f"Successfully loaded simulated LLaVA-Next model on {}}}}}}}}}}}}}}}}}}}}}}}}device}")
-                    return model, processor, simulated_handler, asyncio.Queue()))))))))))32), 8  # Higher batch size for CUDA
+                    return model, processor, simulated_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))32), 8  # Higher batch size for CUDA
                 
         except Exception as e:
             print()))))))))))f"Error in init_cuda: {}}}}}}}}}}}}}}}}}}}}}}}}e}")
@@ -359,7 +359,7 @@ class test_hf_llava_next:
             processor = unittest.mock.MagicMock())))))))))))
             model = unittest.mock.MagicMock())))))))))))
             handler = self.create_cuda_multimodal_endpoint_handler()))))))))))model, processor, model_name, device_label)
-                    return model, processor, handler, asyncio.Queue()))))))))))32), 4
+                    return model, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))32), 4
     
                     hf_llava_next.init_cpu = init_cpu
                     hf_llava_next.init_cuda = init_cuda
@@ -377,7 +377,7 @@ class test_hf_llava_next:
                          processor = MagicMock())))))))))))
                          endpoint = MagicMock())))))))))))
                          handler = MagicMock())))))))))))
-                         return endpoint, processor, handler, asyncio.Queue()))))))))))32), 1
+                         return endpoint, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))32), 1
     
     
     def init_qualcomm()))))))))))self, model, device, qualcomm_label):
@@ -385,7 +385,7 @@ class test_hf_llava_next:
         processor = MagicMock())))))))))))
         endpoint = MagicMock())))))))))))
         handler = MagicMock())))))))))))
-                         return endpoint, processor, handler, asyncio.Queue()))))))))))32), 1
+                         return endpoint, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))32), 1
     
     
 

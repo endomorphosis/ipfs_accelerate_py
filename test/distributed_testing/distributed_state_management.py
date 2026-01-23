@@ -18,7 +18,7 @@ Usage:
     Import this module in coordinator.py to enable distributed state management.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -524,7 +524,7 @@ class DistributedStateManager:
         self.session = aiohttp.ClientSession()
         
         # Start sync loop
-        self.tasks.add(asyncio.create_task(self._sync_loop()))
+        self.tasks.add(# TODO: Replace with task group - asyncio.create_task(self._sync_loop()))
         
         logger.info(f"DistributedStateManager started for node {self.node_id}")
     
@@ -575,7 +575,7 @@ class DistributedStateManager:
                 self.sync_in_progress = False
                 
             # Sleep until next check
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
     
     async def _synchronize_state(self):
         """Synchronize state with other nodes."""

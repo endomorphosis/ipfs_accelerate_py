@@ -16,7 +16,7 @@ import sys
 import json
 import time
 import argparse
-import asyncio
+import anyio
 import logging
 import random
 from pathlib import Path
@@ -223,7 +223,7 @@ async def simulate_browser_failure(manager, browser_index, args) -> Dict[str, An
         # If delay is specified, wait before continuing
         if args.failure_delay > 0:
             logger.info(f"Waiting {args.failure_delay}s before continuing")
-            await asyncio.sleep(args.failure_delay)
+            await anyio.sleep(args.failure_delay)
             
         return {
             "simulated": True,
@@ -332,7 +332,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
         
         try:
             # Use asyncio.wait_for to add timeout protection
-            initialized = await asyncio.wait_for(
+            initialized = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                 manager.initialize_sharding(),
                 timeout=args.timeout
             )
@@ -371,7 +371,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
         try:
             # Use asyncio.wait_for to add timeout protection
             start_time = time.time()
-            result = await asyncio.wait_for(
+            result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                 manager.run_inference_sharded(sample_input),
                 timeout=args.timeout
             )
@@ -434,7 +434,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
             try:
                 # Use asyncio.wait_for to add timeout protection
                 start_time = time.time()
-                result = await asyncio.wait_for(
+                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                     manager.run_inference_sharded(sample_input),
                     timeout=args.timeout
                 )
@@ -483,7 +483,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
             for i in range(args.iterations):
                 try:
                     start_time = time.time()
-                    result = await asyncio.wait_for(
+                    result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                         manager.run_inference_sharded(sample_input),
                         timeout=args.timeout
                     )
@@ -505,7 +505,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
                     
                 # Wait between iterations if specified
                 if args.iteration_delay > 0 and i < args.iterations - 1:
-                    await asyncio.sleep(args.iteration_delay)
+                    await anyio.sleep(args.iteration_delay)
             
             # Calculate performance statistics
             if performance_results:
@@ -568,11 +568,11 @@ async def test_model_sharding(args) -> Dict[str, Any]:
                     
                     for i in range(batch_size):
                         request_id = request_count + i + 1
-                        task = asyncio.create_task(run_single_stress_request(request_id))
+                        task = # TODO: Replace with task group - asyncio.create_task(run_single_stress_request(request_id))
                         batch_tasks.append(task)
                     
                     # Wait for all tasks in batch to complete
-                    batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                    batch_results = await # TODO: Replace with task group - asyncio.gather(*batch_tasks, return_exceptions=True)
                     stress_results.extend([r for r in batch_results if not isinstance(r, Exception)])
                     
                     request_count += batch_size
@@ -583,7 +583,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
                         break
                     
                     # Short delay between batches to prevent system overload
-                    await asyncio.sleep(0.1)
+                    await anyio.sleep(0.1)
                 
                 return stress_results
             
@@ -844,11 +844,11 @@ def main():
     
     try:
         # Run the test and get results
-        test_results = asyncio.run(test_model_sharding(args))
+        test_results = anyio.run(test_model_sharding(args))
         
         # Save results if output path specified
         if args.output:
-            asyncio.run(save_test_results(test_results, args))
+            anyio.run(save_test_results(test_results, args))
         
         # Determine exit code based on test status
         if test_results["status"] == "completed":

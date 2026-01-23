@@ -10,7 +10,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 from typing import Dict, List, Any, Optional
 
@@ -34,7 +34,7 @@ class TestIPFSAcceleratedBrowserSharding(ModelTest):
     def tearDown(self):
         # Clean up resources
         if self.shard_manager:
-            asyncio.run(self.shard_manager.shutdown())
+            anyio.run(self.shard_manager.shutdown())
         super().tearDown()
     
     # Mock IPFS acceleration functionality (replace with actual implementation)

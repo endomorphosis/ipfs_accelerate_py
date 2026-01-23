@@ -9,7 +9,7 @@ Generator version: {{ generator_version }}
 import os
 import sys
 import unittest
-import asyncio
+import anyio
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from distributed_testing.{{ component_var_name }} import {{ component_name }}
@@ -64,7 +64,7 @@ class {{ test_name }}(unittest.TestCase):
     
     def test_operation(self):
         """Test wrapper for async operation test."""
-        asyncio.run(self.async_test_operation())
+        anyio.run(self.async_test_operation())
     
     def test_configuration(self):
         """Test that the {{ component_name }} loads configuration correctly."""

@@ -1,4 +1,4 @@
-import asyncio
+import anyio
 import os
 import requests
 import json
@@ -55,7 +55,7 @@ class llvm:
         self.endpoint_status = {}
         self.registered_models = {}
         # Add queue for managing requests
-        self.request_queue = asyncio.Queue(64)
+        self.request_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
         return None
     
     def init(self, endpoint_url=None, api_key=None, model_name=None, endpoint_type="completion"):

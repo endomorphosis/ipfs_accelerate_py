@@ -29,7 +29,7 @@ import sys
 import subprocess
 import argparse
 import logging
-import asyncio
+import anyio
 import json
 import time
 import datetime
@@ -728,7 +728,7 @@ def main():
             args.resource_pool = True
     
     # Run tests with asyncio event loop
-    return asyncio.run(async_main(args))
+    return anyio.run(async_main(args))
 
 if __name__ == "__main__":
     sys.exit(main())

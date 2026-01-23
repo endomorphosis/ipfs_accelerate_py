@@ -13,7 +13,7 @@ import sys
 import json
 import time
 import argparse
-import asyncio
+import anyio
 import logging
 from pathlib import Path
 
@@ -728,7 +728,7 @@ def main())))))))))))):
     args = parser.parse_args()))))))))))))
     
     # Run async main function
-    loop = asyncio.get_event_loop()))))))))))))
+    loop = # TODO: Remove event loop management - asyncio.get_event_loop()))))))))))))
                     return loop.run_until_complete())))))))))))main_async())))))))))))args))
 
 

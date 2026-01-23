@@ -20,7 +20,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import threading
 import traceback
@@ -416,11 +416,11 @@ class EnhancedResourcePoolIntegration:
                     logger.error(f"Error in health monitoring: {e}")
                 
                 # Wait before next check
-                await asyncio.sleep(30)  # Check every 30 seconds
+                await anyio.sleep(30)  # Check every 30 seconds
         
         # Start health monitoring task
-        loop = asyncio.get_event_loop()
-        self.health_monitor_task = asyncio.create_task(health_monitor_loop())
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+        self.health_monitor_task = # TODO: Replace with task group - asyncio.create_task(health_monitor_loop())
         logger.info("Health monitoring task created")
     
     async def _check_connections_health(self):
@@ -856,12 +856,12 @@ class EnhancedResourcePoolIntegration:
         tasks = []
         for model, inputs in model_and_inputs_list:
             if not model:
-                tasks.append(asyncio.create_task(asyncio.sleep(0)))  # Dummy task for None models
+                tasks.append(# TODO: Replace with task group - asyncio.create_task(anyio.sleep(0)))  # Dummy task for None models
             else:
-                tasks.append(asyncio.create_task(model(inputs)))
+                tasks.append(# TODO: Replace with task group - asyncio.create_task(model(inputs)))
         
         # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await # TODO: Replace with task group - asyncio.gather(*tasks, return_exceptions=True)
         
         # Process results (convert exceptions to error results)
         processed_results = []
@@ -905,7 +905,7 @@ class EnhancedResourcePoolIntegration:
             if self.health_monitor_task:
                 try:
                     self.health_monitor_task.cancel()
-                    await asyncio.sleep(0.5)  # Give it time to cancel
+                    await anyio.sleep(0.5)  # Give it time to cancel
                 except Exception as e:
                     logger.error(f"Error canceling health monitor task: {e}")
         
@@ -1676,4 +1676,4 @@ if __name__ == "__main__":
         await integration.close()
     
     # Run test
-    asyncio.run(test_enhanced_integration())
+    anyio.run(test_enhanced_integration())

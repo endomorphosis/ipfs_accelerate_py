@@ -19,7 +19,7 @@ import json
 import time
 import math
 import random
-import asyncio
+import anyio
 import logging
 import traceback
 from typing import Dict, List, Any, Optional, Union, Callable, Tuple, Deque
@@ -883,7 +883,7 @@ class StreamingInferencePipeline:
                     break
                 
                 # Simulate processing delay
-                await asyncio.sleep(0.05)  # 50ms delay between token batches
+                await anyio.sleep(0.05)  # 50ms delay between token batches
             
             # Return session summary
             summary = self.telemetry_collector.get_session_summary()

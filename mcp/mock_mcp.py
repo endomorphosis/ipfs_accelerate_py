@@ -6,7 +6,7 @@ for use when the actual FastMCP package is not available. This enables
 testing and development without the full MCP infrastructure.
 """
 
-import asyncio
+import anyio
 import inspect
 import json
 import logging
@@ -233,7 +233,7 @@ class FastMCP:
             
             # Keep running until interrupted
             while True:
-                await asyncio.sleep(1)
+                await anyio.sleep(1)
         except KeyboardInterrupt:
             logger.info("Server interrupted")
         finally:

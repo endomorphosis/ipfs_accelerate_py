@@ -9,7 +9,7 @@ demonstrating all the different inference pipelines working.
 import os
 import sys
 import time
-import asyncio
+import anyio
 import subprocess
 import json
 from pathlib import Path

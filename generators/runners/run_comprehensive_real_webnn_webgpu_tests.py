@@ -38,7 +38,7 @@ import time
 import argparse
 import logging
 import tempfile
-import asyncio
+import anyio
 import platform
 import subprocess
 from pathlib import Path

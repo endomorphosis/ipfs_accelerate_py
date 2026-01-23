@@ -6,7 +6,7 @@ This example demonstrates how to integrate with and use the IPFS Accelerate MCP
 server from a Python client application.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -204,4 +204,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

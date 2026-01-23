@@ -34,7 +34,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import threading
 from typing import Dict, List, Any, Optional, Union, Tuple
@@ -288,7 +288,7 @@ class ShardedModelComponent:
                 # Exponential backoff with jitter
                 backoff_time = min(0.1 * (2 ** retry_count) + (random.random() * 0.1), 5.0)
                 logger.info(f"Retrying in {backoff_time:.2f}s...")
-                await asyncio.sleep(backoff_time)
+                await anyio.sleep(backoff_time)
         
         # If we get here, all retries failed
         logger.error(f"All retries failed for shard {self.shard_index}")
@@ -607,7 +607,7 @@ class ModelShardingManager:
             
             # Initialize all components concurrently
             logger.info(f"Initializing {len(self.components)} model components concurrently...")
-            init_results = await asyncio.gather(*[component.initialize() for component in self.components], 
+            init_results = await # TODO: Replace with task group - asyncio.gather(*[component.initialize() for component in self.components], 
                                               return_exceptions=True)
             
             # Check initialization results
@@ -742,7 +742,7 @@ class ModelShardingManager:
                 
                 attention_tasks.append(process_with_timing(component, inputs))
             
-            attention_results = await asyncio.gather(*attention_tasks, return_exceptions=True)
+            attention_results = await # TODO: Replace with task group - asyncio.gather(*attention_tasks, return_exceptions=True)
             
             # Process results and track failures
             attention_output = {}
@@ -792,7 +792,7 @@ class ModelShardingManager:
             
             # If any feedforward components are still viable, run them
             if feedforward_tasks:
-                feedforward_results = await asyncio.gather(*feedforward_tasks, return_exceptions=True)
+                feedforward_results = await # TODO: Replace with task group - asyncio.gather(*feedforward_tasks, return_exceptions=True)
                 
                 # Process results and track failures
                 for i, result in enumerate(feedforward_results):
@@ -848,7 +848,7 @@ class ModelShardingManager:
                 
                 component_tasks.append(process_with_timing(component, inputs))
             
-            component_task_results = await asyncio.gather(*component_tasks, return_exceptions=True)
+            component_task_results = await # TODO: Replace with task group - asyncio.gather(*component_tasks, return_exceptions=True)
             
             # Process results and track failures with more detailed diagnostics
             for i, result in enumerate(component_task_results):
@@ -873,7 +873,7 @@ class ModelShardingManager:
         else:
             # Default processing (in parallel)
             component_tasks = [component.process(inputs) for component in self.components]
-            component_task_results = await asyncio.gather(*component_tasks, return_exceptions=True)
+            component_task_results = await # TODO: Replace with task group - asyncio.gather(*component_tasks, return_exceptions=True)
             
             # Process results and track failures
             for i, result in enumerate(component_task_results):
@@ -1212,7 +1212,7 @@ class ModelShardingManager:
                         # Exponential backoff between retries
                         if retry > 0:
                             backoff_time = 0.1 * (2 ** (retry - 1))  # 0.1s, 0.2s, 0.4s, ...
-                            await asyncio.sleep(backoff_time)
+                            await anyio.sleep(backoff_time)
                         
                         # Record recovery attempt
                         attempt_start = time.time()
@@ -2003,7 +2003,7 @@ class ModelShardingManager:
         # For attention-feedforward sharding, process in parallel then combine
         elif self.shard_type == "attention_feedforward":
             # Process components in parallel
-            results = await asyncio.gather(*[component.process(inputs) for component in self.components])
+            results = await # TODO: Replace with task group - asyncio.gather(*[component.process(inputs) for component in self.components])
             
             # Check for errors
             if any('error' in r for r in results):
@@ -2019,7 +2019,7 @@ class ModelShardingManager:
         # For component-based sharding (multimodal), process in parallel then combine
         elif self.shard_type == "component":
             # Process components in parallel
-            results = await asyncio.gather(*[component.process(inputs) for component in self.components])
+            results = await # TODO: Replace with task group - asyncio.gather(*[component.process(inputs) for component in self.components])
             
             # Check for errors
                 if any('error' in r for r in results):
@@ -2740,5 +2740,5 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    loop = asyncio.get_event_loop()
+    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
     loop.run_until_complete(test_model_sharding(args.model, args.shards, args.type, args.model_type))

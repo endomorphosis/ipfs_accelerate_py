@@ -18,7 +18,7 @@ Enhanced Features:
 - Historic test results tracking and trending
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -204,7 +204,7 @@ class CICDIntegrationPlugin(Plugin):
             
             # Start periodic update task if enabled
             if self.config["enable_status_updates"] and not self.config["update_on_completion_only"]:
-                self.update_task = asyncio.create_task(self._periodic_updates())
+                self.update_task = # TODO: Replace with task group - asyncio.create_task(self._periodic_updates())
         else:
             logger.warning("No CI environment detected, plugin will operate in limited mode")
         
@@ -962,7 +962,7 @@ class StandardizedCIClient:
             await self.history_db.commit()
             
             # Set up cleanup for old history data
-            asyncio.create_task(self._cleanup_old_history())
+            # TODO: Replace with task group - asyncio.create_task(self._cleanup_old_history())
             
             logger.info(f"Initialized history database at {db_path}")
             
@@ -1028,7 +1028,7 @@ class StandardizedCIClient:
                 if retries <= self.max_retries and self.retry_failed_api_calls:
                     delay = self.retry_delay_seconds * (2 ** (retries - 1))  # Exponential backoff
                     logger.warning(f"API call failed, retrying in {delay}s ({retries}/{self.max_retries}): {e}")
-                    await asyncio.sleep(delay)
+                    await anyio.sleep(delay)
                 else:
                     break
         
@@ -2117,7 +2117,7 @@ class StandardizedCIClient:
         while True:
             try:
                 # Sleep for update interval
-                await asyncio.sleep(self.config["update_interval"])
+                await anyio.sleep(self.config["update_interval"])
                 
                 # Skip if no CI client or test run
                 if not self.ci_client or not self.test_run["id"]:

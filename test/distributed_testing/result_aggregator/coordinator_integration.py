@@ -13,7 +13,7 @@ Usage:
     integration.register_with_coordinator()
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -127,7 +127,7 @@ class ResultAggregatorIntegration:
                 )
                 
                 # Start periodic analysis task
-                asyncio.create_task(self._periodic_analysis_task())
+                # TODO: Replace with task group - asyncio.create_task(self._periodic_analysis_task())
                 
                 logger.info("Registered with coordinator through method patching")
             
@@ -393,10 +393,10 @@ class ResultAggregatorIntegration:
         while True:
             try:
                 await self._run_periodic_analysis()
-                await asyncio.sleep(self.analysis_interval.total_seconds())
+                await anyio.sleep(self.analysis_interval.total_seconds())
             except Exception as e:
                 logger.error(f"Error in periodic analysis task: {e}")
-                await asyncio.sleep(60)  # Sleep a minute and try again
+                await anyio.sleep(60)  # Sleep a minute and try again
     
     async def _run_periodic_analysis(self):
         """Run periodic analysis on recent results."""
@@ -534,7 +534,7 @@ class ResultAggregatorIntegration:
             # Call all registered callbacks
             for callback in self.notification_callbacks:
                 try:
-                    if asyncio.iscoroutinefunction(callback):
+                    if inspect.iscoroutinefunction(  # Added import inspectcallback):
                         await callback(notification)
                     else:
                         callback(notification)
@@ -549,7 +549,7 @@ class ResultAggregatorIntegration:
                 
                 try:
                     # Check if the notify method is async
-                    if asyncio.iscoroutinefunction(self.coordinator.notify):
+                    if inspect.iscoroutinefunction(  # Added import inspectself.coordinator.notify):
                         await self.coordinator.notify(severity, message, details)
                     else:
                         self.coordinator.notify(severity, message, details)

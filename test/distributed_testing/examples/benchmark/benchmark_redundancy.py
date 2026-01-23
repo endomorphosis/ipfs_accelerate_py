@@ -4,7 +4,7 @@ Performance benchmark for coordinator redundancy in the Distributed Testing Fram
 Measures performance impact of different cluster configurations and workloads.
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import time
@@ -63,7 +63,7 @@ class RedundancyBenchmark:
                     await self._start_cluster(cluster_size)
                     
                     # Wait for the cluster to stabilize
-                    await asyncio.sleep(5)
+                    await anyio.sleep(5)
                     
                     # Benchmark worker registration
                     register_times = await self._benchmark_register_worker(cluster_size)
@@ -134,7 +134,7 @@ class RedundancyBenchmark:
             self.processes.append(process)
             
         # Wait for cluster to stabilize
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
     async def _stop_cluster(self):
         """Stop the cluster."""
@@ -206,7 +206,7 @@ class RedundancyBenchmark:
                 worker_id = f"worker-{i}"
                 tasks.append(register_worker(worker_id))
                 
-            batch_times = await asyncio.gather(*tasks)
+            batch_times = await # TODO: Replace with task group - asyncio.gather(*tasks)
             times.extend([t for t in batch_times if t is not None])
             
         return times
@@ -258,7 +258,7 @@ class RedundancyBenchmark:
                 task_id = f"task-{i}"
                 tasks.append(submit_task(task_id))
                 
-            batch_times = await asyncio.gather(*tasks)
+            batch_times = await # TODO: Replace with task group - asyncio.gather(*tasks)
             times.extend([t for t in batch_times if t is not None])
             
         return times
@@ -310,7 +310,7 @@ class RedundancyBenchmark:
                 worker_id = f"worker-{i}"
                 tasks.append(update_status(worker_id))
                 
-            batch_times = await asyncio.gather(*tasks)
+            batch_times = await # TODO: Replace with task group - asyncio.gather(*tasks)
             times.extend([t for t in batch_times if t is not None])
             
         return times
@@ -354,7 +354,7 @@ class RedundancyBenchmark:
             for i in range(batch, min(batch + batch_size, self.operations_per_run)):
                 tasks.append(query_results())
                 
-            batch_times = await asyncio.gather(*tasks)
+            batch_times = await # TODO: Replace with task group - asyncio.gather(*tasks)
             times.extend([t for t in batch_times if t is not None])
             
         return times
@@ -580,4 +580,4 @@ async def main():
     
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

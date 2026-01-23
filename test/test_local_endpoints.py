@@ -1,7 +1,7 @@
 import os
 import sys
 import json
-import asyncio
+import anyio
 import traceback
 from datetime import datetime
 
@@ -208,7 +208,7 @@ class TestLocalEndpoints:
                                 ,
                             # Call the endpoint handler
                                 print(f"  Calling endpoint handler with input: {}}}}}}}}}}result['input']}"),,
-                            if asyncio.iscoroutinefunction(endpoint_handler):
+                            if inspect.iscoroutinefunction(  # Added import inspectendpoint_handler):
                                 output = await endpoint_handler(result["input"]),
                             else:
                                 output = endpoint_handler(result["input"]),
@@ -352,4 +352,4 @@ async def main():
 
 # Run the test
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

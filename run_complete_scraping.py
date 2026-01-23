@@ -8,7 +8,7 @@ and integrates with the existing model manager system.
 
 import os
 import sys
-import asyncio
+import anyio
 import logging
 from pathlib import Path
 
@@ -89,7 +89,7 @@ def run_complete_scraping():
             print(f"   • Processing rate: {results['models_per_second']:.1f} models/sec")
             print(f"   • Storage size: {results['storage_size_mb']:.1f} MB")
         
-        asyncio.run(run_production())
+        anyio.run(run_production())
         
     elif mode == "3" and has_token:
         # Hybrid mode with limited real scraping
@@ -111,7 +111,7 @@ def run_complete_scraping():
             print(f"   • Processing rate: {results['models_per_second']:.1f} models/sec")
             print(f"   • Storage size: {results['storage_size_mb']:.1f} MB")
         
-        asyncio.run(run_hybrid())
+        anyio.run(run_hybrid())
         
     else:
         print("❌ Invalid mode or missing API token for production modes")

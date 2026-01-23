@@ -12,7 +12,7 @@ import time
 import tempfile
 import threading
 import requests
-import asyncio
+import anyio
 
 # Configure logging
 logging.basicConfig(

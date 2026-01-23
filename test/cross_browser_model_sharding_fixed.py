@@ -20,7 +20,7 @@ import sys
 import time
 import json
 import argparse
-import asyncio
+import anyio
 import logging
 from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
@@ -514,13 +514,13 @@ class CrossBrowserModelShardingManager:
                 continue
                 
             # Create initialization task for this browser
-            task = asyncio.create_task(
+            task = # TODO: Replace with task group - asyncio.create_task(
                 self._initialize_browser_shards(browser, shard_indices)
             )
             init_tasks.append(task)
         
         # Wait for all initializations to complete
-        results = await asyncio.gather(*init_tasks, return_exceptions=True)
+        results = await # TODO: Replace with task group - asyncio.gather(*init_tasks, return_exceptions=True)
         
         # Check for success
         success_count = sum(1 for result in results if result is True)
@@ -629,7 +629,7 @@ class CrossBrowserModelShardingManager:
             browser_manager = self.browser_managers[browser]
             
             # Create inference task
-            task = asyncio.create_task(
+            task = # TODO: Replace with task group - asyncio.create_task(
                 self._run_browser_inference(
                     browser=browser,
                     manager=browser_manager,
@@ -639,7 +639,7 @@ class CrossBrowserModelShardingManager:
             inference_tasks.append(task)
             
         # Wait for all inferences to complete
-        browser_results = await asyncio.gather(*inference_tasks, return_exceptions=True)
+        browser_results = await # TODO: Replace with task group - asyncio.gather(*inference_tasks, return_exceptions=True)
         
         # Process results and handle errors
         valid_results = []
@@ -787,11 +787,11 @@ class CrossBrowserModelShardingManager:
             browser_manager = self.browser_managers[browser]
             
             # Create shutdown task
-            task = asyncio.create_task(self._shutdown_browser(browser, browser_manager))
+            task = # TODO: Replace with task group - asyncio.create_task(self._shutdown_browser(browser, browser_manager))
             shutdown_tasks.append(task)
             
         # Wait for all shutdowns to complete
-        await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+        await # TODO: Replace with task group - asyncio.gather(*shutdown_tasks, return_exceptions=True)
         
         # Update state
         self.initialized = False
@@ -1007,9 +1007,9 @@ if __name__ == "__main__":
     # Run the test
     if sys.platform != "win32":
         import asyncio
-        result = asyncio.run(run_test())
+        result = anyio.run(run_test())
     else:
         # For Windows compatibility
         import asyncio
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         result = loop.run_until_complete(run_test())

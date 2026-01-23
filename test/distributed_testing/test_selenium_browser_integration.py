@@ -22,7 +22,7 @@ import sys
 import json
 import time
 import random
-import asyncio
+import anyio
 import logging
 import argparse
 from typing import Dict, List, Any, Optional, Set, Tuple
@@ -424,7 +424,7 @@ class SeleniumBrowserIntegrationTest:
                     bridge.driver.quit()
                     bridge.driver = None
                 # Force a connection attempt that will fail
-                await asyncio.sleep(0.5)
+                await anyio.sleep(0.5)
                 if hasattr(bridge, 'check_browser_responsive'):
                     await bridge.check_browser_responsive()
             except Exception as e:
@@ -738,7 +738,7 @@ class SeleniumBrowserIntegrationTest:
                 if retry_count <= self.retry_count:
                     logger.info(f"Retrying test case {test_case.name}")
                     # Wait before retry
-                    await asyncio.sleep(2)
+                    await anyio.sleep(2)
         
         # Record end time
         self.end_time = datetime.now()
@@ -982,4 +982,4 @@ async def main():
     test_suite.print_summary()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

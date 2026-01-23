@@ -15,7 +15,7 @@ Key features:
 """
 
 import argparse
-import asyncio
+import anyio
 import datetime
 import json
 import logging
@@ -335,7 +335,7 @@ class PerformanceTrendAnalyzer:
             self._init_database()
         
         # Start the main analysis loop
-        asyncio.create_task(self._analysis_loop())
+        # TODO: Replace with task group - asyncio.create_task(self._analysis_loop())
     
     async def stop(self) -> None:
         """Stop the performance trend analyzer."""
@@ -469,10 +469,10 @@ class PerformanceTrendAnalyzer:
                     await self._generate_visualizations()
                 
                 # Sleep until next analysis
-                await asyncio.sleep(polling_interval)
+                await anyio.sleep(polling_interval)
             except Exception as e:
                 logger.error(f"Error in analysis loop: {str(e)}")
-                await asyncio.sleep(polling_interval)
+                await anyio.sleep(polling_interval)
     
     async def _collect_metrics(self) -> None:
         """Collect performance metrics from the coordinator."""
@@ -1540,17 +1540,17 @@ async def main():
         
         if args.one_shot:
             # Run once and exit
-            await asyncio.sleep(5)  # Wait for initial collection
+            await anyio.sleep(5)  # Wait for initial collection
             await analyzer._generate_visualizations()
             await analyzer.stop()
         else:
             # Run until interrupted
             while True:
-                await asyncio.sleep(60)
+                await anyio.sleep(60)
     except KeyboardInterrupt:
         logger.info("Shutting down performance trend analyzer")
         await analyzer.stop()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

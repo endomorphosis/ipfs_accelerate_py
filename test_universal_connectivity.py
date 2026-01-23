@@ -15,7 +15,7 @@ Usage:
   python test_universal_connectivity.py
 """
 
-import asyncio
+import anyio
 import logging
 import sys
 import time
@@ -126,7 +126,7 @@ async def test_listen_for_connections(host, duration: int = 10):
                 for peer_id, conn in connections.items():
                     logger.info(f"  - {peer_id.pretty()}")
             
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
         
         logger.info("\n✓ TEST PASSED: Listening completed")
         return True
@@ -283,9 +283,9 @@ Examples:
     
     # Run tests
     if args.automated:
-        success = asyncio.run(run_automated_tests())
+        success = anyio.run(run_automated_tests())
     else:
-        success = asyncio.run(run_interactive_mode())
+        success = anyio.run(run_interactive_mode())
     
     return 0 if success else 1
 

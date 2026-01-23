@@ -8,7 +8,7 @@ import json
 import time
 import uuid
 import logging
-import asyncio
+import anyio
 from typing import Dict, List, Any, Optional
 from enum import Enum
 from dataclasses import dataclass, asdict
@@ -600,7 +600,7 @@ class WorkflowEngine:
         temperature = task.config.get('temperature', 0.7)
         
         # Simulated text generation
-        await asyncio.sleep(1)
+        await anyio.sleep(1)
         logger.info(f"Executing {task.type} with model {model}")
         
         # Simulated output
@@ -619,7 +619,7 @@ class WorkflowEngine:
         model = task.config.get('model', 'bert-base')
         text = inputs.get('text', inputs.get('prompt', ''))
         
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -637,7 +637,7 @@ class WorkflowEngine:
         model = task.config.get('model', 'stable-diffusion-xl')
         prompt = inputs.get('prompt', inputs.get('text', ''))
         
-        await asyncio.sleep(2)
+        await anyio.sleep(2)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -657,7 +657,7 @@ class WorkflowEngine:
         model = task.config.get('model', 'image-processor')
         image = inputs.get('image', '/path/to/input.png')
         
-        await asyncio.sleep(1)
+        await anyio.sleep(1)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -676,7 +676,7 @@ class WorkflowEngine:
         model = task.config.get('model', 'blip-2')
         image = inputs.get('image', '/path/to/input.png')
         
-        await asyncio.sleep(1)
+        await anyio.sleep(1)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -694,7 +694,7 @@ class WorkflowEngine:
         prompt = inputs.get('prompt', '')
         image_input = inputs.get('image')
         
-        await asyncio.sleep(3)
+        await anyio.sleep(3)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -714,7 +714,7 @@ class WorkflowEngine:
         model = task.config.get('model', 'elevenlabs-tts')
         text = inputs.get('text', inputs.get('prompt', ''))
         
-        await asyncio.sleep(1.5)
+        await anyio.sleep(1.5)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -733,7 +733,7 @@ class WorkflowEngine:
         model = task.config.get('model', 'whisper-large')
         audio = inputs.get('audio', '/path/to/input.wav')
         
-        await asyncio.sleep(1)
+        await anyio.sleep(1)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -750,7 +750,7 @@ class WorkflowEngine:
         """Execute multimodal tasks (VQA, document QA, etc.)"""
         model = task.config.get('model', 'multimodal-model')
         
-        await asyncio.sleep(1.5)
+        await anyio.sleep(1.5)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -766,7 +766,7 @@ class WorkflowEngine:
         """Execute feature extraction tasks"""
         model = task.config.get('model', 'sentence-transformers')
         
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         logger.info(f"Executing {task.type} with model {model}")
         
         result = {
@@ -784,7 +784,7 @@ class WorkflowEngine:
         image = inputs.get('image')
         text = inputs.get('text', '')
         
-        await asyncio.sleep(0.3)
+        await anyio.sleep(0.3)
         logger.info(f"Executing filter with model {model}")
         
         result = {
@@ -807,7 +807,7 @@ class WorkflowEngine:
         processing_type = task.config.get('processing_type', 'generic')
         
         # Simulated processing
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         return {
             'processing_type': processing_type,
@@ -826,7 +826,7 @@ class WorkflowEngine:
             return result
         else:
             # Simulated inference
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             return {
                 'output': 'Simulated output',
                 'model': task.config.get('model'),
@@ -892,7 +892,7 @@ class WorkflowEngine:
                         return
                     
                     # Wait a bit before checking again
-                    await asyncio.sleep(0.5)
+                    await anyio.sleep(0.5)
                     continue
                 
                 # Execute runnable tasks (could be parallelized)
@@ -933,7 +933,7 @@ class WorkflowEngine:
         if workflow_id in self._running_workflows:
             raise ValueError(f"Workflow {workflow_id} is already running")
         
-        task = asyncio.create_task(self.execute_workflow(workflow_id))
+        task = # TODO: Replace with task group - asyncio.create_task(self.execute_workflow(workflow_id))
         self._running_workflows[workflow_id] = task
         return task
     

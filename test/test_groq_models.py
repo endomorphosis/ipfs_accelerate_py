@@ -3,7 +3,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 from datetime import datetime
 from unittest.mock import MagicMock
 

@@ -9,7 +9,7 @@ Usage:
     python run_test_enhanced_error_recovery.py
 """
 
-import asyncio
+import anyio
 import logging
 import json
 import sys
@@ -507,7 +507,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Run all tests
-    results, success = asyncio.run(run_all_tests(with_db=not args.no_db))
+    results, success = anyio.run(run_all_tests(with_db=not args.no_db))
     
     # Output JSON if requested
     if args.json:

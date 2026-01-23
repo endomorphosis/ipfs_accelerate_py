@@ -17,7 +17,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import tempfile
 import platform
@@ -113,7 +113,7 @@ class BrowserBridge:
         self.client_connections = {}
         self.browser_id = str(uuid.uuid4())
         self.shutdown_requested = False
-        self.messages = asyncio.Queue()
+        self.messages = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
         self.results = {}
         
         # HTML template and other browser resources
@@ -911,7 +911,7 @@ class BrowserBridge:
         await self._launch_browser()
         
         # Start message processing loop
-        asyncio.create_task(self._process_messages())
+        # TODO: Replace with task group - asyncio.create_task(self._process_messages())
         
         logger.info(f"Browser bridge started with {self.browser_name} browser")
         
@@ -1431,7 +1431,7 @@ class BrowserBridge:
                 del self.results[request_id]  # Clean up
                 return result
                 
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
             
         # Timeout
         return {'status': 'error', 'error': f'Timeout waiting for inference result after {timeout_sec} seconds'}
@@ -1460,7 +1460,7 @@ class BrowserBridge:
             return {'webgpu': False, 'webnn': False}
             
         # Wait for a short time to ensure handshake is processed
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Return capabilities based on handshake data
         # In a real implementation, this would extract data from the most recent handshake
@@ -1500,7 +1500,7 @@ async def test_browser_bridge():
     try:
         # Wait for connection
         logger.info("Waiting for browser connection...")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Get browser capabilities
         capabilities = await bridge.get_browser_capabilities()
@@ -1518,7 +1518,7 @@ async def test_browser_bridge():
         
         # Wait a bit more
         logger.info("Waiting before shutdown...")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
     finally:
         # Stop bridge
@@ -1528,4 +1528,4 @@ async def test_browser_bridge():
 
 if __name__ == "__main__":
     # Run test function if module is run directly
-    asyncio.run(test_browser_bridge())
+    anyio.run(test_browser_bridge())

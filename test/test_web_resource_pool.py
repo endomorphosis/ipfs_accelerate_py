@@ -16,7 +16,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 import logging
 from pathlib import Path
@@ -503,7 +503,7 @@ class WebResourcePoolTester:
                         logger.error(f"Failed to get model: {model_name}, retrying...")
                         retry_count += 1
                         # Wait longer between retries
-                        await asyncio.sleep(0.5 * (retry_count + 1))
+                        await anyio.sleep(0.5 * (retry_count + 1))
                         continue
                     else:
                         logger.error(f"Failed to get model after {max_retries} retries: {model_name}")
@@ -545,8 +545,8 @@ class WebResourcePoolTester:
                     # Use asyncio.wait_for to add timeout protection
                     try:
                         # Since model() is synchronous, wrap in a thread to make it awaitable
-                        loop = asyncio.get_event_loop()
-                        result = await asyncio.wait_for(
+                        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+                        result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                             loop.run_in_executor(None, lambda: model(test_input)),
                             timeout=timeout
                         )
@@ -566,7 +566,7 @@ class WebResourcePoolTester:
                     
                     if retry_count < max_retries:
                         retry_count += 1
-                        await asyncio.sleep(0.5 * (retry_count + 1))
+                        await anyio.sleep(0.5 * (retry_count + 1))
                         continue
                     else:
                         return self._create_error_result(model_name, model_type, platform,
@@ -656,7 +656,7 @@ class WebResourcePoolTester:
                 
                 if retry_count < max_retries:
                     retry_count += 1
-                    await asyncio.sleep(0.5 * (retry_count + 1))
+                    await anyio.sleep(0.5 * (retry_count + 1))
                 else:
                     return self._create_error_result(model_name, model_type, platform, str(e), browser_specific_errors)
         
@@ -943,7 +943,7 @@ class WebResourcePoolTester:
                         perf_by_browser[browser]['success'] += 1 if success else 0
                     
                     # Brief pause between batches
-                    await asyncio.sleep(0.1)
+                    await anyio.sleep(0.1)
                 
                 # Get resource pool stats
                 stats = self.integration.get_execution_stats()
@@ -1486,7 +1486,7 @@ async def main_async():
 def main():
     """Main entry point"""
     try:
-        return asyncio.run(main_async())
+        return anyio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130

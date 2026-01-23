@@ -11,7 +11,7 @@ import os
 import sys
 import json
 import logging
-import asyncio
+import anyio
 import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, BinaryIO

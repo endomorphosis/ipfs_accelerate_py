@@ -13,7 +13,7 @@ Usage:
 import os
 import sys
 import argparse
-import asyncio
+import anyio
 import threading
 import webbrowser
 from pathlib import Path

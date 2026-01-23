@@ -6,7 +6,7 @@ and NAT traversal.
 """
 
 import pytest
-import asyncio
+import anyio
 
 from ipfs_accelerate_py.github_cli.p2p_connectivity import (
     UniversalConnectivity,

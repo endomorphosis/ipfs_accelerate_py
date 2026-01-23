@@ -24,7 +24,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 import logging
 import tempfile
@@ -454,7 +454,7 @@ async def check_browser_capabilities(browser, platform, headless=False):
         
         try:
             # Wait for capability checks to complete
-            await asyncio.sleep(3)
+            await anyio.sleep(3)
             
             # Get capability check results
             if hasattr(automation, 'driver') and automation.driver:
@@ -708,7 +708,7 @@ def main():
     args = parser.parse_args()
     
     try:
-        return asyncio.run(main_async(args))
+        return anyio.run(main_async(args))
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130

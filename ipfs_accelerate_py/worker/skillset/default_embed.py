@@ -1,4 +1,4 @@
-import asyncio
+import anyio
 import os
 import json
 import time
@@ -265,7 +265,7 @@ class hf_embed:
         implementation_type = "MOCK" if using_mock else "REAL"
         print(f"Initialized Qualcomm embedding model with implementation type: {implementation_type}")
         
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
 
     def init_cpu(self, model, device, cpu_label):
         """
@@ -387,7 +387,7 @@ class hf_embed:
                 tokenizer=tokenizer
             )
             
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing CPU embedding model: {e}")
@@ -703,7 +703,7 @@ class hf_embed:
                 print("✅ Using REAL implementation for CUDA")
                 
             print(f"CUDA initialization complete with implementation type: {implementation_type}")
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size
             
         except Exception as e:
             print(f"Error initializing CUDA model: {e}")
@@ -1197,7 +1197,7 @@ class hf_embed:
                 endpoint
             )
             
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
             
         except Exception as e:
             print(f"Error initializing OpenVINO model: {e}")

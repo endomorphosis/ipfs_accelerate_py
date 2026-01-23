@@ -6,7 +6,7 @@ This script demonstrates how to use the artifact handling system to upload artif
 to different CI providers and retrieve them later.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import json
@@ -298,4 +298,4 @@ async def main():
     await run_demo(args.provider, config)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

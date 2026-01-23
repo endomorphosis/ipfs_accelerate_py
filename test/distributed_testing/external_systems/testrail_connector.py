@@ -6,7 +6,7 @@ This module provides a connector for interacting with TestRail's API to create t
 test cases, submit test results, and fetch testing plans.
 """
 
-import asyncio
+import anyio
 import base64
 import logging
 import time
@@ -265,7 +265,7 @@ class TestRailConnector(ExternalSystemInterface):
                 seconds = self.rate_limit_sleep
                 
             logger.warning(f"TestRail rate limit hit, pausing for {seconds} seconds")
-            await asyncio.sleep(seconds)
+            await anyio.sleep(seconds)
         
         return response
     

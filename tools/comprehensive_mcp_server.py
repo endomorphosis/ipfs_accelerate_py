@@ -13,7 +13,7 @@ Supported Model Categories:
 - Specialized: Time series, reinforcement learning, tabular data, code generation
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -1232,15 +1232,15 @@ if __name__ == "__main__":
         try:
             # Try to get existing event loop
             try:
-                loop = asyncio.get_event_loop()
+                loop = # TODO: Remove event loop management - asyncio.get_event_loop()
                 if loop.is_running():
                     # If loop is already running, run in a new thread
                     import threading
                     
                     def run_server():
                         try:
-                            new_loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(new_loop)
+                            new_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+                            # TODO: Remove event loop management - asyncio.set_event_loop(new_loop)
                             new_loop.run_until_complete(server.run(
                                 transport=args.transport,
                                 host=args.host,
@@ -1256,7 +1256,7 @@ if __name__ == "__main__":
                     thread.join()
                 else:
                     # Event loop exists but not running
-                    asyncio.run(server.run(
+                    anyio.run(server.run(
                         transport=args.transport,
                         host=args.host,
                         port=args.port
@@ -1264,7 +1264,7 @@ if __name__ == "__main__":
             except RuntimeError as e:
                 if "no current event loop" in str(e).lower() or "no running event loop" in str(e).lower():
                     # No event loop, create one
-                    asyncio.run(server.run(
+                    anyio.run(server.run(
                         transport=args.transport,
                         host=args.host,
                         port=args.port

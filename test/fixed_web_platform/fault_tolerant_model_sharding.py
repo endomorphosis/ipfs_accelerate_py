@@ -45,7 +45,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import random
 import traceback
@@ -780,7 +780,7 @@ class FaultTolerantModelSharding:
             loading_time_sec = loading_time / 1000
             
             # Don't actually sleep in the simulation, just track time
-            # await asyncio.sleep(loading_time_sec)
+            # await anyio.sleep(loading_time_sec)
             
             # Calculate load time
             load_time = (time.time() - start_time) * 1000
@@ -899,10 +899,10 @@ class FaultTolerantModelSharding:
         logger.info(f"Health monitoring started with {checkpoint_interval_sec}s checkpoint interval")
         
         # Schedule first checkpoint
-        asyncio.create_task(self._create_state_checkpoint())
+        # TODO: Replace with task group - asyncio.create_task(self._create_state_checkpoint())
         
         # Start health check loop
-        asyncio.create_task(self._health_check_loop(checkpoint_interval_sec))
+        # TODO: Replace with task group - asyncio.create_task(self._health_check_loop(checkpoint_interval_sec))
         
     async def _health_check_loop(self, interval_sec: int) -> None:
         """
@@ -920,11 +920,11 @@ class FaultTolerantModelSharding:
                 await self._create_state_checkpoint()
                 
                 # Wait for next check
-                await asyncio.sleep(interval_sec)
+                await anyio.sleep(interval_sec)
                 
             except Exception as e:
                 logger.error(f"Error in health check loop: {e}")
-                await asyncio.sleep(interval_sec)
+                await anyio.sleep(interval_sec)
                 
     async def _check_browser_health(self) -> Dict[str, str]:
         """
@@ -946,7 +946,7 @@ class FaultTolerantModelSharding:
                     self.browser_states[browser] = BrowserState.FAILED
                     
                     # Trigger recovery
-                    recovery_task = asyncio.create_task(self._recover_browser(browser))
+                    recovery_task = # TODO: Replace with task group - asyncio.create_task(self._recover_browser(browser))
                 else:
                     # Update last heartbeat
                     if "last_heartbeat" in connection:
@@ -1317,7 +1317,7 @@ class FaultTolerantModelSharding:
                 raise Exception(f"Simulated inference failure in {browser}")
                 
             # Don't actually sleep in the simulation, just track time
-            # await asyncio.sleep(execution_time / 1000)
+            # await anyio.sleep(execution_time / 1000)
             
             # Simulate browser output based on components
             output_text = f"Output from {browser} with {len(all_components)} components"
@@ -2030,4 +2030,4 @@ async def main():
             print(f"Avg recovery time: {stats['avg_recovery_time_ms']:.1f}ms")
             
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

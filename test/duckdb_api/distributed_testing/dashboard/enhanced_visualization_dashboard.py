@@ -21,7 +21,7 @@ import os
 import sys
 import json
 import logging
-import asyncio
+import anyio
 import datetime
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple, Set, Union
@@ -2024,7 +2024,7 @@ class EnhancedVisualizationDashboard:
         logger.info(f"WebSocket server started at ws://{self.host}:{self.port + 1}/ws")
         
         # Start broadcast task
-        asyncio.create_task(self._broadcast_updates())
+        # TODO: Replace with task group - asyncio.create_task(self._broadcast_updates())
     
     async def _broadcast_updates(self):
         """Broadcast updates to WebSocket clients."""
@@ -2044,7 +2044,7 @@ class EnhancedVisualizationDashboard:
                 logger.error(f"Error broadcasting updates: {e}")
             
             # Wait before next broadcast
-            await asyncio.sleep(self.config["refresh_interval"])
+            await anyio.sleep(self.config["refresh_interval"])
     
     def create_custom_dashboard(self, 
                                title: str, 
@@ -2385,7 +2385,7 @@ class EnhancedVisualizationDashboard:
         
         # Start the dashboard
         import asyncio
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         
         try:
             # Open browser if requested

@@ -9,7 +9,7 @@ from collections import OrderedDict
 import threading
 import hashlib
 import logging
-import asyncio
+import anyio
 
 # Add parent directory to path
 sys.path.insert()))))))))0, os.path.dirname()))))))))os.path.dirname()))))))))os.path.abspath()))))))))__file__))))
@@ -428,12 +428,12 @@ async def example_usage()))))))))):
         class MockGeminiClient:
             async def generate_content()))))))))self, prompt, temperature=0.7, max_tokens=None, **kwargs):
                 print()))))))))f"[]],,API CALL] Generating content for: {}}}prompt}")
-                await asyncio.sleep()))))))))1)  # Simulate API delay
+                await anyio.sleep()))))))))1)  # Simulate API delay
             return f"Response for: {}}}prompt}"
                 
             async def generate_content_stream()))))))))self, prompt, temperature=0.7, max_tokens=None, **kwargs):
                 print()))))))))f"[]],,API CALL] Streaming content for: {}}}prompt}")
-                await asyncio.sleep()))))))))1)  # Simulate API delay
+                await anyio.sleep()))))))))1)  # Simulate API delay
             return iter()))))))))[]],,f"Streaming response for: {}}}prompt}"])
         
             GeminiClient = MockGeminiClient
@@ -472,4 +472,4 @@ async def example_usage()))))))))):
         print()))))))))f"  {}}}key}: {}}}value}")
 
 if __name__ == "__main__":
-    asyncio.run()))))))))example_usage()))))))))))
+    anyio.run()))))))))example_usage()))))))))))

@@ -16,7 +16,7 @@ Key features:
 - Customizable error hooks for specialized handling
 """
 
-import asyncio
+import anyio
 import logging
 import time
 import traceback
@@ -916,7 +916,7 @@ class DistributedErrorHandler:
                 self._persist_error(error_report)
                 
                 # Wait before retry
-                await asyncio.sleep(delay_sec)
+                await anyio.sleep(delay_sec)
     
     def retry_operation_sync(self, operation: Callable, args: Tuple = None, kwargs: Dict[str, Any] = None, 
                          context: Dict[str, Any] = None) -> Tuple[Any, Optional[ErrorReport]]:
@@ -1479,7 +1479,7 @@ if __name__ == "__main__":
             print(f"Operation failed after retries: {error.message}")
     
     # Run the async test
-    asyncio.run(test_retry())
+    anyio.run(test_retry())
     
     # Print error metrics
     print("\nError Metrics:")

@@ -20,7 +20,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Response,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from pydantic import BaseModel, Field
-import asyncio
+import anyio
 import uvicorn
 
 # Add path for imports

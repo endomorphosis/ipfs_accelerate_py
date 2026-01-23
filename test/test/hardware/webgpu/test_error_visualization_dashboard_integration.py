@@ -10,7 +10,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import unittest
 import tempfile
 import shutil

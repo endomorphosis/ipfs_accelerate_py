@@ -20,7 +20,7 @@ import json
 import time
 import tempfile
 import unittest
-import asyncio
+import anyio
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
 

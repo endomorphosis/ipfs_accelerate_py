@@ -10,7 +10,7 @@ Usage:
     for browser-based model inference.
 """
 
-import asyncio
+import anyio
 import hashlib
 import json
 import logging
@@ -77,7 +77,7 @@ class BrowserStateManager:
         await self._initialize_state()
         
         # Start state synchronization task
-        self.sync_task = asyncio.create_task(self._state_sync_loop())
+        self.sync_task = # TODO: Replace with task group - asyncio.create_task(self._state_sync_loop())
         
         logger.info("BrowserStateManager initialization complete")
     
@@ -114,7 +114,7 @@ class BrowserStateManager:
                 logger.error(f"Error in state sync loop: {str(e)}")
             
             # Wait for next sync
-            await asyncio.sleep(self.sync_interval)
+            await anyio.sleep(self.sync_interval)
     
     async def _sync_state(self):
         """Synchronize state with redundant storage."""
@@ -639,7 +639,7 @@ class ResourcePoolRecoveryManager:
         
         # Start checkpoint task if high fault tolerance
         if self.fault_tolerance_level in ["high", "critical"]:
-            asyncio.create_task(self._periodic_checkpoint())
+            # TODO: Replace with task group - asyncio.create_task(self._periodic_checkpoint())
         
         logger.info("ResourcePoolRecoveryManager initialization complete")
     
@@ -694,11 +694,11 @@ class ResourcePoolRecoveryManager:
                     await self._create_state_checkpoint()
                     
                 # Wait for next checkpoint
-                await asyncio.sleep(self.checkpoint_interval)
+                await anyio.sleep(self.checkpoint_interval)
                 
             except Exception as e:
                 logger.error(f"Error in checkpoint task: {str(e)}")
-                await asyncio.sleep(self.checkpoint_interval)
+                await anyio.sleep(self.checkpoint_interval)
     
     async def _create_state_checkpoint(self):
         """Create a checkpoint of current state."""
@@ -1011,7 +1011,7 @@ class ResourcePoolRecoveryManager:
                     
             elif strategy == "parallel":
                 # Parallel recovery - try multiple approaches simultaneously
-                results = await asyncio.gather(
+                results = await # TODO: Replace with task group - asyncio.gather(
                     self._recover_model_retry(model_id, browser_id, model_state, inputs, operation_id),
                     self._recover_model_failover(model_id, browser_id, model_state, inputs, operation_id),
                     return_exceptions=True
@@ -1306,7 +1306,7 @@ class ResourcePoolRecoveryManager:
         
         try:
             # Simulate component recovery process
-            await asyncio.sleep(0.5)  # Simulate recovery time
+            await anyio.sleep(0.5)  # Simulate recovery time
             
             # Create a simple model proxy
             try:
@@ -1653,7 +1653,7 @@ class PerformanceHistoryTracker:
         self.history = {}
         
         # Start performance analysis task
-        asyncio.create_task(self._periodic_analysis())
+        # TODO: Replace with task group - asyncio.create_task(self._periodic_analysis())
         
         logger.info("PerformanceHistoryTracker initialization complete")
     
@@ -1671,7 +1671,7 @@ class PerformanceHistoryTracker:
                 logger.error(f"Error in performance analysis: {str(e)}")
             
             # Wait for next analysis cycle (every hour)
-            await asyncio.sleep(3600)
+            await anyio.sleep(3600)
     
     async def _analyze_performance_data(self):
         """Analyze performance data to generate insights."""

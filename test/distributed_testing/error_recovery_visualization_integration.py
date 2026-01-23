@@ -10,7 +10,7 @@ and dashboards from error recovery performance data.
 import os
 import sys
 import logging
-import asyncio
+import anyio
 from typing import Dict, List, Any, Optional
 import argparse
 
@@ -371,7 +371,7 @@ def main():
         os.makedirs(args.output_dir, exist_ok=True)
     
     # Run async main
-    asyncio.run(async_main(args))
+    anyio.run(async_main(args))
 
 
 if __name__ == "__main__":

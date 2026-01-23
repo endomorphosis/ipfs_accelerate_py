@@ -6,7 +6,7 @@ This plugin implements a fairness-based scheduling algorithm that ensures
 fair resource allocation across different users, projects, and priorities.
 """
 
-import asyncio
+import anyio
 import logging
 import time
 import random

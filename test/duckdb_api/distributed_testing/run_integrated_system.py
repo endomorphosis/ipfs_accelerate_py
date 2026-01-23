@@ -60,7 +60,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import argparse
 import threading
@@ -724,7 +724,7 @@ def main():
             logger.info("Fault Tolerance System initialized")
         
         # Start coordinator in a separate thread
-        coordinator_thread = threading.Thread(target=lambda: asyncio.run(coordinator.start()))
+        coordinator_thread = threading.Thread(target=lambda: anyio.run(coordinator.start()))
         coordinator_thread.daemon = True
         coordinator_thread.start()
         
@@ -987,7 +987,7 @@ def main():
             
             # Stop coordinator
             logger.info("Stopping coordinator...")
-            asyncio.run(coordinator.stop())
+            anyio.run(coordinator.stop())
             
             # Remove patches if applied
             if not args.disable_load_balancer:

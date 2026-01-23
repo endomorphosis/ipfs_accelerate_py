@@ -12,7 +12,7 @@ import json
 import time
 import uuid
 import unittest
-import asyncio
+import anyio
 import tempfile
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -217,7 +217,7 @@ class {{ test_name }}(unittest.TestCase):
         tasks = self._submit_test_tasks(coordinator, count=task_count)
         
         # Wait for tasks to be processed
-        await asyncio.sleep(10)
+        await anyio.sleep(10)
         
         # Collect metrics (in real system this would happen automatically)
         self.resource_metrics.append({
@@ -256,8 +256,8 @@ class {{ test_name }}(unittest.TestCase):
     
     def test_e2e_integrated_system(self):
         """Test the complete end-to-end integrated system."""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
         
         try:
             # Run normal load test
@@ -268,7 +268,7 @@ class {{ test_name }}(unittest.TestCase):
             self.assertEqual(len(coordinator.get_active_workers()), 3)  # No scaling needed
             
             # Reset for high load test
-            loop.run_until_complete(asyncio.sleep(1))
+            loop.run_until_complete(anyio.sleep(1))
             
             # Run high load test
             coordinator, drm, pta = loop.run_until_complete(self._run_integrated_test(high_load=True))

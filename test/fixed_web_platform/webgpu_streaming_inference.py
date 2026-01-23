@@ -49,7 +49,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import threading
 import traceback
@@ -1628,7 +1628,7 @@ class WebGPUStreamingInference:
         
         try:
             # Run prefill phase (wrapped in a thread to avoid blocking)
-            prefill_future = asyncio.get_event_loop().run_in_executor(
+            prefill_future = # TODO: Remove event loop management - asyncio.get_event_loop().run_in_executor(
                 None, self._prefill, prompt
             )
             prefill_result = await prefill_future
@@ -1638,7 +1638,7 @@ class WebGPUStreamingInference:
             while not is_finished and self._tokens_generated < max_tokens:
                 # Generate next batch of tokens (in thread to avoid blocking)
                 batch_start_time = time.time()
-                decode_future = asyncio.get_event_loop().run_in_executor(
+                decode_future = # TODO: Remove event loop management - asyncio.get_event_loop().run_in_executor(
                     None, self._decode_token, self._current_batch_size
                 )
                 tokens, is_finished = await decode_future
@@ -1652,7 +1652,7 @@ class WebGPUStreamingInference:
                     full_response += token
                     
                     # Allow for cooperative multitasking
-                    await asyncio.sleep(0)
+                    await anyio.sleep(0)
             
             generation_time = time.time() - self._generation_start_time
             logger.info(f"Generated {self._tokens_generated} tokens in {generation_time:.2f}s "
@@ -1762,7 +1762,7 @@ class WebGPUStreamingInference:
             logger.info(f"Starting prefill phase for prompt with {len(prompt.split())} words")
             
             # Run prefill in a separate thread to avoid blocking the event loop
-            prefill_future = asyncio.get_event_loop().run_in_executor(
+            prefill_future = # TODO: Remove event loop management - asyncio.get_event_loop().run_in_executor(
                 None, self._prefill, prompt
             )
             prefill_result = await prefill_future
@@ -1804,7 +1804,7 @@ class WebGPUStreamingInference:
                 # Generate next batch of tokens using the optimized _decode_token method
                 # Run in a separate thread to avoid blocking the event loop
                 batch_start_time = time.time()
-                decode_future = asyncio.get_event_loop().run_in_executor(
+                decode_future = # TODO: Remove event loop management - asyncio.get_event_loop().run_in_executor(
                     None, self._decode_token, self._current_batch_size
                 )
                 tokens, is_finished = await decode_future
@@ -1937,7 +1937,7 @@ class WebGPUStreamingInference:
                     
                     # Small delay to allow for cooperative multitasking in the event loop
                     # This helps ensure smooth streaming even under load
-                    await asyncio.sleep(0.001)  # 1ms delay for event loop scheduling
+                    await anyio.sleep(0.001)  # 1ms delay for event loop scheduling
             
             # Calculate final generation metrics
             generation_time = time.time() - self._generation_start_time

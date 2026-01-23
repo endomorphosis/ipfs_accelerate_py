@@ -13,7 +13,7 @@ Features demonstrated:
 5. Complete MCP Server Integration
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -369,7 +369,7 @@ def main():
             doc_index = demonstrate_vector_documentation_search(temp_dir)
             
             # 4. Demonstrate MCP Server Integration
-            asyncio.run(demonstrate_mcp_server_tools(manager, recommender, doc_index))
+            anyio.run(demonstrate_mcp_server_tools(manager, recommender, doc_index))
             
             print("\n✅ DEMONSTRATION COMPLETE")
             print("=" * 30)

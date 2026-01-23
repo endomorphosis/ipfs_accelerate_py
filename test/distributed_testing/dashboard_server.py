@@ -10,7 +10,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import base64
 import datetime
 import io
@@ -245,7 +245,7 @@ async def data_update_loop():
     """Background task to periodically update data."""
     while True:
         await update_performance_data()
-        await asyncio.sleep(UPDATE_INTERVAL / 1000)
+        await anyio.sleep(UPDATE_INTERVAL / 1000)
 
 # =====================
 # Dashboard Layout
@@ -1070,7 +1070,7 @@ def format_timestamp(timestamp):
 
 async def start_background_tasks():
     """Start background tasks."""
-    asyncio.create_task(data_update_loop())
+    # TODO: Replace with task group - asyncio.create_task(data_update_loop())
 
 def main():
     """Main entrypoint."""

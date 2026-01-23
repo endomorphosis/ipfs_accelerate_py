@@ -543,7 +543,7 @@ class hf_bert_base_uncased:
                 )
             
             # Create queue
-                queue = asyncio.Queue()))))))))))))32)
+                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32)
                 batch_size = 1
             
             return model, tokenizer, handler, queue, batch_size
@@ -554,7 +554,7 @@ class hf_bert_base_uncased:
             # Return mock components on error
             import asyncio
             handler = lambda x: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"output": "Mock CPU output", "input": x, "implementation_type": "MOCK"}
-            return None, None, handler, asyncio.Queue()))))))))))))32), 1
+            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32), 1
     
     def init_apple()))))))))))))self, model_name, model_type, device="mps", **kwargs):
         """Initialize model for Apple Silicon ()))))))))))))M1/M2/M3) inference."""
@@ -586,7 +586,7 @@ class hf_bert_base_uncased:
                 )
             
             # Create queue
-                queue = asyncio.Queue()))))))))))))32)
+                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32)
                 batch_size = 2
             
                 return model, tokenizer, handler, queue, batch_size
@@ -597,7 +597,7 @@ class hf_bert_base_uncased:
             # Return mock components on error
             import asyncio
             handler = lambda x: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"output": "Mock Apple Silicon output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, asyncio.Queue()))))))))))))32), 2
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32), 2
             
     def init_cuda()))))))))))))self, model_name, model_type, device_label="cuda:0", **kwargs):
         """Initialize model for CUDA inference."""
@@ -636,7 +636,7 @@ class hf_bert_base_uncased:
                 )
             
             # Create queue
-                queue = asyncio.Queue()))))))))))))32)
+                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32)
                 batch_size = 4  # Default to larger batch size for CUDA
             
                 return model, tokenizer, handler, queue, batch_size
@@ -647,7 +647,7 @@ class hf_bert_base_uncased:
             # Return mock components on error
             import asyncio
             handler = lambda x: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"output": "Mock CUDA output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, asyncio.Queue()))))))))))))32), 2
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32), 2
     
     def init_amd()))))))))))))self, model_name, model_type, device="rocm:0", **kwargs):
         """Initialize model for AMD ROCm inference."""
@@ -686,7 +686,7 @@ class hf_bert_base_uncased:
                 )
             
             # Create queue
-                queue = asyncio.Queue()))))))))))))32)
+                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32)
                 batch_size = 4  # Default to larger batch size for AMD GPUs
             
                 return model, tokenizer, handler, queue, batch_size
@@ -697,7 +697,7 @@ class hf_bert_base_uncased:
             # Return mock components on error
             import asyncio
             handler = lambda x: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"output": "Mock AMD ROCm output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, asyncio.Queue()))))))))))))32), 2
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32), 2
             
     def init_qualcomm()))))))))))))self, model_name, model_type, device="qualcomm", **kwargs):
         """Initialize model for Qualcomm AI inference."""
@@ -737,7 +737,7 @@ class hf_bert_base_uncased:
                             )
             
             # Create queue
-                            queue = asyncio.Queue()))))))))))))32)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32)
                             batch_size = 1
             
                         return model, tokenizer, handler, queue, batch_size
@@ -748,7 +748,7 @@ class hf_bert_base_uncased:
             # Return mock components on error
             import asyncio
             handler = lambda x: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"output": "Mock Qualcomm output", "input": x, "implementation_type": "MOCK"}
-                        return None, None, handler, asyncio.Queue()))))))))))))32), 1
+                        return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32), 1
             
     def init_webnn()))))))))))))self, model_name, model_type, device="webnn", **kwargs):
         """Initialize model for WebNN inference ()))))))))))))browser or Node.js environment).
@@ -803,7 +803,7 @@ class hf_bert_base_uncased:
                             )
             
             # Create queue
-                            queue = asyncio.Queue()))))))))))))32)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32)
                             batch_size = 1
             
                         return model, tokenizer, handler, queue, batch_size
@@ -814,7 +814,7 @@ class hf_bert_base_uncased:
             # Return mock components on error
             import asyncio
             handler = lambda x: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"output": "Mock WebNN output", "input": x, "implementation_type": "MOCK"}
-                        return None, None, handler, asyncio.Queue()))))))))))))32), 1
+                        return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32), 1
     
     def init_webgpu()))))))))))))self, model_name, model_type, device="webgpu", **kwargs):
         """Initialize model for WebGPU inference using transformers.js.
@@ -901,7 +901,7 @@ class hf_bert_base_uncased:
                                 )
             
             # Create queue
-                                queue = asyncio.Queue()))))))))))))32)
+                                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32)
                                 batch_size = 1
             
                             return model, tokenizer, handler, queue, batch_size
@@ -912,7 +912,7 @@ class hf_bert_base_uncased:
             # Return mock components on error
             import asyncio
             handler = lambda x: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"output": "Mock WebGPU output", "input": x, "implementation_type": "MOCK"}
-                            return None, None, handler, asyncio.Queue()))))))))))))32), 1
+                            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))32), 1
     
     def init_openvino()))))))))))))self, model_name, model_type, device="CPU", **kwargs):
         """Initialize model for OpenVINO inference."""
@@ -952,7 +952,7 @@ class hf_bert_base_uncased:
                             )
             
             # Create queue
-                            queue = asyncio.Queue()))))))))))))64)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))64)
                             batch_size = 1
             
                         return model, tokenizer, handler, queue, batch_size
@@ -963,7 +963,7 @@ class hf_bert_base_uncased:
             # Return mock components on error
             import asyncio
             handler = lambda x: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"output": "Mock OpenVINO output", "input": x, "implementation_type": "MOCK"}
-                        return None, None, handler, asyncio.Queue()))))))))))))64), 1
+                        return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()))))))))))))64), 1
     
     def create_cpu_text_embedding_endpoint_handler()))))))))))))self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None, precision="fp32"):
         """Create a handler function for CPU inference."""

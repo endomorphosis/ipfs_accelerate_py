@@ -8,7 +8,7 @@ tools and resources, and verifies that they are properly accessible.
 import os
 import sys
 import json
-import asyncio
+import anyio
 import subprocess
 import time
 from pathlib import Path
@@ -354,5 +354,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

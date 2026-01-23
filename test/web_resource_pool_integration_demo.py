@@ -14,7 +14,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -268,7 +268,7 @@ class MockFaultTolerantModelSharding:
             self.component_states[component] = "ready"
         
         # Simulate initialization delay
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Return initialization result
         return {
@@ -295,7 +295,7 @@ class MockFaultTolerantModelSharding:
         
         try:
             # Simulate processing time
-            await asyncio.sleep(0.3)
+            await anyio.sleep(0.3)
             
             # Simulate occasional failures to test fault tolerance
             if self.model_name == "flaky-model" and (time.time() % 5) < 1:
@@ -344,7 +344,7 @@ class MockFaultTolerantModelSharding:
         self.recovery_stats["total_attempts"] += 1
         
         # Simulate recovery delay
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Simulate recovery success/failure based on strategy
         success = True
@@ -503,7 +503,7 @@ class FaultToleranceValidator:
     async def _test_failure_scenario(self, scenario):
         """Test a specific failure scenario"""
         # Simulate scenario testing
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Simulate success/failure based on fault tolerance level
         success = True
@@ -535,7 +535,7 @@ class FaultToleranceValidator:
     async def _assess_performance_impact(self):
         """Assess performance impact of fault tolerance"""
         # Simulate performance testing
-        await asyncio.sleep(0.3)
+        await anyio.sleep(0.3)
         
         return {
             "performance_impact_measured": True,
@@ -801,7 +801,7 @@ async def main():
             print(f"Successful recoveries: {metrics.get('successful_recoveries', 0)}")
             
             # Small delay between tests
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
         
         # Get final recovery statistics
         recovery_stats = model_manager.get_recovery_statistics()
@@ -888,4 +888,4 @@ async def main():
 if __name__ == "__main__":
     import random
     random.seed(42)  # Use fixed seed for reproducible demo
-    asyncio.run(main())
+    anyio.run(main())

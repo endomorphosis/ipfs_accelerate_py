@@ -6,7 +6,7 @@ This script tests the SDK Dashboard and JSON-RPC server without browser automati
 It verifies the core functionality by making direct HTTP requests.
 """
 
-import asyncio
+import anyio
 import json
 import os
 import subprocess

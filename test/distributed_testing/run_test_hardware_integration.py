@@ -13,7 +13,7 @@ import os
 import sys
 import json
 import logging
-import asyncio
+import anyio
 import argparse
 from datetime import datetime
 
@@ -349,7 +349,7 @@ def main():
     
     args = parser.parse_args()
     
-    asyncio.run(test_hardware_integration(
+    anyio.run(test_hardware_integration(
         db_path=args.db_path,
         enable_browser_detection=args.enable_browser_detection
     ))

@@ -20,7 +20,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import argparse
 import random
@@ -444,7 +444,7 @@ class ErrorRecoveryDemo:
                 self._print_result_summary(result)
                 
                 # Wait before next test to allow resources to clean up
-                await asyncio.sleep(2)
+                await anyio.sleep(2)
         
         # Record end time
         self.end_time = datetime.now()
@@ -849,4 +849,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

@@ -37,7 +37,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Union, Tuple, Set
 from pathlib import Path
 import threading
-import asyncio
+import anyio
 import concurrent.futures
 import warnings
 

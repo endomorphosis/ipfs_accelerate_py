@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from PIL import Image
 import tempfile
 from install_depends import install_depends_py
-import asyncio
+import anyio
 import platform
 from io import BytesIO
 import os

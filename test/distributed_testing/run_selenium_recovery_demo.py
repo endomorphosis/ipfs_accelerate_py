@@ -20,7 +20,7 @@ import time
 import json
 import random
 import argparse
-import asyncio
+import anyio
 import logging
 from typing import Dict, List, Any, Optional
 
@@ -384,7 +384,7 @@ class SeleniumRecoveryDemo:
             
             # Wait a bit before relaunch
             delay = random.choice(self.retry_delays)
-            await asyncio.sleep(delay)
+            await anyio.sleep(delay)
             
             # Adjust settings for recovery
             if self.model_type == ModelType.AUDIO and self.browser_type == BrowserType.FIREFOX:
@@ -433,7 +433,7 @@ class SeleniumRecoveryDemo:
                 
                 # Pause between tests
                 if i < self.test_count:
-                    await asyncio.sleep(1)
+                    await anyio.sleep(1)
             
             # Get bridge metrics
             metrics = self.bridge.get_metrics() if self.bridge else {}
@@ -595,4 +595,4 @@ async def main():
     demo.show_results(results)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

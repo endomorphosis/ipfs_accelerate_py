@@ -13,7 +13,7 @@ import json
 import time
 import uuid
 import unittest
-import asyncio
+import anyio
 import threading
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
@@ -112,7 +112,7 @@ class TestCoordinatorOrchestratorIntegration(unittest.TestCase):
     
     def test_orchestrate_request(self):
         """Run the async test for orchestrate request."""
-        asyncio.run(self._test_orchestrate_request())
+        anyio.run(self._test_orchestrate_request())
     
     async def _test_invalid_orchestrate_request(self):
         """Test the orchestrate request API handler with invalid data."""
@@ -130,7 +130,7 @@ class TestCoordinatorOrchestratorIntegration(unittest.TestCase):
     
     def test_invalid_orchestrate_request(self):
         """Run the async test for invalid orchestrate request."""
-        asyncio.run(self._test_invalid_orchestrate_request())
+        anyio.run(self._test_invalid_orchestrate_request())
     
     async def _test_orchestrated_task_request(self):
         """Test the orchestrated task request API handler."""
@@ -157,7 +157,7 @@ class TestCoordinatorOrchestratorIntegration(unittest.TestCase):
     
     def test_orchestrated_task_request(self):
         """Run the async test for orchestrated task request."""
-        asyncio.run(self._test_orchestrated_task_request())
+        anyio.run(self._test_orchestrated_task_request())
     
     async def _test_list_orchestrated_tasks(self):
         """Test the list orchestrated tasks API handler."""
@@ -208,7 +208,7 @@ class TestCoordinatorOrchestratorIntegration(unittest.TestCase):
     
     def test_list_orchestrated_tasks(self):
         """Run the async test for list orchestrated tasks."""
-        asyncio.run(self._test_list_orchestrated_tasks())
+        anyio.run(self._test_list_orchestrated_tasks())
     
     async def _test_cancel_orchestrated_task(self):
         """Test the cancel orchestrated task API handler."""
@@ -230,7 +230,7 @@ class TestCoordinatorOrchestratorIntegration(unittest.TestCase):
     
     def test_cancel_orchestrated_task(self):
         """Run the async test for cancel orchestrated task."""
-        asyncio.run(self._test_cancel_orchestrated_task())
+        anyio.run(self._test_cancel_orchestrated_task())
     
     def test_handle_subtask_result(self):
         """Test handling a subtask result."""

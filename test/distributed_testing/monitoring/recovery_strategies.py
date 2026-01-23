@@ -4,7 +4,7 @@ Advanced Recovery Strategies for Distributed Testing Framework.
 Implements recovery mechanisms for various edge case failures in coordinator redundancy.
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import time
@@ -525,7 +525,7 @@ class CoordinatorRecoveryStrategy(RecoveryStrategy):
             except Exception:
                 pass
                 
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
         logger.warning(f"Node {node_id} did not respond after restart")
         return False
@@ -550,7 +550,7 @@ class CoordinatorRecoveryStrategy(RecoveryStrategy):
             
         # Wait for partition to heal naturally
         logger.info("Waiting for network partitions to heal naturally")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
     async def _recover_from_database_corruption(self, failures):
         """Recover from database corruption."""
@@ -693,7 +693,7 @@ class CoordinatorRecoveryStrategy(RecoveryStrategy):
                     del self.processes[node_id]
                     
             # Wait a moment
-            await asyncio.sleep(5)
+            await anyio.sleep(5)
             
             # Restart nodes one by one with a delay
             for node_id in node_ids:
@@ -712,7 +712,7 @@ class CoordinatorRecoveryStrategy(RecoveryStrategy):
                 await self._restart_node(node_config)
                 
                 # Wait before starting the next node
-                await asyncio.sleep(5)
+                await anyio.sleep(5)
                 
             # Log recovery action
             self.log_recovery_action(
@@ -1115,7 +1115,7 @@ async def main():
                     logger.info("No failures detected")
                     
                 # Wait for next interval
-                await asyncio.sleep(args.interval)
+                await anyio.sleep(args.interval)
                 
         except KeyboardInterrupt:
             logger.info("Recovery daemon stopped by user")
@@ -1141,4 +1141,4 @@ async def main():
         
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

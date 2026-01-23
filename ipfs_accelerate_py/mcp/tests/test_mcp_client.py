@@ -8,7 +8,7 @@ import sys
 import os
 import json
 import requests
-import asyncio
+import anyio
 import logging
 import argparse
 
@@ -107,4 +107,4 @@ async def main():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

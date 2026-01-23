@@ -12,7 +12,7 @@ This example demonstrates advanced usage of the artifact URL retrieval system:
 7. Cross-provider compatibility
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -843,7 +843,7 @@ def main():
     
     # Run the demo
     demo = EnhancedReporterDemo(args)
-    asyncio.run(demo.run_demo())
+    anyio.run(demo.run_demo())
 
 
 if __name__ == "__main__":

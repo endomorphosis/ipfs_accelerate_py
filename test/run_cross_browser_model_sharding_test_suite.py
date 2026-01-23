@@ -19,7 +19,7 @@ import json
 import time
 import logging
 import argparse
-import asyncio
+import anyio
 import concurrent.futures
 import datetime
 import traceback
@@ -314,7 +314,7 @@ class TestSuiteRunner:
             )
             
             try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=TEST_TIMEOUT)
+                stdout, stderr = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(process.communicate(), timeout=TEST_TIMEOUT)
                 stdout = stdout.decode() if stdout else ""
                 stderr = stderr.decode() if stderr else ""
                 
@@ -397,7 +397,7 @@ class TestSuiteRunner:
                 # Try to terminate the process
                 process.terminate()
                 try:
-                    await asyncio.wait_for(process.wait(), timeout=10)
+                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(process.wait(), timeout=10)
                 except asyncio.TimeoutError:
                     process.kill()
         except Exception as e:
@@ -539,7 +539,7 @@ class TestSuiteRunner:
                     return await self.run_test(*test_params)
             
             tasks = [run_with_semaphore(params) for params in test_matrix]
-            results = await asyncio.gather(*tasks)
+            results = await # TODO: Replace with task group - asyncio.gather(*tasks)
             
             for result in results:
                 completed_tests += 1
@@ -806,7 +806,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        exit_code = asyncio.run(main())
+        exit_code = anyio.run(main())
         sys.exit(exit_code)
     except Exception as e:
         logger.error(f"Unhandled error: {e}")

@@ -57,7 +57,7 @@ import threading
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
 from enum import Enum, auto
 import math
-import asyncio
+import anyio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1319,7 +1319,7 @@ class MultimodalOptimizer:
             prep_time += 0.1
         
         # Perform async preparation
-        await asyncio.sleep(prep_time)
+        await anyio.sleep(prep_time)
         
         # Track preparation time
         self.perf_metrics["component_load_times_ms"][component] = prep_time * 1000
@@ -1441,7 +1441,7 @@ class MultimodalOptimizer:
             browser_optimal = True
         
         # Simulate processing
-        await asyncio.sleep(process_time)
+        await anyio.sleep(process_time)
         
         # Generate simulated result
         if component_type == "vision_transformer" or component_type == "resnet":
@@ -1556,7 +1556,7 @@ class MultimodalOptimizer:
         model_family = self._detect_model_family()
         
         # Simulate processing
-        await asyncio.sleep(process_time)
+        await anyio.sleep(process_time)
         
         # Generate result based on model family
         if model_family == "clip":
@@ -1807,4 +1807,4 @@ async def demo_multimodal_optimization():
 
 if __name__ == "__main__":
     # Run the demo
-    asyncio.run(demo_multimodal_optimization())
+    anyio.run(demo_multimodal_optimization())

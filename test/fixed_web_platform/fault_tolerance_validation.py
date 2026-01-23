@@ -24,7 +24,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import random
 import traceback
@@ -781,7 +781,7 @@ class FaultToleranceValidator:
                         break
                     
                     # Wait before polling again
-                    await asyncio.sleep(poll_interval)
+                    await anyio.sleep(poll_interval)
             
             elif scenario == "browser_crash":
                 browser_index = failure_result.get("browser_index")
@@ -803,7 +803,7 @@ class FaultToleranceValidator:
                                 break
                     
                     # Wait before polling again
-                    await asyncio.sleep(poll_interval)
+                    await anyio.sleep(poll_interval)
             
             elif scenario == "component_timeout":
                 browser_index = failure_result.get("browser_index")
@@ -824,7 +824,7 @@ class FaultToleranceValidator:
                                 break
                     
                     # Wait before polling again
-                    await asyncio.sleep(poll_interval)
+                    await anyio.sleep(poll_interval)
             
             elif scenario == "multi_browser_failure":
                 browser_indices = failure_result.get("browser_indices", [])
@@ -851,7 +851,7 @@ class FaultToleranceValidator:
                         break
                     
                     # Wait before polling again
-                    await asyncio.sleep(poll_interval)
+                    await anyio.sleep(poll_interval)
             
             # Determine if recovery was successful based on collected data
             recovery_result["recovered"] = recovery_complete
@@ -1254,7 +1254,7 @@ class FaultToleranceValidator:
                     })
                 
                 # Wait briefly between iterations
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
             
             # Calculate statistics if we have successful measurements
             successful_times = [m["inference_time_ms"] for m in performance_result["measurements"] 

@@ -4,7 +4,7 @@ Test scenarios for the coordinator redundancy implementation in the Distributed 
 Tests the Raft consensus algorithm, leader election, state replication, and failover mechanisms.
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import unittest
@@ -101,8 +101,8 @@ class TestRedundancyManager(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment."""
-        self.event_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.event_loop)
+        self.event_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        # TODO: Remove event loop management - asyncio.set_event_loop(self.event_loop)
         
         # Create temporary directories for the nodes
         self.temp_dirs = [tempfile.mkdtemp() for _ in range(3)]
@@ -444,7 +444,7 @@ class TestRedundancyManager(unittest.TestCase):
             await task
             
         # Let them run for a while
-        await asyncio.sleep(duration)
+        await anyio.sleep(duration)
         
         # Stop all managers
         stop_tasks = [manager.stop() for manager in self.managers]

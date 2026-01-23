@@ -9,7 +9,7 @@ Run with: python -m unittest distributed_testing/tests/test_error_recovery_perfo
 """
 
 import unittest
-import asyncio
+import anyio
 import tempfile
 import os
 import json
@@ -61,7 +61,7 @@ class MockRecoveryStrategy(RecoveryStrategy):
         """Mock execution."""
         self.executed = True
         self.args = error_info
-        await asyncio.sleep(self.delay)
+        await anyio.sleep(self.delay)
         return self.success
 
 

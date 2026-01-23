@@ -16,7 +16,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 import logging
 from pathlib import Path
@@ -195,7 +195,7 @@ class ModelShardingTester:
             if self.inject_fault:
                 # Start a background task to inject fault during execution
                 logger.info(f"Will inject fault: {self.inject_fault}")
-                fault_task = asyncio.create_task(self._inject_fault(model_manager, self.inject_fault))
+                fault_task = # TODO: Replace with task group - asyncio.create_task(self._inject_fault(model_manager, self.inject_fault))
             
             # Create model input based on model type
             model_type = self._get_model_type(self.model_name)
@@ -237,7 +237,7 @@ class ModelShardingTester:
                 
                 for i in range(3):
                     # Add small delay between tests
-                    await asyncio.sleep(0.5)
+                    await anyio.sleep(0.5)
                     
                     # Run inference
                     start_time = time.time()
@@ -309,7 +309,7 @@ class ModelShardingTester:
             results.append(result)
             
             # Add small delay between tests
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
         
         # Summarize results
         success_count = sum(1 for r in results if r.get("success", False))
@@ -469,7 +469,7 @@ class ModelShardingTester:
     async def _inject_fault(self, model_manager, fault_type):
         """Inject a fault during execution"""
         # Wait a short time before injecting fault
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         logger.info(f"Injecting fault: {fault_type}")
         
@@ -533,7 +533,7 @@ class ModelShardingTester:
                     failures += 1
                 
                 # Wait before failing second browser
-                await asyncio.sleep(1.0)
+                await anyio.sleep(1.0)
                 
                 # Fail second browser if available
                 if hasattr(model_manager, "browser_states") and len(self.browsers) > 1:
@@ -787,7 +787,7 @@ async def main_async():
 def main():
     """Main entry point"""
     try:
-        return asyncio.run(main_async())
+        return anyio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130

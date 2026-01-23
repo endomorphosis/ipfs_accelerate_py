@@ -9,7 +9,7 @@ providing comprehensive error visualization, pattern detection, and analysis.
 import os
 import json
 import logging
-import asyncio
+import anyio
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 from collections import defaultdict, Counter

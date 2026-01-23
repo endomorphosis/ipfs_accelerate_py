@@ -6,7 +6,7 @@ This module provides utilities for integrating scheduler plugins with the
 distributed testing framework coordinator.
 """
 
-import asyncio
+import anyio
 import logging
 import importlib
 from typing import Dict, List, Any, Optional, Type

@@ -12,7 +12,7 @@ import tempfile
 import os
 import sys
 import json
-import asyncio
+import anyio
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -438,7 +438,7 @@ class TestIntegratedAnalysisSystemWithCoordinator(unittest.IsolatedAsyncioTestCa
         await self.coordinator._handle_task_completed(task_id, self.worker_id, result, test_duration)
         
         # Wait for processing
-        await asyncio.sleep(1)
+        await anyio.sleep(1)
         
         # Verify that the task was completed
         self.assertNotIn(task_id, self.coordinator.running_tasks)

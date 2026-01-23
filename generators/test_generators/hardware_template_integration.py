@@ -31,7 +31,7 @@ import logging
 from typing import Dict, Any, List, Optional, Union
 import time
 import json
-import asyncio
+import anyio
 import traceback
 
 # Try to import torch (needed for CUDA/ROCm/MPS)
@@ -157,7 +157,7 @@ import logging
 from typing import Dict, Any, List, Optional, Union
 import time
 import json
-import asyncio
+import anyio
 import traceback
 from PIL import Image
 import numpy as np
@@ -269,7 +269,7 @@ import logging
 from typing import Dict, Any, List, Optional, Union
 import time
 import json
-import asyncio
+import anyio
 import traceback
 import numpy as np
 
@@ -402,7 +402,7 @@ import logging
 from typing import Dict, Any, List, Optional, Union
 import time
 import json
-import asyncio
+import anyio
 import traceback
 from PIL import Image
 import numpy as np
@@ -526,7 +526,7 @@ import logging
 from typing import Dict, Any, List, Optional, Union
 import time
 import json
-import asyncio
+import anyio
 import traceback
 import numpy as np
 

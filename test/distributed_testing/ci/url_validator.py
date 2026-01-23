@@ -6,7 +6,7 @@ This module provides functionality to validate that artifact URLs are
 still accessible and implements health monitoring for artifact availability.
 """
 
-import asyncio
+import anyio
 import logging
 import time
 from datetime import datetime, timedelta
@@ -96,7 +96,7 @@ class ArtifactURLValidator:
     def _start_health_check_task(self):
         """Start the background task for periodic health checks."""
         if self._health_check_task is None:
-            self._health_check_task = asyncio.create_task(self._run_periodic_health_checks())
+            self._health_check_task = # TODO: Replace with task group - asyncio.create_task(self._run_periodic_health_checks())
             logger.info(f"Started health check task with interval of {self.health_check_interval} seconds")
     
     def _stop_health_check_task(self):
@@ -111,7 +111,7 @@ class ArtifactURLValidator:
         try:
             while True:
                 # Wait for the health check interval
-                await asyncio.sleep(self.health_check_interval)
+                await anyio.sleep(self.health_check_interval)
                 
                 if not self._registered_urls:
                     logger.debug("No URLs registered for health checks")
@@ -122,7 +122,7 @@ class ArtifactURLValidator:
                 # Create tasks for all registered URLs
                 tasks = []
                 for url in self._registered_urls:
-                    task = asyncio.create_task(self.validate_url(url, use_cache=False))
+                    task = # TODO: Replace with task group - asyncio.create_task(self.validate_url(url, use_cache=False))
                     tasks.append((url, task))
                 
                 # Wait for all tasks to complete
@@ -183,14 +183,14 @@ class ArtifactURLValidator:
                 
                 # Otherwise, wait before retrying
                 if attempt < self.max_retries - 1:
-                    await asyncio.sleep(self.retry_delay)
+                    await anyio.sleep(self.retry_delay)
             except Exception as e:
                 logger.error(f"Error validating URL {url} (attempt {attempt+1}/{self.max_retries}): {str(e)}")
                 error_message = str(e)
                 
                 # Wait before retrying
                 if attempt < self.max_retries - 1:
-                    await asyncio.sleep(self.retry_delay)
+                    await anyio.sleep(self.retry_delay)
         
         # Cache the validation result
         self._validation_cache[url] = (is_valid, time.time(), status_code, error_message)
@@ -262,7 +262,7 @@ class ArtifactURLValidator:
         for url in urls:
             if not url:  # Skip empty URLs
                 continue
-            tasks[url] = asyncio.create_task(self.validate_url(url, use_cache=use_cache))
+            tasks[url] = # TODO: Replace with task group - asyncio.create_task(self.validate_url(url, use_cache=use_cache))
         
         # Wait for all tasks to complete
         results = {}

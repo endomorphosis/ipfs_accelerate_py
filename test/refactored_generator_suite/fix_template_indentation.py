@@ -168,11 +168,11 @@ class hf_{model_type}:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, asyncio.Queue(32), 0
+            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing CPU endpoint: {e}")
-            return None, None, None, asyncio.Queue(32), 0
+            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
     
     def init_cuda(self, model_name, device, cuda_label):
         \"\"\"Initialize {model_type_upper} model for CUDA inference.\"\"\"
@@ -206,11 +206,11 @@ class hf_{model_type}:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, asyncio.Queue(32), 0
+            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing CUDA endpoint: {e}")
-            return None, None, None, asyncio.Queue(32), 0
+            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
     
     def init_openvino(self, model_name, device, openvino_label):
         \"\"\"Initialize {model_type_upper} model for OpenVINO inference.\"\"\"
@@ -244,11 +244,11 @@ class hf_{model_type}:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, asyncio.Queue(32), 0
+            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing OpenVINO endpoint: {e}")
-            return None, None, None, asyncio.Queue(32), 0
+            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
     
     def init_apple(self, model_name, device, apple_label):
         \"\"\"Initialize {model_type_upper} model for Apple Silicon (MPS) inference.\"\"\"
@@ -284,11 +284,11 @@ class hf_{model_type}:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, asyncio.Queue(32), 0
+            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing Apple Silicon endpoint: {e}")
-            return None, None, None, asyncio.Queue(32), 0
+            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
     
     def init_qualcomm(self, model_name, device, qualcomm_label):
         \"\"\"Initialize {model_type_upper} model for Qualcomm inference.\"\"\"
@@ -296,7 +296,7 @@ class hf_{model_type}:
         
         # For now, we create a mock implementation since Qualcomm SDK integration requires specific hardware
         print("Qualcomm implementation is a mock for now")
-        return None, None, None, asyncio.Queue(32), 0
+        return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
     
     def create_cpu_{task_type}_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint, tokenizer):
         \"\"\"Create handler function for CPU {task_type} endpoint.\"\"\"

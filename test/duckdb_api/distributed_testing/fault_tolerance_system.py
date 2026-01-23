@@ -14,7 +14,7 @@ import sys
 import json
 import uuid
 import time
-import asyncio
+import anyio
 import logging
 import threading
 import random

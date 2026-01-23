@@ -21,7 +21,7 @@ import os
 import json
 import time
 import logging
-import asyncio
+import anyio
 import platform as platform_module
 from typing import Dict, Any, Optional, List, Union, Tuple
 
@@ -152,7 +152,7 @@ async def initialize_web_model(model_id: str, model_type: str, platform: str,
     if not websocket_bridge:
         logger.warning("No WebSocket bridge available, using simulation")
         # Simulate initialization
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         return {
             "status": "success",
             "model_id": model_id,
@@ -229,7 +229,7 @@ async def run_web_inference(model_id: str, inputs: Dict[str, Any], platform: str
     if not websocket_bridge:
         logger.warning("No WebSocket bridge available, using simulation")
         # Simulate inference
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         return {
             "success": True,
             "model_id": model_id,
@@ -321,7 +321,7 @@ async def load_model_with_ipfs(model_name: str, ipfs_config: Dict[str, Any], pla
     """
     if not websocket_bridge:
         logger.warning("No WebSocket bridge available, using simulation")
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         return {
             "status": "success",
             "model_name": model_name,

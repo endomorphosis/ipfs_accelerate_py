@@ -15,7 +15,7 @@ Options:
     --debug                       Enable debug logging
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -257,7 +257,7 @@ class RealTimeMonitor:
             ("coordinator", 3),
             ("monitoring_dashboard", 2)
         ]:
-            await asyncio.sleep(delay)
+            await anyio.sleep(delay)
             components[component]["status"] = "running"
             components[component]["start_time"] = datetime.now().isoformat()
             self.update_test_state({
@@ -309,7 +309,7 @@ class RealTimeMonitor:
         # Simulate workers starting up
         worker_names = list(workers.keys())
         for i, worker_name in enumerate(worker_names):
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             workers[worker_name]["status"] = "running"
             workers[worker_name]["start_time"] = datetime.now().isoformat()
             self.update_test_state({
@@ -357,7 +357,7 @@ class RealTimeMonitor:
         # Simulate task submission
         for task_type in task_types:
             for i in range(10):  # 10 tasks per type
-                await asyncio.sleep(0.2)
+                await anyio.sleep(0.2)
                 self.test_state["resources"]["tasks"][task_type]["submitted"] = i + 1
                 self.update_test_state({
                     "progress": 45.0 + (task_type.index(task_type) * 10 + (i + 1)) / (len(task_types) * 10) * 5.0
@@ -403,7 +403,7 @@ class RealTimeMonitor:
         # Simulate task execution with occasionally injected failures
         for task_type in task_types:
             for i in range(10):  # 10 tasks per type
-                await asyncio.sleep(0.5)
+                await anyio.sleep(0.5)
                 
                 # Simulate occasional failure
                 success = not (i == 7 and task_type == "compatibility")  # Fail one task
@@ -474,7 +474,7 @@ class RealTimeMonitor:
         
         # Simulate validation checks
         for i, area in enumerate(validation_areas):
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             validation_status[area]["status"] = "completed"
             validation_status[area]["result"] = "passed"
             validation_status[area]["timestamp"] = datetime.now().isoformat()
@@ -523,7 +523,7 @@ class RealTimeMonitor:
         await self.send_update()
         
         # Simulate workers stopping
-        await asyncio.sleep(2)
+        await anyio.sleep(2)
         component_status["workers"] = {"status": "stopped"}
         
         self.update_test_state({
@@ -534,7 +534,7 @@ class RealTimeMonitor:
         
         # Simulate services stopping
         for component in ["coordinator", "result_aggregator", "monitoring_dashboard"]:
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             component_status[component] = {"status": "stopped"}
             
             self.update_test_state({
@@ -607,9 +607,9 @@ async def main():
     )
     
     # Handle keyboard interrupt
-    loop = asyncio.get_event_loop()
+    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
     for s in [signal.SIGINT, signal.SIGTERM]:
-        loop.add_signal_handler(s, lambda: asyncio.create_task(shutdown(monitor)))
+        loop.add_signal_handler(s, lambda: # TODO: Replace with task group - asyncio.create_task(shutdown(monitor)))
     
     # Start monitoring
     await monitor.start()
@@ -621,4 +621,4 @@ async def shutdown(monitor):
         monitor.running = False
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

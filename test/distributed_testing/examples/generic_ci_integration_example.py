@@ -7,7 +7,7 @@ It shows how to create a provider-agnostic test result reporting workflow that c
 with any CI/CD system through the standardized interface.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -390,4 +390,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

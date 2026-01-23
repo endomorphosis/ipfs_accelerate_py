@@ -19,7 +19,7 @@ Usage:
     Import this module in coordinator.py to enhance the error recovery capabilities.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -230,7 +230,7 @@ class RetryStrategy(RecoveryStrategy):
                 logger.info(f"Retry {retry+1}/{self.max_retries} failed: {str(e)}. Retrying in {delay:.2f}s...")
                 
                 # Wait before next retry
-                await asyncio.sleep(delay)
+                await anyio.sleep(delay)
         
         # All retries failed
         logger.warning(f"All {self.max_retries} retries failed")
@@ -525,7 +525,7 @@ class DatabaseRecoveryStrategy(RecoveryStrategy):
                     pass
             
             # Wait a bit before reconnecting
-            await asyncio.sleep(1.0)
+            await anyio.sleep(1.0)
             
             # Try to reconnect
             import duckdb
@@ -576,7 +576,7 @@ class DatabaseRecoveryStrategy(RecoveryStrategy):
                 # Table doesn't exist, check schema
                 if hasattr(self.coordinator, '_create_schema'):
                     logger.info("Attempting to recreate schema")
-                    await asyncio.to_thread(self.coordinator._create_schema)
+                    await anyio.to_thread.run_sync(self.coordinator._create_schema)
                     
                     # Retry the query
                     self.coordinator.db.execute(query, params)
@@ -686,7 +686,7 @@ class DatabaseRecoveryStrategy(RecoveryStrategy):
                     pass
             
             # Wait a bit before reconnecting
-            await asyncio.sleep(2.0)
+            await anyio.sleep(2.0)
             
             # Try to reconnect
             import duckdb
@@ -701,7 +701,7 @@ class DatabaseRecoveryStrategy(RecoveryStrategy):
                     # Try to recreate schema
                     if hasattr(self.coordinator, '_create_schema'):
                         logger.info("Recreating database schema")
-                        await asyncio.to_thread(self.coordinator._create_schema)
+                        await anyio.to_thread.run_sync(self.coordinator._create_schema)
                     
                     return True
                 else:
@@ -1135,7 +1135,7 @@ class SystemRecoveryStrategy(RecoveryStrategy):
                 logger.info("Increased database write interval to reduce system load")
             
             # Wait for resource situation to improve
-            await asyncio.sleep(10)
+            await anyio.sleep(10)
             
             # Resume normal operation
             if hasattr(self.coordinator, 'task_scheduler'):
@@ -1313,7 +1313,7 @@ class SystemRecoveryStrategy(RecoveryStrategy):
                         logger.info(f"Paused worker {worker_id} due to system overload")
             
             # Wait for a bit
-            await asyncio.sleep(30)
+            await anyio.sleep(30)
             
             # Gradually resume services
             

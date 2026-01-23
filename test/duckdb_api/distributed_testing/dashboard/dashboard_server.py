@@ -16,7 +16,7 @@ import os
 import sys
 import json
 import logging
-import asyncio
+import anyio
 import threading
 import argparse
 from datetime import datetime, timedelta
@@ -367,7 +367,7 @@ class DashboardServer:
             
             # Keep the server running
             while self.running:
-                await asyncio.sleep(1)
+                await anyio.sleep(1)
                 
         except Exception as e:
             logger.error(f"Error starting dashboard server: {e}")
@@ -381,8 +381,8 @@ class DashboardServer:
     
     def _run_async_server(self):
         """Run the async server in a separate thread."""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
         
         try:
             loop.run_until_complete(self.start())
@@ -1445,7 +1445,7 @@ def main():
         webbrowser.open(f"http://{args.host}:{args.port}")
     
     # Run the server (this will block until interrupted)
-    asyncio.run(server.start())
+    anyio.run(server.start())
 
 
 if __name__ == "__main__":

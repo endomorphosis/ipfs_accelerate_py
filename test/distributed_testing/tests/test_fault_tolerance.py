@@ -7,7 +7,7 @@ including distributed state management, error recovery strategies, and
 coordinator redundancy.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -359,7 +359,7 @@ class TestErrorRecoveryStrategies(unittest.TestCase):
         async def run_test():
             return await retry_strategy.execute(error_info)
         
-        result = asyncio.run(run_test())
+        result = anyio.run(run_test())
         
         # Check results
         self.assertTrue(result)
@@ -388,7 +388,7 @@ class TestErrorRecoveryStrategies(unittest.TestCase):
         async def run_test():
             return await worker_strategy.execute(error_info)
         
-        result = asyncio.run(run_test())
+        result = anyio.run(run_test())
         
         # Check results
         self.assertTrue(result)
@@ -534,7 +534,7 @@ class TestCoordinatorRedundancy(unittest.TestCase):
             self.assertEqual(self.redundancy_manager.next_index["http://localhost:8080"], 1)
             self.assertEqual(self.redundancy_manager.match_index["http://localhost:8080"], 0)
         
-        asyncio.run(run_test())
+        anyio.run(run_test())
     
     @patch('time.time')
     def test_become_follower(self, mock_time):
@@ -556,7 +556,7 @@ class TestCoordinatorRedundancy(unittest.TestCase):
             self.assertEqual(self.redundancy_manager.current_term, 2)
             self.assertIsNone(self.redundancy_manager.voted_for)
         
-        asyncio.run(run_test())
+        anyio.run(run_test())
     
     def test_persistent_state(self):
         """Test persistent state save and load."""

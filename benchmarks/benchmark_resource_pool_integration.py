@@ -41,7 +41,7 @@ import json
 import time
 import uuid
 import socket
-import asyncio
+import anyio
 import logging
 import argparse
 import platform
@@ -572,7 +572,7 @@ class ResourcePoolBenchmark:
                     memory_usages.append(memory_mb)
                 
                 # Small delay between iterations
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
             
             # Calculate power consumption if psutil is available
             power_consumption = None
@@ -1133,7 +1133,7 @@ class ResourcePoolBenchmark:
                     memory_usages.append(memory_mb)
                 
                 # Small delay between iterations
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
             
             # Calculate power consumption if psutil is available
             power_consumption = None
@@ -1862,7 +1862,7 @@ async def main_async():
 def main():
     """Main entry point."""
     try:
-        return asyncio.run(main_async())
+        return anyio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130

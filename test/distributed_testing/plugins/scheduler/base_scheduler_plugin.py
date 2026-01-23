@@ -6,7 +6,7 @@ This module provides a base implementation of the SchedulerPluginInterface that
 can be extended to create custom scheduler plugins with minimal effort.
 """
 
-import asyncio
+import anyio
 import logging
 import time
 from datetime import datetime

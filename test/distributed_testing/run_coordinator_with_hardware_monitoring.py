@@ -25,7 +25,7 @@ import sys
 import time
 import json
 import random
-import asyncio
+import anyio
 import logging
 import argparse
 from typing import Dict, List, Any, Optional, Set, Tuple, Union
@@ -139,7 +139,7 @@ async def simulate_task_execution(task_id: str, worker_id: str, coordinator: Coo
                 big_list = [0] * (1000000 if memory_intensive else 10000)
                 
             # Sleep briefly to simulate other work
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
         
         # Task completed successfully
         execution_time_seconds = time.time() - start_time
@@ -358,13 +358,13 @@ async def simulate_coordinator(args):
                 }
             }
         
-        worker_task = asyncio.create_task(
+        worker_task = # TODO: Replace with task group - asyncio.create_task(
             simulate_worker(worker_id, coordinator, capabilities)
         )
         worker_tasks.append(worker_task)
     
     # Wait for all workers to register
-    await asyncio.gather(*worker_tasks)
+    await # TODO: Replace with task group - asyncio.gather(*worker_tasks)
     
     # Start task creation and scheduling
     logger.info("Creating and scheduling tasks")
@@ -438,7 +438,7 @@ async def simulate_coordinator(args):
                 memory_intensive = random.random() < 0.3 # 30% chance of memory-intensive task
                 
                 # Start task execution
-                task_execution = asyncio.create_task(
+                task_execution = # TODO: Replace with task group - asyncio.create_task(
                     simulate_task_execution(
                         task_id, worker_id, coordinator, integration,
                         execution_time=execution_time,
@@ -449,7 +449,7 @@ async def simulate_coordinator(args):
                 task_executions.append((task_id, task_execution))
             
             # Wait a bit before checking again
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             # Log current status periodically
             if int(time.time() - start_time) % 10 == 0:
@@ -554,7 +554,7 @@ def main():
     print("=" * 80)
     
     # Run simulation
-    asyncio.run(simulate_coordinator(args))
+    anyio.run(simulate_coordinator(args))
 
 if __name__ == "__main__":
     main()

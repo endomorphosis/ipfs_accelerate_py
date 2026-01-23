@@ -17,7 +17,7 @@ import json
 import logging
 import tempfile
 import time
-import asyncio
+import anyio
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
 
@@ -217,7 +217,7 @@ class TestAPIServer:
             await self._send_ws_update(run_id)
             
             # Simulated test execution - in real implementation this would use BaseModelTest
-            await asyncio.sleep(2)  # Simulate setup time
+            await anyio.sleep(2)  # Simulate setup time
             
             # Update progress
             self.active_tests[run_id]["progress"] = 0.1
@@ -230,7 +230,7 @@ class TestAPIServer:
                 await self._send_ws_update(run_id)
                 
                 # Simulate workload
-                await asyncio.sleep(1)
+                await anyio.sleep(1)
                 progress_increment = 0.9 / len(hardware)
                 self.active_tests[run_id]["progress"] += progress_increment
                 await self._send_ws_update(run_id)

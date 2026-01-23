@@ -13,7 +13,7 @@ import json
 import time
 import uuid
 import logging
-import asyncio
+import anyio
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union, Callable
@@ -102,7 +102,7 @@ class TestRunner:
         logger.info(f"Starting test run {run_id} for model {model_name}")
         
         # Start the test in a background task
-        asyncio.create_task(
+        # TODO: Replace with task group - asyncio.create_task(
             self._run_test_task(
                 run_id=run_id,
                 model_name=model_name,
@@ -260,8 +260,8 @@ class TestRunner:
                 method = getattr(test_instance, method_name)
                 
                 # Run with timeout
-                result = await asyncio.wait_for(
-                    asyncio.to_thread(method),
+                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                    anyio.to_thread.run_sync(method),
                     timeout=timeout
                 )
                 
@@ -344,7 +344,7 @@ class TestRunner:
                 await on_progress(run_id)
             
             # Simulate work
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             # Simulate test result (95% pass rate for demonstration)
             import random

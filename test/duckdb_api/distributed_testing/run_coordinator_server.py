@@ -8,7 +8,7 @@ and development of worker reconnection functionality.
 
 import os
 import sys
-import asyncio
+import anyio
 import argparse
 import logging
 import signal
@@ -106,7 +106,7 @@ async def submit_demo_tasks(server: CoordinatorWebSocketServer, num_tasks: int):
         logger.info(f"Submitted task {task_id}: {task_config['name']}")
         
         # Short delay between submissions
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
     
     logger.info(f"Submitted {num_tasks} demo tasks")
 
@@ -126,7 +126,7 @@ async def run_coordinator_with_demo(host: str, port: int, num_demo_tasks: int, e
     
     # Set up signal handlers
     loop = asyncio.get_running_loop()
-    stop_event = asyncio.Event()
+    stop_event = anyio.Event()
     
     def signal_handler():
         logger.info("Received signal, shutting down...")
@@ -148,11 +148,11 @@ async def run_coordinator_with_demo(host: str, port: int, num_demo_tasks: int, e
             logger.warning("Circuit breaker pattern requested but not available. Advanced fault tolerance features disabled.")
         
         # Start server
-        start_task = asyncio.create_task(server.start())
+        start_task = # TODO: Replace with task group - asyncio.create_task(server.start())
         
         # Submit demo tasks if requested (after a short delay)
         if num_demo_tasks > 0:
-            asyncio.create_task(
+            # TODO: Replace with task group - asyncio.create_task(
                 submit_demo_tasks_after_delay(server, num_demo_tasks, delay=5.0)
             )
         
@@ -184,7 +184,7 @@ async def submit_demo_tasks_after_delay(
         num_tasks: Number of tasks to submit
         delay: Delay in seconds before submitting tasks
     """
-    await asyncio.sleep(delay)
+    await anyio.sleep(delay)
     await submit_demo_tasks(server, num_tasks)
 
 
@@ -197,7 +197,7 @@ def main():
     
     # Run coordinator server
     try:
-        asyncio.run(run_coordinator_with_demo(
+        anyio.run(run_coordinator_with_demo(
             host=args.host,
             port=args.port,
             num_demo_tasks=args.demo_tasks,

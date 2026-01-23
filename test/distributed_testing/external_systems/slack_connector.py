@@ -5,7 +5,7 @@ Slack Connector for Distributed Testing Framework
 This module provides a connector for sending notifications to Slack using the Slack Web API.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -214,7 +214,7 @@ class SlackConnector(ExternalSystemInterface):
                 seconds = self.rate_limit_sleep
                 
             logger.warning(f"Slack rate limit hit, pausing for {seconds:.2f} seconds")
-            await asyncio.sleep(seconds)
+            await anyio.sleep(seconds)
         
         return data
     

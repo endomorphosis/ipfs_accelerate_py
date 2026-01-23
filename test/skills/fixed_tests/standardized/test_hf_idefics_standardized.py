@@ -16,7 +16,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
-import asyncio
+import anyio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

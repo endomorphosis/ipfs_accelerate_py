@@ -4,7 +4,7 @@ import json
 import time
 import torch
 import numpy as np
-import asyncio
+import anyio
 from unittest.mock import MagicMock, patch
 from PIL import Image
 
@@ -69,7 +69,7 @@ def init_cuda(self, model_name, model_type="image-text-to-text", device_label="c
             processor = unittest.mock.MagicMock()
             model = unittest.mock.MagicMock()
             handler = self.create_cuda_multimodal_endpoint_handler(model, processor, model_name, device_label)
-            return model, processor, handler, asyncio.Queue(32), 4
+            return model, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 4
             
         # Get the CUDA device
         device = test_utils.get_cuda_device(device_label) if hasattr(test_utils, "get_cuda_device") else torch.device(device_label)
@@ -78,7 +78,7 @@ def init_cuda(self, model_name, model_type="image-text-to-text", device_label="c
             processor = unittest.mock.MagicMock()
             model = unittest.mock.MagicMock()
             handler = self.create_cuda_multimodal_endpoint_handler(model, processor, model_name, device_label)
-            return model, processor, handler, asyncio.Queue(32), 4
+            return model, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 4
             
         # We'll simulate a successful CUDA implementation for testing purposes
         # since we don't have access to authenticate with Hugging Face
@@ -168,7 +168,7 @@ def init_cuda(self, model_name, model_type="image-text-to-text", device_label="c
                 }
             
             print(f"Successfully loaded simulated LLaVA-Next model on {device}")
-            return model, processor, simulated_handler, asyncio.Queue(32), 8  # Higher batch size for CUDA
+            return model, processor, simulated_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 8  # Higher batch size for CUDA
             
     except Exception as e:
         print(f"Error in init_cuda: {e}")
@@ -178,7 +178,7 @@ def init_cuda(self, model_name, model_type="image-text-to-text", device_label="c
         processor = unittest.mock.MagicMock()
         model = unittest.mock.MagicMock()
         handler = self.create_cuda_multimodal_endpoint_handler(model, processor, model_name, device_label)
-        return model, processor, handler, asyncio.Queue(32), 4
+        return model, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 4
 
 hf_llava_next.init_cpu = init_cpu
 hf_llava_next.init_cuda = init_cuda
@@ -195,14 +195,14 @@ def init_openvino(self, model_name, model_type, device, openvino_label, get_open
     processor = MagicMock()
     endpoint = MagicMock()
     handler = MagicMock()
-    return endpoint, processor, handler, asyncio.Queue(32), 1
+    return endpoint, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 1
 
 def init_qualcomm(self, model, device, qualcomm_label):
     self.init()
     processor = MagicMock()
     endpoint = MagicMock()
     handler = MagicMock()
-    return endpoint, processor, handler, asyncio.Queue(32), 1
+    return endpoint, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 1
 
 def create_openvino_multimodal_endpoint_handler(self, endpoint, processor, model_name, openvino_label):
     def handler(text=None, image=None):
@@ -927,7 +927,7 @@ class test_hf_llava_next:
                     }
             
             # Create queue
-            queue = asyncio.Queue(64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
             batch_size = 1  # For vision models
             
             # Return components
@@ -999,7 +999,7 @@ class test_hf_llava_next:
                 }
         
         # Create queue and batch_size
-        queue = asyncio.Queue(64)
+        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
         batch_size = 1  # Single item processing for WebNN typically
         
         return model, processor, handler, queue, batch_size
@@ -1065,7 +1065,7 @@ class test_hf_llava_next:
                 }
         
         # Create queue and batch_size
-        queue = asyncio.Queue(64)
+        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
         batch_size = 1  # Single item processing for WebGPU typically
         
         return model, processor, handler, queue, batch_size

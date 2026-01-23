@@ -18,7 +18,7 @@ Usage:
     Import this module in coordinator.py to enhance error recovery capabilities.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -561,7 +561,7 @@ class PerformanceBasedErrorRecovery:
         try:
             # Execute strategy with timeout
             error_dict = self._convert_error_report(error_report)
-            success = await asyncio.wait_for(
+            success = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                 strategy.execute(error_dict),
                 timeout=timeout
             )
@@ -2014,7 +2014,7 @@ if __name__ == "__main__":
             
             async def execute(self, error_info):
                 # Simulate execution
-                await asyncio.sleep(self.delay)
+                await anyio.sleep(self.delay)
                 
                 # Return success based on probability
                 return random.random() < self.success_rate
@@ -2123,4 +2123,4 @@ if __name__ == "__main__":
             print(f"  Level 5: {history['summary']['level_5_count']}")
     
     # Run tests
-    asyncio.run(run_tests())
+    anyio.run(run_tests())

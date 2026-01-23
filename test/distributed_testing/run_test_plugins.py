@@ -11,7 +11,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -73,7 +73,7 @@ async def simulate_tasks(coordinator, num_tasks=5):
         logger.info(f"Created task {task_id}")
     
     # Wait a bit
-    await asyncio.sleep(1)
+    await anyio.sleep(1)
     
     # Assign tasks to workers
     workers = [f"worker-{i+1}" for i in range(3)]
@@ -96,7 +96,7 @@ async def simulate_tasks(coordinator, num_tasks=5):
         logger.info(f"Assigned task {task_id} to worker {worker_id}")
     
     # Wait a bit
-    await asyncio.sleep(1)
+    await anyio.sleep(1)
     
     # Start tasks
     for i, (task_id, _) in enumerate(tasks):
@@ -115,7 +115,7 @@ async def simulate_tasks(coordinator, num_tasks=5):
         logger.info(f"Started task {task_id} on worker {worker_id}")
     
     # Wait for tasks to "run"
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Complete or fail tasks
     for i, (task_id, _) in enumerate(tasks):
@@ -162,7 +162,7 @@ async def simulate_tasks(coordinator, num_tasks=5):
             logger.info(f"Completed task {task_id}")
     
     # Wait a bit
-    await asyncio.sleep(1)
+    await anyio.sleep(1)
     
     # Cancel a task
     if len(tasks) > 3:
@@ -342,7 +342,7 @@ async def main():
             await simulate_tasks(coordinator, args.simulate_tasks)
             
             # Wait for any asynchronous plugin operations
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
             
             # Display plugin info after simulation
             await display_plugin_info(coordinator)
@@ -358,4 +358,4 @@ async def main():
     logger.info("Plugin architecture test completed")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

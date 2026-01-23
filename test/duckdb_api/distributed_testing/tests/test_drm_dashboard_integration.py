@@ -9,7 +9,7 @@ dashboard UI.
 import os
 import unittest
 import tempfile
-import asyncio
+import anyio
 import shutil
 import time
 from unittest.mock import MagicMock, patch

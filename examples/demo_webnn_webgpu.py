@@ -13,7 +13,7 @@ import os
 import sys
 import json
 import argparse
-import asyncio
+import anyio
 from typing import Dict, Any, Optional
 from pathlib import Path
 
@@ -243,7 +243,7 @@ async def run_demo():
 def main():
     """Entry point for the demo."""
     try:
-        asyncio.run(run_demo())
+        anyio.run(run_demo())
     except KeyboardInterrupt:
         print("\nDemo interrupted by user.")
     except Exception as e:

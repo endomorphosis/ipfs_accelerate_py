@@ -21,7 +21,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import argparse
 from pathlib import Path
@@ -251,4 +251,4 @@ async def run_validation():
         return 1
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(run_validation()))
+    sys.exit(anyio.run(run_validation()))

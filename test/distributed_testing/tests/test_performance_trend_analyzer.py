@@ -7,7 +7,7 @@ analyzes metrics from the coordinator, detects anomalies and trends, and
 generates appropriate reports and visualizations.
 """
 
-import asyncio
+import anyio
 import json
 import os
 import sys
@@ -230,7 +230,7 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
             # Apply the mock
             with patch.object(self.analyzer.session, 'get', side_effect=mock_get):
                 # Wait for metric collection
-                await asyncio.sleep(2)
+                await anyio.sleep(2)
                 
                 # Check that metrics were collected
                 self.assertGreater(len(self.analyzer.metrics_cache), 0)
@@ -536,7 +536,7 @@ def run_tests():
     """Run the integration tests."""
     try:
         # Run async tests
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         
         # Create test suite
         suite = unittest.TestSuite()

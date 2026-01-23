@@ -15,7 +15,7 @@ Key features:
 - Resource pool management
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -417,7 +417,7 @@ class DynamicResourceManager:
         await self._provision_initial_workers()
         
         # Start management loop
-        asyncio.create_task(self._management_loop())
+        # TODO: Replace with task group - asyncio.create_task(self._management_loop())
     
     async def stop(self) -> None:
         """Stop the resource manager."""
@@ -457,10 +457,10 @@ class DynamicResourceManager:
                     await self._detect_anomalies()
                 
                 # Sleep until next update
-                await asyncio.sleep(polling_interval)
+                await anyio.sleep(polling_interval)
             except Exception as e:
                 logger.error(f"Error in management loop: {str(e)}")
-                await asyncio.sleep(polling_interval)
+                await anyio.sleep(polling_interval)
     
     async def _update_metrics(self) -> None:
         """Update resource metrics from coordinator."""
@@ -1520,7 +1520,7 @@ class DynamicResourceManager:
                     logger.warning(f"Error sending drain request: {str(e)}")
             
             # Wait for tasks to drain (10 seconds max)
-            await asyncio.sleep(10)
+            await anyio.sleep(10)
             
             # Perform actual deprovisioning based on provider
             if resource.provider == ProviderType.LOCAL:
@@ -1553,7 +1553,7 @@ class DynamicResourceManager:
             
             # Remove from resources after a delay
             # (keep in memory for reporting, cleanup happens in background)
-            asyncio.create_task(self._delayed_resource_cleanup(resource_id))
+            # TODO: Replace with task group - asyncio.create_task(self._delayed_resource_cleanup(resource_id))
             
             return True
         except Exception as e:
@@ -1567,7 +1567,7 @@ class DynamicResourceManager:
         Args:
             resource_id: Resource ID to clean up
         """
-        await asyncio.sleep(300)  # 5 minutes
+        await anyio.sleep(300)  # 5 minutes
         if resource_id in self.resources:
             del self.resources[resource_id]
             logger.debug(f"Cleaned up terminated resource {resource_id}")
@@ -1825,11 +1825,11 @@ async def main():
         
         # Run until interrupted
         while True:
-            await asyncio.sleep(60)
+            await anyio.sleep(60)
     except KeyboardInterrupt:
         logger.info("Shutting down resource manager")
         await resource_manager.stop()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

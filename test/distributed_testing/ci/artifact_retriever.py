@@ -72,7 +72,7 @@ modules to provide a complete solution for artifact management in the distribute
 testing framework's CI/CD integration system.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -428,7 +428,7 @@ class ArtifactRetriever:
                 logger.warning(f"Skipping artifact with missing required fields: {artifact}")
                 continue
             
-            task = asyncio.create_task(
+            task = # TODO: Replace with task group - asyncio.create_task(
                 self.retrieve_artifact(
                     test_run_id=test_run_id,
                     artifact_name=artifact_name,

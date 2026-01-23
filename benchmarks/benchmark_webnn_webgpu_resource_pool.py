@@ -28,7 +28,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 import logging
 import platform as platform_module
@@ -1145,7 +1145,7 @@ async def main_async():
 def main():
     """Main entry point."""
     try:
-        return asyncio.run(main_async())
+        return anyio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130

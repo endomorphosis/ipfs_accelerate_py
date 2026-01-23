@@ -21,7 +21,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import argparse
 import statistics
@@ -201,7 +201,7 @@ class CircuitBreakerBenchmark:
         self.results["with_circuit_breaker"] = with_cb_results
         
         # Short delay between test runs
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Run benchmark without circuit breaker
         logger.info("Running benchmark WITHOUT circuit breaker")
@@ -307,7 +307,7 @@ class CircuitBreakerBenchmark:
                     results["overall"]["recovery_times_ms"].append(test_result["recovery_time_ms"])
                 
                 # Short delay between tests to allow system to stabilize
-                await asyncio.sleep(1)
+                await anyio.sleep(1)
         
         # Calculate overall success rate
         total_tests = len(test_cases) * self.num_iterations
@@ -1245,5 +1245,5 @@ async def main():
     return 0
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

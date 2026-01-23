@@ -11,7 +11,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -60,7 +60,7 @@ async def start_coordinator(args, coordinator_id, port):
     
     # Start coordinator
     runner = coordinator.app.make_handler()
-    server = await asyncio.get_event_loop().create_server(runner, '0.0.0.0', port)
+    server = await # TODO: Remove event loop management - asyncio.get_event_loop().create_server(runner, '0.0.0.0', port)
     
     logger.info(f"Coordinator {coordinator_id} started on port {port}")
     
@@ -153,11 +153,11 @@ async def simulate_coordinator_failure(args, coordinator_id, coordinator, server
     logger.info(f"Coordinator {coordinator_id} stopped (simulated failure)")
     
     # Wait for some time to simulate downtime
-    await asyncio.sleep(10)
+    await anyio.sleep(10)
     
     # Restart the server (recovery)
     port = args.base_port + coordinator_id
-    server = await asyncio.get_event_loop().create_server(
+    server = await # TODO: Remove event loop management - asyncio.get_event_loop().create_server(
         coordinator.app.make_handler(), 
         '0.0.0.0', 
         port
@@ -184,7 +184,7 @@ async def simulate_worker_failure(args, worker_id, worker):
     logger.info(f"Worker {worker_id} stopped (simulated failure)")
     
     # Wait for some time to simulate downtime
-    await asyncio.sleep(10)
+    await anyio.sleep(10)
     
     # Restart the worker (recovery)
     await worker.start()
@@ -214,7 +214,7 @@ async def simulate_network_partition(args, coordinator_id1, coordinator_id2):
     logger.info(f"Network partition active between coordinators {coordinator_id1} and {coordinator_id2}")
     
     # Wait for some time to simulate partition duration
-    await asyncio.sleep(20)
+    await anyio.sleep(20)
     
     logger.info(f"Network partition resolved between coordinators {coordinator_id1} and {coordinator_id2}")
 
@@ -249,12 +249,12 @@ async def monitor_cluster_status(args, coordinator_ports):
                         logger.error(f"Error connecting to coordinator on port {port}: {e}")
             
             # Wait before next check
-            await asyncio.sleep(5)
+            await anyio.sleep(5)
         except asyncio.CancelledError:
             break
         except Exception as e:
             logger.error(f"Error in monitoring loop: {e}")
-            await asyncio.sleep(5)
+            await anyio.sleep(5)
 
 async def test_distributed_state_management(args):
     """
@@ -297,7 +297,7 @@ async def test_distributed_state_management(args):
     logger.info("Updated state on first manager, waiting for propagation")
     
     # Wait for state to propagate
-    await asyncio.sleep(10)
+    await anyio.sleep(10)
     
     # Check state on the second manager
     worker1 = state_managers[1].get("workers", "worker-1")
@@ -313,7 +313,7 @@ async def test_distributed_state_management(args):
     logger.info("Updated state on second manager, waiting for propagation")
     
     # Wait for state to propagate
-    await asyncio.sleep(10)
+    await anyio.sleep(10)
     
     # Check state on the first manager
     worker3 = state_managers[0].get("workers", "worker-3")
@@ -423,7 +423,7 @@ async def run_test(args):
         servers.append(server)
     
     # Wait for coordinators to initialize
-    await asyncio.sleep(5)
+    await anyio.sleep(5)
     
     # Create workers
     workers = []
@@ -434,38 +434,38 @@ async def run_test(args):
         workers.append(worker)
     
     # Wait for workers to register
-    await asyncio.sleep(5)
+    await anyio.sleep(5)
     
     # Submit tasks to a coordinator
     coordinator_port = args.base_port  # Use the first coordinator
     await submit_test_tasks(args, coordinator_port, args.num_tasks)
     
     # Start monitoring
-    monitor_task = asyncio.create_task(monitor_cluster_status(args, [args.base_port + i for i in range(args.num_coordinators)]))
+    monitor_task = # TODO: Replace with task group - asyncio.create_task(monitor_cluster_status(args, [args.base_port + i for i in range(args.num_coordinators)]))
     
     # Wait for tasks to start executing
-    await asyncio.sleep(10)
+    await anyio.sleep(10)
     
     # Perform test 1: Coordinator failure and recovery
     if args.test_coordinator_failure:
         await simulate_coordinator_failure(args, 0, coordinators[0], servers[0])
         
         # Wait for the cluster to stabilize
-        await asyncio.sleep(10)
+        await anyio.sleep(10)
     
     # Perform test 2: Worker failure and recovery
     if args.test_worker_failure:
         await simulate_worker_failure(args, 0, workers[0])
         
         # Wait for the cluster to stabilize
-        await asyncio.sleep(10)
+        await anyio.sleep(10)
     
     # Perform test 3: Network partition
     if args.test_network_partition and args.num_coordinators >= 2:
         await simulate_network_partition(args, 0, 1)
         
         # Wait for the cluster to stabilize
-        await asyncio.sleep(10)
+        await anyio.sleep(10)
     
     # Test distributed state management
     if args.test_state_management:
@@ -478,7 +478,7 @@ async def run_test(args):
     # Let the system run for a while
     if args.run_time > 0:
         logger.info(f"Running the system for {args.run_time} seconds")
-        await asyncio.sleep(args.run_time)
+        await anyio.sleep(args.run_time)
     
     # Stop monitoring
     monitor_task.cancel()
@@ -537,7 +537,7 @@ def main():
     logger.info(f"Configuration: {args}")
     
     # Run the test
-    asyncio.run(run_test(args))
+    anyio.run(run_test(args))
     
     logger.info("Fault Tolerance Test - Completed")
 

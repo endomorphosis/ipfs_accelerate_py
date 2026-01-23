@@ -7,7 +7,7 @@ bypassing any import issues with the package.
 
 import os
 import sys
-import asyncio
+import anyio
 import logging
 
 # Configure logging
@@ -64,7 +64,7 @@ async def test_module():
     return False
 
 if __name__ == "__main__":
-    result = asyncio.run(test_module())
+    result = anyio.run(test_module())
     if result:
         logger.info("Test successful")
         sys.exit(0)

@@ -6,7 +6,7 @@ This script demonstrates how to integrate the distributed error handler with
 the test dependency manager and execution orchestrator.
 """
 
-import asyncio
+import anyio
 import random
 import time
 import uuid
@@ -279,4 +279,4 @@ async def run_integration_demo():
 
 if __name__ == "__main__":
     # Run the async demo
-    asyncio.run(run_integration_demo())
+    anyio.run(run_integration_demo())

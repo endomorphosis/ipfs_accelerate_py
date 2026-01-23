@@ -41,7 +41,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import random
 import uuid
@@ -242,8 +242,8 @@ class RedundancyManager:
                 self.state_manager = None
         
         # Start main loop and election timeout check
-        self.tasks.add(asyncio.create_task(self._main_loop()))
-        self.tasks.add(asyncio.create_task(self._election_timeout_loop()))
+        self.tasks.add(# TODO: Replace with task group - asyncio.create_task(self._main_loop()))
+        self.tasks.add(# TODO: Replace with task group - asyncio.create_task(self._election_timeout_loop()))
         
         logger.info(f"RedundancyManager started for node {self.node_id} (role: {self.current_role.value})")
     
@@ -295,7 +295,7 @@ class RedundancyManager:
                 logger.error(f"Error in main loop: {e}")
                 
             # Short sleep to avoid excessive CPU usage
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
     
     async def _election_timeout_loop(self):
         """Check for election timeout."""
@@ -303,7 +303,7 @@ class RedundancyManager:
             try:
                 # Skip if leader
                 if self.current_role == NodeRole.LEADER:
-                    await asyncio.sleep(self.election_timeout_max)
+                    await anyio.sleep(self.election_timeout_max)
                     continue
                     
                 # Check if election timeout has elapsed
@@ -330,7 +330,7 @@ class RedundancyManager:
                 logger.error(f"Error in election timeout loop: {e}")
                 
             # Sleep for a short time to check timeout
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
     
     async def _leader_tasks(self):
         """Perform leader tasks."""
@@ -343,7 +343,7 @@ class RedundancyManager:
                 if node == self.node_url:
                     continue  # Skip self
                     
-                self.tasks.add(asyncio.create_task(
+                self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
                     self._send_append_entries(node)
                 ))
             
@@ -354,7 +354,7 @@ class RedundancyManager:
         if current_time - self.last_sync_time >= self.sync_interval:
             if not self.sync_in_progress:
                 self.sync_in_progress = True
-                self.tasks.add(asyncio.create_task(
+                self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
                     self._sync_state_to_followers()
                 ))
     
@@ -411,7 +411,7 @@ class RedundancyManager:
             if node == self.node_url:
                 continue  # Skip self
                 
-            self.tasks.add(asyncio.create_task(
+            self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
                 self._send_request_vote(node)
             ))
     
@@ -436,7 +436,7 @@ class RedundancyManager:
             if node == self.node_url:
                 continue  # Skip self
                 
-            self.tasks.add(asyncio.create_task(
+            self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
                 self._send_append_entries(node)
             ))
         
@@ -578,7 +578,7 @@ class RedundancyManager:
                         self.next_index[node] = max(1, self.next_index[node] - 1)
                         
                         # Schedule retry
-                        self.tasks.add(asyncio.create_task(
+                        self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
                             self._send_append_entries(node)
                         ))
                 else:
@@ -855,7 +855,7 @@ class RedundancyManager:
                     if node == self.node_url:
                         continue  # Skip self
                         
-                    self.tasks.add(asyncio.create_task(
+                    self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
                         self._send_state_sync(node, state)
                     ))
                 
@@ -1223,12 +1223,12 @@ class RedundancyManager:
                 if node == self.node_url:
                     continue  # Skip self
                     
-                self.tasks.add(asyncio.create_task(
+                self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
                     self._send_append_entries(node)
                 ))
             
             # Wait a bit
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
         
         # Check if committed
         if self.commit_index >= commit_index_target:

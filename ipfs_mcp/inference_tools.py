@@ -14,7 +14,7 @@ Supported inference types:
 - Question Answering
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys

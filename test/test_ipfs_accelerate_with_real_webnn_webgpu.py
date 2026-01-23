@@ -809,7 +809,7 @@ async def main_async()))))))))):
 def main()))))))))):
     """Main entry point."""
     try:
-    return asyncio.run()))))))))main_async()))))))))))
+    return anyio.run()))))))))main_async()))))))))))
     except KeyboardInterrupt:
         logger.info()))))))))"Interrupted by user")
     return 130

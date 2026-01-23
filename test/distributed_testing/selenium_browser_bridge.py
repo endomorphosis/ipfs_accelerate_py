@@ -19,7 +19,7 @@ import sys
 import time
 import json
 import logging
-import asyncio
+import anyio
 import traceback
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple
@@ -1054,4 +1054,4 @@ async def example_usage():
 
 if __name__ == "__main__":
     # Run the example
-    asyncio.run(example_usage())
+    anyio.run(example_usage())

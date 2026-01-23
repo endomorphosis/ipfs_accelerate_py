@@ -489,7 +489,7 @@ class CrossPlatformCacheTest:
             
             # Test event loop
             async def test_coro():
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 return "test"
             
             # Windows has special handling for event loops
@@ -499,7 +499,7 @@ class CrossPlatformCacheTest:
                 self.log("Using WindowsSelectorEventLoopPolicy", "INFO")
             
             # Run test coroutine
-            result = asyncio.run(test_coro())
+            result = anyio.run(test_coro())
             assert result == "test", "Asyncio test failed"
             self.log("Asyncio works correctly", "SUCCESS")
             

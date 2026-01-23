@@ -688,7 +688,7 @@ def main():
         return await recovery_system.analyze_recovery_performance(days=args.days)
     
     # Run the async function
-    analysis_data = asyncio.run(get_analysis_data())
+    analysis_data = anyio.run(get_analysis_data())
     time_series_data = analysis_data.get("time_series", [])
     
     # Create visualizer

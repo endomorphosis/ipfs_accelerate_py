@@ -8,7 +8,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 from typing import List, Dict, Any, Optional, Union
 from dotenv import load_dotenv
 
@@ -693,7 +693,7 @@ class OpenAIAssistantsAPI:
                 }
             
             # Wait before checking again
-                await asyncio.sleep()))))))))))))))))))poll_interval)
+                await anyio.sleep()))))))))))))))))))poll_interval)
         
         # If we get here, the run has timed out
             return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
@@ -747,7 +747,7 @@ class OpenAIAssistantsAPI:
                 run_id = run_response[]],,"run_id"]
             
             # Wait for the run to complete
-                run_completion_response = asyncio.run()))))))))))))))))))
+                run_completion_response = anyio.run()))))))))))))))))))
                 self.wait_for_run_completion()))))))))))))))))))thread_id, run_id, timeout=timeout)
                 )
             

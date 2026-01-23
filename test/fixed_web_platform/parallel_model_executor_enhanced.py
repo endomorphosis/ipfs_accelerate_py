@@ -20,7 +20,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import traceback
 from pathlib import Path
@@ -96,7 +96,7 @@ class EnhancedParallelModelExecutor:
         self.initialized = False
         self.workers = {}
         self.worker_stats = {}
-        self.available_workers = asyncio.Queue()
+        self.available_workers = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
         self.result_cache = {}
         self.model_cache = {}
         self.tensor_cache = {}
@@ -242,10 +242,10 @@ class EnhancedParallelModelExecutor:
         try:
             # Get or create event loop
             try:
-                self.loop = asyncio.get_event_loop()
+                self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
             except RuntimeError:
-                self.loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self.loop)
+                self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+                # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
             
             # Verify resource pool integration is available
             if not self.resource_pool_integration:
@@ -287,7 +287,7 @@ class EnhancedParallelModelExecutor:
             await self._initialize_worker_pool()
             
             # Start worker monitor task
-            self._worker_monitor_task = asyncio.create_task(self._monitor_workers())
+            self._worker_monitor_task = # TODO: Replace with task group - asyncio.create_task(self._monitor_workers())
             
             self.initialized = True
             logger.info(f"Enhanced parallel model executor initialized with {len(self.workers)} workers")
@@ -420,7 +420,7 @@ class EnhancedParallelModelExecutor:
         try:
             while not self._is_shutting_down:
                 # Wait a bit between checks
-                await asyncio.sleep(10.0)
+                await anyio.sleep(10.0)
                 
                 # Skip if not fully initialized
                 if not self.initialized:
@@ -792,7 +792,7 @@ class EnhancedParallelModelExecutor:
                 futures.append(future)
                 
                 # Add a task to execute the model
-                task = asyncio.create_task(
+                task = # TODO: Replace with task group - asyncio.create_task(
                     self._execute_model_with_worker(model, inputs, i, future, execution_id)
                 )
                 
@@ -804,7 +804,7 @@ class EnhancedParallelModelExecutor:
             
             # Wait for all futures to complete or timeout
             try:
-                await asyncio.wait_for(asyncio.gather(*futures), timeout=execution_timeout)
+                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(# TODO: Replace with task group - asyncio.gather(*futures), timeout=execution_timeout)
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout waiting for models execution after {execution_timeout}s")
                 
@@ -1252,7 +1252,7 @@ class EnhancedParallelModelExecutor:
         try:
             # Wait for an available worker with timeout
             try:
-                worker_id = await asyncio.wait_for(self.available_workers.get(), timeout=30.0)
+                worker_id = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.available_workers.get(), timeout=30.0)
                 worker = self.workers[worker_id]
             except (asyncio.TimeoutError, KeyError) as e:
                 # No worker available, set error result
@@ -1489,7 +1489,7 @@ class EnhancedParallelModelExecutor:
             
             # Wait for any available worker
             try:
-                recovery_worker_id = await asyncio.wait_for(self.available_workers.get(), timeout=10.0)
+                recovery_worker_id = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.available_workers.get(), timeout=10.0)
                 
                 # If we got the same worker that failed, put it back and try again
                 if recovery_worker_id == failed_worker_id:
@@ -1497,7 +1497,7 @@ class EnhancedParallelModelExecutor:
                     await self.available_workers.put(recovery_worker_id)
                     
                     # Try again with a timeout
-                    recovery_worker_id = await asyncio.wait_for(self.available_workers.get(), timeout=10.0)
+                    recovery_worker_id = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.available_workers.get(), timeout=10.0)
                     
                     # If we still got the same worker, use it anyway
                     if recovery_worker_id == failed_worker_id:
@@ -1677,7 +1677,7 @@ class EnhancedParallelModelExecutor:
             close_futures.append(future)
         
         if close_futures:
-            await asyncio.gather(*close_futures, return_exceptions=True)
+            await # TODO: Replace with task group - asyncio.gather(*close_futures, return_exceptions=True)
         
         # Close base executor if available
         if self.base_executor:
@@ -1835,4 +1835,4 @@ async def test_enhanced_parallel_executor():
 
 # Run test if script executed directly
 if __name__ == "__main__":
-    asyncio.run(test_enhanced_parallel_executor())
+    anyio.run(test_enhanced_parallel_executor())

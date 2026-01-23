@@ -5,7 +5,7 @@ Test Script for URL Validation System
 This script tests the URL validation functionality for artifact URLs.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -363,4 +363,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

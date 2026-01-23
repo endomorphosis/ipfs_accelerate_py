@@ -7,7 +7,7 @@ and the Distributed Testing Framework, enabling efficient management of
 browser-based testing resources with fault tolerance capabilities.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -98,7 +98,7 @@ class ResourcePoolIntegrationPlugin(Plugin):
         await self._initialize_resource_pool()
         
         # Start metrics collection task
-        self.metrics_task = asyncio.create_task(self._collect_metrics())
+        self.metrics_task = # TODO: Replace with task group - asyncio.create_task(self._collect_metrics())
         
         logger.info("ResourcePoolIntegrationPlugin initialized with coordinator")
         return True
@@ -172,7 +172,7 @@ class ResourcePoolIntegrationPlugin(Plugin):
         while True:
             try:
                 # Sleep for collection interval
-                await asyncio.sleep(self.config["metrics_collection_interval"])
+                await anyio.sleep(self.config["metrics_collection_interval"])
                 
                 # Skip if no resource pool
                 if not self.resource_pool:

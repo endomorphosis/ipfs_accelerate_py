@@ -5,7 +5,7 @@ VS Code MCP Server for IPFS Accelerate
 This script wraps the comprehensive MCP server to work properly with VS Code.
 """
 
-import asyncio
+import anyio
 import subprocess
 import sys
 import os

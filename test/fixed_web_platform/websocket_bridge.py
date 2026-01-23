@@ -22,7 +22,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import tempfile
 import subprocess
@@ -110,10 +110,10 @@ class WebSocketBridge:
         self.server = None
         self.connection = None
         self.is_connected = False
-        self.message_queue = asyncio.Queue()
+        self.message_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
         self.response_events = {}
         self.response_data = {}
-        self.connection_event = asyncio.Event()
+        self.connection_event = anyio.Event()
         self.loop = None
         self.server_task = None
         self.process_task = None
@@ -132,7 +132,7 @@ class WebSocketBridge:
             return False
             
         try:
-            self.loop = asyncio.get_event_loop()
+            self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
             
             # Start with specific host address to avoid binding issues
             logger.info(f"Starting WebSocket server on {self.host}:{self.port}")
@@ -162,7 +162,7 @@ class WebSocketBridge:
         """Keep server task running to maintain context"""
         try:
             while True:
-                await asyncio.sleep(1)
+                await anyio.sleep(1)
         except asyncio.CancelledError:
             logger.info("Server task cancelled")
             pass
@@ -355,14 +355,14 @@ class WebSocketBridge:
                     # Progressive backoff with exponential delay
                     backoff_delay = min(2 ** attempt, 15)  # Exponential backoff, max 15 seconds
                     logger.info(f"Retry {attempt}/{retry_attempts} waiting for WebSocket connection (backoff: {backoff_delay}s)")
-                    await asyncio.sleep(backoff_delay)
+                    await anyio.sleep(backoff_delay)
                     
                     # Collect diagnostic information
                     elapsed = time.time() - connection_start
                     logger.info(f"Connection attempt {attempt+1}: {elapsed:.1f}s elapsed, {retry_attempts-attempt} attempts remaining")
                 
                 # Wait for connection with timeout
-                await asyncio.wait_for(self.connection_event.wait(), timeout=timeout)
+                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.connection_event.wait(), timeout=timeout)
                 logger.info(f"WebSocket connection established successfully after {attempt} retries ({time.time() - connection_start:.1f}s)")
                 
                 # Reset connection attempts counter on success
@@ -449,7 +449,7 @@ class WebSocketBridge:
             
             try:
                 # Use specified timeout for sending
-                await asyncio.wait_for(
+                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                     self.connection.send(message_json),
                     timeout=timeout
                 )
@@ -529,7 +529,7 @@ class WebSocketBridge:
                     # Serialize message once to avoid repeating work
                     message_json = json.dumps(message)
                     
-                    await asyncio.wait_for(
+                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                         self.connection.send(message_json),
                         timeout=timeout
                     )
@@ -545,7 +545,7 @@ class WebSocketBridge:
                         
                     # Use slightly longer timeout for retries
                     timeout = timeout * 1.2
-                    await asyncio.sleep(0.1)  # Brief pause before retry
+                    await anyio.sleep(0.1)  # Brief pause before retry
                     
                 except ConnectionClosedError as e:
                     attempt += 1
@@ -575,7 +575,7 @@ class WebSocketBridge:
                     if attempt > retry_attempts:
                         break
                         
-                    await asyncio.sleep(0.2)  # Slightly longer pause for general errors
+                    await anyio.sleep(0.2)  # Slightly longer pause for general errors
             
             # If we got here, all attempts failed
             logger.error(f"Failed to send message after {retry_attempts} retries: {last_error}")
@@ -607,7 +607,7 @@ class WebSocketBridge:
         msg_id = message["id"]
         
         # Create event for this request
-        self.response_events[msg_id] = asyncio.Event()
+        self.response_events[msg_id] = anyio.Event()
         
         # Try to send with retries
         send_success = await self.send_message(message, timeout=timeout, retry_attempts=retry_attempts)
@@ -627,7 +627,7 @@ class WebSocketBridge:
             logger.debug(f"Waiting for response to message {msg_id} (timeout={response_timeout}s)")
             
             # Use wait_for with the specified response timeout
-            await asyncio.wait_for(self.response_events[msg_id].wait(), timeout=response_timeout)
+            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.response_events[msg_id].wait(), timeout=response_timeout)
             
             # Calculate actual response time
             response_time = time.time() - response_wait_start
@@ -1090,7 +1090,7 @@ async def test_websocket_bridge():
         
         # Wait for 5 seconds before shutting down
         logger.info("Test completed successfully. Shutting down in 5 seconds...")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Send shutdown command
         await bridge.shutdown_browser()
@@ -1108,5 +1108,5 @@ async def test_websocket_bridge():
 if __name__ == "__main__":
     # Run test if script executed directly
     import asyncio
-    success = asyncio.run(test_websocket_bridge())
+    success = anyio.run(test_websocket_bridge())
     sys.exit(0 if success else 1)

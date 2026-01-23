@@ -33,7 +33,7 @@ import sys
 import json
 import time
 import base64
-import asyncio
+import anyio
 import logging
 import tempfile
 import subprocess
@@ -483,4 +483,4 @@ async def test_connection():
 
 if __name__ == "__main__":
     # Run test
-    asyncio.run(test_connection())
+    anyio.run(test_connection())

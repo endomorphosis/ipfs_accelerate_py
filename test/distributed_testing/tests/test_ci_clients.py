@@ -6,7 +6,7 @@ This module contains tests for the CI client implementations used by the
 CI/CD Integration plugin for the Distributed Testing Framework.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import unittest
@@ -349,4 +349,4 @@ if __name__ == "__main__":
         
         print("All tests passed!")
     
-    asyncio.run(run_tests())
+    anyio.run(run_tests())

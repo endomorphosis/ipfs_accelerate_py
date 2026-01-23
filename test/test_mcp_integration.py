@@ -5,7 +5,7 @@ Unit tests for the IPFS Accelerate MCP integration.
 These tests verify that the MCP server and tools function correctly.
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import tempfile
@@ -191,4 +191,4 @@ if __name__ == "__main__":
                 traceback.print_exc()
     
     # Run the async tests
-    asyncio.run(run_async_tests())
+    anyio.run(run_async_tests())

@@ -12,7 +12,7 @@ import sys
 import json
 import time
 import uuid
-import asyncio
+import anyio
 import logging
 import signal
 import threading
@@ -53,10 +53,10 @@ class CoordinatorState:
         self.lock = threading.RLock()
         
         # Task assignment queue
-        self.task_queue = asyncio.Queue()
+        self.task_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
         
         # Worker registration event
-        self.worker_registered_event = asyncio.Event()
+        self.worker_registered_event = anyio.Event()
 
 
 class CoordinatorWebSocketServer:
@@ -75,7 +75,7 @@ class CoordinatorWebSocketServer:
         self.state = CoordinatorState()
         self.server = None
         self.task_manager_task = None
-        self.stop_event = asyncio.Event()
+        self.stop_event = anyio.Event()
     
     async def start(self):
         """Start the WebSocket server."""
@@ -88,7 +88,7 @@ class CoordinatorWebSocketServer:
             )
             
             # Start the task manager
-            self.task_manager_task = asyncio.create_task(self.task_manager())
+            self.task_manager_task = # TODO: Replace with task group - asyncio.create_task(self.task_manager())
             
             logger.info(f"Coordinator WebSocket server started on {self.host}:{self.port}")
             
@@ -597,7 +597,7 @@ class CoordinatorWebSocketServer:
                 await self._assign_tasks()
                 
                 # Sleep for a short time
-                await asyncio.sleep(1.0)
+                await anyio.sleep(1.0)
         
         except asyncio.CancelledError:
             logger.info("Task manager cancelled")
@@ -625,7 +625,7 @@ class CoordinatorWebSocketServer:
         try:
             # Try to get a task with timeout
             try:
-                task_id, task_config = await asyncio.wait_for(self.state.task_queue.get(), timeout=0.1)
+                task_id, task_config = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.state.task_queue.get(), timeout=0.1)
             except asyncio.TimeoutError:
                 return
             
@@ -989,7 +989,7 @@ async def run_server(host: str, port: int):
     # Set up signal handlers
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(server.stop()))
+        loop.add_signal_handler(sig, lambda: # TODO: Replace with task group - asyncio.create_task(server.stop()))
     
     # Start server
     await server.start()
@@ -1029,4 +1029,4 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(getattr(logging, args.log_level))
     
     # Run server
-    asyncio.run(run_server(args.host, args.port))
+    anyio.run(run_server(args.host, args.port))

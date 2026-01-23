@@ -6,7 +6,7 @@ This module tests the worker node component of the distributed testing framework
 ensuring it can properly connect to the coordinator, handle tasks, and manage its lifecycle.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -302,17 +302,17 @@ class TestDistributedTestingWorkerAsync:
         async def mock_execute_custom_task(task):
             # Simulate slow execution to allow cancellation
             try:
-                await asyncio.sleep(10)
+                await anyio.sleep(10)
                 return {"name": "test_custom_task", "success": True}
             except asyncio.CancelledError:
                 raise
         
         with patch.object(worker, '_execute_custom_task', side_effect=mock_execute_custom_task):
             # Start task execution asynchronously
-            task_future = asyncio.create_task(worker._execute_task(task))
+            task_future = # TODO: Replace with task group - asyncio.create_task(worker._execute_task(task))
             
             # Wait a bit to ensure the task is running
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
             
             # Cancel the task
             task_future.cancel()

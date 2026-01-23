@@ -253,7 +253,7 @@ def main())):
     """
     Main function.
     """
-        return asyncio.run())main_async())))
+        return anyio.run())main_async())))
 
 if __name__ == "__main__":
     sys.exit())main())))

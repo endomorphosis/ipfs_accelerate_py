@@ -44,7 +44,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
@@ -546,7 +546,7 @@ class ResourcePoolPlugin(PluginBase):
                         except Exception as e:
                             return {"browser": b, "error": str(e), "success": False}
                     
-                    task = asyncio.create_task(run_on_browser(browser))
+                    task = # TODO: Replace with task group - asyncio.create_task(run_on_browser(browser))
                     tasks.append(task)
                 
                 # Wait for first successful result or all failures

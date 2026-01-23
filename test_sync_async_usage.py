@@ -9,7 +9,7 @@ synchronous (GitHub autoscaler, CLI) and asynchronous (libp2p) contexts.
 import os
 import sys
 import time
-import asyncio
+import anyio
 import logging
 import threading
 from pathlib import Path
@@ -99,7 +99,7 @@ async def test_async_operations():
         cache.put(test_key, test_data, ttl=60)
         logger.info("✓ Synchronous put() called from async context")
         
-        await asyncio.sleep(0.1)  # Simulate async work
+        await anyio.sleep(0.1)  # Simulate async work
         
         retrieved = cache.get(test_key)
         if retrieved:
@@ -202,7 +202,7 @@ def test_mixed_sync_async():
             """Do operations in async context"""
             # Sync methods called from async
             cache.put("mixed/key/2", {"source": "async"}, ttl=60)
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
             
             result1 = cache.get("mixed/key/1")
             result2 = cache.get("mixed/key/2")
@@ -210,7 +210,7 @@ def test_mixed_sync_async():
             return result1 is not None and result2 is not None
         
         logger.info("\n2. Running async operations...")
-        success = asyncio.run(async_operations())
+        success = anyio.run(async_operations())
         
         if success:
             logger.info("✓ Mixed sync/async operations successful")
@@ -287,7 +287,7 @@ def main():
     results.append(("Synchronous Usage", test_synchronous_usage()))
     
     # Run async test
-    results.append(("Asynchronous Operations", asyncio.run(test_async_operations())))
+    results.append(("Asynchronous Operations", anyio.run(test_async_operations())))
     
     results.append(("Multi-Threading", test_threading()))
     results.append(("Mixed Sync/Async", test_mixed_sync_async()))

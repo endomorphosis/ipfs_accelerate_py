@@ -7,7 +7,7 @@ including model acceleration, hardware detection, and benchmarking.
 
 import os
 import json
-import asyncio
+import anyio
 import logging
 from typing import Dict, Any, List, Optional, cast, Union
 
@@ -63,8 +63,8 @@ def register_acceleration_tools(mcp: FastMCP) -> None:
         try:
             if hardware_detection_available:
                 # Use actual hardware detection
-                gpu_info = await asyncio.to_thread(hardware_detection.get_gpu_info)
-                cpu_info = await asyncio.to_thread(hardware_detection.get_cpu_info)
+                gpu_info = await anyio.to_thread.run_sync(hardware_detection.get_gpu_info)
+                cpu_info = await anyio.to_thread.run_sync(hardware_detection.get_cpu_info)
                 
                 # Format the response
                 return {
@@ -128,7 +128,7 @@ def register_acceleration_tools(mcp: FastMCP) -> None:
                 # Provide simulated response for testing
                 await ctx.info("Using simulated acceleration (hardware acceleration not available)")
                 await ctx.report_progress(0.5, 1)
-                await asyncio.sleep(1)  # Simulate processing time
+                await anyio.sleep(1)  # Simulate processing time
                 await ctx.report_progress(1, 1)
                 
                 return {
@@ -146,7 +146,7 @@ def register_acceleration_tools(mcp: FastMCP) -> None:
                 model_path = f"/tmp/ipfs_model_{cid}"
                 try:
                     # In a real implementation, we would download the model here
-                    model_content = await asyncio.to_thread(ipfs.cat, cid)
+                    model_content = await anyio.to_thread.run_sync(ipfs.cat, cid)
                     with open(model_path, "wb") as f:
                         f.write(model_content)
                     await ctx.info(f"Model downloaded to: {model_path}")
@@ -163,7 +163,7 @@ def register_acceleration_tools(mcp: FastMCP) -> None:
                 # Here we would actually accelerate the model
                 # For demonstration, we'll just simulate it
                 await ctx.info(f"Accelerating model on device: {device}")
-                await asyncio.sleep(1)  # Simulate processing time
+                await anyio.sleep(1)  # Simulate processing time
                 await ctx.report_progress(0.8, 1)
                 
                 # Simulated acceleration success
@@ -216,13 +216,13 @@ def register_acceleration_tools(mcp: FastMCP) -> None:
             times = []
             for i in range(iterations):
                 await ctx.info(f"Running benchmark iteration {i+1}/{iterations}")
-                start_time = asyncio.get_event_loop().time()
+                start_time = # TODO: Remove event loop management - asyncio.get_event_loop().time()
                 
                 # In a real implementation, we would run the model here
                 # For demonstration, we'll just simulate it
-                await asyncio.sleep(0.1)  # Simulate model execution time
+                await anyio.sleep(0.1)  # Simulate model execution time
                 
-                end_time = asyncio.get_event_loop().time()
+                end_time = # TODO: Remove event loop management - asyncio.get_event_loop().time()
                 times.append(end_time - start_time)
                 await ctx.report_progress(i+1, iterations)
             
@@ -268,12 +268,12 @@ def register_acceleration_tools(mcp: FastMCP) -> None:
             
             # Check if the model exists in IPFS
             try:
-                stat_result = await asyncio.to_thread(ipfs.files_stat, f"/ipfs/{cid}")
+                stat_result = await anyio.to_thread.run_sync(ipfs.files_stat, f"/ipfs/{cid}")
                 model_exists = True
             except Exception:
                 # Try a different approach if files_stat fails
                 try:
-                    await asyncio.to_thread(ipfs.cat, cid, offset=0, length=1)
+                    await anyio.to_thread.run_sync(ipfs.cat, cid, offset=0, length=1)
                     model_exists = True
                 except Exception:
                     model_exists = False
@@ -316,4 +316,4 @@ if __name__ == "__main__":
         register_acceleration_tools(mcp)
         # Implement test code here if needed
     
-    asyncio.run(test_tools())
+    anyio.run(test_tools())

@@ -9,7 +9,7 @@ documentation of what's working without requiring browser automation.
 import sys
 import os
 import json
-import asyncio
+import anyio
 import logging
 import time
 from datetime import datetime

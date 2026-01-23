@@ -11,7 +11,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 from pathlib import Path
 
@@ -159,4 +159,4 @@ async def main():
     return await run_fault_tolerance_test()
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(anyio.run(main()))

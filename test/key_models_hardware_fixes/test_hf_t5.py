@@ -288,7 +288,7 @@ class TestT5Models:
                 
             # Create queue for inference requests
             import asyncio
-            queue = asyncio.Queue(16)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
             
             if not webnn_support:
                 # Create a WebNN simulation using CPU implementation for text models
@@ -343,7 +343,7 @@ class TestT5Models:
             print(f"Error initializing WebNN: {e}")
             # Fallback to a minimal mock
             import asyncio
-            queue = asyncio.Queue(16)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
             return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 def test_pipeline(self, device="auto"):
     """Test the model using transformers pipeline API."""

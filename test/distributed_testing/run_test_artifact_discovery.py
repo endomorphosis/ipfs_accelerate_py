@@ -6,7 +6,7 @@ This script demonstrates and tests the artifact metadata extraction, discovery,
 retrieval, trend analysis, and comparison capabilities.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -861,4 +861,4 @@ async def run_all_tests():
     logger.info("All tests complete!")
 
 if __name__ == "__main__":
-    asyncio.run(run_all_tests())
+    anyio.run(run_all_tests())

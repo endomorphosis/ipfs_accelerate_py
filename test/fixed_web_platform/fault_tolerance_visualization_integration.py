@@ -25,7 +25,7 @@ import sys
 import json
 import time
 import logging
-import asyncio
+import anyio
 import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Set
@@ -369,7 +369,7 @@ class FaultToleranceValidationSystem:
             
             # Generate visualizations
             recovery_time_path = os.path.join(vis_dir, "recovery_times.png")
-            recovery_vis = await asyncio.to_thread(
+            recovery_vis = await anyio.to_thread.run_sync(
                 visualizer.generate_recovery_time_comparison, 
                 recovery_time_path
             )
@@ -377,7 +377,7 @@ class FaultToleranceValidationSystem:
                 visualizations["recovery_time"] = recovery_vis
             
             success_rate_path = os.path.join(vis_dir, "success_rates.png")
-            success_vis = await asyncio.to_thread(
+            success_vis = await anyio.to_thread.run_sync(
                 visualizer.generate_success_rate_dashboard, 
                 success_rate_path
             )
@@ -385,7 +385,7 @@ class FaultToleranceValidationSystem:
                 visualizations["success_rate"] = success_vis
             
             perf_impact_path = os.path.join(vis_dir, "performance_impact.png")
-            perf_vis = await asyncio.to_thread(
+            perf_vis = await anyio.to_thread.run_sync(
                 visualizer.generate_performance_impact_visualization, 
                 perf_impact_path
             )
@@ -401,12 +401,12 @@ class FaultToleranceValidationSystem:
                 report_path = report_name
             
             if ci_compatible:
-                report = await asyncio.to_thread(
+                report = await anyio.to_thread.run_sync(
                     visualizer.generate_ci_compatible_report, 
                     report_path
                 )
             else:
-                report = await asyncio.to_thread(
+                report = await anyio.to_thread.run_sync(
                     visualizer.generate_comprehensive_report, 
                     report_path
                 )
@@ -476,7 +476,7 @@ class FaultToleranceValidationSystem:
             
             # Generate strategy comparison
             strategy_comp_path = os.path.join(vis_dir, f"{report_prefix}_strategy_comparison.png")
-            strategy_vis = await asyncio.to_thread(
+            strategy_vis = await anyio.to_thread.run_sync(
                 visualizer.generate_recovery_strategy_comparison, 
                 strategy_comp_path,
                 results_by_strategy
@@ -689,4 +689,4 @@ async def main():
         return 1
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

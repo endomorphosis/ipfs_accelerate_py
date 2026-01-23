@@ -10,7 +10,7 @@ and retrieved from the database.
 import os
 import sys
 import logging
-import asyncio
+import anyio
 import time
 import json
 import uuid
@@ -374,7 +374,7 @@ async def test_recovery_history_persistence():
                 break
                 
             # Wait a bit between retries
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
         
         # Check recovery history
         if not error_id:
@@ -535,18 +535,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.test == "schema":
-        result = asyncio.run(test_database_schema_creation())
+        result = anyio.run(test_database_schema_creation())
     elif args.test == "date":
-        result = asyncio.run(test_date_functions())
+        result = anyio.run(test_date_functions())
     elif args.test == "migration":
-        result = asyncio.run(test_schema_migration())
+        result = anyio.run(test_schema_migration())
     elif args.test == "metrics":
-        result = asyncio.run(test_performance_metrics_storage())
+        result = anyio.run(test_performance_metrics_storage())
     elif args.test == "history":
-        result = asyncio.run(test_recovery_history_persistence())
+        result = anyio.run(test_recovery_history_persistence())
     elif args.test == "integrity":
-        result = asyncio.run(test_performance_record_integrity())
+        result = anyio.run(test_performance_record_integrity())
     else:
-        result = asyncio.run(run_all_tests())
+        result = anyio.run(run_all_tests())
     
     sys.exit(0 if result else 1)

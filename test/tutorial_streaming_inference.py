@@ -383,8 +383,8 @@ class WebSocketServerManager:
             await self.start_server())))))))
             
         def run_in_thread()))))))):
-            self.loop = asyncio.new_event_loop())))))))
-            asyncio.set_event_loop()))))))self.loop)
+            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop())))))))
+            # TODO: Remove event loop management - asyncio.set_event_loop()))))))self.loop)
             self.server_task = self.loop.create_task()))))))run_server()))))))))
             self.loop.run_forever())))))))
             

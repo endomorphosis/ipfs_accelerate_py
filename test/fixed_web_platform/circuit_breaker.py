@@ -25,7 +25,7 @@ Usage:
         print(f"Circuit is open: {e}")
 """
 
-import asyncio
+import anyio
 import enum
 import logging
 import time
@@ -129,7 +129,7 @@ class CircuitBreaker:
         
         # Half-open state management
         self.half_open_calls = 0
-        self.half_open_lock = asyncio.Lock()
+        self.half_open_lock = anyio.Lock()
         
         # Health metrics
         self.health_score = 100.0  # 0-100 score, higher is better
@@ -196,7 +196,7 @@ class CircuitBreaker:
         start_time = time.time()
         try:
             # Call the function (handle both async and sync functions)
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(  # Added import inspectfunc):
                 result = await func()
             else:
                 result = func()

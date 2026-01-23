@@ -2,7 +2,7 @@ import base64
 import os
 import numpy as np
 import datetime
-import asyncio
+import anyio
 import time
 import requests
 import tempfile
@@ -472,7 +472,7 @@ class hf_whisper:
         
         endpoint_handler = self.create_cpu_whisper_endpoint_handler(endpoint, processor, model, cpu_label)
         batch_size = 0
-        return endpoint, processor, endpoint_handler, asyncio.Queue(64), batch_size
+        return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size
     
     
     def init_cuda(self, model, device, cuda_label):
@@ -488,7 +488,7 @@ class hf_whisper:
         endpoint_handler = self.create_cuda_whisper_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
         """Initialize OpenVINO for Whisper with real implementation and robust fallbacks
@@ -519,7 +519,7 @@ class hf_whisper:
                 print("OpenVINO imported successfully")
             except ImportError as e:
                 print(f"Failed to import OpenVINO: {e}")
-                return None, None, None, asyncio.Queue(64), 0
+                return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
         else:
             self.ov = self.resources["openvino"]
             try:
@@ -886,7 +886,7 @@ class hf_whisper:
         if hasattr(endpoint, "__setattr__"):
             endpoint.__setattr__("implementation_type", implementation_type)
         
-        return endpoint, processor, endpoint_handler, asyncio.Queue(64), batch_size
+        return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size
     
     def init_apple(self, model, device, apple_label):
         """Initialize Whisper model for Apple Silicon hardware."""
@@ -932,7 +932,7 @@ class hf_whisper:
             
             endpoint_handler = self.create_apple_audio_transcription_endpoint_handler(endpoint, processor, model, apple_label)
             
-            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon Whisper model: {e}")
             return None, None, None, None, 0
@@ -1013,7 +1013,7 @@ class hf_whisper:
             # Create handler for the model
             endpoint_handler = self.create_qualcomm_whisper_endpoint_handler(endpoint, processor, model, qualcomm_label)
             
-            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
         except Exception as e:
             print(f"Error initializing Qualcomm Whisper model: {e}")
             return None, None, None, None, 0

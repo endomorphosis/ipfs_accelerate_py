@@ -9,7 +9,7 @@ Usage:
     python run_test_auto_recovery.py
 """
 
-import asyncio
+import anyio
 import argparse
 import logging
 import signal
@@ -43,7 +43,7 @@ async def run_coordinator(db_path='./test_auto_recovery.duckdb', port=8081):
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
     # Wait for startup
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Read output to get API keys
     output, error = proc.communicate(timeout=1)
@@ -84,7 +84,7 @@ async def run_worker(worker_id, coordinator_url, api_key):
     proc = subprocess.Popen(cmd)
     
     # Wait for startup
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     logger.info(f"Worker {worker_id} started")
     
@@ -98,7 +98,7 @@ async def simulate_worker_failure(worker_proc):
     worker_proc.terminate()
     
     # Wait for termination
-    await asyncio.sleep(1)
+    await anyio.sleep(1)
     
     logger.info("Worker terminated")
 
@@ -128,7 +128,7 @@ async def main():
         
         # Wait for everything to stabilize
         logger.info("System started, waiting for stabilization...")
-        await asyncio.sleep(10)
+        await anyio.sleep(10)
         
         # Simulate worker failure for the first worker
         if worker_procs:
@@ -137,7 +137,7 @@ async def main():
             await simulate_worker_failure(worker_proc)
         
         # Restart the failed worker after a delay
-        await asyncio.sleep(15)
+        await anyio.sleep(15)
         if worker_procs:
             worker_id, _ = worker_procs[0]
             logger.info(f"Restarting worker {worker_id}")
@@ -146,7 +146,7 @@ async def main():
         
         # Run for the specified time
         logger.info(f"Running test for {args.run_time} seconds...")
-        await asyncio.sleep(args.run_time)
+        await anyio.sleep(args.run_time)
         
         # Clean up
         logger.info("Test completed, cleaning up...")
@@ -166,4 +166,4 @@ async def main():
         logger.error(f"Error during test: {str(e)}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

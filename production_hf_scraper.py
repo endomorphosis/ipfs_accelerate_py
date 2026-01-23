@@ -6,7 +6,7 @@ This is the production-ready scraper that actually connects to HuggingFace Hub
 and scrapes ALL models with full metadata, stores in Parquet, and builds K-NN index.
 """
 
-import asyncio
+import anyio
 import aiohttp
 import requests
 import json
@@ -75,7 +75,7 @@ class ProductionHFScraper(EnhancedModelScraper):
                             break
                         
                         # Rate limiting
-                        await asyncio.sleep(self.rate_limit_delay)
+                        await anyio.sleep(self.rate_limit_delay)
                         
                 except Exception as e:
                     logger.error(f"Error fetching page {page}: {e}")
@@ -317,4 +317,4 @@ async def main():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

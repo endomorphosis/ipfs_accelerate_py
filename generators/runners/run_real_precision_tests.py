@@ -15,7 +15,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import argparse
 from pathlib import Path
@@ -270,7 +270,7 @@ def main():
     args = parser.parse_args()
     
     # Run all tests
-    asyncio.run(run_all_precision_tests(args))
+    anyio.run(run_all_precision_tests(args))
 
 if __name__ == "__main__":
     main()

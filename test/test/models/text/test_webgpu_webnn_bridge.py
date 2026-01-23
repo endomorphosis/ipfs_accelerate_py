@@ -67,7 +67,7 @@ class WebPlatformBridge:
         """Start WebSocket server."""
         logger.info())f"Starting WebSocket server on port {}}}self.port}")
         
-        connected = asyncio.Event()))
+        connected = anyio.Event()))
         features = {}}}}
         messages = []
         ,
@@ -317,7 +317,7 @@ class WebPlatformBridge:
             start_time = time.time()))
         while time.time())) - start_time < timeout:
             try:
-                message = await asyncio.wait_for())self.ws_connection.recv())), 1.0)
+                message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())self.ws_connection.recv())), 1.0)
                 data = json.loads())message)
                 
                 if data.get())"type") == message_type:
@@ -354,14 +354,14 @@ async def run_test())args):
         
         # Wait for browser to connect
         try:
-            await asyncio.wait_for())connected_event.wait())), 10)
+            await # TODO: Replace with anyio.fail_after - asyncio.wait_for())connected_event.wait())), 10)
         except asyncio.TimeoutError:
             logger.error())"Timeout waiting for browser to connect")
             await bridge.stop()))
             return 1
         
         # Wait for features to be detected
-            await asyncio.sleep())2)
+            await anyio.sleep())2)
         
         # Initialize model
             model_info = await bridge.initialize_model())args.model, args.model_type)
@@ -426,7 +426,7 @@ def main())):
     args = parser.parse_args()))
     
     # Run test
-            return asyncio.run())run_test())args))
+            return anyio.run())run_test())args))
 
 if __name__ == "__main__":
     sys.exit())main())))

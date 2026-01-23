@@ -10,7 +10,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 from typing import Dict, List, Any
 
@@ -291,4 +291,4 @@ async def main():
         )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

@@ -10,7 +10,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 from datetime import datetime
 
@@ -140,7 +140,7 @@ async def test_adaptive_scaling():
                 logger.info(f"  - Event: {event}")
         
         # Short delay to allow monitoring to run
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
     
     # Get final metrics
     final_metrics = integration.get_metrics()
@@ -153,7 +153,7 @@ async def test_adaptive_scaling():
 def main():
     """Main function to run the test."""
     # Create and run event loop
-    loop = asyncio.get_event_loop()
+    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
     loop.run_until_complete(test_adaptive_scaling())
     loop.close()
 

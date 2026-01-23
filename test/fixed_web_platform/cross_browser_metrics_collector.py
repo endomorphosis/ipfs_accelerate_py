@@ -31,7 +31,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import datetime
 import statistics
@@ -914,4 +914,4 @@ async def main():
         collector.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

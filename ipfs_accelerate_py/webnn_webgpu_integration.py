@@ -32,7 +32,7 @@ import json
 import time
 import logging
 import random
-import asyncio
+import anyio
 import threading
 from pathlib import Path
 from datetime import datetime
@@ -490,7 +490,7 @@ class WebNNWebGPUAccelerator:
                 
                 try:
                     # Wait for browser to connect
-                    await asyncio.sleep(1)
+                    await anyio.sleep(1)
                     
                     # Get browser capabilities
                     capabilities = await bridge.get_browser_capabilities()
@@ -578,7 +578,7 @@ class WebNNWebGPUAccelerator:
         # If we reach here, we're using simulation mode
         
         # Simulate some processing time
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # If we had an IPFS accelerator, we would use it here to get the model
         cid = None
@@ -912,10 +912,10 @@ def accelerate_with_browser(
     """
     # Create or get event loop
     try:
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
     
     # Call the async version and wait for result
     return loop.run_until_complete(

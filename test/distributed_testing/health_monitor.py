@@ -9,7 +9,7 @@ Usage:
     Import this module in coordinator.py to enable health monitoring features.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -82,7 +82,7 @@ class HealthMonitor:
         await self._create_database_tables()
         
         # Start background tasks
-        asyncio.create_task(self._system_health_monitor())
+        # TODO: Replace with task group - asyncio.create_task(self._system_health_monitor())
         
         while True:
             try:
@@ -102,7 +102,7 @@ class HealthMonitor:
                 logger.error(f"Error in health monitoring loop: {str(e)}")
             
             # Sleep until next check
-            await asyncio.sleep(self.check_interval)
+            await anyio.sleep(self.check_interval)
     
     async def _create_database_tables(self):
         """Create required database tables for health monitoring."""
@@ -794,7 +794,7 @@ class HealthMonitor:
                 logger.error(f"Error in system health monitor: {str(e)}")
             
             # Sleep for system health check interval
-            await asyncio.sleep(60)  # Check every minute
+            await anyio.sleep(60)  # Check every minute
     
     def update_task_timeout_estimate(self, task_type: str, execution_time: float):
         """

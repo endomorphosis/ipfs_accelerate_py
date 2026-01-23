@@ -11,7 +11,7 @@ import sys
 import time
 import json
 import uuid
-import asyncio
+import anyio
 import websockets
 import threading
 import unittest
@@ -63,7 +63,7 @@ class CoordinatorServerProcess(multiprocessing.Process):
         """Run the coordinator server."""
         try:
             # Start asyncio event loop
-            asyncio.run(self._run_server())
+            anyio.run(self._run_server())
         except Exception as e:
             logger.error(f"Error in coordinator server process: {e}")
             import traceback
@@ -76,15 +76,15 @@ class CoordinatorServerProcess(multiprocessing.Process):
             self.server = CoordinatorWebSocketServer(self.host, self.port)
             
             # Start server
-            start_task = asyncio.create_task(self.server.start())
+            start_task = # TODO: Replace with task group - asyncio.create_task(self.server.start())
             
             # Set ready event after a short delay to ensure server is listening
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
             self.ready.set()
             
             # Wait for stop event
             while not self.should_stop.is_set():
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
             
             # Stop server
             await self.server.stop()
@@ -259,8 +259,8 @@ class NetworkDisruptorProxy:
                 return
             
             # Set up bidirectional relay
-            task1 = asyncio.create_task(self.relay(websocket, target_websocket, "client_to_target"))
-            task2 = asyncio.create_task(self.relay(target_websocket, websocket, "target_to_client"))
+            task1 = # TODO: Replace with task group - asyncio.create_task(self.relay(websocket, target_websocket, "client_to_target"))
+            task2 = # TODO: Replace with task group - asyncio.create_task(self.relay(target_websocket, websocket, "target_to_client"))
             
             # Wait for either task to complete
             done, pending = await asyncio.wait(
@@ -369,7 +369,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         cls.coordinator.ready.wait()
         
         # Start network disruptor proxy
-        cls.disruptor_loop = asyncio.new_event_loop()
+        cls.disruptor_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
         cls.disruptor_thread = threading.Thread(
             target=cls._run_disruptor_loop,
             args=(cls.disruptor_loop,),
@@ -408,7 +408,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
     @classmethod
     def _run_disruptor_loop(cls, loop):
         """Run the disruptor event loop."""
-        asyncio.set_event_loop(loop)
+        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
         loop.run_forever()
     
     def setUp(self):
@@ -520,7 +520,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         task_config = {"type": "test_task", "iterations": 5}
         task_id = asyncio.run_coroutine_threadsafe(
             self.coordinator.submit_task(task_config),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         # Wait for task execution (5 iterations * 0.1s sleep)
@@ -535,7 +535,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         # Check task result on coordinator
         task_result = asyncio.run_coroutine_threadsafe(
             self.coordinator.get_task_result(task_id),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         self.assertIsNotNone(task_result)
@@ -558,7 +558,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         task_config = {"type": "test_task", "iterations": 6}
         task_id = asyncio.run_coroutine_threadsafe(
             self.coordinator.submit_task(task_config),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         # Wait for task to start and create some checkpoints
@@ -567,7 +567,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         # Check task state on coordinator
         task_state = asyncio.run_coroutine_threadsafe(
             self.coordinator.get_task_state(task_id),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         self.assertIsNotNone(task_state)
@@ -579,7 +579,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         # Check task result on coordinator
         task_result = asyncio.run_coroutine_threadsafe(
             self.coordinator.get_task_result(task_id),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         self.assertIsNotNone(task_result)
@@ -600,7 +600,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         task_config = {"type": "test_task", "iterations": 10}
         task_id = asyncio.run_coroutine_threadsafe(
             self.coordinator.submit_task(task_config),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         # Wait for task to start
@@ -621,7 +621,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         # Check task result on coordinator
         task_result = asyncio.run_coroutine_threadsafe(
             self.coordinator.get_task_result(task_id),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         self.assertIsNotNone(task_result)
@@ -662,7 +662,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         task_config = {"type": "test_task", "iterations": 20}
         task_id = asyncio.run_coroutine_threadsafe(
             self.coordinator.submit_task(task_config),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         # Wait for task to start and create some checkpoints
@@ -686,7 +686,7 @@ class TestWorkerReconnectionWithRealCoordinator(unittest.TestCase):
         # Check task result
         task_result = asyncio.run_coroutine_threadsafe(
             self.coordinator.get_task_result(task_id),
-            asyncio.get_event_loop()
+            # TODO: Remove event loop management - asyncio.get_event_loop()
         ).result()
         
         self.assertIsNotNone(task_result)

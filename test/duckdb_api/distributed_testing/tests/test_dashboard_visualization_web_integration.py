@@ -9,7 +9,7 @@ including route handlers, template rendering, and API endpoints.
 import os
 import sys
 import json
-import asyncio
+import anyio
 import unittest
 import tempfile
 import logging

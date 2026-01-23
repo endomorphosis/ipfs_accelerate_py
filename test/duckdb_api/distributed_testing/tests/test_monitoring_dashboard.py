@@ -12,7 +12,7 @@ import json
 import time
 import tempfile
 import threading
-import asyncio
+import anyio
 import requests
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta

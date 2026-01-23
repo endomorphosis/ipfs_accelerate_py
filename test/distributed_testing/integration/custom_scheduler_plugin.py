@@ -6,7 +6,7 @@ This plugin provides a custom scheduler implementation for the Distributed Testi
 that optimizes task assignment based on advanced algorithms, priorities, and hardware capabilities.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -128,7 +128,7 @@ class CustomSchedulerPlugin(Plugin):
         self.scheduler_task = None
         
         # Create the scheduler task
-        self.scheduler_task = asyncio.create_task(self._run_scheduler())
+        self.scheduler_task = # TODO: Replace with task group - asyncio.create_task(self._run_scheduler())
         
         logger.info("CustomSchedulerPlugin initialized with coordinator")
         return True
@@ -160,7 +160,7 @@ class CustomSchedulerPlugin(Plugin):
         try:
             while True:
                 # Wait for next scheduling interval
-                await asyncio.sleep(self.config["scheduler_interval"])
+                await anyio.sleep(self.config["scheduler_interval"])
                 
                 # Check for tasks that are ready to be scheduled
                 await self._schedule_ready_tasks()

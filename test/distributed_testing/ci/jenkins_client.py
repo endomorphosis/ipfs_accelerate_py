@@ -6,7 +6,7 @@ This module provides a client for interacting with Jenkins API to report test re
 update build status, and add job descriptions.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import json

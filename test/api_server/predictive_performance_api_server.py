@@ -14,7 +14,7 @@ import uuid
 import json
 import logging
 import argparse
-import asyncio
+import anyio
 from typing import Dict, List, Any, Optional, Union
 from enum import Enum
 from datetime import datetime, timedelta
@@ -1112,7 +1112,7 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
         
         # Keep connection open for updates
         while True:
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
     
     except Exception as e:
         logger.warning(f"WebSocket connection closed: {e}")

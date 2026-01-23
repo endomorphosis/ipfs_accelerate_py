@@ -1,7 +1,7 @@
 import requests
 from PIL import Image
 from io import BytesIO
-import asyncio
+import anyio
 from pathlib import Path
 import json
 import time
@@ -302,7 +302,7 @@ class hf_llava_next:
                 
                 # Use a queue for batch processing
                 batch_size = 1  # LLaVA models are memory-intensive, start with small batch
-                queue = asyncio.Queue(32)
+                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
                 
                 return model, processor, handler, queue, batch_size
                 
@@ -367,7 +367,7 @@ class hf_llava_next:
             
             endpoint_handler = self.create_apple_multimodal_endpoint_handler(endpoint, processor, model, apple_label)
             
-            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon LLaVA-Next model: {e}")
             return None, None, None, None, 0

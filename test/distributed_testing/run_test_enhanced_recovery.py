@@ -21,7 +21,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -984,7 +984,7 @@ async def stress_test(recovery_manager, model_list, duration, fault_injection):
         total_operations += 1
         
         # Brief pause to avoid flooding
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
     
     # Log results
     elapsed = time.time() - start_time
@@ -1034,7 +1034,7 @@ async def main():
     recovery_manager, state_manager, performance_tracker, sharding_manager, connection_pool = await setup_resource_pool_recovery()
     
     # Setup signal handlers for graceful shutdown
-    loop = asyncio.get_event_loop()
+    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
     
     should_exit = False
     
@@ -1102,4 +1102,4 @@ async def main():
     logger.info("Tests completed, shutting down")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

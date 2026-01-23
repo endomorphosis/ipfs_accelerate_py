@@ -5,7 +5,7 @@ This module provides mock implementations that can be used when the actual
 ipfs_kit_py dependency is not available.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os

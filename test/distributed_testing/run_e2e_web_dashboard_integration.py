@@ -17,7 +17,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -521,7 +521,7 @@ async def simulate_tasks(coordinator, integration, args):
         task["attempts"] += 1
         
         # Simulate execution time (add some delay)
-        await asyncio.sleep(0.05)
+        await anyio.sleep(0.05)
         
         # Determine success or failure
         success = random.random() < 0.9  # 90% success rate
@@ -552,7 +552,7 @@ async def simulate_tasks(coordinator, integration, args):
             logger.error(f"Error processing task {task_id}: {e}")
         
         # Add small delay between tasks
-        await asyncio.sleep(0.05)
+        await anyio.sleep(0.05)
     
     logger.info(f"Task simulation complete: {completed_count} completed, {failed_count} failed")
     
@@ -633,12 +633,12 @@ async def simulate_tasks(coordinator, integration, args):
                 logger.error(f"Error processing trend task {task_id}: {e}")
             
             # Add a small delay between tasks
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
         
         logger.info(f"Generated {num_trend_tasks} trending tasks with {trend_direction} throughput")
     
     # Wait for all analysis to complete
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     logger.info("Running additional analysis...")
     
@@ -756,7 +756,7 @@ async def run_test(args):
         
         # Wait for dashboard to initialize
         logger.info("Waiting for dashboard to initialize...")
-        await asyncio.sleep(2)
+        await anyio.sleep(2)
         
         # Simulate tasks and generate test data
         logger.info("Simulating tasks and generating test data...")
@@ -764,7 +764,7 @@ async def run_test(args):
         
         # Wait for dashboard to process all data
         logger.info("Waiting for dashboard to process all data...")
-        await asyncio.sleep(2)
+        await anyio.sleep(2)
         
         # Display test summary
         logger.info("=" * 80)
@@ -789,7 +789,7 @@ async def run_test(args):
         logger.info("Dashboard will remain running until you press Ctrl+C")
         
         while running:
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
     
     except KeyboardInterrupt:
         logger.info("Test interrupted by user")
@@ -831,7 +831,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     # Run the test
-    asyncio.run(run_test(args))
+    anyio.run(run_test(args))
 
 if __name__ == "__main__":
     main()

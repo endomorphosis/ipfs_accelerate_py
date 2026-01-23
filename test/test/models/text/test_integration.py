@@ -17,7 +17,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import unittest
 import tempfile
 import threading
@@ -79,8 +79,8 @@ class DistributedFrameworkIntegrationTest(unittest.TestCase):
         cls.dashboard_url = f"http://{cls.dashboard_host}:{cls.dashboard_port}"
         
         # Start the coordinator in a separate thread
-        cls.coordinator_started = asyncio.Event()
-        cls.coordinator_stopped = asyncio.Event()
+        cls.coordinator_started = anyio.Event()
+        cls.coordinator_stopped = anyio.Event()
         cls.coordinator_thread = threading.Thread(
             target=cls._run_coordinator,
             daemon=True
@@ -99,7 +99,7 @@ class DistributedFrameworkIntegrationTest(unittest.TestCase):
         print(f"Coordinator started at {cls.coordinator_url}")
         
         # Start the dashboard in a separate thread
-        cls.dashboard_started = asyncio.Event()
+        cls.dashboard_started = anyio.Event()
         cls.dashboard_thread = threading.Thread(
             target=cls._run_dashboard,
             daemon=True
@@ -159,8 +159,8 @@ class DistributedFrameworkIntegrationTest(unittest.TestCase):
         """Run the coordinator in a separate thread."""
         try:
             # Setup the event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
             
             # Create database manager
             db_manager = DatabaseManager(cls.db_path)

@@ -10,7 +10,7 @@ This script shows how to:
 5. Create and register a custom notification plugin
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -367,7 +367,7 @@ class NotificationPlugin(Plugin):
             )
             
             # Wait a bit
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
             
             # Simulate task completion or failure
             if i % 4 != 0:  # 75% success rate
@@ -384,7 +384,7 @@ class NotificationPlugin(Plugin):
                 )
         
         # Wait a bit to allow notification processing
-        await asyncio.sleep(1)
+        await anyio.sleep(1)
         
         # Print summary
         if notification_plugin_id:
@@ -427,4 +427,4 @@ class NotificationPlugin(Plugin):
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

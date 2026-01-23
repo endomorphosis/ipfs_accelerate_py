@@ -9,7 +9,7 @@ Usage:
     python test_load_balancer_resource_pool_integration.py
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -429,7 +429,7 @@ class AsyncTestCase(unittest.TestCase):
     
     def run_async(self, test_method, *args, **kwargs):
         """Run an async test method."""
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         return loop.run_until_complete(test_method(*args, **kwargs))
 
 

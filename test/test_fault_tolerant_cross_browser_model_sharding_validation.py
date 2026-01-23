@@ -15,7 +15,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 import logging
 import datetime
@@ -571,7 +571,7 @@ def main():
     # Run tests
     try:
         logger.info(f"Starting fault tolerance validation for {args.model}")
-        results = asyncio.run(run_validation_tests(args))
+        results = anyio.run(run_validation_tests(args))
         
         # Print summary
         print_summary(results)

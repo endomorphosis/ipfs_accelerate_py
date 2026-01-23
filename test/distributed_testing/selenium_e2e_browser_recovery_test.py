@@ -19,7 +19,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import argparse
 import logging
 import random
@@ -816,7 +816,7 @@ class SeleniumE2ERecoveryTest:
                     await self.run_test_case(browser, model, i + 1)
                     
                     # Wait between tests to avoid resource contention
-                    await asyncio.sleep(1)
+                    await anyio.sleep(1)
         
         # Complete metrics collection
         self.metrics.complete()
@@ -982,4 +982,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

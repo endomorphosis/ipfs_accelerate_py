@@ -12,7 +12,7 @@ import json
 import time
 import random
 import logging
-import asyncio
+import anyio
 import uuid
 from pathlib import Path
 from datetime import datetime

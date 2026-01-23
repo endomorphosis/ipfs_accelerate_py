@@ -43,7 +43,7 @@ import sys
 import json
 import time
 import logging
-import asyncio
+import anyio
 import threading
 import traceback
 from enum import Enum
@@ -1170,7 +1170,7 @@ class BrowserAutomationBridge:
         """
         try:
             # Wait a moment for browser to initialize
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             # If we have Selenium driver, we can check for hardware acceleration
             if hasattr(self, 'driver') and self.driver and SELENIUM_AVAILABLE:
@@ -1609,4 +1609,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Run test
-    asyncio.run(test_browser_automation())
+    anyio.run(test_browser_automation())

@@ -24,7 +24,7 @@ import random
 import threading
 import queue
 import importlib
-import asyncio
+import anyio
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union, Callable, Tuple, Type

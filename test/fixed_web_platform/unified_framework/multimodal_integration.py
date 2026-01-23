@@ -40,7 +40,7 @@ import json
 import logging
 import time
 from typing import Dict, List, Any, Optional, Union, Tuple
-import asyncio
+import anyio
 
 # Import core multimodal optimizer
 from fixed_web_platform.multimodal_optimizer import (

@@ -11,7 +11,7 @@ import os
 import sys
 import argparse
 import unittest
-import asyncio
+import anyio
 from pathlib import Path
 
 # Add the project root to the Python path
@@ -70,8 +70,8 @@ def run_tests(component=None, verbose=False):
     """
     try:
         # Create event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
         
         # Create test suite
         suite = create_test_suite(component)

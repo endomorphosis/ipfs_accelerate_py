@@ -108,7 +108,7 @@ async def test_model_sharding())))args):
         # Set a timeout for initialization
         try:
             # Use asyncio.wait_for to add timeout protection
-            initialized = await asyncio.wait_for())))
+            initialized = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())))
             manager.initialize_sharding())))),
             timeout=args.timeout
             )
@@ -130,7 +130,7 @@ async def test_model_sharding())))args):
         try:
             # Use asyncio.wait_for to add timeout protection
             start_time = time.time()))))
-            result = await asyncio.wait_for())))
+            result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())))
             manager.run_inference_sharded())))sample_input),
             timeout=args.timeout
             )
@@ -259,7 +259,7 @@ def main())))):
         logger.info())))"Enabled parallel loading for multimodal model")
     
     try:
-        return asyncio.run())))test_model_sharding())))args))
+        return anyio.run())))test_model_sharding())))args))
     except KeyboardInterrupt:
         logger.info())))"Interrupted by user")
         return 130

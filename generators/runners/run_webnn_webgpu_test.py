@@ -15,7 +15,7 @@ import json
 import time
 import logging
 import argparse
-import asyncio
+import anyio
 from pathlib import Path
 
 # Setup logging
@@ -467,10 +467,10 @@ def main():
     # Run async function
     try:
         if sys.version_info >= (3, 7):
-            return asyncio.run(main_async(args))
+            return anyio.run(main_async(args))
         else:
             # For older Python versions
-            loop = asyncio.get_event_loop()
+            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
             return loop.run_until_complete(main_async(args))
     except KeyboardInterrupt:
         print("Test interrupted by user")

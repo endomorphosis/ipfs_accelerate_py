@@ -9,7 +9,7 @@ the coordinator service.
 import os
 import sys
 import unittest
-import asyncio
+import anyio
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock

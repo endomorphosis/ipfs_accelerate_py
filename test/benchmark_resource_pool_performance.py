@@ -20,7 +20,7 @@ import sys
 import time
 import json
 import random
-import asyncio
+import anyio
 import logging
 import argparse
 from datetime import datetime

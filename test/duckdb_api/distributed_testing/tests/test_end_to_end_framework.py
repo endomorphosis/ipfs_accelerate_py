@@ -22,7 +22,7 @@ Options:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -201,7 +201,7 @@ class EndToEndTestFramework:
         logger.info(f"Started Monitoring Dashboard on port {self.dashboard_port}")
         
         # Wait for services to start
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         logger.info("All services started successfully")
     
     async def start_workers(self):
@@ -236,10 +236,10 @@ class EndToEndTestFramework:
             logger.info(f"Started Worker {i} with {hw_profile} hardware profile")
             
             # Stagger worker startup
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
         
         # Wait for workers to register
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         logger.info(f"Started {self.num_workers} worker nodes")
     
     async def submit_test_workloads(self):
@@ -283,7 +283,7 @@ class EndToEndTestFramework:
                                 logger.error(f"Failed to submit test {test_config['test_id']}: {await response.text()}")
                     
                     # Add some sleep to prevent overwhelming the system
-                    await asyncio.sleep(0.1)
+                    await anyio.sleep(0.1)
         
         logger.info("Submitted all test workloads")
     
@@ -295,7 +295,7 @@ class EndToEndTestFramework:
         logger.info("Injecting random failures...")
         
         # Wait a bit before injecting failures
-        await asyncio.sleep(self.test_duration // 4)
+        await anyio.sleep(self.test_duration // 4)
         
         # Kill a random worker
         if self.worker_processes:
@@ -307,7 +307,7 @@ class EndToEndTestFramework:
                 logger.error(f"Failed to terminate worker: {e}")
         
         # Wait a bit more
-        await asyncio.sleep(self.test_duration // 4)
+        await anyio.sleep(self.test_duration // 4)
         
         # Simulate network issues by sending invalid requests
         async with aiohttp.ClientSession() as session:
@@ -335,7 +335,7 @@ class EndToEndTestFramework:
         # Create progress bar for test duration
         with tqdm(total=self.test_duration, desc="Test Execution", unit="s") as pbar:
             for _ in range(self.test_duration):
-                await asyncio.sleep(1)
+                await anyio.sleep(1)
                 pbar.update(1)
         
         logger.info("Test execution period completed")
@@ -599,7 +599,7 @@ async def main():
 if __name__ == "__main__":
     # Handle KeyboardInterrupt gracefully
     try:
-        success = asyncio.run(main())
+        success = anyio.run(main())
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         print("\nTest interrupted by user")

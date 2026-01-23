@@ -27,7 +27,7 @@ Options:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -1264,4 +1264,4 @@ async def main():
     return 0
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(anyio.run(main()))

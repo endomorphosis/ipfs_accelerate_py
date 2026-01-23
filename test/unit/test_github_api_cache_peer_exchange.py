@@ -11,7 +11,7 @@ over libp2p (that requires libp2p + networking). Instead they verify:
   available via normal cache.get().
 """
 
-import asyncio
+import anyio
 import json
 import time
 from typing import List
@@ -86,7 +86,7 @@ def test_peer_exchange_receive_and_serve(tmp_path) -> None:
     }
 
     stream = _FakeP2PStream(json.dumps(message).encode("utf-8"))
-    asyncio.run(cache._handle_cache_stream(stream))  # type: ignore[attr-defined]
+    anyio.run(cache._handle_cache_stream(stream))  # type: ignore[attr-defined]
 
     assert cache.get(operation, owner="peer-owner", limit=2) == expected
 

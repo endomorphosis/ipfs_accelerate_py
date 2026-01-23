@@ -13,7 +13,7 @@ import json
 import time
 import random
 import logging
-import asyncio
+import anyio
 import datetime
 import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
@@ -64,7 +64,7 @@ class MockBrowserConnection:
             raise ConnectionError(f"Browser {self.browser_name} is not connected")
         
         # Simulate operation latency
-        await asyncio.sleep(random.uniform(0.01, 0.1))
+        await anyio.sleep(random.uniform(0.01, 0.1))
         
         return {
             "status": "success",
@@ -135,7 +135,7 @@ class MockModelComponent:
             return {"error": f"Component {self.component_id} is not healthy"}
         
         # Simulate processing
-        await asyncio.sleep(random.uniform(0.01, 0.1))
+        await anyio.sleep(random.uniform(0.01, 0.1))
         
         # Simulate occasional failures (5% chance of failure)
         if random.random() < 0.05:
@@ -262,7 +262,7 @@ class MockCrossBrowserModelShardingManager:
                 return False
             
             # Simulate initialization process
-            await asyncio.sleep(random.uniform(0.1, 0.5))
+            await anyio.sleep(random.uniform(0.1, 0.5))
             
             self.initialized = True
             return True

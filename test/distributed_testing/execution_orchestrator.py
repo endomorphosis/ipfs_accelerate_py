@@ -17,7 +17,7 @@ Key features:
 
 import logging
 import time
-import asyncio
+import anyio
 import uuid
 import json
 from enum import Enum
@@ -740,7 +740,7 @@ class ExecutionOrchestrator:
                         self.active_workers[worker_id] = test_id
                         
                         # Create task
-                        task = asyncio.create_task(self.execute_test_async(test_id, worker_id))
+                        task = # TODO: Replace with task group - asyncio.create_task(self.execute_test_async(test_id, worker_id))
                         active_tasks.add(task)
                         
                         # Track max parallelism
@@ -766,7 +766,7 @@ class ExecutionOrchestrator:
                         logger.error(f"Error in async test execution: {str(e)}")
             else:
                 # No active tasks, wait a bit
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
             
             # Check if all tests are completed
             all_completed = all(
@@ -875,7 +875,7 @@ class ExecutionOrchestrator:
             # Simulate progress updates
             steps = 10
             for i in range(1, steps + 1):
-                await asyncio.sleep(execution_time / steps)
+                await anyio.sleep(execution_time / steps)
                 context.progress = i / steps
             
             # Simulate success/failure (90% success rate)

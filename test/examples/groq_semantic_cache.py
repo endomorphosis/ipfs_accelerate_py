@@ -5,7 +5,7 @@ import numpy as np
 import threading
 import hashlib
 import logging
-import asyncio
+import anyio
 import json
 from typing import Dict, List, Tuple, Any, Optional, Callable, Union
 from collections import OrderedDict
@@ -689,7 +689,7 @@ async def example_usage())))))))))))))))))))):
         class MockGroqClient:
             async def create_chat_completion())))))))))))))))))))self, model, messages, max_tokens=1024, temperature=0.7, **kwargs):
                 print())))))))))))))))))))f"[]]],,,API CALL] Generating content for: {}}}}}}}messages[]]],,,-1][]]],,,'content']}")
-                await asyncio.sleep())))))))))))))))))))1)  # Simulate API delay
+                await anyio.sleep())))))))))))))))))))1)  # Simulate API delay
             return {}}}}}}}
             "id": "chatcmpl-" + hashlib.md5())))))))))))))))))))str())))))))))))))))))))messages).encode()))))))))))))))))))))).hexdigest()))))))))))))))))))))[]]],,,:10],
             "object": "chat.completion",
@@ -771,4 +771,4 @@ async def example_usage())))))))))))))))))))):
         print())))))))))))))))))))f"Cache hit rate: {}}}}}}}cached_client.stats[]]],,,'cache_hits'] / cached_client.stats[]]],,,'total_requests']:.1%}")
 
 if __name__ == "__main__":
-    asyncio.run())))))))))))))))))))example_usage())))))))))))))))))))))
+    anyio.run())))))))))))))))))))example_usage())))))))))))))))))))))

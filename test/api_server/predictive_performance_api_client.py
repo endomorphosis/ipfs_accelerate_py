@@ -12,7 +12,7 @@ import json
 import time
 import logging
 import argparse
-import asyncio
+import anyio
 import websockets
 from enum import Enum
 from typing import Dict, List, Any, Optional, Union
@@ -640,7 +640,7 @@ class AsyncApiClient:
             if time.time() - start_time > timeout:
                 raise TimeoutError(f"Task timed out after {timeout} seconds")
             
-            await asyncio.sleep(poll_interval)
+            await anyio.sleep(poll_interval)
     
     async def monitor_task_ws(self, task_id: str, timeout: float = 60) -> Dict[str, Any]:
         """
@@ -662,7 +662,7 @@ class AsyncApiClient:
             while True:
                 try:
                     # Set a timeout for receiving messages
-                    message = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                    message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(ws.recv(), timeout=5.0)
                     data = json.loads(message)
                     
                     # Log progress

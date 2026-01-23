@@ -10,7 +10,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -227,7 +227,7 @@ async def test_intelligent_scheduler(args):
         logger.info(f"Started worker {config['id']} with capabilities: {config['capabilities']['hardware']}")
     
     # Wait for workers to register
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Create tasks to demonstrate intelligent scheduling
     tasks = []
@@ -269,7 +269,7 @@ async def test_intelligent_scheduler(args):
             logger.info(f"Tasks: {sum(status['tasks'].values())} (pending: {status['tasks']['pending']}, running: {status['tasks']['running']}, completed: {status['tasks']['completed']})")
         
         # Wait before checking again
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Add a new task every 10 seconds to see dynamic scheduling
         if (datetime.now() - start_time).total_seconds() % 10 < 5:
@@ -316,4 +316,4 @@ async def main():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

@@ -17,7 +17,7 @@ import os
 import sys
 import argparse
 import logging
-import asyncio
+import anyio
 from pathlib import Path
 
 # Setup logging
@@ -119,6 +119,6 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        anyio.run(main())
     except KeyboardInterrupt:
         logger.info("Dashboard stopped by user")

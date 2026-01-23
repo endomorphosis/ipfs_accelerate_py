@@ -9,7 +9,7 @@ Usage:
     Import this module in coordinator.py to enable auto-recovery functionality.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -97,7 +97,7 @@ class AutoRecoveryManager:
                 logger.error(f"Error in recovery monitoring loop: {str(e)}")
             
             # Sleep until next check
-            await asyncio.sleep(self.recovery_interval)
+            await anyio.sleep(self.recovery_interval)
     
     async def _create_database_tables(self):
         """Create required database tables for auto recovery."""

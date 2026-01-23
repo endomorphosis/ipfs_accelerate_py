@@ -31,13 +31,13 @@ REPLACEMENTS = [
     (r'asyncio\.Lock\(\)', 'anyio.Lock()', 0),
     
     # More complex patterns that need review
-    (r'asyncio\.Queue\(', '# TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(', 0),
-    (r'asyncio\.create_task\(', '# TODO: Replace with task group - asyncio.create_task(', 0),
-    (r'asyncio\.gather\(', '# TODO: Replace with task group - asyncio.gather(', 0),
-    (r'asyncio\.wait_for\(', '# TODO: Replace with anyio.fail_after - asyncio.wait_for(', 0),
-    (r'asyncio\.get_event_loop\(\)', '# TODO: Remove event loop management - asyncio.get_event_loop()', 0),
-    (r'asyncio\.new_event_loop\(\)', '# TODO: Remove event loop management - asyncio.new_event_loop()', 0),
-    (r'asyncio\.set_event_loop\(', '# TODO: Remove event loop management - asyncio.set_event_loop(', 0),
+    (r'asyncio\.Queue\(', '# TODO: Replace with anyio.create_memory_object_stream - # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(', 0),
+    (r'asyncio\.create_task\(', '# TODO: Replace with task group - # TODO: Replace with task group - asyncio.create_task(', 0),
+    (r'asyncio\.gather\(', '# TODO: Replace with task group - # TODO: Replace with task group - asyncio.gather(', 0),
+    (r'asyncio\.wait_for\(', '# TODO: Replace with anyio.fail_after - # TODO: Replace with anyio.fail_after - asyncio.wait_for(', 0),
+    (r'asyncio\.get_event_loop\(\)', '# TODO: Remove event loop management - # TODO: Remove event loop management - asyncio.get_event_loop()', 0),
+    (r'asyncio\.new_event_loop\(\)', '# TODO: Remove event loop management - # TODO: Remove event loop management - asyncio.new_event_loop()', 0),
+    (r'asyncio\.set_event_loop\(', '# TODO: Remove event loop management - # TODO: Remove event loop management - asyncio.set_event_loop(', 0),
     (r'asyncio\.iscoroutinefunction\(', 'inspect.iscoroutinefunction(  # Added import inspect', 0),
     (r'asyncio\.to_thread\(', 'anyio.to_thread.run_sync(', 0),
 ]
@@ -53,12 +53,6 @@ def should_process_file(filepath: Path) -> bool:
     if 'venv' in str(filepath) or 'env' in str(filepath):
         return False
     return True
-
-def backup_file(filepath: Path) -> Path:
-    """Create a backup of the file."""
-    backup_path = filepath.with_suffix('.py.backup')
-    backup_path.write_bytes(filepath.read_bytes())
-    return backup_path
 
 def migrate_file(filepath: Path, dry_run: bool = True) -> tuple[bool, list[str]]:
     """
@@ -112,7 +106,7 @@ def migrate_file(filepath: Path, dry_run: bool = True) -> tuple[bool, list[str]]
         # Write back if not dry run
         if content != original_content:
             if not dry_run:
-                backup_file(filepath)
+                # Write modified content directly (no backup)
                 filepath.write_text(content)
             return True, warnings
         
@@ -159,7 +153,7 @@ def main():
         print("🔍 DRY RUN MODE - No files will be modified")
         print("   Add --apply flag to actually modify files\n")
     else:
-        print("⚠️  APPLYING CHANGES - Files will be modified (backups created)\n")
+        print("⚠️  APPLYING CHANGES - Files will be modified in place\n")
     
     if not path.exists():
         print(f"Error: Path does not exist: {path}")

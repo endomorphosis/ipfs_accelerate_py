@@ -1,5 +1,5 @@
 import os
-import asyncio
+import anyio
 import time
 import json
 from typing import Dict, Any, List, Optional, Union, Tuple
@@ -235,12 +235,12 @@ class hf_{model_type}:
             
             import asyncio
             print(f"(MOCK) Created mock {model_type_upper} endpoint for {model_name} on {device_label}")
-            return endpoint, processor, mock_handler, asyncio.Queue(32), 0
+            return endpoint, processor, mock_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error creating mock endpoint: {e}")
             import asyncio
-            return None, None, None, asyncio.Queue(32), 0
+            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
     
     def init(self):        
         if "torch" not in list(self.resources.keys()):
@@ -371,7 +371,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, cpu_label, processor)
             
-            return pipeline, processor, handler, asyncio.Queue(32), 0
+            return pipeline, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing CPU endpoint: {e}")
@@ -437,7 +437,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, cuda_label, processor)
             
-            return pipeline, processor, handler, asyncio.Queue(32), 0
+            return pipeline, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing CUDA endpoint: {e}")
@@ -539,7 +539,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, rocm_label, processor)
             
-            return pipeline, processor, handler, asyncio.Queue(32), 0
+            return pipeline, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing ROCm endpoint: {e}")
@@ -601,7 +601,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, openvino_label, processor)
             
-            return pipeline, processor, handler, asyncio.Queue(32), 0
+            return pipeline, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing OpenVINO endpoint: {e}")
@@ -668,7 +668,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, apple_label, processor)
             
-            return pipeline, processor, handler, asyncio.Queue(32), 0
+            return pipeline, processor, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error initializing Apple Silicon endpoint: {e}")

@@ -41,7 +41,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import tempfile
 import subprocess
@@ -844,4 +844,4 @@ async def test_implementation():
 
 if __name__ == "__main__":
     # Run test
-    asyncio.run(test_implementation())
+    anyio.run(test_implementation())

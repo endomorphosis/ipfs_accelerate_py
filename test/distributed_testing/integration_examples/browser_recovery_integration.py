@@ -11,7 +11,7 @@ Usage:
 
 import os
 import sys
-import asyncio
+import anyio
 import argparse
 import logging
 import json
@@ -452,7 +452,7 @@ class BrowserRecoveryDemo:
                 failures += 1
                 
             # Wait between tests
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
         
         # Close browser
         try:
@@ -570,11 +570,11 @@ class BrowserRecoveryDemo:
         
         try:
             # Use the circuit breaker to protect the operation
-            if asyncio.iscoroutinefunction(circuit.execute):
+            if inspect.iscoroutinefunction(  # Added import inspectcircuit.execute):
                 result = await circuit.execute(run_test, fallback)
             else:
-                # Synchronous execute method - avoid asyncio.run() inside an existing event loop
-                loop = asyncio.get_event_loop()
+                # Synchronous execute method - avoid anyio.run() inside an existing event loop
+                loop = # TODO: Remove event loop management - asyncio.get_event_loop()
                 if loop.is_running():
                     # Create a wrapper that will call the coroutine properly
                     async def run_async():
@@ -836,4 +836,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

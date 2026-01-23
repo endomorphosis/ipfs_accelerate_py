@@ -6,7 +6,7 @@ This script runs all the tests and demos for the CI provider integration,
 ensuring that all providers are correctly standardized and all features are working.
 """
 
-import asyncio
+import anyio
 import logging
 import argparse
 import subprocess
@@ -173,5 +173,5 @@ async def main():
         return 1
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

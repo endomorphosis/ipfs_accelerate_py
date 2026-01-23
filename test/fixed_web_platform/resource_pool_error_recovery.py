@@ -22,7 +22,7 @@ import sys
 import json
 import time
 import logging
-import asyncio
+import anyio
 import traceback
 import datetime
 from typing import Dict, List, Any, Optional, Tuple, Union, Callable
@@ -110,7 +110,7 @@ class ResourcePoolErrorRecovery:
                 # Try multiple ping attempts
                 for attempt in range(retry_attempts):
                     try:
-                        ping_response = await asyncio.wait_for(
+                        ping_response = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                             connection.browser_automation.websocket_bridge.ping(),
                             timeout=timeout/2  # Use shorter timeout for ping
                         )
@@ -145,7 +145,7 @@ class ResourcePoolErrorRecovery:
                                 # Continue to next recovery strategy
                     except (asyncio.TimeoutError, Exception) as e:
                         logger.warning(f"Ping attempt {attempt+1}/{retry_attempts} failed: {e}")
-                        await asyncio.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                        await anyio.sleep(0.5 * (attempt + 1))  # Exponential backoff
             
             # === Strategy 2: WebSocket reconnection ===
             if (hasattr(connection, 'browser_automation') and 
@@ -160,7 +160,7 @@ class ResourcePoolErrorRecovery:
                         await connection.browser_automation.websocket_bridge.stop()
                     
                     # Wait briefly
-                    await asyncio.sleep(1.0)
+                    await anyio.sleep(1.0)
                     
                     # Create a new WebSocket bridge
                     from websocket_bridge import create_websocket_bridge
@@ -179,7 +179,7 @@ class ResourcePoolErrorRecovery:
                             await connection.browser_automation.refresh_page()
                         
                         # Wait for page to load and bridge to connect
-                        await asyncio.sleep(3.0)
+                        await anyio.sleep(3.0)
                         
                         # Test connection
                         websocket_connected = await websocket_bridge.wait_for_connection(
@@ -216,7 +216,7 @@ class ResourcePoolErrorRecovery:
                     await connection.browser_automation.close()
                     
                     # Wait for browser to close
-                    await asyncio.sleep(2.0)
+                    await anyio.sleep(2.0)
                     
                     # Reinitialize browser automation
                     success = await connection.browser_automation.launch()
@@ -224,7 +224,7 @@ class ResourcePoolErrorRecovery:
                         logger.warning(f"Failed to relaunch browser for {connection.connection_id}")
                     else:
                         # Wait for browser to initialize
-                        await asyncio.sleep(3.0)
+                        await anyio.sleep(3.0)
                         
                         # Create a new WebSocket bridge
                         from websocket_bridge import create_websocket_bridge
@@ -1065,7 +1065,7 @@ if __name__ == "__main__":
     # Run the async main function
     if args.test_recovery or args.export_telemetry:
         import asyncio
-        asyncio.run(main())
+        anyio.run(main())
     else:
         print("No action specified. Use --test-recovery or --export-telemetry")
         print("Example usage:")

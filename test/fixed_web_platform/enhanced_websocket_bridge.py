@@ -19,7 +19,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import random
 from typing import Dict, List, Tuple, Optional, Union, Callable, Any
@@ -84,8 +84,8 @@ class EnhancedWebSocketBridge:
         self.server = None
         self.connection = None
         self.is_connected = False
-        self.connection_event = asyncio.Event()
-        self.shutdown_event = asyncio.Event()
+        self.connection_event = anyio.Event()
+        self.shutdown_event = anyio.Event()
         self.last_heartbeat_time = 0
         self.last_receive_time = 0
         
@@ -133,7 +133,7 @@ class EnhancedWebSocketBridge:
             return False
             
         try:
-            self.loop = asyncio.get_event_loop()
+            self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
             
             # Start with specific host address to avoid binding issues
             logger.info(f"Starting Enhanced WebSocket server on {self.host}:{self.port}")
@@ -171,7 +171,7 @@ class EnhancedWebSocketBridge:
         """Keep server task running to maintain context."""
         try:
             while not self.shutdown_event.is_set():
-                await asyncio.sleep(1)
+                await anyio.sleep(1)
         except asyncio.CancelledError:
             logger.info("Server task cancelled")
         except Exception as e:
@@ -262,7 +262,7 @@ class EnhancedWebSocketBridge:
         logger.info(f"Attempting reconnection in {total_delay:.2f} seconds (attempt {self.connection_attempts}/{self.max_reconnect_attempts})")
         
         # Wait for backoff delay
-        await asyncio.sleep(total_delay)
+        await anyio.sleep(total_delay)
         
         # Connection will be re-established when a client connects
         self.reconnecting = False
@@ -318,7 +318,7 @@ class EnhancedWebSocketBridge:
             while not self.shutdown_event.is_set():
                 try:
                     # Get message from queue with timeout
-                    priority, message = await asyncio.wait_for(
+                    priority, message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                         self.message_queue.get(),
                         timeout=1.0
                     )
@@ -351,7 +351,7 @@ class EnhancedWebSocketBridge:
         """
         try:
             while not self.shutdown_event.is_set():
-                await asyncio.sleep(self.heartbeat_interval)
+                await anyio.sleep(self.heartbeat_interval)
                 
                 if self.is_connected and self.connection:
                     try:
@@ -361,7 +361,7 @@ class EnhancedWebSocketBridge:
                             "timestamp": time.time()
                         }
                         
-                        await asyncio.wait_for(
+                        await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                             self.connection.send(json.dumps(heartbeat_msg)),
                             timeout=5.0
                         )
@@ -385,7 +385,7 @@ class EnhancedWebSocketBridge:
         """
         try:
             while not self.shutdown_event.is_set():
-                await asyncio.sleep(self.heartbeat_interval / 2)
+                await anyio.sleep(self.heartbeat_interval / 2)
                 
                 if self.is_connected:
                     current_time = time.time()
@@ -485,7 +485,7 @@ class EnhancedWebSocketBridge:
             
         try:
             # Wait for connection event with timeout
-            await asyncio.wait_for(self.connection_event.wait(), timeout=timeout)
+            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.connection_event.wait(), timeout=timeout)
             return True
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for WebSocket connection (timeout={timeout}s)")
@@ -531,7 +531,7 @@ class EnhancedWebSocketBridge:
         for attempt in range(max_retries + 1):
             try:
                 # Use specified timeout for sending
-                await asyncio.wait_for(
+                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                     self.connection.send(message_json),
                     timeout=timeout
                 )
@@ -582,7 +582,7 @@ class EnhancedWebSocketBridge:
         msg_id = message["id"]
         
         # Create event for this request
-        self.response_events[msg_id] = asyncio.Event()
+        self.response_events[msg_id] = anyio.Event()
         
         # Calculate priority based on message type
         priority = MessagePriority.NORMAL
@@ -599,7 +599,7 @@ class EnhancedWebSocketBridge:
             
         try:
             # Wait for response with timeout
-            await asyncio.wait_for(self.response_events[msg_id].wait(), timeout=timeout)
+            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.response_events[msg_id].wait(), timeout=timeout)
             
             # Get response data
             response = self.response_data.get(msg_id)
@@ -985,7 +985,7 @@ async def test_enhanced_websocket_bridge():
         
         # Wait for 5 seconds before shutting down
         logger.info("Test completed successfully. Shutting down in 5 seconds...")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Send shutdown command
         await bridge.shutdown_browser()
@@ -1002,5 +1002,5 @@ async def test_enhanced_websocket_bridge():
 if __name__ == "__main__":
     # Run test if script executed directly
     import asyncio
-    success = asyncio.run(test_enhanced_websocket_bridge())
+    success = anyio.run(test_enhanced_websocket_bridge())
     sys.exit(0 if success else 1)

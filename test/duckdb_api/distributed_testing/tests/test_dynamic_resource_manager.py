@@ -6,7 +6,7 @@ Unit tests for the Dynamic Resource Manager component of the Distributed Testing
 """
 
 import unittest
-import asyncio
+import anyio
 import json
 import time
 from unittest.mock import MagicMock, patch

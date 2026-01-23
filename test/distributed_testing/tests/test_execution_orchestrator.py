@@ -10,7 +10,7 @@ import unittest
 import sys
 import os
 import logging
-import asyncio
+import anyio
 import time
 from unittest.mock import patch, MagicMock
 from typing import Dict, List, Set, Optional, Tuple, Any, Union

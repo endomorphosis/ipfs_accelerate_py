@@ -10,7 +10,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
@@ -412,7 +412,7 @@ class EnhancedWebResourcePoolTester:
                         logger.warning(f"Error getting metrics: {e}")
                 
                 # Small pause to avoid CPU spinning
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
             
             # Calculate final metrics
             final_stats['iterations'] = iteration
@@ -651,4 +651,4 @@ if __name__ == "__main__":
         return 0
     
     # Run the test
-    asyncio.run(test_main())
+    anyio.run(test_main())

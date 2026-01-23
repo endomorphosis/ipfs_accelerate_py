@@ -15,7 +15,7 @@ This creates a complete end-to-end workflow for a distributed testing environmen
 with automatic worker discovery and reporting.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -256,7 +256,7 @@ async def run_example(ci_provider_type=None, ci_config=None, num_workers=2):
             
             # Wait a bit for all workers to be discovered and registered
             logger.info("Waiting for all workers to be registered...")
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
             
             # Create CI provider
             logger.info(f"Creating {ci_provider_type} CI provider...")
@@ -398,7 +398,7 @@ async def run_example(ci_provider_type=None, ci_config=None, num_workers=2):
             
             # In a real example, we would wait for tasks to complete by checking the coordinator
             # For this example, we'll simulate task completion
-            await asyncio.sleep(5)  # Simulate task processing time
+            await anyio.sleep(5)  # Simulate task processing time
             
             # Create task history artifact
             task_history = {
@@ -668,4 +668,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

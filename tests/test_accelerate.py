@@ -5,7 +5,7 @@ IPFS Accelerate Python Test Script
 This script tests the core functionality of the IPFS Accelerate Python framework.
 """
 
-import asyncio
+import anyio
 import logging
 import sys
 import os
@@ -203,7 +203,7 @@ async def run_tests():
 def main():
     """Run the tests."""
     try:
-        success = asyncio.run(run_tests())
+        success = anyio.run(run_tests())
         sys.exit(0 if success else 1)
     except Exception as e:
         logger.error(f"Error running tests: {e}")

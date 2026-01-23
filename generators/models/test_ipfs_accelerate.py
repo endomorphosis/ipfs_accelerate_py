@@ -20,7 +20,7 @@ Usage examples:
     python test_ipfs_accelerate.py --models "bert-base-uncased" --p2p-optimization
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import json

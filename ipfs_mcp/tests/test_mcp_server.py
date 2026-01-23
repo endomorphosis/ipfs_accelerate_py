@@ -5,7 +5,7 @@ This module provides tests to verify the MCP server functionality.
 """
 import unittest
 import logging
-import asyncio
+import anyio
 from fastmcp import FastMCP
 from ipfs_accelerate_py import ipfs_accelerate_py
 from mcp.server import create_mcp_server

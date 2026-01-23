@@ -21,7 +21,7 @@ import sys
 import json
 import time
 import logging
-import asyncio
+import anyio
 import requests
 from pathlib import Path
 from typing import Dict, List, Any, Optional

@@ -2,7 +2,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 import json
-import asyncio
+import anyio
 from pathlib import Path
 import json
 import os
@@ -81,7 +81,7 @@ class hf_lm:
             
             endpoint_handler = self.create_apple_text_generation_endpoint_handler(endpoint, tokenizer, model, apple_label)
             
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon language model: {e}")
             return None, None, None, None, 0
@@ -192,7 +192,7 @@ class hf_lm:
                 # Create handler for testing
                 endpoint_handler = self.create_cpu_lm_endpoint_handler(endpoint, tokenizer, model, cpu_label)
                 
-                return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
+                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
             
             # Try loading real model
             try:
@@ -210,7 +210,7 @@ class hf_lm:
                 # Create handler
                 endpoint_handler = self.create_cpu_lm_endpoint_handler(endpoint, tokenizer, model, cpu_label)
                 
-                return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
+                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
                 
             except Exception as e:
                 print(f"Error loading real model: {e}")
@@ -226,7 +226,7 @@ class hf_lm:
                 # Create handler with mocks
                 endpoint_handler = self.create_cpu_lm_endpoint_handler(endpoint, tokenizer, model, cpu_label)
                 
-                return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
+                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
                 
         except Exception as e:
             print(f"Critical error in CPU initialization: {e}")
@@ -275,7 +275,7 @@ class hf_lm:
             # Create handler for testing
             endpoint_handler = self.create_cuda_lm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
             
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 4
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 4
         
         # Try to get a valid CUDA device
         try:
@@ -426,7 +426,7 @@ class hf_lm:
         # Set batch size based on model size and device memory
         batch_size = 4 if not is_using_mock else 8
         
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), batch_size
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), batch_size
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         """Initialize OpenVINO model for inference
@@ -700,7 +700,7 @@ class hf_lm:
                 is_real_implementation
             )
             
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
         
         except Exception as e:
             print(f"Error in OpenVINO initialization: {e}")
@@ -1044,7 +1044,7 @@ class hf_lm:
             qualcomm_label
         )
         
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
     
     def create_qualcomm_lm_endpoint_handler(self, endpoint, tokenizer, model_name, qualcomm_label):
         """Create a handler for Qualcomm-based language model inference

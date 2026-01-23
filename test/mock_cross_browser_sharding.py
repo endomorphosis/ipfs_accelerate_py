@@ -31,7 +31,7 @@ import json
 import time
 import random
 import logging
-import asyncio
+import anyio
 import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
 
@@ -81,7 +81,7 @@ class MockBrowserConnection:
             raise ConnectionError(f"Browser {self.browser_name} is not connected")
         
         # Simulate operation latency
-        await asyncio.sleep(random.uniform(0.01, 0.1))
+        await anyio.sleep(random.uniform(0.01, 0.1))
         
         return {
             "status": "success",
@@ -103,7 +103,7 @@ class MockBrowserConnection:
             Boolean indicating success
         """
         # Simulate reconnection delay
-        await asyncio.sleep(random.uniform(0.1, 0.5))
+        await anyio.sleep(random.uniform(0.1, 0.5))
         
         self.connected = True
         self.logger.info(f"Browser {self.browser_name} reconnected")
@@ -152,7 +152,7 @@ class MockComponent:
             Dictionary with execution results
         """
         # Simulate execution time
-        await asyncio.sleep(random.uniform(0.05, 0.2))
+        await anyio.sleep(random.uniform(0.05, 0.2))
         
         self.operations += 1
         
@@ -262,7 +262,7 @@ class MockCrossBrowserModelShardingManager:
         self.state = "initialized"
         
         # Simulate initialization delay
-        await asyncio.sleep(random.uniform(0.2, 0.5))
+        await anyio.sleep(random.uniform(0.2, 0.5))
         
         # Update metrics
         self._update_metrics()
@@ -300,7 +300,7 @@ class MockCrossBrowserModelShardingManager:
         
         # Simulate inference time
         start_time = time.time()
-        await asyncio.sleep(random.uniform(0.1, 0.3))
+        await anyio.sleep(random.uniform(0.1, 0.3))
         
         # Run all components
         results = []
@@ -650,7 +650,7 @@ class MockCrossBrowserModelShardingManager:
         
         # If fault tolerance is enabled, trigger recovery
         if self.fault_tolerance_enabled:
-            asyncio.create_task(self._handle_connection_failure(browser_index))
+            # TODO: Replace with task group - asyncio.create_task(self._handle_connection_failure(browser_index))
         
         return {
             "success": True,
@@ -699,7 +699,7 @@ class MockCrossBrowserModelShardingManager:
         
         # If fault tolerance is enabled, trigger recovery
         if self.fault_tolerance_enabled:
-            asyncio.create_task(self._handle_browser_crash(browser_index))
+            # TODO: Replace with task group - asyncio.create_task(self._handle_browser_crash(browser_index))
         
         return {
             "success": True,
@@ -757,7 +757,7 @@ class MockCrossBrowserModelShardingManager:
         
         # If fault tolerance is enabled, trigger recovery
         if self.fault_tolerance_enabled:
-            asyncio.create_task(self._handle_component_timeout(component))
+            # TODO: Replace with task group - asyncio.create_task(self._handle_component_timeout(component))
         
         return {
             "success": True,
@@ -806,7 +806,7 @@ class MockCrossBrowserModelShardingManager:
             
             try:
                 # Simulate reconnection time
-                await asyncio.sleep(random.uniform(0.1, 0.5))
+                await anyio.sleep(random.uniform(0.1, 0.5))
                 
                 # Try to reconnect
                 reconnected = await connection.reconnect()

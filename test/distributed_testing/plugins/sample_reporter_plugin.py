@@ -6,7 +6,7 @@ This plugin demonstrates how to create a task reporter plugin that hooks into
 task lifecycle events and reports task status to an external system.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -90,7 +90,7 @@ class TaskReporterPlugin(Plugin):
             await self._connect_to_external_system()
         
         # Start periodic reporting task
-        self.reporting_task = asyncio.create_task(self._periodic_reporting())
+        self.reporting_task = # TODO: Replace with task group - asyncio.create_task(self._periodic_reporting())
         
         logger.info("TaskReporterPlugin initialized with coordinator")
         return True
@@ -122,7 +122,7 @@ class TaskReporterPlugin(Plugin):
         logger.info(f"Connecting to external system at {self.config['external_system_url']}")
         
         # Simulate connection to external system
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # In a real implementation, would create an API client
         self.external_system = {
@@ -141,7 +141,7 @@ class TaskReporterPlugin(Plugin):
         logger.info("Disconnecting from external reporting system")
         
         # Simulate disconnection
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         self.external_system["connected"] = False
         self.external_system = None
@@ -153,7 +153,7 @@ class TaskReporterPlugin(Plugin):
         while True:
             try:
                 # Sleep for reporting interval
-                await asyncio.sleep(self.config["report_interval"])
+                await anyio.sleep(self.config["report_interval"])
                 
                 # Skip if external reporting is disabled
                 if not self.config["enable_external_reporting"]:
@@ -199,7 +199,7 @@ class TaskReporterPlugin(Plugin):
         logger.info(f"Sending {event_type} event to external system")
         
         # Simulate sending to external system
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         # In a real implementation, would make an API call
         logger.debug(f"Sent {event_type} event: {json.dumps(data)}")

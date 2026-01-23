@@ -7,7 +7,7 @@ It parses command-line arguments and runs the server with the specified configur
 """
 
 import argparse
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -88,4 +88,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     # Run the main function
-    asyncio.run(main())
+    anyio.run(main())

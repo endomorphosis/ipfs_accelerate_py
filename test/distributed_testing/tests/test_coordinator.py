@@ -6,7 +6,7 @@ This module tests the coordinator component of the distributed testing framework
 ensuring it can properly manage worker nodes, distribute tasks, and handle results.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os

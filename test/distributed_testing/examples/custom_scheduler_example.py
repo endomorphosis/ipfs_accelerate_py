@@ -6,7 +6,7 @@ This example demonstrates how to use and extend the custom scheduler
 system in the distributed testing framework.
 """
 
-import asyncio
+import anyio
 import argparse
 import logging
 import os
@@ -349,7 +349,7 @@ async def main():
         logger.info(f"Tasks: {active_tasks} active, {completed_tasks} completed, {failed_tasks} failed")
         
         # Wait before next cycle
-        await asyncio.sleep(1)
+        await anyio.sleep(1)
     
     # Display final statistics
     logger.info("Final statistics:")
@@ -367,4 +367,4 @@ async def main():
     await scheduler_coordinator.restore_original_scheduler()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

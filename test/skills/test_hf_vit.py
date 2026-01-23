@@ -694,7 +694,7 @@ def test_from_pretrained())))self, device="auto"):
                                 }
                 
                 # Create queue
-                                queue = asyncio.Queue())))64)
+                                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
                                 batch_size = 1  # Simplified for OpenVINO
                 
                 # Return components
@@ -755,7 +755,7 @@ def test_from_pretrained())))self, device="auto"):
                                 }
                 
                 # Create queue
-                                queue = asyncio.Queue())))64)
+                                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
                                 batch_size = 1  # Simplified for direct conversion
                 
                 # Return components
@@ -832,7 +832,7 @@ def test_from_pretrained())))self, device="auto"):
                         }
             
             # Create queue
-                        queue = asyncio.Queue())))64)
+                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
                         batch_size = 1  # For vision models
             
             # Return components
@@ -906,7 +906,7 @@ def test_from_pretrained())))self, device="auto"):
             }
         
         # Create queue and batch_size
-            queue = asyncio.Queue())))64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
             batch_size = 1  # Single item processing for WebNN typically
         
                 return model, processor, handler, queue, batch_size
@@ -974,7 +974,7 @@ def test_from_pretrained())))self, device="auto"):
             }
         
         # Create queue and batch_size
-            queue = asyncio.Queue())))64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
             batch_size = 1  # Single item processing for WebGPU typically
         
                 return model, processor, handler, queue, batch_size

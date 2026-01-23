@@ -9,7 +9,7 @@ Usage:
     python run_test_web_dashboard.py
 """
 
-import asyncio
+import anyio
 import datetime
 import json
 import logging
@@ -314,6 +314,6 @@ async def main():
 
 if __name__ == "__main__":
     # For simplicity, use the main thread to run the web server
-    main_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(main_loop)
+    main_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+    # TODO: Remove event loop management - asyncio.set_event_loop(main_loop)
     main_loop.run_until_complete(main())

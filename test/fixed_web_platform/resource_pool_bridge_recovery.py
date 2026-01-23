@@ -30,7 +30,7 @@ Usage:
     )
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -696,7 +696,7 @@ class ResourcePoolRecoveryManager:
         
         # Recovery state
         self.recovery_in_progress = False
-        self.recovery_lock = asyncio.Lock()
+        self.recovery_lock = anyio.Lock()
         
         # Counter for recovery attempts
         self.recovery_attempts = 0
@@ -886,7 +886,7 @@ class ResourcePoolRecoveryManager:
                 self.logger.info(f"Simulating recovery operation on browser {recovery_browser['id']}")
                 
                 # Simulate some work
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
                 
                 return {
                     "success": True,
@@ -978,7 +978,7 @@ class ResourcePoolRecoveryManager:
                 self.state_manager.update_browser_status(browser_id, "restarting")
                 
                 # Wait for browser to restart
-                await asyncio.sleep(2)
+                await anyio.sleep(2)
                 
                 # Check if browser is back
                 new_browser = await self.connection_pool.get_browser(browser_id)
@@ -1020,7 +1020,7 @@ class ResourcePoolRecoveryManager:
             self.logger.info(f"Simulating restart for browser {browser_id}")
             
             # Simulate some work
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             # Update state
             self.state_manager.update_browser_status(browser_id, "running")
@@ -1054,7 +1054,7 @@ class ResourcePoolRecoveryManager:
                 self.state_manager.update_browser_status(browser_id, "reconnecting")
                 
                 # Wait for reconnection
-                await asyncio.sleep(1)
+                await anyio.sleep(1)
                 
                 # Check if browser is back
                 new_browser = await self.connection_pool.get_browser(browser_id)
@@ -1096,7 +1096,7 @@ class ResourcePoolRecoveryManager:
             self.logger.info(f"Simulating reconnection for browser {browser_id}")
             
             # Simulate some work
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
             
             # Update state
             self.state_manager.update_browser_status(browser_id, "running")
@@ -1185,9 +1185,9 @@ class ResourcePoolRecoveryManager:
         self.logger.info(f"Attempting parallel recovery for browser {browser_id}")
         
         # Try all strategies in parallel
-        reconnect_task = asyncio.create_task(self._reconnect_recovery(browser_id, failure_category))
-        restart_task = asyncio.create_task(self._restart_recovery(browser_id, failure_category))
-        failover_task = asyncio.create_task(self._failover_recovery(browser_id, failure_category))
+        reconnect_task = # TODO: Replace with task group - asyncio.create_task(self._reconnect_recovery(browser_id, failure_category))
+        restart_task = # TODO: Replace with task group - asyncio.create_task(self._restart_recovery(browser_id, failure_category))
+        failover_task = # TODO: Replace with task group - asyncio.create_task(self._failover_recovery(browser_id, failure_category))
         
         # Wait for first successful result
         done, pending = await asyncio.wait(
@@ -1476,7 +1476,7 @@ async def demo_resource_pool_recovery():
         entry_id = await recovery_manager.track_operation(operation, model, browser_id, browser_type)
         
         # Simulate operation
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         # Simulate success (80%) or failure (20%)
         if i % 5 != 0:
@@ -1553,4 +1553,4 @@ async def demo_resource_pool_recovery():
 
 if __name__ == "__main__":
     # Run the demo
-    asyncio.run(demo_resource_pool_recovery())
+    anyio.run(demo_resource_pool_recovery())

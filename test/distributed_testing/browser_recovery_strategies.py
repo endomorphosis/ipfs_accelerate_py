@@ -17,7 +17,7 @@ Usage:
     Import this module in the BrowserAutomationBridge to enhance browser recovery capabilities.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -230,7 +230,7 @@ class SimpleRetryStrategy(BrowserRecoveryStrategy):
         logger.info(f"Retry attempt {retry_count + 1}/{self.max_retries} for {self.browser_type.value}")
         
         # Wait before retry
-        await asyncio.sleep(self.retry_delay)
+        await anyio.sleep(self.retry_delay)
         
         # Get the operation to retry
         operation = failure_info.get("operation")
@@ -300,7 +300,7 @@ class BrowserRestartStrategy(BrowserRecoveryStrategy):
             logger.warning(f"Error closing browser during restart: {str(e)}")
         
         # Cooldown period before restart
-        await asyncio.sleep(self.cooldown_period)
+        await anyio.sleep(self.cooldown_period)
         
         # Preserve original browser arguments if requested
         if self.preserve_browser_args and hasattr(bridge, 'get_browser_args'):

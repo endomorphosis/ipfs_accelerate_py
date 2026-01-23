@@ -14,7 +14,7 @@ Coordinator's batch task processing capabilities. It shows how to:
 This creates an end-to-end workflow from task creation to result reporting.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -241,7 +241,7 @@ async def run_example(ci_provider_type=None, ci_config=None):
             
             # Simulate task processing
             # In a real example, we would monitor the task status in the coordinator
-            await asyncio.sleep(5)  # Simulate task processing time
+            await anyio.sleep(5)  # Simulate task processing time
             
             # Simulate task completion (in a real example, we would get this from the coordinator)
             passed_count = total_tasks - 1  # Simulate one failed task
@@ -428,4 +428,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

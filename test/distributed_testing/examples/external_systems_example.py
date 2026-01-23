@@ -6,7 +6,7 @@ This script demonstrates how to use the various external system connectors
 to interact with Jira, Slack, TestRail, and Prometheus.
 """
 
-import asyncio
+import anyio
 import argparse
 import logging
 import json
@@ -135,7 +135,7 @@ async def test_slack_connector(config):
                     "elements": [
                         {
                             "type": "mrkdwn",
-                            "text": "🕒 " + asyncio.get_event_loop().time().__str__()
+                            "text": "🕒 " + # TODO: Remove event loop management - asyncio.get_event_loop().time().__str__()
                         }
                     ]
                 }
@@ -297,7 +297,7 @@ async def test_prometheus_connector(config):
         logger.info(f"Memory usage metrics: {json.dumps(metrics.get('result_data', {}), indent=2)}")
         
         # Execute a range query
-        current_time = asyncio.get_event_loop().time()
+        current_time = # TODO: Remove event loop management - asyncio.get_event_loop().time()
         range_query_data = {
             "query": "process_resident_memory_bytes",
             "start": current_time - 3600,  # 1 hour ago
@@ -408,4 +408,4 @@ async def main():
     logger.info("Example script completed.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

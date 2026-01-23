@@ -19,7 +19,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import threading
 import traceback
@@ -139,10 +139,10 @@ class ConnectionPoolManager:
         
         # Get or create event loop
         try:
-            self.loop = asyncio.get_event_loop()
+            self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         except RuntimeError:
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
+            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+            # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
         
         # Initialize semaphore for connection control
         self.connection_semaphore = asyncio.Semaphore(max_connections)
@@ -187,7 +187,7 @@ class ConnectionPoolManager:
         async def health_check_task():
             while True:
                 try:
-                    await asyncio.sleep(self.health_check_interval)
+                    await anyio.sleep(self.health_check_interval)
                     await self._check_connection_health()
                 except asyncio.CancelledError:
                     # Task is being cancelled
@@ -200,7 +200,7 @@ class ConnectionPoolManager:
         async def cleanup_task():
             while True:
                 try:
-                    await asyncio.sleep(self.cleanup_interval)
+                    await anyio.sleep(self.cleanup_interval)
                     await self._cleanup_connections()
                 except asyncio.CancelledError:
                     # Task is being cancelled
@@ -716,10 +716,10 @@ if __name__ == "__main__":
         
         # Wait for health check and cleanup to run
         logger.info("Waiting for health check and cleanup...")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Shut down pool
         await pool.shutdown()
     
     # Run test
-    asyncio.run(test_pool())
+    anyio.run(test_pool())

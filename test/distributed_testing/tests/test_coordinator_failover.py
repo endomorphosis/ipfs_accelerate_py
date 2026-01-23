@@ -4,7 +4,7 @@ Test scenarios for coordinator failover in the Distributed Testing Framework.
 Focuses on high-availability cluster behavior during leader failure and recovery.
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import unittest
@@ -68,7 +68,7 @@ class FailoverSimulator:
             self.processes.append(process)
             
         # Wait for cluster to stabilize
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
     def kill_node(self, node_index):
         """Kill a specific node to simulate failure."""
@@ -223,8 +223,8 @@ class TestCoordinatorFailover(unittest.TestCase):
             raise unittest.SkipTest("aiohttp is required for these tests")
             
         # Create event loop for async tests
-        cls.event_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(cls.event_loop)
+        cls.event_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        # TODO: Remove event loop management - asyncio.set_event_loop(cls.event_loop)
         
     @classmethod
     def tearDownClass(cls):
@@ -264,7 +264,7 @@ class TestCoordinatorFailover(unittest.TestCase):
         self.simulator.kill_node(leader_index)
         
         # Wait for new leader election
-        self.event_loop.run_until_complete(asyncio.sleep(10))
+        self.event_loop.run_until_complete(anyio.sleep(10))
         
         # Find the new leader
         new_leader = self.event_loop.run_until_complete(self.simulator.find_leader())
@@ -296,7 +296,7 @@ class TestCoordinatorFailover(unittest.TestCase):
         self.simulator.kill_node(leader_index)
         
         # Wait for new leader election
-        self.event_loop.run_until_complete(asyncio.sleep(10))
+        self.event_loop.run_until_complete(anyio.sleep(10))
         
         # Find the new leader
         new_leader = self.event_loop.run_until_complete(self.simulator.find_leader())
@@ -311,7 +311,7 @@ class TestCoordinatorFailover(unittest.TestCase):
         self.simulator.restart_node(leader_index)
         
         # Wait for the node to sync
-        self.event_loop.run_until_complete(asyncio.sleep(5))
+        self.event_loop.run_until_complete(anyio.sleep(5))
         
         # Get cluster status
         status = self.event_loop.run_until_complete(self.simulator.get_cluster_status())
@@ -362,7 +362,7 @@ class TestCoordinatorFailover(unittest.TestCase):
             self.simulator.kill_node(i)
             
         # Wait a moment
-        self.event_loop.run_until_complete(asyncio.sleep(5))
+        self.event_loop.run_until_complete(anyio.sleep(5))
         
         # Try to add another worker (should fail - no quorum)
         with self.assertRaises(Exception):
@@ -374,7 +374,7 @@ class TestCoordinatorFailover(unittest.TestCase):
         self.simulator.restart_node(0)
         
         # Wait for cluster to stabilize
-        self.event_loop.run_until_complete(asyncio.sleep(10))
+        self.event_loop.run_until_complete(anyio.sleep(10))
         
         # Should have a leader now
         leader = self.event_loop.run_until_complete(self.simulator.find_leader())
@@ -404,7 +404,7 @@ class TestCoordinatorFailover(unittest.TestCase):
         self.simulator.kill_node(leader1_index)
         
         # Wait for new leader election
-        self.event_loop.run_until_complete(asyncio.sleep(10))
+        self.event_loop.run_until_complete(anyio.sleep(10))
         
         # Find the new leader
         leader2 = self.event_loop.run_until_complete(self.simulator.find_leader())
@@ -419,7 +419,7 @@ class TestCoordinatorFailover(unittest.TestCase):
         self.simulator.kill_node(leader2_index)
         
         # Wait for third leader election
-        self.event_loop.run_until_complete(asyncio.sleep(10))
+        self.event_loop.run_until_complete(anyio.sleep(10))
         
         # Find the third leader
         leader3 = self.event_loop.run_until_complete(self.simulator.find_leader())

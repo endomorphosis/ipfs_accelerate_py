@@ -84,7 +84,7 @@ class MockResourcePoolBridge:
     
     def execute_concurrent_sync(self, models_and_inputs):
         import asyncio
-        loop = asyncio.new_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
         return loop.run_until_complete(self.execute_concurrent(models_and_inputs))
     
     def get_metrics(self):

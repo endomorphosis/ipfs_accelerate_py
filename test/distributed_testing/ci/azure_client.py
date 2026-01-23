@@ -6,7 +6,7 @@ This module provides a client for interacting with Azure DevOps API to report te
 update build status, and add PR comments.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import json

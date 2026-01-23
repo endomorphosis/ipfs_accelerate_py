@@ -8,7 +8,7 @@ and preventing operations when the system is in a failed state.
 """
 
 import time
-import asyncio
+import anyio
 import logging
 from enum import Enum
 from typing import Dict, Any, Callable, Awaitable, Optional
@@ -90,7 +90,7 @@ class CircuitBreaker:
         try:
             if self.state == CircuitState.HALF_OPEN:
                 # Set timeout for half-open test
-                result = await asyncio.wait_for(
+                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                     func(*args, **kwargs),
                     timeout=self.half_open_timeout
                 )

@@ -19,7 +19,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import argparse
 from typing import Dict, List, Any, Optional
@@ -179,7 +179,7 @@ class CircuitBreakerIntegrationTest:
                     test_results["failures"].append(f"Circuit breaker incorrectly blocked {intensity} intensity in CLOSED state")
                 
                 # Small delay between tests
-                await asyncio.sleep(0.5)
+                await anyio.sleep(0.5)
             
             # Verify circuit breaker is still closed after mild/moderate failures
             state = self.circuit_breaker.get_state()
@@ -321,7 +321,7 @@ class CircuitBreakerIntegrationTest:
         try:
             # Wait for half-open transition
             logger.info(f"Waiting {self.circuit_breaker.half_open_after} seconds for half-open transition")
-            await asyncio.sleep(self.circuit_breaker.half_open_after)
+            await anyio.sleep(self.circuit_breaker.half_open_after)
             
             # Check if circuit is now half-open
             state = self.circuit_breaker.get_state()
@@ -366,7 +366,7 @@ class CircuitBreakerIntegrationTest:
                         test_results["failures"].append(f"Circuit did not transition back to 'open' after severe failure in half-open state, got '{state}'")
                 
                 # Small delay between tests
-                await asyncio.sleep(0.5)
+                await anyio.sleep(0.5)
         
         except Exception as e:
             test_results["success"] = False
@@ -421,7 +421,7 @@ class CircuitBreakerIntegrationTest:
             
             # Wait for half-open transition
             logger.info(f"Waiting {self.circuit_breaker.half_open_after} seconds for half-open transition")
-            await asyncio.sleep(self.circuit_breaker.half_open_after + 0.5)
+            await anyio.sleep(self.circuit_breaker.half_open_after + 0.5)
             
             # Verify circuit is half-open
             state = self.circuit_breaker.get_state()
@@ -465,7 +465,7 @@ class CircuitBreakerIntegrationTest:
             
             # Wait for half-open transition
             logger.info(f"Waiting {self.circuit_breaker.half_open_after} seconds for half-open transition for browser test")
-            await asyncio.sleep(self.circuit_breaker.half_open_after + 0.5)
+            await anyio.sleep(self.circuit_breaker.half_open_after + 0.5)
             
             # Create a new browser and injector
             bridge, injector = await self._create_browser_and_injector()
@@ -614,7 +614,7 @@ class CircuitBreakerIntegrationTest:
             
             # Wait for half-open transition
             logger.info(f"Waiting {self.circuit_breaker.half_open_after} seconds for half-open transition")
-            await asyncio.sleep(self.circuit_breaker.half_open_after + 0.5)
+            await anyio.sleep(self.circuit_breaker.half_open_after + 0.5)
             
             # Create new browser and injector
             bridge, injector = await self._create_browser_and_injector()
@@ -1107,5 +1107,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

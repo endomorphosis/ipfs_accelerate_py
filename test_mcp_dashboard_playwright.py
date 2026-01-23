@@ -10,7 +10,7 @@ This test verifies that:
 5. Data is populated from MCP server tools
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys

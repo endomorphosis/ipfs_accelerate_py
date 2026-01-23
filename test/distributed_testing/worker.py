@@ -10,7 +10,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -372,7 +372,7 @@ class DistributedTestingWorker:
                 return True
             
             retry_count += 1
-            await asyncio.sleep(retry_delay)
+            await anyio.sleep(retry_delay)
         
         logger.error(f"Failed to reconnect to coordinator after {max_retries} attempts")
         return False
@@ -458,14 +458,14 @@ class DistributedTestingWorker:
                 await self.reconnect_to_coordinator()
             
             # Sleep for heartbeat interval
-            await asyncio.sleep(self.heartbeat_interval)
+            await anyio.sleep(self.heartbeat_interval)
     
     async def listen_for_tasks(self):
         """Listen for tasks from coordinator with support for batched execution."""
         while True:
             if not self.ws_connected:
                 # If not connected, wait and try again
-                await asyncio.sleep(5)
+                await anyio.sleep(5)
                 continue
             
             try:
@@ -493,7 +493,7 @@ class DistributedTestingWorker:
                     
                     # Start task execution in background
                     self.current_task = task
-                    self.current_task_future = asyncio.create_task(self._execute_task(task))
+                    self.current_task_future = # TODO: Replace with task group - asyncio.create_task(self._execute_task(task))
                 
                 elif msg_type == "execute_task_batch":
                     # Batch task execution request
@@ -719,7 +719,7 @@ class DistributedTestingWorker:
             tasks.append(execute_with_semaphore(task))
         
         # Execute all tasks in parallel and wait for completion
-        await asyncio.gather(*tasks)
+        await # TODO: Replace with task group - asyncio.gather(*tasks)
         logger.info(f"Completed execution of {len(tasks_data)} parallel tasks")
     
     async def _execute_tasks_serial(self, tasks_data):
@@ -1020,7 +1020,7 @@ class DistributedTestingWorker:
         
         # Simulate results for each batch size
         for batch_size in batch_sizes:
-            await asyncio.sleep(0.5)  # Simulate benchmark execution
+            await anyio.sleep(0.5)  # Simulate benchmark execution
             
             # Update progress
             progress = batch_sizes.index(batch_size) / len(batch_sizes) * 100
@@ -1064,7 +1064,7 @@ class DistributedTestingWorker:
         logger.info(f"Executing test task for file {test_file}")
         
         # For now, simulate test execution
-        await asyncio.sleep(2)  # Simulate test execution
+        await anyio.sleep(2)  # Simulate test execution
         
         # Simulate test results
         results = {
@@ -1097,7 +1097,7 @@ class DistributedTestingWorker:
         logger.info(f"Executing custom task: {task_name}")
         
         # For now, simulate custom task execution
-        await asyncio.sleep(1)  # Simulate task execution
+        await anyio.sleep(1)  # Simulate task execution
         
         # Simulate custom task results
         results = {
@@ -1164,7 +1164,7 @@ class DistributedTestingWorker:
         
         while True:
             await self.check_health()
-            await asyncio.sleep(health_check_interval)
+            await anyio.sleep(health_check_interval)
     
     async def start(self):
         """Start the worker node."""
@@ -1175,12 +1175,12 @@ class DistributedTestingWorker:
             return
         
         # Start background tasks
-        heartbeat_task = asyncio.create_task(self.heartbeat_loop())
-        listen_task = asyncio.create_task(self.listen_for_tasks())
-        health_task = asyncio.create_task(self.health_check_loop())
+        heartbeat_task = # TODO: Replace with task group - asyncio.create_task(self.heartbeat_loop())
+        listen_task = # TODO: Replace with task group - asyncio.create_task(self.listen_for_tasks())
+        health_task = # TODO: Replace with task group - asyncio.create_task(self.health_check_loop())
         
         # Wait for tasks to complete (they won't unless they fail)
-        await asyncio.gather(heartbeat_task, listen_task, health_task)
+        await # TODO: Replace with task group - asyncio.gather(heartbeat_task, listen_task, health_task)
 
 
 async def main():
@@ -1219,4 +1219,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

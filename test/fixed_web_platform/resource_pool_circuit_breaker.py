@@ -30,7 +30,7 @@ import enum
 import math
 import random
 import logging
-import asyncio
+import anyio
 import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Union, Tuple, Set, Callable
@@ -389,7 +389,7 @@ class ResourcePoolCircuitBreaker:
         self.health_metrics[connection_id] = BrowserHealthMetrics(connection_id)
         
         # Initialize lock for thread safety
-        self.circuit_locks[connection_id] = asyncio.Lock()
+        self.circuit_locks[connection_id] = anyio.Lock()
         
         logger.info(f"Registered connection {connection_id} with circuit breaker")
         
@@ -764,10 +764,10 @@ class ResourcePoolCircuitBreaker:
                     logger.error(f"Error running health checks: {e}")
                 
                 # Wait for next check interval
-                await asyncio.sleep(self.health_check_interval_seconds)
+                await anyio.sleep(self.health_check_interval_seconds)
                 
         # Start health check task
-        self.health_check_task = asyncio.create_task(health_check_loop())
+        self.health_check_task = # TODO: Replace with task group - asyncio.create_task(health_check_loop())
         logger.info(f"Health check task started (interval: {self.health_check_interval_seconds}s)")
         
     async def stop_health_check_task(self):
@@ -1226,7 +1226,7 @@ class ConnectionRecoveryStrategy:
             await automation.close()
             
             # Allow a brief pause for resources to be released
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             # Relaunch browser
             success = await automation.launch(allow_simulation=True)
@@ -1286,7 +1286,7 @@ class ResourcePoolCircuitBreakerManager:
         self.browser_connections = browser_connections
         
         # Initialize lock for thread safety
-        self.lock = asyncio.Lock()
+        self.lock = anyio.Lock()
         
         logger.info("ResourcePoolCircuitBreakerManager initialized")
         
@@ -1585,7 +1585,7 @@ async def example_usage():
                 logger.warning(f"Request {i+1} not allowed for connection {connection_id}: {reason}")
                 
             # Wait a bit between requests
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
             
         # Get health summary
         health_summary = await circuit_breaker_manager.get_health_summary()
@@ -1605,4 +1605,4 @@ async def example_usage():
 
 # Main entry point
 if __name__ == "__main__":
-    asyncio.run(example_usage())
+    anyio.run(example_usage())

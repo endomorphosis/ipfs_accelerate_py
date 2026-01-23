@@ -23,7 +23,7 @@ Usage:
     --cleanup: Remove database file after completion
 """
 
-import asyncio
+import anyio
 import argparse
 import json
 import logging
@@ -312,13 +312,13 @@ async def run_example():
                                               result["details"]["test_duration"])
         
         # Small delay to make timestamps more realistic
-        await asyncio.sleep(0.05)
+        await anyio.sleep(0.05)
         
     print(f"  Processed {task_count} tasks with {len(failed_tasks)} failures and {len(anomaly_tasks)} anomalies")
     
     # Wait for real-time analysis to process
     print("\n[6] Waiting for real-time analysis to complete...")
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Perform comprehensive analysis
     print("\n[7] Performing comprehensive analysis of results...")
@@ -514,4 +514,4 @@ async def run_example():
 
 if __name__ == "__main__":
     # Run the example
-    asyncio.run(run_example())
+    anyio.run(run_example())

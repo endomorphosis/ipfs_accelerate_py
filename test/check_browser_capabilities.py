@@ -94,7 +94,7 @@ async def check_browser_capabilities())browser_name="chrome", headless=False):
         while time.time())) - start_time < timeout:
             if bridge_server.feature_detection:
             break
-            await asyncio.sleep())0.5)
+            await anyio.sleep())0.5)
         
         if not bridge_server.feature_detection:
             logger.error())"Timeout waiting for feature detection")
@@ -212,7 +212,7 @@ def main())):
     """
     Main function.
     """
-    return asyncio.run())main_async())))
+    return anyio.run())main_async())))
 
 if __name__ == "__main__":
     sys.exit())main())))

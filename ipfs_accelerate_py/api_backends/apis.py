@@ -97,7 +97,7 @@ except ImportError:
             
         def test_model(self, model_name):
             return {"supported": True, "name": model_name}
-import asyncio
+import anyio
 import os
 import json
 
@@ -349,7 +349,7 @@ class apis:
                                                 
                                             # Set up the endpoint
                                             self.resources["batch_sizes"][model][this_endpoint] = 0
-                                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
+                                            self.resources["queues"][model][this_endpoint] = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
                                             
                                             # Try to create an endpoint handler, but provide a fallback
                                             try:

@@ -8,7 +8,7 @@ Usage:
     python -m duckdb_api.distributed_testing.run_monitoring_dashboard
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -364,7 +364,7 @@ class MonitoringDashboard:
         try:
             # Keep the server running
             while True:
-                await asyncio.sleep(3600)  # Sleep for an hour
+                await anyio.sleep(3600)  # Sleep for an hour
         except asyncio.CancelledError:
             logger.info("Stopping Monitoring Dashboard...")
         finally:
@@ -374,7 +374,7 @@ class MonitoringDashboard:
     
     def run(self):
         """Run the monitoring dashboard (blocking)."""
-        asyncio.run(self.start())
+        anyio.run(self.start())
         
     def store_performance_analytics_data(self, data: Dict[str, Any]) -> None:
         """Store performance analytics data.

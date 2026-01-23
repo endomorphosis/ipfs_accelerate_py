@@ -444,7 +444,7 @@ class MockClient:
         self.call_count += 1
         query = messages[]]]]]]]]]]]]],,,,,,,,,,,,-1][]]]]]]]]]]]]],,,,,,,,,,,,"content"] if messages and "content" in messages[]]]]]]]]]]]]],,,,,,,,,,,,-1] else "No query"
         
-        await asyncio.sleep()))))))))))0.2)  # Simulate API delay
+        await anyio.sleep()))))))))))0.2)  # Simulate API delay
         
         return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}::
             "id": f"mock-{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}hashlib.md5()))))))))))query.encode())))))))))))).hexdigest())))))))))))[]]]]]]]]]]]]],,,,,,,,,,,,:10]}",
@@ -473,7 +473,7 @@ class MockClient:
         self.call_count += 1
         query = messages[]]]]]]]]]]]]],,,,,,,,,,,,-1][]]]]]]]]]]]]],,,,,,,,,,,,"content"] if messages and "content" in messages[]]]]]]]]]]]]],,,,,,,,,,,,-1] else "No query"
         
-        await asyncio.sleep()))))))))))0.2)  # Simulate API delay
+        await anyio.sleep()))))))))))0.2)  # Simulate API delay
         
         return {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}::
             "id": f"mock-{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}hashlib.md5()))))))))))query.encode())))))))))))).hexdigest())))))))))))[]]]]]]]]]]]]],,,,,,,,,,,,:10]}",
@@ -489,7 +489,7 @@ class MockClient:
         self.call_count += 1
         query = prompt if isinstance()))))))))))prompt, str) else str()))))))))))prompt)
         
-        await asyncio.sleep()))))))))))0.2)  # Simulate API delay
+        await anyio.sleep()))))))))))0.2)  # Simulate API delay
         :
         return f"[]]]]]]]]]]]]],,,,,,,,,,,,{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}self.provider_name}] Response for: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}query}"
 
@@ -872,4 +872,4 @@ if __name__ == "__main__":
     
     args = parser.parse_args())))))))))))
     
-    asyncio.run()))))))))))run_all_tests()))))))))))output_format=args.format, output_file=args.output))
+    anyio.run()))))))))))run_all_tests()))))))))))output_format=args.format, output_file=args.output))

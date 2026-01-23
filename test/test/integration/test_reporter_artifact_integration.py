@@ -6,7 +6,7 @@ This script tests the complete integration between TestResultReporter and the
 artifact URL retrieval system across different CI providers.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -725,4 +725,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

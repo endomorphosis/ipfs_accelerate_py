@@ -13,7 +13,7 @@ import unittest
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-import asyncio
+import anyio
 
 # Add parent directory to path to import the modules
 parent_dir = str(Path(__file__).parent.parent.parent.parent)

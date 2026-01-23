@@ -4,7 +4,7 @@ import requests
 import json
 import os
 import sys
-import asyncio
+import anyio
 import random
 import hashlib
 import time

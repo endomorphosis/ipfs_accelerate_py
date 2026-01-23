@@ -14,7 +14,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import argparse
 import tempfile
@@ -149,11 +149,11 @@ class CircuitBreakerTester:
         
         # Define test operations
         async def successful_operation():
-            await asyncio.sleep(0.01)
+            await anyio.sleep(0.01)
             return "Success"
             
         async def failing_operation():
-            await asyncio.sleep(0.01)
+            await anyio.sleep(0.01)
             raise Exception("Simulated failure")
         
         # Test successful operations
@@ -175,7 +175,7 @@ class CircuitBreakerTester:
         assert failures > 0, "Expected at least one failure"
         
         # Wait for recovery timeout
-        await asyncio.sleep(5.1)
+        await anyio.sleep(5.1)
         
         # Test half-open state (should be in half-open state now)
         try:
@@ -214,11 +214,11 @@ class CircuitBreakerTester:
             # Determine if this operation will succeed or fail
             if self.simulate or (hash(f"{time.time()}{id(circuit_breaker)}") % 100) / 100 < self.success_rate:
                 # Successful operation
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 return "Success"
             else:
                 # Failing operation with random error type
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 error_type = self.failure_types[hash(f"{time.time()}") % len(self.failure_types)]
                 raise Exception(f"Simulated {error_type} failure")
         
@@ -232,7 +232,7 @@ class CircuitBreakerTester:
                 results.append({"success": False, "error": str(e)})
             
             # Short delay between operations
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
         
         # Verify we have some successes and some failures
         successes = sum(1 for r in results if r["success"])
@@ -292,18 +292,18 @@ class CircuitBreakerTester:
                 success_prob = 0.3  # 30% success rate
                 if circuit_breaker.circuit_breaker.state == "half_open":
                     # Make recovery slower
-                    await asyncio.sleep(0.5)
+                    await anyio.sleep(0.5)
             else:  # normal
                 success_prob = 0.7  # 70% success rate
             
             # Determine if this operation will succeed or fail
             if self.simulate or (hash(f"{time.time()}{id(circuit_breaker)}") % 100) / 100 < success_prob:
                 # Successful operation
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 return "Success"
             else:
                 # Failing operation with random error type
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 error_type = self.failure_types[hash(f"{time.time()}") % len(self.failure_types)]
                 raise Exception(f"Simulated {error_type} failure")
         
@@ -314,7 +314,7 @@ class CircuitBreakerTester:
                 await circuit_breaker.execute(lambda: operation_with_pattern("normal"))
             except Exception:
                 pass
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
         
         # Record parameters after normal pattern
         normal_params = {
@@ -335,7 +335,7 @@ class CircuitBreakerTester:
                 await circuit_breaker.execute(lambda: operation_with_pattern("high_failure"))
             except Exception:
                 pass
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
         
         # Record parameters after high failure pattern
         high_failure_params = {
@@ -356,7 +356,7 @@ class CircuitBreakerTester:
                 await circuit_breaker.execute(lambda: operation_with_pattern("slow_recovery"))
             except Exception:
                 pass
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
         
         # Record parameters after slow recovery pattern
         slow_recovery_params = {
@@ -424,11 +424,11 @@ class CircuitBreakerTester:
             """
             # Define test operations
             async def success_op():
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 return "Success"
                 
             async def fail_op(error_type: str = "timeout"):
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 raise Exception(f"Simulated {error_type} failure")
             
             # Pattern 1: Failures after successful operations
@@ -436,7 +436,7 @@ class CircuitBreakerTester:
                 # First several successful operations
                 for i in range(5):
                     await circuit_breaker.execute(success_op)
-                    await asyncio.sleep(0.01)
+                    await anyio.sleep(0.01)
                 
                 # Then several failing operations
                 for i in range(5):
@@ -444,7 +444,7 @@ class CircuitBreakerTester:
                         await circuit_breaker.execute(lambda: fail_op("timeout"))
                     except Exception:
                         pass
-                    await asyncio.sleep(0.01)
+                    await anyio.sleep(0.01)
                 
             # Pattern 2: API failures leading to crashes
             elif pattern_type == "api_then_crash":
@@ -454,7 +454,7 @@ class CircuitBreakerTester:
                         await circuit_breaker.execute(lambda: fail_op("api"))
                     except Exception:
                         pass
-                    await asyncio.sleep(0.01)
+                    await anyio.sleep(0.01)
                 
                 # Then crash errors (which are more severe)
                 for i in range(3):
@@ -462,7 +462,7 @@ class CircuitBreakerTester:
                         await circuit_breaker.execute(lambda: fail_op("crash"))
                     except Exception:
                         pass
-                    await asyncio.sleep(0.01)
+                    await anyio.sleep(0.01)
                     
             # Pattern 3: Mixed errors
             else:
@@ -473,7 +473,7 @@ class CircuitBreakerTester:
                         await circuit_breaker.execute(lambda: fail_op(error_type))
                     except Exception:
                         pass
-                    await asyncio.sleep(0.01)
+                    await anyio.sleep(0.01)
         
         # Train the prediction model with various patterns
         logger.info("Training prediction model with patterns")
@@ -481,22 +481,22 @@ class CircuitBreakerTester:
         # Reset between patterns
         await create_failure_pattern(circuit_breaker, "success_then_failure")
         circuit_breaker.reset()
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         await create_failure_pattern(circuit_breaker, "api_then_crash")
         circuit_breaker.reset()
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         await create_failure_pattern(circuit_breaker, "mixed")
         circuit_breaker.reset()
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         # Repeat patterns to build more training data
         for i in range(3):
             pattern = ["success_then_failure", "api_then_crash", "mixed"][i % 3]
             await create_failure_pattern(circuit_breaker, pattern)
             circuit_breaker.reset()
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
         
         # Verify that prediction model was created
         assert circuit_breaker.prediction_model is not None, "Prediction model was not created"
@@ -518,10 +518,10 @@ class CircuitBreakerTester:
         # Define operation to test prediction
         async def operation_for_prediction(success: bool = True, error_type: str = "timeout"):
             if success:
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 return "Success"
             else:
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 raise Exception(f"Simulated {error_type} failure")
         
         # Run test pattern again
@@ -529,7 +529,7 @@ class CircuitBreakerTester:
             # First several successful operations
             for i in range(5):
                 await circuit_breaker.execute(lambda: operation_for_prediction(True))
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
             
             # Verify circuit is closed
             assert circuit_breaker.circuit_breaker.state == "closed", "Circuit should be closed at this point"
@@ -542,7 +542,7 @@ class CircuitBreakerTester:
                     # Check if this was a preemptive open
                     if "preemptively opened" in str(e):
                         preemptive_opens += 1
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
             
             # Then more errors if needed
             for i in range(5):
@@ -552,7 +552,7 @@ class CircuitBreakerTester:
                     # Check if circuit is already open (not preemptive)
                     if "Circuit is open" in str(e) and "preemptively" not in str(e):
                         regular_opens += 1
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 
         except Exception as e:
             logger.warning(f"Error during prediction test: {str(e)}")
@@ -613,20 +613,20 @@ class CircuitBreakerTester:
         # Define different failure patterns for different hardware
         async def gpu_operation(success_rate: float = 0.5):
             if self.simulate or (hash(f"{time.time()}{id(gpu_circuit_breaker)}") % 100) / 100 < success_rate:
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 return "GPU Success"
             else:
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 # GPU failures often related to memory or resources
                 error_type = ["memory", "resource", "gpu"][hash(f"{time.time()}") % 3]
                 raise Exception(f"Simulated GPU {error_type} failure")
         
         async def cpu_operation(success_rate: float = 0.7):
             if self.simulate or (hash(f"{time.time()}{id(cpu_circuit_breaker)}") % 100) / 100 < success_rate:
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 return "CPU Success"
             else:
-                await asyncio.sleep(0.01)
+                await anyio.sleep(0.01)
                 # CPU failures often related to timeouts or api issues
                 error_type = ["timeout", "api", "connection"][hash(f"{time.time()}") % 3]
                 raise Exception(f"Simulated CPU {error_type} failure")
@@ -645,7 +645,7 @@ class CircuitBreakerTester:
             except Exception:
                 pass
                 
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
         
         # Verify that hardware-specific features were used
         gpu_state = gpu_circuit_breaker.get_state()
@@ -758,5 +758,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

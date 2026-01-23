@@ -26,7 +26,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 import logging
 import uuid
@@ -836,7 +836,7 @@ class IPFSResourcePoolTester:
                     benchmark_results["single_model"].append(result)
                 
                 # Wait a bit between tests
-                await asyncio.sleep(0.5)
+                await anyio.sleep(0.5)
             
             # 2. Test concurrent execution
             logger.info("Running benchmark with concurrent execution...")
@@ -1323,7 +1323,7 @@ async def main_async():
 def main():
     """Main entry point."""
     try:
-        return asyncio.run(main_async())
+        return anyio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130

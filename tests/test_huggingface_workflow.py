@@ -12,7 +12,7 @@ Usage:
     python3 tests/test_huggingface_workflow.py
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import time
@@ -310,5 +310,5 @@ if __name__ == '__main__':
     if not PLAYWRIGHT_AVAILABLE:
         print("⚠️ Playwright not available - install with: pip install playwright && playwright install")
         sys.exit(1)
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

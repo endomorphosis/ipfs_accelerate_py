@@ -19,7 +19,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import tempfile
 import platform as platform_module
@@ -126,10 +126,10 @@ class WebAccelerator:
         
         # Create event loop for async operations
         try:
-            self.loop = asyncio.get_event_loop()
+            self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         except RuntimeError:
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
+            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+            # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
         
         # Initialize hardware detector if IPFS module is available
         self.hardware_detector = None
@@ -595,5 +595,5 @@ async def test_web_accelerator():
 if __name__ == "__main__":
     # Run test if script executed directly
     import asyncio
-    success = asyncio.run(test_web_accelerator())
+    success = anyio.run(test_web_accelerator())
     sys.exit(0 if success else 1)

@@ -6,7 +6,7 @@ This module provides a standardized way to report test results to CI/CD systems
 using different formatters (Markdown, HTML, JSON) and integration with CI providers.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -465,7 +465,7 @@ class TestResultReporter:
         # Create tasks for retrieving URLs in parallel
         tasks = []
         for name in artifact_names:
-            task = asyncio.create_task(self.ci_provider.get_artifact_url(test_run_id, name))
+            task = # TODO: Replace with task group - asyncio.create_task(self.ci_provider.get_artifact_url(test_run_id, name))
             tasks.append((name, task))
         
         # Wait for all tasks to complete
@@ -846,4 +846,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

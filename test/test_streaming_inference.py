@@ -702,7 +702,7 @@ class AsyncTestCase()))))))))))unittest.TestCase):
     
     def run_async()))))))))))self, coroutine):
         """Run an asynchronous coroutine in the event loop."""
-    return asyncio.get_event_loop()))))))))))).run_until_complete()))))))))))coroutine)
+    return # TODO: Remove event loop management - asyncio.get_event_loop()))))))))))).run_until_complete()))))))))))coroutine)
 
 
 class TestStreamingInferencePipelineAsync()))))))))))AsyncTestCase):

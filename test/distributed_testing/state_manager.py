@@ -9,7 +9,7 @@ view of shared state with transactions and conflict resolution.
 import time
 import json
 import logging
-import asyncio
+import anyio
 from typing import Dict, List, Any, Optional, Set
 
 # Configure logging
@@ -230,7 +230,7 @@ class StateManager:
             }
             
             # Write to file
-            async with asyncio.Lock():
+            async with anyio.Lock():
                 with open(f"{self.persistence_path}/{self.state_id}_state.json", "w") as f:
                     json.dump(snapshot, f)
             

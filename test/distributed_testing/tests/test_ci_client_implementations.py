@@ -6,7 +6,7 @@ This module tests the implementation of all CI clients to ensure they correctly
 implement the standardized CIProviderInterface.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -205,7 +205,7 @@ class TestCIClientImplementations(unittest.TestCase):
             return results
         
         # Run all tests
-        results = asyncio.run(run_all_tests())
+        results = anyio.run(run_all_tests())
         
         # Verify all tests passed
         for provider_type, result in results.items():

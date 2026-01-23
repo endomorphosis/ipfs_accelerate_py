@@ -13,7 +13,7 @@ import json
 import time
 import uuid
 import logging
-import asyncio
+import anyio
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -384,7 +384,7 @@ class GeneratorTaskManager:
             await self._send_ws_update(task_id)
             
             # Generate the model implementation
-            result = await asyncio.to_thread(self.generator.generate, model_name, options)
+            result = await anyio.to_thread.run_sync(self.generator.generate, model_name, options)
             
             # Update the task with the result
             if result["success"]:
@@ -816,7 +816,7 @@ class GeneratorTaskManager:
         for task_id in list(self.ws_connections.keys()):
             for connection in self.ws_connections[task_id]:
                 try:
-                    asyncio.create_task(connection.close())
+                    # TODO: Replace with task group - asyncio.create_task(connection.close())
                 except:
                     pass
             

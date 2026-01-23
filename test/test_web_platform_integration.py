@@ -795,7 +795,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     Returns:
         Dictionary with test results
         """
-        loop = asyncio.get_event_loop())))))))))))))))))))))
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop())))))))))))))))))))))
         return loop.run_until_complete()))))))))))))))))))))test_async_streaming_inference()))))))))))))))))))))verbose))
 
 def main()))))))))))))))))))))):

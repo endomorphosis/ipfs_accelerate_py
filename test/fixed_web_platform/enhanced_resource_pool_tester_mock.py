@@ -7,7 +7,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
@@ -53,11 +53,11 @@ class EnhancedWebResourcePoolTester:
         logger.info(f"Testing model {model_name} ({model_type}) on platform {platform}")
         
         # Simulate model loading
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         logger.info(f"Model {model_name} loaded in 0.5s")
         
         # Simulate inference
-        await asyncio.sleep(0.3)
+        await anyio.sleep(0.3)
         logger.info(f"Inference completed in 0.3s")
         
         # Update mock metrics based on model type
@@ -113,7 +113,7 @@ class EnhancedWebResourcePoolTester:
         
         # Simulate concurrent execution
         start_time = time.time()
-        await asyncio.sleep(0.8)  # Simulate faster concurrent execution
+        await anyio.sleep(0.8)  # Simulate faster concurrent execution
         total_time = time.time() - start_time
         
         # Create results for each model
@@ -168,9 +168,9 @@ class EnhancedWebResourcePoolTester:
         
         # Show quick progress to simulate a shorter test
         logger.info(f"Stress test progress: 1.0s elapsed, {duration-1.0:.1f}s remaining, 5 successes, 0 failures")
-        await asyncio.sleep(1.0)
+        await anyio.sleep(1.0)
         logger.info(f"Stress test progress: 2.0s elapsed, {duration-2.0:.1f}s remaining, 10 successes, 1 failures")
-        await asyncio.sleep(1.0)
+        await anyio.sleep(1.0)
         logger.info(f"Stress test progress: 3.0s elapsed, {duration-3.0:.1f}s remaining, 15 successes, 1 failures")
         
         # Update mock metrics to simulate stress test results

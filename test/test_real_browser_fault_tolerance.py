@@ -18,7 +18,7 @@ import time
 import random
 import logging
 import argparse
-import asyncio
+import anyio
 import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -188,12 +188,12 @@ async def detect_browser_capabilities(driver, browser_type: str) -> Dict[str, bo
     """Detect WebGPU and WebNN capabilities of a browser"""
     try:
         # Check for WebGPU support
-        webgpu_supported = await asyncio.to_thread(
+        webgpu_supported = await anyio.to_thread.run_sync(
             lambda: driver.execute_script("return typeof navigator.gpu !== 'undefined'")
         )
         
         # Check for WebNN support (only in newer browsers)
-        webnn_supported = await asyncio.to_thread(
+        webnn_supported = await anyio.to_thread.run_sync(
             lambda: driver.execute_script("return typeof navigator.ml !== 'undefined' && typeof navigator.ml.getNeuralNetworkContext !== 'undefined'")
         )
         
@@ -204,7 +204,7 @@ async def detect_browser_capabilities(driver, browser_type: str) -> Dict[str, bo
         
         # Firefox-specific checks
         if browser_type == "firefox":
-            compute_shaders_supported = await asyncio.to_thread(
+            compute_shaders_supported = await anyio.to_thread.run_sync(
                 lambda: driver.execute_script("return navigator.userAgent.indexOf('Firefox') > -1")
             )
         
@@ -229,7 +229,7 @@ async def clean_up_browsers(browser_instances: List[Dict[str, Any]]) -> None:
     """Clean up browser instances"""
     for browser in browser_instances:
         try:
-            await asyncio.to_thread(lambda: browser["driver"].quit())
+            await anyio.to_thread.run_sync(lambda: browser["driver"].quit())
             logger.info(f"Browser {browser['id']} closed successfully")
         except Exception as e:
             logger.error(f"Error closing browser {browser['id']}: {e}")
@@ -245,7 +245,7 @@ async def force_browser_failure(browser_instances: List[Dict[str, Any]], failure
     try:
         if failure_type == "crash":
             # Force browser to crash by executing invalid JavaScript
-            await asyncio.to_thread(
+            await anyio.to_thread.run_sync(
                 lambda: browser["driver"].execute_script("window.open('chrome://crash')")
             )
             logger.info(f"Forced crash for browser {browser['id']}")
@@ -253,7 +253,7 @@ async def force_browser_failure(browser_instances: List[Dict[str, Any]], failure
             
         elif failure_type == "hang":
             # Force browser to hang by executing infinite loop
-            await asyncio.to_thread(
+            await anyio.to_thread.run_sync(
                 lambda: browser["driver"].execute_script("while(true) {}")
             )
             logger.info(f"Forced hang for browser {browser['id']}")
@@ -272,7 +272,7 @@ async def force_browser_failure(browser_instances: List[Dict[str, Any]], failure
             }
             return "Allocated memory successfully";
             """
-            result = await asyncio.to_thread(
+            result = await anyio.to_thread.run_sync(
                 lambda: browser["driver"].execute_script(script)
             )
             logger.info(f"Forced memory pressure for browser {browser['id']}: {result}")
@@ -284,7 +284,7 @@ async def force_browser_failure(browser_instances: List[Dict[str, Any]], failure
             browser_type = browser["type"]
             
             # Close the browser forcefully
-            await asyncio.to_thread(lambda: browser["driver"].quit())
+            await anyio.to_thread.run_sync(lambda: browser["driver"].quit())
             
             logger.info(f"Forced disconnection for browser {browser_id}")
             return {"success": True, "browser_id": browser_id, "failure_type": "disconnect"}
@@ -423,7 +423,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
         # Initialize sharding
         logger.info(f"Initializing sharding for {args.model} with {min(len(browser_instances), args.shards)} shards")
         try:
-            initialized = await asyncio.wait_for(
+            initialized = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                 manager.initialize_sharding(),
                 timeout=args.timeout
             )
@@ -462,7 +462,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
         logger.info(f"Running initial inference for {args.model}")
         try:
             start_time = time.time()
-            result = await asyncio.wait_for(
+            result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                 manager.run_inference_sharded(sample_input),
                 timeout=args.timeout
             )
@@ -518,7 +518,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
             
             # Allow time for failure to be detected
             logger.info(f"Waiting {args.failure_detection_delay}s for failure to be detected")
-            await asyncio.sleep(args.failure_detection_delay)
+            await anyio.sleep(args.failure_detection_delay)
         
         # Phase 6: Post-Failure Inference
         if args.force_failure:
@@ -529,7 +529,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
             logger.info(f"Running post-failure inference for {args.model}")
             try:
                 start_time = time.time()
-                result = await asyncio.wait_for(
+                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                     manager.run_inference_sharded(sample_input),
                     timeout=args.timeout
                 )
@@ -579,7 +579,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
             for i in range(args.iterations):
                 try:
                     start_time = time.time()
-                    result = await asyncio.wait_for(
+                    result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                         manager.run_inference_sharded(sample_input),
                         timeout=args.timeout
                     )
@@ -601,7 +601,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
                 
                 # Wait between iterations
                 if i < args.iterations - 1:
-                    await asyncio.sleep(args.iteration_delay)
+                    await anyio.sleep(args.iteration_delay)
             
             # Calculate benchmark statistics
             if benchmark_results:
@@ -782,11 +782,11 @@ def main():
     
     try:
         # Run the test
-        test_results = asyncio.run(test_real_browser_fault_tolerance(args))
+        test_results = anyio.run(test_real_browser_fault_tolerance(args))
         
         # Save results if output path specified
         if args.output:
-            asyncio.run(save_test_results(test_results, args))
+            anyio.run(save_test_results(test_results, args))
         
         # Determine exit code based on test status
         if test_results["status"] == "completed":

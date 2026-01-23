@@ -17,7 +17,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import logging
 import threading
 import traceback
@@ -268,11 +268,11 @@ class ComprehensiveMonitoringDashboard:
                 self._broadcast_update("metrics", metrics)
                 
                 # Wait for next update cycle
-                await asyncio.sleep(10)
+                await anyio.sleep(10)
                 
             except Exception as e:
                 logger.exception(f"Error updating metrics: {e}")
-                await asyncio.sleep(30)  # Longer sleep on error
+                await anyio.sleep(30)  # Longer sleep on error
     
     def _collect_system_metrics(self):
         """Collect current system metrics."""

@@ -7,7 +7,7 @@ to report test results to GitLab with multiple output formats, artifact manageme
 and merge request comments. It shows a practical implementation of the CI/CD integration pipeline.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -346,4 +346,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

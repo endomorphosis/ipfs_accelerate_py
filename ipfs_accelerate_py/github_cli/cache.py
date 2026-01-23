@@ -14,7 +14,7 @@ import logging
 import os
 import time
 import hashlib
-import asyncio
+import anyio
 import base64
 from datetime import datetime, timezone
 from collections import deque
@@ -1236,13 +1236,13 @@ class GitHubAPICache:
             
             try:
                 # Create a new event loop for the background thread
-                self._event_loop = asyncio.new_event_loop()
+                self._event_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
                 self._p2p_thread_running = False
                 
                 def run_event_loop():
                     """Run event loop in background thread."""
                     try:
-                        asyncio.set_event_loop(self._event_loop)
+                        # TODO: Remove event loop management - asyncio.set_event_loop(self._event_loop)
                         self._event_loop.run_forever()
                     except Exception as e:
                         logger.error(f"P2P event loop error: {e}")
@@ -1452,7 +1452,7 @@ class GitHubAPICache:
                 try:
                     if self._universal_connectivity:
                         # Use universal connectivity with fallback strategies
-                        peer_info = await asyncio.wait_for(
+                        peer_info = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                             self._universal_connectivity.attempt_connection(
                                 self._p2p_host,
                                 peer_addr,
@@ -1472,7 +1472,7 @@ class GitHubAPICache:
                                 pass
                     else:
                         # Fallback to direct connection
-                        await asyncio.wait_for(
+                        await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                             self._connect_to_peer(peer_addr),
                             timeout=15.0
                         )
@@ -1486,7 +1486,7 @@ class GitHubAPICache:
             
             # Start background task for periodic reconnection & bootstrap refresh
             if self._event_loop:
-                asyncio.create_task(self._periodic_connection_maintenance())
+                # TODO: Replace with task group - asyncio.create_task(self._periodic_connection_maintenance())
         
         except Exception as e:
             logger.error(f"Failed to start P2P host: {e}")
@@ -1511,7 +1511,7 @@ class GitHubAPICache:
 
         # Opportunistically perform peer exchange to learn additional multiaddrs.
         try:
-            await asyncio.wait_for(self._peer_exchange_with_peer(peer_info), timeout=10.0)
+            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._peer_exchange_with_peer(peer_info), timeout=10.0)
         except Exception:
             pass
     
@@ -1519,7 +1519,7 @@ class GitHubAPICache:
         """Periodically refresh bootstrap connections and prune dead peers."""
         try:
             while True:
-                await asyncio.sleep(60)  # Check every minute
+                await anyio.sleep(60)  # Check every minute
                 
                 if not self._p2p_host:
                     break
@@ -1532,7 +1532,7 @@ class GitHubAPICache:
                     reconnected = 0
                     for peer_addr in self._p2p_bootstrap_peers[:5]:  # Only try first 5
                         try:
-                            await asyncio.wait_for(self._connect_to_peer(peer_addr), timeout=10.0)
+                            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._connect_to_peer(peer_addr), timeout=10.0)
                             reconnected += 1
                         except Exception:
                             pass  # Silent retry
@@ -1562,7 +1562,7 @@ class GitHubAPICache:
                     if current_time - last < self._peer_exchange_interval:
                         continue
                     try:
-                        await asyncio.wait_for(self._peer_exchange_with_peer(peer_info), timeout=10.0)
+                        await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._peer_exchange_with_peer(peer_info), timeout=10.0)
                     except Exception:
                         pass
                 
@@ -1612,7 +1612,7 @@ class GitHubAPICache:
                 break
             try:
                 if self._universal_connectivity:
-                    peer_info = await asyncio.wait_for(
+                    peer_info = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                         self._universal_connectivity.attempt_connection(
                             self._p2p_host,
                             addr,
@@ -1627,7 +1627,7 @@ class GitHubAPICache:
                         except Exception:
                             pass
                 else:
-                    await asyncio.wait_for(self._connect_to_peer(addr), timeout=10.0)
+                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._connect_to_peer(addr), timeout=10.0)
                 attempts += 1
             except Exception:
                 continue
@@ -1650,7 +1650,7 @@ class GitHubAPICache:
                 break
             try:
                 if self._universal_connectivity:
-                    peer_info = await asyncio.wait_for(
+                    peer_info = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                         self._universal_connectivity.attempt_connection(
                             self._p2p_host,
                             addr,
@@ -1665,7 +1665,7 @@ class GitHubAPICache:
                         except Exception:
                             pass
                 else:
-                    await asyncio.wait_for(self._connect_to_peer(addr), timeout=10.0)
+                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._connect_to_peer(addr), timeout=10.0)
                 attempts += 1
             except Exception:
                 continue
@@ -1817,7 +1817,7 @@ class GitHubAPICache:
             if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
                 self._p2p_bootstrap_peers.append(addr)
             try:
-                await asyncio.wait_for(self._connect_to_peer(addr), timeout=5.0)
+                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._connect_to_peer(addr), timeout=5.0)
             except Exception:
                 pass
             attempts += 1

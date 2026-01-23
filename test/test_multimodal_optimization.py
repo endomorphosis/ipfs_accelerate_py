@@ -488,7 +488,7 @@ def main())))))))))):
             return results
     
     # Run the tests
-            asyncio.run())))))))))run_selected_tests())))))))))))
+            anyio.run())))))))))run_selected_tests())))))))))))
 
 if __name__ == "__main__":
     main()))))))))))

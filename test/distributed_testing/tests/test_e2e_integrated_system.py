@@ -15,7 +15,7 @@ It validates that all components work together properly:
 - Workers can execute tasks and report results
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -378,16 +378,16 @@ class TestE2EIntegratedSystem(unittest.TestCase):
         
         # Start the components
         self.logger.info("Starting coordinator...")
-        coordinator_task = asyncio.create_task(coordinator.run())
+        coordinator_task = # TODO: Replace with task group - asyncio.create_task(coordinator.run())
         
         self.logger.info("Starting dynamic resource manager...")
-        resource_manager_task = asyncio.create_task(resource_manager.run())
+        resource_manager_task = # TODO: Replace with task group - asyncio.create_task(resource_manager.run())
         
         self.logger.info("Starting performance trend analyzer...")
-        performance_analyzer_task = asyncio.create_task(performance_analyzer.run())
+        performance_analyzer_task = # TODO: Replace with task group - asyncio.create_task(performance_analyzer.run())
         
         # Wait for components to initialize
-        await asyncio.sleep(1)
+        await anyio.sleep(1)
         
         # Submit test tasks
         self.logger.info("Submitting test tasks...")
@@ -395,7 +395,7 @@ class TestE2EIntegratedSystem(unittest.TestCase):
         
         # Give time for tasks to be processed
         self.logger.info("Waiting for tasks to be processed...")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Verify that tasks were assigned to workers
         task_assignments = coordinator.get_task_assignments()
@@ -427,7 +427,7 @@ class TestE2EIntegratedSystem(unittest.TestCase):
                     )
         
         # Give time for metrics to be collected
-        await asyncio.sleep(2)
+        await anyio.sleep(2)
         
         # Verify that performance analyzer collected metrics
         metrics = performance_analyzer.get_collected_metrics()
@@ -457,7 +457,7 @@ class TestE2EIntegratedSystem(unittest.TestCase):
         
         # Give time for resource manager to detect high queue and scale up
         self.logger.info("Waiting for resource manager to scale up...")
-        await asyncio.sleep(10)
+        await anyio.sleep(10)
         
         # Verify that resource manager scaled up
         new_worker_states = resource_manager.get_worker_states()
@@ -486,7 +486,7 @@ class TestE2EIntegratedSystem(unittest.TestCase):
         
         # Give time for metrics to be collected and resource manager to detect low queue
         self.logger.info("Waiting for resource manager to scale down...")
-        await asyncio.sleep(20)
+        await anyio.sleep(20)
         
         # Verify that resource manager eventually scaled down
         final_worker_states = resource_manager.get_worker_states()
@@ -508,7 +508,7 @@ class TestE2EIntegratedSystem(unittest.TestCase):
         performance_analyzer_task.cancel()
         
         try:
-            await asyncio.gather(
+            await # TODO: Replace with task group - asyncio.gather(
                 coordinator_task, 
                 resource_manager_task, 
                 performance_analyzer_task, 
@@ -521,7 +521,7 @@ class TestE2EIntegratedSystem(unittest.TestCase):
 
     def test_e2e_integrated_system(self):
         """Test the complete integrated system end-to-end."""
-        asyncio.run(self._run_integrated_test())
+        anyio.run(self._run_integrated_test())
 
 
 if __name__ == "__main__":

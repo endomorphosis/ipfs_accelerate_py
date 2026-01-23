@@ -16,7 +16,7 @@ import os
 import sys
 import json
 import time
-import asyncio
+import anyio
 import argparse
 import logging
 import random
@@ -541,7 +541,7 @@ class WebResourcePoolIntegrationTester:
                 
                 # Start a background task to inject fault after a delay
                 async def inject_fault():
-                    await asyncio.sleep(0.5)  # Wait 500ms
+                    await anyio.sleep(0.5)  # Wait 500ms
                     browser_index = random.randint(0, len(TEST_BROWSERS) - 1)
                     browser = TEST_BROWSERS[browser_index]
                     logger.info(f"Injecting fault in browser: {browser}")
@@ -558,7 +558,7 @@ class WebResourcePoolIntegrationTester:
                         })
                 
                 # Start fault injection task
-                fault_task = asyncio.create_task(inject_fault())
+                fault_task = # TODO: Replace with task group - asyncio.create_task(inject_fault())
             
             # Execute models concurrently
             start_time = time.time()
@@ -778,7 +778,7 @@ async def main_async():
 def main():
     """Main entry point"""
     try:
-        return asyncio.run(main_async())
+        return anyio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130

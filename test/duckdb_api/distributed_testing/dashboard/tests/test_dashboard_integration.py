@@ -10,7 +10,7 @@ import os
 import sys
 import unittest
 import tempfile
-import asyncio
+import anyio
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -350,8 +350,8 @@ class TestDashboardIntegration(unittest.TestCase):
     def test_api_endpoints(self):
         """Test dashboard server API endpoints."""
         # Create event loop for async tests
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
         
         try:
             # Test API status endpoint

@@ -14,7 +14,7 @@ import sys
 import json
 import time
 import uuid
-import asyncio
+import anyio
 import argparse
 import logging
 import threading
@@ -64,7 +64,7 @@ async def run_coordinator_with_orchestration(host, port, db_path, api_key=None):
         
         # Keep the server running
         while True:
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
     except KeyboardInterrupt:
         logger.info("Shutting down...")
@@ -307,7 +307,7 @@ async def run_orchestration_examples(host, port, api_key=None):
                     
                     logger.info(f"  {name} - Status: {status}, Completion: {completion}%")
                 
-            await asyncio.sleep(5)  # Wait before polling again
+            await anyio.sleep(5)  # Wait before polling again
         
         # Show final task listing
         logger.info("Final task listing:")
@@ -333,10 +333,10 @@ def main():
     
     if args.examples:
         # Run examples against an existing coordinator
-        asyncio.run(run_orchestration_examples(args.host, args.port, args.api_key))
+        anyio.run(run_orchestration_examples(args.host, args.port, args.api_key))
     else:
         # Run coordinator with orchestration
-        asyncio.run(run_coordinator_with_orchestration(
+        anyio.run(run_coordinator_with_orchestration(
             args.host, args.port, args.db_path, args.api_key
         ))
 

@@ -6,7 +6,7 @@ This test verifies that the Dynamic Resource Manager properly interacts with the
 Coordinator to provision and deprovision workers based on workload.
 """
 
-import asyncio
+import anyio
 import json
 import os
 import sys
@@ -140,7 +140,7 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         
         try:
             # Wait for initial provisioning to complete
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
             
             # Check that the resource manager has provisioned the minimum number of workers
             self.assertEqual(
@@ -158,7 +158,7 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         
         try:
             # Wait for initial provisioning to complete
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
             
             # Create tasks to fill the queue
             for _ in range(10):
@@ -207,7 +207,7 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
             # Apply the mock
             with patch.object(self.resource_manager.session, 'get', side_effect=mock_get):
                 # Wait for scaling to occur (need to account for cooldown)
-                await asyncio.sleep(4)
+                await anyio.sleep(4)
                 
                 # Check that the resource manager has scaled up
                 active_workers = sum(1 for r in self.resource_manager.resources.values() 
@@ -277,7 +277,7 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
             # Apply the mock
             with patch.object(self.resource_manager.session, 'get', side_effect=mock_get):
                 # Wait for scaling to occur (need to account for cooldown)
-                await asyncio.sleep(4)
+                await anyio.sleep(4)
                 
                 # Check that the resource manager has scaled down
                 active_workers = sum(1 for r in self.resource_manager.resources.values() 
@@ -298,7 +298,7 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         
         try:
             # Wait for initial provisioning to complete
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
             
             # Get the number of workers registered with the coordinator
             with patch('distributed_testing.worker.Worker.start', new_callable=AsyncMock) as mock_start:
@@ -322,7 +322,7 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
                         worker.last_heartbeat = time.time()
                 
                 # Wait for the resource manager to update its state
-                await asyncio.sleep(2)
+                await anyio.sleep(2)
                 
                 # Check that the coordinator has the correct number of workers
                 active_workers_in_coordinator = sum(1 for worker in self.coordinator.state.workers.values() 
@@ -344,7 +344,7 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         
         try:
             # Wait for initial provisioning to complete
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
             
             # Get a worker to simulate anomaly
             test_worker = None
@@ -407,7 +407,7 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
             # Apply the mock
             with patch.object(self.resource_manager.session, 'get', side_effect=mock_get):
                 # Wait for anomaly detection to occur
-                await asyncio.sleep(3)
+                await anyio.sleep(3)
                 
                 # Check if the anomalous worker was detected
                 self.assertIn(test_worker.resource_id, self.resource_manager.resources)
@@ -429,14 +429,14 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
     async def _provision_initial_workers(self):
         """Helper method to provision initial workers and wait for completion."""
         await self.resource_manager._provision_initial_workers()
-        await asyncio.sleep(2)  # Wait for provisioning to complete
+        await anyio.sleep(2)  # Wait for provisioning to complete
 
 
 def run_tests():
     """Run the integration tests."""
     try:
         # Run async tests
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         
         # Create test suite
         suite = unittest.TestSuite()

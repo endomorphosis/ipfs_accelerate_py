@@ -9,7 +9,7 @@ Tests the Model Manager Browser tab functionality including:
 - Using the MCP SDK integration
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import time
@@ -413,5 +413,5 @@ async def main():
 
 
 if __name__ == '__main__':
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

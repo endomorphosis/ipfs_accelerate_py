@@ -14,7 +14,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import argparse
 import random
@@ -82,12 +82,12 @@ async def basic_example():
     
     # Define test operations
     async def successful_operation():
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         logger.info("Operation succeeded")
         return "Success"
         
     async def failing_operation():
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         logger.info("Operation failed")
         raise Exception("Simulated failure")
     
@@ -115,7 +115,7 @@ async def basic_example():
     
     # Wait for the circuit to transition to half-open state
     logger.info("\nWaiting for recovery timeout...")
-    await asyncio.sleep(6)  # Wait longer than recovery_timeout (5s)
+    await anyio.sleep(6)  # Wait longer than recovery_timeout (5s)
     
     # Try a successful operation which should close the circuit
     logger.info("\nTrying operation after recovery timeout...")
@@ -195,15 +195,15 @@ async def advanced_example():
         # Determine if this operation will succeed or fail
         if random.random() < success_prob:
             # Successful operation
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
             return f"Success ({pattern_type})"
         else:
             # Failing operation
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
             
             # If in half-open state for some patterns, make recovery slower
             if pattern_type == "resource" and circuit_breaker.circuit_breaker.state == "half_open":
-                await asyncio.sleep(0.5)  # Slower recovery for resource issues
+                await anyio.sleep(0.5)  # Slower recovery for resource issues
                 
             raise Exception(f"Simulated {error_type} failure")
     
@@ -229,7 +229,7 @@ async def advanced_example():
                     logger.info(f"  Operation {i+1} failed: {str(e)}")
                 
                 # Add a short delay between operations
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
             
             # Check parameters after this pattern
             state = circuit_breaker.get_state()
@@ -274,7 +274,7 @@ async def advanced_example():
                     logger.info(f"  Operation {i+1} failed: {error_msg}")
             
             # Add a short delay between operations
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
         
         if opened_preemptively:
             logger.info("Predictive circuit breaking successfully demonstrated!")
@@ -347,10 +347,10 @@ async def hardware_specific_example():
     async def gpu_operation(success_rate: float = 0.7):
         """GPU operation with typical GPU-related errors."""
         if random.random() < success_rate:
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
             return "GPU Success"
         else:
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
             # GPU failures are often related to memory or resources
             error_type = random.choice(["memory", "resource", "gpu"])
             raise Exception(f"Simulated GPU {error_type} failure")
@@ -358,10 +358,10 @@ async def hardware_specific_example():
     async def cpu_operation(success_rate: float = 0.8):
         """CPU operation with typical CPU-related errors."""
         if random.random() < success_rate:
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
             return "CPU Success"
         else:
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
             # CPU failures are often related to timeouts or API issues
             error_type = random.choice(["timeout", "api", "connection"])
             raise Exception(f"Simulated CPU {error_type} failure")
@@ -369,10 +369,10 @@ async def hardware_specific_example():
     async def webgpu_operation(success_rate: float = 0.6):
         """WebGPU operation with WebGPU-specific errors."""
         if random.random() < success_rate:
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
             return "WebGPU Success"
         else:
-            await asyncio.sleep(0.05)
+            await anyio.sleep(0.05)
             # WebGPU failures include browser-specific issues
             error_type = random.choice([
                 "shader_compilation", "memory", "resource", "context_lost",
@@ -415,7 +415,7 @@ async def hardware_specific_example():
                         logger.info(f"    Operation {j+1} failed: {str(e)}")
                 
                 # Add a short delay between operations
-                await asyncio.sleep(0.05)
+                await anyio.sleep(0.05)
             
             # Show circuit breaker state after this phase
             state = cb.get_state()
@@ -486,10 +486,10 @@ async def browser_testing_example():
         async def simulated_browser_test(test_type: str, success_rate: float = 0.7):
             """Simulate a browser test with typical browser-related errors."""
             if random.random() < success_rate:
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
                 return f"Browser test '{test_type}' succeeded"
             else:
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
                 # Simulate different types of browser failures
                 error_types = {
                     "load": ["connection_failure", "timeout", "resource_exhaustion"],
@@ -532,7 +532,7 @@ async def browser_testing_example():
                     logger.info(f"  Test {i+1} failed: {str(e)}")
                 
                 # Add a short delay between tests
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
             
             # Show optimized parameters
             state = circuit_breaker.get_state()
@@ -570,7 +570,7 @@ async def browser_testing_example():
             """Run a browser test of specified type."""
             # In a real scenario, this would run actual browser interactions
             # For this example, we'll simulate different test behaviors
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
             
             # Simulate navigating to a test page
             test_url = f"https://example.com/webgpu_tests/{test_type}"
@@ -581,13 +581,13 @@ async def browser_testing_example():
                     browser_bridge.driver.get(test_url)
                     logger.info(f"Navigated to {test_url}")
                     # Simulate test execution
-                    await asyncio.sleep(0.2)
+                    await anyio.sleep(0.2)
                     return f"Browser test '{test_type}' completed"
                 except Exception as e:
                     raise Exception(f"Browser test '{test_type}' failed: {str(e)}")
             else:
                 # Simulate browser behavior
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
                 return f"Simulated browser test '{test_type}' completed"
         
         # Inject failures to test circuit breaker
@@ -627,7 +627,7 @@ async def browser_testing_example():
                     logger.error(f"  Unexpected error: {str(e)}")
                 
                 # Add a short delay between tests
-                await asyncio.sleep(0.3)
+                await anyio.sleep(0.3)
             
             # Show optimized parameters
             state = circuit_breaker.get_state()
@@ -682,5 +682,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = anyio.run(main())
     sys.exit(exit_code)

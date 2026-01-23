@@ -10,7 +10,7 @@ This example demonstrates:
 5. Including artifact URLs in test reports and PR comments
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -186,7 +186,7 @@ def main():
     os.makedirs(args.artifact_dir, exist_ok=True)
     
     # Run the example
-    asyncio.run(run_example(args))
+    anyio.run(run_example(args))
 
 if __name__ == "__main__":
     main()

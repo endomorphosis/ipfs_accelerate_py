@@ -9,7 +9,7 @@ Usage:
     python resource_pool_load_balancer_example.py
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -141,7 +141,7 @@ async def run_example():
         
         # Wait for tests to complete
         logger.info("Waiting for tests to complete...")
-        await asyncio.sleep(10)
+        await anyio.sleep(10)
         
         # Analyze system performance
         logger.info("Analyzing system performance...")
@@ -166,7 +166,7 @@ async def run_example():
         logger.info(f"Applied optimizations: {len(results['applied'])} applied, {len(results['failed'])} failed")
         
         # Wait a bit more for any remaining operations
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
     except Exception as e:
         logger.error(f"Error in example: {str(e)}")
@@ -179,7 +179,7 @@ async def run_example():
 def main():
     """Main function to run the example."""
     try:
-        asyncio.run(run_example())
+        anyio.run(run_example())
     except KeyboardInterrupt:
         logger.info("Example interrupted by user")
     except Exception as e:

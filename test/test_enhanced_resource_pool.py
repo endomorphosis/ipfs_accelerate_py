@@ -15,7 +15,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import argparse
 import logging
 from datetime import datetime
@@ -234,12 +234,12 @@ class EnhancedResourcePoolIntegration:
         tasks = []
         for model, inputs in model_and_inputs_list:
             if not model:
-                tasks.append(asyncio.create_task(asyncio.sleep(0)))  # Dummy task
+                tasks.append(# TODO: Replace with task group - asyncio.create_task(anyio.sleep(0)))  # Dummy task
             else:
-                tasks.append(asyncio.create_task(model(inputs)))
+                tasks.append(# TODO: Replace with task group - asyncio.create_task(model(inputs)))
         
         # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await # TODO: Replace with task group - asyncio.gather(*tasks, return_exceptions=True)
         
         # Process results
         processed_results = []
@@ -537,11 +537,11 @@ async def run_stress_test(args):
                                f"({metrics['connections']['active']} active, {metrics['connections']['idle']} idle)")
                 
                 # Small delay between iterations
-                await asyncio.sleep(0.1)
+                await anyio.sleep(0.1)
                 
             except Exception as e:
                 logger.error(f"Error during stress test iteration {iterations}: {e}")
-                await asyncio.sleep(1)  # Longer delay after error
+                await anyio.sleep(1)  # Longer delay after error
         
         # Print final results
         elapsed = time.time() - start_time
@@ -626,7 +626,7 @@ async def run_adaptive_scaling_test(args):
             logger.info(f"Connection count after loading {model_name}: {metrics['connections']['total']}")
             
             # Short delay to let adaptive scaling respond
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
         
         # Phase 2: Run simultaneous inference to trigger scale-up
         logger.info("Phase 2: Running simultaneous inference to trigger scale-up")
@@ -646,13 +646,13 @@ async def run_adaptive_scaling_test(args):
             logger.info(f"Connection count after batch {i+1}: {metrics['connections']['total']}")
             
             # Short delay to let adaptive scaling respond
-            await asyncio.sleep(2)
+            await anyio.sleep(2)
         
         # Phase 3: Idle period to trigger scale-down
         logger.info("Phase 3: Idle period to trigger scale-down")
         for i in range(6):
             # Wait and check connection count
-            await asyncio.sleep(5)
+            await anyio.sleep(5)
             
             # Check connection count during idle period
             metrics = integration.get_metrics()
@@ -759,4 +759,4 @@ async def main():
         logger.error(f"Unknown test type: {args.test_type}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

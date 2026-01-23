@@ -15,7 +15,7 @@ Usage:
     python run_test_adaptive_load_balancer.py [--options]
 """
 
-import asyncio
+import anyio
 import argparse
 import logging
 import signal
@@ -64,7 +64,7 @@ async def run_coordinator(db_path='./test_adaptive_load_balancer.duckdb', port=8
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
     # Wait a bit for coordinator to start
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Load security config to get API keys
     global security_config, coordinator_url, api_key
@@ -91,7 +91,7 @@ async def run_worker(worker_id, capabilities, port=8082, delay=0):
     
     # Wait for specified delay
     if delay > 0:
-        await asyncio.sleep(delay)
+        await anyio.sleep(delay)
     
     # Create capabilities JSON
     capabilities_json = json.dumps(capabilities)
@@ -401,7 +401,7 @@ async def monitor_system(port=8082, interval=5, duration=600):
                 logger.error(f"Error monitoring system: {str(e)}")
             
             # Wait for next monitoring interval
-            await asyncio.sleep(interval)
+            await anyio.sleep(interval)
 
 async def create_worker_with_random_load(worker_id, port=8082, base_capabilities=None):
     """Create a worker with specified capabilities and simulate load"""
@@ -420,10 +420,10 @@ async def create_worker_with_random_load(worker_id, port=8082, base_capabilities
     worker_processes.append(worker_process)
     
     # Wait for worker to register
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Start task to periodically update worker load
-    asyncio.create_task(simulate_worker_load(worker_id, port))
+    # TODO: Replace with task group - asyncio.create_task(simulate_worker_load(worker_id, port))
     
     return worker_id
 
@@ -509,11 +509,11 @@ async def simulate_worker_load(worker_id, port=8082, update_interval=10):
                 step += 1
                 
                 # Wait for next update
-                await asyncio.sleep(update_interval)
+                await anyio.sleep(update_interval)
                 
             except Exception as e:
                 logger.error(f"Error simulating worker load: {str(e)}")
-                await asyncio.sleep(update_interval)
+                await anyio.sleep(update_interval)
 
 async def add_dynamic_workers(port=8082, delay_between=20, total_workers=10):
     """Add workers dynamically over time to demonstrate system adaptation."""
@@ -589,7 +589,7 @@ async def add_dynamic_workers(port=8082, delay_between=20, total_workers=10):
     remaining = total_workers - initial_count
     for i in range(remaining):
         # Wait between adding workers
-        await asyncio.sleep(delay_between)
+        await anyio.sleep(delay_between)
         
         # Add a new worker
         template = random.choice(worker_templates)
@@ -607,16 +607,16 @@ async def run_dynamic_environment(port=8082, duration=600):
     This demonstrates how the advanced load balancer adapts to changing conditions.
     """
     # Start monitoring
-    monitor_task = asyncio.create_task(monitor_system(port, interval=5, duration=duration))
+    monitor_task = # TODO: Replace with task group - asyncio.create_task(monitor_system(port, interval=5, duration=duration))
     
     # Add dynamic workers
-    workers_task = asyncio.create_task(add_dynamic_workers(port, delay_between=30, total_workers=8))
+    workers_task = # TODO: Replace with task group - asyncio.create_task(add_dynamic_workers(port, delay_between=30, total_workers=8))
     
     # Create initial batch of tasks
     await create_test_tasks(port)
     
     # Wait for test duration
-    await asyncio.sleep(duration)
+    await anyio.sleep(duration)
     
     # Cancel ongoing tasks
     monitor_task.cancel()
@@ -692,7 +692,7 @@ if __name__ == "__main__":
     
     # Run the test
     try:
-        asyncio.run(main(args))
+        anyio.run(main(args))
     except KeyboardInterrupt:
         print("\nTest interrupted by user")
         sys.exit(0)

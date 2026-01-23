@@ -6,7 +6,7 @@ This module provides a FastAPI-based JSON-RPC server that exposes
 all MCP tools through a JSON-RPC 2.0 interface.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import uuid
@@ -506,7 +506,7 @@ class MCPJSONRPCServer:
         # Handle batch requests
         if isinstance(request_data, list):
             tasks = [self._handle_single_request(req) for req in request_data]
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            responses = await # TODO: Replace with task group - asyncio.gather(*tasks, return_exceptions=True)
             return [resp for resp in responses if resp is not None]
         
         # Handle single request

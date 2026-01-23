@@ -221,7 +221,7 @@ class test_hf_llava:
                         mock_processor = MagicMock()
                         
                         # Create queue
-                        queue = asyncio.Queue(16)
+                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
                         batch_size = 1  # MPS typically processes one item at a time for LLaVA
                         
                         return mock_model, mock_processor, handler, queue, batch_size

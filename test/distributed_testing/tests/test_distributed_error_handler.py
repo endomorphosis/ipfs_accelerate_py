@@ -6,7 +6,7 @@ This module contains unit tests for the distributed error handler implementation
 """
 
 import pytest
-import asyncio
+import anyio
 import time
 from unittest.mock import Mock, patch
 import logging
@@ -325,12 +325,12 @@ async def test_safe_execute_async(error_handler):
     """Test safe execute async wrapper."""
     # Async function that works
     async def success_func(x, y):
-        await asyncio.sleep(0.01)
+        await anyio.sleep(0.01)
         return x + y
     
     # Async function that raises
     async def error_func(x, y):
-        await asyncio.sleep(0.01)
+        await anyio.sleep(0.01)
         raise ValueError(f"Async error with {x} and {y}")
     
     # Test with successful function

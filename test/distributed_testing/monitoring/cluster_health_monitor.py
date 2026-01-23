@@ -4,7 +4,7 @@ Cluster Health Monitor for Distributed Testing Framework.
 Provides real-time visualization of coordinator cluster health and performance metrics.
 """
 
-import asyncio
+import anyio
 import os
 import sys
 import time
@@ -120,7 +120,7 @@ class ClusterHealthMonitor:
                 self.nodes.append(CoordinatorStatus(node_id, host, port))
                 
         self.update_interval = update_interval
-        self.stop_event = asyncio.Event()
+        self.stop_event = anyio.Event()
         self.status_history = {}
         
         # Initialize status history for each node
@@ -151,7 +151,7 @@ class ClusterHealthMonitor:
                 
                 # Wait for the next update interval
                 try:
-                    await asyncio.wait_for(self.stop_event.wait(), self.update_interval)
+                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.stop_event.wait(), self.update_interval)
                 except asyncio.TimeoutError:
                     # This is expected - just continue
                     pass
@@ -178,7 +178,7 @@ class ClusterHealthMonitor:
             tasks.append(self._update_node_status(node, current_time))
             
         # Wait for all tasks to complete
-        await asyncio.gather(*tasks)
+        await # TODO: Replace with task group - asyncio.gather(*tasks)
         
         # Update the GUI
         self.update_queue.put(self.nodes)
@@ -541,7 +541,7 @@ class ClusterHealthMonitor:
     def _on_close(self):
         """Handle window close event."""
         logger.info("GUI closed - stopping monitoring")
-        asyncio.create_task(self.stop_monitoring())
+        # TODO: Replace with task group - asyncio.create_task(self.stop_monitoring())
         self.root.destroy()
         
 
@@ -560,4 +560,4 @@ async def main():
     
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

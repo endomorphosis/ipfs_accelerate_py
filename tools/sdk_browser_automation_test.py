@@ -7,7 +7,7 @@ verifying that all inference pipelines work through the JavaScript SDK
 with JSON-RPC communication.
 """
 
-import asyncio
+import anyio
 import os
 import subprocess
 import sys
@@ -90,7 +90,7 @@ class SDKBrowserTester:
         
         # Wait for servers to start
         print("⏳ Waiting for servers to start...")
-        await asyncio.sleep(8)  # Give servers time to start
+        await anyio.sleep(8)  # Give servers time to start
         
         # Check if process is still running
         if self.dashboard_process.poll() is not None:
@@ -616,5 +616,5 @@ async def main():
     return tester.test_results["failed_tests"] == 0
 
 if __name__ == "__main__":
-    success = asyncio.run(main())
+    success = anyio.run(main())
     sys.exit(0 if success else 1)

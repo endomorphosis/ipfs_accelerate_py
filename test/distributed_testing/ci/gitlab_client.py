@@ -6,7 +6,7 @@ This module provides a client for interacting with GitLab's API to report test r
 update build status, and add MR comments.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import json

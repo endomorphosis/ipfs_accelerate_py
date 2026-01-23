@@ -1,4 +1,4 @@
-import asyncio
+import anyio
 import os
 import json
 import time
@@ -171,12 +171,12 @@ class hf_bert:
             
             import asyncio
             print(f"(MOCK) Created mock BERT endpoint for {model_name} on {device_label}")
-            return endpoint, tokenizer, mock_handler, asyncio.Queue(32), 0
+            return endpoint, tokenizer, mock_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
             
         except Exception as e:
             print(f"Error creating mock endpoint: {e}")
             import asyncio
-            return None, None, None, asyncio.Queue(32), 0
+            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
     
     def init(self):        
         if "torch" not in list(self.resources.keys()):
@@ -289,7 +289,7 @@ class hf_bert:
                         tokenizer=tokenizer
                     )
                     
-                    return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+                    return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
                     
                 except Exception as e:
                     print(f"Error loading model: {e}")
@@ -452,7 +452,7 @@ class hf_bert:
             if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
                 self.torch.cuda.empty_cache()
             
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(batch_size), batch_size
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(batch_size), batch_size
             
         except Exception as e:
             print(f"Error loading CUDA model: {e}")
@@ -551,7 +551,7 @@ class hf_bert:
             )
             
             print(f"Successfully initialized OpenVINO handler for {model_name}")
-            return model, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+            return model, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
             
         except Exception as e:
             print(f"Error initializing OpenVINO model: {e}")
@@ -650,7 +650,7 @@ class hf_bert:
             
         endpoint_handler = self.create_apple_text_embedding_endpoint_handler(endpoint, apple_label, endpoint, tokenizer)
         
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
         
     def init_qualcomm(self, model, device, qualcomm_label):
         """Initialize model for Qualcomm hardware.
@@ -706,7 +706,7 @@ class hf_bert:
             
             endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler(endpoint, qualcomm_label, endpoint, tokenizer)
             
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
         except Exception as e:
             print(f"Error initializing Qualcomm model: {e}")
             return None, None, None, None, 0

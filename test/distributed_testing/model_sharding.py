@@ -10,7 +10,7 @@ Usage:
     that would not fit in a single browser's memory.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import uuid
@@ -407,7 +407,7 @@ class ShardedModelManager:
         
         for shard_id, shard in shards.items():
             # Create task for shard
-            task = asyncio.create_task(
+            task = # TODO: Replace with task group - asyncio.create_task(
                 self._execute_shard(
                     sharded_model_id=sharded_model_id,
                     shard_id=shard_id,
@@ -478,7 +478,7 @@ class ShardedModelManager:
         # For now, just simulate execution
         
         # Simulate processing time
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # Generate a dummy result based on shard index
         shard_index = shard["index"]

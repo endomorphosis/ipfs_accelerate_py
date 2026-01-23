@@ -7,7 +7,7 @@ across different CI/CD systems. It integrates with the artifact metadata system
 and provides utilities for searching, retrieving, and comparing artifacts.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -665,4 +665,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

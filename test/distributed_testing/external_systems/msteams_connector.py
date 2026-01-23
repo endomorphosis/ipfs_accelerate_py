@@ -6,7 +6,7 @@ This module provides a connector for sending notifications to Microsoft Teams ch
 through webhook URLs and the Microsoft Graph API if more detailed integrations are needed.
 """
 
-import asyncio
+import anyio
 import logging
 import json
 import os
@@ -344,7 +344,7 @@ class MSTeamsConnector(ExternalSystemInterface):
             # Reset counter and wait before allowing more sends
             wait_time = self.rate_limit_sleep
             logger.info(f"Rate limit reached, pausing for {wait_time} seconds")
-            await asyncio.sleep(wait_time)
+            await anyio.sleep(wait_time)
             self.sent_count = 0
     
     async def _ensure_connection(self):

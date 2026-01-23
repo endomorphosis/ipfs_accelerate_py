@@ -33,7 +33,7 @@ import sys
 import time
 import random
 import logging
-import asyncio
+import anyio
 from enum import Enum
 from typing import Dict, Any, Optional, List, Union
 
@@ -342,7 +342,7 @@ class BrowserFailureInjector:
             driver.execute_script(script)
             
             # Additional artificial delay to ensure script executes
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             return True
         except Exception as e:
@@ -431,7 +431,7 @@ class BrowserFailureInjector:
             driver.execute_script(script)
             
             # Additional artificial delay to ensure script executes
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             return True
         except Exception as e:
@@ -556,7 +556,7 @@ class BrowserFailureInjector:
             driver.execute_script(script)
             
             # Additional artificial delay to ensure script executes
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             return True
         except Exception as e:
@@ -693,7 +693,7 @@ class BrowserFailureInjector:
             driver.execute_script(script)
             
             # Additional artificial delay to ensure script executes
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             return True
         except Exception as e:
@@ -870,7 +870,7 @@ class BrowserFailureInjector:
             driver.execute_script(script)
             
             # Additional artificial delay to ensure script executes
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             # Check if browser is still responsive
             try:
@@ -1007,7 +1007,7 @@ class BrowserFailureInjector:
             driver.execute_script(script)
             
             # Additional artificial delay to ensure script executes
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
             
             return True
         except Exception as e:
@@ -1197,7 +1197,7 @@ async def example_usage():
         # Wait for circuit to transition to half-open
         if circuit_breaker and circuit_breaker.get_state() == "open":
             print(f"\nWaiting for circuit to transition to half-open state...")
-            await asyncio.sleep(circuit_breaker.half_open_after + 1)
+            await anyio.sleep(circuit_breaker.half_open_after + 1)
             print(f"Circuit state after waiting: {circuit_breaker.get_state()}")
             
             # Try a safer failure with half-open circuit
@@ -1214,4 +1214,4 @@ async def example_usage():
 
 if __name__ == "__main__":
     # Run the example
-    asyncio.run(example_usage())
+    anyio.run(example_usage())

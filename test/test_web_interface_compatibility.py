@@ -64,11 +64,11 @@ def check_async_compatibility():
     import asyncio
     
     async def test_async():
-        await asyncio.sleep(0.001)
+        await anyio.sleep(0.001)
         return "async works"
     
     try:
-        result = asyncio.run(test_async())
+        result = anyio.run(test_async())
         print("✅ Async/await functionality working")
         return True
     except Exception as e:

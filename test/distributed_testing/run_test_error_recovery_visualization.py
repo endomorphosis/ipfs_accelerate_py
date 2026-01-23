@@ -9,7 +9,7 @@ the example visualizations referenced in the documentation.
 import os
 import sys
 import logging
-import asyncio
+import anyio
 import argparse
 import random
 import time
@@ -856,7 +856,7 @@ def main():
     args = parser.parse_args()
     
     # Run the visualization test
-    asyncio.run(run_visualization_test(
+    anyio.run(run_visualization_test(
         output_dir=args.output_dir,
         generate_sample_data=args.generate_sample_data,
         format=args.format

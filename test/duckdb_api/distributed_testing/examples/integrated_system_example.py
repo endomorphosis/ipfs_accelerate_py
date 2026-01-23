@@ -19,7 +19,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import threading
 import subprocess
@@ -319,13 +319,13 @@ async def run_integrated_example():
         logger.info("Fault Tolerance System initialized")
         
         # Start coordinator server
-        coordinator_task = asyncio.create_task(coordinator.start())
+        coordinator_task = # TODO: Replace with task group - asyncio.create_task(coordinator.start())
         logger.info(f"Coordinator started on ws://localhost:8080")
         logger.info(f"Admin API Key: {security_config['api_keys']['admin']}")
         logger.info(f"Worker API Key: {security_config['api_keys']['worker']}")
         
         # Wait for coordinator to initialize
-        await asyncio.sleep(2)
+        await anyio.sleep(2)
         
         # Create and start comprehensive dashboard
         def start_dashboard():
@@ -363,7 +363,7 @@ async def run_integrated_example():
         logger.info(f"Started {len(worker_processes)} mock workers")
         
         # Wait for workers to register
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
         
         # Submit example tasks
         submitted_tasks = submit_example_tasks(
@@ -377,7 +377,7 @@ async def run_integrated_example():
         # Wait for tasks to process (60 seconds)
         for i in range(6):
             logger.info(f"Running... ({i+1}/6) - Press Ctrl+C to stop early")
-            await asyncio.sleep(10)
+            await anyio.sleep(10)
         
         # Clean up
         logger.info("Example completed, shutting down...")
@@ -405,7 +405,7 @@ async def run_integrated_example():
 def main():
     """Main entry point."""
     try:
-        asyncio.run(run_integrated_example())
+        anyio.run(run_integrated_example())
     except KeyboardInterrupt:
         logger.info("Example interrupted by user")
 

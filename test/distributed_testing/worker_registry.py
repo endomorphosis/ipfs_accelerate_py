@@ -8,7 +8,7 @@ for distributed test execution.
 
 import time
 import logging
-import asyncio
+import anyio
 from typing import Dict, List, Any, Optional, Set
 
 # Configure logging

@@ -7,7 +7,7 @@ It verifies that workers can be automatically discovered and registered, and tha
 are properly reported to CI systems.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -283,7 +283,7 @@ class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
             tasks.append(task_data)
         
         # Wait for tasks to be processed (in this case, immediately due to our mock)
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         # Create a test result object
         test_result = TestRunResult(

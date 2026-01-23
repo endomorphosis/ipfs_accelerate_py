@@ -11,7 +11,7 @@ Usage:
     and browser-based resource pools.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -922,7 +922,7 @@ class LoadBalancerResourcePoolBridge:
         
         # Monitoring
         self.monitoring_interval = 10  # seconds
-        self._stop_monitoring = asyncio.Event()
+        self._stop_monitoring = anyio.Event()
         self.monitoring_task = None
         
         logger.info("LoadBalancerResourcePoolBridge initialized")
@@ -936,7 +936,7 @@ class LoadBalancerResourcePoolBridge:
         
         # Start monitoring task
         self._stop_monitoring.clear()
-        self.monitoring_task = asyncio.create_task(self._monitoring_loop())
+        self.monitoring_task = # TODO: Replace with task group - asyncio.create_task(self._monitoring_loop())
         
         logger.info("Load balancer resource pool bridge started")
     
@@ -948,7 +948,7 @@ class LoadBalancerResourcePoolBridge:
         if self.monitoring_task:
             self._stop_monitoring.set()
             try:
-                await asyncio.wait_for(self.monitoring_task, timeout=5)
+                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.monitoring_task, timeout=5)
             except asyncio.TimeoutError:
                 logger.warning("Monitoring task did not stop gracefully")
         
@@ -1040,7 +1040,7 @@ class LoadBalancerResourcePoolBridge:
         test_id = self.load_balancer.submit_test(test_requirements)
         
         # Process assignments
-        asyncio.create_task(self._process_assignments())
+        # TODO: Replace with task group - asyncio.create_task(self._process_assignments())
         
         return test_id
     
@@ -1068,7 +1068,7 @@ class LoadBalancerResourcePoolBridge:
                     continue
                 
                 # Execute test
-                asyncio.create_task(self._execute_test(worker, assignment.test_id, assignment.test_requirements))
+                # TODO: Replace with task group - asyncio.create_task(self._execute_test(worker, assignment.test_id, assignment.test_requirements))
     
     async def _execute_test(
         self,
@@ -1142,7 +1142,7 @@ class LoadBalancerResourcePoolBridge:
             
             # Wait for next interval
             try:
-                await asyncio.wait_for(
+                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                     self._stop_monitoring.wait(), 
                     timeout=self.monitoring_interval
                 )

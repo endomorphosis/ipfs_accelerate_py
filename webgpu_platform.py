@@ -817,4 +817,4 @@ if __name__ == "__main__":
             print("WebGPU is not available")
     
     # Run main function
-    asyncio.run(main())
+    anyio.run(main())

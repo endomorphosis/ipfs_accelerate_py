@@ -6,7 +6,7 @@ This plugin integrates the WebGPU/WebNN Resource Pool with the Distributed Testi
 providing browser-based acceleration capabilities for distributed tests with fault tolerance.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -125,7 +125,7 @@ class WebGPUResourcePoolPlugin(Plugin):
             
             # Start metrics collection if enabled
             if self.config["metric_collection"]:
-                asyncio.create_task(self._collect_metrics())
+                # TODO: Replace with task group - asyncio.create_task(self._collect_metrics())
             
             logger.info("WebGPUResourcePoolPlugin initialized with coordinator")
             return True
@@ -179,7 +179,7 @@ class WebGPUResourcePoolPlugin(Plugin):
         while True:
             try:
                 # Sleep for interval
-                await asyncio.sleep(60)  # Collect metrics every minute
+                await anyio.sleep(60)  # Collect metrics every minute
                 
                 # Get performance history
                 history = await self.resource_pool_integration.get_performance_history(

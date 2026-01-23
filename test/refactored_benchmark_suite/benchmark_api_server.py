@@ -13,7 +13,7 @@ import json
 import time
 import uuid
 import logging
-import asyncio
+import anyio
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -232,7 +232,7 @@ class BenchmarkManager:
                 skillset_dir=skillset_dir,
                 specific_models=models,
                 on_progress_callback=lambda progress, step, completed, total: 
-                    asyncio.create_task(self._update_progress(run_id, progress, step, completed, total))
+                    # TODO: Replace with task group - asyncio.create_task(self._update_progress(run_id, progress, step, completed, total))
             )
             
             # Initialize the pipeline
@@ -251,7 +251,7 @@ class BenchmarkManager:
             self.active_runs[run_id]["current_step"] = "Running benchmarks"
             await self._send_ws_update(run_id)
             
-            results = await asyncio.to_thread(pipeline.run)
+            results = await anyio.to_thread.run_sync(pipeline.run)
             
             # Update status
             self.active_runs[run_id]["status"] = "completed"
@@ -601,7 +601,7 @@ class BenchmarkManager:
         for run_id in list(self.ws_connections.keys()):
             for connection in self.ws_connections[run_id]:
                 try:
-                    asyncio.create_task(connection.close())
+                    # TODO: Replace with task group - asyncio.create_task(connection.close())
                 except:
                     pass
             

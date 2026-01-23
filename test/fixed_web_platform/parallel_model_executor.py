@@ -24,7 +24,7 @@ import os
 import sys
 import time
 import json
-import asyncio
+import anyio
 import logging
 import threading
 from typing import Dict, List, Tuple, Any, Optional, Union, Callable
@@ -82,7 +82,7 @@ class ParallelModelExecutor:
         self.initialized = False
         self.workers = []
         self.worker_stats = {}
-        self.worker_queue = asyncio.Queue()
+        self.worker_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
         self.result_cache = {}
         self.execution_metrics = {
             'total_executions': 0,
@@ -115,10 +115,10 @@ class ParallelModelExecutor:
         try:
             # Get or create event loop
             try:
-                self.loop = asyncio.get_event_loop()
+                self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
             except RuntimeError:
-                self.loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self.loop)
+                self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+                # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
             
             # Verify resource pool integration is available
             if not self.resource_pool_integration:
@@ -145,7 +145,7 @@ class ParallelModelExecutor:
                     return False
             
             # Start worker monitor task
-            self._worker_monitor_task = asyncio.create_task(self._monitor_workers())
+            self._worker_monitor_task = # TODO: Replace with task group - asyncio.create_task(self._monitor_workers())
             
             # Initialize worker queue with max_workers placeholders
             for _ in range(self.max_workers):
@@ -166,7 +166,7 @@ class ParallelModelExecutor:
         try:
             while not self._is_shutting_down:
                 # Wait a bit between checks
-                await asyncio.sleep(5.0)
+                await anyio.sleep(5.0)
                 
                 # Skip if not fully initialized
                 if not self.initialized:
@@ -353,7 +353,7 @@ class ParallelModelExecutor:
                     futures.append((model_id, future))
                     
                     # Create task for model execution
-                    task = asyncio.create_task(
+                    task = # TODO: Replace with task group - asyncio.create_task(
                         self._execute_model_with_resource_pool(
                             model_id, inputs, family, platform, browser, future
                         )
@@ -475,7 +475,7 @@ class ParallelModelExecutor:
         worker = None
         try:
             # Wait for available worker with timeout
-            worker = await asyncio.wait_for(self.worker_queue.get(), timeout=10.0)
+            worker = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.worker_queue.get(), timeout=10.0)
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for worker for model {model_id}")
             if not future.done():
@@ -746,4 +746,4 @@ async def test_parallel_model_executor():
 # Run test if script executed directly
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(test_parallel_model_executor())
+    anyio.run(test_parallel_model_executor())

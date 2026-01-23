@@ -6,7 +6,7 @@ This module provides a client for interacting with CircleCI's API to report test
 update build status, and add artifacts.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import json

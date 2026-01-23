@@ -9,7 +9,7 @@ without requiring Playwright for screenshots initially.
 import os
 import sys
 import time
-import asyncio
+import anyio
 import subprocess
 import signal
 import json
@@ -53,7 +53,7 @@ app.run(host='127.0.0.1', port=8080, debug=False)
         
         # Wait for server to start
         print("⏳ Waiting for server to start...")
-        await asyncio.sleep(8)
+        await anyio.sleep(8)
         
         # Check if server is running
         try:
@@ -67,11 +67,11 @@ app.run(host='127.0.0.1', port=8080, debug=False)
                                 return True
                     except Exception as e:
                         print(f"   Waiting... attempt {i+1}/15")
-                        await asyncio.sleep(2)
+                        await anyio.sleep(2)
                         
         except ImportError:
             # Fallback without aiohttp
-            await asyncio.sleep(15)
+            await anyio.sleep(15)
             return True
             
         print("⚠️ Server may not be responding, but continuing with tests...")
@@ -339,7 +339,7 @@ if __name__ == "__main__":
     print("=" * 60)
     
     try:
-        result = asyncio.run(main())
+        result = anyio.run(main())
         exit_code = 0 if result else 1
     except Exception as e:
         print(f"❌ Failed to run tests: {e}")

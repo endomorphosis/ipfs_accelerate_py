@@ -10,7 +10,7 @@ Usage:
 """
 
 import logging
-import asyncio
+import anyio
 import json
 import time
 from typing import Dict, List, Optional, Any, Set, Tuple, Callable, Union
@@ -575,4 +575,4 @@ if __name__ == "__main__":
                 print(f"- {issue}")
     
     # Run the example
-    asyncio.run(run_example())
+    anyio.run(run_example())

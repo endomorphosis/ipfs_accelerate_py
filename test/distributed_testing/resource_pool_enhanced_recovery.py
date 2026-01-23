@@ -13,7 +13,7 @@ Integration points:
 4. Performance History Tracking
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -682,7 +682,7 @@ class EnhancedResourcePoolRecovery:
             }
             
             # Simulate browser initialization
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
             
             # Update status
             self.connection_pool[new_browser_id]['status'] = 'ready'
@@ -804,7 +804,7 @@ class EnhancedResourcePoolRecovery:
         """
         # In real implementation, would reset and retry the shard
         # For now, just simulate success
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         logger.info(f"Retried shard {shard_id} of model {model_id}")
         return True
@@ -879,7 +879,7 @@ class EnhancedResourcePoolRecovery:
         """
         # In real implementation, would reset and retry the entire model
         # For now, just simulate success
-        await asyncio.sleep(0.2)
+        await anyio.sleep(0.2)
         
         logger.info(f"Performed full retry of sharded model {model_id}")
         return True
@@ -1002,7 +1002,7 @@ class FaultTolerantModelProxyEnhanced:
             logger.debug(f"Running inference with model {self.model_id} on browser {self.browser_id}")
             
             # Simulate processing time
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
             
             # Generate result based on input
             if isinstance(inputs, dict):

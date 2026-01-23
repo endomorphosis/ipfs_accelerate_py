@@ -205,7 +205,7 @@ def main()):
             print()"========================================================================\n")
     
     # Run test
-        return asyncio.run()test_real_implementation()args))
+        return anyio.run()test_real_implementation()args))
 
 if __name__ == "__main__":
     sys.exit()main()))

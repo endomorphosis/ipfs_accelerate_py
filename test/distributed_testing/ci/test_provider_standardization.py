@@ -5,7 +5,7 @@ Test script for standardized CI provider interfaces.
 This script tests that all CI providers correctly implement the CIProviderInterface.
 """
 
-import asyncio
+import anyio
 import inspect
 import logging
 from typing import Dict, Any, List
@@ -199,4 +199,4 @@ async def main():
         logger.error("\nTests FAILED! Some CI providers are not correctly standardized.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

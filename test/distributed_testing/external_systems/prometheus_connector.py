@@ -6,7 +6,7 @@ This module provides a connector for interacting with Prometheus's API and Push 
 to query metrics data and submit metrics from the distributed testing framework.
 """
 
-import asyncio
+import anyio
 import logging
 import time
 from datetime import datetime, timedelta
@@ -271,7 +271,7 @@ class PrometheusConnector(ExternalSystemInterface):
                 seconds = self.rate_limit_sleep
                 
             logger.warning(f"Prometheus rate limit hit, pausing for {seconds} seconds")
-            await asyncio.sleep(seconds)
+            await anyio.sleep(seconds)
         
         return response
     

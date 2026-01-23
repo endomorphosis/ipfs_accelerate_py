@@ -6,7 +6,7 @@ This plugin integrates with external notification systems like Slack, email, and
 to provide real-time notifications for events in the distributed testing framework.
 """
 
-import asyncio
+import anyio
 import logging
 import os
 from datetime import datetime
@@ -480,7 +480,7 @@ class NotificationPlugin(Plugin):
                 
                 # If this is the first update after creation, schedule a send
                 if group["count"] == 2:
-                    asyncio.create_task(self._send_group_after_window(group_key))
+                    # TODO: Replace with task group - asyncio.create_task(self._send_group_after_window(group_key))
                     
                 return True
         
@@ -504,7 +504,7 @@ class NotificationPlugin(Plugin):
             group_key: Group identifier
         """
         # Wait for window to expire
-        await asyncio.sleep(self.config["group_time_window_seconds"])
+        await anyio.sleep(self.config["group_time_window_seconds"])
         
         # Get group data
         if group_key not in self.notification_groups:

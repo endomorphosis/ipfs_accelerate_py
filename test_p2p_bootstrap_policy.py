@@ -315,7 +315,7 @@ def recommend_bootstrap_improvements():
     
     logger.info("\n4. Add Connection Timeout:")
     logger.info("   ```python")
-    logger.info("   await asyncio.wait_for(")
+    logger.info("   await # TODO: Replace with anyio.fail_after - asyncio.wait_for(")
     logger.info("       self._connect_to_peer(peer_addr),")
     logger.info("       timeout=15.0")
     logger.info("   )")

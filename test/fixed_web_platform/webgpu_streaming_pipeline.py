@@ -49,7 +49,7 @@ import sys
 import json
 import time
 import math
-import asyncio
+import anyio
 import logging
 import threading
 import traceback
@@ -501,13 +501,13 @@ class WebGPUStreamingPipeline:
                     # Check if we're at capacity
                     if active_client_count >= self.config["max_clients"]:
                         # At capacity, wait before checking again
-                        await asyncio.sleep(0.1)
+                        await anyio.sleep(0.1)
                         continue
                     
                     # Check if there are requests to process
                     if not self.request_queue:
                         # Empty queue, wait before checking again
-                        await asyncio.sleep(0.1)
+                        await anyio.sleep(0.1)
                         continue
                     
                     # Get the next request
@@ -592,7 +592,7 @@ class WebGPUStreamingPipeline:
             except Exception as e:
                 logger.error(f"Error in queue processing: {e}")
                 logger.debug(traceback.format_exc())
-                await asyncio.sleep(1)  # Wait before trying again
+                await anyio.sleep(1)  # Wait before trying again
     
     def enqueue_request(self, request: StreamingRequest) -> bool:
         """
@@ -771,7 +771,7 @@ class WebGPUStreamingPipeline:
             while True:
                 # Wait for client messages (like cancellation)
                 try:
-                    message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                    message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(websocket.recv(), timeout=1.0)
                     
                     # Process client messages
                     try:
@@ -838,7 +838,7 @@ class WebGPUStreamingPipeline:
                 with self.queue_lock:
                     if websocket in self.active_clients:
                         # Being processed, wait for completion
-                        await asyncio.sleep(0.1)
+                        await anyio.sleep(0.1)
                     elif not any(req.id == request_id for req in self.request_queue):
                         # Not in queue and not in active clients - must be done or cancelled
                         break
@@ -878,7 +878,7 @@ class WebGPUStreamingPipeline:
         self.shutdown_event.clear()
         
         # Start queue processor
-        queue_processor_task = asyncio.create_task(self._process_request_queue())
+        queue_processor_task = # TODO: Replace with task group - asyncio.create_task(self._process_request_queue())
         
         # Define server stop handler for proper shutdown
         def server_close_handler():
@@ -942,8 +942,8 @@ class WebGPUStreamingPipeline:
         # Define thread function
         def run_server():
             # Create new event loop for the thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
             
             # Start server in the loop
             try:
@@ -971,7 +971,7 @@ class WebGPUStreamingPipeline:
         
         # Close server if running
         if self.server:
-            asyncio.run(self.server.close())
+            anyio.run(self.server.close())
             self.server = None
         
         # Wait for thread to complete if it exists
@@ -1050,7 +1050,7 @@ if __name__ == "__main__":
     
     # Run server
     try:
-        asyncio.run(pipeline.start_server_async(args.host, args.port))
+        anyio.run(pipeline.start_server_async(args.host, args.port))
     except KeyboardInterrupt:
         print("\nServer stopped by user")
     finally:

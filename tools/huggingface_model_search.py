@@ -15,7 +15,7 @@ Features:
 - Real-time search with pagination
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -920,4 +920,4 @@ if __name__ == "__main__":
         stats = service.get_search_stats()
         print(f"\nSearch stats: {stats}")
     
-    asyncio.run(test_search())
+    anyio.run(test_search())

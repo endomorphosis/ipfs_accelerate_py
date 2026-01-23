@@ -18,7 +18,7 @@ Usage:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -386,7 +386,7 @@ async def run_simulation(args):
         task["attempts"] += 1
         
         # Simulate execution time (add some delay)
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         # Determine success or failure
         success = random.random() < 0.9  # 90% success rate
@@ -416,7 +416,7 @@ async def run_simulation(args):
     
     # Wait for real-time analysis to complete
     print("\nWaiting for real-time analysis to complete...")
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Generate a trend simulation by creating tasks with gradually changing metrics
     if not args.quick_test:
@@ -495,13 +495,13 @@ async def run_simulation(args):
             await coordinator._handle_task_completed(task_id, worker_id, result, execution_time)
             
             # Add a small delay between tasks
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
         
         print("  Trending tasks executed successfully")
     
     # Wait for trend analysis to complete
     print("\nWaiting for trend analysis to complete...")
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Generate performance reports
     print("\nGenerating performance report...")
@@ -617,7 +617,7 @@ def main():
     args = parser.parse_args()
     
     # Run the simulation
-    asyncio.run(run_simulation(args))
+    anyio.run(run_simulation(args))
 
 if __name__ == "__main__":
     main()

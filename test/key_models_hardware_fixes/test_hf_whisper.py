@@ -268,7 +268,7 @@ class test_hf_whisper:
                 
             # Create queue for inference requests
                     import asyncio
-                    queue = asyncio.Queue()16)
+                    queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()16)
             
             if not webgpu_support:
                 # Create a WebGPU simulation using CPU implementation for audio models
@@ -340,7 +340,7 @@ class test_hf_whisper:
             print()f"Error initializing WebGPU: {}}}}}}}}}}}}}}}}e}")
             # Fallback to a minimal mock
             import asyncio
-            queue = asyncio.Queue()16)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()16)
                                     return None, None, lambda x, sampling_rate=16000: {}}}}}}}}}}}}}}}}"output": "Mock WebGPU output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
 
                 def init_webnn()self, model_name=None):
@@ -363,7 +363,7 @@ class test_hf_whisper:
                 
             # Create queue for inference requests
                     import asyncio
-                    queue = asyncio.Queue()16)
+                    queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()16)
             
             if not webnn_support:
                 # Create a WebNN simulation using CPU implementation for audio models
@@ -429,7 +429,7 @@ class test_hf_whisper:
             print()f"Error initializing WebNN: {}}}}}}}}}}}}}}}}e}")
             # Fallback to a minimal mock
             import asyncio
-            queue = asyncio.Queue()16)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()16)
                                     return None, None, lambda x, sampling_rate=16000: {}}}}}}}}}}}}}}}}"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 
                 def init_rocm()self, model_name, model_type, device_label="rocm:0", **kwargs):

@@ -7,7 +7,7 @@ and GitLab CI, allowing the distributed testing framework to report results back
 to the CI system and update build status.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -94,7 +94,7 @@ class CIIntegrationPlugin(Plugin):
             await self._initialize_ci_client()
         
         # Start periodic update task
-        self.update_task = asyncio.create_task(self._periodic_updates())
+        self.update_task = # TODO: Replace with task group - asyncio.create_task(self._periodic_updates())
         
         logger.info("CIIntegrationPlugin initialized with coordinator")
         return True
@@ -179,7 +179,7 @@ class CIIntegrationPlugin(Plugin):
         logger.info(f"Creating test run in {self.ci_client['type']} CI system")
         
         # Simulate creating test run
-        await asyncio.sleep(0.2)
+        await anyio.sleep(0.2)
         
         # In a real implementation, would make API call to create test run
         self.test_run["id"] = f"run-{int(time.time())}"
@@ -226,7 +226,7 @@ class CIIntegrationPlugin(Plugin):
         }
         
         # Simulate sending report
-        await asyncio.sleep(0.5)
+        await anyio.sleep(0.5)
         
         # In a real implementation, would make API call to update test run
         logger.info(f"Sent final report for test run {self.test_run['id']}, status: {self.test_run['status']}")
@@ -236,7 +236,7 @@ class CIIntegrationPlugin(Plugin):
         while True:
             try:
                 # Sleep for update interval
-                await asyncio.sleep(self.config["update_interval"])
+                await anyio.sleep(self.config["update_interval"])
                 
                 # Skip if no CI client or test run
                 if not self.ci_client or not self.test_run["id"]:

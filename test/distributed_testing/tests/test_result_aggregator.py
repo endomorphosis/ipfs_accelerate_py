@@ -13,7 +13,7 @@ import os
 import tempfile
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
-import asyncio
+import anyio
 from datetime import datetime, timedelta
 
 import pandas as pd

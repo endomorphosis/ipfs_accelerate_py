@@ -8,7 +8,7 @@ and tests.
 """
 
 import argparse
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -171,4 +171,4 @@ async def main():
 
 # Run the script
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(anyio.run(main()))

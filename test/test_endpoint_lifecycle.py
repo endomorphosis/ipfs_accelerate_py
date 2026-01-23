@@ -1,4 +1,4 @@
-import asyncio
+import anyio
 import os
 import sys
 import json
@@ -414,11 +414,11 @@ class TestEndpointLifecycle:
                 max_test_time = 60  # 60 seconds timeout
                 
                 # Check if the handler is async:
-                if asyncio.iscoroutinefunction()endpoint_handler):
+                if inspect.iscoroutinefunction(  # Added import inspect)endpoint_handler):
                     print()f"Invoking async endpoint handler")
                     try:
                         # Use asyncio.wait_for to add timeout protection
-                        result = await asyncio.wait_for()
+                        result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for()
                         endpoint_handler()test_input),
                         timeout=max_test_time
                         )
@@ -822,6 +822,6 @@ if __name__ == "__main__":
     tester = TestEndpointLifecycle()resources, metadata)
     
     # Run test asynchronously
-    asyncio.run()tester.__test__()resources, metadata))
+    anyio.run()tester.__test__()resources, metadata))
     
     print()"Tests complete")

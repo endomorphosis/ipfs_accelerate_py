@@ -5,7 +5,7 @@ This module provides WebSocket handlers for the monitoring dashboard, enabling r
 communication between clients and the dashboard.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 from typing import Dict, List, Set, Any, Optional

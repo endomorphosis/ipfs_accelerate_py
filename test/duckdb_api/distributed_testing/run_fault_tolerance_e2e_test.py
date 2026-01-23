@@ -18,7 +18,7 @@ Example usage:
 
 import os
 import sys
-import asyncio
+import anyio
 import argparse
 import logging
 import time
@@ -164,7 +164,7 @@ def main():
                 return 1
         
         # Get the event loop
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         
         # Create test harness
         harness = FaultToleranceTestHarness(

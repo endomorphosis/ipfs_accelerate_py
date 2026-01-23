@@ -21,7 +21,7 @@ import sys
 import time
 import json
 import logging
-import asyncio
+import anyio
 import argparse
 import random
 import threading
@@ -165,7 +165,7 @@ class FaultToleranceTestHarness:
             return False
         
         # Start coordinator
-        self.coordinator_task = asyncio.create_task(self.coordinator.start())
+        self.coordinator_task = # TODO: Replace with task group - asyncio.create_task(self.coordinator.start())
         logger.info("Coordinator started")
         
         return True
@@ -188,16 +188,16 @@ class FaultToleranceTestHarness:
             self.workers.append(worker)
             
             # Connect worker
-            connect_task = asyncio.create_task(worker.connect())
+            connect_task = # TODO: Replace with task group - asyncio.create_task(worker.connect())
             self.worker_tasks.append(connect_task)
             
             logger.info(f"Worker {worker_id} connecting")
             
             # Short delay between worker connections
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
         
         # Wait for all workers to connect
-        await asyncio.gather(*self.worker_tasks)
+        await # TODO: Replace with task group - asyncio.gather(*self.worker_tasks)
         logger.info(f"All {self.num_workers} workers connected")
         
         return True
@@ -225,7 +225,7 @@ class FaultToleranceTestHarness:
             logger.info(f"Submitted task {task_id}: {task_config['name']} ({task_type})")
             
             # Short delay between submissions
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
         
         logger.info(f"Submitted {self.task_count} tasks")
         return task_ids
@@ -259,7 +259,7 @@ class FaultToleranceTestHarness:
             logger.info(f"Introduced failure for task {task_id}")
             
             # Short delay between failure introductions
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
         
         # Record mock worker failures
         for i in range(min(worker_failures, len(self.workers))):
@@ -278,7 +278,7 @@ class FaultToleranceTestHarness:
             logger.info(f"Introduced failure for worker {worker_id} (disconnect)")
             
             # Short delay between worker failures
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
             
             # Record recovery
             self.metrics["recoveries"].append({
@@ -301,7 +301,7 @@ class FaultToleranceTestHarness:
                 self.coordinator.circuit_breaker_integration.on_task_failure(f"task-{task_type}", task_type, "test-failure")
                 logger.info(f"Forced circuit open for task type {task_type}")
                 
-        await asyncio.sleep(5.0)  # Wait for circuit breakers to react
+        await anyio.sleep(5.0)  # Wait for circuit breakers to react
         
         return True
     
@@ -543,7 +543,7 @@ class FaultToleranceTestHarness:
                 circuit.reset_timeout = original_timeout
                 
                 # Small delay between operations
-                await asyncio.sleep(0.2)
+                await anyio.sleep(0.2)
                 
             except Exception as e:
                 logger.error(f"Error during circuit recovery for {bridge_id}: {e}")
@@ -616,7 +616,7 @@ class FaultToleranceTestHarness:
                     logger.info(f"Introduced failure for browser bridge {bridge_id}, circuit is now {circuit.get_state().value}")
                     
                     # Wait a moment between failures
-                    await asyncio.sleep(0.5)
+                    await anyio.sleep(0.5)
             except Exception as e:
                 logger.error(f"Error introducing failure for bridge {bridge_id}: {e}")
         
@@ -855,7 +855,7 @@ class FaultToleranceTestHarness:
                 return False
             
             # Allow coordinator to initialize
-            await asyncio.sleep(2.0)
+            await anyio.sleep(2.0)
             
             # Start workers
             if not await self.start_workers():
@@ -863,7 +863,7 @@ class FaultToleranceTestHarness:
                 return False
             
             # Allow workers to initialize
-            await asyncio.sleep(2.0)
+            await anyio.sleep(2.0)
             
             # Initialize browser automation if enabled
             if self.use_real_browsers and BROWSER_BRIDGE_AVAILABLE:
@@ -874,14 +874,14 @@ class FaultToleranceTestHarness:
             task_ids = await self.submit_tasks()
             
             # Allow tasks to start executing
-            await asyncio.sleep(5.0)
+            await anyio.sleep(5.0)
             
             # Run browser tests if available
             if self.use_real_browsers and self.browser_bridges:
                 await self.run_browser_tests()
                 
                 # Allow a moment for browser tests to complete
-                await asyncio.sleep(2.0)
+                await anyio.sleep(2.0)
                 
                 # Introduce browser failures to test circuit breaker pattern
                 await self.introduce_browser_failures(
@@ -896,7 +896,7 @@ class FaultToleranceTestHarness:
             
             # Allow time for circuit breakers to open
             logger.info("Waiting for circuit breakers to open...")
-            await asyncio.sleep(10.0)
+            await anyio.sleep(10.0)
             
             # Verify circuit states
             if not await self.verify_circuit_states():
@@ -906,20 +906,20 @@ class FaultToleranceTestHarness:
             if self.use_real_browsers and self.browser_circuit_breakers:
                 # Wait a bit before attempting recovery
                 logger.info("Waiting before attempting browser circuit recovery...")
-                await asyncio.sleep(5.0)
+                await anyio.sleep(5.0)
                 
                 # Attempt recovery
                 await self.recover_browser_failures(circuit_reset_fraction=0.5)
                 
                 # Allow time for transitions
-                await asyncio.sleep(5.0)
+                await anyio.sleep(5.0)
                 
                 # Run another verification after recovery
                 await self.verify_circuit_states()
             
             # Wait for tasks to complete or fail
             logger.info("Waiting for all tasks to complete or fail...")
-            await asyncio.sleep(30.0)
+            await anyio.sleep(30.0)
             
             # Generate dashboard
             await self.generate_dashboard()
@@ -1218,7 +1218,7 @@ async def main():
 if __name__ == "__main__":
     try:
         # Get the event loop
-        loop = asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
         
         # Run the main function
         exit_code = loop.run_until_complete(main())

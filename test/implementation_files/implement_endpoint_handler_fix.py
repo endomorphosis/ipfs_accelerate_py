@@ -509,7 +509,7 @@ return fix_path
             }
                 
             # Call the handler
-            if asyncio.iscoroutinefunction(handler):
+            if inspect.iscoroutinefunction(  # Added import inspecthandler):
                 output = await handler(input_data)
             else:
                 output = handler(input_data)
@@ -646,4 +646,4 @@ async def main():
         print("```")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main())

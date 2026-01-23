@@ -1,4 +1,4 @@
-import asyncio
+import anyio
 import os
 # from InstructorEmbedding import INSTRUCTOR
 # from FlagEmbedding import FlagModel
@@ -59,7 +59,7 @@ class default:
         endpoint_handler = self.create_llm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
         self.init()
@@ -77,7 +77,7 @@ class default:
         endpoint = get_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_llm_endpoint_handler(endpoint,tokenizer, model, openvino_label)
         batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size          
     
     def create_cpu_default_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
         def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):

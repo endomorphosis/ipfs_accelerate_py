@@ -15,7 +15,7 @@ Key features:
 - Recovery performance analytics and reporting
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -442,7 +442,7 @@ class ErrorRecoveryWithPerformance:
         
         try:
             # Execute strategy with timeout
-            success = await asyncio.wait_for(
+            success = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
                 strategy.execute(self._convert_error_report(error_report)),
                 timeout=timeout
             )
@@ -1885,4 +1885,4 @@ if __name__ == "__main__":
         metrics = recovery_system.get_performance_metrics()
         print(json.dumps(metrics, indent=2))
 
-    asyncio.run(run_demo())
+    anyio.run(run_demo())

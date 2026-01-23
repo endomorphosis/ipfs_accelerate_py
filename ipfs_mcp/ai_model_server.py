@@ -13,7 +13,7 @@ Features:
 - IPFS content addressing for model files
 """
 
-import asyncio
+import anyio
 import logging
 import os
 import sys
@@ -374,7 +374,7 @@ if __name__ == "__main__":
     )
     
     if HAVE_FASTMCP:
-        asyncio.run(server.run(
+        anyio.run(server.run(
             transport=args.transport,
             host=args.host,
             port=args.port

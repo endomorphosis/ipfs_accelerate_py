@@ -73,7 +73,7 @@ class SimulatedWebSocketClient:
         """Simulate receiving data from the server."""
         # In a real implementation, this would wait for server messages
         # For simulation, we'll just return a ping message
-        await asyncio.sleep()))))))0.1)
+        await anyio.sleep()))))))0.1)
         return json.dumps())))))){}}}}}}}"type": "ping"})
     
     def close()))))))self):
@@ -303,7 +303,7 @@ class StreamingPipelineDemo:
             
             if success:
                 # Wait for processing to complete ()))))))simulated)
-                await asyncio.sleep()))))))10)  # Wait for generation to complete
+                await anyio.sleep()))))))10)  # Wait for generation to complete
                 
                 print()))))))f"\nRequest completed with {}}}}}}}len()))))))sent_messages)} messages sent")
             else:
@@ -349,7 +349,7 @@ class StreamingPipelineDemo:
             return json.dumps())))))){}}}}}}}"type": "cancel", "request_id": "test-cancel-123"})
             
             # Otherwise, just wait
-            await asyncio.sleep()))))))0.1)
+            await anyio.sleep()))))))0.1)
                 return json.dumps())))))){}}}}}}}"type": "ping"})
             
                 mock_websocket.recv = mock_recv
@@ -425,7 +425,7 @@ class StreamingPipelineDemo:
             return json.dumps())))))){}}}}}}}"type": "status", "request_id": "test-status-123"})
             
             # Otherwise, just wait
-            await asyncio.sleep()))))))0.1)
+            await anyio.sleep()))))))0.1)
                 return json.dumps())))))){}}}}}}}"type": "ping"})
             
                 mock_websocket.recv = mock_recv
@@ -506,7 +506,7 @@ def main()))))))):
     
     # Create and run the demonstration
     demo = StreamingPipelineDemo()))))))args.model, args.quantization)
-    asyncio.run()))))))demo.run_demo()))))))))
+    anyio.run()))))))demo.run_demo()))))))))
 
 if __name__ == "__main__":
     main())))))))

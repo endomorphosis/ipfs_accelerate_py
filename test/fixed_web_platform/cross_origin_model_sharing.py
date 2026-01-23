@@ -68,7 +68,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple, Callable, Set
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from datetime import datetime, timedelta
-import asyncio
+import anyio
 import uuid
 
 # Initialize logging
@@ -721,7 +721,7 @@ class ModelSharingProtocol:
             
             # Simulate computation time
             computation_time = self._simulate_computation_time(model_inputs, inference_options)
-            await asyncio.sleep(computation_time / 1000)  # Convert to seconds
+            await anyio.sleep(computation_time / 1000)  # Convert to seconds
             
             # Generate simulated result
             result = self._generate_simulated_result(model_inputs, self.model_type)
@@ -1086,7 +1086,7 @@ def create_sharing_client(server_origin: str, access_token: str,
         logger.info(f"Simulating embedding request to {server_origin} for model {model_id}")
         
         # Simulate network request
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         
         # Simulate response
         import random
@@ -1100,7 +1100,7 @@ def create_sharing_client(server_origin: str, access_token: str,
         logger.info(f"Simulating text generation request to {server_origin} for model {model_id}")
         
         # Simulate network request
-        await asyncio.sleep(0.2 + (0.01 * max_tokens))
+        await anyio.sleep(0.2 + (0.01 * max_tokens))
         
         # Simulate response
         return {
@@ -1113,7 +1113,7 @@ def create_sharing_client(server_origin: str, access_token: str,
         logger.info(f"Simulating image processing request to {server_origin} for model {model_id}")
         
         # Simulate network request
-        await asyncio.sleep(0.3)
+        await anyio.sleep(0.3)
         
         # Simulate response
         return {
@@ -1128,7 +1128,7 @@ def create_sharing_client(server_origin: str, access_token: str,
         logger.info(f"Closing connection to {server_origin} for model {model_id}")
         
         # Simulate connection closure
-        await asyncio.sleep(0.05)
+        await anyio.sleep(0.05)
     
     # Return client methods based on model_id (to simulate different model types)
     if "embed" in model_id.lower() or "bert" in model_id.lower():
@@ -1268,4 +1268,4 @@ if __name__ == "__main__":
     import asyncio
     
     # Run the demo
-    asyncio.run(run_model_sharing_demo())
+    anyio.run(run_model_sharing_demo())

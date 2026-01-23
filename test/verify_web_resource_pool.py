@@ -320,7 +320,7 @@ async def test_resource_pool()))):
 
 def main()))):
     try:
-    return asyncio.run()))test_resource_pool()))))
+    return anyio.run()))test_resource_pool()))))
     except KeyboardInterrupt:
         logger.info()))"Test interrupted by user")
     return 130

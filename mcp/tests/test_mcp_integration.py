@@ -12,7 +12,7 @@ import logging
 import os
 import json
 import httpx
-import asyncio
+import anyio
 from multiprocessing import Process
 import time
 
@@ -56,7 +56,7 @@ async def test_mcp_server():
     try:
         # Wait for server to start
         logger.info("Waiting for server to start...")
-        await asyncio.sleep(3)
+        await anyio.sleep(3)
         
         # Create a client
         logger.info("Creating client and testing server...")
@@ -116,7 +116,7 @@ async def test_mcp_server():
 def run_tests():
     """Run the MCP server tests."""
     logger.info("Starting MCP server tests")
-    asyncio.run(test_mcp_server())
+    anyio.run(test_mcp_server())
     logger.info("MCP server tests completed")
 
 if __name__ == "__main__":

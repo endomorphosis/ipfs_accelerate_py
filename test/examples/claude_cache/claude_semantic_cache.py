@@ -5,7 +5,7 @@ import numpy as np
 import threading
 import hashlib
 import logging
-import asyncio
+import anyio
 import json
 from typing import Dict, List, Tuple, Any, Optional, Callable, Union
 from collections import OrderedDict
@@ -672,7 +672,7 @@ async def example_usage())))))))))))))))))))):
         class MockClaudeClient:
             async def chat())))))))))))))))))))self, messages, model="claude-3-opus-20240229", max_tokens=1024, temperature=0.7, **kwargs):
                 print())))))))))))))))))))f"[]]],,,API CALL] Generating content for: {}}}}}messages[]]],,,-1][]]],,,'content']}")
-                await asyncio.sleep())))))))))))))))))))1)  # Simulate API delay
+                await anyio.sleep())))))))))))))))))))1)  # Simulate API delay
             return {}}}}}
             "id": "msg_" + hashlib.md5())))))))))))))))))))str())))))))))))))))))))messages).encode()))))))))))))))))))))).hexdigest()))))))))))))))))))))[]]],,,:10],
             "type": "message",
@@ -684,7 +684,7 @@ async def example_usage())))))))))))))))))))):
                 
             async def stream_chat())))))))))))))))))))self, messages, model="claude-3-opus-20240229", max_tokens=1024, temperature=0.7, **kwargs):
                 print())))))))))))))))))))f"[]]],,,API CALL] Streaming content for: {}}}}}messages[]]],,,-1][]]],,,'content']}")
-                await asyncio.sleep())))))))))))))))))))1)  # Simulate API delay
+                await anyio.sleep())))))))))))))))))))1)  # Simulate API delay
                 yield {}}}}}
                 "type": "content_block_delta",
                 "delta": {}}}}}"type": "text", "text": f"Streaming response for: {}}}}}messages[]]],,,-1][]]],,,'content']}"},
@@ -745,4 +745,4 @@ async def example_usage())))))))))))))))))))):
         print())))))))))))))))))))f"Cache hit rate: {}}}}}cached_client.stats[]]],,,'cache_hits'] / cached_client.stats[]]],,,'total_requests']:.1%}")
 
 if __name__ == "__main__":
-    asyncio.run())))))))))))))))))))example_usage())))))))))))))))))))))
+    anyio.run())))))))))))))))))))example_usage())))))))))))))))))))))

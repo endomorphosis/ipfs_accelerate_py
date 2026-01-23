@@ -7,7 +7,7 @@ and the Distributed Testing Framework via the plugin architecture.
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -306,7 +306,7 @@ async def run_test_scenario(coordinator, resource_pool_test=False, simulate_task
         await coordinator.create_task(task_id, task_data)
     
     # Wait for task creation to be processed
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Simulate recovery if requested
     if simulate_recovery:
@@ -316,14 +316,14 @@ async def run_test_scenario(coordinator, resource_pool_test=False, simulate_task
         await coordinator.start_recovery("browser-1", "Connection lost")
         
         # Wait for recovery to start
-        await asyncio.sleep(2)
+        await anyio.sleep(2)
         
         # Simulate recovery completion
         await coordinator.complete_recovery("browser-1", {"status": "recovered"})
     
     # Wait for specified test duration
     logger.info(f"Running test for {test_duration} seconds")
-    await asyncio.sleep(test_duration)
+    await anyio.sleep(test_duration)
     
     # Complete tasks
     for task_id in task_ids:
@@ -336,7 +336,7 @@ async def run_test_scenario(coordinator, resource_pool_test=False, simulate_task
             await coordinator.complete_task(task_id, {"status": "success"})
     
     # Wait for task completion to be processed
-    await asyncio.sleep(2)
+    await anyio.sleep(2)
     
     # Get and display plugin status
     status = coordinator.get_plugin_status(PluginType.INTEGRATION)
@@ -381,4 +381,4 @@ async def main():
 
 if __name__ == "__main__":
     # Run main function
-    asyncio.run(main())
+    anyio.run(main())

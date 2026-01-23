@@ -164,9 +164,9 @@ def setup_environment()))))))))))))))))))))))))))))))):
         # Test standard, async and websocket streaming
             results = {}}}}}}}}}}}}}}}}}}}}}}}}}}
             "standard": test_standard_streaming()))))))))))))))))))))))))))))))WebGPUStreamingInference, optimize_for_streaming, verbose),
-            "async": asyncio.run()))))))))))))))))))))))))))))))test_async_streaming()))))))))))))))))))))))))))))))WebGPUStreamingInference, optimize_for_streaming, verbose)),
+            "async": anyio.run()))))))))))))))))))))))))))))))test_async_streaming()))))))))))))))))))))))))))))))WebGPUStreamingInference, optimize_for_streaming, verbose)),
             "endpoint": test_streaming_endpoint()))))))))))))))))))))))))))))))create_streaming_endpoint, optimize_for_streaming, verbose),
-            "websocket": asyncio.run()))))))))))))))))))))))))))))))test_websocket_streaming()))))))))))))))))))))))))))))))WebGPUStreamingInference, optimize_for_streaming, verbose))
+            "websocket": anyio.run()))))))))))))))))))))))))))))))test_websocket_streaming()))))))))))))))))))))))))))))))WebGPUStreamingInference, optimize_for_streaming, verbose))
             }
         
         # Add latency optimization tests
@@ -863,11 +863,11 @@ def main()))))))))))))))))))))))))))))))):
                 WebGPUStreamingInference, optimize_for_streaming, args.verbose
                 )
             elif args.feature == "async":
-                feature_results["async"] = asyncio.run()))))))))))))))))))))))))))))))test_async_streaming())))))))))))))))))))))))))))))),
+                feature_results["async"] = anyio.run()))))))))))))))))))))))))))))))test_async_streaming())))))))))))))))))))))))))))))),
                 WebGPUStreamingInference, optimize_for_streaming, args.verbose
                 ))
             elif args.feature == "websocket":
-                feature_results["websocket"] = asyncio.run()))))))))))))))))))))))))))))))test_websocket_streaming())))))))))))))))))))))))))))))),
+                feature_results["websocket"] = anyio.run()))))))))))))))))))))))))))))))test_websocket_streaming())))))))))))))))))))))))))))))),
                 WebGPUStreamingInference, optimize_for_streaming, args.verbose
                 ))
             elif args.feature == "latency":

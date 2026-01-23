@@ -247,7 +247,7 @@ def main():
     args = parser.parse_args()
     
     # Run async main
-    loop = asyncio.get_event_loop()
+    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
     success = loop.run_until_complete(main_async(args))
     
         return 0 if success else 1

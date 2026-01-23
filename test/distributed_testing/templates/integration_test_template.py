@@ -9,7 +9,7 @@ Generator version: {{ generator_version }}
 import os
 import sys
 import unittest
-import asyncio
+import anyio
 from unittest.mock import AsyncMock, patch, MagicMock
 
 {{ component_imports }}
@@ -65,7 +65,7 @@ class {{ test_name }}(unittest.TestCase):
     
     def test_integration(self):
         """Test wrapper for async integration test."""
-        asyncio.run(self.async_test_integration())
+        anyio.run(self.async_test_integration())
     
     # Add more tests as needed
 

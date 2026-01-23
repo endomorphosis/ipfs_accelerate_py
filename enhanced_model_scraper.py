@@ -21,7 +21,7 @@ import sys
 import json
 import time
 import logging
-import asyncio
+import anyio
 import requests
 import pandas as pd
 import numpy as np

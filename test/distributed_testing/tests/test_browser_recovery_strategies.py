@@ -9,7 +9,7 @@ each strategy functions correctly and that the progressive recovery system works
 import os
 import sys
 import unittest
-import asyncio
+import anyio
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
 import logging
@@ -163,7 +163,7 @@ class TestBrowserRecoveryStrategy(unittest.TestCase):
     
     def test_execute(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute())
+        anyio.run(self.async_test_execute())
     
     def test_get_stats(self):
         """Test get_stats method."""
@@ -220,7 +220,7 @@ class TestSimpleRetryStrategy(unittest.TestCase):
     
     def test_execute_impl_success(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_success())
+        anyio.run(self.async_test_execute_impl_success())
     
     async def async_test_execute_impl_failure(self):
         """Test _execute_impl method with failure."""
@@ -243,7 +243,7 @@ class TestSimpleRetryStrategy(unittest.TestCase):
     
     def test_execute_impl_failure(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_failure())
+        anyio.run(self.async_test_execute_impl_failure())
     
     async def async_test_execute_impl_max_retries(self):
         """Test _execute_impl method with max retries exceeded."""
@@ -263,7 +263,7 @@ class TestSimpleRetryStrategy(unittest.TestCase):
     
     def test_execute_impl_max_retries(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_max_retries())
+        anyio.run(self.async_test_execute_impl_max_retries())
 
 
 class TestBrowserRestartStrategy(unittest.TestCase):
@@ -288,7 +288,7 @@ class TestBrowserRestartStrategy(unittest.TestCase):
     
     def test_execute_impl_success(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_success())
+        anyio.run(self.async_test_execute_impl_success())
     
     async def async_test_execute_impl_launch_failure(self):
         """Test _execute_impl method with launch failure."""
@@ -306,7 +306,7 @@ class TestBrowserRestartStrategy(unittest.TestCase):
     
     def test_execute_impl_launch_failure(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_launch_failure())
+        anyio.run(self.async_test_execute_impl_launch_failure())
     
     async def async_test_execute_impl_not_responsive(self):
         """Test _execute_impl method with non-responsive browser."""
@@ -322,7 +322,7 @@ class TestBrowserRestartStrategy(unittest.TestCase):
     
     def test_execute_impl_not_responsive(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_not_responsive())
+        anyio.run(self.async_test_execute_impl_not_responsive())
 
 
 class TestSettingsAdjustmentStrategy(unittest.TestCase):
@@ -352,7 +352,7 @@ class TestSettingsAdjustmentStrategy(unittest.TestCase):
     
     def test_execute_impl_chrome(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_chrome())
+        anyio.run(self.async_test_execute_impl_chrome())
     
     async def async_test_execute_impl_firefox(self):
         """Test _execute_impl method with Firefox browser."""
@@ -373,7 +373,7 @@ class TestSettingsAdjustmentStrategy(unittest.TestCase):
     
     def test_execute_impl_firefox(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_firefox())
+        anyio.run(self.async_test_execute_impl_firefox())
     
     async def async_test_execute_impl_edge(self):
         """Test _execute_impl method with Edge browser."""
@@ -392,7 +392,7 @@ class TestSettingsAdjustmentStrategy(unittest.TestCase):
     
     def test_execute_impl_edge(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_edge())
+        anyio.run(self.async_test_execute_impl_edge())
 
 
 class TestBrowserFallbackStrategy(unittest.TestCase):
@@ -420,7 +420,7 @@ class TestBrowserFallbackStrategy(unittest.TestCase):
     
     def test_execute_impl_success(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_success())
+        anyio.run(self.async_test_execute_impl_success())
     
     async def async_test_execute_impl_all_fallbacks_fail(self):
         """Test _execute_impl method when all fallbacks fail."""
@@ -436,7 +436,7 @@ class TestBrowserFallbackStrategy(unittest.TestCase):
     
     def test_execute_impl_all_fallbacks_fail(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_all_fallbacks_fail())
+        anyio.run(self.async_test_execute_impl_all_fallbacks_fail())
     
     async def async_test_execute_impl_custom_fallback_order(self):
         """Test _execute_impl method with custom fallback order."""
@@ -458,7 +458,7 @@ class TestBrowserFallbackStrategy(unittest.TestCase):
     
     def test_execute_impl_custom_fallback_order(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_custom_fallback_order())
+        anyio.run(self.async_test_execute_impl_custom_fallback_order())
 
 
 class TestSimulationFallbackStrategy(unittest.TestCase):
@@ -484,7 +484,7 @@ class TestSimulationFallbackStrategy(unittest.TestCase):
     
     def test_execute_impl_success(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_success())
+        anyio.run(self.async_test_execute_impl_success())
     
     async def async_test_execute_impl_launch_failure(self):
         """Test _execute_impl method with launch failure."""
@@ -500,7 +500,7 @@ class TestSimulationFallbackStrategy(unittest.TestCase):
     
     def test_execute_impl_launch_failure(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_launch_failure())
+        anyio.run(self.async_test_execute_impl_launch_failure())
 
 
 class TestModelSpecificRecoveryStrategy(unittest.TestCase):
@@ -532,7 +532,7 @@ class TestModelSpecificRecoveryStrategy(unittest.TestCase):
     
     def test_execute_impl_text_model(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_text_model())
+        anyio.run(self.async_test_execute_impl_text_model())
     
     async def async_test_execute_impl_vision_model(self):
         """Test _execute_impl method with vision model."""
@@ -554,7 +554,7 @@ class TestModelSpecificRecoveryStrategy(unittest.TestCase):
     
     def test_execute_impl_vision_model(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_vision_model())
+        anyio.run(self.async_test_execute_impl_vision_model())
     
     async def async_test_execute_impl_audio_model(self):
         """Test _execute_impl method with audio model."""
@@ -575,7 +575,7 @@ class TestModelSpecificRecoveryStrategy(unittest.TestCase):
     
     def test_execute_impl_audio_model(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_audio_model())
+        anyio.run(self.async_test_execute_impl_audio_model())
     
     async def async_test_execute_impl_multimodal_model(self):
         """Test _execute_impl method with multimodal model."""
@@ -595,7 +595,7 @@ class TestModelSpecificRecoveryStrategy(unittest.TestCase):
     
     def test_execute_impl_multimodal_model(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_impl_multimodal_model())
+        anyio.run(self.async_test_execute_impl_multimodal_model())
 
 
 class TestProgressiveRecoveryManager(unittest.TestCase):
@@ -642,7 +642,7 @@ class TestProgressiveRecoveryManager(unittest.TestCase):
     
     def test_execute_progressive_recovery_success(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_progressive_recovery_success())
+        anyio.run(self.async_test_execute_progressive_recovery_success())
     
     async def async_test_execute_progressive_recovery_multiple_attempts(self):
         """Test execute_progressive_recovery method with multiple attempts."""
@@ -670,7 +670,7 @@ class TestProgressiveRecoveryManager(unittest.TestCase):
     
     def test_execute_progressive_recovery_multiple_attempts(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_progressive_recovery_multiple_attempts())
+        anyio.run(self.async_test_execute_progressive_recovery_multiple_attempts())
     
     async def async_test_execute_progressive_recovery_all_fail(self):
         """Test execute_progressive_recovery method when all strategies fail."""
@@ -700,7 +700,7 @@ class TestProgressiveRecoveryManager(unittest.TestCase):
     
     def test_execute_progressive_recovery_all_fail(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_progressive_recovery_all_fail())
+        anyio.run(self.async_test_execute_progressive_recovery_all_fail())
     
     async def async_test_execute_progressive_recovery_start_level(self):
         """Test execute_progressive_recovery method with start level."""
@@ -727,7 +727,7 @@ class TestProgressiveRecoveryManager(unittest.TestCase):
     
     def test_execute_progressive_recovery_start_level(self):
         """Run the async test."""
-        asyncio.run(self.async_test_execute_progressive_recovery_start_level())
+        anyio.run(self.async_test_execute_progressive_recovery_start_level())
     
     def test_get_strategy_stats(self):
         """Test get_strategy_stats method."""
@@ -907,7 +907,7 @@ class TestUtilityFunctions(unittest.TestCase):
     
     def test_recover_browser(self):
         """Run the async test."""
-        asyncio.run(self.async_test_recover_browser())
+        anyio.run(self.async_test_recover_browser())
 
 
 if __name__ == "__main__":

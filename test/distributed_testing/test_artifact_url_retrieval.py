@@ -6,7 +6,7 @@ This script tests the get_artifact_url implementation in different CI provider c
 It uses mock implementations to simulate the behavior of the clients.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -1086,4 +1086,4 @@ async def run_all_tests():
     logger.info("All tests completed successfully!")
 
 if __name__ == "__main__":
-    asyncio.run(run_all_tests())
+    anyio.run(run_all_tests())

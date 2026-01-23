@@ -50,7 +50,7 @@ import sys
 import json
 import time
 import logging
-import asyncio
+import anyio
 import weakref
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple, Union, Set, Callable

@@ -24,7 +24,7 @@ import sys
 import json
 import time
 import uuid
-import asyncio
+import anyio
 import logging
 import argparse
 import threading
@@ -2228,7 +2228,7 @@ class CoordinatorServer:
         # WebSocket server
         self.websocket_server = None
         self.running = False
-        self.stop_event = asyncio.Event()
+        self.stop_event = anyio.Event()
         
         # HTTP server for API
         self.http_server = None
@@ -2293,7 +2293,7 @@ class CoordinatorServer:
             for sig in (signal.SIGINT, signal.SIGTERM):
                 loop.add_signal_handler(
                     sig,
-                    lambda: asyncio.create_task(self.stop())
+                    lambda: # TODO: Replace with task group - asyncio.create_task(self.stop())
                 )
             
             logger.info(f"Coordinator server started on {self.host}:{self.port}")
@@ -3287,7 +3287,7 @@ def main():
     # Start coordinator
     try:
         logger.info("Starting coordinator...")
-        asyncio.run(coordinator.start())
+        anyio.run(coordinator.start())
         return 0
     except KeyboardInterrupt:
         logger.info("Interrupted by user")

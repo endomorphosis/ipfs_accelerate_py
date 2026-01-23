@@ -11,7 +11,7 @@ import sys
 import json
 import time
 import logging
-import asyncio
+import anyio
 from typing import Dict, List, Any, Optional, Union
 from enum import Enum
 from pathlib import Path
@@ -796,7 +796,7 @@ class AsyncPredictivePerformanceClient:
                 return status
             
             # Sleep before checking again
-            await asyncio.sleep(1)
+            await anyio.sleep(1)
         
         logger.warning(f"Task {task_id} did not complete within timeout")
         return {"error": "Timeout waiting for task completion", "task_id": task_id}
@@ -882,7 +882,7 @@ def main():
         client = PredictivePerformanceClient(base_url=args.url, api_key=args.key)
         demo_usage()
     elif args.async_demo:
-        asyncio.run(demo_async_usage())
+        anyio.run(demo_async_usage())
     else:
         print("Use --demo or --async-demo to run example usage")
         print("For programmatic usage, import the client classes from this module")

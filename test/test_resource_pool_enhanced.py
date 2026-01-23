@@ -12,7 +12,7 @@ import time
 import random
 import logging
 import unittest
-import asyncio
+import anyio
 from typing import Dict, Any, List
 from unittest.mock import patch, MagicMock
 
@@ -289,7 +289,7 @@ class MockResourcePoolBridgeWithRecovery:
         """
         if hasattr(self.integration, 'get_model_sync'):
             return self.integration.get_model_sync(**kwargs)
-        loop = asyncio.new_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
         try:
             # Run the async method synchronously
             return loop.run_until_complete(self.integration.get_model(**kwargs))
@@ -383,10 +383,10 @@ class MockBrowser:
         
         # Simulate slow response if slow_rate probability is met
         if random.random() < self.slow_rate:
-            await asyncio.sleep(self.response_time_ms / 1000 * 3)  # 3x slower
+            await anyio.sleep(self.response_time_ms / 1000 * 3)  # 3x slower
             
         # Normal operation
-        await asyncio.sleep(self.response_time_ms / 1000)
+        await anyio.sleep(self.response_time_ms / 1000)
         
         # Return success
         return {
@@ -524,7 +524,7 @@ class MockResourcePoolBridge:
     def get_model_sync(self, model_type: str, model_name: str, hardware_preferences: Dict[str, Any] = None) -> MockModel:
         """Non-async version for use in the ResourcePoolBridgeIntegrationEnhanced class"""
         # Create and set up a new event loop
-        loop = asyncio.new_event_loop()
+        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
         try:
             # Run the async get_model in the loop and return the result
             return loop.run_until_complete(self.get_model(model_type, model_name, hardware_preferences))
@@ -536,7 +536,7 @@ class MockResourcePoolBridge:
         results = []
         for model, inputs in model_and_inputs_list:
             try:
-                result = await asyncio.wait_for(model.browser.call("inference", {
+                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(model.browser.call("inference", {
                     "model_type": model.model_type,
                     "model_name": model.model_name,
                     "inputs": inputs
@@ -607,7 +607,7 @@ class TestResourcePoolEnhanced(unittest.TestCase):
         sys.modules['fixed_web_platform.resource_pool_bridge'] = resource_pool_bridge_mock
         
         # Also patch asyncio.get_event_loop to avoid deprecation warnings
-        async_patcher = patch('asyncio.get_event_loop', return_value=asyncio.new_event_loop())
+        async_patcher = patch('asyncio.get_event_loop', return_value=# TODO: Remove event loop management - asyncio.new_event_loop())
         self.async_patcher = async_patcher.start()
         self.addCleanup(async_patcher.stop)
         

@@ -6,7 +6,7 @@ that exposes IPFS Accelerate functionality.
 """
 
 import argparse
-import asyncio
+import anyio
 import logging
 import os
 import signal
@@ -97,7 +97,7 @@ def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
                 ipfs_context.set_ipfs_client(ipfs_client)
                 
                 # Test connection
-                version = await asyncio.to_thread(ipfs_client.version)
+                version = await anyio.to_thread.run_sync(ipfs_client.version)
                 await ctx.info(f"Connected to IPFS: {version.get('Version', 'unknown')}")
             except Exception as e:
                 await ctx.error(f"Error initializing IPFS client: {str(e)}")
@@ -226,7 +226,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Run the server
-    asyncio.run(run_server(
+    anyio.run(run_server(
         name=args.name,
         description=args.description,
         transport=args.transport,

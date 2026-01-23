@@ -20,7 +20,7 @@ import sys
 import time
 import json
 import logging
-import asyncio
+import anyio
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -1216,7 +1216,7 @@ class AdaptiveCircuitBreaker:
                 
                 # Exponential backoff
                 delay = retry_delay * (2 ** (retries - 1))
-                await asyncio.sleep(delay)
+                await anyio.sleep(delay)
         
         # If we get here, all retries failed
         logger.error(f"All {max_retries} retries failed")
@@ -1257,11 +1257,11 @@ async def demo():
     
     # Example operations to demonstrate functionality
     async def successful_operation():
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         return "Success!"
         
     async def failing_operation():
-        await asyncio.sleep(0.1)
+        await anyio.sleep(0.1)
         raise Exception("Simulated failure")
     
     # Test successful operations
@@ -1293,4 +1293,4 @@ async def demo():
 
 if __name__ == "__main__":
     # Run the demo
-    asyncio.run(demo())
+    anyio.run(demo())

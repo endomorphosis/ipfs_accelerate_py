@@ -10,7 +10,7 @@ Usage:
     Import this module in coordinator.py to enable advanced adaptive load balancing.
 """
 
-import asyncio
+import anyio
 import json
 import logging
 import time
@@ -282,7 +282,7 @@ class AdaptiveLoadBalancer:
                 logger.error(f"Error in load balancing loop: {str(e)}")
             
             # Sleep until next check
-            await asyncio.sleep(self.check_interval)
+            await anyio.sleep(self.check_interval)
     
     async def _record_metrics(self):
         """Record load balancer metrics in database for analysis."""

@@ -6,7 +6,7 @@ This module provides a connector for sending email notifications from the distri
 using SMTP with optional TLS/SSL support.
 """
 
-import asyncio
+import anyio
 import logging
 import smtplib
 import os
@@ -164,7 +164,7 @@ class EmailConnector(ExternalSystemInterface):
         """
         try:
             # Since SMTP operations are blocking, run them in a separate thread
-            loop = asyncio.get_event_loop()
+            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None, self._connect_sync
             )
@@ -213,7 +213,7 @@ class EmailConnector(ExternalSystemInterface):
         
         try:
             # Since SMTP operations are blocking, run them in a separate thread
-            loop = asyncio.get_event_loop()
+            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None, lambda: self.smtp.noop()[0] == 250
             )
@@ -232,7 +232,7 @@ class EmailConnector(ExternalSystemInterface):
             # Reset counter and wait before allowing more sends
             wait_time = self.rate_limit_sleep
             logger.info(f"Rate limit reached, pausing for {wait_time} seconds")
-            await asyncio.sleep(wait_time)
+            await anyio.sleep(wait_time)
             self.sent_count = 0
     
     async def execute_operation(self, operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -380,7 +380,7 @@ class EmailConnector(ExternalSystemInterface):
             await self._handle_rate_limit()
             
             # Since SMTP operations are blocking, run them in a separate thread
-            loop = asyncio.get_event_loop()
+            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
             
             # Get all recipients for sending
             all_recipients = recipients + cc + bcc
@@ -704,7 +704,7 @@ class EmailConnector(ExternalSystemInterface):
         if self.smtp:
             try:
                 # Since SMTP operations are blocking, run them in a separate thread
-                loop = asyncio.get_event_loop()
+                loop = # TODO: Remove event loop management - asyncio.get_event_loop()
                 await loop.run_in_executor(None, self.smtp.quit)
             except Exception as e:
                 logger.warning(f"Error closing SMTP connection: {str(e)}")

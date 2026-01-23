@@ -145,7 +145,7 @@ async def run_websocket_client()host='localhost', port=8765):
                 logger.info()f"Received: {}}}}}}}}}}}}}}}}}}}}}}}}}}response}")
                 
                 # Small delay between messages
-                await asyncio.sleep()0.5)
+                await anyio.sleep()0.5)
             
                 logger.info()"WebSocket test completed successfully")
             
@@ -428,4 +428,4 @@ async def main()):
         return 0
 
 if __name__ == "__main__":
-    asyncio.run()main()))
+    anyio.run()main()))

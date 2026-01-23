@@ -24,7 +24,7 @@ Examples:
 """
 
 import argparse
-import asyncio
+import anyio
 import json
 import logging
 import os
@@ -320,7 +320,7 @@ def main():
         args.max_concurrent_tasks = 8
     
     # Run worker
-    return asyncio.run(run_worker(args))
+    return anyio.run(run_worker(args))
 
 
 if __name__ == "__main__":
