@@ -203,6 +203,12 @@ class IPFSAccelerateCLI:
         
         # Always enable dashboard integration
         args.dashboard = True
+
+        # Allow forcing the integrated HTTP dashboard (useful for environments without Flask,
+        # or for testing endpoint parity).
+        if os.environ.get("IPFS_ACCELERATE_FORCE_INTEGRATED_DASHBOARD", "").lower() in ("1", "true", "yes"):
+            logger.info("Forcing integrated HTTP dashboard via IPFS_ACCELERATE_FORCE_INTEGRATED_DASHBOARD")
+            return self._start_integrated_mcp_server(args)
         
         # Preferred path: Flask-based dashboard if available
         try:
@@ -558,6 +564,16 @@ class IPFSAccelerateCLI:
         
         logger.info(f"Starting integrated MCP server on port {args.port}")
         logger.info("Integrated components: MCP Server, Web Dashboard, Model Manager, Queue Monitor")
+
+        # Resolve asset roots from the installed package if possible.
+        try:
+            import ipfs_accelerate_py as _ipfs_pkg
+            _pkg_root = os.path.dirname(os.path.abspath(_ipfs_pkg.__file__))
+        except Exception:
+            _pkg_root = os.path.join(os.path.dirname(__file__), "ipfs_accelerate_py")
+
+        dashboard_template_path = os.path.join(_pkg_root, "templates", "dashboard.html")
+        static_root_path = os.path.join(_pkg_root, "static")
         
         try:
             # Create the integrated dashboard handler
@@ -592,6 +608,12 @@ class IPFSAccelerateCLI:
                         # Avoid 404 for favicon requests
                         self.send_response(204)
                         self.end_headers()
+                    elif self.path == '/api/mcp/cache/stats':
+                        self._handle_cache_stats_api()
+                    elif self.path == '/api/mcp/peers':
+                        self._handle_peers_api()
+                    elif self.path == '/api/mcp/user':
+                        self._handle_user_api()
                     elif self.path.startswith('/api/mcp/models/'):
                         self._handle_model_api()
                     elif self.path.startswith('/api/mcp/'):
@@ -618,8 +640,7 @@ class IPFSAccelerateCLI:
             def _serve_dashboard(self):
                 """Serve the integrated dashboard"""
                 try:
-                    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dashboard.html')
-                    with open(template_path, 'r', encoding='utf-8') as f:
+                    with open(dashboard_template_path, 'r', encoding='utf-8') as f:
                         dashboard_html = f.read()
                     
                     self.send_response(200)
@@ -635,6 +656,41 @@ class IPFSAccelerateCLI:
 <html><head><title>MCP Dashboard</title></head>
 <body><h1>MCP Server Dashboard</h1><p>Template loading error: """ + str(e) + """</p></body></html>"""
                     self.wfile.write(fallback_html.encode())
+
+            def _send_json(self, payload: Dict[str, Any], status: int = 200):
+                try:
+                    self.send_response(status)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode())
+                except Exception:
+                    # Last-resort: avoid throwing from handler
+                    try:
+                        self.send_response(500)
+                        self.end_headers()
+                    except Exception:
+                        pass
+
+            def _handle_cache_stats_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
+                    self._send_json(get_cache_stats(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/cache/stats"}, status=500)
+
+            def _handle_peers_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+                    self._send_json(get_peer_status(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/peers"}, status=500)
+
+            def _handle_user_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+                    self._send_json(get_user_info(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/user"}, status=500)
             
             def _handle_mcp_api(self):
                 """Handle MCP-related API calls"""
@@ -1126,7 +1182,15 @@ class IPFSAccelerateCLI:
                 try:
                     # Extract the file path from the URL
                     file_path = self.path[8:]  # Remove '/static/'
-                    static_file_path = os.path.join(os.path.dirname(__file__), 'static', file_path)
+                    safe_rel = os.path.normpath(file_path).lstrip("/\\")
+                    if safe_rel.startswith(".."):
+                        self.send_response(400)
+                        self.send_header('Content-type', 'text/plain')
+                        self.end_headers()
+                        self.wfile.write(b"Invalid path")
+                        return
+
+                    static_file_path = os.path.join(static_root_path, safe_rel)
                     
                     if os.path.exists(static_file_path) and os.path.isfile(static_file_path):
                         # Determine content type based on file extension
@@ -1158,7 +1222,7 @@ class IPFSAccelerateCLI:
                         self.send_response(404)
                         self.send_header('Content-type', 'text/html')
                         self.end_headers()
-                        error_html = f"<html><body><h1>404 Not Found</h1><p>Static file not found: {file_path}</p></body></html>"
+                        error_html = f"<html><body><h1>404 Not Found</h1><p>Static file not found: {safe_rel}</p></body></html>"
                         self.wfile.write(error_html.encode())
                         
                 except Exception as e:
@@ -1284,6 +1348,10 @@ class IPFSAccelerateCLI:
             
             # Bind helper functions as methods on the handler class
             IntegratedMCPHandler._serve_dashboard = _serve_dashboard
+            IntegratedMCPHandler._send_json = _send_json
+            IntegratedMCPHandler._handle_cache_stats_api = _handle_cache_stats_api
+            IntegratedMCPHandler._handle_peers_api = _handle_peers_api
+            IntegratedMCPHandler._handle_user_api = _handle_user_api
             IntegratedMCPHandler._handle_mcp_api = _handle_mcp_api
             IntegratedMCPHandler._handle_model_api = _handle_model_api
             IntegratedMCPHandler._handle_model_search = _handle_model_search

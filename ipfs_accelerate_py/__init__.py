@@ -105,27 +105,30 @@ else:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("Model Manager is not imported by default. Set IPFS_ACCEL_IMPORT_EAGER=1 to enable.")
 
-# Import our new implementation
-try:
-    import sys
-    import os
-    
-    # Add the parent directory to the path to import from top-level module
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    
-    from ipfs_accelerate_py import ipfs_accelerate_py, get_instance
-except Exception:
-    # Fall back to original implementation if it exists
-    if original_ipfs_accelerate_py is not None:
-        ipfs_accelerate_py = original_ipfs_accelerate_py
-        get_instance = lambda: None
-    else:
-        # Create stub if neither is available
-        def ipfs_accelerate_py(*args, **kwargs):
-            raise NotImplementedError("IPFS Accelerate Python is not available")
-        
-        def get_instance():
-            raise NotImplementedError("IPFS Accelerate Python is not available")
+_global_instance = None
+
+# Public constructor/entrypoint (may be unavailable when core is disabled or missing deps)
+if original_ipfs_accelerate_py is not None:
+    ipfs_accelerate_py = original_ipfs_accelerate_py
+
+    def get_instance():
+        """Get or create a process-wide singleton instance of ipfs_accelerate_py."""
+        global _global_instance
+        if _global_instance is None:
+            _global_instance = ipfs_accelerate_py()
+        return _global_instance
+else:
+    def ipfs_accelerate_py(*args, **kwargs):
+        raise NotImplementedError(
+            "IPFS Accelerate core is not available (missing deps) or disabled. "
+            "Set IPFS_ACCEL_SKIP_CORE=0 and install core dependencies to enable."
+        )
+
+    def get_instance():
+        raise NotImplementedError(
+            "IPFS Accelerate core is not available (missing deps) or disabled. "
+            "Set IPFS_ACCEL_SKIP_CORE=0 and install core dependencies to enable."
+        )
 
 # Export all components
 export = {
