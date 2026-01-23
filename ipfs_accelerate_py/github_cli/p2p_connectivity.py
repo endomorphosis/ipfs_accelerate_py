@@ -656,12 +656,7 @@ class UniversalConnectivity:
             return "127.0.0.1"
 
     def get_connectivity_status(self) -> Dict:
-        """
-        Get current connectivity status.
-
-        Returns:
-            Dictionary with connectivity information
-        """
+        """Get current connectivity status."""
         return {
             "discovered_peers": len(self.discovered_peers),
             "relay_peers": len(self.relay_peers),
@@ -738,6 +733,9 @@ class _MDNSListener:
 
     def update_service(self, zeroconf, service_type, name) -> None:
         return
+    
+    def get_connectivity_status(self) -> Dict:
+        return self.manager.get_connectivity_status()
 
 
 # Global instance
