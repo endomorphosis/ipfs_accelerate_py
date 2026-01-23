@@ -94,6 +94,7 @@ async def run_probe_server(
     port: int,
     advertise_ip: Optional[str],
     exit_after_one: bool,
+    relay_hop: bool,
 ) -> None:
     import trio
 
@@ -104,14 +105,10 @@ async def run_probe_server(
         raise RuntimeError(f"libp2p deps missing: {e}")
 
     listen_ma = Multiaddr(f"/ip4/0.0.0.0/tcp/{port}")
-    host = await _maybe_await(new_host(listen_addrs=[listen_ma]))
+    host = await _maybe_await(new_host())
 
     local_peer_id = _peer_id_pretty(host.get_id())
     advertise_ip = advertise_ip or os.environ.get("P2P_ADVERTISE_IP") or _guess_advertise_ip()
-    advertised = f"/ip4/{advertise_ip}/tcp/{port}/p2p/{local_peer_id}"
-
-    # Print an easy-to-copy env var assignment.
-    print(f"P2P_PROBE_MULTIADDR={advertised}", flush=True)
 
     done = trio.Event()
 
@@ -143,10 +140,57 @@ async def run_probe_server(
 
     host.set_stream_handler(PROBE_PROTOCOL, _handler)
 
+    async with host.run([listen_ma]):
+        # Optionally run this host as a circuit relay v2 HOP.
+        # This is the key ingredient for NATed peers to be reachable without port-forwarding.
+        if relay_hop:
+            try:
+                from libp2p.relay.circuit_v2 import CircuitV2Protocol
+
+                relay_service = CircuitV2Protocol(host, allow_hop=True)
+
+                async def _run_relay() -> None:
+                    await relay_service.run()
+
+                # Run relay service in the background.
+                async with trio.open_nursery() as nursery:
+                    nursery.start_soon(_run_relay)
+                    # Wait until the relay service has registered handlers.
+                    with trio.fail_after(10):
+                        await relay_service.event_started.wait()
+                    # Now continue with normal probe lifecycle.
+                    await _serve_loop(host, advertise_ip, port, local_peer_id, done, exit_after_one)
+                    nursery.cancel_scope.cancel()
+            except Exception as e:
+                print(f"P2P_RELAY_HOP_ERROR={e}", flush=True)
+                await _serve_loop(host, advertise_ip, port, local_peer_id, done, exit_after_one)
+        else:
+            await _serve_loop(host, advertise_ip, port, local_peer_id, done, exit_after_one)
+
+
+async def _serve_loop(host, advertise_ip: str, port: int, local_peer_id: str, done, exit_after_one: bool) -> None:
+    import trio
+
+    # Compute the actual bound port from the host (in case of remapping).
+    addrs = [str(a) for a in host.get_addrs()]
+    bound_tcp_port = None
+    for addr in host.get_addrs():
+        bound_tcp_port = addr.value_for_protocol("tcp")
+        if bound_tcp_port:
+            break
+
+    tcp_port = int(bound_tcp_port) if bound_tcp_port else int(port)
+    advertised = f"/ip4/{advertise_ip}/tcp/{tcp_port}/p2p/{local_peer_id}"
+
+    # Print an easy-to-copy env var assignment.
+    print(f"P2P_PROBE_MULTIADDR={advertised}", flush=True)
+    # Optional extra context for debugging.
+    if addrs:
+        print(f"P2P_PROBE_LISTENING={';'.join(addrs)}", flush=True)
+
     if exit_after_one:
         await done.wait()
     else:
-        # Run forever.
         await trio.sleep_forever()
 
     try:
@@ -174,24 +218,27 @@ async def probe_remote(remote_multiaddr: str, timeout_s: float = 10.0) -> Tuple[
         raise ValueError("Remote multiaddr must include /p2p/<peer_id>")
 
     peer_info = info_from_p2p_addr(ma)
-    with trio.fail_after(timeout_s):
-        await host.connect(peer_info)
 
-    with trio.fail_after(timeout_s):
-        stream = await host.new_stream(peer_info.peer_id, [PROBE_PROTOCOL])
+    # The host must be "running" (background swarm service) for dialing to work.
+    async with host.run([Multiaddr("/ip4/0.0.0.0/tcp/0")]):
+        with trio.fail_after(timeout_s):
+            await host.connect(peer_info)
 
-    req = {
-        "from_peer_id": local_peer_id,
-        "from_hostname": socket.gethostname(),
-        "from_pid": os.getpid(),
-        "ts": time.time(),
-    }
+        with trio.fail_after(timeout_s):
+            stream = await host.new_stream(peer_info.peer_id, [PROBE_PROTOCOL])
 
-    with trio.fail_after(timeout_s):
-        await stream.write(json.dumps(req, sort_keys=True).encode("utf-8"))
-    with trio.fail_after(timeout_s):
-        raw = await stream.read(4096)
-    await stream.close()
+        req = {
+            "from_peer_id": local_peer_id,
+            "from_hostname": socket.gethostname(),
+            "from_pid": os.getpid(),
+            "ts": time.time(),
+        }
+
+        with trio.fail_after(timeout_s):
+            await stream.write(json.dumps(req, sort_keys=True).encode("utf-8"))
+        with trio.fail_after(timeout_s):
+            raw = await stream.read(4096)
+        await stream.close()
 
     try:
         await host.close()
@@ -215,6 +262,11 @@ def _main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--advertise-ip", default=None)
     parser.add_argument("--exit-after-one", action="store_true")
+    parser.add_argument(
+        "--relay-hop",
+        action="store_true",
+        help="Also run as a Circuit Relay v2 HOP (useful for a public relay node)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -226,6 +278,7 @@ def _main(argv: Optional[list[str]] = None) -> int:
                 port=args.port,
                 advertise_ip=args.advertise_ip,
                 exit_after_one=args.exit_after_one,
+                relay_hop=args.relay_hop,
             )
 
         trio.run(_serve)
