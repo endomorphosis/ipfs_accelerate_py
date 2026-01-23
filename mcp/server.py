@@ -20,6 +20,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Backward-compatible singleton access (used by tests and older integrations)
+_mcp_server_instance: Optional["FastMCP"] = None
+
 # Best-effort ensure minimal deps when allowed
 try:
     from ipfs_accelerate_py.utils.auto_install import ensure_packages
@@ -131,6 +134,18 @@ def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
     return mcp_server
 
 
+def create_mcp_server(name: str, description: str = "") -> FastMCP:
+    """Backward-compatible alias for creating the MCP server."""
+    global _mcp_server_instance
+    _mcp_server_instance = create_ipfs_mcp_server(name, description)
+    return _mcp_server_instance
+
+
+def get_mcp_server_instance() -> Optional[FastMCP]:
+    """Return the most recently created MCP server instance, if any."""
+    return _mcp_server_instance
+
+
 def register_tools(mcp_server: FastMCP) -> None:
     """Register tools with the MCP server.
     
@@ -158,7 +173,7 @@ def create_and_register(name: str, description: str = "") -> FastMCP:
         The MCP server instance with tools registered
     """
     # Create server
-    mcp_server = create_ipfs_mcp_server(name, description)
+    mcp_server = create_mcp_server(name, description)
     
     # Register tools
     register_tools(mcp_server)
