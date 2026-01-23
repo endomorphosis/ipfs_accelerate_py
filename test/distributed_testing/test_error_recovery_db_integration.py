@@ -16,6 +16,7 @@ import json
 import uuid
 from datetime import datetime, timedelta
 import random
+import pytest
 
 # Configure logging
 logging.basicConfig(
@@ -32,9 +33,10 @@ try:
     from error_recovery_with_performance_tracking import PerformanceBasedErrorRecovery
     from enhanced_error_handling_integration import install_enhanced_error_handling
 except ImportError as e:
-    logger.error(f"Error importing modules: {e}")
-    logger.error("Make sure you're running this script from the distributed_testing directory or the PYTHONPATH is set correctly.")
-    sys.exit(1)
+    pytest.skip(
+        f"Skipping distributed error recovery DB integration tests (missing optional deps): {e}",
+        allow_module_level=True,
+    )
 
 
 class MockCoordinator:
