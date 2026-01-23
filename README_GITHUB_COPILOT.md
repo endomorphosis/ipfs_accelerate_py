@@ -1,15 +1,16 @@
-# GitHub CLI and Copilot CLI Integration
+# GitHub CLI, Copilot CLI, and Copilot SDK Integration
 
-This document describes the GitHub CLI and Copilot CLI integration features in the IPFS Accelerate package.
+This document describes the GitHub CLI, Copilot CLI, and Copilot SDK integration features in the IPFS Accelerate package.
 
 ## Overview
 
-IPFS Accelerate now integrates with GitHub CLI (`gh`) and GitHub Copilot CLI to provide:
+IPFS Accelerate now integrates with GitHub CLI (`gh`), GitHub Copilot CLI, and GitHub Copilot SDK to provide:
 
-1. **Python Package Integration**: Use GitHub CLI and Copilot features directly in your Python code
-2. **MCP Tools**: Access GitHub and Copilot features through the MCP server
-3. **CLI Subcommands**: Use GitHub and Copilot features through the `ipfs-accelerate` CLI
+1. **Python Package Integration**: Use GitHub CLI, Copilot CLI, and Copilot SDK features directly in your Python code
+2. **MCP Tools**: Access GitHub, Copilot CLI, and Copilot SDK features through the MCP server
+3. **CLI Subcommands**: Use GitHub, Copilot CLI, and Copilot SDK features through the `ipfs-accelerate` CLI
 4. **Automated Workflow Management**: Automatically manage GitHub Actions workflows and self-hosted runners
+5. **Agentic AI Features**: Build AI agents with the Copilot SDK for programmatic control
 
 ## Prerequisites
 
@@ -42,6 +43,16 @@ Install GitHub Copilot CLI:
 npm install -g @githubnext/github-copilot-cli
 ```
 
+### GitHub Copilot SDK (Optional)
+
+Install GitHub Copilot SDK:
+
+```bash
+pip install github-copilot-sdk
+```
+
+Note: The Copilot SDK requires the Copilot CLI to be installed and accessible.
+
 ## Usage
 
 ### 1. Python Package
@@ -51,6 +62,7 @@ Import and use the wrappers directly in your Python code:
 ```python
 from ipfs_accelerate_py.github_cli import GitHubCLI, WorkflowQueue, RunnerManager
 from ipfs_accelerate_py.copilot_cli import CopilotCLI
+from ipfs_accelerate_py.copilot_sdk import CopilotSDK
 
 # GitHub CLI
 gh = GitHubCLI()
@@ -72,6 +84,14 @@ print(f"Provisioned {len(provisioning)} runner tokens")
 copilot = CopilotCLI()
 result = copilot.suggest_command("list all text files")
 print(f"Suggested: {result['suggestion']}")
+
+# Copilot SDK (Agentic AI)
+sdk = CopilotSDK(model="gpt-4o")
+session = sdk.create_session(streaming=False)
+response = sdk.send_message(session, "Write a Python function to check if a number is prime")
+print(f"Copilot response: {response['messages'][0]['content']}")
+sdk.destroy_session(session)
+sdk.stop()
 ```
 
 ### 2. MCP Tools
@@ -94,9 +114,18 @@ The GitHub and Copilot features are available as MCP tools:
 - `copilot_explain_command(command)` - Explain a command
 - `copilot_suggest_git_command(prompt)` - Get Git command suggestions
 
+#### Copilot SDK Tools
+
+- `copilot_sdk_create_session(model, streaming)` - Create a new SDK session
+- `copilot_sdk_send_message(session_id, prompt, use_cache)` - Send message to session
+- `copilot_sdk_stream_message(session_id, prompt)` - Stream message response
+- `copilot_sdk_list_sessions()` - List all active sessions
+- `copilot_sdk_destroy_session(session_id)` - Destroy a session
+- `copilot_sdk_get_tools()` - Get registered tools
+
 ### 3. CLI Subcommands
 
-Use the integrated CLI for all GitHub and Copilot operations:
+Use the integrated CLI for all GitHub, Copilot CLI, and Copilot SDK operations:
 
 #### GitHub Commands
 
@@ -131,6 +160,25 @@ ipfs-accelerate copilot explain "ls -la | grep txt"
 
 # Get Git command suggestion
 ipfs-accelerate copilot git "commit all changes with message"
+```
+
+#### Copilot SDK Commands
+
+```bash
+# Create a new session
+ipfs-accelerate copilot-sdk create-session --model gpt-4o --output-json
+
+# Send a message to a session
+ipfs-accelerate copilot-sdk send <session_id> "Write a Python function to calculate factorial"
+
+# Stream a message response
+ipfs-accelerate copilot-sdk stream <session_id> "Explain async/await in Python"
+
+# List all active sessions
+ipfs-accelerate copilot-sdk list-sessions
+
+# Destroy a session
+ipfs-accelerate copilot-sdk destroy-session <session_id>
 ```
 
 ## Automated Workflow Queue Management
@@ -201,23 +249,70 @@ ipfs_accelerate_py/
 ├── copilot_cli/
 │   ├── __init__.py
 │   └── wrapper.py          # CopilotCLI
+├── copilot_sdk/
+│   ├── __init__.py
+│   └── wrapper.py          # CopilotSDK
 ├── shared/
-│   └── operations.py       # GitHubOperations, CopilotOperations
+│   └── operations.py       # GitHubOperations, CopilotOperations, CopilotSDKOperations
 ├── mcp/
 │   └── tools/
-│       ├── github_tools.py # GitHub MCP tools
-│       └── copilot_tools.py # Copilot MCP tools
+│       ├── github_tools.py      # GitHub MCP tools
+│       ├── copilot_tools.py     # Copilot CLI MCP tools
+│       └── copilot_sdk_tools.py # Copilot SDK MCP tools
 └── cli.py                  # CLI subcommands
 ```
 
 ### Integration Layers
 
-1. **Wrapper Layer** (`github_cli/`, `copilot_cli/`): Direct Python wrappers for CLI commands
+1. **Wrapper Layer** (`github_cli/`, `copilot_cli/`, `copilot_sdk/`): Direct Python wrappers for CLI commands and SDK
 2. **Operations Layer** (`shared/operations.py`): Business logic and shared functionality
 3. **MCP Layer** (`mcp/tools/`): MCP server tool registration
 4. **CLI Layer** (`cli.py`): Command-line interface
 
 ## Features
+
+### GitHub Copilot SDK (Agentic AI)
+
+The GitHub Copilot SDK integration provides:
+
+- **Session Management**: Create and manage multiple Copilot sessions
+- **Streaming Responses**: Get real-time streaming responses from AI models
+- **Model Selection**: Choose from available models (gpt-4o, gpt-5, etc.)
+- **Tool Registration**: Define custom tools for Copilot to invoke
+- **Caching**: Automatic response caching for improved performance
+- **Async/Await Support**: Full async support for non-blocking operations
+
+#### SDK Example
+
+```python
+from ipfs_accelerate_py.copilot_sdk import CopilotSDK
+
+# Create SDK instance
+sdk = CopilotSDK(model="gpt-4o", enable_cache=True)
+
+# Create a session
+session = sdk.create_session(streaming=True)
+
+# Send a message
+response = sdk.send_message(
+    session,
+    "Write a Python function to reverse a linked list"
+)
+
+# Stream a message with callback
+def on_chunk(chunk):
+    print(chunk, end="", flush=True)
+
+streaming_response = sdk.stream_message(
+    session,
+    "Explain the Factory pattern in Python",
+    on_chunk=on_chunk
+)
+
+# Clean up
+sdk.destroy_session(session)
+sdk.stop()
+```
 
 ### Workflow Queue Management
 
@@ -335,7 +430,37 @@ for repo, token_info in tokens.items():
     print(f"{repo}: {token_info['status']}")
 ```
 
-### Example 3: CLI Pipeline
+### Example 3: Copilot SDK Agentic Workflow
+
+```python
+from ipfs_accelerate_py.copilot_sdk import CopilotSDK
+
+# Create SDK with caching enabled
+sdk = CopilotSDK(model="gpt-4o", enable_cache=True)
+
+# Create a session for code generation
+session = sdk.create_session(streaming=False)
+
+# Multi-turn conversation
+tasks = [
+    "Write a Python class for a binary search tree",
+    "Add a method to find the height of the tree",
+    "Add a method to balance the tree"
+]
+
+for task in tasks:
+    response = sdk.send_message(session, task)
+    if response.get('success'):
+        print(f"\nTask: {task}")
+        for msg in response['messages']:
+            print(f"{msg['content']}\n")
+
+# Clean up
+sdk.destroy_session(session)
+sdk.stop()
+```
+
+### Example 4: CLI Pipeline
 
 ```bash
 #!/bin/bash
