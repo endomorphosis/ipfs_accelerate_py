@@ -14,12 +14,12 @@ with IPFS network-based distribution and acceleration. Key features include:
 # Import original components
 try:
     from .container_backends import backends
-except ImportError:
+except Exception:
     backends = None
 
 try:
     from .install_depends import install_depends
-except ImportError:
+except Exception:
     install_depends = None
 
 import os
@@ -28,24 +28,24 @@ import os
 if os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") != "1":
     try:
         from .ipfs_accelerate import ipfs_accelerate_py as original_ipfs_accelerate_py
-    except ImportError:
+    except Exception:
         original_ipfs_accelerate_py = None
 else:
     original_ipfs_accelerate_py = None
 
 try:
     from .ipfs_multiformats import ipfs_multiformats_py
-except ImportError:
+except Exception:
     ipfs_multiformats_py = None
 
 try:
     from .worker import worker
-except ImportError:
+except Exception:
     worker = None
 
 try:
     from .config import config
-except ImportError:
+except Exception:
     config = None
 
 SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
@@ -59,7 +59,7 @@ if not SKIP_CORE:
             get_accelerator
         )
         webnn_webgpu_available = True
-    except ImportError:
+    except Exception:
         webnn_webgpu_available = False
         
         # Create stubs if not available
@@ -90,7 +90,7 @@ if os.environ.get("IPFS_ACCEL_IMPORT_EAGER", "0") == "1":
             create_model_from_huggingface, get_default_model_manager
         )
         model_manager_available = True
-    except ImportError:
+    except Exception:
         model_manager_available = False
         def get_default_model_manager(*args, **kwargs):
             raise NotImplementedError("Model Manager is not available")
@@ -114,7 +114,7 @@ try:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     
     from ipfs_accelerate_py import ipfs_accelerate_py, get_instance
-except ImportError:
+except Exception:
     # Fall back to original implementation if it exists
     if original_ipfs_accelerate_py is not None:
         ipfs_accelerate_py = original_ipfs_accelerate_py

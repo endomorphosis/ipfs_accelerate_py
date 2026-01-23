@@ -16,6 +16,7 @@ import time
 import hashlib
 import anyio
 import base64
+import threading
 from datetime import datetime, timezone
 from collections import deque
 from dataclasses import dataclass, field
@@ -233,6 +234,18 @@ class GitHubAPICache:
         self._discovery_refresh_interval = int(os.environ.get("CACHE_DISCOVERY_REFRESH_INTERVAL", "120"))
         self._min_connected_peers = int(os.environ.get("CACHE_MIN_CONNECTED_PEERS", "1"))
         self._max_discovery_connect_attempts = int(os.environ.get("CACHE_DISCOVERY_CONNECT_ATTEMPTS", "3"))
+
+        # P2P runtime (py-libp2p is Trio-based). We run it in a dedicated thread
+        # so the rest of the cache can remain sync-friendly.
+        self._p2p_thread: Optional[threading.Thread] = None
+        self._p2p_thread_running = False
+        self._p2p_trio_token = None
+        self._p2p_cancel_scope = None
+        self._p2p_ready = threading.Event()
+
+        # Background work queue (e.g., broadcast cache entries) executed on the
+        # libp2p Trio thread.
+        self._p2p_broadcast_send = None
         
         # Peer discovery - use simplified bootstrap helper
         self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
@@ -242,8 +255,13 @@ class GitHubAPICache:
         
         if self.enable_peer_discovery and self.enable_p2p:
             try:
-                from .p2p_bootstrap_helper import SimplePeerBootstrap
-                self._bootstrap_helper = SimplePeerBootstrap()
+                # Prefer the GitHub issue-backed registry for cross-host rendezvous.
+                if self.github_repo:
+                    from .p2p_peer_registry import P2PPeerRegistry
+
+                    self._bootstrap_helper = P2PPeerRegistry(repo=self.github_repo)
+                else:
+                    raise RuntimeError("No github_repo available")
                 
                 # Get bootstrap peers from environment and discovered peers
                 discovered_peers = self._bootstrap_helper.get_bootstrap_addrs(max_peers=10)
@@ -256,8 +274,21 @@ class GitHubAPICache:
                 else:
                     logger.info("✓ P2P peer discovery enabled (no peers discovered yet)")
             except Exception as e:
-                logger.warning(f"⚠ P2P bootstrap helper unavailable: {e}")
-                self.enable_peer_discovery = False
+                # Fallback to the local file-based bootstrap helper.
+                try:
+                    from .p2p_bootstrap_helper import SimplePeerBootstrap
+
+                    self._bootstrap_helper = SimplePeerBootstrap()
+                    discovered_peers = self._bootstrap_helper.get_bootstrap_addrs(max_peers=10)
+                    if discovered_peers:
+                        self._p2p_bootstrap_peers.extend(discovered_peers)
+                        self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
+                        logger.info(f"✓ P2P peer discovery enabled (local), found {len(discovered_peers)} peer(s)")
+                    else:
+                        logger.info("✓ P2P peer discovery enabled (local, no peers discovered yet)")
+                except Exception as e2:
+                    logger.warning(f"⚠ P2P peer discovery unavailable: {e} / {e2}")
+                    self.enable_peer_discovery = False
         
         # Encryption for P2P messages (using GitHub token as shared secret)
         self._encryption_key = None
@@ -310,22 +341,31 @@ class GitHubAPICache:
                     logger.info(f"Closing {len(self._p2p_connected_peers)} peer connections")
                     self._p2p_connected_peers.clear()
                 
-                # Close P2P host
-                if self._p2p_host:
-                    try:
-                        # Note: libp2p host doesn't have a standard close() method
-                        # Just clear the reference
-                        self._p2p_host = None
-                        logger.info("✓ P2P host closed")
-                    except Exception as e:
-                        logger.warning(f"Failed to close P2P host: {e}")
-                
-                # Stop P2P event loop
-                if self._event_loop and hasattr(self, '_p2p_thread_running'):
-                    if self._p2p_thread_running:
-                        self._event_loop.call_soon_threadsafe(self._event_loop.stop)
-                        self._p2p_thread_running = False
-                        logger.info("✓ P2P event loop stopped")
+                # Stop P2P Trio thread (cancels the host.run() context and closes host)
+                try:
+                    import trio
+
+                    if self._p2p_trio_token is not None and self._p2p_cancel_scope is not None:
+                        def _cancel() -> None:
+                            try:
+                                self._p2p_cancel_scope.cancel()
+                            except Exception:
+                                pass
+
+                        trio.from_thread.run_sync(_cancel, trio_token=self._p2p_trio_token)
+                except Exception:
+                    pass
+
+                # Best-effort join
+                try:
+                    if self._p2p_thread and self._p2p_thread.is_alive():
+                        self._p2p_thread.join(timeout=2.0)
+                except Exception:
+                    pass
+
+                self._p2p_thread_running = False
+                self._p2p_host = None
+                logger.info("✓ P2P runtime stopped")
                         
             except Exception as e:
                 logger.warning(f"Failed to shutdown P2P cleanly: {e}")
@@ -693,6 +733,7 @@ class GitHubAPICache:
             content_hash = self._compute_validation_hash(validation_fields)
             logger.debug(f"Computed validation hash for {cache_key}: {content_hash[:16]}...")
         
+        entry = None
         with self._lock:
             # Evict oldest entries if cache is full
             if len(self._cache) >= self.max_cache_size:
@@ -712,10 +753,10 @@ class GitHubAPICache:
             # Persist to disk if enabled
             if self.enable_persistence:
                 self._save_to_disk(cache_key, entry)
-            
-            # Broadcast to P2P peers if enabled
-            if self.enable_p2p:
-                self._broadcast_in_background(cache_key, entry)
+
+        # Broadcast to P2P peers if enabled (outside the lock)
+        if self.enable_p2p and entry is not None:
+            self._broadcast_in_background(cache_key, entry)
     
     def _evict_oldest(self) -> None:
         """Evict the oldest cache entry."""
@@ -1130,33 +1171,46 @@ class GitHubAPICache:
     
     def _init_encryption(self) -> None:
         """
-        Initialize encryption for P2P messages using GitHub token as shared secret.
+        Initialize encryption for P2P messages using a shared secret.
         
-        All runners with the same GitHub authentication will share the same encryption key,
-        allowing only authorized runners to decrypt cache messages.
+        By default, this derives the secret from the GitHub token so that GitHub Actions
+        runners within the same job can share encrypted cache entries.
+
+        For cross-machine / non-Actions usage, set `CACHE_P2P_SHARED_SECRET` to a
+        pre-shared value on all nodes to ensure they can decrypt each other.
         """
         if not HAVE_CRYPTO:
             raise RuntimeError("cryptography not available, install with: pip install cryptography")
         
-        # Get GitHub token (shared secret)
-        github_token = os.environ.get("GITHUB_TOKEN")
-        if not github_token:
-            # Try to get token from gh CLI
-            try:
-                import subprocess
-                result = subprocess.run(
-                    ["gh", "auth", "token"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
+        # Prefer an explicit shared secret (useful for cross-machine testing).
+        shared_secret = os.environ.get("CACHE_P2P_SHARED_SECRET")
+        secret_source = "CACHE_P2P_SHARED_SECRET"
+
+        # Fallback to GitHub token (legacy/default behavior)
+        if not shared_secret:
+            github_token = os.environ.get("GITHUB_TOKEN")
+            if not github_token:
+                # Try to get token from gh CLI
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ["gh", "auth", "token"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        github_token = result.stdout.strip()
+                except Exception as e:
+                    logger.debug(f"Failed to get GitHub token from gh CLI: {e}")
+
+            if not github_token:
+                raise RuntimeError(
+                    "Shared secret not available (set CACHE_P2P_SHARED_SECRET, or set GITHUB_TOKEN / run 'gh auth login')"
                 )
-                if result.returncode == 0:
-                    github_token = result.stdout.strip()
-            except Exception as e:
-                logger.debug(f"Failed to get GitHub token from gh CLI: {e}")
-        
-        if not github_token:
-            raise RuntimeError("GitHub token not available (set GITHUB_TOKEN or run 'gh auth login')")
+
+            shared_secret = github_token
+            secret_source = "GITHUB_TOKEN/gh"
         
         # Derive encryption key from GitHub token using PBKDF2
         # This ensures all runners with same token get same encryption key
@@ -1168,11 +1222,11 @@ class GitHubAPICache:
             backend=default_backend()
         )
         
-        key = base64.urlsafe_b64encode(kdf.derive(github_token.encode('utf-8')))
+        key = base64.urlsafe_b64encode(kdf.derive(shared_secret.encode('utf-8')))
         self._encryption_key = key
         self._cipher = Fernet(key)
         
-        logger.debug("Encryption key derived from GitHub token")
+        logger.debug(f"Encryption key derived from {secret_source}")
     
     def _encrypt_message(self, data: Dict[str, Any]) -> bytes:
         """
@@ -1223,61 +1277,115 @@ class GitHubAPICache:
             return None
     
     def _init_p2p(self) -> None:
-        """Initialize P2P networking for cache sharing in a background thread (thread-safe)."""
+        """Initialize P2P networking for cache sharing in a Trio background thread (thread-safe)."""
         if not HAVE_LIBP2P:
             raise RuntimeError("libp2p not available, install with: pip install libp2p")
-        
-        # Use lock to ensure only one thread initializes P2P
+
         with self._p2p_init_lock:
-            # Check if already initialized
-            if self._p2p_initialized or self._p2p_host is not None:
+            if self._p2p_initialized or self._p2p_thread_running:
                 logger.debug("P2P already initialized, skipping")
                 return
-            
-            try:
-                # Create a new event loop for the background thread
-                self._event_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-                self._p2p_thread_running = False
-                
-                def run_event_loop():
-                    """Run event loop in background thread."""
-                    try:
-                        # TODO: Remove event loop management - asyncio.set_event_loop(self._event_loop)
-                        self._event_loop.run_forever()
-                    except Exception as e:
-                        logger.error(f"P2P event loop error: {e}")
-                    finally:
-                        # Cleanup event loop
-                        try:
-                            self._event_loop.close()
-                        except Exception:
-                            pass
-                
-                # Start event loop in background thread
-                import threading
-                self._p2p_thread = threading.Thread(target=run_event_loop, daemon=True, name="p2p-event-loop")
-                self._p2p_thread.start()
-                
-                # Schedule P2P host initialization (non-blocking)
-                future = asyncio.run_coroutine_threadsafe(self._start_p2p_host(), self._event_loop)
-                
-                # Wait up to 3 seconds for initialization (shorter timeout to prevent blocking)
+
+            self._p2p_ready.clear()
+
+            def _runner() -> None:
                 try:
-                    future.result(timeout=3.0)
-                    self._p2p_thread_running = True
-                    self._p2p_initialized = True
-                    logger.info("✓ P2P initialized successfully in background")
+                    import trio
+
+                    async def _main() -> None:
+                        self._p2p_trio_token = trio.lowlevel.current_trio_token()
+                        with trio.CancelScope() as scope:
+                            self._p2p_cancel_scope = scope
+                            await self._run_p2p_node()
+
+                    trio.run(_main)
                 except Exception as e:
-                    logger.warning(f"⚠ P2P initialization timeout (continuing in background): {e}")
-                    # P2P will continue initializing in background
-                    self._p2p_thread_running = True
-                    self._p2p_initialized = True  # Mark as initialized even if timeout
-                    
-            except Exception as e:
-                logger.error(f"Failed to initialize P2P: {e}")
-                self._p2p_initialized = False
-                self.enable_p2p = False
-                raise
+                    logger.error(f"P2P runtime error: {e}")
+                finally:
+                    self._p2p_thread_running = False
+
+            self._p2p_thread = threading.Thread(target=_runner, daemon=True, name="p2p-trio")
+            self._p2p_thread.start()
+
+            # Wait briefly so startup errors surface quickly, but don't block forever.
+            if not self._p2p_ready.wait(timeout=3.0):
+                logger.warning("⚠ P2P is still starting in background")
+
+            self._p2p_thread_running = True
+            self._p2p_initialized = True
+            logger.info("✓ P2P initialized (Trio)")
+
+    async def _enqueue_broadcast(self, cache_key: str, entry: CacheEntry) -> None:
+        """Enqueue a broadcast job onto the P2P Trio thread."""
+        if self._p2p_broadcast_send is None:
+            return
+        try:
+            send_nowait = getattr(self._p2p_broadcast_send, "send_nowait", None)
+            if callable(send_nowait):
+                send_nowait((cache_key, entry))
+                return
+        except Exception:
+            pass
+
+        await self._p2p_broadcast_send.send((cache_key, entry))
+
+    async def _broadcast_worker(self, recv) -> None:
+        """Process broadcast jobs from the queue."""
+        async for cache_key, entry in recv:
+            try:
+                await self._broadcast_cache_entry(cache_key, entry)
+            except Exception:
+                pass
+
+    async def _run_p2p_node(self) -> None:
+        """Run libp2p host + background tasks forever (until cancelled)."""
+        import trio
+        from multiaddr import Multiaddr
+
+        listen_ma = Multiaddr(f"/ip4/0.0.0.0/tcp/{self._p2p_listen_port}")
+
+        # Create host (new_host is synchronous in this libp2p version)
+        self._p2p_host = new_host()
+
+        # Set stream handlers
+        self._p2p_host.set_stream_handler(self._p2p_protocol, self._handle_cache_stream)
+        self._p2p_host.set_stream_handler(
+            self._p2p_peer_exchange_protocol,
+            self._handle_peer_exchange_stream,
+        )
+
+        send, recv = trio.open_memory_channel(200)
+        self._p2p_broadcast_send = send
+
+        async with self._p2p_host.run([listen_ma]):
+            try:
+                logger.info(f"P2P host listening on {self._p2p_listen_port}")
+                logger.info(f"Peer ID: {self._p2p_host.get_id().pretty()}")
+            except Exception:
+                pass
+
+            # Mark ready once we're actually listening.
+            self._p2p_ready.set()
+
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(self._broadcast_worker, recv)
+                nursery.start_soon(self._bootstrap_and_maintain)
+                await trio.sleep_forever()
+
+    async def _bootstrap_and_maintain(self) -> None:
+        """Connect to bootstrap peers and then periodically maintain connectivity."""
+        import trio
+
+        # Initial bootstrap (best-effort)
+        await self._initial_bootstrap_connect()
+
+        # Maintenance loop
+        while True:
+            await trio.sleep(60)
+            try:
+                await self._periodic_connection_maintenance()
+            except Exception:
+                pass
     
     def _validate_multiaddr(self, addr: Optional[str]) -> bool:
         """
@@ -1327,170 +1435,38 @@ class GitHubAPICache:
         return "127.0.0.1"
     
     async def _start_p2p_host(self) -> None:
-        """Start libp2p host for P2P cache sharing."""
+        """Legacy entrypoint (kept for compatibility)."""
+        raise RuntimeError("Use _init_p2p() to start the Trio P2P runtime")
+
+    async def _initial_bootstrap_connect(self) -> None:
+        """Initial peer registry registration + bootstrap connect (best-effort)."""
+        import trio
+
+        if not self._p2p_host:
+            return
+
+        # Best-effort register this peer with discovery backend.
         try:
-            # Create libp2p host with listen addresses
-            # Note: new_host() is synchronous but needs to be called from async context for some operations
-            from multiaddr import Multiaddr
-            listen_multiaddr = Multiaddr(f"/ip4/0.0.0.0/tcp/{self._p2p_listen_port}")
-            
-            self._p2p_host = new_host(listen_addrs=[listen_multiaddr])
-            
-            # Initialize universal connectivity if enabled
-            if self.enable_universal_connectivity:
-                try:
-                    from .p2p_connectivity import get_universal_connectivity, ConnectivityConfig
-                    
-                    def _env_bool(name: str, default: bool) -> bool:
-                        val = os.environ.get(name)
-                        if val is None:
-                            return default
-                        return val.lower() in {"1", "true", "yes", "on"}
-
-                    config = ConnectivityConfig(
-                        enable_mdns=_env_bool("CACHE_ENABLE_MDNS", True),
-                        enable_dht=_env_bool("CACHE_ENABLE_DHT", True),
-                        enable_relay=_env_bool("CACHE_ENABLE_RELAY", True),
-                        enable_autonat=_env_bool("CACHE_ENABLE_AUTONAT", True),
-                        enable_hole_punching=_env_bool("CACHE_ENABLE_HOLE_PUNCHING", True),
-                        enable_quic=_env_bool("CACHE_ENABLE_QUIC", False),
-                        enable_webrtc=_env_bool("CACHE_ENABLE_WEBRTC", False),
-                    )
-                    self._universal_connectivity = get_universal_connectivity(config)
-                    
-                    # Configure transports and discovery
-                    await self._universal_connectivity.configure_transports(self._p2p_host)
-                    await self._universal_connectivity.start_mdns_discovery(self._p2p_host)
-                    await self._universal_connectivity.configure_dht(self._p2p_host)
-                    relay_env = os.environ.get("CACHE_RELAY_PEERS", "")
-                    relay_peers = [p.strip() for p in relay_env.split(",") if p.strip()]
-                    await self._universal_connectivity.setup_circuit_relay(self._p2p_host, relay_peers)
-                    await self._universal_connectivity.enable_autonat(self._p2p_host)
-                    await self._universal_connectivity.enable_hole_punching(self._p2p_host)
-                    
-                    logger.info("✓ Universal connectivity enabled")
-                except Exception as e:
-                    logger.warning(f"Universal connectivity not available: {e}")
-            
-            # Set stream handler for cache protocol
-            self._p2p_host.set_stream_handler(self._p2p_protocol, self._handle_cache_stream)
-
-            # Peer exchange protocol: lets connected peers share additional peer multiaddrs.
-            # This is a pragmatic replacement for DHT/pubsub discovery in py-libp2p deployments.
-            self._p2p_host.set_stream_handler(
-                self._p2p_peer_exchange_protocol,
-                self._handle_peer_exchange_stream,
-            )
-            
-            logger.info(f"P2P host started, listening on port {self._p2p_listen_port}")
-            logger.info(f"Peer ID: {self._p2p_host.get_id().pretty()}")
-            
-            # Register with peer discovery if enabled
             if self._bootstrap_helper:
-                try:
-                    peer_id = self._p2p_host.get_id().pretty()
-                    multiaddr = f"/ip4/{self._get_public_ip()}/tcp/{self._p2p_listen_port}/p2p/{peer_id}"
-                    
-                    if self._bootstrap_helper.register_peer(peer_id, self._p2p_listen_port, multiaddr):
-                        logger.info(f"✓ Registered with peer discovery: {multiaddr}")
-                        
-                        # Discover other peers
-                        discovered_peers = self._bootstrap_helper.discover_peers(max_peers=10)
-                        logger.info(f"✓ Discovered {len(discovered_peers)} peer(s)")
-                        
-                        # Use universal connectivity for multi-method peer discovery if available
-                        if self._universal_connectivity:
-                            try:
-                                # Create a simple wrapper for the bootstrap helper
-                                class SimpleRegistry:
-                                    def __init__(self, helper):
-                                        self.helper = helper
-                                    def discover_peers(self, max_peers=10):
-                                        return self.helper.discover_peers(max_peers=max_peers)
-                                
-                                registry = SimpleRegistry(self._bootstrap_helper)
-                                multi_discovered = await self._universal_connectivity.discover_peers_multimethod(
-                                    github_registry=registry,
-                                    bootstrap_peers=self._p2p_bootstrap_peers
-                                )
-                                
-                                # Add discovered peers to bootstrap list
-                                for peer_multiaddr in multi_discovered:
-                                    if self._validate_multiaddr(peer_multiaddr):
-                                        if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
-                                            if peer_multiaddr not in self._p2p_bootstrap_peers:
-                                                self._p2p_bootstrap_peers.append(peer_multiaddr)
-                                
-                                logger.info(f"✓ Universal connectivity discovered {len(multi_discovered)} peer(s)")
-                            except Exception as e:
-                                logger.warning(f"Multi-method discovery failed: {e}")
-                        else:
-                            # Fallback to simple discovery
-                            for peer in discovered_peers:
-                                if peer.get("peer_id") != peer_id:  # Don't connect to self
-                                    peer_multiaddr = peer.get("multiaddr")
-                                    if self._validate_multiaddr(peer_multiaddr):
-                                        # Check if we haven't exceeded max bootstrap peers
-                                        if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
-                                            # Check for duplicates before adding
-                                            if peer_multiaddr not in self._p2p_bootstrap_peers:
-                                                self._p2p_bootstrap_peers.append(peer_multiaddr)
-                                    else:
-                                        logger.warning(f"Invalid multiaddr format: {peer_multiaddr}")
-                    else:
-                        logger.warning("⚠ Failed to register with peer discovery")
-                except Exception as e:
-                    logger.warning(f"⚠ Peer discovery error: {e}")
-            
-            # Deduplicate bootstrap peers before connecting
-            self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
-            self._p2p_known_peer_addrs.update(self._p2p_bootstrap_peers)
-            logger.info(f"Connecting to {len(self._p2p_bootstrap_peers)} bootstrap peer(s)...")
-            
-            # Connect to bootstrap peers with enhanced connectivity
-            for peer_addr in self._p2p_bootstrap_peers:
-                try:
-                    if self._universal_connectivity:
-                        # Use universal connectivity with fallback strategies
-                        peer_info = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
-                            self._universal_connectivity.attempt_connection(
-                                self._p2p_host,
-                                peer_addr,
-                                use_relay=True
-                            ),
-                            timeout=15.0
-                        )
-                        if not peer_info:
-                            logger.warning(f"Failed to connect to peer {peer_addr}")
-                        else:
-                            try:
-                                peer_id = peer_info.peer_id.pretty()
-                                self._p2p_connected_peers[peer_id] = peer_info
-                                logger.info(f"Connected to peer: {peer_id}")
-                            except Exception:
-                                # Best-effort bookkeeping only
-                                pass
-                    else:
-                        # Fallback to direct connection
-                        await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
-                            self._connect_to_peer(peer_addr),
-                            timeout=15.0
-                        )
-                except asyncio.TimeoutError:
-                    logger.warning(f"Timeout connecting to bootstrap peer {peer_addr}")
-                except Exception as e:
-                    logger.warning(f"Failed to connect to bootstrap peer {peer_addr}: {e}")
-            
-            # Record successful bootstrap time
-            self._last_bootstrap_refresh = time.time()
-            
-            # Start background task for periodic reconnection & bootstrap refresh
-            if self._event_loop:
-                # TODO: Replace with task group - asyncio.create_task(self._periodic_connection_maintenance())
-        
-        except Exception as e:
-            logger.error(f"Failed to start P2P host: {e}")
-            raise
+                peer_id = self._p2p_host.get_id().pretty()
+                advertised = self._get_advertised_multiaddrs()
+                multiaddr = advertised[0] if advertised else f"/ip4/127.0.0.1/tcp/{self._p2p_listen_port}/p2p/{peer_id}"
+                self._bootstrap_helper.register_peer(peer_id, self._p2p_listen_port, multiaddr)
+        except Exception:
+            pass
+
+        # Deduplicate bootstrap peers before connecting
+        self._p2p_bootstrap_peers = list(dict.fromkeys(self._p2p_bootstrap_peers))
+        self._p2p_known_peer_addrs.update(self._p2p_bootstrap_peers)
+
+        for peer_addr in self._p2p_bootstrap_peers:
+            try:
+                with trio.fail_after(15.0):
+                    await self._connect_to_peer(peer_addr)
+            except Exception as e:
+                logger.debug(f"Bootstrap connect failed: {peer_addr} ({e})")
+
+        self._last_bootstrap_refresh = time.time()
     
     async def _connect_to_peer(self, peer_addr: str) -> None:
         """Connect to a peer by multiaddr."""
@@ -1511,72 +1487,93 @@ class GitHubAPICache:
 
         # Opportunistically perform peer exchange to learn additional multiaddrs.
         try:
-            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._peer_exchange_with_peer(peer_info), timeout=10.0)
+            import trio
+            with trio.fail_after(10.0):
+                await self._peer_exchange_with_peer(peer_info)
         except Exception:
             pass
     
     async def _periodic_connection_maintenance(self) -> None:
         """Periodically refresh bootstrap connections and prune dead peers."""
+        import trio
+
+        if not self._p2p_host:
+            return
+
+        current_time = time.time()
+
+        # Periodic bootstrap refresh
+        if current_time - self._last_bootstrap_refresh > self._bootstrap_refresh_interval:
+            reconnected = 0
+            for peer_addr in self._p2p_bootstrap_peers[:5]:
+                try:
+                    with trio.fail_after(10.0):
+                        await self._connect_to_peer(peer_addr)
+                    reconnected += 1
+                except Exception:
+                    pass
+            if reconnected > 0:
+                logger.info(f"✓ Refreshed {reconnected} bootstrap connection(s)")
+            self._last_bootstrap_refresh = current_time
+
+        # Periodic peer exchange with already-connected peers
+        for peer_id, peer_info in list(self._p2p_connected_peers.items()):
+            last = self._peer_exchange_last.get(peer_id, 0)
+            if current_time - last < self._peer_exchange_interval:
+                continue
+            try:
+                with trio.fail_after(10.0):
+                    await self._peer_exchange_with_peer(peer_info)
+            except Exception:
+                pass
+
+        # Refresh peers from registry (GitHub issue comments or local registry)
         try:
-            while True:
-                await anyio.sleep(60)  # Check every minute
-                
-                if not self._p2p_host:
-                    break
-                
-                current_time = time.time()
-                
-                # Periodic bootstrap refresh (every 5 minutes like rust-peer)
-                if current_time - self._last_bootstrap_refresh > self._bootstrap_refresh_interval:
-                    logger.info("Refreshing bootstrap peer connections...")
-                    reconnected = 0
-                    for peer_addr in self._p2p_bootstrap_peers[:5]:  # Only try first 5
-                        try:
-                            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._connect_to_peer(peer_addr), timeout=10.0)
-                            reconnected += 1
-                        except Exception:
-                            pass  # Silent retry
-                    if reconnected > 0:
-                        logger.info(f"✓ Refreshed {reconnected} bootstrap connection(s)")
-                    self._last_bootstrap_refresh = current_time
+            helper = getattr(self, "_bootstrap_helper", None)
+            if helper is not None and hasattr(helper, "get_bootstrap_addrs"):
+                addrs = helper.get_bootstrap_addrs(max_peers=10)
+                if isinstance(addrs, list):
+                    for addr in addrs:
+                        if isinstance(addr, str) and self._validate_multiaddr(addr):
+                            self._p2p_known_peer_addrs.add(addr)
+                            if addr not in self._p2p_bootstrap_peers and len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
+                                self._p2p_bootstrap_peers.append(addr)
+        except Exception:
+            pass
 
-                # Periodic multi-method discovery refresh (mDNS + GitHub registry + bootstrap hints)
-                if self._universal_connectivity and current_time - self._last_discovery_refresh > self._discovery_refresh_interval:
-                    try:
-                        await self._refresh_discovery_and_connect()
-                    except Exception as e:
-                        logger.debug(f"Discovery refresh failed: {e}")
-                    self._last_discovery_refresh = current_time
+        # Heartbeat our own registry entry so other machines can find us.
+        try:
+            if self._p2p_host and self._bootstrap_helper is not None:
+                peer_id = self._p2p_host.get_id().pretty()
+                advertised = self._get_advertised_multiaddrs()
+                multiaddr = advertised[0] if advertised else f"/ip4/127.0.0.1/tcp/{self._p2p_listen_port}/p2p/{peer_id}"
+                heartbeat = getattr(self._bootstrap_helper, "heartbeat", None)
+                if callable(heartbeat):
+                    heartbeat(peer_id, self._p2p_listen_port, multiaddr)
+                else:
+                    register = getattr(self._bootstrap_helper, "register_peer", None)
+                    if callable(register):
+                        register(peer_id, self._p2p_listen_port, multiaddr)
+        except Exception:
+            pass
 
-                # Ensure we maintain a minimum number of connected peers (best-effort)
-                if self._min_connected_peers > 0:
-                    try:
-                        await self._ensure_min_connections()
-                    except Exception as e:
-                        logger.debug(f"Min-connection check failed: {e}")
+        # Best-effort: if we still have few/no connections, try dialing some known peers.
+        try:
+            if self._p2p_host and len(self._p2p_connected_peers) < max(1, self._min_connected_peers):
+                import trio
 
-                # Periodic peer exchange with already-connected peers.
-                # This helps the mesh converge without DHT support.
-                for peer_id, peer_info in list(self._p2p_connected_peers.items()):
-                    last = self._peer_exchange_last.get(peer_id, 0)
-                    if current_time - last < self._peer_exchange_interval:
-                        continue
+                attempts = 0
+                for addr in list(self._p2p_known_peer_addrs):
+                    if attempts >= self._max_discovery_connect_attempts:
+                        break
                     try:
-                        await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._peer_exchange_with_peer(peer_info), timeout=10.0)
+                        with trio.fail_after(8.0):
+                            await self._connect_to_peer(addr)
+                        attempts += 1
                     except Exception:
-                        pass
-                
-                # Prune disconnected peers (basic cleanup)
-                if self._p2p_connected_peers:
-                    disconnected = []
-                    for peer_id in list(self._p2p_connected_peers.keys()):
-                        # In py-libp2p, we'd check connection state here if API allows
-                        # For now, we keep peers in the dict (best-effort)
-                        pass
-        except asyncio.CancelledError:
-            logger.debug("Connection maintenance task cancelled")
-        except Exception as e:
-            logger.warning(f"Error in connection maintenance: {e}")
+                        continue
+        except Exception:
+            pass
 
     async def _refresh_discovery_and_connect(self) -> None:
         """Refresh discovery sources and attempt connections to newly learned peers."""
@@ -1612,13 +1609,10 @@ class GitHubAPICache:
                 break
             try:
                 if self._universal_connectivity:
-                    peer_info = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
-                        self._universal_connectivity.attempt_connection(
-                            self._p2p_host,
-                            addr,
-                            use_relay=True
-                        ),
-                        timeout=10.0
+                    peer_info = await self._universal_connectivity.attempt_connection(
+                        self._p2p_host,
+                        addr,
+                        use_relay=True
                     )
                     if peer_info is not None:
                         try:
@@ -1627,7 +1621,7 @@ class GitHubAPICache:
                         except Exception:
                             pass
                 else:
-                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._connect_to_peer(addr), timeout=10.0)
+                    await self._connect_to_peer(addr)
                 attempts += 1
             except Exception:
                 continue
@@ -1650,13 +1644,10 @@ class GitHubAPICache:
                 break
             try:
                 if self._universal_connectivity:
-                    peer_info = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
-                        self._universal_connectivity.attempt_connection(
-                            self._p2p_host,
-                            addr,
-                            use_relay=True
-                        ),
-                        timeout=10.0
+                    peer_info = await self._universal_connectivity.attempt_connection(
+                        self._p2p_host,
+                        addr,
+                        use_relay=True
                     )
                     if peer_info is not None:
                         try:
@@ -1665,7 +1656,7 @@ class GitHubAPICache:
                         except Exception:
                             pass
                 else:
-                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._connect_to_peer(addr), timeout=10.0)
+                    await self._connect_to_peer(addr)
                 attempts += 1
             except Exception:
                 continue
@@ -1817,7 +1808,9 @@ class GitHubAPICache:
             if len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
                 self._p2p_bootstrap_peers.append(addr)
             try:
-                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self._connect_to_peer(addr), timeout=5.0)
+                import trio
+                with trio.fail_after(5.0):
+                    await self._connect_to_peer(addr)
             except Exception:
                 pass
             attempts += 1
@@ -1924,14 +1917,20 @@ class GitHubAPICache:
     
     def _broadcast_in_background(self, cache_key: str, entry: CacheEntry) -> None:
         """Broadcast cache entry in background (non-blocking)."""
-        if not self.enable_p2p or not self._event_loop:
+        if not self.enable_p2p or self._p2p_trio_token is None:
             return
-        
-        # Schedule broadcast as background task
-        asyncio.run_coroutine_threadsafe(
-            self._broadcast_cache_entry(cache_key, entry),
-            self._event_loop
-        )
+
+        try:
+            import trio
+
+            trio.from_thread.run(
+                self._enqueue_broadcast,
+                cache_key,
+                entry,
+                trio_token=self._p2p_trio_token,
+            )
+        except Exception:
+            pass
 
 
 # Global cache instance (can be configured at module level)

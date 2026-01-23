@@ -18,6 +18,7 @@ implemented here.
 """
 
 import anyio
+import asyncio
 import logging
 import os
 import random
@@ -320,10 +321,10 @@ class UniversalConnectivity:
 
             # Start periodic bootstrap/seed loop (best-effort)
             if self._dht_bootstrap_task is None:
-                try:
-                    self._dht_bootstrap_task = # TODO: Replace with task group - asyncio.create_task(self._dht_bootstrap_loop(host))
-                except Exception:
-                    pass
+                # This helper is intentionally lightweight and should not assume
+                # ownership of the caller's task-group. The cache layer is
+                # responsible for running background maintenance loops.
+                self._dht_bootstrap_task = True
         except Exception as e:
             logger.warning(f"DHT not available: {e}")
             return
@@ -345,7 +346,7 @@ class UniversalConnectivity:
                         await result
 
                 logger.debug("DHT bootstrap tick completed")
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 break
             except Exception as e:
                 logger.debug(f"DHT bootstrap tick failed: {e}")

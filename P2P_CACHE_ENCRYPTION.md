@@ -6,7 +6,13 @@
 
 ## What Was Added
 
-Added **end-to-end encryption** to P2P cache messages using the GitHub token as a shared secret. This ensures only GitHub Actions runners with the same GitHub authentication can decrypt cache entries.
+Added **end-to-end encryption** to P2P cache messages using a shared secret. By default, the GitHub token is used as that secret, which ensures only GitHub Actions runners with the same GitHub authentication can decrypt cache entries.
+
+### Cross-machine Sharing
+
+When running across machines where GitHub tokens may differ, set the same explicit shared secret on all nodes:
+
+- `CACHE_P2P_SHARED_SECRET`: pre-shared value used to derive the encryption key (takes precedence over `GITHUB_TOKEN`)
 
 ## Security Model
 
@@ -78,8 +84,12 @@ Added **end-to-end encryption** to P2P cache messages using the GitHub token as 
 
 ```python
 def _init_encryption(self) -> None:
-    # Get GitHub token from env or gh CLI
+    # Prefer an explicit shared secret for cross-machine setups
+    shared_secret = os.environ.get("CACHE_P2P_SHARED_SECRET")
+
+    # Otherwise fall back to GitHub token from env or gh CLI
     github_token = os.environ.get("GITHUB_TOKEN") or subprocess.run(["gh", "auth", "token"])
+    shared_secret = shared_secret or github_token
     
     # Derive encryption key using PBKDF2
     kdf = PBKDF2HMAC(
@@ -90,7 +100,7 @@ def _init_encryption(self) -> None:
         backend=default_backend()
     )
     
-    key = base64.urlsafe_b64encode(kdf.derive(github_token.encode('utf-8')))
+    key = base64.urlsafe_b64encode(kdf.derive(shared_secret.encode('utf-8')))
     self._cipher = Fernet(key)
 ```
 

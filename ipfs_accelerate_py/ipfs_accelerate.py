@@ -11,6 +11,7 @@ import ipfs_model_manager_py
 import hashlib
 import time
 import logging
+import inspect
 
 from typing import Dict, List, Any, Optional
 
@@ -411,7 +412,8 @@ class ipfs_accelerate_py:
                     pass    
         for model in models:
             if model not in self.queues:
-                self.resources["queue"][model] = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(128)
+                # anyio replacement for asyncio.Queue; returns (send, receive)
+                self.resources["queue"][model] = anyio.create_memory_object_stream(128)
             if model not in list(self.resources["consumer_tasks"].keys()):
                 self.resources["consumer_tasks"][model] = {}
         if type(endpoint_list) == list:
@@ -813,16 +815,21 @@ class ipfs_accelerate_py:
                                 if handler is None:
                                     handler = self.resources["endpoint_handler"][model][backend]
                                     
-                                self.resources["consumer_tasks"][model][endpoint] = # TODO: Replace with task group - asyncio.create_task(
-                                    self.endpoint_consumer(
-                                        self.resources["queues"][model][backend], 
-                                        64, 
-                                        model, 
-                                        handler
-                                    )
+                                # Store the coroutine; the caller is responsible for scheduling it
+                                # (e.g., inside an anyio task group).
+                                self.resources["consumer_tasks"][model][endpoint] = self.endpoint_consumer(
+                                    self.resources["queues"][model][backend],
+                                    64,
+                                    model,
+                                    handler,
                                 )
                             if model in list(self.resources["endpoint_handler"].keys()):
-                                self.resources["queue_tasks"][model][backend] = # TODO: Replace with task group - asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
+                                # Store the coroutine; the caller is responsible for scheduling it.
+                                self.resources["queue_tasks"][model][backend] = self.model_consumer(
+                                    self.resources["queue"][model],
+                                    64,
+                                    model,
+                                )
         return None
     
     async def model_consumer(self, queue, batch_size, model):
@@ -1405,7 +1412,7 @@ class ipfs_accelerate_py:
                 async def handler_wrapper(input_data):
                     try:
                         # Try to call as async function
-                        if inspect.iscoroutinefunction(  # Added import inspecthandler):
+                        if inspect.iscoroutinefunction(handler):
                             return await handler(input_data)
                         else:
                             # Call as sync function
@@ -1518,7 +1525,7 @@ class ipfs_accelerate_py:
                 else:
                     # Fallback to direct access
                     raw_handler = self.resources["endpoint_handler"][model][endpoint]
-                    if inspect.iscoroutinefunction(  # Added import inspectraw_handler):
+                    if inspect.iscoroutinefunction(raw_handler):
                         return await raw_handler(data)
                     else:
                         return raw_handler(data)
