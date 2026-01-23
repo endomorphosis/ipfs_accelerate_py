@@ -21,6 +21,8 @@ from dataclasses import dataclass, asdict, field
 from enum import Enum, auto
 import datetime
 import queue
+import inspect
+from types import SimpleNamespace
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
@@ -40,6 +42,56 @@ try:
 except ImportError:
     logger.warning("Visualization packages not available. Install matplotlib, seaborn, pandas to enable visualizations.")
     VISUALIZATION_AVAILABLE = False
+
+# Optional database dependency. Tests patch `coordinator.duckdb.connect` and
+# should not crash if duckdb isn't installed.
+try:
+    import duckdb  # type: ignore
+except Exception:  # pragma: no cover
+    duckdb = SimpleNamespace(connect=lambda *args, **kwargs: None)  # type: ignore
+
+# Optional coordinator subcomponents. These are patched in unit tests; provide
+# light fallbacks to keep minimal environments working.
+try:
+    from .security import SecurityManager  # type: ignore
+except Exception:  # pragma: no cover
+    class SecurityManager:  # type: ignore
+        async def verify_token(self, *_args, **_kwargs):
+            return False
+
+        async def verify_api_key(self, *_args, **_kwargs):
+            return False
+
+        async def generate_token(self, *_args, **_kwargs):
+            return ""
+
+try:
+    from .health_monitor import HealthMonitor  # type: ignore
+except Exception:  # pragma: no cover
+    class HealthMonitor:  # type: ignore
+        pass
+
+try:
+    from .task_scheduler import TaskScheduler  # type: ignore
+except Exception:  # pragma: no cover
+    class TaskScheduler:  # type: ignore
+        pass
+
+try:
+    from .load_balancer import AdaptiveLoadBalancer  # type: ignore
+except Exception:  # pragma: no cover
+    class AdaptiveLoadBalancer:  # type: ignore
+        def select_worker_for_task(self, _task, workers):
+            for worker_id, info in (workers or {}).items():
+                if isinstance(info, dict) and info.get("status") == "idle":
+                    return worker_id
+            return None
+
+try:
+    from .plugin_architecture import PluginManager  # type: ignore
+except Exception:  # pragma: no cover
+    class PluginManager:  # type: ignore
+        pass
 
 
 class NodeRole(Enum):
@@ -236,11 +288,21 @@ class TestCoordinator:
         # (kept separate from the dataclass-based state to avoid breaking existing logic)
         self.tasks: Dict[str, Any] = {}
         self.workers: Dict[str, Any] = {}
+        self.pending_tasks: Set[str] = set()
         self.running_tasks: Dict[str, Any] = {}
+        self.completed_tasks: Set[str] = set()
+        self.failed_tasks: Set[str] = set()
 
         # Plugin manager is optional; keep falsy by default so integrations can fall back
         # to method patching in minimal-dependency environments.
         self.plugin_manager = None
+
+        # Advanced components are not part of the lightweight TestCoordinator; they are
+        # provided by DistributedTestingCoordinator below.
+        self.security_manager = None
+        self.health_monitor = None
+        self.task_scheduler = None
+        self.load_balancer = None
         
         # Initialize locks
         self.state_lock = threading.Lock()
@@ -335,6 +397,318 @@ class TestCoordinator:
             self.election_thread.join()
         
         logger.info("Coordinator stopped")
+
+
+class DistributedTestingCoordinator(TestCoordinator):
+    """Coordinator API expected by the unit/integration tests.
+
+    This extends the lightweight `TestCoordinator` with:
+    - Pluggable sub-components (security/health/scheduling/load balancing/plugins)
+    - Async lifecycle (`start`/`shutdown`) and websocket-style message handlers
+    - Dict-based task/worker tracking used across the test suite
+    """
+
+    def __init__(
+        self,
+        db_path: str | None = None,
+        host: str = "0.0.0.0",
+        port: int = 5000,
+        enable_advanced_scheduler: bool = True,
+        enable_health_monitor: bool = True,
+        enable_load_balancer: bool = True,
+        enable_plugins: bool = True,
+        enable_auto_recovery: bool = False,
+        enable_redundancy: bool = False,
+        enable_enhanced_error_handling: bool = False,
+        worker_auto_discovery: bool = False,
+        auto_register_workers: bool = False,
+        enable_batch_processing: bool = False,
+        **kwargs,
+    ):
+        super().__init__(
+            host=host,
+            port=port,
+            db_path=db_path,
+            enable_advanced_scheduler=enable_advanced_scheduler,
+            enable_plugins=enable_plugins,
+            **kwargs,
+        )
+
+        self.enable_health_monitor = enable_health_monitor
+        self.enable_load_balancer = enable_load_balancer
+        self.enable_auto_recovery = enable_auto_recovery
+        self.enable_redundancy = enable_redundancy
+        self.enable_enhanced_error_handling = enable_enhanced_error_handling
+        self.worker_auto_discovery = worker_auto_discovery
+        self.auto_register_workers = auto_register_workers
+        self.enable_batch_processing = enable_batch_processing
+
+        # Database (patched/mocked in unit tests)
+        self.db = None
+        if self.db_path:
+            try:
+                self.db = duckdb.connect(self.db_path)
+            except Exception:
+                self.db = None
+
+        # Sub-components (patched in unit tests)
+        self.security_manager = SecurityManager()
+        self.health_monitor = HealthMonitor() if enable_health_monitor else None
+        self.task_scheduler = TaskScheduler() if enable_advanced_scheduler else None
+        self.load_balancer = AdaptiveLoadBalancer() if enable_load_balancer else None
+        self.plugin_manager = PluginManager() if enable_plugins else None
+
+        self._server_runner = None
+        self._server_site = None
+
+    async def _setup_server(self):
+        """Set up HTTP/websocket server.
+
+        Tests patch this method to avoid binding sockets.
+        """
+        return None, None
+
+    async def start(self):
+        """Async startup used by the test suite."""
+        self._server_site, self._server_runner = await self._setup_server()
+        return self._server_site, self._server_runner
+
+    async def shutdown(self):
+        """Async shutdown used by the test suite."""
+        # Best-effort cleanup; tests commonly patch the server pieces.
+        self.stop_event.set()
+        return True
+
+    @staticmethod
+    async def _maybe_await(value):
+        if inspect.isawaitable(value):
+            return await value
+        return value
+
+    async def _send_response(self, ws, message: Dict[str, Any]):
+        if hasattr(ws, "send_json"):
+            return await self._maybe_await(ws.send_json(message))
+        if hasattr(ws, "send"):
+            return await self._maybe_await(ws.send(json.dumps(message)))
+        return None
+
+    async def _send_task(self, ws, message: Dict[str, Any]):
+        return await self._send_response(ws, {"type": "task", **message})
+
+    def get_registered_workers(self) -> List[str]:
+        return list(self.workers.keys())
+
+    def get_worker_capabilities(self, worker_id: str) -> Dict[str, Any] | None:
+        worker = self.workers.get(worker_id)
+        if isinstance(worker, dict):
+            return worker.get("capabilities")
+        return None
+
+    def register_worker(self, *args, **kwargs):
+        """Register a worker.
+
+        Supports both legacy signature (hostname, ip, capabilities) and the
+        dict-based signature used in tests (worker_id, capabilities).
+        """
+        if len(args) == 2 and isinstance(args[0], str) and isinstance(args[1], dict):
+            worker_id, capabilities = args
+            self.workers[worker_id] = {
+                "worker_id": worker_id,
+                "hostname": worker_id,
+                "capabilities": capabilities,
+                "status": "idle",
+                "connected": True,
+                "last_heartbeat": datetime.datetime.now().isoformat(),
+            }
+            return worker_id
+
+        # Fallback to the legacy API
+        return super().register_worker(*args, **kwargs)
+
+    def _find_worker_for_task(self, task: Dict[str, Any]) -> Optional[str]:
+        if self.load_balancer and hasattr(self.load_balancer, "select_worker_for_task"):
+            try:
+                selected = self.load_balancer.select_worker_for_task(task, self.workers)
+                if selected:
+                    return selected
+            except Exception:
+                pass
+
+        required_hw = (task.get("config") or {}).get("hardware")
+        for worker_id, worker in self.workers.items():
+            if not isinstance(worker, dict):
+                continue
+            if not worker.get("connected", True):
+                continue
+            if worker.get("status") != "idle":
+                continue
+            if worker.get("health_status", {}).get("is_healthy", True) is not True:
+                continue
+
+            if required_hw:
+                hardware = (worker.get("capabilities") or {}).get("hardware") or []
+                if required_hw not in hardware:
+                    continue
+            return worker_id
+        return None
+
+    async def _assign_task_to_worker(self, task: Dict[str, Any], worker_id: str) -> bool:
+        task_id = task.get("task_id")
+        if not task_id or worker_id not in self.workers:
+            return False
+
+        worker = self.workers[worker_id]
+        ws = worker.get("ws") if isinstance(worker, dict) else None
+        if ws is None:
+            return False
+
+        task["status"] = "assigned"
+        task["worker_id"] = worker_id
+        task["assigned"] = datetime.datetime.now().isoformat()
+        self.tasks[task_id] = task
+
+        if task_id in self.pending_tasks:
+            self.pending_tasks.discard(task_id)
+        self.running_tasks[task_id] = worker_id
+        if isinstance(worker, dict):
+            worker["status"] = "busy"
+
+        sent = await self._maybe_await(self._send_task(ws, {"task_id": task_id, "task_type": task.get("type"), "task": task}))
+        return bool(sent is not False)
+
+    async def submit_task(self, task_data: Dict[str, Any]) -> str:
+        task_id = task_data.get("task_id") or f"task-{uuid.uuid4().hex[:8]}"
+        task = {
+            "task_id": task_id,
+            "type": task_data.get("type", "test"),
+            "status": "pending",
+            "config": task_data.get("config", {}),
+            "created": datetime.datetime.now().isoformat(),
+        }
+        self.tasks[task_id] = task
+        self.pending_tasks.add(task_id)
+
+        worker_id = self._find_worker_for_task(task)
+        if worker_id:
+            await self._assign_task_to_worker(task, worker_id)
+        return task_id
+
+    def _mark_task_completed(self, task_id: str, result: Dict[str, Any]):
+        task = self.tasks.get(task_id)
+        if isinstance(task, dict):
+            task["status"] = "completed"
+            task["completed"] = datetime.datetime.now().isoformat()
+            task["result"] = result
+        self.running_tasks.pop(task_id, None)
+        self.completed_tasks.add(task_id)
+
+    def _mark_task_failed(self, task_id: str, error: str):
+        task = self.tasks.get(task_id)
+        if isinstance(task, dict):
+            task["status"] = "failed"
+            task["completed"] = datetime.datetime.now().isoformat()
+            task["error"] = error
+        self.running_tasks.pop(task_id, None)
+        self.failed_tasks.add(task_id)
+
+    async def _save_task_result(self, *_args, **_kwargs):
+        return None
+
+    async def _notify_task_completion(self, *_args, **_kwargs):
+        return None
+
+    async def _notify_task_failure(self, *_args, **_kwargs):
+        return None
+
+    async def _handle_worker_registration(self, ws, message: Dict[str, Any]):
+        worker_id = message.get("worker_id")
+        if not worker_id:
+            await self._send_response(ws, {"type": "register_response", "status": "failure", "message": "Missing worker_id"})
+            return
+
+        self.workers[worker_id] = {
+            "worker_id": worker_id,
+            "hostname": message.get("hostname", worker_id),
+            "capabilities": message.get("capabilities", {}),
+            "status": "idle",
+            "last_heartbeat": datetime.datetime.now().isoformat(),
+            "connected": True,
+            "ws": ws,
+        }
+
+        await self._send_response(
+            ws,
+            {"type": "register_response", "status": "success", "worker_id": worker_id},
+        )
+
+    async def _handle_worker_heartbeat(self, ws, message: Dict[str, Any]):
+        worker_id = message.get("worker_id")
+        worker = self.workers.get(worker_id)
+        if not worker_id or not isinstance(worker, dict):
+            await self._send_response(ws, {"type": "heartbeat_response", "status": "failure", "message": "Unknown worker"})
+            return
+
+        worker["last_heartbeat"] = message.get("timestamp") or datetime.datetime.now().isoformat()
+        worker["hardware_metrics"] = message.get("hardware_metrics", {})
+        worker["health_status"] = message.get("health_status", {})
+        worker["connected"] = True
+        worker.setdefault("status", "idle")
+
+        await self._send_response(ws, {"type": "heartbeat_response", "status": "success"})
+
+    async def _handle_task_result(self, ws, message: Dict[str, Any]):
+        task_id = message.get("task_id")
+        worker_id = message.get("worker_id")
+        task = self.tasks.get(task_id)
+        worker = self.workers.get(worker_id)
+        if not isinstance(task, dict) or not isinstance(worker, dict):
+            await self._send_response(ws, {"type": "task_result_response", "status": "failure", "message": "Unknown task/worker"})
+            return
+
+        task["status"] = message.get("status", task.get("status"))
+        task["completed"] = datetime.datetime.now().isoformat()
+        if "execution_time_seconds" in message:
+            task["execution_time_seconds"] = message["execution_time_seconds"]
+        if "hardware_metrics" in message:
+            task["hardware_metrics"] = message["hardware_metrics"]
+
+        if message.get("status") == "completed":
+            task["result"] = message.get("result")
+            self._mark_task_completed(task_id, message.get("result") or {})
+            await self._maybe_await(self._save_task_result(task_id, message))
+            await self._maybe_await(self._notify_task_completion(task_id, worker_id, message))
+        else:
+            task["error"] = message.get("error") or "Task failed"
+            self._mark_task_failed(task_id, task["error"])
+            await self._maybe_await(self._save_task_result(task_id, message))
+            await self._maybe_await(self._notify_task_failure(task_id, worker_id, message))
+
+        # Mark worker idle again
+        worker["status"] = "idle"
+
+        await self._send_response(ws, {"type": "task_result_response", "status": "success"})
+
+    async def _authenticate_worker(self, ws, message: Dict[str, Any]) -> bool:
+        auth_type = message.get("auth_type")
+
+        if auth_type == "api_key":
+            api_key = message.get("api_key")
+            ok = await self._maybe_await(self.security_manager.verify_api_key(api_key))
+            if ok:
+                token = await self._maybe_await(self.security_manager.generate_token())
+                await self._send_response(ws, {"type": "auth_response", "status": "success", "token": token})
+                return True
+            await self._send_response(ws, {"type": "auth_response", "status": "failure", "message": "Invalid API key"})
+            return False
+
+        if auth_type == "token":
+            token = message.get("token")
+            ok = await self._maybe_await(self.security_manager.verify_token(token))
+            await self._send_response(ws, {"type": "auth_response", "status": "success" if ok else "failure"})
+            return bool(ok)
+
+        await self._send_response(ws, {"type": "auth_response", "status": "failure", "message": "Unsupported auth_type"})
+        return False
     
     def register_worker(self, hostname: str, ip_address: str, capabilities: Dict[str, Any]) -> str:
         """
@@ -935,8 +1309,7 @@ class TestCoordinator:
             return None
 
 
-# Backward-compatible name used across the distributed testing tests.
-DistributedTestingCoordinator = TestCoordinator
+
 
 
 def main() -> int:

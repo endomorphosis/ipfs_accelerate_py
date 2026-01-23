@@ -305,7 +305,11 @@ class ExecutionOrchestratorTests(unittest.TestCase):
             
             # Mark all tests as completed
             for context in self.orchestrator.execution_contexts.values():
-                if context.status == ExecutionStatus.PENDING:
+                if context.status not in [
+                    ExecutionStatus.COMPLETED,
+                    ExecutionStatus.FAILED,
+                    ExecutionStatus.SKIPPED,
+                ]:
                     context.status = ExecutionStatus.COMPLETED
         
         with patch.object(self.orchestrator, 'update_group_status', side_effect=mock_update_group_status):

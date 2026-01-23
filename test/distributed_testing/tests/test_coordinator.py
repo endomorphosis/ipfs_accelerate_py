@@ -15,6 +15,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
+import pytest_asyncio
 
 websockets = pytest.importorskip("websockets")
 pytest.importorskip("aiohttp")
@@ -33,12 +34,12 @@ class TestDistributedTestingCoordinator(unittest.TestCase):
     def setUp(self):
         """Set up test environment."""
         # Mock database
-        with patch('coordinator.duckdb.connect') as mock_duckdb_connect, \
-             patch('coordinator.SecurityManager') as mock_security_manager, \
-             patch('coordinator.HealthMonitor') as mock_health_monitor, \
-             patch('coordinator.TaskScheduler') as mock_task_scheduler, \
-             patch('coordinator.AdaptiveLoadBalancer') as mock_load_balancer, \
-             patch('coordinator.PluginManager') as mock_plugin_manager:
+        with patch('distributed_testing.coordinator.duckdb.connect') as mock_duckdb_connect, \
+             patch('distributed_testing.coordinator.SecurityManager') as mock_security_manager, \
+             patch('distributed_testing.coordinator.HealthMonitor') as mock_health_monitor, \
+             patch('distributed_testing.coordinator.TaskScheduler') as mock_task_scheduler, \
+             patch('distributed_testing.coordinator.AdaptiveLoadBalancer') as mock_load_balancer, \
+             patch('distributed_testing.coordinator.PluginManager') as mock_plugin_manager:
              
             # Create coordinator instance
             self.db_path = "test_db.duckdb"
@@ -80,8 +81,8 @@ class TestDistributedTestingCoordinator(unittest.TestCase):
     
     def test_init_with_disabled_components(self):
         """Test coordinator initialization with disabled components."""
-        with patch('coordinator.duckdb.connect') as mock_duckdb_connect, \
-             patch('coordinator.SecurityManager') as mock_security_manager:
+        with patch('distributed_testing.coordinator.duckdb.connect') as mock_duckdb_connect, \
+             patch('distributed_testing.coordinator.SecurityManager') as mock_security_manager:
              
             # Create coordinator with disabled components
             coordinator = DistributedTestingCoordinator(
@@ -105,16 +106,16 @@ class TestDistributedTestingCoordinator(unittest.TestCase):
             self.assertIsNone(coordinator.plugin_manager)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def coordinator_setup():
     """Set up coordinator for async tests with mocked dependencies."""
     # Mock all dependencies
-    with patch('coordinator.duckdb.connect'), \
-         patch('coordinator.SecurityManager') as mock_security_manager, \
-         patch('coordinator.HealthMonitor'), \
-         patch('coordinator.TaskScheduler'), \
-         patch('coordinator.AdaptiveLoadBalancer'), \
-         patch('coordinator.PluginManager'):
+    with patch('distributed_testing.coordinator.duckdb.connect'), \
+         patch('distributed_testing.coordinator.SecurityManager') as mock_security_manager, \
+         patch('distributed_testing.coordinator.HealthMonitor'), \
+         patch('distributed_testing.coordinator.TaskScheduler'), \
+         patch('distributed_testing.coordinator.AdaptiveLoadBalancer'), \
+         patch('distributed_testing.coordinator.PluginManager'):
          
         # Create security manager mock
         mock_security = mock_security_manager.return_value

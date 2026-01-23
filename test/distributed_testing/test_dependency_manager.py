@@ -69,6 +69,9 @@ class TestDependencyInfo:
     dependencies: List[Dependency] = field(default_factory=list)
     dependents: List[str] = field(default_factory=list)  # Tests that depend on this test
     group_memberships: List[str] = field(default_factory=list)  # Groups this test belongs to
+    # True when this node was auto-created only because another test referenced it.
+    # Validation should still fail unless the test is explicitly registered.
+    is_placeholder: bool = False
 
 
 class TestDependencyManager:
@@ -117,6 +120,10 @@ class TestDependencyManager:
         # Create or update dependency info
         if test_id not in self.test_dependencies:
             self.test_dependencies[test_id] = TestDependencyInfo(test_id=test_id)
+        else:
+            # If this test was previously created as a placeholder dependency, it's
+            # now being explicitly registered.
+            self.test_dependencies[test_id].is_placeholder = False
         
         # Add test to graph
         if not self.graph.has_node(test_id):
@@ -136,7 +143,8 @@ class TestDependencyManager:
                     # Register the dependency test if it doesn't exist
                     if dep.dependency_id not in self.test_dependencies:
                         self.test_dependencies[dep.dependency_id] = TestDependencyInfo(
-                            test_id=dep.dependency_id
+                            test_id=dep.dependency_id,
+                            is_placeholder=True,
                         )
                     
                     # Add this test as a dependent
@@ -201,10 +209,14 @@ class TestDependencyManager:
             # No cycles found
             pass
         
-        # Check for dependencies on non-existent tests
+        # Check for dependencies on non-existent tests (or placeholder-only tests)
         for test_id, info in self.test_dependencies.items():
             for dep in info.dependencies:
-                if not dep.is_group and dep.dependency_id not in self.test_dependencies:
+                if dep.is_group:
+                    continue
+
+                dep_info = self.test_dependencies.get(dep.dependency_id)
+                if dep_info is None or dep_info.is_placeholder:
                     errors.append(f"Test {test_id} depends on non-existent test {dep.dependency_id}")
         
         # Check for dependencies on non-existent groups

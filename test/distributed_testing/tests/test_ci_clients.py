@@ -6,11 +6,10 @@ This module contains tests for the CI client implementations used by the
 CI/CD Integration plugin for the Distributed Testing Framework.
 """
 
-import anyio
 import logging
 import os
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime
 
 import pytest
@@ -32,28 +31,31 @@ from distributed_testing.ci import GitHubClient, GitLabClient, JenkinsClient, Az
 if GitHubClient is None or GitLabClient is None or JenkinsClient is None or AzureClient is None:
     pytest.skip("One or more CI clients are unavailable in this environment", allow_module_level=True)
 
-class TestGitHubClient(unittest.TestCase):
+class TestGitHubClient(unittest.IsolatedAsyncioTestCase):
     """Tests for GitHubClient implementation."""
     
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up test environment."""
         self.token = "mock_github_token"
         self.repository = "owner/repo"
-        self.client = GitHubClient(self.token, self.repository)
+        self.client = GitHubClient()
+        assert await self.client.initialize({"token": self.token, "repository": self.repository})
+        # Avoid creating a real aiohttp.ClientSession (which would need closing).
+        self.client.session = MagicMock()
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_create_test_run(self, mock_post):
+    async def test_create_test_run(self):
         """Test creating a test run in GitHub."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 201
-        mock_response.json = MagicMock(return_value={
+        mock_response.json = AsyncMock(return_value={
             "id": 12345,
             "name": "Test Run",
             "started_at": datetime.now().isoformat(),
             "html_url": "https://github.com/owner/repo/runs/12345"
         })
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Create test run
         test_run_data = {
@@ -68,13 +70,13 @@ class TestGitHubClient(unittest.TestCase):
         self.assertEqual(test_run["name"], "Test Run")
         self.assertEqual(test_run["status"], "running")
     
-    @patch('aiohttp.ClientSession.patch')
-    async def test_update_test_run(self, mock_patch):
+    async def test_update_test_run(self):
         """Test updating a test run in GitHub."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_patch.return_value.__aenter__.return_value = mock_response
+        self.client.session.patch.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.patch.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Update test run
         update_data = {
@@ -94,13 +96,13 @@ class TestGitHubClient(unittest.TestCase):
         # Assert test run was updated
         self.assertTrue(result)
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_add_pr_comment(self, mock_post):
+    async def test_add_pr_comment(self):
         """Test adding a PR comment in GitHub."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 201
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Add PR comment
         pr_number = "42"
@@ -111,27 +113,30 @@ class TestGitHubClient(unittest.TestCase):
         # Assert comment was added
         self.assertTrue(result)
 
-class TestGitLabClient(unittest.TestCase):
+class TestGitLabClient(unittest.IsolatedAsyncioTestCase):
     """Tests for GitLabClient implementation."""
     
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up test environment."""
         self.token = "mock_gitlab_token"
         self.project = "group/project"
-        self.client = GitLabClient(self.token, self.project)
+        self.client = GitLabClient()
+        assert await self.client.initialize({"token": self.token, "project": self.project})
+        # Avoid creating a real aiohttp.ClientSession (which would need closing).
+        self.client.session = MagicMock()
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_create_test_run_with_commit(self, mock_post):
+    async def test_create_test_run_with_commit(self):
         """Test creating a test run in GitLab using commit status."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 201
-        mock_response.json = MagicMock(return_value={
+        mock_response.json = AsyncMock(return_value={
             "id": 12345,
             "sha": "abc123",
             "status": "running"
         })
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Create test run
         test_run_data = {
@@ -145,13 +150,13 @@ class TestGitLabClient(unittest.TestCase):
         self.assertTrue(test_run["id"].startswith("gl-status-"))
         self.assertEqual(test_run["status"], "running")
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_update_test_run(self, mock_post):
+    async def test_update_test_run(self):
         """Test updating a test run in GitLab."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 201
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Update test run
         test_run_id = "gl-status-abc123-12345"
@@ -172,13 +177,13 @@ class TestGitLabClient(unittest.TestCase):
         # Assert test run was updated
         self.assertTrue(result)
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_add_pr_comment(self, mock_post):
+    async def test_add_pr_comment(self):
         """Test adding a MR comment in GitLab."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 201
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Add MR comment
         mr_number = "42"
@@ -189,23 +194,26 @@ class TestGitLabClient(unittest.TestCase):
         # Assert comment was added
         self.assertTrue(result)
 
-class TestJenkinsClient(unittest.TestCase):
+class TestJenkinsClient(unittest.IsolatedAsyncioTestCase):
     """Tests for JenkinsClient implementation."""
     
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up test environment."""
         self.url = "https://jenkins.example.com/"
         self.user = "jenkins_user"
         self.token = "jenkins_token"
-        self.client = JenkinsClient(self.url, self.user, self.token)
+        self.client = JenkinsClient()
+        assert await self.client.initialize({"url": self.url, "user": self.user, "token": self.token})
+        # Avoid creating a real aiohttp.ClientSession (which would need closing).
+        self.client.session = MagicMock()
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_create_test_run(self, mock_post):
+    async def test_create_test_run(self):
         """Test creating a test run in Jenkins."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Create test run
         test_run_data = {
@@ -220,13 +228,13 @@ class TestJenkinsClient(unittest.TestCase):
         self.assertEqual(test_run["id"], "jenkins-test-job-42")
         self.assertEqual(test_run["status"], "running")
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_update_test_run(self, mock_post):
+    async def test_update_test_run(self):
         """Test updating a test run in Jenkins."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Update test run
         test_run_id = "jenkins-test-job-42"
@@ -247,27 +255,30 @@ class TestJenkinsClient(unittest.TestCase):
         # Assert test run was updated
         self.assertTrue(result)
 
-class TestAzureClient(unittest.TestCase):
+class TestAzureClient(unittest.IsolatedAsyncioTestCase):
     """Tests for AzureClient implementation."""
     
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up test environment."""
         self.token = "azure_token"
         self.organization = "org"
         self.project = "project"
-        self.client = AzureClient(self.token, self.organization, self.project)
+        self.client = AzureClient()
+        assert await self.client.initialize({"token": self.token, "organization": self.organization, "project": self.project})
+        # Avoid creating a real aiohttp.ClientSession (which would need closing).
+        self.client.session = MagicMock()
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_create_test_run(self, mock_post):
+    async def test_create_test_run(self):
         """Test creating a test run in Azure DevOps."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = MagicMock(return_value={
+        mock_response.json = AsyncMock(return_value={
             "id": 12345,
             "name": "Test Run"
         })
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Create test run
         test_run_data = {
@@ -281,13 +292,13 @@ class TestAzureClient(unittest.TestCase):
         self.assertEqual(test_run["id"], "12345")
         self.assertEqual(test_run["status"], "running")
     
-    @patch('aiohttp.ClientSession.patch')
-    async def test_update_test_run(self, mock_patch):
+    async def test_update_test_run(self):
         """Test updating a test run in Azure DevOps."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_patch.return_value.__aenter__.return_value = mock_response
+        self.client.session.patch.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.patch.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Update test run
         test_run_id = "12345"
@@ -308,13 +319,13 @@ class TestAzureClient(unittest.TestCase):
         # Assert test run was updated
         self.assertTrue(result)
     
-    @patch('aiohttp.ClientSession.post')
-    async def test_add_pr_comment(self, mock_post):
+    async def test_add_pr_comment(self):
         """Test adding a PR comment in Azure DevOps."""
         # Set up mock response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_post.return_value.__aenter__.return_value = mock_response
+        self.client.session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        self.client.session.post.return_value.__aexit__ = AsyncMock(return_value=None)
         
         # Add PR comment
         pr_number = "42"
@@ -325,37 +336,3 @@ class TestAzureClient(unittest.TestCase):
         # Assert comment was added
         self.assertTrue(result)
 
-# Run tests
-if __name__ == "__main__":
-    # Use asyncio to run async tests
-    async def run_tests():
-        # GitHub tests
-        github_tests = TestGitHubClient()
-        github_tests.setUp()
-        await github_tests.test_create_test_run()
-        await github_tests.test_update_test_run()
-        await github_tests.test_add_pr_comment()
-        
-        # GitLab tests
-        gitlab_tests = TestGitLabClient()
-        gitlab_tests.setUp()
-        await gitlab_tests.test_create_test_run_with_commit()
-        await gitlab_tests.test_update_test_run()
-        await gitlab_tests.test_add_pr_comment()
-        
-        # Jenkins tests
-        jenkins_tests = TestJenkinsClient()
-        jenkins_tests.setUp()
-        await jenkins_tests.test_create_test_run()
-        await jenkins_tests.test_update_test_run()
-        
-        # Azure tests
-        azure_tests = TestAzureClient()
-        azure_tests.setUp()
-        await azure_tests.test_create_test_run()
-        await azure_tests.test_update_test_run()
-        await azure_tests.test_add_pr_comment()
-        
-        print("All tests passed!")
-    
-    anyio.run(run_tests())
