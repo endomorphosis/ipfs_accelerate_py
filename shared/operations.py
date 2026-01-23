@@ -2744,5 +2744,240 @@ class CopilotOperations:
         result["operation"] = "suggest_git_command"
         result["timestamp"] = time.time()
         return result
+
+
+class CopilotSDKOperations:
+    """GitHub Copilot SDK operations"""
+    
+    def __init__(self, shared_core: SharedCore):
+        self.core = shared_core
+        self._copilot_sdk = None
+        self._active_sessions = {}
+    
+    @property
+    def copilot_sdk(self):
+        """Lazy load Copilot SDK wrapper"""
+        if self._copilot_sdk is None:
+            try:
+                from ipfs_accelerate_py.copilot_sdk import CopilotSDK
+                self._copilot_sdk = CopilotSDK()
+            except Exception as e:
+                logger.warning(f"Failed to initialize Copilot SDK: {e}")
+                self._copilot_sdk = None
+        return self._copilot_sdk
+    
+    def create_session(
+        self,
+        model: Optional[str] = None,
+        tools: Optional[List[Any]] = None,
+        streaming: bool = False,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Create a new Copilot SDK session"""
+        if not self.copilot_sdk:
+            return {"error": "Copilot SDK not available", "success": False}
         
-        return {"error": f"Unknown performance test type: {test_type}"}
+        try:
+            session = self.copilot_sdk.create_session(
+                model=model,
+                tools=tools,
+                streaming=streaming,
+                **kwargs
+            )
+            
+            session_id = str(id(session))
+            self._active_sessions[session_id] = session
+            
+            result = {
+                "success": True,
+                "session_id": session_id,
+                "model": model or self.copilot_sdk.default_model,
+                "streaming": streaming,
+                "operation": "create_session",
+                "timestamp": time.time()
+            }
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error creating Copilot SDK session: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "operation": "create_session",
+                "timestamp": time.time()
+            }
+    
+    def send_message(
+        self,
+        session_id: str,
+        prompt: str,
+        use_cache: bool = True,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Send a message to a Copilot SDK session"""
+        if not self.copilot_sdk:
+            return {"error": "Copilot SDK not available", "success": False}
+        
+        if session_id not in self._active_sessions:
+            return {
+                "error": f"Session {session_id} not found",
+                "success": False,
+                "operation": "send_message",
+                "timestamp": time.time()
+            }
+        
+        try:
+            session = self._active_sessions[session_id]
+            result = self.copilot_sdk.send_message(
+                session,
+                prompt,
+                use_cache=use_cache,
+                **kwargs
+            )
+            result["operation"] = "send_message"
+            result["session_id"] = session_id
+            return result
+        except Exception as e:
+            logger.error(f"Error sending message to Copilot SDK: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "operation": "send_message",
+                "timestamp": time.time()
+            }
+    
+    def stream_message(
+        self,
+        session_id: str,
+        prompt: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Stream a message response from a Copilot SDK session"""
+        if not self.copilot_sdk:
+            return {"error": "Copilot SDK not available", "success": False}
+        
+        if session_id not in self._active_sessions:
+            return {
+                "error": f"Session {session_id} not found",
+                "success": False,
+                "operation": "stream_message",
+                "timestamp": time.time()
+            }
+        
+        try:
+            session = self._active_sessions[session_id]
+            result = self.copilot_sdk.stream_message(
+                session,
+                prompt,
+                **kwargs
+            )
+            result["operation"] = "stream_message"
+            result["session_id"] = session_id
+            return result
+        except Exception as e:
+            logger.error(f"Error streaming message from Copilot SDK: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "operation": "stream_message",
+                "timestamp": time.time()
+            }
+    
+    def destroy_session(self, session_id: str) -> Dict[str, Any]:
+        """Destroy a Copilot SDK session"""
+        if not self.copilot_sdk:
+            return {"error": "Copilot SDK not available", "success": False}
+        
+        if session_id not in self._active_sessions:
+            return {
+                "error": f"Session {session_id} not found",
+                "success": False,
+                "operation": "destroy_session",
+                "timestamp": time.time()
+            }
+        
+        try:
+            session = self._active_sessions[session_id]
+            result = self.copilot_sdk.destroy_session(session)
+            
+            if result.get("success"):
+                del self._active_sessions[session_id]
+            
+            result["operation"] = "destroy_session"
+            result["session_id"] = session_id
+            return result
+        except Exception as e:
+            logger.error(f"Error destroying Copilot SDK session: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "operation": "destroy_session",
+                "timestamp": time.time()
+            }
+    
+    def list_sessions(self) -> Dict[str, Any]:
+        """List all active Copilot SDK sessions"""
+        return {
+            "sessions": list(self._active_sessions.keys()),
+            "count": len(self._active_sessions),
+            "operation": "list_sessions",
+            "success": True,
+            "timestamp": time.time()
+        }
+    
+    def register_tool(
+        self,
+        name: str,
+        description: str,
+        parameters: Dict[str, Any],
+        handler: Any
+    ) -> Dict[str, Any]:
+        """Register a tool for use in Copilot SDK sessions"""
+        if not self.copilot_sdk:
+            return {"error": "Copilot SDK not available", "success": False}
+        
+        try:
+            tool = self.copilot_sdk.register_tool(
+                name=name,
+                description=description,
+                parameters=parameters,
+                handler=handler
+            )
+            
+            return {
+                "success": True,
+                "tool_name": name,
+                "operation": "register_tool",
+                "timestamp": time.time()
+            }
+        except Exception as e:
+            logger.error(f"Error registering tool: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "operation": "register_tool",
+                "timestamp": time.time()
+            }
+    
+    def get_tools(self) -> Dict[str, Any]:
+        """Get all registered tools"""
+        if not self.copilot_sdk:
+            return {"error": "Copilot SDK not available", "success": False}
+        
+        try:
+            tools = self.copilot_sdk.get_tools()
+            return {
+                "tools": list(tools.keys()),
+                "count": len(tools),
+                "operation": "get_tools",
+                "success": True,
+                "timestamp": time.time()
+            }
+        except Exception as e:
+            logger.error(f"Error getting tools: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "operation": "get_tools",
+                "timestamp": time.time()
+            }

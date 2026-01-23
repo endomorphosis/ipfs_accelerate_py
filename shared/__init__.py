@@ -6,7 +6,7 @@ the CLI interface and the MCP server to ensure consistency.
 """
 
 from .core import SharedCore
-from .operations import InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations, GitHubOperations, CopilotOperations
+from .operations import InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations, GitHubOperations, CopilotOperations, CopilotSDKOperations
 
 __all__ = [
     "SharedCore",
@@ -17,5 +17,6 @@ __all__ = [
     "QueueOperations",
     "TestOperations",
     "GitHubOperations",
-    "CopilotOperations"
+    "CopilotOperations",
+    "CopilotSDKOperations"
 ]

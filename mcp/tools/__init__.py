@@ -65,6 +65,7 @@ def register_all_tools(mcp: FastMCP) -> None:
         "shared_tools",
         "github_tools",
         "copilot_tools",
+        "copilot_sdk_tools",
         "p2p_workflow_tools"
     ]
     
@@ -90,6 +91,8 @@ def register_all_tools(mcp: FastMCP) -> None:
                 register_function = getattr(module, "register_github_tools", None)
             elif module_name == "copilot_tools":
                 register_function = getattr(module, "register_copilot_tools", None)
+            elif module_name == "copilot_sdk_tools":
+                register_function = getattr(module, "register_copilot_sdk_tools", None)
             elif module_name == "p2p_workflow_tools":
                 register_function = getattr(module, "register_p2p_workflow_tools", None)
             else:
