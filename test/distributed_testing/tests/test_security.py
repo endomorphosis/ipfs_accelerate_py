@@ -12,6 +12,7 @@ import os
 import tempfile
 import time
 import unittest
+import sys
 from unittest.mock import MagicMock, patch
 
 import jwt
@@ -20,6 +21,9 @@ import pytest
 pytest.importorskip("aiohttp")
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
+
+# Ensure the distributed_testing package directory is importable.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from security import SecurityManager, auth_middleware
 
@@ -384,7 +388,7 @@ class TestSecurityManager(unittest.TestCase):
             }
         }
         
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as temp_file:
             temp_path = temp_file.name
             json.dump(config, temp_file)
         
@@ -449,7 +453,7 @@ class TestAuthMiddleware:
             
             # Verify request was handled without authentication
             assert response.status == 200
-            assert await response.text() == "Success"
+            assert response.text == "Success"
     
     @pytest.mark.asyncio
     async def test_auth_middleware_api_key(self, setup_app):
@@ -472,7 +476,7 @@ class TestAuthMiddleware:
         
         # Verify request was authenticated
         assert response.status == 200
-        assert await response.text() == "Success"
+        assert response.text == "Success"
         
         # Test with invalid API key
         request = make_mocked_request(
@@ -485,7 +489,7 @@ class TestAuthMiddleware:
         assert response.status == 401
         
         # Get response body
-        body = await response.json()
+        body = json.loads(response.text)
         assert "error" in body
         assert body["error"] == "Authentication required"
     
@@ -510,7 +514,7 @@ class TestAuthMiddleware:
         
         # Verify request was authenticated
         assert response.status == 200
-        assert await response.text() == "Success"
+        assert response.text == "Success"
         
         # Test with invalid token
         request = make_mocked_request(
@@ -560,7 +564,7 @@ class TestAuthMiddleware:
         
         # Verify request was allowed without authentication
         assert response.status == 200
-        assert await response.text() == "Success"
+        assert response.text == "Success"
 
 
 if __name__ == '__main__':

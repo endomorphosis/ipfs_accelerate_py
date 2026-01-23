@@ -276,8 +276,9 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         self.orchestrator.execute_test(test_id, "worker1")
         
         # Execute all tests with limited concurrency.
-        # Use completed futures so concurrent.futures.as_completed() doesn't block.
-        with patch('concurrent.futures.ThreadPoolExecutor') as mock_executor:
+        # Use completed futures so concurrent.futures.as_completed() doesn't block,
+        # and force groups/statuses into a terminal state so the orchestrator loop exits.
+        with patch('concurrent.futures.ThreadPoolExecutor') as mock_executor, patch('time.sleep'):
             mock_executor_instance = MagicMock()
             mock_executor.return_value = mock_executor_instance
             mock_executor_instance.__enter__.return_value = mock_executor_instance
@@ -289,7 +290,29 @@ class ExecutionOrchestratorTests(unittest.TestCase):
                 return fut
 
             mock_executor_instance.submit.side_effect = submit_completed
-            self.orchestrator.execute_all_tests()
+
+            original_update_group_status = self.orchestrator.update_group_status
+
+            def mock_update_group_status():
+                original_update_group_status()
+
+                for group in self.orchestrator.execution_groups.values():
+                    group.is_completed = True
+
+                for context in self.orchestrator.execution_contexts.values():
+                    if context.status not in [
+                        ExecutionStatus.COMPLETED,
+                        ExecutionStatus.FAILED,
+                        ExecutionStatus.SKIPPED,
+                    ]:
+                        context.status = ExecutionStatus.COMPLETED
+
+            with patch.object(
+                self.orchestrator,
+                'update_group_status',
+                side_effect=mock_update_group_status,
+            ):
+                self.orchestrator.execute_all_tests()
         
         # Verify hooks were called
         pre_hook.assert_called_once()

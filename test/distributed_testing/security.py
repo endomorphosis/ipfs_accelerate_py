@@ -61,9 +61,14 @@ class SecurityManager:
                 with open(config_path, 'r') as f:
                     config = json.load(f)
                     
-                # Use values from config file if not explicitly provided
+                # Use values from config file unless explicitly provided by the caller.
                 secret_key = secret_key or config.get('secret_key')
-                token_expiry = token_expiry or config.get('token_expiry', DEFAULT_TOKEN_EXPIRY)
+
+                # token_expiry has a non-None default; treat the default as "not explicitly provided"
+                # so config files can override it.
+                if token_expiry == DEFAULT_TOKEN_EXPIRY:
+                    token_expiry = config.get('token_expiry', DEFAULT_TOKEN_EXPIRY)
+
                 required_roles = required_roles or config.get('required_roles')
                 
                 # Load API keys
@@ -263,15 +268,16 @@ class SecurityManager:
         Returns:
             JWT token as a string
         """
-        # Generate token
-        now = datetime.utcnow()
-        expiry = now + timedelta(seconds=self.token_expiry)
-        
+        # Use epoch seconds for iat/exp to avoid timezone-naive datetime.timestamp()
+        # behavior (which can yield iat in the future on some systems).
+        issued_at = int(time.time())
+        expiry = issued_at + int(self.token_expiry)
+
         payload = {
             "sub": subject,
             "role": role,
-            "iat": now.timestamp(),
-            "exp": expiry.timestamp()
+            "iat": issued_at,
+            "exp": expiry,
         }
         
         token = jwt.encode(payload, self.secret_key, algorithm="HS256")
@@ -295,8 +301,8 @@ class SecurityManager:
             Decoded token payload or None if invalid
         """
         try:
-            # Decode and verify token
-            payload = jwt.decode(token, self.secret_key, algorithms=["HS256"])
+            # Decode and verify token (small leeway helps avoid edge-case clock drift)
+            payload = jwt.decode(token, self.secret_key, algorithms=["HS256"], leeway=1)
             return payload
         except jwt.ExpiredSignatureError:
             logger.warning("Token has expired")
@@ -328,14 +334,14 @@ class SecurityManager:
             return None
         
         # Generate token
-        now = datetime.utcnow()
-        expiry = now + timedelta(seconds=self.token_expiry)
-        
+        issued_at = int(time.time())
+        expiry = issued_at + int(self.token_expiry)
+
         payload = {
             "sub": worker_id,
             "roles": roles,
-            "iat": now.timestamp(),
-            "exp": expiry.timestamp()
+            "iat": issued_at,
+            "exp": expiry,
         }
         
         token = jwt.encode(payload, self.secret_key, algorithm="HS256")
@@ -347,8 +353,8 @@ class SecurityManager:
         # Store token
         self.worker_tokens[worker_id] = {
             "token": token,
-            "expiry": expiry.isoformat(),
-            "roles": roles
+            "expiry": datetime.fromtimestamp(expiry).isoformat(),
+            "roles": roles,
         }
         
         # Store in database if available
@@ -384,7 +390,7 @@ class SecurityManager:
         """
         try:
             # Decode and verify token
-            payload = jwt.decode(token, self.secret_key, algorithms=["HS256"])
+            payload = jwt.decode(token, self.secret_key, algorithms=["HS256"], leeway=1)
             
             worker_id = payload.get("sub")
             roles = payload.get("roles", [])
@@ -475,19 +481,22 @@ class SecurityManager:
         Returns:
             True if valid, False otherwise
         """
+        # Work on a copy; callers may reuse the message.
+        message_to_verify = message.copy()
+
         # Extract signature
-        if "signature" not in message:
+        if "signature" not in message_to_verify:
             logger.warning("Message has no signature")
             return False
-        
-        signature = message.pop("signature")
+
+        signature = message_to_verify.pop("signature")
         
         # Extract timestamp
-        if "timestamp" not in message:
+        if "timestamp" not in message_to_verify:
             logger.warning("Message has no timestamp")
             return False
-        
-        timestamp = message.get("timestamp")
+
+        timestamp = message_to_verify.get("timestamp")
         
         # Check timestamp freshness
         now = int(time.time())
@@ -496,7 +505,7 @@ class SecurityManager:
             return False
         
         # Convert to string for verification
-        message_str = json.dumps(message, sort_keys=True)
+        message_str = json.dumps(message_to_verify, sort_keys=True)
         
         # Verify signature
         return self.verify_hmac(message_str, signature)
