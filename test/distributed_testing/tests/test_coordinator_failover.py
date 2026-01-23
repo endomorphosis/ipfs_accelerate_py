@@ -21,9 +21,12 @@ import pytest
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from integration_mode import integration_enabled, integration_opt_in_message
+from integration_mode import real_integration_enabled, integration_opt_in_message
 
-if not integration_enabled():
+# This suite spawns multiple coordinator processes, binds local ports, and
+# requires timing-sensitive leader election/state replication. Treat it as
+# REAL integration rather than CI-safe SIMULATED.
+if not real_integration_enabled():
     pytest.skip(integration_opt_in_message(), allow_module_level=True)
 
 pytest.importorskip("aiohttp")
