@@ -45,6 +45,7 @@
             <button class="nav-tab" onclick="showTab('model-manager')">📚 Model Manager</button>
             <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
             <button class="nav-tab" onclick="showTab('github-workflows')">⚡ GitHub Workflows</button>
+            <button class="nav-tab" onclick="showTab('copilot-sdk')">🚀 Copilot SDK</button>
             <button class="nav-tab" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
             <button class="nav-tab" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
             <button class="nav-tab" onclick="showTab('system-logs')">📝 System Logs</button>
@@ -528,6 +529,110 @@
             </div>
         </div>
 
+        <!-- Copilot SDK Tab -->
+        <div id="copilot-sdk" class="tab-content">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>🚀 GitHub Copilot SDK Status</h3>
+                    <div id="copilot-sdk-status">
+                        <div class="info-row">
+                            <span>SDK Status:</span>
+                            <span id="sdk-status-indicator" class="status-checking">Checking...</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Active Sessions:</span>
+                            <span id="sdk-active-sessions">0</span>
+                        </div>
+                        <div class="info-row">
+                            <span>Default Model:</span>
+                            <span id="sdk-default-model">gpt-4o</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="refreshCopilotSDKStatus()">🔄 Refresh Status</button>
+                </div>
+
+                <div class="card">
+                    <h3>🎯 Available Models</h3>
+                    <div id="copilot-sdk-models" class="tools-grid">
+                        <div class="tool-tag">gpt-4o</div>
+                        <div class="tool-tag">gpt-4o-mini</div>
+                        <div class="tool-tag">gpt-5</div>
+                        <div class="tool-tag">o1</div>
+                    </div>
+                    <button class="btn btn-success" onclick="showCreateSessionDialog()">➕ Create Session</button>
+                </div>
+
+                <div class="card">
+                    <h3>💬 Active Sessions</h3>
+                    <div id="copilot-sdk-sessions-list">
+                        <p class="info-text">No active sessions</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="refreshCopilotSDKSessions()">🔄 Refresh Sessions</button>
+                </div>
+
+                <div class="card">
+                    <h3>✨ SDK Features</h3>
+                    <div class="capability-item">
+                        <span>Session Management:</span>
+                        <span class="badge badge-active">Available</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Multi-turn Conversations:</span>
+                        <span class="badge badge-active">Available</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Streaming Responses:</span>
+                        <span class="badge badge-active">Available</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Custom Tools:</span>
+                        <span class="badge badge-active">Available</span>
+                    </div>
+                    <div class="capability-item">
+                        <span>Response Caching:</span>
+                        <span class="badge badge-active">Available</span>
+                    </div>
+                </div>
+
+                <div class="card full-width">
+                    <h3>🔬 Test Copilot SDK</h3>
+                    <div class="form-group">
+                        <label>Model:</label>
+                        <select id="test-sdk-model" class="form-control">
+                            <option value="gpt-4o">GPT-4 Optimized</option>
+                            <option value="gpt-4o-mini">GPT-4 Optimized Mini</option>
+                            <option value="gpt-5">GPT-5</option>
+                            <option value="o1">O1 (Reasoning)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Prompt:</label>
+                        <textarea id="test-sdk-prompt" class="form-control" rows="3" placeholder="Enter your prompt here..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="test-sdk-streaming"> Enable Streaming
+                        </label>
+                    </div>
+                    <button class="btn btn-success" onclick="testCopilotSDK()">🚀 Send Message</button>
+                    <div id="test-sdk-result" class="result-box" style="display: none;">
+                        <h4>Response:</h4>
+                        <pre id="test-sdk-response"></pre>
+                    </div>
+                </div>
+
+                <div class="card full-width">
+                    <h3>📖 Quick Actions</h3>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="createSDKSession('gpt-4o')">Create GPT-4o Session</button>
+                        <button class="btn btn-primary" onclick="createSDKSession('gpt-5')">Create GPT-5 Session</button>
+                        <button class="btn btn-warning" onclick="destroyAllSDKSessions()">Destroy All Sessions</button>
+                        <button class="btn btn-info" onclick="viewSDKDocumentation()">📚 View Documentation</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- MCP Tools Tab -->
         <div id="mcp-tools" class="tab-content">
             <div class="dashboard-grid">
@@ -772,6 +877,207 @@
                 console.log('✓ Error reporting initialized for dashboard');
             } catch (error) {
                 console.warn('Failed to initialize error reporting:', error);
+            }
+        });
+    </script>
+
+    <!-- Copilot SDK Functions -->
+    <script>
+        // Copilot SDK Management
+        let copilotSDKStatus = null;
+        let copilotSDKSessions = [];
+
+        async function refreshCopilotSDKStatus() {
+            try {
+                const response = await fetch('/api/copilot-sdk/status');
+                const data = await response.json();
+                copilotSDKStatus = data;
+                
+                const statusIndicator = document.getElementById('sdk-status-indicator');
+                if (data.available) {
+                    statusIndicator.textContent = 'Available';
+                    statusIndicator.className = 'badge badge-active';
+                } else {
+                    statusIndicator.textContent = 'Not Installed';
+                    statusIndicator.className = 'badge badge-warning';
+                }
+                
+                console.log('Copilot SDK Status:', data);
+            } catch (error) {
+                console.error('Failed to fetch Copilot SDK status:', error);
+                document.getElementById('sdk-status-indicator').textContent = 'Error';
+                document.getElementById('sdk-status-indicator').className = 'badge badge-error';
+            }
+        }
+
+        async function refreshCopilotSDKSessions() {
+            try {
+                const response = await fetch('/api/copilot-sdk/sessions');
+                const data = await response.json();
+                copilotSDKSessions = data.sessions || [];
+                
+                const sessionsList = document.getElementById('copilot-sdk-sessions-list');
+                document.getElementById('sdk-active-sessions').textContent = data.count || 0;
+                
+                if (copilotSDKSessions.length === 0) {
+                    sessionsList.innerHTML = '<p class="info-text">No active sessions</p>';
+                } else {
+                    sessionsList.innerHTML = copilotSDKSessions.map(sessionId => `
+                        <div class="session-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #e5e7eb; border-radius: 4px; margin-bottom: 8px;">
+                            <span style="font-family: monospace; font-size: 12px;">${sessionId}</span>
+                            <button class="btn btn-danger" onclick="destroySDKSession('${sessionId}')" style="padding: 4px 8px; font-size: 12px;">Destroy</button>
+                        </div>
+                    `).join('');
+                }
+                
+                console.log('Active Copilot SDK Sessions:', copilotSDKSessions);
+            } catch (error) {
+                console.error('Failed to fetch Copilot SDK sessions:', error);
+            }
+        }
+
+        async function createSDKSession(model) {
+            try {
+                const response = await fetch('/api/copilot-sdk/session/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: model, streaming: false })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(`✓ Session created successfully!\nSession ID: ${data.session_id}\nModel: ${data.model}`);
+                    await refreshCopilotSDKSessions();
+                } else {
+                    alert(`✗ Failed to create session: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Failed to create SDK session:', error);
+                alert('✗ Failed to create session. Check console for details.');
+            }
+        }
+
+        async function destroySDKSession(sessionId) {
+            if (!confirm(`Are you sure you want to destroy session ${sessionId}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/copilot-sdk/session/${sessionId}/destroy`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('✓ Session destroyed successfully!');
+                    await refreshCopilotSDKSessions();
+                } else {
+                    alert(`✗ Failed to destroy session: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Failed to destroy SDK session:', error);
+                alert('✗ Failed to destroy session. Check console for details.');
+            }
+        }
+
+        async function destroyAllSDKSessions() {
+            if (copilotSDKSessions.length === 0) {
+                alert('No active sessions to destroy.');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to destroy all ${copilotSDKSessions.length} sessions?`)) {
+                return;
+            }
+            
+            for (const sessionId of copilotSDKSessions) {
+                try {
+                    await fetch(`/api/copilot-sdk/session/${sessionId}/destroy`, { method: 'POST' });
+                } catch (error) {
+                    console.error(`Failed to destroy session ${sessionId}:`, error);
+                }
+            }
+            
+            alert('✓ All sessions destroyed!');
+            await refreshCopilotSDKSessions();
+        }
+
+        async function testCopilotSDK() {
+            const model = document.getElementById('test-sdk-model').value;
+            const prompt = document.getElementById('test-sdk-prompt').value;
+            const streaming = document.getElementById('test-sdk-streaming').checked;
+            
+            if (!prompt.trim()) {
+                alert('Please enter a prompt.');
+                return;
+            }
+            
+            try {
+                // Create session
+                const createResponse = await fetch('/api/copilot-sdk/session/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: model, streaming: streaming })
+                });
+                
+                const createData = await createResponse.json();
+                if (!createData.success) {
+                    alert(`✗ Failed to create session: ${createData.error}`);
+                    return;
+                }
+                
+                const sessionId = createData.session_id;
+                
+                // Send message
+                const sendResponse = await fetch(`/api/copilot-sdk/session/${sessionId}/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt, use_cache: true })
+                });
+                
+                const sendData = await sendResponse.json();
+                
+                // Display result
+                const resultBox = document.getElementById('test-sdk-result');
+                const responseEl = document.getElementById('test-sdk-response');
+                
+                if (sendData.success) {
+                    responseEl.textContent = JSON.stringify(sendData, null, 2);
+                    resultBox.style.display = 'block';
+                } else {
+                    responseEl.textContent = `Error: ${sendData.error}`;
+                    resultBox.style.display = 'block';
+                }
+                
+                // Cleanup - destroy session
+                await fetch(`/api/copilot-sdk/session/${sessionId}/destroy`, { method: 'POST' });
+                await refreshCopilotSDKSessions();
+                
+            } catch (error) {
+                console.error('Failed to test Copilot SDK:', error);
+                alert('✗ Test failed. Check console for details.');
+            }
+        }
+
+        function showCreateSessionDialog() {
+            const model = prompt('Enter model name (gpt-4o, gpt-4o-mini, gpt-5, o1):', 'gpt-4o');
+            if (model) {
+                createSDKSession(model);
+            }
+        }
+
+        function viewSDKDocumentation() {
+            window.open('https://github.com/github/copilot-sdk', '_blank');
+        }
+
+        // Initialize Copilot SDK tab when it's shown
+        document.addEventListener('DOMContentLoaded', function() {
+            const copilotTab = document.querySelector('[onclick*="copilot-sdk"]');
+            if (copilotTab) {
+                copilotTab.addEventListener('click', function() {
+                    refreshCopilotSDKStatus();
+                    refreshCopilotSDKSessions();
+                });
             }
         });
     </script>

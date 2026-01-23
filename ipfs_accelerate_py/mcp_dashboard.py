@@ -102,6 +102,11 @@ class MCPDashboard:
             """Investigation service page."""
             return self._render_feature_template("Investigation", "case investigation")
         
+        @self.app.route('/mcp/copilot-sdk')
+        def copilot_sdk_page():
+            """Copilot SDK configuration and management page."""
+            return self._render_feature_template("Copilot SDK", "AI-powered code assistance")
+        
         @self.app.route('/api/mcp/status')
         def status():
             """MCP status API."""
@@ -148,6 +153,155 @@ class MCPDashboard:
             """Get real system metrics."""
             from ipfs_accelerate_py.mcp.tools.dashboard_data import get_system_metrics
             return jsonify(get_system_metrics(start_time=self._start_time))
+        
+        @self.app.route('/api/copilot-sdk/status')
+        def copilot_sdk_status():
+            """Get Copilot SDK status and configuration."""
+            try:
+                from ipfs_accelerate_py.copilot_sdk import CopilotSDK
+                from ipfs_accelerate_py.copilot_sdk.wrapper import HAVE_COPILOT_SDK
+                
+                status = {
+                    'available': HAVE_COPILOT_SDK,
+                    'installed': HAVE_COPILOT_SDK,
+                }
+                
+                if not HAVE_COPILOT_SDK:
+                    status['message'] = 'GitHub Copilot SDK not installed'
+                    status['install_command'] = 'pip install github-copilot-sdk'
+                else:
+                    status['message'] = 'GitHub Copilot SDK is available'
+                    status['features'] = {
+                        'session_management': True,
+                        'streaming': True,
+                        'tool_registration': True,
+                        'caching': True,
+                        'multi_model': True
+                    }
+                
+                return jsonify(status)
+            except Exception as e:
+                return jsonify({
+                    'available': False,
+                    'error': str(e)
+                }), 500
+        
+        @self.app.route('/api/copilot-sdk/sessions')
+        def copilot_sdk_sessions():
+            """List active Copilot SDK sessions."""
+            try:
+                from shared.operations import CopilotSDKOperations
+                from shared.core import SharedCore
+                
+                ops = CopilotSDKOperations(SharedCore())
+                result = ops.list_sessions()
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'sessions': [],
+                    'count': 0
+                })
+        
+        @self.app.route('/api/copilot-sdk/session/create', methods=['POST'])
+        def copilot_sdk_create_session():
+            """Create a new Copilot SDK session."""
+            try:
+                from shared.operations import CopilotSDKOperations
+                from shared.core import SharedCore
+                
+                data = request.get_json() or {}
+                model = data.get('model', 'gpt-4o')
+                streaming = data.get('streaming', False)
+                
+                ops = CopilotSDKOperations(SharedCore())
+                result = ops.create_session(model=model, streaming=streaming)
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        @self.app.route('/api/copilot-sdk/session/<session_id>/send', methods=['POST'])
+        def copilot_sdk_send_message(session_id):
+            """Send a message to a Copilot SDK session."""
+            try:
+                from shared.operations import CopilotSDKOperations
+                from shared.core import SharedCore
+                
+                data = request.get_json() or {}
+                prompt = data.get('prompt', '')
+                use_cache = data.get('use_cache', True)
+                
+                if not prompt:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Prompt is required'
+                    }), 400
+                
+                ops = CopilotSDKOperations(SharedCore())
+                result = ops.send_message(
+                    session_id=session_id,
+                    prompt=prompt,
+                    use_cache=use_cache
+                )
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        @self.app.route('/api/copilot-sdk/session/<session_id>/destroy', methods=['POST', 'DELETE'])
+        def copilot_sdk_destroy_session(session_id):
+            """Destroy a Copilot SDK session."""
+            try:
+                from shared.operations import CopilotSDKOperations
+                from shared.core import SharedCore
+                
+                ops = CopilotSDKOperations(SharedCore())
+                result = ops.destroy_session(session_id=session_id)
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 500
+        
+        @self.app.route('/api/copilot-sdk/models')
+        def copilot_sdk_models():
+            """Get available Copilot SDK models."""
+            return jsonify({
+                'models': [
+                    {
+                        'id': 'gpt-4o',
+                        'name': 'GPT-4 Optimized',
+                        'description': 'Latest GPT-4 model optimized for speed and quality',
+                        'capabilities': ['text-generation', 'code-generation', 'reasoning']
+                    },
+                    {
+                        'id': 'gpt-4o-mini',
+                        'name': 'GPT-4 Optimized Mini',
+                        'description': 'Smaller, faster version of GPT-4 Optimized',
+                        'capabilities': ['text-generation', 'code-generation']
+                    },
+                    {
+                        'id': 'gpt-5',
+                        'name': 'GPT-5',
+                        'description': 'Next generation model with enhanced capabilities',
+                        'capabilities': ['text-generation', 'code-generation', 'reasoning', 'tool-use']
+                    },
+                    {
+                        'id': 'o1',
+                        'name': 'O1',
+                        'description': 'Reasoning-focused model',
+                        'capabilities': ['reasoning', 'problem-solving', 'code-generation']
+                    }
+                ],
+                'default': 'gpt-4o'
+            })
         
         @self.app.route('/mcp/models')
         def models():
