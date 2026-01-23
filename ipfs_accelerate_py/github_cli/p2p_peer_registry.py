@@ -1,9 +1,18 @@
-"""
-P2P Peer Registry for GitHub Actions Cache Sharing
+"""ipfs_accelerate_py.github_cli.p2p_peer_registry
 
-Uses GitHub Actions cache API to maintain a registry of active P2P cache peers
-across different self-hosted runners. This enables peer discovery without 
-requiring a central rendezvous server.
+P2P Peer Registry for cache-sharing coordination.
+
+Historically this module attempted to use `gh cache upload/download` to publish
+peer information. The GitHub CLI does not support uploading/downloading Actions
+caches (it supports listing/deleting only), which makes that approach non-
+functional.
+
+This implementation uses a GitHub Issue as a lightweight registry backend:
+- Each peer periodically upserts a single runner-specific *issue comment*.
+- Peers discover each other by listing and parsing those comments.
+
+This avoids needing a separate rendezvous server and works anywhere `gh` is
+authenticated with repo access.
 """
 
 import json
@@ -12,6 +21,7 @@ import os
 import socket
 import subprocess
 import time
+import tempfile
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
@@ -22,8 +32,8 @@ class P2PPeerRegistry:
     """
     Manages peer discovery for P2P cache sharing across GitHub Actions runners.
     
-    Uses GitHub CLI to store/retrieve peer information in GitHub Actions cache,
-    allowing runners to discover each other without a central server.
+    Uses GitHub CLI + GitHub Issues to store/retrieve peer information as issue
+    comments, allowing runners to discover each other without a central server.
     """
     
     def __init__(
@@ -31,7 +41,8 @@ class P2PPeerRegistry:
         repo: str,
         runner_name: Optional[str] = None,
         cache_prefix: str = "p2p-peer-registry",
-        peer_ttl_minutes: int = 30
+        peer_ttl_minutes: int = 30,
+        issue_title: Optional[str] = None
     ):
         """
         Initialize peer registry.
@@ -43,14 +54,186 @@ class P2PPeerRegistry:
             peer_ttl_minutes: How long peer entries are valid
         """
         self.repo = repo
+        self.repo_owner, self.repo_name = (repo.split("/", 1) + [""])[0:2]
         self.runner_name = runner_name or self._detect_runner_name()
         self.cache_prefix = cache_prefix
         self.peer_ttl = timedelta(minutes=peer_ttl_minutes)
+
+        # Issue-backed registry configuration
+        self.issue_title = issue_title or self.cache_prefix
+        self._issue_number: Optional[int] = None
         
         # Detect public IP for this runner
         self.public_ip = self._detect_public_ip()
         
         logger.info(f"P2P Peer Registry initialized: runner={self.runner_name}, ip={self.public_ip}")
+
+    def _run_gh(self, args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
+        """Run a `gh` command and return the CompletedProcess."""
+        return subprocess.run(
+            ["gh", *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+
+    def _gh_api(self, method: str, endpoint: str, payload: Optional[Dict] = None, timeout: int = 30) -> subprocess.CompletedProcess:
+        """Call GitHub API via `gh api`.
+
+        Uses `--input` to avoid shell-quoting issues with newlines.
+        """
+        args = ["api", "-X", method.upper(), endpoint]
+        tmp_path = None
+        if payload is not None:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                prefix=f"{self.cache_prefix}-api-",
+                suffix=".json",
+                delete=False,
+            ) as f:
+                tmp_path = f.name
+                json.dump(payload, f)
+            args.extend(["--input", tmp_path])
+        try:
+            return self._run_gh(args, timeout=timeout)
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+    def _get_or_create_registry_issue_number(self) -> Optional[int]:
+        """Find (or create) the issue used as the registry backend."""
+        if self._issue_number is not None:
+            return self._issue_number
+
+        # Find issue by title
+        list_result = self._run_gh(
+            [
+                "issue",
+                "list",
+                "--repo",
+                self.repo,
+                "--search",
+                f'in:title "{self.issue_title}"',
+                "--state",
+                "open",
+                "--json",
+                "number,title",
+                "--limit",
+                "50",
+            ],
+            timeout=30,
+        )
+        if list_result.returncode != 0:
+            logger.warning(f"Failed to list issues for registry: {list_result.stderr.strip()}")
+            return None
+
+        try:
+            issues = json.loads(list_result.stdout)
+        except Exception as e:
+            logger.warning(f"Failed to parse issue list JSON: {e}")
+            return None
+
+        matching_numbers: List[int] = []
+        for issue in issues:
+            if issue.get("title") == self.issue_title and isinstance(issue.get("number"), int):
+                matching_numbers.append(issue["number"])
+
+        if matching_numbers:
+            # Prefer a deterministic selection so multiple runners converge even
+            # if duplicates exist due to concurrent creation.
+            selected = min(matching_numbers)
+            if len(matching_numbers) > 1:
+                logger.warning(
+                    "Multiple registry issues share the same title; using the lowest number. "
+                    f"title={self.issue_title!r} issues={sorted(matching_numbers)}"
+                )
+            self._issue_number = selected
+            return self._issue_number
+
+        # Create issue
+        marker_body = (
+            "This issue is used as an automated peer registry for IPFS Accelerate P2P cache sharing.\n\n"
+            "Each peer writes/updates a single comment containing its current peer info.\n"
+        )
+        create_result = self._run_gh(
+            [
+                "issue",
+                "create",
+                "--repo",
+                self.repo,
+                "--title",
+                self.issue_title,
+                "--body",
+                marker_body,
+            ],
+            timeout=60,
+        )
+        if create_result.returncode != 0:
+            logger.warning(f"Failed to create registry issue: {create_result.stderr.strip()}")
+            return None
+
+        # Extract issue number from created URL (last path segment)
+        url = (create_result.stdout or "").strip()
+        try:
+            self._issue_number = int(url.rstrip("/").split("/")[-1])
+        except Exception:
+            # Fallback: re-list and pick again
+            self._issue_number = None
+            return self._get_or_create_registry_issue_number()
+
+        return self._issue_number
+
+    def _comment_marker(self, runner_name: str) -> str:
+        return f"<!-- {self.cache_prefix}:{runner_name} -->"
+
+    def _render_peer_comment(self, peer_info: Dict) -> str:
+        marker = self._comment_marker(peer_info.get("runner_name") or self.runner_name)
+        payload = json.dumps(peer_info, indent=2, sort_keys=True)
+        return f"{marker}\n```json\n{payload}\n```\n"
+
+    def _parse_peer_comment(self, body: str) -> Optional[Dict]:
+        # Must start with our marker prefix
+        if not body.strip().startswith(f"<!-- {self.cache_prefix}:"):
+            return None
+        # Extract JSON fenced block
+        idx = body.find("```json")
+        if idx == -1:
+            return None
+        start = body.find("\n", idx)
+        end = body.rfind("```")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        raw = body[start + 1 : end].strip()
+        if not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
+
+    def _list_registry_comments(self, issue_number: int) -> List[Dict]:
+        endpoint = f"/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_number}/comments?per_page=100"
+        result = self._gh_api("GET", endpoint, payload=None, timeout=30)
+        if result.returncode != 0:
+            logger.warning(f"Failed to list registry comments: {result.stderr.strip()}")
+            return []
+        try:
+            data = json.loads(result.stdout)
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
+
+    def _delete_registry_comment(self, comment_id: int) -> bool:
+        endpoint = f"/repos/{self.repo_owner}/{self.repo_name}/issues/comments/{comment_id}"
+        result = self._gh_api("DELETE", endpoint, payload=None, timeout=30)
+        if result.returncode != 0:
+            logger.warning(f"Failed to delete registry comment {comment_id}: {result.stderr.strip()}")
+            return False
+        return True
     
     def _detect_runner_name(self) -> str:
         """Detect the GitHub Actions runner name."""
@@ -121,37 +304,36 @@ class P2PPeerRegistry:
                 "last_seen": datetime.utcnow().isoformat(),
                 "metadata": metadata or {}
             }
-            
-            # Store peer info in GitHub Actions cache
-            cache_key = f"{self.cache_prefix}-{self.runner_name}"
-            
-            # Create temp file with peer info
-            temp_file = f"/tmp/{cache_key}.json"
-            with open(temp_file, "w") as f:
-                json.dump(peer_info, f)
-            
-            # Upload to GitHub Actions cache using gh CLI
-            result = subprocess.run(
-                [
-                    "gh", "cache", "upload",
-                    temp_file,
-                    "--key", cache_key,
-                    "--repo", self.repo
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            # Clean up temp file
-            os.unlink(temp_file)
-            
-            if result.returncode == 0:
-                logger.info(f"✓ Registered peer: {peer_id[:16]}... on {self.public_ip}:{listen_port}")
-                return True
-            else:
-                logger.warning(f"Failed to register peer: {result.stderr}")
+
+            issue_number = self._get_or_create_registry_issue_number()
+            if issue_number is None:
                 return False
+
+            comment_body = self._render_peer_comment(peer_info)
+            comments = self._list_registry_comments(issue_number)
+
+            # Upsert our runner-specific comment
+            marker = self._comment_marker(self.runner_name)
+            existing_id: Optional[int] = None
+            for c in comments:
+                if isinstance(c, dict) and isinstance(c.get("id"), int) and isinstance(c.get("body"), str):
+                    if c["body"].lstrip().startswith(marker):
+                        existing_id = c["id"]
+                        break
+
+            if existing_id is None:
+                endpoint = f"/repos/{self.repo_owner}/{self.repo_name}/issues/{issue_number}/comments"
+                result = self._gh_api("POST", endpoint, payload={"body": comment_body}, timeout=60)
+            else:
+                endpoint = f"/repos/{self.repo_owner}/{self.repo_name}/issues/comments/{existing_id}"
+                result = self._gh_api("PATCH", endpoint, payload={"body": comment_body}, timeout=60)
+
+            if result.returncode != 0:
+                logger.warning(f"Failed to register peer via issue comment: {result.stderr.strip()}")
+                return False
+
+            logger.info(f"✓ Registered peer: {peer_id[:16]}... on {self.public_ip}:{listen_port}")
+            return True
                 
         except Exception as e:
             logger.error(f"Error registering peer: {e}")
@@ -168,75 +350,31 @@ class P2PPeerRegistry:
             List of peer info dictionaries
         """
         try:
-            # List all cache entries with our prefix
-            result = subprocess.run(
-                [
-                    "gh", "cache", "list",
-                    "--repo", self.repo,
-                    "--json", "key,createdAt,sizeInBytes"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if result.returncode != 0:
-                logger.warning(f"Failed to list cache: {result.stderr}")
+            issue_number = self._get_or_create_registry_issue_number()
+            if issue_number is None:
                 return []
-            
-            # Parse cache list
-            cache_entries = json.loads(result.stdout)
-            
-            # Filter for peer registry entries
-            peer_keys = [
-                entry["key"] 
-                for entry in cache_entries 
-                if entry["key"].startswith(self.cache_prefix)
-            ]
-            
-            # Download and parse peer info
-            peers = []
-            for cache_key in peer_keys[:max_peers]:
-                # Skip our own entry
-                if cache_key == f"{self.cache_prefix}-{self.runner_name}":
+
+            comments = self._list_registry_comments(issue_number)
+            peers: List[Dict] = []
+            for c in comments:
+                body = c.get("body") if isinstance(c, dict) else None
+                if not isinstance(body, str):
                     continue
-                
+                peer_info = self._parse_peer_comment(body)
+                if not peer_info:
+                    continue
+                if peer_info.get("runner_name") == self.runner_name:
+                    continue
                 try:
-                    # Download peer info
-                    temp_file = f"/tmp/{cache_key}.json"
-                    download_result = subprocess.run(
-                        [
-                            "gh", "cache", "download",
-                            cache_key,
-                            "--dir", "/tmp",
-                            "--repo", self.repo
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
-                    
-                    if download_result.returncode == 0 and os.path.exists(temp_file):
-                        with open(temp_file, "r") as f:
-                            peer_info = json.load(f)
-                        
-                        # Check if peer is still active (within TTL)
-                        last_seen = datetime.fromisoformat(peer_info["last_seen"])
-                        if datetime.utcnow() - last_seen < self.peer_ttl:
-                            peers.append(peer_info)
-                        else:
-                            logger.debug(f"Peer {peer_info['peer_id'][:16]}... expired")
-                        
-                        # Clean up temp file
-                        os.unlink(temp_file)
-                        
-                except Exception as e:
-                    logger.debug(f"Failed to fetch peer {cache_key}: {e}")
+                    last_seen = datetime.fromisoformat(peer_info.get("last_seen", ""))
+                except Exception:
                     continue
-            
+                if datetime.utcnow() - last_seen < self.peer_ttl:
+                    peers.append(peer_info)
+
+            peers = peers[:max_peers]
             logger.info(f"✓ Discovered {len(peers)} active peers")
             return peers
-            
         except Exception as e:
             logger.error(f"Error discovering peers: {e}")
             return []
@@ -262,44 +400,36 @@ class P2PPeerRegistry:
             Number of peers cleaned up
         """
         try:
-            # Get all peer entries
-            result = subprocess.run(
-                [
-                    "gh", "cache", "list",
-                    "--repo", self.repo,
-                    "--json", "key,createdAt"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if result.returncode != 0:
+            issue_number = self._get_or_create_registry_issue_number()
+            if issue_number is None:
                 return 0
-            
-            cache_entries = json.loads(result.stdout)
-            
-            # Find stale entries
+
+            comments = self._list_registry_comments(issue_number)
             cleaned = 0
-            for entry in cache_entries:
-                key = entry["key"]
-                if not key.startswith(self.cache_prefix):
+
+            for c in comments:
+                if not isinstance(c, dict):
                     continue
-                
-                created_at = datetime.fromisoformat(entry["createdAt"].replace("Z", "+00:00"))
-                if datetime.utcnow().replace(tzinfo=created_at.tzinfo) - created_at > self.peer_ttl:
-                    # Delete stale entry
-                    subprocess.run(
-                        ["gh", "cache", "delete", key, "--repo", self.repo],
-                        capture_output=True,
-                        timeout=30
-                    )
-                    cleaned += 1
-                    logger.debug(f"Cleaned up stale peer: {key}")
-            
+                comment_id = c.get("id")
+                body = c.get("body")
+                if not isinstance(comment_id, int) or not isinstance(body, str):
+                    continue
+
+                peer_info = self._parse_peer_comment(body)
+                if not peer_info:
+                    continue
+
+                try:
+                    last_seen = datetime.fromisoformat(peer_info.get("last_seen", ""))
+                except Exception:
+                    continue
+
+                if datetime.utcnow() - last_seen > self.peer_ttl:
+                    if self._delete_registry_comment(comment_id):
+                        cleaned += 1
+
             if cleaned > 0:
                 logger.info(f"✓ Cleaned up {cleaned} stale peer(s)")
-            
             return cleaned
             
         except Exception as e:
