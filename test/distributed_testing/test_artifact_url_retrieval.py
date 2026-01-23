@@ -18,6 +18,14 @@ import sys
 # Add the parent directory to the path
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
+# These tests exercise CI client code paths that typically depend on optional
+# HTTP libraries (e.g., aiohttp). Under pytest, skip cleanly if missing.
+if "pytest" in sys.modules:
+    import pytest
+
+    pytest.importorskip("aiohttp")
+    pytestmark = pytest.mark.anyio
+
 from distributed_testing.ci.jenkins_client import JenkinsClient
 from distributed_testing.ci.circleci_client import CircleCIClient
 from distributed_testing.ci.azure_client import AzureDevOpsClient

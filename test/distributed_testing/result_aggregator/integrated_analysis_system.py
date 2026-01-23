@@ -40,6 +40,7 @@ import threading
 import anyio
 import concurrent.futures
 import warnings
+import sys
 
 # Conditional imports for optional dependencies
 try:
@@ -73,17 +74,56 @@ except ImportError:
     STATISTICAL_ANALYSIS_AVAILABLE = False
     warnings.warn("SciPy not available. Statistical analysis will be limited.")
 
+# Core service import (required for most functionality)
 try:
     from result_aggregator.service import ResultAggregatorService
-    from result_aggregator.analysis.analysis import (
-        analyze_trend, detect_anomalies, compare_groups, calculate_efficiency_metrics,
-        analyze_workload_distribution, analyze_failure_patterns, analyze_recovery_performance,
-        analyze_circuit_breaker_performance, analyze_multi_dimensional_performance,
-        analyze_time_series_forecasting
-    )
+except ImportError:
+    ResultAggregatorService = None
+    warnings.warn("ResultAggregatorService couldn't be imported. Functionality will be limited.")
+
+# Optional analysis functions (require pandas/numpy via result_aggregator.analysis.analysis)
+if DATA_ANALYSIS_AVAILABLE:
+    try:
+        from result_aggregator.analysis.analysis import (
+            analyze_trend, detect_anomalies, compare_groups, calculate_efficiency_metrics,
+            analyze_workload_distribution, analyze_failure_patterns, analyze_recovery_performance,
+            analyze_circuit_breaker_performance, analyze_multi_dimensional_performance,
+            analyze_time_series_forecasting
+        )
+    except ImportError:
+        analyze_trend = None
+        detect_anomalies = None
+        compare_groups = None
+        calculate_efficiency_metrics = None
+        analyze_workload_distribution = None
+        analyze_failure_patterns = None
+        analyze_recovery_performance = None
+        analyze_circuit_breaker_performance = None
+        analyze_multi_dimensional_performance = None
+        analyze_time_series_forecasting = None
+        warnings.warn(
+            "Analysis helpers couldn't be imported. Advanced analysis functionality will be limited."
+        )
+else:
+    analyze_trend = None
+    detect_anomalies = None
+    compare_groups = None
+    calculate_efficiency_metrics = None
+    analyze_workload_distribution = None
+    analyze_failure_patterns = None
+    analyze_recovery_performance = None
+    analyze_circuit_breaker_performance = None
+    analyze_multi_dimensional_performance = None
+    analyze_time_series_forecasting = None
+
+# Coordinator integration (should not depend on pandas/numpy)
+try:
     from result_aggregator.coordinator_integration import ResultAggregatorIntegration
 except ImportError:
-    warnings.warn("Some result_aggregator components couldn't be imported. Functionality will be limited.")
+    ResultAggregatorIntegration = None
+    warnings.warn(
+        "Coordinator integration couldn't be imported. Coordinator registration will be disabled."
+    )
 
 try:
     from result_aggregator.pipeline.pipeline import DataSource, ProcessingPipeline
@@ -146,7 +186,8 @@ class IntegratedAnalysisSystem:
         """
         self.db_path = db_path
         self.config = config or {}
-        self.enable_ml = enable_ml and ML_AVAILABLE
+        # Keep flags reflecting user intent; optional components may still be unavailable.
+        self.enable_ml = bool(enable_ml)
         self.enable_visualization = enable_visualization and VISUALIZATION_AVAILABLE
         self.enable_real_time_analysis = enable_real_time_analysis
         self.analysis_interval = analysis_interval
@@ -195,8 +236,17 @@ class IntegratedAnalysisSystem:
         """
         if coordinator is None:
             raise ValueError("Coordinator cannot be None")
+
+        integration_cls = ResultAggregatorIntegration
+        if integration_cls is None:
+            try:
+                from result_aggregator.coordinator_integration import ResultAggregatorIntegration as integration_cls
+            except ImportError as e:
+                raise ImportError(
+                    "Coordinator integration is not available in this environment"
+                ) from e
         
-        self.coordinator_integration = ResultAggregatorIntegration(
+        self.coordinator_integration = integration_cls(
             coordinator=coordinator,
             db_path=self.db_path,
             enable_ml=self.enable_ml,
@@ -235,26 +285,55 @@ class IntegratedAnalysisSystem:
         """Stop the background analysis thread."""
         if self.analysis_thread is not None and self.analysis_thread.is_alive():
             self.stop_analysis.set()
-            self.analysis_thread.join(timeout=10)
+            # Ensure the thread is fully stopped before closing DB connections.
+            self.analysis_thread.join()
             logger.info("Stopped periodic analysis thread")
+        self.analysis_thread = None
     
     def _run_periodic_analysis(self):
         """Run periodic analysis in the background thread."""
-        while not self.stop_analysis.is_set():
-            try:
-                # Run analysis
-                self._perform_periodic_analysis()
-                
-                # Sleep for the specified interval
-                self.stop_analysis.wait(self.analysis_interval.total_seconds())
-            except Exception as e:
-                logger.error(f"Error in periodic analysis: {e}")
-                # Sleep briefly before retrying
-                time.sleep(10)
+        thread_service = None
+        try:
+            # DuckDB connections are not safe to share across threads.
+            # Create a dedicated service (and DB connection) for this thread.
+            if ResultAggregatorService is not None and self.db_path:
+                try:
+                    thread_service = ResultAggregatorService(
+                        db_path=self.db_path,
+                        enable_ml=self.enable_ml,
+                        enable_visualization=self.enable_visualization,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to create periodic analysis service: {e}")
+                    thread_service = None
+
+            while not self.stop_analysis.is_set():
+                try:
+                    # Run analysis
+                    self._perform_periodic_analysis(service=thread_service)
+
+                    # Sleep for the specified interval
+                    self.stop_analysis.wait(self.analysis_interval.total_seconds())
+                except Exception as e:
+                    logger.error(f"Error in periodic analysis: {e}")
+                    # Sleep briefly before retrying
+                    time.sleep(10)
+        finally:
+            if thread_service is not None:
+                try:
+                    thread_service.close()
+                except Exception:
+                    pass
     
-    def _perform_periodic_analysis(self):
+    def _perform_periodic_analysis(self, service=None):
         """Perform periodic analysis of test results."""
         try:
+            analysis_service = service if service is not None else self.service
+
+            if analysis_service is None:
+                logger.warning("No service available for periodic analysis")
+                return
+
             # Calculate the time window for analysis
             end_time = datetime.now()
             start_time = end_time - timedelta(hours=1)
@@ -266,13 +345,13 @@ class IntegratedAnalysisSystem:
             }
             
             # Analyze trends
-            trends = self.service.analyze_performance_trends(filter_criteria)
+            trends = analysis_service.analyze_performance_trends(filter_criteria)
             
             # Detect anomalies
-            anomalies = self.service.detect_anomalies(filter_criteria)
+            anomalies = analysis_service.detect_anomalies(filter_criteria)
             
             # Generate a summary report
-            report = self.service.generate_analysis_report(
+            report = analysis_service.generate_analysis_report(
                 filter_criteria=filter_criteria,
                 report_type="summary",
                 format="json"
@@ -665,8 +744,8 @@ class IntegratedAnalysisSystem:
         
         # Generate appropriate report based on type and format
         if report_type == "performance":
-            # Use the performance analyzer if available
-            if hasattr(self.service, "performance_analyzer") and self.service.performance_analyzer:
+            # Prefer the dedicated performance report API if available.
+            if hasattr(self.service, "generate_performance_report"):
                 report = self.service.generate_performance_report(
                     report_type="comprehensive",
                     filter_criteria=filter_criteria,
@@ -1344,6 +1423,12 @@ class IntegratedAnalysisSystem:
     
     def __del__(self):
         """Destructor to ensure proper cleanup."""
+        # Avoid complex teardown during interpreter finalization.
+        try:
+            if hasattr(sys, "is_finalizing") and sys.is_finalizing():
+                return
+        except Exception:
+            return
         self.close()
 
 

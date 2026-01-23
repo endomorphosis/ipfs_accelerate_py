@@ -15,7 +15,9 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
-import websockets
+
+websockets = pytest.importorskip("websockets")
+pytest.importorskip("aiohttp")
 from aiohttp import web
 
 from coordinator import DistributedTestingCoordinator

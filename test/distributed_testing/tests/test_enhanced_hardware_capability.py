@@ -12,6 +12,7 @@ import sys
 import os
 import logging
 from unittest.mock import patch, MagicMock
+import importlib.util
 from typing import Dict, List, Set, Optional, Tuple, Any, Union
 
 # Add the parent directory to the path to import the module
@@ -66,6 +67,10 @@ class HardwareCapabilityDetectorTests(unittest.TestCase):
         self.assertIsInstance(hostname, str)
         self.assertGreater(len(hostname), 0)
     
+    @unittest.skipUnless(
+        importlib.util.find_spec('psutil') is not None and importlib.util.find_spec('cpuinfo') is not None,
+        'psutil and py-cpuinfo are required for this test'
+    )
     @patch('cpuinfo.get_cpu_info')
     @patch('psutil.cpu_count')
     @patch('psutil.virtual_memory')
@@ -136,6 +141,10 @@ class HardwareCapabilityDetectorTests(unittest.TestCase):
         self.assertIn('precision', capability.scores)
         self.assertIn('overall', capability.scores)
     
+    @unittest.skipUnless(
+        importlib.util.find_spec('pynvml') is not None,
+        'pynvml is required for this test'
+    )
     @patch('pynvml.nvmlInit')
     @patch('pynvml.nvmlDeviceGetCount')
     @patch('pynvml.nvmlDeviceGetHandleByIndex')

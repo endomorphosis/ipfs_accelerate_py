@@ -402,25 +402,14 @@ class ShardedModelManager:
         # Initialize results
         shard_results = {}
         
-        # Execute on each shard concurrently
-        tasks = []
-        
+        # Execute on each shard. Keep sequential to avoid asyncio task management.
         for shard_id, shard in shards.items():
-            # Create task for shard
-            task = # TODO: Replace with task group - asyncio.create_task(
-                self._execute_shard(
+            try:
+                result = await self._execute_shard(
                     sharded_model_id=sharded_model_id,
                     shard_id=shard_id,
-                    inputs=inputs
+                    inputs=inputs,
                 )
-            )
-            
-            tasks.append((shard_id, task))
-        
-        # Wait for all shard executions
-        for shard_id, task in tasks:
-            try:
-                result = await task
                 shard_results[shard_id] = result
                 
                 # Record result

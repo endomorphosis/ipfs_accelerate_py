@@ -88,6 +88,13 @@ class MockCIProvider(CIProviderInterface):
             "name": artifact_name
         })
         return True
+
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str):
+        """Get the URL for a test run artifact."""
+        for artifact in self.artifacts.get(test_run_id, []):
+            if artifact.get("name") == artifact_name:
+                return f"http://example.com/artifacts/{test_run_id}/{artifact_name}"
+        return None
     
     async def get_test_run_status(self, test_run_id):
         """Get test run status."""

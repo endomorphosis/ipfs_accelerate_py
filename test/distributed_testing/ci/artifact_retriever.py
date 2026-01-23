@@ -82,7 +82,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set, Union, Tuple
 
-import aiohttp
+try:
+    import aiohttp  # type: ignore
+except ImportError:  # pragma: no cover
+    aiohttp = None
 import hashlib
 
 from distributed_testing.ci.api_interface import CIProviderInterface
@@ -148,6 +151,10 @@ class ArtifactRetriever:
     async def _ensure_session(self) -> None:
         """Ensure aiohttp session exists."""
         if self.session is None:
+            if aiohttp is None:
+                raise RuntimeError(
+                    "aiohttp is required for ArtifactRetriever network operations; install aiohttp to enable."
+                )
             self.session = aiohttp.ClientSession()
     
     def _load_cache_metadata(self) -> None:

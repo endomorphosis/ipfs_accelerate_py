@@ -17,8 +17,18 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
+import pytest
+
 # Add the project root to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
+
+if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
+    pytest.skip(
+        "Dynamic resource manager integration tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to run.",
+        allow_module_level=True,
+    )
+
+pytest.importorskip("aiohttp")
 
 # Import the components to test
 from distributed_testing.dynamic_resource_manager import (

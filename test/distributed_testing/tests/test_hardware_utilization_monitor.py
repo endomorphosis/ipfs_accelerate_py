@@ -21,8 +21,11 @@ import time
 import tempfile
 import unittest
 import anyio
+import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
+
+pytest.importorskip("psutil")
 
 # Import components to test
 from hardware_utilization_monitor import (

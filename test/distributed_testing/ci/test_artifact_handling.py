@@ -14,11 +14,9 @@ import shutil
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
+import pytest
+
 from distributed_testing.ci.api_interface import CIProviderInterface, CIProviderFactory
-from distributed_testing.ci.github_client import GitHubClient
-from distributed_testing.ci.gitlab_client import GitLabClient
-from distributed_testing.ci.jenkins_client import JenkinsClient
-from distributed_testing.ci.azure_client import AzureDevOpsClient
 from distributed_testing.ci.artifact_handler import (
     ArtifactMetadata, 
     ArtifactStorage, 
@@ -95,6 +93,14 @@ class MockCIProvider(CIProviderInterface):
         
         logger.info(f"Uploaded artifact {artifact_name} for test run {test_run_id} with {self.provider_name}")
         return True
+
+    async def get_artifact_url(self, test_run_id: str, artifact_name: str) -> Optional[str]:
+        """Get a stable mock URL for an uploaded artifact."""
+        artifacts = self.artifacts.get(test_run_id, [])
+        for artifact in artifacts:
+            if artifact.get("name") == artifact_name:
+                return f"https://example.invalid/{self.provider_name}/test-runs/{test_run_id}/artifacts/{artifact_name}"
+        return None
     
     async def get_test_run_status(self, test_run_id: str) -> Dict[str, Any]:
         """Get the status of a test run."""
@@ -119,6 +125,7 @@ class MockCIProvider(CIProviderInterface):
         """Close the CI provider and clean up resources."""
         logger.info(f"Closed {self.provider_name} provider")
 
+@pytest.mark.anyio
 async def test_artifact_lifecycle():
     """Test artifact lifecycle with different providers."""
     logger.info("Testing artifact lifecycle...")
@@ -264,6 +271,7 @@ async def test_artifact_lifecycle():
         # Clean up
         shutil.rmtree(temp_dir)
 
+@pytest.mark.anyio
 async def test_singleton_handler():
     """Test the singleton artifact handler."""
     logger.info("Testing singleton artifact handler...")

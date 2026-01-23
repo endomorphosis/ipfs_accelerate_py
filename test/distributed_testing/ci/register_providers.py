@@ -12,14 +12,47 @@ import anyio
 from typing import Dict, Any, Optional
 
 from distributed_testing.ci.api_interface import CIProviderFactory, CIProviderInterface
-from distributed_testing.ci.github_client import GitHubClient
-from distributed_testing.ci.jenkins_client import JenkinsClient
-from distributed_testing.ci.gitlab_client import GitLabClient
-from distributed_testing.ci.azure_client import AzureDevOpsClient
-from distributed_testing.ci.circleci_client import CircleCIClient
-from distributed_testing.ci.bitbucket_client import BitbucketClient
-from distributed_testing.ci.teamcity_client import TeamCityClient
-from distributed_testing.ci.travis_client import TravisClient
+
+# Optional provider implementations (may require extra deps like aiohttp).
+try:
+    from distributed_testing.ci.github_client import GitHubClient
+except Exception:  # pragma: no cover
+    GitHubClient = None  # type: ignore[assignment]
+
+try:
+    from distributed_testing.ci.jenkins_client import JenkinsClient
+except Exception:  # pragma: no cover
+    JenkinsClient = None  # type: ignore[assignment]
+
+try:
+    from distributed_testing.ci.gitlab_client import GitLabClient
+except Exception:  # pragma: no cover
+    GitLabClient = None  # type: ignore[assignment]
+
+try:
+    from distributed_testing.ci.azure_client import AzureDevOpsClient
+except Exception:  # pragma: no cover
+    AzureDevOpsClient = None  # type: ignore[assignment]
+
+try:
+    from distributed_testing.ci.circleci_client import CircleCIClient
+except Exception:  # pragma: no cover
+    CircleCIClient = None  # type: ignore[assignment]
+
+try:
+    from distributed_testing.ci.bitbucket_client import BitbucketClient
+except Exception:  # pragma: no cover
+    BitbucketClient = None  # type: ignore[assignment]
+
+try:
+    from distributed_testing.ci.teamcity_client import TeamCityClient
+except Exception:  # pragma: no cover
+    TeamCityClient = None  # type: ignore[assignment]
+
+try:
+    from distributed_testing.ci.travis_client import TravisClient
+except Exception:  # pragma: no cover
+    TravisClient = None  # type: ignore[assignment]
 from distributed_testing.ci.artifact_handler import get_artifact_handler
 from distributed_testing.ci.artifact_retriever import ArtifactRetriever
 
@@ -55,36 +88,44 @@ def register_all_providers():
     """Register all CI provider implementations with the factory."""
     try:
         # Register GitHub provider
-        CIProviderFactory.register_provider("github", GitHubClient)
-        logger.info("Registered GitHubClient as 'github' provider")
+        if GitHubClient is not None:
+            CIProviderFactory.register_provider("github", GitHubClient)
+            logger.info("Registered GitHubClient as 'github' provider")
         
         # Register Jenkins provider
-        CIProviderFactory.register_provider("jenkins", JenkinsClient)
-        logger.info("Registered JenkinsClient as 'jenkins' provider")
+        if JenkinsClient is not None:
+            CIProviderFactory.register_provider("jenkins", JenkinsClient)
+            logger.info("Registered JenkinsClient as 'jenkins' provider")
         
         # Register GitLab provider
-        CIProviderFactory.register_provider("gitlab", GitLabClient)
-        logger.info("Registered GitLabClient as 'gitlab' provider")
+        if GitLabClient is not None:
+            CIProviderFactory.register_provider("gitlab", GitLabClient)
+            logger.info("Registered GitLabClient as 'gitlab' provider")
         
         # Register Azure DevOps provider
-        CIProviderFactory.register_provider("azure", AzureDevOpsClient)
-        logger.info("Registered AzureDevOpsClient as 'azure' provider")
+        if AzureDevOpsClient is not None:
+            CIProviderFactory.register_provider("azure", AzureDevOpsClient)
+            logger.info("Registered AzureDevOpsClient as 'azure' provider")
         
         # Register CircleCI provider
-        CIProviderFactory.register_provider("circleci", CircleCIClient)
-        logger.info("Registered CircleCIClient as 'circleci' provider")
+        if CircleCIClient is not None:
+            CIProviderFactory.register_provider("circleci", CircleCIClient)
+            logger.info("Registered CircleCIClient as 'circleci' provider")
         
         # Register Bitbucket Pipelines provider
-        CIProviderFactory.register_provider("bitbucket", BitbucketClient)
-        logger.info("Registered BitbucketClient as 'bitbucket' provider")
+        if BitbucketClient is not None:
+            CIProviderFactory.register_provider("bitbucket", BitbucketClient)
+            logger.info("Registered BitbucketClient as 'bitbucket' provider")
         
         # Register TeamCity provider
-        CIProviderFactory.register_provider("teamcity", TeamCityClient)
-        logger.info("Registered TeamCityClient as 'teamcity' provider")
+        if TeamCityClient is not None:
+            CIProviderFactory.register_provider("teamcity", TeamCityClient)
+            logger.info("Registered TeamCityClient as 'teamcity' provider")
         
         # Register Travis CI provider
-        CIProviderFactory.register_provider("travis", TravisClient)
-        logger.info("Registered TravisClient as 'travis' provider")
+        if TravisClient is not None:
+            CIProviderFactory.register_provider("travis", TravisClient)
+            logger.info("Registered TravisClient as 'travis' provider")
         
         logger.info("All CI providers registered successfully")
         return True

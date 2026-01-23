@@ -148,6 +148,7 @@ class RedundancyManager:
         self.session = None
         self.running = False
         self.tasks = set()
+        self._task_group = None
         
         # Load persistent state if available
         self._load_persistent_state()
@@ -242,8 +243,12 @@ class RedundancyManager:
                 self.state_manager = None
         
         # Start main loop and election timeout check
-        self.tasks.add(# TODO: Replace with task group - asyncio.create_task(self._main_loop()))
-        self.tasks.add(# TODO: Replace with task group - asyncio.create_task(self._election_timeout_loop()))
+        if self._task_group is None:
+            self._task_group = anyio.create_task_group()
+            await self._task_group.__aenter__()
+
+        self._task_group.start_soon(self._main_loop)
+        self._task_group.start_soon(self._election_timeout_loop)
         
         logger.info(f"RedundancyManager started for node {self.node_id} (role: {self.current_role.value})")
     
@@ -253,11 +258,12 @@ class RedundancyManager:
             return
             
         self.running = False
-        
-        # Cancel all tasks
-        for task in self.tasks:
-            task.cancel()
-            
+
+        # Cancel background tasks
+        if self._task_group is not None:
+            self._task_group.cancel_scope.cancel()
+            await self._task_group.__aexit__(None, None, None)
+            self._task_group = None
         self.tasks.clear()
         
         # Close session
@@ -342,10 +348,11 @@ class RedundancyManager:
             for node in self.cluster_nodes:
                 if node == self.node_url:
                     continue  # Skip self
-                    
-                self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
-                    self._send_append_entries(node)
-                ))
+
+                if self._task_group is not None:
+                    self._task_group.start_soon(self._send_append_entries, node)
+                else:
+                    await self._send_append_entries(node)
             
             # Update last heartbeat
             self.last_heartbeat = current_time
@@ -354,9 +361,10 @@ class RedundancyManager:
         if current_time - self.last_sync_time >= self.sync_interval:
             if not self.sync_in_progress:
                 self.sync_in_progress = True
-                self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
-                    self._sync_state_to_followers()
-                ))
+                if self._task_group is not None:
+                    self._task_group.start_soon(self._sync_state_to_followers)
+                else:
+                    await self._sync_state_to_followers()
     
     async def _candidate_tasks(self):
         """Perform candidate tasks."""
@@ -410,10 +418,11 @@ class RedundancyManager:
         for node in self.cluster_nodes:
             if node == self.node_url:
                 continue  # Skip self
-                
-            self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
-                self._send_request_vote(node)
-            ))
+
+            if self._task_group is not None:
+                self._task_group.start_soon(self._send_request_vote, node)
+            else:
+                await self._send_request_vote(node)
     
     async def _become_leader(self):
         """Become leader for the current term."""
@@ -435,10 +444,11 @@ class RedundancyManager:
         for node in self.cluster_nodes:
             if node == self.node_url:
                 continue  # Skip self
-                
-            self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
-                self._send_append_entries(node)
-            ))
+
+            if self._task_group is not None:
+                self._task_group.start_soon(self._send_append_entries, node)
+            else:
+                await self._send_append_entries(node)
         
         # Start synchronizing state to followers
         self.last_sync_time = 0  # Force immediate sync
@@ -578,9 +588,10 @@ class RedundancyManager:
                         self.next_index[node] = max(1, self.next_index[node] - 1)
                         
                         # Schedule retry
-                        self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
-                            self._send_append_entries(node)
-                        ))
+                        if self._task_group is not None:
+                            self._task_group.start_soon(self._send_append_entries, node)
+                        else:
+                            await self._send_append_entries(node)
                 else:
                     logger.warning(f"Failed to send AppendEntries to {node}: {response.status}")
         except asyncio.TimeoutError:
@@ -854,10 +865,11 @@ class RedundancyManager:
                 for node in self.cluster_nodes:
                     if node == self.node_url:
                         continue  # Skip self
-                        
-                    self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
-                        self._send_state_sync(node, state)
-                    ))
+
+                    if self._task_group is not None:
+                        self._task_group.start_soon(self._send_state_sync, node, state)
+                    else:
+                        await self._send_state_sync(node, state)
                 
                 # Update last sync time
                 self.last_sync_time = time.time()
@@ -1222,10 +1234,11 @@ class RedundancyManager:
             for node in self.cluster_nodes:
                 if node == self.node_url:
                     continue  # Skip self
-                    
-                self.tasks.add(# TODO: Replace with task group - asyncio.create_task(
-                    self._send_append_entries(node)
-                ))
+
+                if self._task_group is not None:
+                    self._task_group.start_soon(self._send_append_entries, node)
+                else:
+                    await self._send_append_entries(node)
             
             # Wait a bit
             await anyio.sleep(0.1)

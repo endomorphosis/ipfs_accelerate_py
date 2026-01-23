@@ -21,7 +21,8 @@ try:
     import openai
     from openai import OpenAI
 except ImportError:
-    pass
+    openai = None
+    OpenAI = None
 
 # API-specific fixtures
 @pytest.fixture
@@ -35,16 +36,17 @@ def api_key():
     return os.environ.get("API_KEY", "test_key")
 
 @pytest.fixture
-def openai_client(api_base_url, api_key):
+def openai_client(api_base_url, api_key, mock_openai_client):
     """Create an OpenAI API client for openai tests."""
-    try:
-        client = OpenAI(
-            base_url=api_base_url,
-            api_key=api_key
-        )
-        return client
-    except (ImportError, Exception) as e:
-        pytest.skip(f"Could not create OpenAI client: {e}")
+    # Default to a deterministic mock unless explicitly opting into integration.
+    run_integration = os.environ.get("IPFS_ACCEL_RUN_OPENAI_TESTS", "0") == "1"
+    if run_integration and OpenAI is not None:
+        try:
+            return OpenAI(base_url=api_base_url, api_key=api_key)
+        except Exception as e:
+            pytest.skip(f"Could not create OpenAI client: {e}")
+
+    return mock_openai_client
 
 @pytest.fixture
 def mock_openai_client():

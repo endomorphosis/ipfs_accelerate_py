@@ -153,12 +153,14 @@ class TestPerformanceBasedErrorRecovery(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        # Create a temporary database file
-        self.temp_db_file = tempfile.NamedTemporaryFile(delete=False)
-        self.temp_db_file.close()
-        
+        # Create a temporary database path.
+        # DuckDB expects to initialize the file itself; connecting to an existing
+        # empty file can raise "not a valid DuckDB database file".
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.temp_dir.name, "test.duckdb")
+
         # Connect to database
-        self.db_connection = duckdb.connect(self.temp_db_file.name)
+        self.db_connection = duckdb.connect(self.db_path)
         
         # Create mock components
         self.coordinator = MockCoordinator(self.db_connection)
@@ -177,9 +179,9 @@ class TestPerformanceBasedErrorRecovery(unittest.TestCase):
         """Tear down test fixtures."""
         # Close database connection
         self.db_connection.close()
-        
-        # Delete temporary database file
-        os.unlink(self.temp_db_file.name)
+
+        # Cleanup temporary directory (and database file)
+        self.temp_dir.cleanup()
     
     def test_initialization(self):
         """Test initialization of the recovery system."""

@@ -16,8 +16,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Set
 
-import aiohttp
-
 # Import CI interfaces
 from ci.api_interface import CIProviderInterface, TestRunResult, CIProviderFactory
 
@@ -462,17 +460,11 @@ class TestResultReporter:
             logger.warning("CI provider doesn't support get_artifact_url method")
             return {name: None for name in artifact_names}
         
-        # Create tasks for retrieving URLs in parallel
-        tasks = []
-        for name in artifact_names:
-            task = # TODO: Replace with task group - asyncio.create_task(self.ci_provider.get_artifact_url(test_run_id, name))
-            tasks.append((name, task))
-        
-        # Wait for all tasks to complete
+        # Retrieve URLs (sequential, anyio-friendly)
         urls = {}
-        for name, task in tasks:
+        for name in artifact_names:
             try:
-                url = await task
+                url = await self.ci_provider.get_artifact_url(test_run_id, name)
                 urls[name] = url
             except Exception as e:
                 logger.error(f"Error retrieving artifact URL for {name}: {str(e)}")

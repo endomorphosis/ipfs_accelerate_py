@@ -23,14 +23,24 @@ Usage:
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Set, Tuple, Union
 
 import duckdb
-import numpy as np
-import pandas as pd
 from pathlib import Path
+
+# Optional data analysis dependencies
+try:
+    import numpy as np
+    import pandas as pd
+    DATA_ANALYSIS_AVAILABLE = True
+except ImportError:
+    np = None  # type: ignore[assignment]
+    pd = None  # type: ignore[assignment]
+    DATA_ANALYSIS_AVAILABLE = False
+    logging.warning("NumPy/Pandas not available. Some analysis features will be disabled.")
 
 # Import performance analyzer if available
 try:
@@ -83,6 +93,11 @@ class ResultAggregatorService:
         self.db_path = db_path
         self.enable_ml = enable_ml and ML_AVAILABLE
         self.enable_visualization = enable_visualization and VISUALIZATION_AVAILABLE
+
+        # DuckDB connections are not safe for concurrent use across threads.
+        # The integrated analysis system runs a periodic background thread that can
+        # generate reports while results are being stored.
+        self._db_lock = threading.RLock()
         
         # Connect to database
         self.db = None
@@ -92,6 +107,14 @@ class ResultAggregatorService:
                 db_dir = os.path.dirname(db_path)
                 if db_dir and not os.path.exists(db_dir):
                     os.makedirs(db_dir)
+
+                # DuckDB cannot open an existing empty file as a database.
+                # Some tests create a 0-byte placeholder; delete it and let DuckDB initialize.
+                try:
+                    if os.path.exists(db_path) and os.path.getsize(db_path) == 0:
+                        os.unlink(db_path)
+                except OSError:
+                    pass
                 
                 # Connect to database
                 self.db = duckdb.connect(db_path)
@@ -117,7 +140,8 @@ class ResultAggregatorService:
         """Initialize database tables."""
         try:
             # Test results table
-            self.db.execute("""
+            with self._db_lock:
+                self.db.execute("""
             CREATE TABLE IF NOT EXISTS test_results (
                 id INTEGER PRIMARY KEY,
                 task_id VARCHAR,
@@ -132,7 +156,7 @@ class ResultAggregatorService:
             """)
             
             # Performance metrics table
-            self.db.execute("""
+                self.db.execute("""
             CREATE TABLE IF NOT EXISTS performance_metrics (
                 id INTEGER PRIMARY KEY,
                 result_id INTEGER,
@@ -144,7 +168,7 @@ class ResultAggregatorService:
             """)
             
             # Anomaly detection table
-            self.db.execute("""
+                self.db.execute("""
             CREATE TABLE IF NOT EXISTS anomaly_detections (
                 id INTEGER PRIMARY KEY,
                 result_id INTEGER,
@@ -158,7 +182,7 @@ class ResultAggregatorService:
             """)
             
             # Result aggregations table
-            self.db.execute("""
+                self.db.execute("""
             CREATE TABLE IF NOT EXISTS result_aggregations (
                 id INTEGER PRIMARY KEY,
                 aggregation_name VARCHAR,
@@ -171,7 +195,7 @@ class ResultAggregatorService:
             """)
             
             # Analysis reports table
-            self.db.execute("""
+                self.db.execute("""
             CREATE TABLE IF NOT EXISTS analysis_reports (
                 id INTEGER PRIMARY KEY,
                 report_name VARCHAR,
@@ -238,38 +262,49 @@ class ResultAggregatorService:
             # Convert timestamp to datetime if it's a string
             if isinstance(timestamp, str):
                 timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            
-            # Insert into test_results table
-            self.db.execute(
-                """
-                INSERT INTO test_results 
-                (task_id, worker_id, timestamp, test_type, status, duration, details, metrics)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                RETURNING id
-                """,
-                (task_id, worker_id, timestamp, test_type, status, duration, 
-                 json.dumps(details), json.dumps(metrics))
-            )
-            
-            result_id = self.db.fetchone()[0]
-            
-            # Insert metrics into performance_metrics table
-            for metric_name, metric_data in metrics.items():
-                if isinstance(metric_data, dict):
-                    metric_value = metric_data.get("value", 0.0)
-                    metric_unit = metric_data.get("unit", "")
-                else:
-                    metric_value = float(metric_data)
-                    metric_unit = ""
-                
+
+            with self._db_lock:
+                # DuckDB does not auto-generate INTEGER PRIMARY KEY values.
+                next_id_row = self.db.execute(
+                    "SELECT COALESCE(MAX(id), 0) + 1 FROM test_results"
+                ).fetchone()
+                result_id = int(next_id_row[0]) if next_id_row else 1
+
+                # Insert into test_results table
                 self.db.execute(
                     """
-                    INSERT INTO performance_metrics
-                    (result_id, metric_name, metric_value, metric_unit)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO test_results
+                    (id, task_id, worker_id, timestamp, test_type, status, duration, details, metrics)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (result_id, metric_name, metric_value, metric_unit)
+                    (result_id, task_id, worker_id, timestamp, test_type, status, duration,
+                     json.dumps(details), json.dumps(metrics))
                 )
+
+                # Insert metrics into performance_metrics table
+                next_metric_id_row = self.db.execute(
+                    "SELECT COALESCE(MAX(id), 0) + 1 FROM performance_metrics"
+                ).fetchone()
+                next_metric_id = int(next_metric_id_row[0]) if next_metric_id_row else 1
+
+                for metric_name, metric_data in metrics.items():
+                    if isinstance(metric_data, dict):
+                        metric_value = metric_data.get("value", 0.0)
+                        metric_unit = metric_data.get("unit", "")
+                    else:
+                        metric_value = float(metric_data)
+                        metric_unit = ""
+
+                    self.db.execute(
+                        """
+                        INSERT INTO performance_metrics
+                        (id, result_id, metric_name, metric_value, metric_unit)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (next_metric_id, result_id, metric_name, metric_value, metric_unit)
+                    )
+
+                    next_metric_id += 1
             
             logger.info(f"Stored test result {result_id} for task {task_id}")
             
@@ -1007,150 +1042,131 @@ class ResultAggregatorService:
         """
         try:
             report_data = {}
-            
-            if report_type == "performance":
-                # Get aggregated performance metrics
-                report_data["aggregated_metrics"] = self.get_aggregated_results(
-                    filter_criteria=filter_criteria,
-                    aggregation_type="mean"
-                )
-                
-                # Get performance trends
-                report_data["performance_trends"] = self.analyze_performance_trends(
-                    filter_criteria=filter_criteria
-                )
-                
-                # Get recent results
-                report_data["recent_results"] = self.get_results(
-                    filter_criteria=filter_criteria,
-                    limit=10
-                )
-                
-            elif report_type == "anomaly":
-                # Get recent anomalies
-                anomalies = []
-                
-                # Query anomaly_detections table
-                if self.db:
-                    query = """
-                    SELECT a.id, a.result_id, a.detection_time, a.anomaly_score, a.anomaly_type, a.is_confirmed, a.details,
-                           t.task_id, t.worker_id, t.test_type, t.status, t.timestamp
-                    FROM anomaly_detections a
-                    JOIN test_results t ON a.result_id = t.id
-                    """
-                    
-                    params = []
-                    
-                    # Apply filters
-                    if filter_criteria:
-                        conditions = []
+
+            # Serialize DB-backed report generation to avoid concurrent access to
+            # the shared DuckDB connection from the periodic analysis thread.
+            if self.db:
+                with self._db_lock:
+                    if report_type == "performance":
+                        # Get aggregated performance metrics
+                        report_data["aggregated_metrics"] = self.get_aggregated_results(
+                            filter_criteria=filter_criteria,
+                            aggregation_type="mean"
+                        )
                         
-                        for key, value in filter_criteria.items():
-                            if key == "test_type":
-                                conditions.append("t.test_type = ?")
-                                params.append(value)
-                            elif key == "status":
-                                conditions.append("t.status = ?")
-                                params.append(value)
-                            elif key == "worker_id":
-                                conditions.append("t.worker_id = ?")
-                                params.append(value)
-                            elif key == "task_id":
-                                conditions.append("t.task_id = ?")
-                                params.append(value)
-                            elif key == "start_time":
-                                conditions.append("t.timestamp >= ?")
-                                params.append(value)
-                            elif key == "end_time":
-                                conditions.append("t.timestamp <= ?")
-                                params.append(value)
-                            elif key == "anomaly_type":
-                                conditions.append("a.anomaly_type = ?")
-                                params.append(value)
-                            elif key == "min_score":
-                                conditions.append("a.anomaly_score >= ?")
-                                params.append(value)
-                            elif key == "is_confirmed":
-                                conditions.append("a.is_confirmed = ?")
-                                params.append(value)
+                        # Get performance trends
+                        report_data["performance_trends"] = self.analyze_performance_trends(
+                            filter_criteria=filter_criteria
+                        )
                         
-                        if conditions:
-                            query += " WHERE " + " AND ".join(conditions)
-                    
-                    # Add order and limit
-                    query += " ORDER BY a.detection_time DESC LIMIT 100"
-                    
-                    # Execute query
-                    rows = self.db.execute(query, params).fetchall()
-                    
-                    # Process results
-                    for row in rows:
-                        anomaly = {
-                            "id": row[0],
-                            "result_id": row[1],
-                            "detection_time": row[2],
-                            "anomaly_score": row[3],
-                            "anomaly_type": row[4],
-                            "is_confirmed": row[5],
-                            "details": json.loads(row[6]),
-                            "task_id": row[7],
-                            "worker_id": row[8],
-                            "test_type": row[9],
-                            "status": row[10],
-                            "timestamp": row[11]
-                        }
-                        anomalies.append(anomaly)
-                
-                report_data["anomalies"] = anomalies
-                
-            elif report_type == "summary":
-                # Get summary statistics
-                
-                # Get total number of results
-                if self.db:
-                    total_results = self.db.execute("SELECT COUNT(*) FROM test_results").fetchone()[0]
-                    report_data["total_results"] = total_results
-                    
-                    # Get results by status
-                    status_counts = self.db.execute("""
-                        SELECT status, COUNT(*) as count
-                        FROM test_results
-                        GROUP BY status
-                    """).fetchall()
-                    
-                    report_data["status_counts"] = {
-                        status: count for status, count in status_counts
-                    }
-                    
-                    # Get results by test type
-                    type_counts = self.db.execute("""
-                        SELECT test_type, COUNT(*) as count
-                        FROM test_results
-                        GROUP BY test_type
-                    """).fetchall()
-                    
-                    report_data["type_counts"] = {
-                        test_type: count for test_type, count in type_counts
-                    }
-                    
-                    # Get results by worker
-                    worker_counts = self.db.execute("""
-                        SELECT worker_id, COUNT(*) as count
-                        FROM test_results
-                        GROUP BY worker_id
-                    """).fetchall()
-                    
-                    report_data["worker_counts"] = {
-                        worker_id: count for worker_id, count in worker_counts
-                    }
-                    
-                    # Get recent anomalies count
-                    anomaly_count = self.db.execute("""
-                        SELECT COUNT(*) FROM anomaly_detections
-                        WHERE detection_time >= DATEADD('day', -7, CURRENT_TIMESTAMP)
-                    """).fetchone()[0]
-                    
-                    report_data["recent_anomaly_count"] = anomaly_count
+                        # Get recent results
+                        report_data["recent_results"] = self.get_results(
+                            filter_criteria=filter_criteria,
+                            limit=10
+                        )
+                        
+                    elif report_type == "anomaly":
+                        # Get recent anomalies
+                        anomalies = []
+                        
+                        query = """
+                        SELECT a.id, a.result_id, a.detection_time, a.anomaly_score, a.anomaly_type, a.is_confirmed, a.details,
+                               t.task_id, t.worker_id, t.test_type, t.status, t.timestamp
+                        FROM anomaly_detections a
+                        JOIN test_results t ON a.result_id = t.id
+                        """
+                        
+                        params = []
+                        
+                        # Apply filters
+                        if filter_criteria:
+                            conditions = []
+                            
+                            for key, value in filter_criteria.items():
+                                if key == "test_type":
+                                    conditions.append("t.test_type = ?")
+                                    params.append(value)
+                                elif key == "status":
+                                    conditions.append("t.status = ?")
+                                    params.append(value)
+                                elif key == "worker_id":
+                                    conditions.append("t.worker_id = ?")
+                                    params.append(value)
+                                elif key == "task_id":
+                                    conditions.append("t.task_id = ?")
+                                    params.append(value)
+                                elif key == "start_time":
+                                    conditions.append("t.timestamp >= ?")
+                                    params.append(value)
+                                elif key == "end_time":
+                                    conditions.append("t.timestamp <= ?")
+                                    params.append(value)
+                                elif key == "anomaly_type":
+                                    conditions.append("a.anomaly_type = ?")
+                                    params.append(value)
+                                elif key == "min_score":
+                                    conditions.append("a.anomaly_score >= ?")
+                                    params.append(value)
+                                elif key == "is_confirmed":
+                                    conditions.append("a.is_confirmed = ?")
+                                    params.append(value)
+                            
+                            if conditions:
+                                query += " WHERE " + " AND ".join(conditions)
+                        
+                        query += " ORDER BY a.detection_time DESC LIMIT 100"
+                        rows = self.db.execute(query, params).fetchall()
+                        
+                        for row in rows:
+                            anomaly = {
+                                "id": row[0],
+                                "result_id": row[1],
+                                "detection_time": row[2],
+                                "anomaly_score": row[3],
+                                "anomaly_type": row[4],
+                                "is_confirmed": row[5],
+                                "details": json.loads(row[6]),
+                                "task_id": row[7],
+                                "worker_id": row[8],
+                                "test_type": row[9],
+                                "status": row[10],
+                                "timestamp": row[11]
+                            }
+                            anomalies.append(anomaly)
+                        
+                        report_data["anomalies"] = anomalies
+                        
+                    elif report_type == "summary":
+                        # Get summary statistics
+                        total_results = self.db.execute("SELECT COUNT(*) FROM test_results").fetchone()[0]
+                        report_data["total_results"] = total_results
+                        
+                        status_counts = self.db.execute("""
+                            SELECT status, COUNT(*) as count
+                            FROM test_results
+                            GROUP BY status
+                        """).fetchall()
+                        report_data["status_counts"] = {status: count for status, count in status_counts}
+                        
+                        type_counts = self.db.execute("""
+                            SELECT test_type, COUNT(*) as count
+                            FROM test_results
+                            GROUP BY test_type
+                        """).fetchall()
+                        report_data["type_counts"] = {test_type: count for test_type, count in type_counts}
+                        
+                        worker_counts = self.db.execute("""
+                            SELECT worker_id, COUNT(*) as count
+                            FROM test_results
+                            GROUP BY worker_id
+                        """).fetchall()
+                        report_data["worker_counts"] = {worker_id: count for worker_id, count in worker_counts}
+                        
+                        anomaly_count = self.db.execute("""
+                            SELECT COUNT(*) FROM anomaly_detections
+                            WHERE detection_time >= (CURRENT_TIMESTAMP - INTERVAL '7 days')
+                        """).fetchone()[0]
+                        report_data["recent_anomaly_count"] = anomaly_count
             
             # Format the report
             if format == "json":

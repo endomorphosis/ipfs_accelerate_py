@@ -17,12 +17,27 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import sys
+
+import pytest
+
+if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
+    pytest.skip(
+        "Fault-tolerance tests are integration-heavy; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to enable.",
+        allow_module_level=True,
+    )
+
+pytest.importorskip("aiohttp")
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from distributed_state_management import DistributedStateManager, StatePartition
 from error_recovery_strategies import (
-    EnhancedErrorRecoveryManager, ErrorCategory, RecoveryLevel,
-    RetryStrategy, WorkerRecoveryStrategy, DatabaseRecoveryStrategy
+    EnhancedErrorRecoveryManager,
+    ErrorCategory,
+    RecoveryLevel,
+    RetryStrategy,
+    WorkerRecoveryStrategy,
+    DatabaseRecoveryStrategy,
 )
 from coordinator_redundancy import RedundancyManager, NodeRole
 

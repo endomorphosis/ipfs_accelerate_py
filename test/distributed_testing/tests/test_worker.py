@@ -15,7 +15,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import websockets
+websockets = pytest.importorskip("websockets")
 from security import SecurityManager
 
 from worker import DistributedTestingWorker

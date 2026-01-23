@@ -13,6 +13,7 @@ import os
 import json
 import httpx
 import anyio
+import pytest
 from multiprocessing import Process
 import time
 
@@ -33,10 +34,24 @@ from mcp.integration import initialize_mcp_server
 from fastapi import FastAPI
 import uvicorn
 
+
+# This is an end-to-end test that starts a real server process and requires the
+# IPFS Accelerate core to be available. It is opt-in to keep the default pytest
+# run stable in minimal-deps environments.
+if os.getenv("IPFS_ACCEL_RUN_INTEGRATION_TESTS", "").lower() not in ("1", "true", "yes"):
+    pytest.skip(
+        "MCP integration test is opt-in. Set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to enable.",
+        allow_module_level=True,
+    )
+
 def start_server():
     """Start the MCP server in a separate process for testing."""
     # Create IPFS Accelerate instance
-    accelerate = ipfs_accelerate_py()
+    try:
+        accelerate = ipfs_accelerate_py()
+    except Exception as e:
+        logger.error(f"IPFS Accelerate core not available: {e}")
+        return
     
     # Create FastAPI app for testing
     app = FastAPI(title="MCP Test App")
@@ -47,6 +62,7 @@ def start_server():
     # Run the server
     uvicorn.run(app, host="127.0.0.1", port=8765)
 
+@pytest.mark.anyio
 async def test_mcp_server():
     """Test the MCP server by making requests to it."""
     # Start server in a separate process

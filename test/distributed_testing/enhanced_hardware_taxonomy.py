@@ -145,6 +145,9 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
                 properties={
                     "min_bandwidth_gbps": 500.0
                 },
+                hardware_requirements={
+                    "min_bandwidth_gbps": 500.0
+                },
                 description="High bandwidth memory access"
             )
         )
@@ -155,6 +158,9 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
                 capability_type="memory",
                 properties={
                     "shared_address_space": True
+                },
+                hardware_requirements={
+                    "unified_memory": True
                 },
                 description="Unified memory architecture with shared address space"
             )
@@ -289,8 +295,19 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
             self.hardware_capabilities[hardware_id] = {}
         
         if capability_id not in self.capabilities_registry:
-            logger.warning(f"Unknown capability ID: {capability_id}, not registered")
-            return
+            # Allow ad-hoc/custom capabilities to be attached to hardware profiles.
+            # They won't participate in compatibility scoring until a richer
+            # definition is registered, but they should still be discoverable
+            # via get_hardware_capabilities()/get_inherited_capabilities().
+            capability_type = capability_id.split(".", 1)[0] if "." in capability_id else "custom"
+            self.register_capability(
+                CapabilityDefinition(
+                    capability_id=capability_id,
+                    capability_type=capability_type,
+                    description=f"Auto-registered custom capability: {capability_id}",
+                )
+            )
+            logger.info(f"Auto-registered custom capability ID: {capability_id}")
         
         # Register capability with hardware-specific properties
         self.hardware_capabilities[hardware_id][capability_id] = properties or {}
@@ -366,6 +383,34 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
             Dictionary of capability_id -> properties
         """
         return self.hardware_capabilities.get(hardware_id, {})
+
+    def _hardware_profile_meets_requirements(
+        self,
+        hardware_profile: HardwareCapabilityProfile,
+        requirements: Dict[str, Any],
+    ) -> bool:
+        required_features = requirements.get("features")
+        if required_features:
+            # hardware_profile.features is a set of AcceleratorFeature enums
+            present = {getattr(feature, "value", feature) for feature in hardware_profile.features}
+            for required in required_features:
+                required_value = getattr(required, "value", required)
+                if required_value not in present:
+                    return False
+
+        min_bandwidth_gbps = requirements.get("min_bandwidth_gbps")
+        if min_bandwidth_gbps is not None:
+            bandwidth = getattr(hardware_profile.memory, "bandwidth_gbps", None)
+            if bandwidth is None or bandwidth < float(min_bandwidth_gbps):
+                return False
+
+        unified_memory_required = requirements.get("unified_memory")
+        if unified_memory_required is not None:
+            has_unified = bool(getattr(hardware_profile.memory, "has_unified_memory", False))
+            if has_unified != bool(unified_memory_required):
+                return False
+
+        return True
     
     def get_inherited_capabilities(self, hardware_profile: HardwareCapabilityProfile) -> Dict[str, Any]:
         """
@@ -398,6 +443,17 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
         for cap_id, props in inherited_capabilities.items():
             if cap_id not in capabilities:
                 capabilities[cap_id] = props
+
+        # Enforce capability hardware requirements (prevents invalid inheritance)
+        if capabilities:
+            filtered: Dict[str, Any] = {}
+            for cap_id, props in capabilities.items():
+                cap_def = self.get_capability_definition(cap_id)
+                if cap_def and cap_def.hardware_requirements:
+                    if not self._hardware_profile_meets_requirements(hardware_profile, cap_def.hardware_requirements):
+                        continue
+                filtered[cap_id] = props
+            capabilities = filtered
         
         # Cache the result
         self.capability_inheritance_cache[profile_id] = capabilities

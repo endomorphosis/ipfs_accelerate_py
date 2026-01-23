@@ -97,6 +97,20 @@ class TestCIClientImplementations(unittest.TestCase):
                 "build_id": "123456789"
             }
         }
+
+        # In minimal-dependency environments, some provider implementations may not
+        # import/register (e.g., due to optional HTTP dependencies). Only test
+        # providers that were actually registered.
+        available = set(CIProviderFactory.get_available_providers())
+        missing = sorted(set(self.configs.keys()) - available)
+        if missing:
+            logger.info(
+                "Skipping CI client implementation tests for unavailable providers: %s",
+                ", ".join(missing),
+            )
+        self.configs = {k: v for k, v in self.configs.items() if k in available}
+        if not self.configs:
+            self.skipTest("No CI providers available in this environment")
     
     def tearDown(self):
         """Clean up the test environment."""
@@ -205,7 +219,7 @@ class TestCIClientImplementations(unittest.TestCase):
             return results
         
         # Run all tests
-        results = anyio.run(run_all_tests())
+        results = anyio.run(run_all_tests)
         
         # Verify all tests passed
         for provider_type, result in results.items():

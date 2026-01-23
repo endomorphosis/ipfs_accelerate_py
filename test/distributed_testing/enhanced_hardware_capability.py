@@ -177,12 +177,54 @@ class HardwareCapabilityDetector:
         Returns:
             HardwareCapability for the CPU
         """
-        import psutil
-        import cpuinfo
+        import os
+
+        try:
+            import psutil  # type: ignore
+        except Exception:
+            psutil = None
+
+        try:
+            import cpuinfo  # type: ignore
+        except Exception:
+            cpuinfo = None
+
+        def _safe_cpu_count_physical() -> int:
+            if psutil is not None:
+                try:
+                    count = psutil.cpu_count(logical=False)
+                    if count:
+                        return int(count)
+                except Exception:
+                    pass
+            return int(os.cpu_count() or 1)
+
+        def _safe_cpu_count_logical() -> int:
+            if psutil is not None:
+                try:
+                    count = psutil.cpu_count(logical=True)
+                    if count:
+                        return int(count)
+                except Exception:
+                    pass
+            return int(os.cpu_count() or 1)
+
+        def _safe_total_memory_gb() -> float:
+            if psutil is not None:
+                try:
+                    return float(psutil.virtual_memory().total) / (1024**3)
+                except Exception:
+                    pass
+            try:
+                page_size = os.sysconf('SC_PAGE_SIZE')
+                phys_pages = os.sysconf('SC_PHYS_PAGES')
+                return float(page_size * phys_pages) / (1024**3)
+            except Exception:
+                return 0.0
         
         try:
             # Get CPU info
-            cpu_info = cpuinfo.get_cpu_info()
+            cpu_info = cpuinfo.get_cpu_info() if cpuinfo is not None else {}
             
             # Extract vendor
             vendor_str = cpu_info.get('vendor_id', '').lower()
@@ -203,8 +245,8 @@ class HardwareCapabilityDetector:
                 model=cpu_info.get('brand_raw', 'Unknown CPU'),
                 version=cpu_info.get('model', None),
                 compute_units=None,  # Not directly available
-                cores=psutil.cpu_count(logical=False),
-                memory_gb=psutil.virtual_memory().total / (1024**3),
+                cores=_safe_cpu_count_physical(),
+                memory_gb=_safe_total_memory_gb(),
                 supported_precisions=[
                     PrecisionType.FP64,
                     PrecisionType.FP32,
@@ -212,7 +254,7 @@ class HardwareCapabilityDetector:
                     PrecisionType.INT32,
                 ],
                 capabilities={
-                    'threads': psutil.cpu_count(logical=True),
+                    'threads': _safe_cpu_count_logical(),
                     'architecture': cpu_info.get('arch', 'unknown'),
                     'frequency_mhz': cpu_info.get('hz_advertised_raw', [0])[0] / 1000000,
                     'l1_cache_kb': cpu_info.get('l1_data_cache_size', 0) / 1024 if 'l1_data_cache_size' in cpu_info else None,
@@ -283,8 +325,8 @@ class HardwareCapabilityDetector:
             return HardwareCapability(
                 hardware_type=HardwareType.CPU,
                 model="Unknown CPU",
-                cores=psutil.cpu_count(logical=False),
-                memory_gb=psutil.virtual_memory().total / (1024**3)
+                cores=_safe_cpu_count_physical(),
+                memory_gb=_safe_total_memory_gb()
             )
     
     def _calculate_cpu_compute_score(self, capability: HardwareCapability) -> CapabilityScore:
@@ -1163,8 +1205,36 @@ class HardwareCapabilityDetector:
         Returns:
             WorkerHardwareCapabilities with all detected hardware
         """
-        import psutil
+        import os
         import time
+
+        try:
+            import psutil  # type: ignore
+        except Exception:
+            psutil = None
+
+        def _safe_cpu_count_physical() -> int:
+            if psutil is not None:
+                try:
+                    count = psutil.cpu_count(logical=False)
+                    if count:
+                        return int(count)
+                except Exception:
+                    pass
+            return int(os.cpu_count() or 1)
+
+        def _safe_total_memory_gb() -> float:
+            if psutil is not None:
+                try:
+                    return float(psutil.virtual_memory().total) / (1024**3)
+                except Exception:
+                    pass
+            try:
+                page_size = os.sysconf('SC_PAGE_SIZE')
+                phys_pages = os.sysconf('SC_PHYS_PAGES')
+                return float(page_size * phys_pages) / (1024**3)
+            except Exception:
+                return 0.0
         
         # Get CPU capabilities
         cpu_capability = self.detect_cpu_capabilities()
@@ -1199,8 +1269,8 @@ class HardwareCapabilityDetector:
             os_type=self.os_info[0],
             os_version=self.os_info[1],
             hostname=self.hostname,
-            cpu_count=psutil.cpu_count(logical=False),
-            total_memory_gb=psutil.virtual_memory().total / (1024**3),
+            cpu_count=_safe_cpu_count_physical(),
+            total_memory_gb=_safe_total_memory_gb(),
             hardware_capabilities=all_capabilities,
             last_updated=time.time()
         )
@@ -1530,6 +1600,25 @@ class HardwareCapabilityComparator:
         """
         if not capabilities:
             raise ValueError("No hardware capabilities provided")
+
+        workload_params = workload_params or {}
+
+        # If a precision is explicitly required, treat it as a hard constraint
+        # when at least one capability supports it.
+        required_precision = workload_params.get('precision')
+        if required_precision is not None:
+            if isinstance(required_precision, str):
+                try:
+                    required_precision = PrecisionType(required_precision)
+                except Exception:
+                    required_precision = None
+
+            if isinstance(required_precision, PrecisionType):
+                precision_compatible = [
+                    c for c in capabilities if required_precision in (c.supported_precisions or [])
+                ]
+                if precision_compatible:
+                    capabilities = precision_compatible
         
         best_capability = None
         best_estimate = None

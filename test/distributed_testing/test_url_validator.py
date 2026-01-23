@@ -5,7 +5,14 @@ Test Script for URL Validation System
 This script tests the URL validation functionality for artifact URLs.
 """
 
+import pytest
+
+# URL validation uses aiohttp for its default HTTP client. In minimal dependency
+# environments, skip these tests instead of failing.
+pytest.importorskip("aiohttp")
+
 import anyio
+import inspect
 import logging
 import os
 import sys
@@ -84,7 +91,7 @@ class MockCIProvider:
         pass
 
 
-class TestURLValidator(unittest.TestCase):
+class _TestURLValidatorBase(unittest.TestCase):
     """Test the URL validation functionality."""
     
     def setUp(self):
@@ -339,6 +346,41 @@ class TestURLValidator(unittest.TestCase):
         
         # Clean up
         await close_validator()
+
+
+class AsyncTestCase(unittest.TestCase):
+    """Base class for async tests using unittest under pytest."""
+
+    def run_async(self, test_method, *args, **kwargs):
+        async def _runner():
+            result = test_method(*args, **kwargs)
+            if inspect.isawaitable(result):
+                return await result
+            return result
+
+        return anyio.run(_runner)
+
+
+class TestURLValidator(AsyncTestCase, _TestURLValidatorBase):
+    """Pytest-compatible wrappers for async tests."""
+
+    def test_validate_url(self):
+        self.run_async(super().test_validate_url)
+
+    def test_validate_urls(self):
+        self.run_async(super().test_validate_urls)
+
+    def test_url_caching(self):
+        self.run_async(super().test_url_caching)
+
+    def test_health_report(self):
+        self.run_async(super().test_health_report)
+
+    def test_global_validator_functions(self):
+        self.run_async(super().test_global_validator_functions)
+
+    def test_integration_with_result_reporter(self):
+        self.run_async(super().test_integration_with_result_reporter)
 
 
 async def main():

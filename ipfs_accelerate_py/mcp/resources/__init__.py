@@ -24,12 +24,12 @@ def register_all_resources(mcp: Any) -> None:
     
     try:
         # Register model information resources
-        from ipfs_accelerate_py.mcp.resources.model_info import register_model_info_resources
+        from .model_info import register_model_info_resources
         register_model_info_resources(mcp)
 
         # Register configuration/system resources
         try:
-            from ipfs_accelerate_py.mcp.resources.config import register_config_resources
+            from .config import register_config_resources
             register_config_resources(mcp)
         except Exception as e:
             logger.warning(f"Config resources not registered: {e}")
@@ -57,7 +57,7 @@ def register_all_resources(mcp: Any) -> None:
 
             # Basic models config used by inference tools
             def _models_cfg():
-                from ipfs_accelerate_py.mcp.resources.model_info import get_default_supported_models
+                from .model_info import get_default_supported_models
                 sm = get_default_supported_models()
                 categories = sm.get("categories", {})
                 # Build a simple name→type map for quick lookup
@@ -84,7 +84,7 @@ def register_all_resources(mcp: Any) -> None:
 
             # Provide resolver for model info lookups used by tools
             def _get_model_info(model_name: str):
-                from ipfs_accelerate_py.mcp.resources.model_info import get_default_supported_models
+                from .model_info import get_default_supported_models
                 data = get_default_supported_models()
                 for mtype, cat in data.get("categories", {}).items():
                     for m in cat.get("models", []):

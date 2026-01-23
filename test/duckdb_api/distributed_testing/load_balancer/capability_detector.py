@@ -13,12 +13,16 @@ import socket
 import json
 import logging
 import subprocess
+import shutil
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import multiprocessing
 import importlib
 import pkg_resources
-import psutil
+try:
+    import psutil  # type: ignore
+except ImportError:  # pragma: no cover
+    psutil = None
 try:
     import torch
     import torch.cuda
@@ -92,7 +96,7 @@ class WorkerCapabilityDetector:
         available_memory = self._detect_available_memory()
         available_disk = self._detect_available_disk()
         cpu_cores = multiprocessing.cpu_count()
-        cpu_threads = psutil.cpu_count(logical=True)
+        cpu_threads = psutil.cpu_count(logical=True) if psutil else cpu_cores
         
         # Create capabilities object
         self.capabilities = WorkerCapabilities(
@@ -123,17 +127,26 @@ class WorkerCapabilityDetector:
         specs["processor"] = platform.processor()
         
         # CPU information
+        if psutil:
+            cpu_freq = psutil.cpu_freq().current if psutil.cpu_freq() else None
+            cpu_physical = psutil.cpu_count(logical=False)
+            cpu_logical = psutil.cpu_count(logical=True)
+        else:
+            cpu_freq = None
+            cpu_physical = multiprocessing.cpu_count()
+            cpu_logical = multiprocessing.cpu_count()
+
         specs["cpu"] = {
-            "cores_physical": psutil.cpu_count(logical=False),
-            "cores_logical": psutil.cpu_count(logical=True),
-            "frequency_mhz": psutil.cpu_freq().current if psutil.cpu_freq() else None
+            "cores_physical": cpu_physical,
+            "cores_logical": cpu_logical,
+            "frequency_mhz": cpu_freq,
         }
         
         # Memory information
-        virtual_memory = psutil.virtual_memory()
+        virtual_memory = psutil.virtual_memory() if psutil else None
         specs["memory"] = {
-            "total_gb": virtual_memory.total / (1024 ** 3),
-            "available_gb": virtual_memory.available / (1024 ** 3)
+            "total_gb": (virtual_memory.total / (1024 ** 3)) if virtual_memory else 0.0,
+            "available_gb": (virtual_memory.available / (1024 ** 3)) if virtual_memory else 0.0,
         }
         
         # GPU information
@@ -234,6 +247,9 @@ class WorkerCapabilityDetector:
         """Estimate network bandwidth in Mbps, based on system information."""
         # This is a simplified estimation based on network interface speed
         try:
+            if not psutil:
+                return 100.0
+
             # Get network stats for all interfaces
             net_io = psutil.net_io_counters(pernic=True)
             
@@ -266,7 +282,7 @@ class WorkerCapabilityDetector:
         """Detect total storage capacity in GB."""
         try:
             # Get disk usage for the root file system
-            disk_usage = psutil.disk_usage('/')
+            disk_usage = psutil.disk_usage('/') if psutil else shutil.disk_usage('/')
             total_gb = disk_usage.total / (1024 ** 3)
             return float(total_gb)
         except Exception as e:
@@ -323,8 +339,26 @@ class WorkerCapabilityDetector:
     def _detect_available_memory(self) -> float:
         """Detect available system memory in GB."""
         try:
-            memory = psutil.virtual_memory()
-            return float(memory.available / (1024 ** 3))
+            if psutil:
+                memory = psutil.virtual_memory()
+                return float(memory.available / (1024 ** 3))
+
+            # Best-effort Linux fallback.
+            if os.path.exists("/proc/meminfo"):
+                meminfo = {}
+                with open("/proc/meminfo", "r") as f:
+                    for line in f:
+                        if ":" in line:
+                            key, value = line.split(":", 1)
+                            meminfo[key.strip()] = value.strip()
+
+                # Values are typically in kB.
+                available_kb = meminfo.get("MemAvailable") or meminfo.get("MemFree")
+                if available_kb:
+                    available_kb_int = int(available_kb.split()[0])
+                    return float((available_kb_int * 1024) / (1024 ** 3))
+
+            return 0.0
         except Exception as e:
             logger.warning(f"Error detecting available memory: {e}")
             return 0.0
@@ -332,7 +366,7 @@ class WorkerCapabilityDetector:
     def _detect_available_disk(self) -> float:
         """Detect available disk space in GB."""
         try:
-            disk = psutil.disk_usage('/')
+            disk = psutil.disk_usage('/') if psutil else shutil.disk_usage('/')
             return float(disk.free / (1024 ** 3))
         except Exception as e:
             logger.warning(f"Error detecting available disk: {e}")

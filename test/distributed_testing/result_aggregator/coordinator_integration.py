@@ -39,11 +39,16 @@ logger = logging.getLogger(__name__)
 class ResultAggregatorIntegration:
     """Integration between the Result Aggregator and the Coordinator"""
     
-    def __init__(self, coordinator, db_path: str = None,
-                 enable_ml: bool = True,
-                 enable_visualization: bool = True,
-                 enable_real_time_analysis: bool = True,
-                 enable_notifications: bool = True):
+    def __init__(
+        self,
+        coordinator,
+        db_path: str = None,
+        enable_ml: bool = True,
+        enable_visualization: bool = True,
+        enable_real_time_analysis: bool = True,
+        enable_notifications: bool = True,
+        analysis_interval: timedelta | None = None,
+    ):
         """
         Initialize the Result Aggregator Integration.
         
@@ -75,7 +80,7 @@ class ResultAggregatorIntegration:
         # State tracking
         self.registered = False
         self.last_analysis_time = datetime.now()
-        self.analysis_interval = timedelta(minutes=5)  # Run analysis every 5 minutes
+        self.analysis_interval = analysis_interval or timedelta(minutes=5)  # Run analysis every 5 minutes
         
         # Notification callbacks
         self.notification_callbacks = []

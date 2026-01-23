@@ -27,8 +27,18 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
+import pytest
+
 # Add the project root to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
+
+if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
+    pytest.skip(
+        "End-to-end integration tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to run.",
+        allow_module_level=True,
+    )
+
+pytest.importorskip("aiohttp")
 
 # Import the components to test
 from distributed_testing.coordinator import TestCoordinator
@@ -502,9 +512,9 @@ class TestE2EIntegratedSystem(unittest.TestCase):
         trends = performance_analyzer.get_identified_trends()
         self.logger.info(f"Identified trends: {trends}")
         
-            # Stop all tasks
-            self.logger.info("Stopping all components...")
-            tg.cancel_scope.cancel()
+        # Stop all tasks
+        self.logger.info("Stopping all components...")
+        tg.cancel_scope.cancel()
         
         self.logger.info("End-to-end test completed successfully")
 

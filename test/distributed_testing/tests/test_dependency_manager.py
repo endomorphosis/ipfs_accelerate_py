@@ -11,7 +11,9 @@ import unittest
 import sys
 import os
 import logging
-import networkx as nx
+import pytest
+
+nx = pytest.importorskip("networkx")
 from typing import Dict, List, Set, Optional, Tuple, Any, Union
 
 # Add the parent directory to the path to import the module

@@ -558,12 +558,13 @@ class TestHardwareMatcher:
         
         # Calculate performance score (1.0 is best)
         performance_score = None
-        if avg_execution_time and success_rate > 0:
-            # Penalize by failures
-            performance_score = success_rate / (avg_execution_time ** 0.5)
-            
-            # Scale to reasonable range
-            performance_score = min(1.0, performance_score)
+        if avg_execution_time is not None and avg_execution_time > 0 and success_rate > 0:
+            # Convert runtime into a bounded 0..1 score.
+            # This intentionally avoids overly harsh penalties for normal runtimes
+            # (e.g., ~45s should still be a "good" historical signal).
+            baseline_seconds = 60.0
+            time_factor = baseline_seconds / (baseline_seconds + avg_execution_time)
+            performance_score = min(1.0, max(0.0, success_rate * time_factor))
         
         return {
             "success_rate": success_rate,
@@ -750,6 +751,46 @@ class TestHardwareMatcher:
         match_factors["feature_support"] = self._evaluate_feature_support(
             test_profile, hardware
         )
+
+        # Treat high-importance requirements as hard constraints.
+        # If any hard requirement cannot be satisfied, return a zero score.
+        hard_requirement_threshold = 0.95
+        for req in test_profile.requirements:
+            if req.importance < hard_requirement_threshold:
+                continue
+
+            if req.requirement_type == TestRequirementType.MEMORY:
+                if match_factors["memory_compatibility"] == 0.0:
+                    return 0.0, match_factors
+
+            elif req.requirement_type == TestRequirementType.PRECISION:
+                if match_factors["precision_compatibility"] == 0.0:
+                    return 0.0, match_factors
+
+            elif req.requirement_type == TestRequirementType.HARDWARE_TYPE:
+                # If the requirement explicitly names a hardware type, enforce it.
+                required_type = req.value
+                if isinstance(required_type, HardwareType):
+                    if hardware.hardware_type != required_type:
+                        return 0.0, match_factors
+                elif isinstance(required_type, str):
+                    if hardware.hardware_type.value != required_type:
+                        return 0.0, match_factors
+
+            elif req.requirement_type == TestRequirementType.FEATURE:
+                # Require the feature to be supported when importance is high.
+                feature = req.value
+                feature_supported = False
+                if isinstance(feature, str):
+                    feature_supported = bool(hardware.capabilities.get(feature, False))
+                elif isinstance(feature, dict):
+                    feature_supported = all(
+                        hardware.capabilities.get(attr) == value
+                        for attr, value in feature.items()
+                    )
+
+                if not feature_supported:
+                    return 0.0, match_factors
         
         # Calculate weighted score
         weighted_score = 0.0

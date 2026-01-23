@@ -18,6 +18,12 @@ The package features a standardized API interface to ensure consistent
 behavior across different CI providers and make it easy to switch between them.
 """
 
+from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Import standardized interface
 from .api_interface import (
     CIProviderInterface, 
@@ -25,23 +31,72 @@ from .api_interface import (
     CIProviderFactory
 )
 
-# Import implementation classes
-from .github_client import GitHubClient
-from .gitlab_client import GitLabClient
-from .jenkins_client import JenkinsClient
-from .azure_client import AzureDevOpsClient
-from .circleci_client import CircleCIClient
-from .bitbucket_client import BitbucketClient
-from .teamcity_client import TeamCityClient
-from .travis_client import TravisClient
+# Import implementation classes (optional: may require extra deps like aiohttp)
+try:
+    from .github_client import GitHubClient
+except Exception as e:  # pragma: no cover
+    GitHubClient = None  # type: ignore[assignment]
+    logger.debug("GitHubClient unavailable: %s", e)
 
-# Import provider registration module
-from .register_providers import register_all_providers
+try:
+    from .gitlab_client import GitLabClient
+except Exception as e:  # pragma: no cover
+    GitLabClient = None  # type: ignore[assignment]
+    logger.debug("GitLabClient unavailable: %s", e)
 
-# Register all providers with factory
-register_all_providers()
+try:
+    from .jenkins_client import JenkinsClient
+except Exception as e:  # pragma: no cover
+    JenkinsClient = None  # type: ignore[assignment]
+    logger.debug("JenkinsClient unavailable: %s", e)
+
+try:
+    from .azure_client import AzureDevOpsClient
+except Exception as e:  # pragma: no cover
+    AzureDevOpsClient = None  # type: ignore[assignment]
+    logger.debug("AzureDevOpsClient unavailable: %s", e)
+
+try:
+    from .circleci_client import CircleCIClient
+except Exception as e:  # pragma: no cover
+    CircleCIClient = None  # type: ignore[assignment]
+    logger.debug("CircleCIClient unavailable: %s", e)
+
+try:
+    from .bitbucket_client import BitbucketClient
+except Exception as e:  # pragma: no cover
+    BitbucketClient = None  # type: ignore[assignment]
+    logger.debug("BitbucketClient unavailable: %s", e)
+
+try:
+    from .teamcity_client import TeamCityClient
+except Exception as e:  # pragma: no cover
+    TeamCityClient = None  # type: ignore[assignment]
+    logger.debug("TeamCityClient unavailable: %s", e)
+
+try:
+    from .travis_client import TravisClient
+except Exception as e:  # pragma: no cover
+    TravisClient = None  # type: ignore[assignment]
+    logger.debug("TravisClient unavailable: %s", e)
+
+# Import provider registration module (optional)
+try:
+    from .register_providers import register_all_providers
+
+    # Register all providers with factory.
+    # This may fail if optional client deps are missing, so keep it best-effort.
+    try:
+        register_all_providers()
+    except Exception as e:  # pragma: no cover
+        logger.debug("CI provider registration skipped: %s", e)
+except Exception as e:  # pragma: no cover
+    register_all_providers = None  # type: ignore[assignment]
+    logger.debug("register_all_providers unavailable: %s", e)
 
 # Export key classes for easy import
+AzureClient = AzureDevOpsClient
+
 __all__ = [
     "CIProviderInterface",
     "TestRunResult",
@@ -50,6 +105,7 @@ __all__ = [
     "GitLabClient",
     "JenkinsClient",
     "AzureDevOpsClient",
+    "AzureClient",
     "CircleCIClient",
     "BitbucketClient",
     "TeamCityClient",

@@ -17,6 +17,7 @@ Usage:
     Import this module in the BrowserAutomationBridge to enhance browser recovery capabilities.
 """
 
+import asyncio
 import anyio
 import json
 import logging

@@ -16,6 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import jwt
 import pytest
+
+pytest.importorskip("aiohttp")
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 

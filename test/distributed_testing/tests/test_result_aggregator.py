@@ -16,8 +16,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import anyio
 from datetime import datetime, timedelta
 
-import pandas as pd
-import numpy as np
+import pytest
+
+pd = pytest.importorskip("pandas")
+np = pytest.importorskip("numpy")
 
 # Import the components for testing
 from result_aggregator.service import ResultAggregatorService

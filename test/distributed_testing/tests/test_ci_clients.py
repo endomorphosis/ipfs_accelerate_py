@@ -13,6 +13,8 @@ import unittest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 
+import pytest
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -20,8 +22,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# These CI client implementations rely on aiohttp. In minimal-dependency
+# environments we skip this entire module rather than failing during import/setup.
+pytest.importorskip("aiohttp")
+
 # Import CI clients
 from distributed_testing.ci import GitHubClient, GitLabClient, JenkinsClient, AzureClient
+
+if GitHubClient is None or GitLabClient is None or JenkinsClient is None or AzureClient is None:
+    pytest.skip("One or more CI clients are unavailable in this environment", allow_module_level=True)
 
 class TestGitHubClient(unittest.TestCase):
     """Tests for GitHubClient implementation."""

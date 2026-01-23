@@ -23,12 +23,12 @@ def register_all_tools(mcp: Any) -> None:
     
     try:
         # Always register hardware tools (supports both Standalone and FastMCP styles)
-        from ipfs_accelerate_py.mcp.tools.hardware import register_hardware_tools
+        from .hardware import register_hardware_tools
         register_hardware_tools(mcp)
 
         # Register model tools (search, recommendations, details)
         try:
-            from ipfs_accelerate_py.mcp.tools.models import register_model_tools
+            from .models import register_model_tools
             register_model_tools(mcp)
             logger.debug("Registered model tools")
         except Exception as e:
@@ -37,42 +37,42 @@ def register_all_tools(mcp: Any) -> None:
         # If FastMCP-style decorators are available, register decorator-based tool modules
         if hasattr(mcp, "tool"):
             try:
-                from ipfs_accelerate_py.mcp.tools.inference import register_tools as register_inference_tools
+                from .inference import register_tools as register_inference_tools
                 register_inference_tools(mcp)
                 logger.debug("Registered inference tools")
             except Exception as e:
                 logger.warning(f"Inference tools not registered: {e}")
 
             try:
-                from ipfs_accelerate_py.mcp.tools.endpoints import register_tools as register_endpoint_tools
+                from .endpoints import register_tools as register_endpoint_tools
                 register_endpoint_tools(mcp)
                 logger.debug("Registered endpoint tools")
             except Exception as e:
                 logger.warning(f"Endpoint tools not registered: {e}")
 
             try:
-                from ipfs_accelerate_py.mcp.tools.status import register_tools as register_status_tools
+                from .status import register_tools as register_status_tools
                 register_status_tools(mcp)
                 logger.debug("Registered status tools")
             except Exception as e:
                 logger.warning(f"Status tools not registered: {e}")
             
             try:
-                from ipfs_accelerate_py.mcp.tools.workflows import register_tools as register_workflow_tools
+                from .workflows import register_tools as register_workflow_tools
                 register_workflow_tools(mcp)
                 logger.debug("Registered workflow tools")
             except Exception as e:
                 logger.warning(f"Workflow tools not registered: {e}")
             
             try:
-                from ipfs_accelerate_py.mcp.tools.dashboard_data import register_tools as register_dashboard_tools
+                from .dashboard_data import register_tools as register_dashboard_tools
                 register_dashboard_tools(mcp)
                 logger.debug("Registered dashboard data tools")
             except Exception as e:
                 logger.warning(f"Dashboard data tools not registered: {e}")
             
             try:
-                from ipfs_accelerate_py.mcp.tools.github_tools import register_tools as register_github_tools
+                from .github_tools import register_tools as register_github_tools
                 register_github_tools(mcp)
                 logger.debug("Registered GitHub CLI tools")
             except Exception as e:

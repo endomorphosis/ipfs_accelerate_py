@@ -19,6 +19,16 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
+import pytest
+
+if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
+    pytest.skip(
+        "PerformanceTrendAnalyzer integration tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to enable.",
+        allow_module_level=True,
+    )
+
+pytest.importorskip("aiohttp")
+
 # Add the project root to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 

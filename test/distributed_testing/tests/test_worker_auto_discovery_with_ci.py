@@ -19,6 +19,8 @@ from pathlib import Path
 import socket
 from unittest.mock import patch, MagicMock, AsyncMock
 
+import pytest
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +30,14 @@ logger = logging.getLogger(__name__)
 
 # Add parent directory to path to import from distributed_testing
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+if os.environ.get("IPFS_ACCEL_RUN_INTEGRATION_TESTS") != "1":
+    pytest.skip(
+        "Worker auto-discovery + CI integration tests are opt-in; set IPFS_ACCEL_RUN_INTEGRATION_TESTS=1 to enable.",
+        allow_module_level=True,
+    )
+
+pytest.importorskip("aiohttp")
 
 # Import necessary modules
 from distributed_testing.coordinator import DistributedTestingCoordinator

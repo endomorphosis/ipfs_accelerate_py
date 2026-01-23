@@ -15,12 +15,19 @@ The dependency manager supports:
 """
 
 import logging
+import sys
 import time
 from enum import Enum
 from typing import Dict, List, Set, Optional, Tuple, Any, Union, DefaultDict
 from collections import defaultdict, deque
-import networkx as nx
 from dataclasses import dataclass, field
+
+if "pytest" in sys.modules:
+    import pytest
+
+    nx = pytest.importorskip("networkx")
+else:
+    import networkx as nx
 
 # Setup logging
 logging.basicConfig(
