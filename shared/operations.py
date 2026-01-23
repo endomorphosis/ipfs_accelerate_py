@@ -2981,5 +2981,3 @@ class CopilotSDKOperations:
                 "operation": "get_tools",
                 "timestamp": time.time()
             }
-        
-        return {"error": f"Unknown performance test type: {test_type}"}
