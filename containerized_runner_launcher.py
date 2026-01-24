@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -63,6 +64,40 @@ class DockerRunnerLauncher:
         
         # Ensure runner work directory exists
         Path(runner_work_dir).mkdir(parents=True, exist_ok=True)
+
+    def _resolve_network_mode(self) -> str:
+        """Resolve Docker network mode for runner containers."""
+        return os.environ.get(
+            "RUNNER_DOCKER_NETWORK_MODE",
+            os.environ.get("CACHE_DOCKER_NETWORK_MODE", "host")
+        )
+
+    def _find_free_port(self, start_port: int, end_port: int) -> int:
+        """Find an available TCP port in a range on the host."""
+        for port in range(start_port, end_port + 1):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    sock.bind(("0.0.0.0", port))
+                    return port
+            except OSError:
+                continue
+        raise RuntimeError(f"No free ports available in range {start_port}-{end_port}")
+
+    def _resolve_cache_listen_port(self, network_mode: str) -> int:
+        """Resolve cache listen port for the runner container."""
+        env_port = os.environ.get("CACHE_LISTEN_PORT")
+        if env_port:
+            try:
+                return int(env_port)
+            except ValueError:
+                logger.warning(f"Invalid CACHE_LISTEN_PORT value: {env_port}. Falling back to default.")
+
+        if network_mode == "host":
+            # Avoid clashing with host cache (default 9100). Use a safe range for containers.
+            return self._find_free_port(9200, 9299)
+
+        return 9100
         
     def _verify_docker(self) -> None:
         """Verify that Docker is installed and accessible."""
@@ -154,6 +189,24 @@ class DockerRunnerLauncher:
         unique_id = uuid.uuid4().hex[:8]
         container_name = f"runner_{repo.replace('/', '_')}_{timestamp}_{unique_id}"
         
+        network_mode = self._resolve_network_mode()
+        cache_listen_port = self._resolve_cache_listen_port(network_mode)
+        bootstrap_peers = (
+            os.environ.get("CACHE_BOOTSTRAP_PEERS")
+            or os.environ.get("MCP_P2P_BOOTSTRAP_PEERS")
+            or os.environ.get("BOOTSTRAP_PEERS", "")
+        )
+        cache_shared_secret = os.environ.get("CACHE_P2P_SHARED_SECRET", "")
+
+        if os.environ.get("BOOTSTRAP_PEERS") and not os.environ.get("CACHE_BOOTSTRAP_PEERS"):
+            logger.warning("BOOTSTRAP_PEERS is deprecated. Use CACHE_BOOTSTRAP_PEERS instead.")
+
+        if bootstrap_peers and "/p2p/" not in bootstrap_peers:
+            logger.warning(
+                "CACHE_BOOTSTRAP_PEERS appears to be missing /p2p/ segment. "
+                "Ensure multiaddr format: /ip4/<ip>/tcp/<port>/p2p/<peer-id>"
+            )
+
         # Prepare Docker run command
         docker_cmd = [
             "docker", "run",
@@ -162,6 +215,8 @@ class DockerRunnerLauncher:
             f"--name={container_name}",
             "--label=github-runner=true",
             f"--label=repo={repo}",
+
+            f"--network={network_mode}",
             
             # User mapping to match host user (fixes Git permission issues)
             "--user=1004:1004",
@@ -188,17 +243,27 @@ class DockerRunnerLauncher:
             "-e=RUNNER_WORKDIR=/tmp/_work",
             "-e=EPHEMERAL=true",  # Runner will self-destruct after one job
             
-            # P2P Cache configuration (so runners can query workflow/state via cache)
+            # P2P Cache configuration (so runners can query workflow/state via host cache)
             f"-e=GITHUB_TOKEN={os.environ.get('GITHUB_TOKEN', '')}",
             f"-e=CACHE_ENABLE_P2P={os.environ.get('CACHE_ENABLE_P2P', 'true')}",
-            f"-e=CACHE_LISTEN_PORT={os.environ.get('CACHE_LISTEN_PORT', '9100')}",
-            f"-e=BOOTSTRAP_PEERS={os.environ.get('BOOTSTRAP_PEERS', '/ip4/127.0.0.1/tcp/9100')}",
-            
-            # Runner image
-            self.runner_image
+            f"-e=CACHE_LISTEN_PORT={cache_listen_port}",
+            f"-e=CACHE_BOOTSTRAP_PEERS={bootstrap_peers}",
         ]
+
+        # Optional shared secret for P2P encryption (overrides GITHUB_TOKEN-derived key)
+        if cache_shared_secret:
+            docker_cmd.append(f"-e=CACHE_P2P_SHARED_SECRET={cache_shared_secret}")
+
+        # If not using host network, add host gateway alias for host reachability
+        if network_mode != "host":
+            docker_cmd.append("--add-host=host.docker.internal:host-gateway")
+
+        # Runner image (must be last docker arg)
+        docker_cmd.append(self.runner_image)
         
         logger.info(f"Launching runner container for {repo}")
+        logger.info(f"Network mode: {network_mode}")
+        logger.info(f"Cache listen port: {cache_listen_port}")
         logger.debug(f"Labels: {labels}")
         
         try:
