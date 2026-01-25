@@ -18,6 +18,14 @@ For an end-to-end validation on two machines, use the runbook and smoke tool:
 
 ## Quick Start
 
+### 0. One-Command Local Demo (No GitHub API)
+
+This starts a reader and spawns a synthetic writer automatically (loopback bootstrap):
+
+```bash
+python tools/github_p2p_cache_smoke.py --read --local-two-node --target octocat/Hello-World --wait-seconds 30
+```
+
 ### 1. Install P2P Dependencies (Optional)
 
 ```bash
