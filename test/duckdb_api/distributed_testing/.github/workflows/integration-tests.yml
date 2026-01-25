@@ -13,6 +13,11 @@ on:
       - '.github/workflows/integration-tests.yml'
   workflow_dispatch:  # Allow manual triggering
 
+env:
+  # Persisted GitHub API cache (restored via actions/cache)
+  CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+  IPFS_ACCELERATE_CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+
 jobs:
   test-suite:
     name: Run integration test suite
@@ -27,6 +32,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Prepare GitHub API cache directory
+        run: |
+          mkdir -p "${CACHE_DIR}"
+
+      - name: Restore GitHub API cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+          restore-keys: |
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -67,6 +85,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Prepare GitHub API cache directory
+        run: |
+          mkdir -p "${CACHE_DIR}"
+
+      - name: Restore GitHub API cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+          restore-keys: |
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
       - name: Download all test logs
         uses: actions/download-artifact@v3

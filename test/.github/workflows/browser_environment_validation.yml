@@ -42,9 +42,9 @@ on:
         type: string
 
 env:
-    # Persisted GitHub API cache (restored via actions/cache)
-    CACHE_DIR: ${{ github.workspace }}/.cache/github-api
-    IPFS_ACCELERATE_CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+  # Persisted GitHub API cache (restored via actions/cache)
+  CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+  IPFS_ACCELERATE_CACHE_DIR: ${{ github.workspace }}/.cache/github-api
 
 jobs:
   validate-browser-environment:
@@ -57,18 +57,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-            - name: Prepare GitHub API cache directory
-                run: |
-                    mkdir -p "${CACHE_DIR}"
+      - name: Prepare GitHub API cache directory
+        run: |
+          mkdir -p "${CACHE_DIR}"
 
-            - name: Restore GitHub API cache
-                uses: actions/cache@v4
-                with:
-                    path: ${{ env.CACHE_DIR }}
-                    key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
-                    restore-keys: |
-                        github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
-                        github-api-cache-${{ runner.os }}-${{ github.repository }}-
+      - name: Restore GitHub API cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+          restore-keys: |
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -154,59 +154,59 @@ jobs:
           
           # Create test script that will run the checks
           cat > run_browser_validation.py << 'EOF'
-import asyncio
-import json
-import sys
-import os
-import logging
-from pathlib import Path
-from datetime import datetime
-
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("browser_validation")
-
-# Import the check functions
-sys.path.append(str(Path.cwd()))
-from check_browser_webnn_webgpu import check_browser_capabilities, check_all_browsers
-from fixed_web_platform.browser_automation import BrowserAutomation
-
-async def run_validation(browser, platform, output_dir, run_id, compute_shaders, shader_precompile, parallel_loading):
-    """Run browser validation tests and save results."""
-    
-    results = {
-        "run_id": run_id,
-        "timestamp": datetime.now().isoformat(),
-        "browsers": {},
-        "feature_flags": {
+          import asyncio
+          import json
+          import sys
+          import os
+          import logging
+          from pathlib import Path
+          from datetime import datetime
+          
+          # Set up logging
+          logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+          logger = logging.getLogger("browser_validation")
+          
+          # Import the check functions
+          sys.path.append(str(Path.cwd()))
+          from check_browser_webnn_webgpu import check_browser_capabilities, check_all_browsers
+          from fixed_web_platform.browser_automation import BrowserAutomation
+          
+          async def run_validation(browser, platform, output_dir, run_id, compute_shaders, shader_precompile, parallel_loading):
+              """Run browser validation tests and save results."""
+              
+              results = {
+                  "run_id": run_id,
+                  "timestamp": datetime.now().isoformat(),
+                  "browsers": {},
+                  "feature_flags": {
             "compute_shaders": compute_shaders,
             "shader_precompilation": shader_precompile,
             "parallel_loading": parallel_loading
-        }
-    }
-    
-    # Set up output directory
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Determine browsers to test
-    browsers_to_test = []
-    if browser == "all":
-        browsers_to_test = ["chrome", "firefox", "edge"]
-    else:
-        browsers_to_test = [browser]
-    
-    # Determine platforms to test
-    platforms_to_test = []
-    if platform == "all":
-        platforms_to_test = ["webnn", "webgpu"]
-    else:
-        platforms_to_test = [platform]
-    
-    # Run tests for each browser and platform
-    for b in browsers_to_test:
-        results["browsers"][b] = {}
-        
-        for p in platforms_to_test:
+                  }
+              }
+              
+              # Set up output directory
+              os.makedirs(output_dir, exist_ok=True)
+              
+              # Determine browsers to test
+              browsers_to_test = []
+              if browser == "all":
+                  browsers_to_test = ["chrome", "firefox", "edge"]
+              else:
+                  browsers_to_test = [browser]
+              
+              # Determine platforms to test
+              platforms_to_test = []
+              if platform == "all":
+                  platforms_to_test = ["webnn", "webgpu"]
+              else:
+                  platforms_to_test = [platform]
+              
+              # Run tests for each browser and platform
+              for b in browsers_to_test:
+                  results["browsers"][b] = {}
+                  
+                  for p in platforms_to_test:
             logger.info(f"Testing {b} with {p}...")
             
             # Initialize browser automation
@@ -251,25 +251,25 @@ async def run_validation(browser, platform, output_dir, run_id, compute_shaders,
                     await automation.close()
                 except:
                     pass
-    
-    # Save results
-    with open(f"{output_dir}/validation_results_{run_id}.json", "w") as f:
-        json.dump(results, f, indent=2)
-    
-    # Create summary markdown
-    with open(f"{output_dir}/validation_summary_{run_id}.md", "w") as f:
-        f.write(f"# Browser Environment Validation Summary\n\n")
-        f.write(f"**Run ID:** {run_id}\n")
-        f.write(f"**Timestamp:** {results['timestamp']}\n\n")
-        
-        f.write("## Feature Flags\n\n")
-        f.write(f"- Compute Shaders: {results['feature_flags']['compute_shaders']}\n")
-        f.write(f"- Shader Precompilation: {results['feature_flags']['shader_precompilation']}\n")
-        f.write(f"- Parallel Loading: {results['feature_flags']['parallel_loading']}\n\n")
-        
-        f.write("## Results\n\n")
-        
-        for b in results["browsers"]:
+              
+              # Save results
+              with open(f"{output_dir}/validation_results_{run_id}.json", "w") as f:
+                  json.dump(results, f, indent=2)
+              
+              # Create summary markdown
+              with open(f"{output_dir}/validation_summary_{run_id}.md", "w") as f:
+                  f.write(f"# Browser Environment Validation Summary\n\n")
+                  f.write(f"**Run ID:** {run_id}\n")
+                  f.write(f"**Timestamp:** {results['timestamp']}\n\n")
+                  
+                  f.write("## Feature Flags\n\n")
+                  f.write(f"- Compute Shaders: {results['feature_flags']['compute_shaders']}\n")
+                  f.write(f"- Shader Precompilation: {results['feature_flags']['shader_precompilation']}\n")
+                  f.write(f"- Parallel Loading: {results['feature_flags']['parallel_loading']}\n\n")
+                  
+                  f.write("## Results\n\n")
+                  
+                  for b in results["browsers"]:
             f.write(f"### {b.capitalize()}\n\n")
             
             for p in results["browsers"][b]:
@@ -300,54 +300,54 @@ async def run_validation(browser, platform, output_dir, run_id, compute_shaders,
                     f.write(f"- **{p.upper()}**: ❌ FAILED - {error}\n")
             
             f.write("\n")
-    
-    # Generate HTML report
-    with open(f"{output_dir}/validation_report_{run_id}.html", "w") as f:
-        f.write("""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Browser Environment Validation Report</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .success { color: green; }
-        .warning { color: orange; }
-        .error { color: red; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        .details { margin-left: 20px; font-family: monospace; white-space: pre-wrap; }
-    </style>
-</head>
-<body>
-    <h1>Browser Environment Validation Report</h1>
-    <p><strong>Run ID:</strong> """)
-        f.write(run_id)
-        f.write("</p><p><strong>Timestamp:</strong> ")
-        f.write(results['timestamp'])
-        f.write("</p>")
-        
-        f.write("""
-    <h2>Feature Flags</h2>
-    <ul>""")
-        f.write(f"<li>Compute Shaders: {results['feature_flags']['compute_shaders']}</li>")
-        f.write(f"<li>Shader Precompilation: {results['feature_flags']['shader_precompilation']}</li>")
-        f.write(f"<li>Parallel Loading: {results['feature_flags']['parallel_loading']}</li>")
-        f.write("</ul>")
-        
-        f.write("""
-    <h2>Validation Results</h2>
-    <table>
-        <tr>
+              
+              # Generate HTML report
+              with open(f"{output_dir}/validation_report_{run_id}.html", "w") as f:
+                  f.write("""<!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="utf-8">
+              <title>Browser Environment Validation Report</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 20px; }
+                  .success { color: green; }
+                  .warning { color: orange; }
+                  .error { color: red; }
+                  table { border-collapse: collapse; width: 100%; }
+                  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                  th { background-color: #f2f2f2; }
+                  tr:nth-child(even) { background-color: #f9f9f9; }
+                  .details { margin-left: 20px; font-family: monospace; white-space: pre-wrap; }
+              </style>
+          </head>
+          <body>
+              <h1>Browser Environment Validation Report</h1>
+              <p><strong>Run ID:</strong> """)
+                  f.write(run_id)
+                  f.write("</p><p><strong>Timestamp:</strong> ")
+                  f.write(results['timestamp'])
+                  f.write("</p>")
+                  
+                  f.write("""
+              <h2>Feature Flags</h2>
+              <ul>""")
+                  f.write(f"<li>Compute Shaders: {results['feature_flags']['compute_shaders']}</li>")
+                  f.write(f"<li>Shader Precompilation: {results['feature_flags']['shader_precompilation']}</li>")
+                  f.write(f"<li>Parallel Loading: {results['feature_flags']['parallel_loading']}</li>")
+                  f.write("</ul>")
+                  
+                  f.write("""
+              <h2>Validation Results</h2>
+              <table>
+                  <tr>
             <th>Browser</th>
             <th>Platform</th>
             <th>Status</th>
             <th>Implementation</th>
             <th>Details</th>
-        </tr>""")
-        
-        for b in results["browsers"]:
+                  </tr>""")
+                  
+                  for b in results["browsers"]:
             for p in results["browsers"][b]:
                 data = results["browsers"][b][p]
                 success = data.get("success", False)
@@ -376,23 +376,23 @@ async def run_validation(browser, platform, output_dir, run_id, compute_shaders,
                     f.write(f"<td>{error}</td>")
                 
                 f.write("</tr>")
-        
-        f.write("""
-    </table>
-    
-    <h2>Recommendations</h2>
-    <ul>""")
-        
-        # Text models recommendation
-        text_browsers = []
-        for b in results["browsers"]:
+                  
+                  f.write("""
+              </table>
+              
+              <h2>Recommendations</h2>
+              <ul>""")
+                  
+                  # Text models recommendation
+                  text_browsers = []
+                  for b in results["browsers"]:
             if "webnn" in results["browsers"][b] and results["browsers"][b]["webnn"].get("success", False):
                 if not results["browsers"][b]["webnn"].get("is_simulation", True):
                     text_browsers.append(b)
-        
-        if text_browsers:
+                  
+                  if text_browsers:
             f.write(f"<li><strong>For TEXT models:</strong> Use {', '.join(text_browsers)} (hardware-accelerated WebNN)</li>")
-        else:
+                  else:
             text_gpu_browsers = []
             for b in results["browsers"]:
                 if "webgpu" in results["browsers"][b] and results["browsers"][b]["webgpu"].get("success", False):
@@ -403,76 +403,76 @@ async def run_validation(browser, platform, output_dir, run_id, compute_shaders,
                 f.write(f"<li><strong>For TEXT models:</strong> Use {', '.join(text_gpu_browsers)} (hardware-accelerated WebGPU)</li>")
             else:
                 f.write("<li><strong>For TEXT models:</strong> No hardware acceleration available</li>")
-        
-        # Vision models recommendation
-        vision_browsers = []
-        for b in results["browsers"]:
+                  
+                  # Vision models recommendation
+                  vision_browsers = []
+                  for b in results["browsers"]:
             if "webgpu" in results["browsers"][b] and results["browsers"][b]["webgpu"].get("success", False):
                 if not results["browsers"][b]["webgpu"].get("is_simulation", True):
                     vision_browsers.append(b)
-        
-        if vision_browsers:
+                  
+                  if vision_browsers:
             f.write(f"<li><strong>For VISION models:</strong> Use {', '.join(vision_browsers)} (hardware-accelerated WebGPU)</li>")
-        else:
+                  else:
             f.write("<li><strong>For VISION models:</strong> No hardware acceleration available</li>")
-        
-        # Audio models recommendation
-        firefox_webgpu = False
-        for b in results["browsers"]:
+                  
+                  # Audio models recommendation
+                  firefox_webgpu = False
+                  for b in results["browsers"]:
             if b == "firefox" and "webgpu" in results["browsers"][b] and results["browsers"][b]["webgpu"].get("success", False):
                 if not results["browsers"][b]["webgpu"].get("is_simulation", True):
                     firefox_webgpu = True
-        
-        if firefox_webgpu:
+                  
+                  if firefox_webgpu:
             f.write("<li><strong>For AUDIO models:</strong> Use Firefox (hardware-accelerated WebGPU with compute shader optimization)</li>")
-        elif vision_browsers:
+                  elif vision_browsers:
             f.write(f"<li><strong>For AUDIO models:</strong> Use {', '.join(vision_browsers)} (hardware-accelerated WebGPU)</li>")
-        else:
+                  else:
             f.write("<li><strong>For AUDIO models:</strong> No hardware acceleration available</li>")
-        
-        f.write("""
-    </ul>
-</body>
-</html>
-        """)
-    
-    return {
-        "output_dir": output_dir,
-        "run_id": run_id,
-        "success": True
-    }
-
-if __name__ == "__main__":
-    # Get parameters from environment
-    browser = os.environ.get("TEST_BROWSER", "all")
-    platform = os.environ.get("TEST_PLATFORM", "all")
-    output_dir = os.environ.get("OUTPUT_DIR", "browser_test_results")
-    run_id = os.environ.get("RUN_ID", datetime.now().strftime("%Y%m%d%H%M%S"))
-    compute_shaders = os.environ.get("COMPUTE_SHADERS", "false")
-    shader_precompile = os.environ.get("SHADER_PRECOMPILE", "false")
-    parallel_loading = os.environ.get("PARALLEL_LOADING", "false")
-    
-    # Run validation
-    result = asyncio.run(run_validation(
-        browser=browser,
-        platform=platform,
-        output_dir=output_dir,
-        run_id=run_id,
-        compute_shaders=compute_shaders,
-        shader_precompile=shader_precompile,
-        parallel_loading=parallel_loading
-    ))
-    
-    # Log summary
-    logger.info(f"Validation complete. Results saved to {output_dir}/validation_results_{run_id}.json")
-    logger.info(f"Summary report saved to {output_dir}/validation_summary_{run_id}.md")
-    logger.info(f"HTML report saved to {output_dir}/validation_report_{run_id}.html")
-    
-    # Write outputs for GitHub Actions
-    with open(os.environ.get("GITHUB_OUTPUT", "/dev/null"), "a") as f:
-        f.write(f"output_dir={output_dir}\n")
-        f.write(f"run_id={run_id}\n")
-EOF
+                  
+                  f.write("""
+              </ul>
+          </body>
+          </html>
+                  """)
+              
+              return {
+                  "output_dir": output_dir,
+                  "run_id": run_id,
+                  "success": True
+              }
+          
+          if __name__ == "__main__":
+              # Get parameters from environment
+              browser = os.environ.get("TEST_BROWSER", "all")
+              platform = os.environ.get("TEST_PLATFORM", "all")
+              output_dir = os.environ.get("OUTPUT_DIR", "browser_test_results")
+              run_id = os.environ.get("RUN_ID", datetime.now().strftime("%Y%m%d%H%M%S"))
+              compute_shaders = os.environ.get("COMPUTE_SHADERS", "false")
+              shader_precompile = os.environ.get("SHADER_PRECOMPILE", "false")
+              parallel_loading = os.environ.get("PARALLEL_LOADING", "false")
+              
+              # Run validation
+              result = asyncio.run(run_validation(
+                  browser=browser,
+                  platform=platform,
+                  output_dir=output_dir,
+                  run_id=run_id,
+                  compute_shaders=compute_shaders,
+                  shader_precompile=shader_precompile,
+                  parallel_loading=parallel_loading
+              ))
+              
+              # Log summary
+              logger.info(f"Validation complete. Results saved to {output_dir}/validation_results_{run_id}.json")
+              logger.info(f"Summary report saved to {output_dir}/validation_summary_{run_id}.md")
+              logger.info(f"HTML report saved to {output_dir}/validation_report_{run_id}.html")
+              
+              # Write outputs for GitHub Actions
+              with open(os.environ.get("GITHUB_OUTPUT", "/dev/null"), "a") as f:
+                  f.write(f"output_dir={output_dir}\n")
+                  f.write(f"run_id={run_id}\n")
+          EOF
           
           # Run the validation script
           export TEST_BROWSER="$BROWSER"
@@ -514,18 +514,18 @@ EOF
     steps:
       - uses: actions/checkout@v4
 
-            - name: Prepare GitHub API cache directory
-                run: |
-                    mkdir -p "${CACHE_DIR}"
+      - name: Prepare GitHub API cache directory
+        run: |
+          mkdir -p "${CACHE_DIR}"
 
-            - name: Restore GitHub API cache
-                uses: actions/cache@v4
-                with:
-                    path: ${{ env.CACHE_DIR }}
-                    key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
-                    restore-keys: |
-                        github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
-                        github-api-cache-${{ runner.os }}-${{ github.repository }}-
+      - name: Restore GitHub API cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+          restore-keys: |
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -547,27 +547,27 @@ EOF
         run: |
           # Create script to generate dashboard from test results
           cat > generate_dashboard.py << 'EOF'
-import os
-import json
-import glob
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime
-
-# Find all result files
-result_files = glob.glob("browser_test_results/validation_results_*.json")
-results_data = []
-
-for file_path in result_files:
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-        # Get run details
-        run_id = data.get('run_id')
-        timestamp = data.get('timestamp')
-        
-        # Process browser results
-        for browser_name, platforms in data.get('browsers', {}).items():
+          import os
+          import json
+          import glob
+          import pandas as pd
+          import plotly.express as px
+          import plotly.graph_objects as go
+          from datetime import datetime
+          
+          # Find all result files
+          result_files = glob.glob("browser_test_results/validation_results_*.json")
+          results_data = []
+          
+          for file_path in result_files:
+              with open(file_path, 'r') as f:
+                  data = json.load(f)
+                  # Get run details
+                  run_id = data.get('run_id')
+                  timestamp = data.get('timestamp')
+                  
+                  # Process browser results
+                  for browser_name, platforms in data.get('browsers', {}).items():
             for platform_name, platform_data in platforms.items():
                 # Extract key metrics
                 success = platform_data.get('success', False)
@@ -591,169 +591,169 @@ for file_path in result_files:
                     'error': error,
                     'features': json.dumps(features)[:100] + '...' if features else None
                 })
-
-# Create DataFrame
-df = pd.DataFrame(results_data)
-
-if not df.empty:
-    # Convert timestamp to datetime
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    
-    # Create status column for better visualization
-    df['status'] = 'Error'
-    df.loc[df['success'] & ~df['is_simulation'], 'status'] = 'Hardware Accelerated'
-    df.loc[df['success'] & df['is_simulation'], 'status'] = 'Simulation'
-    
-    # Create output directory
-    os.makedirs('dashboard', exist_ok=True)
-    
-    # Generate heatmap of browser capabilities
-    fig = px.imshow(
-        df.pivot_table(
+          
+          # Create DataFrame
+          df = pd.DataFrame(results_data)
+          
+          if not df.empty:
+              # Convert timestamp to datetime
+              df['timestamp'] = pd.to_datetime(df['timestamp'])
+              
+              # Create status column for better visualization
+              df['status'] = 'Error'
+              df.loc[df['success'] & ~df['is_simulation'], 'status'] = 'Hardware Accelerated'
+              df.loc[df['success'] & df['is_simulation'], 'status'] = 'Simulation'
+              
+              # Create output directory
+              os.makedirs('dashboard', exist_ok=True)
+              
+              # Generate heatmap of browser capabilities
+              fig = px.imshow(
+                  df.pivot_table(
             index='browser', 
             columns='platform', 
             values='is_simulation',
             aggfunc=lambda x: 1 if all(x) else 0 if not any(x) else 0.5
-        ),
-        labels=dict(x="Platform", y="Browser", color="Status"),
-        color_continuous_scale=["green", "orange", "red"],
-        title="Browser Acceleration Capabilities"
-    )
-    
-    fig.update_layout(
-        height=500,
-        width=800
-    )
-    
-    fig.write_html("dashboard/browser_capabilities.html")
-    
-    # Generate status counts by browser
-    status_counts = df.groupby(['browser', 'status']).size().reset_index(name='count')
-    
-    fig = px.bar(
-        status_counts,
-        x='browser',
-        y='count',
-        color='status',
-        title="Browser Support Status",
-        labels={'count': 'Count', 'browser': 'Browser', 'status': 'Status'},
-        color_discrete_map={
+                  ),
+                  labels=dict(x="Platform", y="Browser", color="Status"),
+                  color_continuous_scale=["green", "orange", "red"],
+                  title="Browser Acceleration Capabilities"
+              )
+              
+              fig.update_layout(
+                  height=500,
+                  width=800
+              )
+              
+              fig.write_html("dashboard/browser_capabilities.html")
+              
+              # Generate status counts by browser
+              status_counts = df.groupby(['browser', 'status']).size().reset_index(name='count')
+              
+              fig = px.bar(
+                  status_counts,
+                  x='browser',
+                  y='count',
+                  color='status',
+                  title="Browser Support Status",
+                  labels={'count': 'Count', 'browser': 'Browser', 'status': 'Status'},
+                  color_discrete_map={
             'Hardware Accelerated': 'green',
             'Simulation': 'orange',
             'Error': 'red'
-        }
-    )
-    
-    fig.write_html("dashboard/browser_status.html")
-    
-    # Generate status counts by platform
-    platform_status = df.groupby(['platform', 'status']).size().reset_index(name='count')
-    
-    fig = px.bar(
-        platform_status,
-        x='platform',
-        y='count',
-        color='status',
-        title="Platform Support Status",
-        labels={'count': 'Count', 'platform': 'Platform', 'status': 'Status'},
-        color_discrete_map={
+                  }
+              )
+              
+              fig.write_html("dashboard/browser_status.html")
+              
+              # Generate status counts by platform
+              platform_status = df.groupby(['platform', 'status']).size().reset_index(name='count')
+              
+              fig = px.bar(
+                  platform_status,
+                  x='platform',
+                  y='count',
+                  color='status',
+                  title="Platform Support Status",
+                  labels={'count': 'Count', 'platform': 'Platform', 'status': 'Status'},
+                  color_discrete_map={
             'Hardware Accelerated': 'green',
             'Simulation': 'orange',
             'Error': 'red'
-        }
-    )
-    
-    fig.write_html("dashboard/platform_status.html")
-    
-    # Create index.html
-    with open('dashboard/index.html', 'w') as f:
-        f.write("""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Browser Environment Validation Dashboard</title>
-    <style>
-        body {
+                  }
+              )
+              
+              fig.write_html("dashboard/platform_status.html")
+              
+              # Create index.html
+              with open('dashboard/index.html', 'w') as f:
+                  f.write("""<!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="utf-8">
+              <title>Browser Environment Validation Dashboard</title>
+              <style>
+                  body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
             background-color: #f5f5f5;
-        }
-        .container {
+                  }
+                  .container {
             max-width: 1200px;
             margin: 0 auto;
             background-color: white;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1, h2, h3 {
+                  }
+                  h1, h2, h3 {
             color: #333;
-        }
-        .charts {
+                  }
+                  .charts {
             display: flex;
             flex-direction: column;
             gap: 20px;
             margin-top: 20px;
-        }
-        .chart-container {
+                  }
+                  .chart-container {
             width: 100%;
             height: 500px;
             border: 1px solid #ddd;
             border-radius: 4px;
             overflow: hidden;
-        }
-        iframe {
+                  }
+                  iframe {
             width: 100%;
             height: 100%;
             border: none;
-        }
-        .card {
+                  }
+                  .card {
             background-color: white;
             border-radius: 4px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             padding: 15px;
             margin-bottom: 20px;
-        }
-        .results-table {
+                  }
+                  .results-table {
             width: 100%;
             border-collapse: collapse;
-        }
-        .results-table th, .results-table td {
+                  }
+                  .results-table th, .results-table td {
             border: 1px solid #ddd;
             padding: 8px;
             text-align: left;
-        }
-        .results-table th {
+                  }
+                  .results-table th {
             background-color: #f2f2f2;
-        }
-        .results-table tr:nth-child(even) {
+                  }
+                  .results-table tr:nth-child(even) {
             background-color: #f9f9f9;
-        }
-        .success { color: green; }
-        .warning { color: orange; }
-        .error { color: red; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Browser Environment Validation Dashboard</h1>
-        <p>This dashboard shows the results of browser environment validation tests for WebNN and WebGPU.</p>
-        
-        <div class="card">
+                  }
+                  .success { color: green; }
+                  .warning { color: orange; }
+                  .error { color: red; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>Browser Environment Validation Dashboard</h1>
+                  <p>This dashboard shows the results of browser environment validation tests for WebNN and WebGPU.</p>
+                  
+                  <div class="card">
             <h2>Recommendations</h2>
             <h3>For TEXT models:</h3>
             <ul>""")
-        
-        # Add recommendations based on analysis
-        hardware_browsers = df[(df['success'] == True) & (df['is_simulation'] == False)]
-        
-        # For text models (WebNN preferred)
-        webnn_hardware = hardware_browsers[hardware_browsers['platform'] == 'webnn']
-        if not webnn_hardware.empty:
+                  
+                  # Add recommendations based on analysis
+                  hardware_browsers = df[(df['success'] == True) & (df['is_simulation'] == False)]
+                  
+                  # For text models (WebNN preferred)
+                  webnn_hardware = hardware_browsers[hardware_browsers['platform'] == 'webnn']
+                  if not webnn_hardware.empty:
             webnn_browsers = webnn_hardware['browser'].tolist()
             f.write(f"<li>Use <strong>{', '.join(webnn_browsers)}</strong> with WebNN for best performance</li>")
-        else:
+                  else:
             # Fallback to WebGPU
             webgpu_hardware = hardware_browsers[hardware_browsers['platform'] == 'webgpu']
             if not webgpu_hardware.empty:
@@ -761,37 +761,37 @@ if not df.empty:
                 f.write(f"<li>Use <strong>{', '.join(webgpu_browsers)}</strong> with WebGPU (WebNN not available with hardware acceleration)</li>")
             else:
                 f.write("<li>No hardware-accelerated browsers available for text models</li>")
-        
-        f.write("""</ul>
+                  
+                  f.write("""</ul>
             <h3>For VISION models:</h3>
             <ul>""")
-        
-        # For vision models (WebGPU preferred)
-        webgpu_hardware = hardware_browsers[hardware_browsers['platform'] == 'webgpu']
-        if not webgpu_hardware.empty:
+                  
+                  # For vision models (WebGPU preferred)
+                  webgpu_hardware = hardware_browsers[hardware_browsers['platform'] == 'webgpu']
+                  if not webgpu_hardware.empty:
             webgpu_browsers = webgpu_hardware['browser'].tolist()
             f.write(f"<li>Use <strong>{', '.join(webgpu_browsers)}</strong> with WebGPU for best performance</li>")
-        else:
+                  else:
             f.write("<li>No hardware-accelerated browsers available for vision models</li>")
-        
-        f.write("""</ul>
+                  
+                  f.write("""</ul>
             <h3>For AUDIO models:</h3>
             <ul>""")
-        
-        # For audio models (Firefox with WebGPU preferred)
-        firefox_webgpu = hardware_browsers[(hardware_browsers['platform'] == 'webgpu') & (hardware_browsers['browser'] == 'firefox')]
-        if not firefox_webgpu.empty:
+                  
+                  # For audio models (Firefox with WebGPU preferred)
+                  firefox_webgpu = hardware_browsers[(hardware_browsers['platform'] == 'webgpu') & (hardware_browsers['browser'] == 'firefox')]
+                  if not firefox_webgpu.empty:
             f.write("<li>Use <strong>Firefox</strong> with WebGPU for best audio model performance (best compute shader support)</li>")
-        elif not webgpu_hardware.empty:
+                  elif not webgpu_hardware.empty:
             webgpu_browsers = webgpu_hardware['browser'].tolist()
             f.write(f"<li>Use <strong>{', '.join(webgpu_browsers)}</strong> with WebGPU</li>")
-        else:
+                  else:
             f.write("<li>No hardware-accelerated browsers available for audio models</li>")
-        
-        f.write("""</ul>
-        </div>
-        
-        <div class="charts">
+                  
+                  f.write("""</ul>
+                  </div>
+                  
+                  <div class="charts">
             <h2>Browser Capabilities Overview</h2>
             <div class="chart-container">
                 <iframe src="browser_capabilities.html"></iframe>
@@ -806,9 +806,9 @@ if not df.empty:
             <div class="chart-container">
                 <iframe src="platform_status.html"></iframe>
             </div>
-        </div>
-        
-        <div class="card">
+                  </div>
+                  
+                  <div class="card">
             <h2>Latest Test Results</h2>
             <table class="results-table">
                 <tr>
@@ -817,9 +817,9 @@ if not df.empty:
                     <th>Status</th>
                     <th>Implementation</th>
                 </tr>""")
-        
-        # Add rows for each browser/platform combination
-        for _, row in df.sort_values(['browser', 'platform']).iterrows():
+                  
+                  # Add rows for each browser/platform combination
+                  for _, row in df.sort_values(['browser', 'platform']).iterrows():
             status_class = 'success' if row['success'] and not row['is_simulation'] else 'warning' if row['success'] else 'error'
             status_text = '✅ HARDWARE' if row['success'] and not row['is_simulation'] else '⚠️ SIMULATION' if row['success'] else '❌ ERROR'
             
@@ -830,25 +830,25 @@ if not df.empty:
                     <td class="{status_class}">{status_text}</td>
                     <td>{row['implementation_type']}</td>
                 </tr>""")
-        
-        f.write("""
+                  
+                  f.write("""
             </table>
-        </div>
-        
-        <footer>
+                  </div>
+                  
+                  <footer>
             <p>Last updated: """)
-        
-        f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        
-        f.write("""</p>
+                  
+                  f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                  
+                  f.write("""</p>
             <p>Generated by CI/CD workflow</p>
-        </footer>
-    </div>
-</body>
-</html>""")
-
-print("Dashboard generated successfully!")
-EOF
+                  </footer>
+              </div>
+          </body>
+          </html>""")
+          
+          print("Dashboard generated successfully!")
+          EOF
           
           # Generate dashboard
           python generate_dashboard.py
