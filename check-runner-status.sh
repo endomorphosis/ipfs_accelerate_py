@@ -10,6 +10,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Resolve repo root so this script works from any directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GH_API_CACHED=(python3 "$SCRIPT_DIR/tools/gh_api_cached.py")
+
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  GitHub Actions Runner & Autoscaler Status${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -75,7 +79,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 if gh auth status &> /dev/null; then
     echo -e "Status: ${GREEN}✓ AUTHENTICATED${NC}"
-    GH_USER=$(gh api user --jq .login 2>/dev/null)
+    GH_USER=$(${GH_API_CACHED[@]} user --jq .login 2>/dev/null)
     echo "  User: $GH_USER"
 else
     echo -e "Status: ${YELLOW}⚠ AUTHENTICATION ISSUES${NC}"

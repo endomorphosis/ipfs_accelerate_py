@@ -15,6 +15,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
+  # Persisted GitHub API cache (restored via actions/cache)
+  CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+  IPFS_ACCELERATE_CACHE_DIR: ${{ github.workspace }}/.cache/github-api
   # P2P Cache configuration - enables cache sharing between runners
   CACHE_ENABLE_P2P: 'true'
   CACHE_LISTEN_PORT: '9001'  # Different port for ARM64 to avoid conflicts
@@ -28,6 +31,19 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Prepare GitHub API cache directory
+      run: |
+        mkdir -p "${CACHE_DIR}"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_DIR }}
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
     - name: Install P2P dependencies
       run: |
@@ -150,6 +166,19 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Prepare GitHub API cache directory
+      run: |
+        mkdir -p "${CACHE_DIR}"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_DIR }}
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
     - name: Set up QEMU for ARM64 emulation
       uses: docker/setup-qemu-action@v3
@@ -188,6 +217,19 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Prepare GitHub API cache directory
+      run: |
+        mkdir -p "${CACHE_DIR}"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_DIR }}
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
     - name: Set up QEMU for ARM64 emulation
       uses: docker/setup-qemu-action@v3

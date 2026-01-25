@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     # Only trigger if this is a workflow_run event AND the workflow failed, OR if manually dispatched
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure') || github.event_name == 'workflow_dispatch' }}
+    env:
+      CACHE_DIR: ${{ github.workspace }}/.cache/github-api
     
     steps:
       - name: Pre-cleanup workspace
@@ -42,6 +44,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Prepare GitHub API cache directory
+        run: |
+          mkdir -p "${CACHE_DIR}"
+
+      - name: Restore GitHub API cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: github-api-cache-${{ runner.os }}-${{ github.repository }}-v1
+          restore-keys: |
+            github-api-cache-${{ runner.os }}-
       
       - name: GitHub CLI Authentication Preflight Check
         env:
@@ -66,10 +80,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
-      
-      - name: Install dependencies
-        run: |
-          pip install requests PyGithub
 
       - name: Analyze workflow failure
         id: analyze
@@ -84,7 +94,8 @@ jobs:
           import os
           import sys
           import json
-          import requests
+          import subprocess
+          from pathlib import Path
           from datetime import datetime
           
           # Get environment variables
@@ -97,33 +108,30 @@ jobs:
           if not run_id or run_id == 'None':
               print("Error: WORKFLOW_RUN_ID is not set", file=sys.stderr)
               sys.exit(1)
-          
-          headers = {
-              'Authorization': f'Bearer {token}',
-              'Accept': 'application/vnd.github.v3+json'
-          }
-          
+
+          repo_root = Path(__file__).resolve().parent
+          gh_api_cached = repo_root / 'tools' / 'gh_api_cached.py'
+
+          def run_cmd(cmd):
+              return subprocess.run(cmd, capture_output=True, text=True, env=os.environ.copy())
+
+          def gh_api_json(endpoint: str):
+              # Use cache-aware wrapper instead of direct HTTPS calls.
+              proc = run_cmd([sys.executable, str(gh_api_cached), endpoint])
+              if proc.returncode != 0:
+                  print(proc.stderr, file=sys.stderr)
+                  raise RuntimeError(f"gh api failed for {endpoint} (rc={proc.returncode})")
+              return json.loads(proc.stdout)
+
           # Get workflow run details
-          run_url = f'https://api.github.com/repos/{repository}/actions/runs/{run_id}'
-          response = requests.get(run_url, headers=headers)
-          
-          if response.status_code != 200:
-              print(f"Error fetching workflow run: {response.status_code}", file=sys.stderr)
-              print(f"Response: {response.text}", file=sys.stderr)
-              sys.exit(1)
-          
-          run_data = response.json()
-          
+          run_data = gh_api_json(f"repos/{repository}/actions/runs/{run_id}")
+
           # Get jobs for this run
-          jobs_url = f'https://api.github.com/repos/{repository}/actions/runs/{run_id}/jobs'
-          jobs_response = requests.get(jobs_url, headers=headers)
-          
-          if jobs_response.status_code != 200:
-              print(f"Error fetching jobs: {jobs_response.status_code}", file=sys.stderr)
-              # Continue with empty jobs list if we can't get jobs
+          try:
+              jobs_data = gh_api_json(f"repos/{repository}/actions/runs/{run_id}/jobs")
+          except Exception as e:
+              print(f"Error fetching jobs: {e}", file=sys.stderr)
               jobs_data = {'jobs': []}
-          else:
-              jobs_data = jobs_response.json()
           
           # Find failed jobs
           failed_jobs = []
@@ -142,29 +150,30 @@ jobs:
                           if step.get('conclusion') == 'failure'
                       ]
                   })
-          
-          # Get logs for failed jobs
+
+          # Get failed logs for the entire run (avoids direct REST log downloads).
           failure_details = []
-          for job in failed_jobs:
-              logs_url = f'https://api.github.com/repos/{repository}/actions/jobs/{job["id"]}/logs'
-              logs_response = requests.get(logs_url, headers=headers)
-              
-              # Get last 100 lines of logs for context
-              if logs_response.status_code == 200:
-                  log_lines = logs_response.text.split('\n')
-                  # Look for error patterns
-                  error_lines = [
-                      line for line in log_lines[-200:]
-                      if any(keyword in line.lower() for keyword in [
-                          'error', 'failed', 'exception', 'traceback', 
-                          'fatal', 'panic', 'exit code'
-                      ])
-                  ]
-                  
+          log_proc = run_cmd([
+              'gh', 'run', 'view', str(run_id),
+              '--repo', repository,
+              '--log-failed',
+          ])
+          if log_proc.returncode == 0 and log_proc.stdout:
+              log_lines = log_proc.stdout.split('\n')
+              error_lines = [
+                  line for line in log_lines[-400:]
+                  if any(keyword in line.lower() for keyword in [
+                      'error', 'failed', 'exception', 'traceback',
+                      'fatal', 'panic', 'exit code'
+                  ])
+              ]
+              # Attach the same extracted error context to each failed job for convenience.
+              extracted = '\n'.join(error_lines[-80:])
+              for job in failed_jobs:
                   failure_details.append({
                       'job_name': job['name'],
                       'failed_steps': [s['name'] for s in job['steps']],
-                      'error_logs': '\n'.join(error_lines[-50:])  # Last 50 error lines
+                      'error_logs': extracted,
                   })
           
           # Create analysis summary

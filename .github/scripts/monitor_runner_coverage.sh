@@ -7,6 +7,11 @@
 
 set -e
 
+# Resolve repo root so this script works from cron/systemd.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+GH_API_CACHED=(python3 "$REPO_ROOT/tools/gh_api_cached.py")
+
 LOG_FILE="${LOG_FILE:-/tmp/runner-coverage-monitor.log}"
 CHECK_INTERVAL="${CHECK_INTERVAL:-300}" # 5 minutes default
 AUTOSCALER_LOCKFILE="/tmp/github-autoscaler.lock"
@@ -86,7 +91,7 @@ check_repo_activity() {
     
     # Try to get last commit time via GitHub CLI (if available and not rate-limited)
     if command -v gh &> /dev/null; then
-        local last_push=$(gh api "repos/$repo_name/commits" --jq '.[0].commit.committer.date' 2>/dev/null || echo "")
+        local last_push=$(${GH_API_CACHED[@]} "repos/$repo_name/commits" --jq '.[0].commit.committer.date' 2>/dev/null || echo "")
         
         if [ -n "$last_push" ]; then
             local last_push_timestamp=$(date -d "$last_push" +%s 2>/dev/null || echo "0")

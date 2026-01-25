@@ -43,6 +43,19 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Prepare cache directory
+      shell: bash
+      run: |
+        mkdir -p "${HOME}/.cache/github-api-p2p"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.home }}/.cache/github-api-p2p
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-
+
     - name: Initialize GitHub API Cache
       id: init-cache
       shell: bash
@@ -64,6 +77,7 @@ runs:
         
         # Export environment variables
         echo "CACHE_DIR=$CACHE_DIR" >> $GITHUB_ENV
+        echo "IPFS_ACCELERATE_CACHE_DIR=$CACHE_DIR" >> $GITHUB_ENV
         echo "ENABLE_P2P_CACHE=${{ inputs.enable-p2p }}" >> $GITHUB_ENV
         echo "GITHUB_CACHE_SIZE=${{ inputs.cache-size }}" >> $GITHUB_ENV
         echo "CACHE_DEFAULT_TTL=${{ inputs.cache-ttl }}" >> $GITHUB_ENV

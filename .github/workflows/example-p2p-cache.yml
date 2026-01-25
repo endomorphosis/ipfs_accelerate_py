@@ -15,6 +15,9 @@ env:
   # Bootstrap peers should be set as repository secret
   # Format: /ip4/<ip>/tcp/<port>/p2p/<peer-id>
   CACHE_BOOTSTRAP_PEERS: ${{ secrets.MCP_P2P_BOOTSTRAP_PEERS || '' }}
+  # Persisted GitHub API cache (restored via actions/cache)
+  CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+  IPFS_ACCELERATE_CACHE_DIR: ${{ github.workspace }}/.cache/github-api
 
 jobs:
   # Option 1: Host Network Mode (Simplest)
@@ -23,6 +26,19 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+
+    - name: Prepare GitHub API cache directory
+      run: |
+        mkdir -p "${CACHE_DIR}"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_DIR }}
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-
     
     - name: Install P2P Dependencies
       run: |
@@ -57,12 +73,12 @@ jobs:
           -e CACHE_ENABLE_P2P=true \
           myapp:test \
           python -c "
-from ipfs_accelerate_py.github_cli.cache import get_global_cache
-stats = get_global_cache().get_stats()
-print(f'Cache hit rate: {stats[\"hit_rate\"]:.1%}')
-print(f'API calls saved: {stats[\"api_calls_saved\"]}')
-print(f'Cache size: {stats[\"cache_size\"]}')
-"
+            from ipfs_accelerate_py.github_cli.cache import get_global_cache
+            stats = get_global_cache().get_stats()
+            print(f'Cache hit rate: {stats[\"hit_rate\"]:.1%}')
+            print(f'API calls saved: {stats[\"api_calls_saved\"]}')
+            print(f'Cache size: {stats[\"cache_size\"]}')
+            "
 
   # Option 2: Bridge Network with Host IP (More Secure)
   test-with-bridge-network:
@@ -70,6 +86,19 @@ print(f'Cache size: {stats[\"cache_size\"]}')
     
     steps:
     - uses: actions/checkout@v4
+
+    - name: Prepare GitHub API cache directory
+      run: |
+        mkdir -p "${CACHE_DIR}"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_DIR }}
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-
     
     - name: Install P2P Dependencies
       run: |
@@ -119,6 +148,19 @@ print(f'Cache size: {stats[\"cache_size\"]}')
     
     steps:
     - uses: actions/checkout@v4
+
+    - name: Prepare GitHub API cache directory
+      run: |
+        mkdir -p "${CACHE_DIR}"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_DIR }}
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-
     
     - name: Build Docker Image
       run: |
@@ -138,6 +180,19 @@ print(f'Cache size: {stats[\"cache_size\"]}')
     
     steps:
     - uses: actions/checkout@v4
+
+    - name: Prepare GitHub API cache directory
+      run: |
+        mkdir -p "${CACHE_DIR}"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_DIR }}
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-
     
     - name: Install P2P Dependencies
       run: |
@@ -176,16 +231,16 @@ print(f'Cache size: {stats[\"cache_size\"]}')
       run: |
         docker-compose -f docker-compose.ci.yml run --rm test-runner \
           python -c "
-from ipfs_accelerate_py.github_cli.cache import get_global_cache
-stats = get_global_cache().get_stats()
-print('=== P2P Cache Statistics ===')
-print(f'Hit rate: {stats[\"hit_rate\"]:.1%}')
-print(f'Total requests: {stats.get(\"total_requests\", 0)}')
-print(f'Cache hits: {stats.get(\"hits\", 0)}')
-print(f'Cache misses: {stats.get(\"misses\", 0)}')
-print(f'API calls saved: {stats.get(\"api_calls_saved\", 0)}')
-print(f'Connected peers: {len(stats.get(\"connected_peers\", []))}')
-"
+            from ipfs_accelerate_py.github_cli.cache import get_global_cache
+            stats = get_global_cache().get_stats()
+            print('=== P2P Cache Statistics ===')
+            print(f'Hit rate: {stats[\"hit_rate\"]:.1%}')
+            print(f'Total requests: {stats.get(\"total_requests\", 0)}')
+            print(f'Cache hits: {stats.get(\"hits\", 0)}')
+            print(f'Cache misses: {stats.get(\"misses\", 0)}')
+            print(f'API calls saved: {stats.get(\"api_calls_saved\", 0)}')
+            print(f'Connected peers: {len(stats.get(\"connected_peers\", []))}')
+            "
     
     - name: Cleanup
       if: always()
@@ -200,6 +255,19 @@ print(f'Connected peers: {len(stats.get(\"connected_peers\", []))}')
     
     steps:
     - uses: actions/checkout@v4
+
+    - name: Prepare GitHub API cache directory
+      run: |
+        mkdir -p "${CACHE_DIR}"
+
+    - name: Restore GitHub API cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CACHE_DIR }}
+        key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+        restore-keys: |
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+          github-api-cache-${{ runner.os }}-${{ github.repository }}-
     
     - name: Install Dependencies
       run: |

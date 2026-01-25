@@ -12,6 +12,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Resolve repo root so this script works no matter the current working directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+GH_API_CACHED=(python3 "$REPO_ROOT/tools/gh_api_cached.py")
+
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
 }
@@ -64,7 +69,7 @@ validate_token() {
         log_info "✓ GitHub authentication is valid"
         
         # Get user info to confirm
-        local user=$(gh api user --jq '.login' 2>/dev/null || echo "unknown")
+        local user=$(${GH_API_CACHED[@]} user --jq '.login' 2>/dev/null || echo "unknown")
         log_info "Authenticated as: $user"
         
         return 0
@@ -79,7 +84,7 @@ validate_token() {
 check_rate_limit() {
     log_info "Checking API rate limits..."
     
-    local rate_limit=$(gh api rate_limit 2>/dev/null)
+    local rate_limit=$(${GH_API_CACHED[@]} rate_limit 2>/dev/null)
     
     if [ $? -eq 0 ]; then
         local remaining=$(echo "$rate_limit" | jq -r '.rate.remaining' 2>/dev/null || echo "unknown")
@@ -111,7 +116,7 @@ check_token_scopes() {
     log_info "Checking token scopes..."
     
     # Get the scopes from the token
-    local scopes=$(gh api -i /user 2>&1 | grep -i "x-oauth-scopes:" | cut -d: -f2- | tr -d ' ')
+    local scopes=$(${GH_API_CACHED[@]} /user -i 2>&1 | grep -i "x-oauth-scopes:" | cut -d: -f2- | tr -d ' ')
     
     if [ -n "$scopes" ]; then
         log_info "Token scopes: $scopes"
