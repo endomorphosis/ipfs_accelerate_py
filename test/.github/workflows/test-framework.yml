@@ -44,6 +44,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Prepare GitHub API cache directory
+        shell: bash
         run: |
           mkdir -p "${CACHE_DIR}"
 
@@ -88,6 +89,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Prepare GitHub API cache directory
+        shell: bash
         run: |
           mkdir -p "${CACHE_DIR}"
 
@@ -145,6 +147,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Prepare GitHub API cache directory
+        shell: bash
         run: |
           mkdir -p "${CACHE_DIR}"
 

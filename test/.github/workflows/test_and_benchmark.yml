@@ -44,6 +44,9 @@ env:
   BENCHMARK_DB_PATH: ./benchmark_db.duckdb
   DEPRECATE_JSON_OUTPUT: 1
   PYTHONPATH: ${{ github.workspace }}
+  # Persisted GitHub API cache (restored via actions/cache)
+  CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+  IPFS_ACCELERATE_CACHE_DIR: ${{ github.workspace }}/.cache/github-api
 
 jobs:
   test:
@@ -60,6 +63,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Prepare GitHub API cache directory
+        run: |
+          mkdir -p "${CACHE_DIR}"
+
+      - name: Restore GitHub API cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+          restore-keys: |
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
@@ -149,6 +165,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Prepare GitHub API cache directory
+        run: |
+          mkdir -p "${CACHE_DIR}"
+
+      - name: Restore GitHub API cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+          restore-keys: |
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+            github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
       - name: Download test reports
         uses: actions/download-artifact@v3

@@ -41,6 +41,11 @@ on:
         default: 'none'
         type: string
 
+env:
+    # Persisted GitHub API cache (restored via actions/cache)
+    CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+    IPFS_ACCELERATE_CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+
 jobs:
   validate-browser-environment:
     runs-on: ubuntu-latest
@@ -51,6 +56,19 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+
+            - name: Prepare GitHub API cache directory
+                run: |
+                    mkdir -p "${CACHE_DIR}"
+
+            - name: Restore GitHub API cache
+                uses: actions/cache@v4
+                with:
+                    path: ${{ env.CACHE_DIR }}
+                    key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+                    restore-keys: |
+                        github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+                        github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -495,6 +513,19 @@ EOF
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
+
+            - name: Prepare GitHub API cache directory
+                run: |
+                    mkdir -p "${CACHE_DIR}"
+
+            - name: Restore GitHub API cache
+                uses: actions/cache@v4
+                with:
+                    path: ${{ env.CACHE_DIR }}
+                    key: github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-${{ github.job }}-v1
+                    restore-keys: |
+                        github-api-cache-${{ runner.os }}-${{ github.repository }}-${{ github.workflow }}-
+                        github-api-cache-${{ runner.os }}-${{ github.repository }}-
       
       - name: Set up Python
         uses: actions/setup-python@v4
