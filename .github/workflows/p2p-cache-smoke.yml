@@ -3,9 +3,23 @@ name: P2P Cache Smoke Test
 on:
   workflow_dispatch:
   pull_request:
+    paths:
+      - '.github/workflows/p2p-cache-smoke.yml'
+      - 'tools/github_p2p_cache_smoke.py'
+      - 'ipfs_accelerate_py/github_cli/**'
+      - '.github/actions/setup-github-cache/**'
+      - 'P2P_CACHE_QUICK_REF.md'
+      - 'GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md'
   push:
     branches:
       - main
+    paths:
+      - '.github/workflows/p2p-cache-smoke.yml'
+      - 'tools/github_p2p_cache_smoke.py'
+      - 'ipfs_accelerate_py/github_cli/**'
+      - '.github/actions/setup-github-cache/**'
+      - 'P2P_CACHE_QUICK_REF.md'
+      - 'GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md'
 
 env:
   PYTHON_VERSION: '3.12'
