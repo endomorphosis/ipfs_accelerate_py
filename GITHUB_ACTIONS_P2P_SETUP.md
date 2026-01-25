@@ -207,7 +207,7 @@ List discovered peers:
 2. Verify the system is using libp2p bootstrap nodes (check logs for "Using standard libp2p bootstrap node(s)")
 3. If using custom `CACHE_BOOTSTRAP_PEERS`, verify the multiaddr format is correct
 4. Check network connectivity - libp2p bootstrap nodes require internet access
-5. Ensure libp2p dependencies are installed: `pip install libp2p cryptography py-multiformats-cid`
+5. Ensure libp2p dependencies are installed: `pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid`
 
 ### Port Conflicts
 
@@ -253,7 +253,7 @@ All P2P messages are encrypted using AES-256 with the GitHub token as the shared
 The following Python packages are required for P2P cache:
 
 ```bash
-pip install libp2p cryptography py-multiformats-cid
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid
 ```
 
 These are optional dependencies - the cache works without them but falls back to local-only caching.

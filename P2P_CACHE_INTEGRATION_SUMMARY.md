@@ -258,7 +258,7 @@ Savings: 17,280 API calls/day (80% reduction)
 
 **Install:**
 ```bash
-pip install libp2p py-multiformats-cid
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" py-multiformats-cid
 ```
 
 **Fallback:** If not installed, cache works in local-only mode (no P2P sharing)
@@ -443,7 +443,7 @@ def test_p2p_cache_sharing():
 
 **Check libp2p:**
 ```bash
-python3 -c "import libp2p" && echo "✅ OK" || echo "❌ Install: pip install libp2p"
+python3 -c "import libp2p" && echo "✅ OK" || echo "❌ Install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main'"
 ```
 
 **Check logs:**

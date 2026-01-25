@@ -58,7 +58,7 @@ The Distributed GitHub API Cache is a peer-to-peer (P2P) cache system built **di
 pip install requests PyGithub
 
 # P2P features (optional but recommended)
-pip install libp2p
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
 
 # Encryption (required for P2P)
 pip install cryptography
@@ -67,8 +67,18 @@ pip install cryptography
 pip install py-multiformats-cid
 
 # Or install all at once
-pip install libp2p cryptography py-multiformats-cid requests PyGithub
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid requests PyGithub
 ```
+
+## Two-Laptop Quickstart (Smoke Test)
+
+For a practical end-to-end validation (writer broadcasts, reader receives), use:
+- Runbook: [GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
+- Smoke tool: [tools/github_p2p_cache_smoke.py](tools/github_p2p_cache_smoke.py)
+
+The smoke test supports both:
+- **Real**: writer performs a real `gh` call (`get_repo_info`) and broadcasts the resulting cache entry.
+- **Synthetic**: writer broadcasts a synthetic entry (no GitHub API call).
 
 ### 2. Configure Cache (Optional)
 

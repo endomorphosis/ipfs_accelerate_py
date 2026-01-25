@@ -4,7 +4,7 @@
 
 ```bash
 # 1. Install dependencies
-pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 
 # 2. Run diagnostic
 python test_docker_runner_cache_connectivity.py
@@ -161,7 +161,7 @@ export AWS_S3_REGION=us-east-1
 
 ```bash
 # Install P2P dependencies
-pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 ```
 
 ### Issue: "Cannot connect to bootstrap peer"
@@ -293,7 +293,7 @@ jobs:
     
     - name: Install P2P dependencies
       run: |
-        pip install libp2p>=0.4.0 pymultihash>=0.8.2 \
+        pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 \
                     py-multiformats-cid cryptography
     
     - name: Run diagnostic

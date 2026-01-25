@@ -133,7 +133,7 @@ Bootstrap Peers → Peer Discovery → Cache Sharing
 ```bash
 ✅ cryptography==46.0.1         # Encryption
 ✅ py-multiformats-cid==0.4.4   # Content addressing
-✅ libp2p==0.4.0                # P2P networking
+✅ libp2p @ git+https://github.com/libp2p/py-libp2p@main  # P2P networking
 ✅ multiaddr==0.0.11            # P2P addressing
 ✅ trio==0.31.0                 # Async framework
 ```
@@ -233,7 +233,7 @@ print(f"API calls saved: {stats['api_calls_saved']}")
 ```bash
 # Install if needed
 sudo apt-get install libgmp-dev
-pip install libp2p cryptography py-multiformats-cid
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid
 
 # Enable P2P
 export CACHE_ENABLE_P2P=true
@@ -248,7 +248,7 @@ python -m ipfs_accelerate_py.github_autoscaler
 ```bash
 # Install dependencies
 sudo apt-get install libgmp-dev
-pip install libp2p cryptography py-multiformats-cid
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid
 
 # Enable P2P and set bootstrap peer
 export CACHE_ENABLE_P2P=true

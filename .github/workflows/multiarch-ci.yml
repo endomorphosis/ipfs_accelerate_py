@@ -102,7 +102,7 @@ jobs:
     - name: Install P2P dependencies
       run: |
         echo "📦 Installing P2P cache dependencies..."
-        pip install libp2p>=0.1.5 cryptography py-multiformats-cid || echo "⚠️ P2P dependencies not available, will use local cache only"
+        pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid || echo "⚠️ P2P dependencies not available, will use local cache only"
         
     - name: Initialize P2P Cache
       id: p2p-init

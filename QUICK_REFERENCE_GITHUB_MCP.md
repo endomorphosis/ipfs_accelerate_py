@@ -128,7 +128,7 @@ python3 -c "from ipfs_accelerate_py.github_cli import RunnerManager; m=RunnerMan
 
 ### P2P not working
 **Problem:** libp2p not installed  
-**Solution:** `pip install py-libp2p` (optional)
+**Solution:** `pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"` (optional)
 
 ### Tests fail
 **Problem:** Missing dependencies or authentication  

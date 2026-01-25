@@ -198,7 +198,7 @@ Not tested due to libp2p not being installed:
 - Encrypted message transmission
 - Peer cache reception
 
-**Note:** These features have been implemented but require `pip install libp2p` to test.
+**Note:** These features have been implemented but require `pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"` to test.
 
 ## Performance Observations
 
@@ -250,7 +250,7 @@ None! All expected functionality working correctly.
 
 1. **Install libp2p** (if P2P sharing desired)
    ```bash
-   pip install libp2p
+   pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
    ```
 
 2. **Ensure GitHub Token Available**
@@ -304,7 +304,7 @@ The P2P cache with encryption is fully functional and secure. The only missing p
 
 1. **Optional:** Install libp2p for P2P features
    ```bash
-   pip install libp2p
+   pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
    ```
 
 2. **Deploy** to GitHub Actions runners

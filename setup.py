@@ -146,7 +146,7 @@ setup(
 		],
 		"mcp": [
 			"fastmcp>=0.1.0",
-			"libp2p>=0.1.5",
+			"libp2p @ git+https://github.com/libp2p/py-libp2p@main",
 			"async-timeout>=4.0.0",
 			"flask>=3.0.0",
 			"flask-cors>=4.0.0",
@@ -184,7 +184,7 @@ setup(
 			"seaborn>=0.13.0",
 			"plotly>=5.22.0",
 			"fastmcp>=0.1.0",
-			"libp2p>=0.1.5",
+			"libp2p @ git+https://github.com/libp2p/py-libp2p@main",
 			"async-timeout>=4.0.0",
 			"flask>=3.0.0",
 			"flask-cors>=4.0.0",

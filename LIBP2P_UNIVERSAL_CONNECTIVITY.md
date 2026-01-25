@@ -20,7 +20,7 @@ pip install ipfs_accelerate_py
 
 Or install manually:
 ```bash
-pip install libp2p>=0.4.0
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
 ```
 
 ## Quick Start
@@ -217,7 +217,7 @@ asyncio.run(test_connection())
 ### libp2p not found
 
 ```bash
-pip install libp2p>=0.4.0
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
 ```
 
 ### Port already in use

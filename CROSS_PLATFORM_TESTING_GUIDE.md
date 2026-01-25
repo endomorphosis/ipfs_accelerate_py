@@ -125,7 +125,7 @@ sudo usermod -aG docker $USER
 # Install build dependencies
 sudo apt install build-essential python3-dev libssl-dev libffi-dev
 pip install --upgrade pip setuptools wheel
-pip install libp2p>=0.4.0
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
 ```
 
 **Issue 3: Port already in use**
@@ -172,7 +172,7 @@ python -m venv venv
 python -m pip install --upgrade pip
 
 # 4. Install dependencies
-python -m pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+python -m pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 
 # 5. Run cross-platform test
 python test_cross_platform_cache.py
@@ -322,79 +322,36 @@ python test_cross_platform_cache.py
 
 ## Testing Between Two Laptops
 
-### Setup P2P Connection
+Use the dedicated two-machine smoke tool:
+- [tools/github_p2p_cache_smoke.py](tools/github_p2p_cache_smoke.py)
+- Runbook: [GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
 
-#### On Linux Laptop (Host/Server)
+Quickstart (recommended):
+
+1) On both laptops:
 
 ```bash
-# 1. Find your IP address
-ip addr show | grep "inet " | grep -v 127.0.0.1
-# Example: 192.168.1.100
+export GITHUB_REPOSITORY=owner/repo
+export CACHE_P2P_SHARED_SECRET='replace-with-a-random-shared-secret'
+```
 
-# 2. Start cache with P2P
-export CACHE_ENABLE_P2P=true
+2) Laptop B (reader):
+
+```bash
+export CACHE_LISTEN_PORT=9101
+python tools/github_p2p_cache_smoke.py --read --target octocat/Hello-World --wait-seconds 120 --verbose
+```
+
+3) Laptop A (writer):
+
+```bash
 export CACHE_LISTEN_PORT=9100
-
-# 3. Run test that keeps cache active
-python -c "
-from ipfs_accelerate_py.github_cli.cache import configure_cache
-import time
-
-cache = configure_cache(
-    enable_p2p=True,
-    p2p_listen_port=9100,
-    enable_persistence=False
-)
-
-print(f'P2P Cache running on port 9100')
-print(f'Peer ID: {cache._p2p_host.get_id() if cache._p2p_host else \"N/A\"}')
-print('Press Ctrl+C to stop...')
-
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print('Shutting down...')
-    cache.shutdown()
-"
+python tools/github_p2p_cache_smoke.py --write --target octocat/Hello-World --verbose
 ```
 
-#### On Windows Laptop (Client)
-
-```powershell
-# 1. Configure to connect to Linux laptop
-$LINUX_IP = "192.168.1.100"  # IP from Linux laptop
-$env:CACHE_ENABLE_P2P = "true"
-$env:CACHE_LISTEN_PORT = "9000"
-$env:CACHE_BOOTSTRAP_PEERS = "/ip4/$LINUX_IP/tcp/9100/p2p/<PEER_ID>"
-
-# 2. Test connection
-python -c "
-from ipfs_accelerate_py.github_cli.cache import configure_cache
-
-cache = configure_cache(
-    enable_p2p=True,
-    p2p_listen_port=9000,
-    p2p_bootstrap_peers=[os.environ.get('CACHE_BOOTSTRAP_PEERS')],
-    enable_persistence=False
-)
-
-print(f'Connected peers: {len(cache._p2p_connected_peers)}')
-cache.shutdown()
-"
-```
-
-### Alternative: Test Without P2P (Recommended for Windows)
-
-```powershell
-# Windows laptop - test cache without P2P
-$env:CACHE_ENABLE_P2P = "false"
-
-# Run test
-python test_cross_platform_cache.py
-
-# Expected: All tests pass except P2P tests (which are skipped)
-```
+Notes:
+- If `connected_peers` stays 0 on the writer, inbound firewall/NAT is the usual culprit.
+- For same-host multi-process testing, use `IPFS_ACCELERATE_P2P_CACHE_DIR` + unique `RUNNER_NAME` and set `IPFS_ACCELERATE_P2P_FORCE_LOCALHOST=1`.
 
 ## Validation Checklist
 

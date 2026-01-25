@@ -155,7 +155,7 @@ def ensure_libp2p_compatible():
         # Apply compatibility patches
         if not patch_libp2p_compatibility():
             logger.warning("Could not apply libp2p compatibility patches")
-            logger.info("To enable P2P features, install: pip install libp2p>=0.4.0 pymultihash>=0.8.2")
+            logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main' pymultihash>=0.8.2")
             return False
         
         # Try to import libp2p to verify it works
@@ -165,10 +165,10 @@ def ensure_libp2p_compatible():
             return True
         except ImportError as e:
             logger.warning(f"libp2p package not installed: {e}")
-            logger.info("To enable P2P features, install: pip install libp2p>=0.4.0 pymultihash>=0.8.2")
+            logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main' pymultihash>=0.8.2")
             return False
         
     except Exception as e:
         logger.error(f"Error ensuring libp2p compatibility: {e}")
-        logger.info("To enable P2P features, install: pip install libp2p>=0.4.0 pymultihash>=0.8.2")
+        logger.info("To enable P2P features, install: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main' pymultihash>=0.8.2")
         return False

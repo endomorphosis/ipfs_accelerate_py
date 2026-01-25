@@ -31,7 +31,7 @@ def test_backend_functions():
         
         if not peer_status.get('enabled'):
             logger.info("   ⚠️  P2P is disabled (libp2p not installed)")
-            logger.info("   💡 To enable: pip install libp2p>=0.4.0 pymultihash>=0.8.2")
+            logger.info("   💡 To enable: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main' pymultihash>=0.8.2")
         else:
             logger.info("   ✅ P2P is enabled")
             logger.info(f"   📊 Connected peers: {peer_status.get('peer_count', 0)}")
@@ -130,7 +130,7 @@ def check_libp2p_installation():
     logger.info("\n=== Checking libp2p Installation ===\n")
     
     dependencies = [
-        ('libp2p', 'libp2p', 'pip install libp2p>=0.4.0'),
+        ('libp2p', 'libp2p', "pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main'"),
         ('pymultihash', 'pymultihash', 'pip install pymultihash>=0.8.2'),
         ('multiformats', 'multiformats', 'pip install multiformats>=0.3.0'),
     ]

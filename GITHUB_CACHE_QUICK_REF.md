@@ -139,6 +139,14 @@ cache = configure_cache(max_cache_size=100)
 cache = configure_cache(cache_dir="/tmp/github_cache")
 ```
 
+## P2P / Two Laptops
+
+If you want to share cache entries between machines (to reduce GitHub API rate-limit pressure across runners/laptops):
+
+- [Distributed GitHub API Cache](DISTRIBUTED_CACHE.md)
+- [Two-laptop runbook](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
+- Smoke tool: [tools/github_p2p_cache_smoke.py](tools/github_p2p_cache_smoke.py)
+
 ## Files Added
 
 - `ipfs_accelerate_py/github_cli/cache.py` - Cache implementation

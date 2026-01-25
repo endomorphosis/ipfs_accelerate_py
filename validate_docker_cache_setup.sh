@@ -109,7 +109,7 @@ if python3 -c "import libp2p" 2>/dev/null; then
     print_success "libp2p installed (version ${LIBP2P_VERSION})"
 else
     print_error "libp2p not installed"
-    print_info "Run: pip install libp2p>=0.4.0"
+    print_info "Run: pip install \"libp2p @ git+https://github.com/libp2p/py-libp2p@main\""
 fi
 
 # Check pymultihash

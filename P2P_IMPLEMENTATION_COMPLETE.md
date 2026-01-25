@@ -59,7 +59,7 @@ The MCP dashboard showed "Loading..." indefinitely for the P2P Peer System secti
 
 To enable P2P:
 ```bash
-pip install libp2p>=0.4.0 pymultihash>=0.8.2
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2
 ```
 
 ## Testing
@@ -259,7 +259,7 @@ brew install gmp
 ### Step 2: Install Python Packages
 
 ```bash
-pip install libp2p>=0.4.0 pymultihash>=0.8.2
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2
 ```
 
 ### Step 3: Restart MCP Server

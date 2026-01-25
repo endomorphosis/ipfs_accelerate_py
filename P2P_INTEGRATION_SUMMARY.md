@@ -33,7 +33,7 @@ Both functions are now called automatically when the "Overview" tab is initializ
 
 Updated `requirements.txt` to include:
 ```
-libp2p>=0.4.0  # For peer-to-peer connectivity
+libp2p @ git+https://github.com/libp2p/py-libp2p@main  # For peer-to-peer connectivity (tracks upstream main)
 pymultihash>=0.8.2  # Required by libp2p for peer IDs
 ```
 
@@ -42,7 +42,7 @@ pymultihash>=0.8.2  # Required by libp2p for peer IDs
 Enhanced `patch_libp2p_compatibility()` to:
 - First check for `pymultihash` package (required by libp2p)
 - Provide clear error messages when dependencies are missing
-- Guide users to install: `pip install libp2p>=0.4.0 pymultihash>=0.8.2`
+- Guide users to install: `pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2`
 
 ### 4. Documentation
 
@@ -136,7 +136,7 @@ python3 -m ipfs_accelerate_py.mcp_dashboard
 # Check "Overview" tab -> "🌐 P2P Peer System" section
 
 # 3. Install libp2p and test again
-pip install libp2p>=0.4.0 pymultihash>=0.8.2
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2
 # Restart server and check status changes to enabled
 ```
 
@@ -147,7 +147,7 @@ To enable P2P functionality:
 1. Install dependencies:
    ```bash
    sudo apt-get install -y python3-dev libgmp-dev build-essential
-   pip install libp2p>=0.4.0 pymultihash>=0.8.2
+   pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2
    ```
 
 2. Restart the MCP server:

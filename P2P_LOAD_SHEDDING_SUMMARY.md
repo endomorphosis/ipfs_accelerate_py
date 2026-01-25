@@ -337,7 +337,7 @@ Track these metrics:
 
 **Problem**: No load shedding
 - Verify P2P is enabled (`CACHE_ENABLE_P2P=true`)
-- Check libp2p is installed (`pip install libp2p`)
+- Check libp2p is installed (`pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"`)
 - Ensure instances are on same network
 - Verify encryption keys match (same GitHub token)
 

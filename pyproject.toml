@@ -102,7 +102,7 @@ mcp = [
   "async-timeout>=4.0.0",
 ]
 mcp-p2p = [
-  "libp2p>=0.1.5",
+  "libp2p @ git+https://github.com/libp2p/py-libp2p@main",
 ]
 webnn = [
   "playwright>=1.31.0",

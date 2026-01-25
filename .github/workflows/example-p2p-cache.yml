@@ -27,7 +27,7 @@ jobs:
     - name: Install P2P Dependencies
       run: |
         echo "📦 Installing P2P cache dependencies..."
-        pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+        pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
     
     - name: Run Cache Connectivity Diagnostic
       run: |
@@ -73,7 +73,7 @@ print(f'Cache size: {stats[\"cache_size\"]}')
     
     - name: Install P2P Dependencies
       run: |
-        pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+        pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
     
     - name: Get Docker Host IP
       id: hostip
@@ -141,7 +141,7 @@ print(f'Cache size: {stats[\"cache_size\"]}')
     
     - name: Install P2P Dependencies
       run: |
-        pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+        pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
     
     - name: Start MCP Server
       run: |
@@ -203,7 +203,7 @@ print(f'Connected peers: {len(stats.get(\"connected_peers\", []))}')
     
     - name: Install Dependencies
       run: |
-        pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+        pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
     
     - name: Run Full Diagnostic
       run: |

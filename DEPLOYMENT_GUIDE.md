@@ -334,7 +334,7 @@ pip3 install --upgrade pip
 sudo apt-get install build-essential python3-dev
 
 # Try installing with verbose output
-pip3 install -v libp2p
+pip3 install -v "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
 ```
 
 ### Issue: Cannot Connect to MCP Server

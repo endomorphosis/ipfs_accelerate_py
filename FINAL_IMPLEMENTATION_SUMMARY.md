@@ -274,7 +274,7 @@ steps:
 
 **Issue 1: libp2p not installed**
 ```bash
-pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 ```
 
 **Issue 2: Cannot connect to bootstrap peer**

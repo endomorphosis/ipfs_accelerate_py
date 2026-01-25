@@ -169,7 +169,7 @@ Hit rate: 83.3%    (500 hits / 600 total = 5/6 requests avoided API)
 ### 1. libp2p Dependencies Installed
 
 ```bash
-pip install libp2p>=0.1.5 cryptography py-multiformats-cid
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid
 ```
 
 **Status in workflows:** ✅ Workflows auto-install these (commit 2f4c49a)

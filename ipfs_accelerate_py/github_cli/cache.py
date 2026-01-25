@@ -1281,7 +1281,10 @@ class GitHubAPICache:
     def _init_p2p(self) -> None:
         """Initialize P2P networking for cache sharing in a Trio background thread (thread-safe)."""
         if not HAVE_LIBP2P:
-            raise RuntimeError("libp2p not available, install with: pip install libp2p")
+            raise RuntimeError(
+                "libp2p not available, install with: "
+                "pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main'"
+            )
 
         with self._p2p_init_lock:
             if self._p2p_initialized or self._p2p_thread_running:
@@ -1452,7 +1455,19 @@ class GitHubAPICache:
             if self._bootstrap_helper:
                 peer_id = self._p2p_host.get_id().pretty()
                 advertised = self._get_advertised_multiaddrs()
-                multiaddr = advertised[0] if advertised else f"/ip4/127.0.0.1/tcp/{self._p2p_listen_port}/p2p/{peer_id}"
+
+                # When using the local file-based registry (SimplePeerBootstrap),
+                # peers are typically on the same host. Advertising a public IP
+                # can fail due to hairpin NAT or firewall policies, so prefer a
+                # loopback multiaddr for local discovery.
+                force_localhost_env = os.environ.get("IPFS_ACCELERATE_P2P_FORCE_LOCALHOST")
+                force_localhost = force_localhost_env == "1"
+                disable_force_localhost = force_localhost_env == "0"
+                is_local_registry = type(self._bootstrap_helper).__name__ == "SimplePeerBootstrap"
+                if (force_localhost or is_local_registry) and not disable_force_localhost:
+                    multiaddr = f"/ip4/127.0.0.1/tcp/{self._p2p_listen_port}/p2p/{peer_id}"
+                else:
+                    multiaddr = advertised[0] if advertised else f"/ip4/127.0.0.1/tcp/{self._p2p_listen_port}/p2p/{peer_id}"
                 self._bootstrap_helper.register_peer(peer_id, self._p2p_listen_port, multiaddr)
         except Exception:
             pass

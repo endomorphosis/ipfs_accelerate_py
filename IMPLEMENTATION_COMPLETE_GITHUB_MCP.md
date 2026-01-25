@@ -254,7 +254,7 @@ print(f'Labels: {mgr.get_runner_labels()}')
   - See: `GITHUB_AUTH_SETUP.md`
 
 - **P2P cache sharing** - Optional enhancement
-  - Install: `pip install py-libp2p`
+    - Install: `pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"`
   - Enables cache sharing across multiple instances
 
 ## Dashboard Behavior

@@ -4,20 +4,24 @@
 
 A peer-to-peer cache system **built directly into the GitHub CLI wrapper** that automatically shares cached API responses between GitHub Actions runners, reducing rate limit usage by 80%+. **Messages are encrypted** using your GitHub token as the shared secret.
 
+For an end-to-end validation on two machines, use the runbook and smoke tool:
+- [GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
+- [tools/github_p2p_cache_smoke.py](tools/github_p2p_cache_smoke.py)
+
 ## Key Points
 
 ✅ **No separate service** - integrated into `ipfs_accelerate_py.github_cli`  
 ✅ **Zero configuration** - works automatically with sensible defaults  
 ✅ **Transparent** - no code changes needed in existing scripts  
 ✅ **Optional** - gracefully falls back if P2P libraries unavailable  
-✅ **Secure** - AES-256 encryption using GitHub token (only authorized runners can decrypt)  
+✅ **Secure** - encrypted messages using `CACHE_P2P_SHARED_SECRET` (recommended) or GitHub token-derived key  
 
 ## Quick Start
 
 ### 1. Install P2P Dependencies (Optional)
 
 ```bash
-pip install libp2p cryptography py-multiformats-cid
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid
 ```
 
 **Note:** `cryptography` is required for encrypted P2P messages.
@@ -50,6 +54,8 @@ repos = gh.list_repos(owner="endomorphosis")
 | `CACHE_ENABLE_P2P` | `true` | Enable P2P cache sharing |
 | `CACHE_LISTEN_PORT` | `9000` | libp2p listen port |
 | `CACHE_BOOTSTRAP_PEERS` | (none) | Comma-separated peer multiaddrs |
+| `CACHE_P2P_SHARED_SECRET` | (none) | Shared encryption secret (recommended across machines) |
+| `GITHUB_REPOSITORY` | (none) | Optional GitHub repo used for cross-host peer discovery |
 | `CACHE_DEFAULT_TTL` | `300` | Cache TTL in seconds |
 | `CACHE_DIR` | `~/.cache/github_cli` | Cache storage directory |
 

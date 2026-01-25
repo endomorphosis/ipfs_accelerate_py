@@ -161,7 +161,7 @@ gh = GitHubCLI(
 
 P2P cache sharing is enabled when:
 1. `enable_p2p=True` in cache configuration
-2. `libp2p` is installed (`pip install py-libp2p`)
+2. `libp2p` is installed (`pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"`)
 
 Check P2P status:
 ```python
@@ -253,7 +253,7 @@ print(f'Total entries: {cache.get_stats()[\"total_entries\"]}')
 ### P2P not connecting
 
 **Requirements**:
-- `libp2p` must be installed: `pip install py-libp2p`
+- `libp2p` must be installed: `pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"`
 - Port 9100 must be open for P2P connections
 - Firewall must allow P2P traffic
 
@@ -265,7 +265,7 @@ cache = get_global_cache()
 stats = cache.get_stats()
 print(f'P2P enabled: {stats[\"p2p_enabled\"]}')
 if not stats['p2p_enabled']:
-    print('Install libp2p: pip install py-libp2p')
+    print('Install libp2p: pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"')
 "
 ```
 

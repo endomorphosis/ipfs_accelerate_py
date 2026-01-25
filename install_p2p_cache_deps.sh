@@ -58,7 +58,7 @@ echo ""
 
 # Core dependencies
 DEPENDENCIES=(
-    "libp2p>=0.4.0"
+    "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
     "pymultihash>=0.8.2"
     "py-multiformats-cid"
     "cryptography"

@@ -96,7 +96,7 @@ libp2p Core:
 ```bash
 ✅ cryptography==46.0.1         # Encryption
 ✅ py-multiformats-cid==0.4.4   # Content addressing
-✅ libp2p==0.4.0                # P2P networking
+✅ libp2p @ git+https://github.com/libp2p/py-libp2p@main  # P2P networking
 ✅ multiaddr==0.0.11            # P2P addressing
 ✅ trio==0.31.0                 # Async framework
 ```

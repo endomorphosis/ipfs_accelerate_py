@@ -146,7 +146,7 @@ When workflows run, they:
 1. **Initialize P2P cache** (via workflow step)
    ```yaml
    - name: Install P2P dependencies
-     run: pip install libp2p>=0.1.5 cryptography py-multiformats-cid
+    run: pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography py-multiformats-cid
    
    - name: Initialize P2P Cache
      run: |
@@ -240,7 +240,7 @@ Expected results:
 **Check:**
 1. Is `CACHE_ENABLE_P2P=true` set in workflows?
 2. Is `MCP_P2P_BOOTSTRAP_PEERS` secret configured?
-3. Are P2P dependencies installed? (`pip install libp2p...`)
+3. Are P2P dependencies installed? (`pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" ...`)
 4. Is MCP server reachable on port 9100?
 
 ### Tests Fail

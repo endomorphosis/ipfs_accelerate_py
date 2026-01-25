@@ -34,7 +34,7 @@ python test_docker_runner_cache_connectivity.py
 
 ```bash
 # Install P2P dependencies
-pip install libp2p>=0.4.0 pymultihash>=0.8.2 py-multiformats-cid cryptography
+pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2 py-multiformats-cid cryptography
 
 # Configure environment
 export CACHE_ENABLE_P2P=true
@@ -193,7 +193,7 @@ pip3 install --upgrade pip
 sudo apt-get install build-essential python3-dev
 
 # Retry with verbose output
-pip3 install -v libp2p
+pip3 install -v "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
 ```
 
 ### Issue: Cannot Connect to Bootstrap Peer

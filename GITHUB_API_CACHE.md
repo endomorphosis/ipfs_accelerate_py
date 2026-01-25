@@ -11,6 +11,14 @@ The GitHub CLI wrapper now includes intelligent caching to minimize API calls to
 - **Reduce network usage**: Fewer API calls means less bandwidth
 - **Persist across sessions**: Cache is saved to disk and reloaded on restart
 
+## Sharing cache entries between machines (P2P)
+
+If you want to share cache entries across multiple machines/runners using libp2p (so only one peer needs to make a given GitHub API call), see:
+
+- [Distributed GitHub API Cache](DISTRIBUTED_CACHE.md)
+- [Two-laptop runbook](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
+- Smoke tool: [tools/github_p2p_cache_smoke.py](tools/github_p2p_cache_smoke.py)
+
 ## Features
 
 ### Automatic Caching

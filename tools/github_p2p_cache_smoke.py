@@ -57,12 +57,39 @@ def _safe_json(obj: Any) -> str:
         return str(obj)
 
 
+def _wait_for_connected_peers(cache: Any, *, min_peers: int, timeout_s: float, poll_s: float = 0.25) -> bool:
+    """Best-effort wait until the cache reports at least `min_peers` connected peers."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        try:
+            stats = cache.get_stats()
+            connected = int(stats.get("connected_peers", 0) or 0)
+            if connected >= min_peers:
+                return True
+        except Exception:
+            pass
+        time.sleep(poll_s)
+    return False
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="P2P GitHub API cache smoke test")
-    parser.add_argument("--registry-repo", default=os.environ.get("GITHUB_REPOSITORY"), help="GitHub repo used for discovery (owner/repo). Defaults to GITHUB_REPOSITORY")
+    parser.add_argument(
+        "--registry-repo",
+        default=os.environ.get("GITHUB_REPOSITORY"),
+        help=(
+            "GitHub repo used for discovery (owner/repo). Defaults to GITHUB_REPOSITORY. "
+            "If omitted, the cache falls back to local file-based peer discovery (see IPFS_ACCELERATE_P2P_CACHE_DIR)."
+        ),
+    )
     parser.add_argument("--listen-port", type=int, default=int(os.environ.get("CACHE_LISTEN_PORT", "9100")))
     parser.add_argument("--cache-dir", default=os.environ.get("IPFS_ACCELERATE_CACHE_DIR"), help="Optional cache directory (defaults to ~/.cache/github_cli)")
     parser.add_argument("--shared-secret", default=os.environ.get("CACHE_P2P_SHARED_SECRET"), help="Optional shared secret for encryption; sets CACHE_P2P_SHARED_SECRET")
+    parser.add_argument(
+        "--disable-discovery",
+        action="store_true",
+        help="Disable peer discovery entirely (no GitHub issue registry and no local file-based discovery).",
+    )
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true", help="Perform a GitHub API call and broadcast the resulting cache entry")
@@ -81,9 +108,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.shared_secret:
         os.environ["CACHE_P2P_SHARED_SECRET"] = args.shared_secret
 
-    if not args.registry_repo:
-        print("ERROR: --registry-repo is required (or set GITHUB_REPOSITORY)", file=sys.stderr)
-        return 2
+    enable_peer_discovery = not args.disable_discovery
 
     from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
 
@@ -95,7 +120,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         enable_p2p=True,
         p2p_listen_port=args.listen_port,
         github_repo=args.registry_repo,
-        enable_peer_discovery=True,
+        enable_peer_discovery=enable_peer_discovery,
     )
 
     try:
@@ -111,6 +136,16 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         if args.write:
             _print_banner(label="Writer")
+
+            # The P2P runtime initializes in a background thread and does its
+            # initial bootstrap connect asynchronously. For a smoke test, it's
+            # useful to wait briefly for at least one peer connection before
+            # writing/broadcasting.
+            if enable_peer_discovery:
+                connected = _wait_for_connected_peers(cache, min_peers=1, timeout_s=15.0)
+                if not connected:
+                    print("WARNING: No connected peers yet; broadcast may be a no-op.")
+
             if args.synthetic:
                 payload = {
                     "kind": "synthetic",
@@ -132,7 +167,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 print("Fetched repo info (and cached it).")
 
             # Give some time for discovery/dial and broadcast.
-            time.sleep(3.0)
+            time.sleep(5.0)
             print("Post-write stats:\n" + _safe_json(cache.get_stats()))
             print("Writer done.")
             return 0
