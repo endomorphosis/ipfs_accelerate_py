@@ -31,7 +31,174 @@ import os
 import socket
 import sys
 import time
+from pathlib import Path
+import tempfile
+import subprocess
 from typing import Any, Optional
+
+
+def _ensure_repo_on_syspath() -> None:
+    """Allow running this script without `pip install -e .`.
+
+    When executed from outside the repo root (e.g., `/tmp`), Python won't be
+    able to import the local `ipfs_accelerate_py` package unless the repo root
+    is on `sys.path`.
+    """
+
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+
+
+def _loopback_multiaddr(*, port: int, peer_id: str) -> str:
+    return f"/ip4/127.0.0.1/tcp/{port}/p2p/{peer_id}"
+
+
+def _run_local_two_node_demo(args: argparse.Namespace) -> int:
+    """Run a single-command local demo by spawning a writer subprocess.
+
+    This avoids needing two terminals / two machines for a basic end-to-end test.
+    It uses a synthetic cache entry (no GitHub API access needed).
+    """
+
+    _ensure_repo_on_syspath()
+
+    if not args.synthetic:
+        print("NOTE: --local-two-node forces --synthetic to avoid GitHub API calls.")
+        args.synthetic = True
+
+    if args.cache_dir:
+        print("NOTE: --local-two-node ignores --cache-dir and uses temp dirs.")
+
+    base_dir = Path(tempfile.mkdtemp(prefix="ipfs_accel_p2p_smoke_"))
+    p2p_registry_dir = base_dir / "p2p_peers"
+    reader_cache_dir = base_dir / "reader_cache"
+    writer_cache_dir = base_dir / "writer_cache"
+    p2p_registry_dir.mkdir(parents=True, exist_ok=True)
+    reader_cache_dir.mkdir(parents=True, exist_ok=True)
+    writer_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    reader_port = int(args.listen_port)
+    writer_port = reader_port + 1
+
+    if args.shared_secret:
+        os.environ["CACHE_P2P_SHARED_SECRET"] = args.shared_secret
+
+    # Force local file-based peer discovery by ensuring no repo is set.
+    os.environ["GITHUB_REPOSITORY"] = ""
+    os.environ["IPFS_ACCELERATE_P2P_CACHE_DIR"] = str(p2p_registry_dir)
+
+    from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+
+    _print_banner(label="Local demo: reader starting")
+    cache = GitHubAPICache(
+        cache_dir=str(reader_cache_dir),
+        enable_persistence=True,
+        enable_p2p=True,
+        p2p_listen_port=reader_port,
+        github_repo=None,
+        enable_peer_discovery=True,
+    )
+
+    try:
+        stats = cache.get_stats()
+        print("Reader initial stats:\n" + _safe_json(stats))
+        peer_id = str(stats.get("peer_id") or "")
+        if not peer_id:
+            print("ERROR: reader did not report a peer_id; cannot run local demo", file=sys.stderr)
+            return 2
+
+        reader_bootstrap = _loopback_multiaddr(port=reader_port, peer_id=peer_id)
+        print("Reader bootstrap addr (loopback):\n" + _safe_json([reader_bootstrap]))
+
+        # Start writer subprocess, pointing it at the reader via CACHE_BOOTSTRAP_PEERS.
+        writer_env = dict(os.environ)
+        writer_env["GITHUB_REPOSITORY"] = ""
+        writer_env["IPFS_ACCELERATE_P2P_CACHE_DIR"] = str(p2p_registry_dir)
+        writer_env["IPFS_ACCELERATE_CACHE_DIR"] = str(writer_cache_dir)
+        writer_env["CACHE_BOOTSTRAP_PEERS"] = reader_bootstrap
+        if args.shared_secret:
+            writer_env["CACHE_P2P_SHARED_SECRET"] = args.shared_secret
+
+        writer_cmd = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--write",
+            "--synthetic",
+            "--target",
+            args.target,
+            "--listen-port",
+            str(writer_port),
+            "--cache-dir",
+            str(writer_cache_dir),
+            "--registry-repo",
+            "",
+        ]
+        if args.verbose:
+            writer_cmd.append("--verbose")
+
+        _print_banner(label="Local demo: spawning writer")
+        print("Writer command:\n" + _safe_json(writer_cmd))
+        writer = subprocess.Popen(
+            writer_cmd,
+            env=writer_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+
+        deadline = time.time() + float(args.wait_seconds)
+        while time.time() < deadline:
+            value = cache.get("p2p_smoke", target=args.target)
+            if value is not None:
+                print("Received cache entry from writer!")
+                print("Value:\n" + _safe_json(value))
+                print("Final reader stats:\n" + _safe_json(cache.get_stats()))
+
+                try:
+                    out = writer.communicate(timeout=10)[0]
+                    if out:
+                        print("\n--- Writer output ---\n" + out)
+                except Exception:
+                    pass
+
+                return 0
+
+            # If the writer exits early, surface its output and fail fast.
+            rc = writer.poll()
+            if rc is not None:
+                out = ""
+                try:
+                    out = writer.communicate(timeout=5)[0] or ""
+                except Exception:
+                    pass
+                print(f"Writer exited early with code {rc}")
+                if out:
+                    print("\n--- Writer output ---\n" + out)
+                print("Reader stats:\n" + _safe_json(cache.get_stats()))
+                return 1
+
+            time.sleep(float(args.poll_interval))
+
+        print("Timed out waiting for cache entry (local demo).")
+        print("Final reader stats:\n" + _safe_json(cache.get_stats()))
+        try:
+            out = writer.communicate(timeout=5)[0]
+            if out:
+                print("\n--- Writer output ---\n" + out)
+        except Exception:
+            try:
+                writer.terminate()
+            except Exception:
+                pass
+        return 1
+
+    finally:
+        try:
+            cache.shutdown()
+        except Exception:
+            pass
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -97,6 +264,14 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     parser.add_argument("--target", default="octocat/Hello-World", help="Target repo for get_repo_info (owner/repo)")
     parser.add_argument("--synthetic", action="store_true", help="Use a synthetic cache entry instead of calling gh (avoids GitHub API)")
+    parser.add_argument(
+        "--local-two-node",
+        action="store_true",
+        help=(
+            "Run a one-command local demo by starting a reader in this process and spawning a synthetic writer subprocess. "
+            "Uses loopback bootstrap (no GitHub API required)."
+        ),
+    )
     parser.add_argument("--wait-seconds", type=int, default=60)
     parser.add_argument("--poll-interval", type=float, default=1.0)
     parser.add_argument("--verbose", action="store_true")
@@ -104,6 +279,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     _configure_logging(args.verbose)
+
+    _ensure_repo_on_syspath()
+
+    if args.local_two_node:
+        if args.read or args.write:
+            # The mutually-exclusive group enforces one; we allow either but
+            # local-two-node always behaves like a reader orchestrator.
+            pass
+        return _run_local_two_node_demo(args)
 
     if args.shared_secret:
         os.environ["CACHE_P2P_SHARED_SECRET"] = args.shared_secret

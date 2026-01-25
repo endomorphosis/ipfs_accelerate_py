@@ -16,6 +16,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
+  # Persisted GitHub API cache (restored via actions/cache)
+  CACHE_DIR: ${{ github.workspace }}/.cache/github-api
+  IPFS_ACCELERATE_CACHE_DIR: ${{ github.workspace }}/.cache/github-api
 
 jobs:
   # Job 1: Setup cache infrastructure

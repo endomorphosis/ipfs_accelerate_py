@@ -1837,6 +1837,12 @@ class GitHubAPICache:
         try:
             # Read encrypted cache entry data
             encrypted_data = await stream.read()
+
+            # A peer can disconnect before sending a payload. Treat this as a
+            # normal stream close (not an error).
+            if not encrypted_data:
+                logger.debug("Received empty cache stream; peer likely disconnected")
+                return
             
             # Decrypt message
             message = self._decrypt_message(encrypted_data)
@@ -1888,7 +1894,17 @@ class GitHubAPICache:
             await stream.write(b"OK")
         
         except Exception as e:
-            logger.error(f"Error handling cache stream: {e}")
+            msg = repr(e) if e is not None else ""
+            benign_disconnect_markers = (
+                "Yamux connection closed",
+                "Connection closed during read operation",
+                "expected 2 bytes but received 0 bytes",
+                "StreamReset",
+            )
+            if any(marker in msg for marker in benign_disconnect_markers):
+                logger.debug("Cache stream closed by peer: %r", e)
+            else:
+                logger.error("Error handling cache stream: %r", e)
         finally:
             await stream.close()
     
