@@ -3645,7 +3645,7 @@ except ImportError:
             Returns:
                 Tuple of (endpoint, processor, handler, queue, batch_size)
             """
-            # Import torch and asyncio for creating mock components
+            # Import torch and AnyIO for creating mock components
             try:
                 import torch
                 

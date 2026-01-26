@@ -80,7 +80,7 @@ The project aimed to implement a comprehensive integration between browser-based
 
 - **Unified API**: Consistent interface for both WebNN and WebGPU
 - **Flexible Configuration**: Extensive options for customization
-- **Async/Await Support**: Modern Python with asyncio integration
+- **Async/Await Support**: Modern Python with AnyIO integration
 - **Type Hints**: Comprehensive type hints for better IDE support
 - **Error Handling**: Graceful handling of browser and network errors
 - **Database Integration**: Storage and analysis of results in DuckDB

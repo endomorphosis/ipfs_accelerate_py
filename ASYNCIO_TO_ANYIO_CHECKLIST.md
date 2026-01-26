@@ -1,34 +1,33 @@
-# AsyncIO to AnyIO Migration Checklist
+# AnyIO Migration Checklist
 
-Use this checklist when migrating a file from asyncio to anyio.
+Use this checklist when migrating a file to AnyIO.
 
 ## Before Starting
 
-- [ ] Read `ASYNCIO_TO_ANYIO_README.md` and `ASYNCIO_TO_ANYIO_MIGRATION.md`
+- [ ] Read the migration docs and current progress notes
 - [ ] Ensure `anyio>=4.0.0` is installed
 - [ ] Run `test_anyio_migration.py` to verify anyio works
 - [ ] Create a backup of the file or commit to git
 
 ## Step 1: Import Changes
 
-- [ ] Replace `import asyncio` with `import anyio`
+- [ ] Add `import anyio` where needed
 - [ ] Add `import inspect` if using `iscoroutinefunction`
-- [ ] Remove or comment out unused asyncio imports
+- [ ] Remove or comment out unused legacy async imports
 
 ## Step 2: Basic Replacements
 
-- [ ] Replace `asyncio.run(func())` with `anyio.run(func)`
-- [ ] Replace `asyncio.sleep(n)` with `anyio.sleep(n)`
-- [ ] Replace `asyncio.Event()` with `anyio.Event()`
-- [ ] Replace `asyncio.Lock()` with `anyio.Lock()`
-- [ ] Replace `asyncio.iscoroutinefunction()` with `inspect.iscoroutinefunction()`
+- [ ] Use `anyio.run(func)` at sync entry points
+- [ ] Use `anyio.sleep(n)`
+- [ ] Use `anyio.Event()` and `anyio.Lock()`
+- [ ] Use `inspect.iscoroutinefunction()` for coroutine checks
 
 ## Step 3: Queue Migration
 
-For each `asyncio.Queue`:
+For each queue usage:
 
 - [ ] Identify all `Queue` creations
-- [ ] Replace `queue = asyncio.Queue(n)` with:
+- [ ] Replace queue creation with:
   ```python
   send_stream, receive_stream = anyio.create_memory_object_stream(max_buffer_size=n)
   ```
@@ -53,15 +52,15 @@ For each `create_task` or `gather`:
 
 ## Step 5: Timeout Handling
 
-For each `wait_for`:
+For each timed operation:
 
-- [ ] Replace `asyncio.wait_for(func(), timeout=n)` with:
+- [ ] Replace timeouts with:
   ```python
   with anyio.fail_after(n):
       await func()
   ```
 - [ ] Or use `move_on_after(n)` if you want to continue on timeout
-- [ ] Replace `asyncio.TimeoutError` with `TimeoutError` (built-in)
+- [ ] Use `TimeoutError` (built-in)
 
 ## Step 6: Thread Execution
 
@@ -76,19 +75,16 @@ For each executor usage:
 
 ## Step 7: Event Loop Management
 
-- [ ] Remove `asyncio.get_event_loop()`
-- [ ] Remove `asyncio.new_event_loop()`
-- [ ] Remove `asyncio.set_event_loop()`
-- [ ] Remove `loop.run_until_complete()`
+- [ ] Remove manual loop setup and teardown
+- [ ] Remove `run_until_complete()` usage
 - [ ] Replace sync-to-async bridges with `anyio.from_thread.run()`
 
 ## Step 8: Less Common Patterns
 
-- [ ] Replace `asyncio.wait()` with task groups
-- [ ] Replace `asyncio.as_completed()` with appropriate pattern
-- [ ] Replace `asyncio.create_subprocess_*` with anyio subprocess
-- [ ] Update any `asyncio.CancelledError` to `anyio.get_cancelled_exc_class()`
-- [ ] Check for `asyncio.shield()` usage (may need different pattern)
+- [ ] Replace ad-hoc wait patterns with task groups
+- [ ] Use AnyIO subprocess APIs where applicable
+- [ ] Use `anyio.get_cancelled_exc_class()` for cancellation checks
+- [ ] Review shield-like semantics and adjust patterns
 
 ## Step 9: Testing
 
@@ -96,29 +92,25 @@ For each executor usage:
 - [ ] Run file's unit tests if they exist
 - [ ] Test the functionality manually
 - [ ] Run the full test suite
-- [ ] Verify no asyncio references remain: `grep -n "asyncio" filename.py`
+- [ ] Verify no legacy async references remain
 
 ## Step 10: Documentation
 
-- [ ] Update docstrings if they mention asyncio
+- [ ] Update docstrings if they mention legacy async APIs
 - [ ] Update inline comments
 - [ ] Add a note about anyio migration if significant
-- [ ] Update `ASYNCIO_TO_ANYIO_MIGRATION.md` progress section
+- [ ] Update migration progress notes if applicable
 
 ## Common Pitfalls
 
 ### ❌ Don't Do This:
 ```python
-# Using asyncio.run inside anyio context
+# Calling anyio.run inside an async context
 async def main():
-    asyncio.run(some_func())  # WRONG
+  anyio.run(some_func)  # WRONG
 
-# Mixing asyncio and anyio primitives
-queue = asyncio.Queue()
-event = anyio.Event()  # INCONSISTENT
-
-# Manual event loop in anyio
-loop = asyncio.get_event_loop()  # UNNECESSARY
+# Mixing AnyIO primitives with non-AnyIO sync loops
+# (avoid manual loop management)
 ```
 
 ### ✅ Do This Instead:
@@ -137,32 +129,29 @@ event = anyio.Event()  # CONSISTENT
 
 ## Quick Reference
 
-| Pattern | Before (asyncio) | After (anyio) |
-|---------|------------------|---------------|
-| Run | `asyncio.run(f())` | `anyio.run(f)` |
-| Sleep | `await asyncio.sleep(1)` | `await anyio.sleep(1)` |
-| Queue | `asyncio.Queue(10)` | `anyio.create_memory_object_stream(10)` |
-| Task | `asyncio.create_task(f())` | Task group with `tg.start_soon(f)` |
-| Gather | `asyncio.gather(a, b)` | Task group with multiple `start_soon` |
-| Timeout | `asyncio.wait_for(f(), 5)` | `with anyio.fail_after(5): await f()` |
-| Thread | `loop.run_in_executor(None, f)` | `anyio.to_thread.run_sync(f)` |
-| Event | `asyncio.Event()` | `anyio.Event()` |
-| Lock | `asyncio.Lock()` | `anyio.Lock()` |
+- Run: `anyio.run(f)`
+- Sleep: `await anyio.sleep(1)`
+- Queue: `anyio.create_memory_object_stream(10)`
+- Task: task group with `tg.start_soon(f)`
+- Timeout: `with anyio.fail_after(5): await f()`
+- Thread: `anyio.to_thread.run_sync(f)`
+- Event: `anyio.Event()`
+- Lock: `anyio.Lock()`
 
 ## After Migration
 
 - [ ] Remove `.backup` files if everything works
 - [ ] Commit changes with descriptive message
-- [ ] Update the migration progress in `ASYNCIO_TO_ANYIO_MIGRATION.md`
+- [ ] Update migration progress notes
 - [ ] Share learnings with team if you found any edge cases
 
 ## Getting Help
 
 If stuck:
-1. Check `ASYNCIO_TO_ANYIO_MIGRATION.md` for patterns
+1. Review migration docs for patterns
 2. Look at already-migrated files (ipfs_accelerate_py.py, main.py)
 3. Run `test_anyio_migration.py` to see examples
-4. Use `migrate_to_anyio.py` for automated suggestions
+4. Use migration tooling for automated suggestions
 5. Read AnyIO docs: https://anyio.readthedocs.io/
 
 ---

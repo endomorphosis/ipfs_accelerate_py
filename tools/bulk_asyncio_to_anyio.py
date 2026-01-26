@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bulk asyncio -> anyio migration helper.
+"""Bulk AnyIO migration helper.
 
 Goal
 ----
@@ -26,8 +26,8 @@ Apply repo-wide but skip tests:
 Notes
 -----
 This tool intentionally does NOT try to auto-convert:
-- asyncio.create_task / gather -> anyio task groups
-- asyncio.Queue -> anyio memory object streams
+- anyio task groups
+- anyio memory object streams
 - event loop management (get_event_loop/new_event_loop/set_event_loop)
 Those are left as-is with inline TODO markers so the code stays valid.
 """

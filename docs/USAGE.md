@@ -72,7 +72,7 @@ print(result)
 ### Asynchronous Usage
 
 ```python
-import asyncio
+import anyio
 from ipfs_accelerate_py import ipfs_accelerate_py
 
 async def main():
@@ -89,7 +89,7 @@ async def main():
     print(result)
 
 # Run the async example
-asyncio.run(main())
+anyio.run(main)
 ```
 
 ## Basic Usage
@@ -131,7 +131,7 @@ vision_result = accelerator.process(
 Enable IPFS acceleration for distributed inference:
 
 ```python
-import asyncio
+import anyio
 
 async def ipfs_inference():
     accelerator = ipfs_accelerate_py({}, {})
@@ -145,7 +145,7 @@ async def ipfs_inference():
     
     return result
 
-result = asyncio.run(ipfs_inference())
+result = anyio.run(ipfs_inference)
 ```
 
 ## Configuration
@@ -372,7 +372,7 @@ except Exception as e:
 ### Advanced Error Handling
 
 ```python
-import asyncio
+import anyio
 import logging
 
 async def robust_inference():
@@ -427,24 +427,27 @@ for input_data in batch_inputs:
 ### Async Batch Processing
 
 ```python
-import asyncio
+import anyio
 
 async def process_batch():
     accelerator = ipfs_accelerate_py({}, {})
-    
-    tasks = []
-    for input_data in batch_inputs:
-        task = accelerator.process_async(
+    results = []
+
+    async def run_one(input_data):
+        result = await accelerator.process_async(
             model="bert-base-uncased",
             input_data=input_data,
             endpoint_type="text_embedding"
         )
-        tasks.append(task)
-    
-    results = await asyncio.gather(*tasks)
+        results.append(result)
+
+    async with anyio.create_task_group() as tg:
+        for input_data in batch_inputs:
+            tg.start_soon(run_one, input_data)
+
     return results
 
-batch_results = asyncio.run(process_batch())
+batch_results = anyio.run(process_batch)
 ```
 
 ### Memory Optimization
@@ -539,7 +542,7 @@ benchmark_results = benchmark_hardware()
 ### Example 3: IPFS Content Distribution
 
 ```python
-import asyncio
+import anyio
 
 async def distributed_inference():
     accelerator = ipfs_accelerate_py({
@@ -562,7 +565,7 @@ async def distributed_inference():
     
     return result
 
-distributed_result = asyncio.run(distributed_inference())
+distributed_result = anyio.run(distributed_inference)
 ```
 
 For more examples, see the [examples directory](../examples/) and the [WebNN/WebGPU README](../WEBNN_WEBGPU_README.md).

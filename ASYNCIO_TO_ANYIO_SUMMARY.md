@@ -1,12 +1,12 @@
-# AsyncIO to AnyIO Migration Summary
+# AnyIO Migration Summary
 
 ## Overview
 
-Successfully initiated the migration from asyncio to anyio across the IPFS Accelerate Python project. This migration enables cross-platform async compatibility and provides better structured concurrency support.
+Successfully initiated the migration to anyio across the IPFS Accelerate Python project. This migration enables cross-platform async compatibility and provides better structured concurrency support.
 
 ## Why AnyIO?
 
-1. **Backend Agnostic**: Works with asyncio, trio, and curio
+1. **Backend Agnostic**: Works with multiple async backends (e.g., Trio and Curio)
 2. **Better Structured Concurrency**: Task groups for safer concurrent execution
 3. **Cleaner API**: Modern async patterns with clearer semantics
 4. **Cross-Platform**: Better support for different event loop implementations
@@ -18,23 +18,23 @@ Successfully initiated the migration from asyncio to anyio across the IPFS Accel
 
 ### 2. Core Framework (ipfs_accelerate_py.py)
 **Changes:**
-- Replaced `import asyncio` → `import anyio`
-- Replaced `asyncio.Queue(128)` → `anyio.create_memory_object_stream(max_buffer_size=128)`
-- Replaced `asyncio.sleep()` → `anyio.sleep()`
-- Replaced `asyncio.iscoroutinefunction()` → `inspect.iscoroutinefunction()`
+- Updated imports to `anyio`
+- Replaced queues with `anyio.create_memory_object_stream(max_buffer_size=128)`
+- Replaced sleeps with `anyio.sleep()`
+- Replaced coroutine checks with `inspect.iscoroutinefunction()`
 - Replaced `loop.run_in_executor()` → `anyio.to_thread.run_sync()`
 - Simplified event loop handling with `anyio.from_thread.run()`
 
 **Impact:**
-- ~10 asyncio calls replaced with anyio equivalents
+- ~10 async calls replaced with anyio equivalents
 - Queue implementation now uses memory object streams
 - Removed explicit event loop management
 
 ### 3. FastAPI Server (main.py)
 **Changes:**
-- Replaced `import asyncio` → `import anyio`
-- Replaced `asyncio.sleep()` → `anyio.sleep()`
-- Replaced `asyncio.create_task()` with anyio task groups
+- Updated imports to `anyio`
+- Replaced sleeps with `anyio.sleep()`
+- Replaced task creation with anyio task groups
 - Updated lifespan context manager for proper task management
 
 **Impact:**
@@ -43,8 +43,8 @@ Successfully initiated the migration from asyncio to anyio across the IPFS Accel
 
 ### 4. Examples (examples/example.py)
 **Changes:**
-- Replaced `import asyncio` → `import anyio`
-- Replaced `asyncio.run()` → `anyio.run()`
+- Updated imports to `anyio`
+- Updated entry point to `anyio.run()`
 
 **Impact:**
 - Example code now demonstrates anyio usage
@@ -61,14 +61,7 @@ Successfully initiated the migration from asyncio to anyio across the IPFS Accel
 ## Migration Strategy
 
 ### Queue Migration Pattern
-**Before:**
-```python
-queue = asyncio.Queue(128)
-await queue.put(item)
-item = await queue.get()
-```
-
-**After:**
+**Example:**
 ```python
 send_stream, receive_stream = anyio.create_memory_object_stream(max_buffer_size=128)
 await send_stream.send(item)
@@ -76,13 +69,7 @@ item = await receive_stream.receive()
 ```
 
 ### Task Execution Pattern
-**Before:**
-```python
-task = asyncio.create_task(background_task())
-await asyncio.gather(task1, task2)
-```
-
-**After:**
+**Example:**
 ```python
 async with anyio.create_task_group() as tg:
     tg.start_soon(background_task)
@@ -91,13 +78,7 @@ async with anyio.create_task_group() as tg:
 ```
 
 ### Sync to Async Bridge Pattern
-**Before:**
-```python
-loop = asyncio.get_event_loop()
-result = await loop.run_in_executor(None, sync_func, arg)
-```
-
-**After:**
+**Example:**
 ```python
 result = await anyio.to_thread.run_sync(sync_func, arg)
 ```
@@ -129,7 +110,7 @@ The migration is **partially complete**. Key files migrated:
 ## Statistics
 
 - **Files Modified:** 4 core files
-- **AsyncIO Calls Replaced:** ~15-20 calls
+- **Async Calls Replaced:** ~15-20 calls
 - **New Dependencies:** 1 (anyio)
 - **Tests Added:** 1 comprehensive test suite
 - **Test Pass Rate:** 100% (7/7 tests)
@@ -144,7 +125,7 @@ The migration is **partially complete**. Key files migrated:
 
 ## Compatibility
 
-- **Backward Compatible**: anyio works with existing asyncio code
+- **Backward Compatible**: anyio works with existing async code
 - **Incremental Migration**: Can migrate file by file
 - **No Breaking Changes**: External API remains unchanged
 - **Python Version**: Requires Python 3.8+
@@ -169,9 +150,9 @@ To complete the migration:
 
 ## Documentation
 
-- **Migration Guide**: `ASYNCIO_TO_ANYIO_MIGRATION.md`
+- **Migration Guide**: This document’s companion guide
 - **Test Suite**: `test_anyio_migration.py`
-- **This Summary**: `ASYNCIO_TO_ANYIO_SUMMARY.md`
+- **This Summary**: This document
 
 ## Conclusion
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Automated AsyncIO to AnyIO Migration Helper
+Automated AnyIO Migration Helper
 
-This script helps automate common asyncio to anyio migration patterns.
+This script helps automate common AnyIO migration patterns.
 It performs text replacements on Python files.
 
 Usage:
@@ -22,25 +22,19 @@ from pathlib import Path
 # Define replacement patterns
 REPLACEMENTS = [
     # Import statements
-    (r'^import asyncio$', 'import anyio', re.MULTILINE),
-    (r'^from asyncio import (.+)$', r'# TODO: Migrate asyncio import: from asyncio import \1', re.MULTILINE),
+    (r'^import anyio$', 'import anyio', re.MULTILINE),
+    (r'^from anyio import (.+)$', r'# TODO: Migrate anyio import: from anyio import \1', re.MULTILINE),
     
     # Basic replacements
-    (r'asyncio\.run\(', 'anyio.run(', 0),
-    (r'asyncio\.sleep\(', 'anyio.sleep(', 0),
-    (r'asyncio\.Event\(\)', 'anyio.Event()', 0),
-    (r'asyncio\.Lock\(\)', 'anyio.Lock()', 0),
+    (r'anyio\.run\(', 'anyio.run(', 0),
+    (r'anyio\.sleep\(', 'anyio.sleep(', 0),
+    (r'anyio\.Event\(\)', 'anyio.Event()', 0),
+    (r'anyio\.Lock\(\)', 'anyio.Lock()', 0),
     
     # More complex patterns that need review
-    (r'asyncio\.Queue\(', '# TODO: Replace with anyio.create_memory_object_stream - # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(', 0),
-    (r'asyncio\.create_task\(', '# TODO: Replace with task group - # TODO: Replace with task group - asyncio.create_task(', 0),
-    (r'asyncio\.gather\(', '# TODO: Replace with task group - # TODO: Replace with task group - asyncio.gather(', 0),
-    (r'asyncio\.wait_for\(', '# TODO: Replace with anyio.fail_after - # TODO: Replace with anyio.fail_after - asyncio.wait_for(', 0),
-    (r'asyncio\.get_event_loop\(\)', '# TODO: Remove event loop management - # TODO: Remove event loop management - asyncio.get_event_loop()', 0),
-    (r'asyncio\.new_event_loop\(\)', '# TODO: Remove event loop management - # TODO: Remove event loop management - asyncio.new_event_loop()', 0),
-    (r'asyncio\.set_event_loop\(', '# TODO: Remove event loop management - # TODO: Remove event loop management - asyncio.set_event_loop(', 0),
-    (r'asyncio\.iscoroutinefunction\(', 'inspect.iscoroutinefunction(  # Added import inspect', 0),
-    (r'asyncio\.to_thread\(', 'anyio.to_thread.run_sync(', 0),
+    (r'anyio\.create_task_group\(', '# TODO: Review task group usage', 0),
+    (r'anyio\.fail_after\(', '# TODO: Review anyio fail_after usage', 0),
+    (r'anyio\.to_thread\.run_sync\(', 'anyio.to_thread.run_sync(', 0),
 ]
 
 def should_process_file(filepath: Path) -> bool:
@@ -57,7 +51,7 @@ def should_process_file(filepath: Path) -> bool:
 
 def migrate_file(filepath: Path, dry_run: bool = True) -> tuple[bool, list[str]]:
     """
-    Migrate a single file from asyncio to anyio.
+    Migrate a single file to anyio.
     
     Returns:
         (changed, warnings): Whether changes were made and list of warnings
@@ -67,8 +61,8 @@ def migrate_file(filepath: Path, dry_run: bool = True) -> tuple[bool, list[str]]
         original_content = content
         warnings = []
         
-        # Check if file uses asyncio
-        if 'asyncio' not in content:
+        # Check if file uses anyio
+        if 'anyio' not in content:
             return False, []
         
         # Apply replacements
@@ -98,11 +92,8 @@ def migrate_file(filepath: Path, dry_run: bool = True) -> tuple[bool, list[str]]
         if 'TODO: Replace with' in content:
             warnings.append(f"File contains TODO comments requiring manual review")
         
-        if 'asyncio.Queue' in original_content:
-            warnings.append("Contains asyncio.Queue - needs manual conversion to memory streams")
-        
-        if 'asyncio.create_task' in original_content or 'asyncio.gather' in original_content:
-            warnings.append("Contains task creation/gather - needs manual conversion to task groups")
+        if 'anyio.create_task_group' in original_content:
+            warnings.append("Contains task groups - needs manual review")
         
         # Write back if not dry run
         if content != original_content:

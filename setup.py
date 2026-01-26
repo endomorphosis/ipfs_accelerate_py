@@ -131,7 +131,7 @@ setup(
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
-			"pytest-asyncio>=0.21.0",
+			"pytest-anyio>=0.21.0",
 			"nvidia-ml-py",
 		],
 		"webnn": [
@@ -192,7 +192,7 @@ setup(
 			"pytest>=8.0.0",
 			"pytest-timeout>=2.4.0",
 			"pytest-cov>=4.0.0",
-			"pytest-asyncio>=0.21.0",
+			"pytest-anyio>=0.21.0",
 		],
 	},
 	entry_points={

@@ -314,14 +314,14 @@ for result in results:
 ### 2. Production Scraping
 ```python
 from production_hf_scraper import ProductionHFScraper
-import asyncio
+import anyio
 
 async def scrape_all():
     scraper = ProductionHFScraper(api_token="your_token")
     results = await scraper.scrape_production_models()
     print(f"Scraped {results['total_models']} models")
 
-asyncio.run(scrape_all())
+anyio.run(scrape_all)
 ```
 
 ### 3. Analytics with Pandas

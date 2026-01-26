@@ -122,7 +122,7 @@ production_config = {
 ### Storing Data to IPFS
 
 ```python
-import asyncio
+import anyio
 import json
 
 async def store_model_data():
@@ -145,7 +145,7 @@ async def store_model_data():
     return cid
 
 # Example usage
-stored_cid = asyncio.run(store_model_data())
+stored_cid = anyio.run(store_model_data)
 ```
 
 ### Retrieving Data from IPFS
@@ -167,7 +167,7 @@ async def retrieve_model_data(cid):
 
 # Example usage
 if 'stored_cid' in locals():
-    retrieved_data = asyncio.run(retrieve_model_data(stored_cid))
+    retrieved_data = anyio.run(retrieve_model_data, stored_cid)
 ```
 
 ### Bulk Operations
@@ -202,7 +202,7 @@ async def bulk_ipfs_operations():
     
     return retrieved_results
 
-bulk_results = asyncio.run(bulk_ipfs_operations())
+bulk_results = anyio.run(bulk_ipfs_operations)
 ```
 
 ## Content-Addressed Model Storage
@@ -258,7 +258,7 @@ async def store_model_metadata():
     
     return metadata_cid, registry_cid
 
-metadata_cid, registry_cid = asyncio.run(store_model_metadata())
+metadata_cid, registry_cid = anyio.run(store_model_metadata)
 ```
 
 ### Model Discovery
@@ -302,7 +302,7 @@ async def discover_models():
     print(f"Discovered {len(discovered_models)} models")
     return discovered_models
 
-discovered = asyncio.run(discover_models())
+discovered = anyio.run(discover_models)
 ```
 
 ## Distributed Inference
@@ -337,7 +337,7 @@ async def ipfs_distributed_inference():
     print(f"Distributed inference result: {result}")
     return result
 
-distributed_result = asyncio.run(ipfs_distributed_inference())
+distributed_result = anyio.run(ipfs_distributed_inference)
 ```
 
 ### Provider Discovery and Selection
@@ -369,7 +369,7 @@ async def select_optimal_provider():
                 start_time = time.time()
                 
                 # Simulate provider communication
-                await asyncio.sleep(0.1)  # Mock latency
+                await anyio.sleep(0.1)  # Mock latency
                 
                 response_time = time.time() - start_time
                 
@@ -399,7 +399,7 @@ async def select_optimal_provider():
     
     return best_provider, provider_stats
 
-best_provider, stats = asyncio.run(select_optimal_provider())
+best_provider, stats = anyio.run(select_optimal_provider)
 ```
 
 ## Peer-to-Peer Model Distribution
@@ -540,7 +540,7 @@ async def model_sharing_example():
     
     return network
 
-network = asyncio.run(model_sharing_example())
+network = anyio.run(model_sharing_example)
 ```
 
 ## Caching and Optimization
@@ -729,7 +729,7 @@ async def caching_example():
     
     return cached_accelerator
 
-cached_acc = asyncio.run(caching_example())
+cached_acc = anyio.run(caching_example)
 ```
 
 ## Advanced IPFS Features
@@ -786,7 +786,7 @@ async def integrity_check_example():
     
     return is_valid
 
-integrity_check = asyncio.run(integrity_check_example())
+integrity_check = anyio.run(integrity_check_example)
 ```
 
 ### Pin Management
@@ -820,7 +820,7 @@ important_cids = [
     "QmExampleCriticalData456"
 ]
 
-# pins = asyncio.run(manage_ipfs_pins(accelerator, important_cids))
+# pins = anyio.run(manage_ipfs_pins, accelerator, important_cids)
 ```
 
 ### Pubsub for Real-time Updates
@@ -903,7 +903,7 @@ async def pubsub_example():
     
     return pubsub
 
-# pubsub_system = asyncio.run(pubsub_example())
+# pubsub_system = anyio.run(pubsub_example)
 ```
 
 ## Troubleshooting
@@ -969,7 +969,7 @@ async def diagnose_ipfs_connection():
         print(f"✗ Framework IPFS integration error: {e}")
 
 # Run diagnostic
-# asyncio.run(diagnose_ipfs_connection())
+# anyio.run(diagnose_ipfs_connection)
 ```
 
 #### Performance Issues
@@ -1045,7 +1045,7 @@ async def optimize_ipfs_performance():
             print(f"    ✓ Data integrity verified")
 
 # Run performance optimization
-# asyncio.run(optimize_ipfs_performance())
+# anyio.run(optimize_ipfs_performance)
 ```
 
 ### Error Recovery Strategies
@@ -1074,7 +1074,7 @@ class RobustIPFSAccelerator:
             except Exception as e:
                 last_error = e
                 print(f"Primary IPFS query attempt {attempt + 1} failed: {e}")
-                await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
+                await anyio.sleep(1 * (attempt + 1))  # Exponential backoff
         
         # Try fallback gateways
         for gateway in self.fallback_gateways:
@@ -1102,7 +1102,7 @@ class RobustIPFSAccelerator:
                 print(f"IPFS store attempt {attempt + 1} failed: {e}")
                 
                 if attempt < self.max_retries - 1:
-                    await asyncio.sleep(2 * (attempt + 1))
+                    await anyio.sleep(2 * (attempt + 1))
                 else:
                     raise Exception(f"Failed to store to IPFS after {self.max_retries} attempts: {e}")
 
@@ -1139,7 +1139,7 @@ async def robust_ipfs_example():
         print(f"Robust IPFS operations failed: {e}")
         return False
 
-# robust_success = asyncio.run(robust_ipfs_example())
+# robust_success = anyio.run(robust_ipfs_example)
 ```
 
 ## Best Practices

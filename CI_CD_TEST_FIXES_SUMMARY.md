@@ -11,16 +11,16 @@ Multiple GitHub Actions workflows were failing with 11 test failures and 3 test 
 
 ## Root Causes
 
-### 1. Missing pytest-asyncio Plugin
+### 1. Missing pytest-anyio Plugin
 **Symptoms**: 4 tests in `test_accelerate.py` failing with:
 ```
 Failed: async def functions are not natively supported.
 You need to install a suitable plugin for your async framework
 ```
 
-**Root Cause**: The `pytest-asyncio` package was defined in `pyproject.toml` but missing from `setup.py`, so it wasn't being installed when using `pip install -e ".[testing]"`.
+**Root Cause**: The `pytest-anyio` package was defined in `pyproject.toml` but missing from `setup.py`, so it wasn't being installed when using `pip install -e ".[testing]"`.
 
-**Fix**: Added `pytest-asyncio>=0.21.0` to both the `testing` and `all` extras in `setup.py`.
+**Fix**: Added `pytest-anyio>=0.21.0` to both the `testing` and `all` extras in `setup.py`.
 
 ### 2. Hardware Detection Test Assumptions
 **Symptoms**: 6 tests failing with assertions like:
@@ -90,7 +90,7 @@ AssertionError: unexpectedly None
 ## Changes Summary
 
 ### Files Modified
-1. **setup.py**: Added `pytest-asyncio>=0.21.0` to testing dependencies
+1. **setup.py**: Added `pytest-anyio>=0.21.0` to testing dependencies
 2. **tests/test_integration.py**: Dynamic hardware detection assertions
 3. **tests/test_comprehensive.py**: Dynamic best_available assertion
 4. **tests/test_real_world_models.py**: Accept all valid hardware types
@@ -126,7 +126,7 @@ $ python -m pytest tests/test_comprehensive_validation.py --collect-only
 ## Expected CI Results
 With these fixes, the CI/CD pipelines should now:
 ✅ Pass all Python version tests (3.9, 3.10, 3.11, 3.12)
-✅ Handle async tests correctly with pytest-asyncio
+✅ Handle async tests correctly with pytest-anyio
 ✅ Correctly detect and test with available hardware (CPU, WebGPU, WebNN)
 ✅ Skip gracefully when database backend has issues
 ✅ Not collect non-test helper functions

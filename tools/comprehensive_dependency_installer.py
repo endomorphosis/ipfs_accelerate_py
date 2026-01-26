@@ -225,18 +225,17 @@ class ComprehensiveDependencyInstaller:
             },
             
             # Async and Concurrency
-            "asyncio": {
-                "pip_name": None,  # Built-in
-                "import_name": "asyncio",
-                "description": "Asyncio for concurrent programming",
+            "anyio": {
+                "pip_name": "anyio",
+                "import_name": "anyio",
+                "description": "AnyIO for structured concurrency",
                 "category": "core",
-                "critical": True,
-                "builtin": True
+                "critical": True
             },
             "uvloop": {
                 "pip_name": "uvloop",
                 "import_name": "uvloop",
-                "description": "Fast asyncio event loop",
+                "description": "Fast event loop implementation",
                 "category": "performance",
                 "critical": False,
                 "platform_specific": ["linux", "darwin"]  # Not available on Windows

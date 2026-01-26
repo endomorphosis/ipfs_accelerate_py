@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bulk refactor helper: asyncio -> AnyIO (safe mechanical transforms).
+"""Bulk refactor helper: AnyIO transforms (safe mechanical transforms).
 
 This is intentionally conservative: it applies only transformations that are
 very likely to be correct without deeper control-flow/context analysis.
@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
   # apply safe edits in-place
-  python tools/asyncio_to_anyio_bulk_refactor.py --apply
+    python tools/anyio_bulk_refactor.py --apply
 
   # limit to a subset
-  python tools/asyncio_to_anyio_bulk_refactor.py --apply --include ipfs_accelerate_py/worker
+    python tools/anyio_bulk_refactor.py --apply --include ipfs_accelerate_py/worker
 
 Exit codes:
   0: success
@@ -40,58 +40,49 @@ DEFAULT_GLOB = "ipfs_accelerate_py/**/*.py"
 
 SAFE_REWRITES: List[Tuple[str, str]] = [
     # Awaited sleep
-    (r"\bawait\s+asyncio\.sleep\(", "await anyio.sleep("),
+    (r"\bawait\s+anyio\.sleep\(", "await anyio.sleep("),
     # Awaited to_thread
-    (r"\bawait\s+asyncio\.to_thread\(", "await anyio.to_thread.run_sync("),
+    (r"\bawait\s+anyio\.to_thread\.run_sync\(", "await anyio.to_thread.run_sync("),
     # Mis-migrations: anyio.get_event_loop().run_in_executor(None, ...) -> anyio.to_thread.run_sync(...)
     (
         r"\bawait\s+anyio\.get_event_loop\(\)\.run_in_executor\(\s*None\s*,\s*",
         "await anyio.to_thread.run_sync(",
     ),
     # Cancellation exception
-    (r"\bexcept\s+asyncio\.CancelledError\s*:\s*$", "except anyio.get_cancelled_exc_class():"),
+    (r"\bexcept\s+anyio\.get_cancelled_exc_class\(\)\s*:\s*$", "except anyio.get_cancelled_exc_class():"),
     # Basic primitives
-    (r"\basyncio\.Event\(", "anyio.Event("),
-    (r"\basyncio\.Lock\(", "anyio.Lock("),
-    (r"\basyncio\.Semaphore\(", "anyio.Semaphore("),
+    (r"\banyio\.Event\(", "anyio.Event("),
+    (r"\banyio\.Lock\(", "anyio.Lock("),
+    (r"\banyio\.Semaphore\(", "anyio.Semaphore("),
     # Entry-point runner
-    (r"\basyncio\.run\(", "anyio.run("),
+    (r"\banyio\.run\(", "anyio.run("),
 
     # Common migration placeholders that are syntactically invalid
     (
-        r"\bawait\s*#\s*TODO:\s*Replace with anyio\.fail_after\s*-\s*asyncio\.wait_for\(",
+        r"\bawait\s*#\s*TODO:\s*Replace with anyio\.fail_after\s*-\s*anyio\.fail_after\(",
         "await wait_for(",
     ),
     (
-        r"\bawait\s*#\s*TODO:\s*Replace with task group\s*-\s*asyncio\.gather\(",
+        r"\bawait\s*#\s*TODO:\s*Replace with task group\s*-\s*anyio\.create_task_group\(",
         "await gather(",
     ),
     (
-        r"=\s*#\s*TODO:\s*Replace with anyio\.create_memory_object_stream\s*-\s*asyncio\.Queue\((\d+)\)",
+        r"=\s*#\s*TODO:\s*Replace with anyio\.create_memory_object_stream\s*-\s*AnyioQueue\((\d+)\)",
         r"= AnyioQueue(\1)",
     ),
     (
-        r",\s*#\s*TODO:\s*Replace with anyio\.create_memory_object_stream\s*-\s*asyncio\.Queue\((\d+)\)\s*,",
+        r",\s*#\s*TODO:\s*Replace with anyio\.create_memory_object_stream\s*-\s*AnyioQueue\((\d+)\)\s*,",
         r", AnyioQueue(\1),",
     ),
 ]
 
 
 HARD_PATTERNS: Dict[str, str] = {
-    r"\basyncio\.create_task\(": "Needs AnyIO task group context (create_task -> task_group.start_soon)",
-    r"\basyncio\.gather\(": "Needs AnyIO task group / nursery equivalent",
-    r"\basyncio\.wait_for\(": "Usually convert to anyio.fail_after/move_on_after",
-    r"\basyncio\.new_event_loop\(": "Manual: event loop creation is asyncio-specific",
-    r"\basyncio\.get_running_loop\(": "Manual: event loop access is asyncio-specific",
-    r"\basyncio\.get_event_loop\(": "Manual: event loop access is asyncio-specific",
-    r"\bloop\.run_until_complete\(": "Manual: run_until_complete is asyncio loop API",
-    r"\banyio\.get_event_loop\(": "Manual/bug: anyio has no get_event_loop(); use anyio.run/anyio.from_thread.run",
-    r"\banyio\.new_event_loop\(": "Manual/bug: anyio has no new_event_loop(); use anyio.run/anyio.from_thread.run",
-    r"\banyio\.set_event_loop\(": "Manual/bug: anyio has no set_event_loop(); remove loop plumbing",
-    r"\banyio\.create_task\(": "Manual/bug: anyio has no create_task(); use task groups or return coroutine",
-    r"\basyncio\.Future\b": "Manual: Futures are asyncio-specific",
-    r"\basyncio\.Task\b": "Manual: Task typing / APIs are asyncio-specific",
-    r"\basyncio\.Queue\b": "Manual: consider anyio.create_memory_object_stream",
+    r"\banyio\.create_task_group\(": "Needs AnyIO task group context (create_task_group -> task_group.start_soon)",
+    r"\banyio\.fail_after\(": "Usually convert to anyio.fail_after/move_on_after",
+    r"\banyio\.from_thread\.run\(": "Manual: ensure correct thread usage",
+    r"\banyio\.run\(": "Manual: check sync/async context",
+    r"\bAnyioQueue\b": "Manual: consider anyio.create_memory_object_stream",
 }
 
 

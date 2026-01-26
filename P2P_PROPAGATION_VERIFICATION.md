@@ -37,13 +37,14 @@ The broadcast is non-blocking (runs in background):
 # In cache.py lines 1393-1402:
 def _broadcast_in_background(self, cache_key: str, entry: CacheEntry) -> None:
     """Broadcast cache entry in background (non-blocking)."""
-    if not self.enable_p2p or not self._event_loop:
+    if not self.enable_p2p:
         return
     
     # Schedule broadcast as background task
-    asyncio.run_coroutine_threadsafe(
-        self._broadcast_cache_entry(cache_key, entry),
-        self._event_loop
+    anyio.from_thread.run(
+        self._broadcast_cache_entry,
+        cache_key,
+        entry
     )
 ```
 

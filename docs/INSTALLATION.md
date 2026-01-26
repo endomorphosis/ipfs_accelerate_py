@@ -439,7 +439,7 @@ EOF
 Basic functionality test for IPFS Accelerate Python
 """
 
-import asyncio
+import anyio
 from ipfs_accelerate_py import ipfs_accelerate_py
 
 def test_basic_functionality():
@@ -500,7 +500,7 @@ if __name__ == "__main__":
     test_basic_functionality()
     
     # Run async tests
-    asyncio.run(test_async_functionality())
+    anyio.run(test_async_functionality)
 ```
 
 Save this as `test_installation.py` and run:
@@ -552,7 +552,7 @@ if __name__ == "__main__":
 IPFS connectivity test
 """
 
-import asyncio
+import anyio
 from ipfs_accelerate_py import ipfs_accelerate_py
 
 async def test_ipfs():
@@ -587,7 +587,7 @@ async def test_ipfs():
         print("  ipfs daemon")
 
 if __name__ == "__main__":
-    asyncio.run(test_ipfs())
+    anyio.run(test_ipfs)
 ```
 
 ## Troubleshooting

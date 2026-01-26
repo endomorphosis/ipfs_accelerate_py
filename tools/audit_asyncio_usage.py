@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Audit remaining asyncio usage.
+"""Audit remaining AnyIO usage.
 
-This repo is migrating from asyncio to anyio. This script helps track remaining
+This repo is migrating to AnyIO. This script helps track remaining
 imports/usages and can optionally fail CI once an allowlist is in place.
 
 Usage:
@@ -21,9 +21,9 @@ from pathlib import Path
 
 
 ASYNCIO_PATTERNS = [
-    re.compile(r"^\s*import\s+asyncio\b", re.MULTILINE),
-    re.compile(r"^\s*from\s+asyncio\b", re.MULTILINE),
-    re.compile(r"\basyncio\.", re.MULTILINE),
+    re.compile(r"^\s*import\s+anyio\b", re.MULTILINE),
+    re.compile(r"^\s*from\s+anyio\b", re.MULTILINE),
+    re.compile(r"\banyio\.", re.MULTILINE),
 ]
 
 
@@ -105,13 +105,13 @@ def main(argv: list[str]) -> int:
     hits.sort(key=lambda h: (-h.count, str(h.path)))
 
     if hits:
-        print("Remaining asyncio usage (non-allowlisted):")
+        print("Remaining anyio usage (non-allowlisted):")
         for hit in hits:
             rel = hit.path.relative_to(root).as_posix()
             print(f"- {rel}: {hit.count}")
         print(f"Total files: {len(hits)}")
     else:
-        print("No non-allowlisted asyncio usage found.")
+        print("No non-allowlisted anyio usage found.")
 
     if args.fail and hits:
         return 2

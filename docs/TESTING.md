@@ -83,7 +83,7 @@ test/
 pip install -e ".[dev]"
 
 # Or install specific test requirements
-pip install pytest pytest-asyncio pytest-cov pytest-mock
+pip install pytest pytest-anyio pytest-cov pytest-mock
 ```
 
 ### Basic Test Execution
@@ -160,7 +160,7 @@ class TestCoreFramework:
             assert isinstance(hardware_info, dict)
             assert 'cpu' in hardware_info
             
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_async_processing(self):
         """Test asynchronous processing."""
         accelerator = ipfs_accelerate_py({}, {})
@@ -179,12 +179,12 @@ Test component interactions:
 ```python
 # test/integration/test_end_to_end_workflows.py
 import pytest
-import asyncio
+import anyio
 from ipfs_accelerate_py import ipfs_accelerate_py
 
 class TestEndToEndWorkflows:
     @pytest.mark.integration
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_full_inference_pipeline(self):
         """Test complete inference pipeline."""
         # Initialize with IPFS configuration
@@ -356,7 +356,7 @@ from ipfs_accelerate_py import ipfs_accelerate_py
 
 class TestHuggingFaceIntegration:
     @pytest.mark.api
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_hf_model_loading(self):
         """Test HuggingFace model loading and inference."""
         accelerator = ipfs_accelerate_py({}, {})
@@ -405,7 +405,7 @@ from ipfs_accelerate_py.webnn_webgpu_integration import accelerate_with_browser
 class TestWebNNIntegration:
     @pytest.mark.browser
     @pytest.mark.webnn
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_webnn_inference(self):
         """Test WebNN browser inference."""
         try:
@@ -641,7 +641,7 @@ filterwarnings =
 4. **Cleanup**: Use fixtures for setup/teardown
 5. **Parametrization**: Use `@pytest.mark.parametrize` for similar tests with different inputs
 6. **Markers**: Use appropriate markers to categorize tests
-7. **Async Support**: Use `@pytest.mark.asyncio` for async tests
+7. **Async Support**: Use `@pytest.mark.anyio` for async tests
 
 ### Test Fixtures
 
@@ -696,7 +696,7 @@ class TestExampleFramework:
         assert accelerator is not None
         assert hasattr(accelerator, 'process')
         
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_async_processing(self, accelerator, sample_text_input):
         """Test asynchronous processing functionality."""
         result = await accelerator.process_async(

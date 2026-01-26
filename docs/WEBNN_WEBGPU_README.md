@@ -21,7 +21,7 @@ and IPFS content delivery for efficient model inference.
 
 ### Prerequisites
 
-- Python 3.8+ with asyncio support
+- Python 3.8+ with AnyIO support
 - Working IPFS node (optional, but recommended)
 - WebSockets support: `pip install websockets`
 - Database support (optional): `pip install duckdb`

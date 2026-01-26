@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to verify the asyncio to anyio migration works correctly.
+Test script to verify the AnyIO migration works correctly.
 """
 
 import anyio

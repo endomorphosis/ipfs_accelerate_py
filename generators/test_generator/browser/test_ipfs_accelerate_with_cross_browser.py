@@ -261,7 +261,7 @@ class TestIPFSAcceleratedBrowserSharding(ModelTest):
     
     def test_basic_initialization(self):
         """Basic test to ensure initialization works."""
-        # This is a simple synchronous test that doesn't require asyncio
+        # This is a simple synchronous test that doesn't require AnyIO
         self.shard_manager = self.create_sharding_manager()
         self.assertIsNotNone(self.shard_manager)
         self.assertEqual(self.shard_manager.model_name, self.model_name)

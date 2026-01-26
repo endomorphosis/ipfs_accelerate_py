@@ -1,6 +1,6 @@
-"""Small AnyIO-based helpers used during the asyncio -> AnyIO migration.
+"""Small AnyIO-based helpers used during the migration to AnyIO.
 
-These mirror a subset of the common asyncio APIs used throughout the repo
+These mirror a subset of the common async APIs used throughout the repo
 (e.g. gather(), wait_for()) so that bulk mechanical refactors can land
 without forcing every callsite to be rewritten manually in one pass.
 
@@ -19,7 +19,7 @@ T = TypeVar("T")
 async def wait_for(awaitable: Awaitable[T], timeout: float) -> T:
     """Await an awaitable with a timeout.
 
-    This is an AnyIO equivalent of asyncio.wait_for with a timeout.
+    This is an AnyIO equivalent of a timed wait.
     """
     with anyio.fail_after(timeout):
         return await awaitable
@@ -28,7 +28,7 @@ async def wait_for(awaitable: Awaitable[T], timeout: float) -> T:
 async def gather(*awaitables: Awaitable[T], return_exceptions: bool = False) -> List[Any]:
     """Run awaitables concurrently and collect results.
 
-    Similar to asyncio.gather with optional exception collection.
+    Similar to gather-style concurrency with optional exception collection.
 
     Notes:
     - When return_exceptions is False, the first exception cancels siblings.

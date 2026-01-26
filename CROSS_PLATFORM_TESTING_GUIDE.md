@@ -377,7 +377,7 @@ Notes:
 - [ ] Can create/read/write files
 - [ ] Can bind to network ports
 - [ ] Environment variables work
-- [ ] Asyncio works
+- [ ] AnyIO works
 - [ ] Path operations work
 
 ## Next Steps

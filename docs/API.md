@@ -231,7 +231,7 @@ async def process_async(self, model: str, input_data: Any, endpoint_type: str = 
 
 **Example:**
 ```python
-import asyncio
+import anyio
 
 async def main():
     result = await accelerator.process_async(
@@ -241,7 +241,7 @@ async def main():
     )
     return result
 
-result = asyncio.run(main())
+result = anyio.run(main)
 ```
 
 ### accelerate_inference
