@@ -708,7 +708,15 @@ create_or_update_venv() {
   fi
 
   log "Upgrading pip/setuptools/wheel ($venv_dir)"
-  "$venv_dir/bin/python" -m pip install --upgrade pip setuptools wheel >/dev/null
+  # In wheelhouse-only or offline contexts, upgrading may be impossible; don't
+  # fail the whole install over it.
+  if [[ "$OFFLINE" == "1" || "$USE_WHEELHOUSE" == "1" ]]; then
+    if ! pip_install_with_common_args "$venv_dir" --upgrade pip setuptools wheel >/dev/null 2>&1; then
+      warn "Could not upgrade pip/setuptools/wheel (offline/wheelhouse mode); continuing with bundled versions."
+    fi
+  else
+    "$venv_dir/bin/python" -m pip install --upgrade pip setuptools wheel >/dev/null
+  fi
 }
 
 pip_install() {
