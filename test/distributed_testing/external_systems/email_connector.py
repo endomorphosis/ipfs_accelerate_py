@@ -164,7 +164,7 @@ class EmailConnector(ExternalSystemInterface):
         """
         try:
             # Since SMTP operations are blocking, run them in a separate thread
-            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+            loop = # TODO: Remove event loop management - anyio
             result = await loop.run_in_executor(
                 None, self._connect_sync
             )
@@ -213,7 +213,7 @@ class EmailConnector(ExternalSystemInterface):
         
         try:
             # Since SMTP operations are blocking, run them in a separate thread
-            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+            loop = # TODO: Remove event loop management - anyio
             result = await loop.run_in_executor(
                 None, lambda: self.smtp.noop()[0] == 250
             )
@@ -380,7 +380,7 @@ class EmailConnector(ExternalSystemInterface):
             await self._handle_rate_limit()
             
             # Since SMTP operations are blocking, run them in a separate thread
-            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+            loop = # TODO: Remove event loop management - anyio
             
             # Get all recipients for sending
             all_recipients = recipients + cc + bcc
@@ -704,7 +704,7 @@ class EmailConnector(ExternalSystemInterface):
         if self.smtp:
             try:
                 # Since SMTP operations are blocking, run them in a separate thread
-                loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+                loop = # TODO: Remove event loop management - anyio
                 await loop.run_in_executor(None, self.smtp.quit)
             except Exception as e:
                 logger.warning(f"Error closing SMTP connection: {str(e)}")

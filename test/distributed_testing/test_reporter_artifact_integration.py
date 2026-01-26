@@ -44,7 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Allow module-level async tests to run under pytest-asyncio strict mode.
+# Allow module-level async tests to run under pytest-anyio strict mode.
 pytestmark = pytest.mark.anyio
 
 

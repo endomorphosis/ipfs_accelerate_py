@@ -2024,7 +2024,7 @@ class EnhancedVisualizationDashboard:
         logger.info(f"WebSocket server started at ws://{self.host}:{self.port + 1}/ws")
         
         # Start broadcast task
-        # TODO: Replace with task group - asyncio.create_task(self._broadcast_updates())
+        # TODO: Replace with task group - anyio task group for broadcast updates
     
     async def _broadcast_updates(self):
         """Broadcast updates to WebSocket clients."""
@@ -2384,8 +2384,8 @@ class EnhancedVisualizationDashboard:
         )
         
         # Start the dashboard
-        import asyncio
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+        import anyio
+        loop = # TODO: Remove event loop management - anyio
         
         try:
             # Open browser if requested

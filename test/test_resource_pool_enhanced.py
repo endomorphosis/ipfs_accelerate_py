@@ -290,7 +290,7 @@ class MockResourcePoolBridgeWithRecovery:
         """
         if hasattr(self.integration, 'get_model_sync'):
             return self.integration.get_model_sync(**kwargs)
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        loop = # TODO: Remove event loop management - anyio run
         try:
             # Run the async method synchronously
             return loop.run_until_complete(self.integration.get_model(**kwargs))
@@ -525,7 +525,7 @@ class MockResourcePoolBridge:
     def get_model_sync(self, model_type: str, model_name: str, hardware_preferences: Dict[str, Any] = None) -> MockModel:
         """Non-async version for use in the ResourcePoolBridgeIntegrationEnhanced class"""
         # Create and set up a new event loop
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
+        loop = # TODO: Remove event loop management - anyio run
         try:
             # Run the async get_model in the loop and return the result
             return loop.run_until_complete(self.get_model(model_type, model_name, hardware_preferences))
@@ -607,8 +607,8 @@ class TestResourcePoolEnhanced(unittest.TestCase):
         resource_pool_bridge_mock.ResourcePoolBridgeIntegration = MagicMock(return_value=MockResourcePoolBridge())
         sys.modules['fixed_web_platform.resource_pool_bridge'] = resource_pool_bridge_mock
         
-        # Also patch asyncio.get_event_loop to avoid deprecation warnings
-        async_patcher = patch('asyncio.get_event_loop', return_value=# TODO: Remove event loop management - asyncio.new_event_loop())
+        # Also patch anyio loop usage to avoid deprecation warnings
+        async_patcher = patch('anyio.run', return_value=None)
         self.async_patcher = async_patcher.start()
         self.addCleanup(async_patcher.stop)
         

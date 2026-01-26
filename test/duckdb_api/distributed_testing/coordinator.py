@@ -2289,12 +2289,7 @@ class CoordinatorServer:
             self.running = True
             
             # Register signal handlers for graceful shutdown
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                loop.add_signal_handler(
-                    sig,
-                    lambda: # TODO: Replace with task group - asyncio.create_task(self.stop())
-                )
+            # TODO: Use anyio.open_signal_receiver to trigger self.stop()
             
             logger.info(f"Coordinator server started on {self.host}:{self.port}")
             

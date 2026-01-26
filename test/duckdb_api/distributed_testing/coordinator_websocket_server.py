@@ -54,7 +54,7 @@ class CoordinatorState:
         self.lock = threading.RLock()
         
         # Task assignment queue
-        self.task_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
+        self.task_queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue()
         
         # Worker registration event
         self.worker_registered_event = anyio.Event()
@@ -89,7 +89,7 @@ class CoordinatorWebSocketServer:
             )
             
             # Start the task manager
-            self.task_manager_task = # TODO: Replace with task group - asyncio.create_task(self.task_manager())
+            self.task_manager_task = # TODO: Replace with task group - anyio task group for task_manager
             
             logger.info(f"Coordinator WebSocket server started on {self.host}:{self.port}")
             
@@ -627,7 +627,7 @@ class CoordinatorWebSocketServer:
             # Try to get a task with timeout
             try:
                 task_id, task_config = await wait_for(self.state.task_queue.get(), timeout=0.1)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return
             
             # Select a worker (simple round-robin for now)
@@ -988,9 +988,9 @@ async def run_server(host: str, port: int):
     server = CoordinatorWebSocketServer(host, port)
     
     # Set up signal handlers
-    loop = asyncio.get_running_loop()
+    loop = # TODO: Remove event loop management - anyio
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: # TODO: Replace with task group - asyncio.create_task(server.stop()))
+        loop.add_signal_handler(sig, lambda: # TODO: Replace with task group - anyio task group for server.stop())
     
     # Start server
     await server.start()

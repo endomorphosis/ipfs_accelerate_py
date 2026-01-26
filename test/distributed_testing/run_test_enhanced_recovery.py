@@ -1034,7 +1034,7 @@ async def main():
     recovery_manager, state_manager, performance_tracker, sharding_manager, connection_pool = await setup_resource_pool_recovery()
     
     # Setup signal handlers for graceful shutdown
-    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+    loop = # TODO: Remove event loop management - anyio
     
     should_exit = False
     

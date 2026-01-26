@@ -429,7 +429,7 @@ class AsyncTestCase(unittest.TestCase):
     
     def run_async(self, test_method, *args, **kwargs):
         """Run an async test method."""
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - anyio
         return loop.run_until_complete(test_method(*args, **kwargs))
 
 

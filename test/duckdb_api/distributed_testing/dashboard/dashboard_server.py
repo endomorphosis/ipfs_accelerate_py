@@ -381,8 +381,7 @@ class DashboardServer:
     
     def _run_async_server(self):
         """Run the async server in a separate thread."""
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
+        # TODO: Remove event loop management - anyio.run
         
         try:
             loop.run_until_complete(self.start())

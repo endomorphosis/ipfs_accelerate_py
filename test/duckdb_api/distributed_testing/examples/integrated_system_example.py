@@ -319,7 +319,7 @@ async def run_integrated_example():
         logger.info("Fault Tolerance System initialized")
         
         # Start coordinator server
-        coordinator_task = # TODO: Replace with task group - asyncio.create_task(coordinator.start())
+        coordinator_task = # TODO: Replace with task group - anyio task group for coordinator.start()
         logger.info(f"Coordinator started on ws://localhost:8080")
         logger.info(f"Admin API Key: {security_config['api_keys']['admin']}")
         logger.info(f"Worker API Key: {security_config['api_keys']['worker']}")

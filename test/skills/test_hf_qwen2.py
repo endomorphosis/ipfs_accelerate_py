@@ -28,7 +28,7 @@ This file provides a unified testing interface for:
     from typing import Dict, List, Any, Optional, Union
     from pathlib import Path
 
-    import asyncio
+    import anyio
 # Configure logging
     logging.basicConfig())))level=logging.INFO, format='%())))asctime)s - %())))levelname)s - %())))message)s')
     logger = logging.getLogger())))__name__)
@@ -692,7 +692,7 @@ def test_from_pretrained())))self, device="auto"):
                         }
                 
                 # Create queue
-                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
+                        queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))64)
                         batch_size = self.batch_size
                 
                 # Return components
@@ -742,7 +742,7 @@ def test_from_pretrained())))self, device="auto"):
                         }
                 
                 # Create queue
-                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
+                        queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))64)
                         batch_size = 1  # Simplified for direct conversion
                 
                 # Return components
@@ -811,7 +811,7 @@ def test_from_pretrained())))self, device="auto"):
                         }
             
             # Create queue
-                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
+                        queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))64)
                         batch_size = self.batch_size
             
             # Return components
@@ -887,7 +887,7 @@ def test_from_pretrained())))self, device="auto"):
             }
         
         # Create queue and batch_size
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))64)
             batch_size = 1  # Single item processing for WebNN typically
         
                 return model, processor, handler, queue, batch_size
@@ -957,7 +957,7 @@ def test_from_pretrained())))self, device="auto"):
             }
         
         # Create queue and batch_size
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))64)
             batch_size = 1  # Single item processing for WebGPU typically
         
                 return model, processor, handler, queue, batch_size

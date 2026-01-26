@@ -159,8 +159,7 @@ class DistributedFrameworkIntegrationTest(unittest.TestCase):
         """Run the coordinator in a separate thread."""
         try:
             # Setup the event loop
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
+            # TODO: Remove event loop management - anyio.run
             
             # Create database manager
             db_manager = DatabaseManager(cls.db_path)

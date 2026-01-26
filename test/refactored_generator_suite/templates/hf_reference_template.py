@@ -183,13 +183,13 @@ class hf_{model_type}:
                 tokenizer=tokenizer
             )
             
-            import asyncio
+            import anyio
             print(f"(MOCK) Created mock {model_type_upper} endpoint for {{model_name}} on {{device_label}}")
             return endpoint, tokenizer, mock_handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error creating mock endpoint: {{e}}")
-            import asyncio
+            import anyio
             return None, None, None, AnyioQueue(32), 0
     
     def init(self):        
@@ -266,7 +266,7 @@ class hf_{model_type}:
             cpu_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -321,7 +321,7 @@ class hf_{model_type}:
             cuda_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -380,7 +380,7 @@ class hf_{model_type}:
             rocm_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -479,7 +479,7 @@ class hf_{model_type}:
             openvino_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -538,7 +538,7 @@ class hf_{model_type}:
             apple_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -599,7 +599,7 @@ class hf_{model_type}:
             qualcomm_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         

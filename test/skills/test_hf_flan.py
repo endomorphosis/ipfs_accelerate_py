@@ -117,10 +117,10 @@ except ImportError:
             Returns:
                 Tuple of ())))))))))endpoint, processor, handler, queue, batch_size)
                 """
-            # Import torch and asyncio for creating mock components
+                # Import torch and AnyIO for creating mock components
             try:
                 import torch
-                import asyncio
+                    import anyio
                 
                 # Create mock endpoint
                 class MockEndpoint:
@@ -166,15 +166,15 @@ except ImportError:
                             tokenizer=processor
                             )
                 
-                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
                             batch_size = 1
                 
                         return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio::::::
+                import anyio
                     handler = lambda x: {}}}}}}}}}}}}}}}}}}}"output": "Mock CPU output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 1
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 1
             
         def init_cuda())))))))))self, model_name, model_type, device_label="cuda:0", **kwargs):
             """Initialize model for CUDA inference.
@@ -189,7 +189,7 @@ except ImportError:
                 """
             try:
                 import torch
-                import asyncio
+                import anyio
                 
                 # Create mock endpoint with CUDA-specific methods
                 class MockCudaEndpoint:
@@ -245,14 +245,14 @@ except ImportError:
                             batch_size=batch_size
                             )
                 
-                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
                 
                         return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio::::::
+                import anyio
                     handler = lambda x: {}}}}}}}}}}}}}}}}}}}"output": "Mock CUDA output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 2
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 2
             
         def init_openvino())))))))))self, model_name, model_type, device="CPU", **kwargs):
             """Initialize model for OpenVINO inference.
@@ -268,7 +268,7 @@ except ImportError:
             try:
                 import torch
                 import numpy as np
-                import asyncio
+                import anyio
                 
                 # Create mock OpenVINO model
                 class MockOpenVINOModel:
@@ -309,15 +309,15 @@ except ImportError:
                             endpoint=endpoint
                             )
                 
-                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))64)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))64)
                             batch_size = 1
                 
                         return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio::::::
+                import anyio
                     handler = lambda x: {}}}}}}}}}}}}}}}}}}}"output": "Mock OpenVINO output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))64), 1
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))64), 1
             
         def init_mps())))))))))self, model_name, model_type, device="mps", **kwargs):
             """Initialize model for Apple Silicon ())))))))))M1/M2/M3) inference.
@@ -332,7 +332,7 @@ except ImportError:
                 """
             try:
                 import torch
-                import asyncio
+                import anyio
                 
                 # Create mock Apple Silicon endpoint
                 class MockMPSEndpoint:
@@ -391,14 +391,14 @@ except ImportError:
                 
                 # MPS often supports good batching
                             batch_size = 2
-                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
                 
                         return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio::::::
+                import anyio
                     handler = lambda x: {}}}}}}}}}}}}}}}}}}}"output": "Mock MPS output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 2
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 2
             
         def init_rocm())))))))))self, model_name, model_type, device="hip", **kwargs):
             """Initialize model for AMD ROCm ())))))))))HIP) inference.
@@ -413,7 +413,7 @@ except ImportError:
                 """
             try:
                 import torch
-                import asyncio
+                import anyio
                 
                 # Create mock ROCm endpoint ())))))))))similar to CUDA but for AMD GPUs)
                 class MockROCmEndpoint:
@@ -469,14 +469,14 @@ except ImportError:
                 
                 # ROCm typically supports batching like CUDA
                             batch_size = 2
-                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
                 
                         return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio::::::
+                import anyio
                     handler = lambda x: {}}}}}}}}}}}}}}}}}}}"output": "Mock ROCm output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 2
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 2
             
         def init_qualcomm())))))))))self, model_name, model_type, device="qualcomm", **kwargs):
             """Initialize model for Qualcomm AI inference.
@@ -492,7 +492,7 @@ except ImportError:
             try:
                 import torch
                 import numpy as np
-                import asyncio
+                import anyio
                 
                 # Create mock Qualcomm endpoint
                 class MockQualcommModel:
@@ -540,15 +540,15 @@ except ImportError:
                             tokenizer=processor
                             )
                 
-                            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+                            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
                             batch_size = 1  # Qualcomm often has limited batch support
                 
                         return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio::::::
+                import anyio
                     handler = lambda x: {}}}}}}}}}}}}}}}}}}}"output": "Mock Qualcomm output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 1
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 1
     
                 print())))))))))f"Warning: hf_flan module not found, using mock implementation")
 

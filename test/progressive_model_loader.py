@@ -338,13 +338,13 @@ class ProgressiveModelLoader:
             logger.info())))))))))))))))))))))))))f"Starting background loading of {}}}}}}}}}}}}}}}}len())))))))))))))))))))))))))remaining_components)} components with Web Workers")
             
             # Simulated background loading
-            # TODO: Replace with task group - asyncio.create_task())))))))))))))))))))))))))self._background_loading_task())))))))))))))))))))))))))))
+            # TODO: Replace with task group - anyio task group for background loading
         else:
             # For browsers without Web Workers, load in the background but on main thread
             logger.info())))))))))))))))))))))))))f"Starting background loading of {}}}}}}}}}}}}}}}}len())))))))))))))))))))))))))remaining_components)} components on main thread")
             
             # Simulated background loading on main thread
-            # TODO: Replace with task group - asyncio.create_task())))))))))))))))))))))))))self._background_loading_task())))))))))))))))))))))))))))
+            # TODO: Replace with task group - anyio task group for background loading
         
             return True
     
@@ -399,7 +399,7 @@ class ProgressiveModelLoader:
             self.loading_status[]]],,,component_name] = "loading"
         
         # Create a task to track this loading operation
-            loading_task = # TODO: Replace with task group - asyncio.create_task())))))))))))))))))))))))))self._actual_component_loading())))))))))))))))))))))))))component_name))
+            loading_task = # TODO: Replace with task group - anyio task group for component loading
             self.loading_tasks[]]],,,component_name] = loading_task
         
         try:
@@ -519,7 +519,7 @@ class ProgressiveModelLoader:
             return self.loading_tasks[]]],,,component_name]
         
         # Not loaded and not loading, start loading now
-            loading_task = # TODO: Replace with task group - asyncio.create_task())))))))))))))))))))))))))self._load_component())))))))))))))))))))))))))component_name))
+            loading_task = # TODO: Replace with task group - anyio task group for component loading
             self.loading_tasks[]]],,,component_name] = loading_task
         
             return loading_task
@@ -1051,7 +1051,7 @@ class MultimodalComponentManager:
             self._update_memory_usage())))))))))))))))))))))))))old_component, old_size_mb, "free")
         
         # Queue new component for loading
-            # TODO: Replace with task group - asyncio.create_task())))))))))))))))))))))))))self._load_component_for_swap())))))))))))))))))))))))))new_component))
+            # TODO: Replace with task group - anyio task group for component swap
         
             return True
     
@@ -1252,7 +1252,7 @@ class MultimodalComponentManager:
 
 if __name__ == "__main__":
     # Example usage
-    import asyncio
+    import anyio
     
     async def main())))))))))))))))))))))))))):
         print())))))))))))))))))))))))))"Progressive Model Loading Module - Example Usage")

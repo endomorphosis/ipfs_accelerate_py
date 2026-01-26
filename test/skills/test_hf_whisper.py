@@ -20,7 +20,7 @@ except ImportError:
     import traceback
     from unittest.mock import patch, MagicMock
 
-    import asyncio
+    import anyio
 # Add parent directory to path for imports
     sys.path.insert())0, os.path.dirname())os.path.dirname())os.path.abspath())__file__))))
 
@@ -352,7 +352,7 @@ class test_hf_whisper:
                         }
             
             # Create queue
-                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())64)
+                        queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())64)
                         batch_size = 1  # For audio models
             
             # Return components
@@ -426,7 +426,7 @@ class test_hf_whisper:
             }
         
         # Create queue and batch_size
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())64)
             batch_size = 1  # Single item processing for WebNN typically
         
                 return model, processor, handler, queue, batch_size
@@ -494,7 +494,7 @@ class test_hf_whisper:
             }
         
         # Create queue and batch_size
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())64)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())64)
             batch_size = 1  # Single item processing for WebGPU typically
         
                 return model, processor, handler, queue, batch_size

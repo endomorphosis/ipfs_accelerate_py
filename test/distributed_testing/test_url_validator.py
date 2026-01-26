@@ -402,12 +402,12 @@ async def main():
     # Add tests
     suite.addTest(unittest.makeSuite(TestURLValidator))
     
-    # Run tests with AsyncioTestRunner
-    class AsyncioTestRunner(unittest.TextTestRunner):
+    # Run tests with AnyioTestRunner
+    class AnyioTestRunner(unittest.TextTestRunner):
         async def run_async(self, test):
             self.run(test)
     
-    runner = AsyncioTestRunner(verbosity=2)
+    runner = AnyioTestRunner(verbosity=2)
     await runner.run_async(suite)
     
     logger.info("URL Validator Tests completed")

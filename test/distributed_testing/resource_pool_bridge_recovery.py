@@ -78,7 +78,7 @@ class BrowserStateManager:
         await self._initialize_state()
         
         # Start state synchronization task
-        self.sync_task = # TODO: Replace with task group - asyncio.create_task(self._state_sync_loop())
+        self.sync_task = # TODO: Replace with task group - anyio task group for state sync
         
         logger.info("BrowserStateManager initialization complete")
     
@@ -640,7 +640,7 @@ class ResourcePoolRecoveryManager:
         
         # Start checkpoint task if high fault tolerance
         if self.fault_tolerance_level in ["high", "critical"]:
-            # TODO: Replace with task group - asyncio.create_task(self._periodic_checkpoint())
+            # TODO: Replace with task group - anyio task group for checkpointing
         
         logger.info("ResourcePoolRecoveryManager initialization complete")
     
@@ -1654,7 +1654,7 @@ class PerformanceHistoryTracker:
         self.history = {}
         
         # Start performance analysis task
-        # TODO: Replace with task group - asyncio.create_task(self._periodic_analysis())
+        # TODO: Replace with task group - anyio task group for analysis
         
         logger.info("PerformanceHistoryTracker initialization complete")
     

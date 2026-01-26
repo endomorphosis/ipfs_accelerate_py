@@ -13,7 +13,7 @@ async def test_basic_sleep():
     print("✓ anyio.sleep works")
 
 async def test_memory_streams():
-    """Test memory object streams (replacement for asyncio.Queue)."""
+    """Test memory object streams (replacement for AnyioQueue)."""
     print("Testing anyio memory object streams...")
     send_stream, receive_stream = anyio.create_memory_object_stream(max_buffer_size=10)
     

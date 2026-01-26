@@ -332,12 +332,12 @@ async def test_model_sharding(args) -> Dict[str, Any]:
         logger.info(f"Using shard type: {args.type}, model type: {args.model_type}")
         
         try:
-            # Use asyncio.wait_for to add timeout protection
+            # Use anyio.wait_for to add timeout protection
             initialized = await wait_for(
                 manager.initialize_sharding(),
                 timeout=args.timeout
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Initialization timeout after {args.timeout}s")
             test_results["phases"]["initialization"]["status"] = "failed"
             test_results["phases"]["initialization"]["reason"] = "timeout"
@@ -370,14 +370,14 @@ async def test_model_sharding(args) -> Dict[str, Any]:
         # Run initial inference with timeout protection
         logger.info(f"Running pre-failure inference for {args.model}")
         try:
-            # Use asyncio.wait_for to add timeout protection
+            # Use anyio.wait_for to add timeout protection
             start_time = time.time()
             result = await wait_for(
                 manager.run_inference_sharded(sample_input),
                 timeout=args.timeout
             )
             execution_time = time.time() - start_time
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Pre-failure inference timeout after {args.timeout}s")
             test_results["phases"]["pre_failure_inference"]["status"] = "failed"
             test_results["phases"]["pre_failure_inference"]["reason"] = "timeout"
@@ -433,14 +433,14 @@ async def test_model_sharding(args) -> Dict[str, Any]:
             # Run post-failure inference with timeout protection
             logger.info(f"Running post-failure inference for {args.model}")
             try:
-                # Use asyncio.wait_for to add timeout protection
+                # Use anyio.wait_for to add timeout protection
                 start_time = time.time()
                 result = await wait_for(
                     manager.run_inference_sharded(sample_input),
                     timeout=args.timeout
                 )
                 execution_time = time.time() - start_time
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error(f"Post-failure inference timeout after {args.timeout}s")
                 test_results["phases"]["post_failure_inference"]["status"] = "failed"
                 test_results["phases"]["post_failure_inference"]["reason"] = "timeout"
@@ -499,7 +499,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
                         logger.info(f"Iteration {i+1}/{args.iterations}: {iteration_time:.3f}s")
                     else:
                         logger.error(f"Error in iteration {i+1}: {result['error']}")
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.error(f"Timeout in iteration {i+1}")
                 except Exception as e:
                     logger.error(f"Error in iteration {i+1}: {e}")
@@ -569,7 +569,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
                     
                     for i in range(batch_size):
                         request_id = request_count + i + 1
-                        task = # TODO: Replace with task group - asyncio.create_task(run_single_stress_request(request_id))
+                        task = # TODO: Replace with task group - anyio task group for stress requests
                         batch_tasks.append(task)
                     
                     # Wait for all tasks in batch to complete

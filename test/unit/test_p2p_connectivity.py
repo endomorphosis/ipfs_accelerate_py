@@ -59,7 +59,7 @@ class TestUniversalConnectivity:
         assert isinstance(connectivity.discovered_peers, set)
         assert isinstance(connectivity.relay_peers, list)
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_configure_transports(self, connectivity):
         """Test transport configuration."""
         # Mock host object
@@ -71,7 +71,7 @@ class TestUniversalConnectivity:
         # Should not raise exception
         await connectivity.configure_transports(host)
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_start_mdns_discovery(self, connectivity):
         """Test mDNS discovery start."""
         class MockHost:
@@ -82,7 +82,7 @@ class TestUniversalConnectivity:
         # Should not raise exception
         await connectivity.start_mdns_discovery(host)
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_configure_dht(self, connectivity):
         """Test DHT configuration."""
         class MockHost:
@@ -93,7 +93,7 @@ class TestUniversalConnectivity:
         # Should not raise exception
         await connectivity.configure_dht(host)
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_setup_circuit_relay(self, connectivity):
         """Test circuit relay setup."""
         class MockHost:
@@ -110,7 +110,7 @@ class TestUniversalConnectivity:
         assert len(connectivity.relay_peers) == 2
         assert connectivity.relay_peers == relay_addrs
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_enable_autonat(self, connectivity):
         """Test AutoNAT enablement."""
         class MockHost:
@@ -121,7 +121,7 @@ class TestUniversalConnectivity:
         # Should not raise exception
         await connectivity.enable_autonat(host)
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_enable_hole_punching(self, connectivity):
         """Test hole punching enablement."""
         class MockHost:
@@ -132,7 +132,7 @@ class TestUniversalConnectivity:
         # Should not raise exception
         await connectivity.enable_hole_punching(host)
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_discover_peers_multimethod(self, connectivity):
         """Test multi-method peer discovery."""
         # Test with no discovery sources
@@ -152,7 +152,7 @@ class TestUniversalConnectivity:
         assert len(peers) == 2
         assert all(p in bootstrap for p in peers)
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_discover_peers_with_mock_registry(self, connectivity):
         """Test peer discovery with mock GitHub registry."""
         # Mock GitHub registry
@@ -176,7 +176,7 @@ class TestUniversalConnectivity:
         
         assert len(peers) >= 2
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_attempt_connection(self, connectivity):
         """Test connection attempt with fallback."""
         class MockHost:

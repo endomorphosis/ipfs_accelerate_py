@@ -19,7 +19,7 @@ Usage:
 from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import anyio
     import argparse
-    import asyncio
+    import anyio
     import json
     import logging
     import os
@@ -81,10 +81,10 @@ import anyio
     if disable_load_balancer:
         cmd.append())))))))"--disable-load-balancer")
     
-        process = await asyncio.create_subprocess_exec())))))))
+        process = await anyio.open_process())))))))
         *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         )
     
         logger.info())))))))f"Coordinator process started with PID {}}}process.pid}")
@@ -108,7 +108,7 @@ import anyio
                     api_key_line_index = lines.index())))))))decoded_line)
                     if len())))))))lines) > api_key_line_index + 1:
                     return process, lines[]],,api_key_line_index + 1]
-            except asyncio.TimeoutError:
+            except TimeoutError:
                     break
                 
     # Return process and None for API key if not found
@@ -141,10 +141,10 @@ async def run_worker())))))))coordinator_url, db_path=None, worker_id=None, api_
     if api_key:
         cmd.append())))))))f"--api-key={}}}api_key}")
     
-        process = await asyncio.create_subprocess_exec())))))))
+        process = await anyio.open_process())))))))
         *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         )
     
         logger.info())))))))f"Worker process started with PID {}}}process.pid}")
@@ -267,9 +267,9 @@ async def submit_test_tasks())))))))coordinator_url, num_tasks=3, api_key=None):
         
         # Log output for all processes
             log_tasks = []],,]
-            log_tasks.append())))))))# TODO: Replace with task group - asyncio.create_task())))))))log_process_output())))))))coordinator_process, "Coordinator")))
+            log_tasks.append())))))))# TODO: Replace with task group - anyio task group for coordinator logging
         for i, proc in enumerate())))))))worker_processes):
-            log_tasks.append())))))))# TODO: Replace with task group - asyncio.create_task())))))))log_process_output())))))))proc, f"Worker-{}}}i+1}")))
+            log_tasks.append())))))))# TODO: Replace with task group - anyio task group for worker logging
         
         # Run for specified time
             logger.info())))))))f"Running test for {}}}run_time} seconds...")

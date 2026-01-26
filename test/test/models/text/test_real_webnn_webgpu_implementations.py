@@ -728,7 +728,7 @@ def main())))))))))))):
     args = parser.parse_args()))))))))))))
     
     # Run async main function
-    loop = # TODO: Remove event loop management - asyncio.get_event_loop()))))))))))))
+    loop = # TODO: Remove event loop management - anyio
                     return loop.run_until_complete())))))))))))main_async())))))))))))args))
 
 

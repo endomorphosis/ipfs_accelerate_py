@@ -256,8 +256,7 @@ class {{ test_name }}(unittest.TestCase):
     
     def test_e2e_integrated_system(self):
         """Test the complete end-to-end integrated system."""
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
+        # TODO: Remove event loop management - anyio.run
         
         try:
             # Run normal load test

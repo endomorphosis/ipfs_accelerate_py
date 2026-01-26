@@ -973,7 +973,7 @@ def get_accelerator())))))))))))))))db_path=None, max_connections=4, headless=Tr
         )
     
     # Execute in event loop
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()))))))))))))))))
+        loop = # TODO: Remove event loop management - anyio
     
     # Select acceleration method based on configuration
     if IPFS_ACCELERATE_AVAILABLE and enable_ipfs and not use_resource_pool:

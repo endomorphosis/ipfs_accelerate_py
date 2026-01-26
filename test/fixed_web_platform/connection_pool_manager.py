@@ -123,6 +123,7 @@ class ConnectionPoolManager:
         # Task management
         self._cleanup_task = None
         self._health_check_task = None
+        self._task_group = None
         self._is_shutting_down = False
         
         # Create adaptive connection manager
@@ -137,12 +138,8 @@ class ConnectionPoolManager:
             self.adaptive_manager = None
             logger.info("Using basic connection scaling (adaptive scaling not available)")
         
-        # Get or create event loop
-        try:
-            self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-        except RuntimeError:
-            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
+        # AnyIO handles event loop management
+        self.loop = None
         
         # Initialize semaphore for connection control
         self.connection_semaphore = anyio.Semaphore(max_connections)
@@ -165,6 +162,8 @@ class ConnectionPoolManager:
             
             try:
                 # Start background tasks
+                self._task_group = anyio.create_task_group()
+                await self._task_group.__aenter__()
                 self._start_background_tasks()
                 
                 # Initialize minimum connections
@@ -210,8 +209,9 @@ class ConnectionPoolManager:
                     traceback.print_exc()
         
         # Schedule tasks
-        self._health_check_task = asyncio.ensure_future(health_check_task(), loop=self.loop)
-        self._cleanup_task = asyncio.ensure_future(cleanup_task(), loop=self.loop)
+        if self._task_group:
+            self._task_group.start_soon(health_check_task)
+            self._task_group.start_soon(cleanup_task)
         
         logger.info(f"Started background tasks (health check: {self.health_check_interval}s, cleanup: {self.cleanup_interval}s)")
     
@@ -627,11 +627,10 @@ class ConnectionPoolManager:
             self._is_shutting_down = True
             
             # Cancel background tasks
-            if self._health_check_task:
-                self._health_check_task.cancel()
-            
-            if self._cleanup_task:
-                self._cleanup_task.cancel()
+            if self._task_group:
+                self._task_group.cancel_scope.cancel()
+                await self._task_group.__aexit__(None, None, None)
+                self._task_group = None
             
             # Close all connections
             for conn_id in list(self.connections.keys()):

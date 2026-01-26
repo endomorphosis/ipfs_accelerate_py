@@ -423,7 +423,7 @@ async def create_worker_with_random_load(worker_id, port=8082, base_capabilities
     await anyio.sleep(2)
     
     # Start task to periodically update worker load
-    # TODO: Replace with task group - asyncio.create_task(simulate_worker_load(worker_id, port))
+    # TODO: Replace with task group - anyio task group for worker load simulation
     
     return worker_id
 
@@ -607,10 +607,10 @@ async def run_dynamic_environment(port=8082, duration=600):
     This demonstrates how the advanced load balancer adapts to changing conditions.
     """
     # Start monitoring
-    monitor_task = # TODO: Replace with task group - asyncio.create_task(monitor_system(port, interval=5, duration=duration))
+    monitor_task = # TODO: Replace with task group - anyio task group for monitoring
     
     # Add dynamic workers
-    workers_task = # TODO: Replace with task group - asyncio.create_task(add_dynamic_workers(port, delay_between=30, total_workers=8))
+    workers_task = # TODO: Replace with task group - anyio task group for dynamic workers
     
     # Create initial batch of tasks
     await create_test_tasks(port)

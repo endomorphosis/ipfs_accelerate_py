@@ -276,7 +276,7 @@ def test_parallel_loading_optimization()))))))))))))))))))))model_name="clip-vit
                     )
                     
                     # The real loading would happen asynchronously, but we simulate it here:
-                    if hasattr()))))))))))))))))))))asyncio, "run"):
+                    if hasattr()))))))))))))))))))))anyio, "run"):
                         # Python 3.7+
                         loader_start_time = time.time())))))))))))))))))))))
                         try:
@@ -292,7 +292,7 @@ def test_parallel_loading_optimization()))))))))))))))))))))model_name="clip-vit
                         except Exception as e:
                             logger.error()))))))))))))))))))))f"Error setting up progressive loader: {}}}}}}}}}}}e}")
                     else:
-                        logger.warning()))))))))))))))))))))"Asyncio.run not available, skipping progressive loader test")
+                        logger.warning()))))))))))))))))))))"Anyio.run not available, skipping progressive loader test")
                 except ()))))))))))))))))))))ImportError, AttributeError) as e:
                     logger.warning()))))))))))))))))))))f"Could not import ProgressiveModelLoader: {}}}}}}}}}}}e}")
                     # Create basic loading stats for simulation

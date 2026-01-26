@@ -60,7 +60,7 @@ async def start_coordinator(args, coordinator_id, port):
     
     # Start coordinator
     runner = coordinator.app.make_handler()
-    server = await # TODO: Remove event loop management - asyncio.get_event_loop().create_server(runner, '0.0.0.0', port)
+    server = await # TODO: Remove event loop management - anyio server creation
     
     logger.info(f"Coordinator {coordinator_id} started on port {port}")
     
@@ -157,7 +157,7 @@ async def simulate_coordinator_failure(args, coordinator_id, coordinator, server
     
     # Restart the server (recovery)
     port = args.base_port + coordinator_id
-    server = await # TODO: Remove event loop management - asyncio.get_event_loop().create_server(
+    server = await # TODO: Remove event loop management - anyio server creation
         coordinator.app.make_handler(), 
         '0.0.0.0', 
         port
@@ -441,7 +441,7 @@ async def run_test(args):
     await submit_test_tasks(args, coordinator_port, args.num_tasks)
     
     # Start monitoring
-    monitor_task = # TODO: Replace with task group - asyncio.create_task(monitor_cluster_status(args, [args.base_port + i for i in range(args.num_coordinators)]))
+    monitor_task = # TODO: Replace with task group - anyio task group for cluster monitoring
     
     # Wait for tasks to start executing
     await anyio.sleep(10)

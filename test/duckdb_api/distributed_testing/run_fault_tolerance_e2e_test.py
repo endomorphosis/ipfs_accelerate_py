@@ -164,7 +164,7 @@ def main():
                 return 1
         
         # Get the event loop
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
+        loop = # TODO: Remove event loop management - anyio
         
         # Create test harness
         harness = FaultToleranceTestHarness(

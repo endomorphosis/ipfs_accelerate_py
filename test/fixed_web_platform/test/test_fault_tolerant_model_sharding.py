@@ -195,7 +195,7 @@ class ModelShardingTester:
             if self.inject_fault:
                 # Start a background task to inject fault during execution
                 logger.info(f"Will inject fault: {self.inject_fault}")
-                fault_task = # TODO: Replace with task group - asyncio.create_task(self._inject_fault(model_manager, self.inject_fault))
+                fault_task = # TODO: Replace with task group - anyio task group for fault injection
             
             # Create model input based on model type
             model_type = self._get_model_type(self.model_name)

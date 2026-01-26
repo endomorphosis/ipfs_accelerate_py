@@ -125,15 +125,14 @@ async def run_coordinator_with_demo(host: str, port: int, num_demo_tasks: int, e
     server = CoordinatorWebSocketServer(host, port)
     
     # Set up signal handlers
-    loop = asyncio.get_running_loop()
     stop_event = anyio.Event()
     
-    def signal_handler():
-        logger.info("Received signal, shutting down...")
-        stop_event.set()
-    
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, signal_handler)
+    async def _signal_listener():
+        async with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
+            async for _ in signals:
+                logger.info("Received signal, shutting down...")
+                stop_event.set()
+                break
     
     try:
         # Integrate circuit breaker pattern if enabled
@@ -147,23 +146,22 @@ async def run_coordinator_with_demo(host: str, port: int, num_demo_tasks: int, e
         elif enable_circuit_breaker and not CIRCUIT_BREAKER_AVAILABLE:
             logger.warning("Circuit breaker pattern requested but not available. Advanced fault tolerance features disabled.")
         
-        # Start server
-        start_task = # TODO: Replace with task group - asyncio.create_task(server.start())
-        
-        # Submit demo tasks if requested (after a short delay)
-        if num_demo_tasks > 0:
-            # TODO: Replace with task group - asyncio.create_task(
-                submit_demo_tasks_after_delay(server, num_demo_tasks, delay=5.0)
-            )
-        
-        # Wait for stop signal
-        await stop_event.wait()
-        
-        # Stop server
-        await server.stop()
-        
-        # Wait for server to stop
-        await start_task
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(_signal_listener)
+
+            # Start server
+            tg.start_soon(server.start)
+            
+            # Submit demo tasks if requested (after a short delay)
+            if num_demo_tasks > 0:
+                tg.start_soon(submit_demo_tasks_after_delay, server, num_demo_tasks, 5.0)
+            
+            # Wait for stop signal
+            await stop_event.wait()
+            
+            # Stop server
+            await server.stop()
+            tg.cancel_scope.cancel()
         
     except Exception as e:
         logger.error(f"Error running coordinator server: {e}")

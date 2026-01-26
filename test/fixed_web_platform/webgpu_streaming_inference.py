@@ -1628,7 +1628,7 @@ class WebGPUStreamingInference:
         
         try:
             # Run prefill phase (wrapped in a thread to avoid blocking)
-            prefill_future = # TODO: Remove event loop management - asyncio.get_event_loop().run_in_executor(
+            prefill_future = # TODO: Remove event loop management - anyio to_thread run_in_executor equivalent
                 None, self._prefill, prompt
             )
             prefill_result = await prefill_future
@@ -1638,7 +1638,7 @@ class WebGPUStreamingInference:
             while not is_finished and self._tokens_generated < max_tokens:
                 # Generate next batch of tokens (in thread to avoid blocking)
                 batch_start_time = time.time()
-                decode_future = # TODO: Remove event loop management - asyncio.get_event_loop().run_in_executor(
+                decode_future = # TODO: Remove event loop management - anyio to_thread run_in_executor equivalent
                     None, self._decode_token, self._current_batch_size
                 )
                 tokens, is_finished = await decode_future
@@ -1762,7 +1762,7 @@ class WebGPUStreamingInference:
             logger.info(f"Starting prefill phase for prompt with {len(prompt.split())} words")
             
             # Run prefill in a separate thread to avoid blocking the event loop
-            prefill_future = # TODO: Remove event loop management - asyncio.get_event_loop().run_in_executor(
+            prefill_future = # TODO: Remove event loop management - anyio to_thread run_in_executor equivalent
                 None, self._prefill, prompt
             )
             prefill_result = await prefill_future
@@ -1804,7 +1804,7 @@ class WebGPUStreamingInference:
                 # Generate next batch of tokens using the optimized _decode_token method
                 # Run in a separate thread to avoid blocking the event loop
                 batch_start_time = time.time()
-                decode_future = # TODO: Remove event loop management - asyncio.get_event_loop().run_in_executor(
+                decode_future = # TODO: Remove event loop management - anyio to_thread run_in_executor equivalent
                     None, self._decode_token, self._current_batch_size
                 )
                 tokens, is_finished = await decode_future
@@ -2008,7 +2008,7 @@ class WebGPUStreamingInference:
                 logger.info(f"Generated {self._tokens_generated} tokens in {generation_time:.2f}s "
                           f"({tokens_per_second:.2f} tokens/sec)")
             
-        except asyncio.TimeoutError as timeout_error:
+        except TimeoutError as timeout_error:
             # Handle timeout specifically
             error_message = f"Timeout during streaming: {str(timeout_error)}"
             logger.error(error_message)

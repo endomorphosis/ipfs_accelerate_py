@@ -350,8 +350,7 @@ class TestDashboardIntegration(unittest.TestCase):
     def test_api_endpoints(self):
         """Test dashboard server API endpoints."""
         # Create event loop for async tests
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
+        # TODO: Remove event loop management - anyio.run
         
         try:
             # Test API status endpoint

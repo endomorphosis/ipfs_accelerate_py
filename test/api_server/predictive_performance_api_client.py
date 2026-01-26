@@ -679,7 +679,7 @@ class AsyncApiClient:
                     if data.get("status") == "failed":
                         raise RuntimeError(f"Task failed: {data.get('message', 'Unknown error')}")
                 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Check overall timeout
                     if time.time() - start_time > timeout:
                         raise TimeoutError(f"Task timed out after {timeout} seconds")

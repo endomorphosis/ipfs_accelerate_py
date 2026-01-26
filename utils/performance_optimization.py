@@ -425,7 +425,7 @@ class PerformanceOptimizer:
             "io_optimizations": {
                 "async_loading": {
                     "benefit": "Non-blocking model loading",
-                    "implementation": "asyncio-based loading",
+                    "implementation": "anyio-based loading",
                     "expected_improvement": "40% loading time reduction"
                 },
                 "prefetching": {

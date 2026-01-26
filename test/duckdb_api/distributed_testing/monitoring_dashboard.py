@@ -1450,7 +1450,7 @@ class MonitoringDashboard:
                         self.coordinator_websocket.recv(), timeout=1.0
                     )
                     await self._process_coordinator_message(message)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # This is expected, just retry
                     continue
                 except websockets.ConnectionClosed:
@@ -1472,8 +1472,7 @@ class MonitoringDashboard:
     def _connect_to_coordinator(self):
         """Connect to coordinator server in a background thread."""
         # Create a new event loop for the thread
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
+        # TODO: Remove event loop management - anyio.run
         
         while not self.stop_event.is_set():
             # Try to connect

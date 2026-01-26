@@ -118,8 +118,8 @@ class hf_t5_small:
                     pass
                 
             # Create queue for inference requests
-                    import asyncio
-                    queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))16)
+                    import anyio
+                    queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))16)
             
             if not webgpu_support:
                 # Create a WebGPU simulation using CPU implementation for text models
@@ -179,8 +179,8 @@ class hf_t5_small:
         except Exception as e:
             print())))))))))f"Error initializing WebGPU: {}}}}}}}}}}}}}}}}e}")
             # Fallback to a minimal mock
-            import asyncio
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))16)
+            import anyio
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))16)
                             return None, None, lambda x: {}}}}}}}}}}}}}}}}"output": "Mock WebGPU output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
 
     def init_webnn())))))))))self, model_name=None):
@@ -202,8 +202,8 @@ class hf_t5_small:
                     pass
                 
             # Create queue for inference requests
-                    import asyncio
-                    queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))16)
+                    import anyio
+                    queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))16)
             
             if not webnn_support:
                 # Create a WebNN simulation using CPU implementation for text models
@@ -257,8 +257,8 @@ class hf_t5_small:
         except Exception as e:
             print())))))))))f"Error initializing WebNN: {}}}}}}}}}}}}}}}}e}")
             # Fallback to a minimal mock
-            import asyncio
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))16)
+            import anyio
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))16)
                             return None, None, lambda x: {}}}}}}}}}}}}}}}}"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 
     def init_rocm())))))))))self, model_name, model_type, device_label="rocm:0", **kwargs):
@@ -273,7 +273,7 @@ class hf_t5_small:
             Tuple of ())))))))))endpoint, processor, handler, queue, batch_size)
             """
         try:
-            import asyncio
+            import anyio
             
             # Create processor and endpoint
             processor = self._create_mock_processor()))))))))))
@@ -294,7 +294,7 @@ class hf_t5_small:
             )
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
             batch_size = 4  # Default to larger batch size for ROCm
             
             return endpoint, processor, handler, queue, batch_size
@@ -303,9 +303,9 @@ class hf_t5_small:
             traceback.print_exc()))))))))))
             
             # Return mock components on error
-            import asyncio
+            import anyio
             handler = lambda x: {}}}}}}}}}}}}}}}}"output": "Mock ROCm output", "input": x, "implementation_type": "MOCK"}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 2
+            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 2
 
     
 
@@ -321,7 +321,7 @@ class hf_t5_small:
             Tuple of ())))))))))endpoint, processor, handler, queue, batch_size)
             """
         try:
-            import asyncio
+            import anyio
             
             # Create processor and endpoint
             processor = self._create_mock_processor()))))))))))
@@ -342,7 +342,7 @@ class hf_t5_small:
             )
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
             batch_size = 4  # Default to larger batch size for MPS
             
             return endpoint, processor, handler, queue, batch_size
@@ -351,9 +351,9 @@ class hf_t5_small:
             traceback.print_exc()))))))))))
             
             # Return mock components on error
-            import asyncio
+            import anyio
             handler = lambda x: {}}}}}}}}}}}}}}}}"output": "Mock MPS output", "input": x, "implementation_type": "MOCK"}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 2
+            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 2
 
     
     def _create_mock_processor())))))))))self):
@@ -419,7 +419,7 @@ class hf_t5_small:
             Tuple of ())))))))))endpoint, processor, handler, queue, batch_size)
             """
         try:
-            import asyncio
+            import anyio
             
             # Create processor and endpoint
             processor = self._create_mock_processor()))))))))))
@@ -435,7 +435,7 @@ class hf_t5_small:
             )
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -444,9 +444,9 @@ class hf_t5_small:
             traceback.print_exc()))))))))))
             
             # Return mock components on error
-            import asyncio
+            import anyio
             handler = lambda x: {}}}}}}}}}}}}}}}}"output": "Mock CPU output", "input": x, "implementation_type": "MOCK"}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 1
+            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 1
 
             def init_cuda())))))))))self, model_name, model_type, device_label="cuda:0", **kwargs):
                 """Initialize model for CUDA inference.
@@ -460,7 +460,7 @@ class hf_t5_small:
             Tuple of ())))))))))endpoint, processor, handler, queue, batch_size)
             """
         try:
-            import asyncio
+            import anyio
             
             # Create processor and endpoint
             processor = self._create_mock_processor()))))))))))
@@ -481,7 +481,7 @@ class hf_t5_small:
             )
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+            queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
             batch_size = 4  # Default to larger batch size for CUDA
             
             return endpoint, processor, handler, queue, batch_size
@@ -490,9 +490,9 @@ class hf_t5_small:
             traceback.print_exc()))))))))))
             
             # Return mock components on error
-            import asyncio
+            import anyio
             handler = lambda x: {}}}}}}}}}}}}}}}}"output": "Mock CUDA output", "input": x, "implementation_type": "MOCK"}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 2
+            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 2
 
             def init_openvino())))))))))self, model_name, model_type, device="CPU", **kwargs):
                 """Initialize model for OpenVINO inference.
@@ -506,7 +506,7 @@ class hf_t5_small:
             Tuple of ())))))))))endpoint, processor, handler, queue, batch_size)
             """
         try:
-            import asyncio
+            import anyio
             import numpy as np
             
             # Create processor and endpoint ())))))))))OpenVINO-specific)
@@ -537,7 +537,7 @@ class hf_t5_small:
                     )
             
             # Create queue
-                    queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))64)
+                    queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))64)
                     batch_size = 1
             
                 return endpoint, processor, handler, queue, batch_size
@@ -546,9 +546,9 @@ class hf_t5_small:
             traceback.print_exc()))))))))))
             
             # Return mock components on error
-            import asyncio
+            import anyio
             handler = lambda x: {}}}}}}}}}}}}}}}}"output": "Mock OpenVINO output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))64), 1
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))64), 1
 
     def init_apple())))))))))self, model_name, model_type, device="mps", **kwargs):
         """Initialize model for Apple Silicon ())))))))))M1/M2/M3) inference.
@@ -562,7 +562,7 @@ class hf_t5_small:
             Tuple of ())))))))))endpoint, processor, handler, queue, batch_size)
             """
         try:
-            import asyncio
+            import anyio
             
             # Create processor and endpoint
             processor = self._create_mock_processor()))))))))))
@@ -581,7 +581,7 @@ class hf_t5_small:
                 )
             
             # Create queue
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+                queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
                 batch_size = 2
             
             return endpoint, processor, handler, queue, batch_size
@@ -590,9 +590,9 @@ class hf_t5_small:
             traceback.print_exc()))))))))))
             
             # Return mock components on error
-            import asyncio
+            import anyio
             handler = lambda x: {}}}}}}}}}}}}}}}}"output": "Mock Apple Silicon output", "input": x, "implementation_type": "MOCK"}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 2
+            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 2
 
     def init_qualcomm())))))))))self, model_name, model_type, device="qualcomm", **kwargs):
         """Initialize model for Qualcomm AI inference.
@@ -606,7 +606,7 @@ class hf_t5_small:
             Tuple of ())))))))))endpoint, processor, handler, queue, batch_size)
             """
         try:
-            import asyncio
+            import anyio
             import numpy as np
             
             # Create processor
@@ -637,7 +637,7 @@ class hf_t5_small:
                     )
             
             # Create queue
-                    queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32)
+                    queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32)
                     batch_size = 1
             
                 return endpoint, processor, handler, queue, batch_size
@@ -646,9 +646,9 @@ class hf_t5_small:
             traceback.print_exc()))))))))))
             
             # Return mock components on error
-            import asyncio
+            import anyio
             handler = lambda x: {}}}}}}}}}}}}}}}}"output": "Mock Qualcomm output", "input": x, "implementation_type": "MOCK"}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue())))))))))32), 1
+                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue())))))))))32), 1
 
     # Handler creation methods
                 def create_cpu_text_embedding_endpoint_handler())))))))))self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None):

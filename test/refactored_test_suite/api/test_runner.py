@@ -103,7 +103,7 @@ class TestRunner:
         logger.info(f"Starting test run {run_id} for model {model_name}")
         
         # Start the test in a background task
-        # TODO: Replace with task group - asyncio.create_task(
+        # TODO: Replace with task group - anyio task group
             self._run_test_task(
                 run_id=run_id,
                 model_name=model_name,
@@ -180,7 +180,7 @@ class TestRunner:
             
             logger.info(f"Test run {run_id} completed successfully")
             
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Handle timeout
             logger.error(f"Test run {run_id} timed out after {timeout} seconds")
             self.active_tests[run_id]["status"] = "timeout"
