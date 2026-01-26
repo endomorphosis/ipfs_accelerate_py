@@ -91,6 +91,7 @@ testing = [
   "aiohttp>=3.8.1",
   "websockets>=10.1",
   "networkx>=2.8",
+  "PyJWT>=2.0.0",
   "psutil>=5.9.0",
   "py-cpuinfo>=9.0.0",
   "nvidia-ml-py",
