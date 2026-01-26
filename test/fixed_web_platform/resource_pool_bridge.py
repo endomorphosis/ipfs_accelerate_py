@@ -16,6 +16,7 @@ import logging
 import anyio
 import platform
 import traceback
+import inspect
 
 # Check for psutil availability
 try:
@@ -412,7 +413,7 @@ class ResourcePoolBridgeIntegration:
                             automation.launch(allow_simulation=True),
                             timeout=30  # 30 second timeout for browser launch
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.error(f"Timeout while launching browser for {connection_id}")
                         # Record the error for diagnostics
                         connection_errors[connection_id] = "browser_launch_timeout"
@@ -432,7 +433,7 @@ class ResourcePoolBridgeIntegration:
                                 self.create_websocket_bridge(port=port),
                                 timeout=10  # 10 second timeout for bridge creation
                             )
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             logger.error(f"Timeout while creating WebSocket bridge for {connection_id}")
                             await automation.close()
                             # Record the error for diagnostics
@@ -454,7 +455,7 @@ class ResourcePoolBridgeIntegration:
                                     bridge.wait_for_connection(timeout=10),
                                     timeout=15  # 15 second total timeout
                                 )
-                            except asyncio.TimeoutError:
+                            except TimeoutError:
                                 logger.error(f"Timeout while waiting for WebSocket connection for {connection_id}")
                                 await automation.close()
                                 # Record the error for diagnostics
@@ -500,7 +501,7 @@ class ResourcePoolBridgeIntegration:
                                         bridge.get_browser_capabilities(),
                                         timeout=10  # 10 second timeout for capability check
                                     )
-                                except (asyncio.TimeoutError, Exception) as cap_error:
+                                except (TimeoutError, Exception) as cap_error:
                                     logger.warning(f"Error checking browser capabilities for {connection_id}: {cap_error}")
                                     capabilities = None
                                 
@@ -1218,10 +1219,10 @@ class ResourcePoolBridgeIntegration:
         
         # Wrap the async call method with a sync version
         def sync_call(inputs):
-            if not hasattr(self, 'loop') or self.loop.is_closed():
-                self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-                # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
-            return self.loop.run_until_complete(model(inputs))
+            async def _call_async():
+                return await model(inputs)
+
+            return anyio.run(_call_async)
         
         # Replace the __call__ method with the sync version
         model.__call__ = sync_call
@@ -1254,13 +1255,7 @@ class ResourcePoolBridgeIntegration:
         Returns:
             Dict with health status information
         """
-        # Create event loop if needed
-        if not hasattr(self, 'loop') or self.loop.is_closed():
-            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
-        
-        # Run async method in event loop
-        return self.loop.run_until_complete(self.get_health_status())
+        return anyio.run(self.get_health_status)
             
     def get_metrics(self):
         """
@@ -1436,7 +1431,7 @@ class ResourcePoolBridgeIntegration:
             
             if not model:
                 # Use a dummy task for None models
-                tasks.append(# TODO: Replace with task group - asyncio.create_task(anyio.sleep(0)))
+                tasks.append(anyio.sleep(0))
             else:
                 # Create an inner function to capture model and inputs
                 async def call_model(model, inputs, model_info):
@@ -1448,12 +1443,12 @@ class ResourcePoolBridgeIntegration:
                         execution_time = time.time() - model_start_time
                         
                         # For async models, await the result
-                        if asyncio.iscoroutine(result) or hasattr(result, "__await__"):
+                        if inspect.iscoroutine(result) or hasattr(result, "__await__"):
                             try:
                                 # Use a smaller timeout for individual model execution
                                 model_timeout = min(60, timeout_seconds * 0.8)  # 80% of total timeout or 60s, whichever is smaller
                                 result = await wait_for(result, timeout=model_timeout)
-                            except asyncio.TimeoutError:
+                            except TimeoutError:
                                 logger.error(f"Individual model timeout: {model_info['model_name']} after {model_timeout}s")
                                 return {
                                     "success": False,
@@ -1538,15 +1533,15 @@ class ResourcePoolBridgeIntegration:
                         }
                 
                 # Create task with model info for better error reporting
-                tasks.append(# TODO: Replace with task group - asyncio.create_task(call_model(model, inputs, model_infos[i])))
+                tasks.append(call_model(model, inputs, model_infos[i]))
         
         # Wait for all tasks to complete with overall timeout
         try:
             results = await wait_for(
-                # TODO: Replace with task group - asyncio.gather(*tasks, return_exceptions=True),
-                timeout=timeout_seconds
+                gather(*tasks, return_exceptions=True),
+                timeout=timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Concurrent execution timed out after {timeout_seconds} seconds")
             # Create timeout results for all models
             execution_stats["timed_out"] = len(model_and_inputs_list)
@@ -1584,11 +1579,11 @@ class ResourcePoolBridgeIntegration:
                 error_category = ErrorCategories.UNKNOWN
                 recovery_suggestion = None
                 
-                if isinstance(result, asyncio.TimeoutError):
+                if isinstance(result, TimeoutError):
                     error_type = "timeout"
                     error_category = ErrorCategories.TIMEOUT
                     recovery_suggestion = "Try with smaller input or longer timeout"
-                elif isinstance(result, asyncio.CancelledError):
+                elif isinstance(result, anyio.get_cancelled_exc_class()):
                     error_type = "cancelled"
                     error_category = ErrorCategories.EXECUTION_INTERRUPTED
                     recovery_suggestion = "Task was cancelled, try again when system is less busy"
@@ -1676,13 +1671,7 @@ class ResourcePoolBridgeIntegration:
         Returns:
             List of results in the same order as inputs
         """
-        # Create event loop if needed
-        if not hasattr(self, 'loop') or self.loop.is_closed():
-            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
-        
-        # Run async method in event loop
-        return self.loop.run_until_complete(self.execute_concurrent(model_and_inputs_list))
+        return anyio.run(self.execute_concurrent, model_and_inputs_list)
     
     async def close(self):
         """
@@ -1722,7 +1711,7 @@ class ResourcePoolBridgeIntegration:
                     timeout=10  # 10 second timeout for circuit breaker closing
                 )
                 cleanup_status["circuit_breaker_closed"] = True
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error("Timeout while closing circuit breaker manager")
                 cleanup_status["success"] = False
                 cleanup_status["errors"]["circuit_breaker"] = "close_timeout"
@@ -1840,7 +1829,7 @@ class ResourcePoolBridgeIntegration:
             # If adaptive manager has a close method, call it
             if hasattr(self.adaptive_manager, 'close'):
                 try:
-                    if inspect.iscoroutinefunction(  # Added import inspectself.adaptive_manager.close):
+                    if inspect.iscoroutinefunction(self.adaptive_manager.close):
                         await wait_for(
                             self.adaptive_manager.close(),
                             timeout=5
@@ -1848,7 +1837,7 @@ class ResourcePoolBridgeIntegration:
                     else:
                         self.adaptive_manager.close()
                     cleanup_status["adaptive_manager_closed"] = True
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.error("Timeout while closing adaptive manager")
                     cleanup_status["success"] = False
                     cleanup_status["errors"]["adaptive_manager"] = "close_timeout"
@@ -1871,16 +1860,7 @@ class ResourcePoolBridgeIntegration:
             if hasattr(self, 'tensor_sharing_manager'):
                 self.tensor_sharing_manager = None
             
-            # Clear any event loops we may have created
-            if hasattr(self, 'loop') and not self.loop.is_closed():
-                try:
-                    remaining_tasks = asyncio.all_tasks(self.loop)
-                    if remaining_tasks:
-                        logger.warning(f"Cancelling {len(remaining_tasks)} remaining tasks")
-                        for task in remaining_tasks:
-                            task.cancel()
-                except Exception as e:
-                    logger.warning(f"Error cancelling remaining tasks: {e}")
+            # No asyncio event loop cleanup needed (AnyIO manages its own run context)
         except Exception as clear_error:
             logger.warning(f"Error clearing references: {clear_error}")
             cleanup_status["errors"]["reference_clearing"] = str(clear_error)
@@ -1899,13 +1879,7 @@ class ResourcePoolBridgeIntegration:
     
     def close_sync(self):
         """Synchronous wrapper for close."""
-        # Create event loop if needed
-        if not hasattr(self, 'loop') or self.loop.is_closed():
-            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
-        
-        # Run async close method in event loop
-        return self.loop.run_until_complete(self.close())
+        return anyio.run(self.close)
         
     def setup_tensor_sharing(self, max_memory_mb=None):
         """
@@ -2187,8 +2161,6 @@ class ResourcePoolBridgeIntegration:
 
 # For testing
 if __name__ == "__main__":
-    import asyncio
-    
     async def test_resource_pool():
         # Create and initialize with the new async interface
         integration = ResourcePoolBridgeIntegration(adaptive_scaling=True)
@@ -2243,4 +2215,4 @@ if __name__ == "__main__":
             print("Resource pool bridge closed")
     
     # Run the async test function
-    anyio.run(test_resource_pool())
+    anyio.run(test_resource_pool)
