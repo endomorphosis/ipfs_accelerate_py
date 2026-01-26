@@ -6,6 +6,7 @@ This module contains tests for the CI client implementations used by the
 CI/CD Integration plugin for the Distributed Testing Framework.
 """
 
+import anyio
 import logging
 import os
 import unittest
@@ -31,10 +32,13 @@ from distributed_testing.ci import GitHubClient, GitLabClient, JenkinsClient, Az
 if GitHubClient is None or GitLabClient is None or JenkinsClient is None or AzureClient is None:
     pytest.skip("One or more CI clients are unavailable in this environment", allow_module_level=True)
 
-class TestGitHubClient(unittest.IsolatedAsyncioTestCase):
+class TestGitHubClient(unittest.TestCase):
     """Tests for GitHubClient implementation."""
-    
-    async def asyncSetUp(self):
+
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    async def _async_set_up(self):
         """Set up test environment."""
         self.token = "mock_github_token"
         self.repository = "owner/repo"
@@ -43,7 +47,10 @@ class TestGitHubClient(unittest.IsolatedAsyncioTestCase):
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
     
-    async def test_create_test_run(self):
+    def test_create_test_run(self):
+        anyio.run(self._test_create_test_run)
+
+    async def _test_create_test_run(self):
         """Test creating a test run in GitHub."""
         # Set up mock response
         mock_response = MagicMock()
@@ -70,7 +77,10 @@ class TestGitHubClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(test_run["name"], "Test Run")
         self.assertEqual(test_run["status"], "running")
     
-    async def test_update_test_run(self):
+    def test_update_test_run(self):
+        anyio.run(self._test_update_test_run)
+
+    async def _test_update_test_run(self):
         """Test updating a test run in GitHub."""
         # Set up mock response
         mock_response = MagicMock()
@@ -96,7 +106,10 @@ class TestGitHubClient(unittest.IsolatedAsyncioTestCase):
         # Assert test run was updated
         self.assertTrue(result)
     
-    async def test_add_pr_comment(self):
+    def test_add_pr_comment(self):
+        anyio.run(self._test_add_pr_comment)
+
+    async def _test_add_pr_comment(self):
         """Test adding a PR comment in GitHub."""
         # Set up mock response
         mock_response = MagicMock()
@@ -113,10 +126,13 @@ class TestGitHubClient(unittest.IsolatedAsyncioTestCase):
         # Assert comment was added
         self.assertTrue(result)
 
-class TestGitLabClient(unittest.IsolatedAsyncioTestCase):
+class TestGitLabClient(unittest.TestCase):
     """Tests for GitLabClient implementation."""
-    
-    async def asyncSetUp(self):
+
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    async def _async_set_up(self):
         """Set up test environment."""
         self.token = "mock_gitlab_token"
         self.project = "group/project"
@@ -125,7 +141,10 @@ class TestGitLabClient(unittest.IsolatedAsyncioTestCase):
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
     
-    async def test_create_test_run_with_commit(self):
+    def test_create_test_run_with_commit(self):
+        anyio.run(self._test_create_test_run_with_commit)
+
+    async def _test_create_test_run_with_commit(self):
         """Test creating a test run in GitLab using commit status."""
         # Set up mock response
         mock_response = MagicMock()
@@ -150,7 +169,10 @@ class TestGitLabClient(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(test_run["id"].startswith("gl-status-"))
         self.assertEqual(test_run["status"], "running")
     
-    async def test_update_test_run(self):
+    def test_update_test_run(self):
+        anyio.run(self._test_update_test_run)
+
+    async def _test_update_test_run(self):
         """Test updating a test run in GitLab."""
         # Set up mock response
         mock_response = MagicMock()
@@ -177,7 +199,10 @@ class TestGitLabClient(unittest.IsolatedAsyncioTestCase):
         # Assert test run was updated
         self.assertTrue(result)
     
-    async def test_add_pr_comment(self):
+    def test_add_pr_comment(self):
+        anyio.run(self._test_add_pr_comment)
+
+    async def _test_add_pr_comment(self):
         """Test adding a MR comment in GitLab."""
         # Set up mock response
         mock_response = MagicMock()
@@ -194,10 +219,13 @@ class TestGitLabClient(unittest.IsolatedAsyncioTestCase):
         # Assert comment was added
         self.assertTrue(result)
 
-class TestJenkinsClient(unittest.IsolatedAsyncioTestCase):
+class TestJenkinsClient(unittest.TestCase):
     """Tests for JenkinsClient implementation."""
-    
-    async def asyncSetUp(self):
+
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    async def _async_set_up(self):
         """Set up test environment."""
         self.url = "https://jenkins.example.com/"
         self.user = "jenkins_user"
@@ -207,7 +235,10 @@ class TestJenkinsClient(unittest.IsolatedAsyncioTestCase):
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
     
-    async def test_create_test_run(self):
+    def test_create_test_run(self):
+        anyio.run(self._test_create_test_run)
+
+    async def _test_create_test_run(self):
         """Test creating a test run in Jenkins."""
         # Set up mock response
         mock_response = MagicMock()
@@ -228,7 +259,10 @@ class TestJenkinsClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(test_run["id"], "jenkins-test-job-42")
         self.assertEqual(test_run["status"], "running")
     
-    async def test_update_test_run(self):
+    def test_update_test_run(self):
+        anyio.run(self._test_update_test_run)
+
+    async def _test_update_test_run(self):
         """Test updating a test run in Jenkins."""
         # Set up mock response
         mock_response = MagicMock()
@@ -255,10 +289,13 @@ class TestJenkinsClient(unittest.IsolatedAsyncioTestCase):
         # Assert test run was updated
         self.assertTrue(result)
 
-class TestAzureClient(unittest.IsolatedAsyncioTestCase):
+class TestAzureClient(unittest.TestCase):
     """Tests for AzureClient implementation."""
-    
-    async def asyncSetUp(self):
+
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    async def _async_set_up(self):
         """Set up test environment."""
         self.token = "azure_token"
         self.organization = "org"
@@ -267,8 +304,11 @@ class TestAzureClient(unittest.IsolatedAsyncioTestCase):
         assert await self.client.initialize({"token": self.token, "organization": self.organization, "project": self.project})
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
-    
-    async def test_create_test_run(self):
+
+    def test_create_test_run(self):
+        anyio.run(self._test_create_test_run)
+
+    async def _test_create_test_run(self):
         """Test creating a test run in Azure DevOps."""
         # Set up mock response
         mock_response = MagicMock()
@@ -292,7 +332,10 @@ class TestAzureClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(test_run["id"], "12345")
         self.assertEqual(test_run["status"], "running")
     
-    async def test_update_test_run(self):
+    def test_update_test_run(self):
+        anyio.run(self._test_update_test_run)
+
+    async def _test_update_test_run(self):
         """Test updating a test run in Azure DevOps."""
         # Set up mock response
         mock_response = MagicMock()
@@ -319,7 +362,10 @@ class TestAzureClient(unittest.IsolatedAsyncioTestCase):
         # Assert test run was updated
         self.assertTrue(result)
     
-    async def test_add_pr_comment(self):
+    def test_add_pr_comment(self):
+        anyio.run(self._test_add_pr_comment)
+
+    async def _test_add_pr_comment(self):
         """Test adding a PR comment in Azure DevOps."""
         # Set up mock response
         mock_response = MagicMock()

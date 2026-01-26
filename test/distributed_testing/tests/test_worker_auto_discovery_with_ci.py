@@ -125,10 +125,16 @@ class MockCIProvider(CIProviderInterface):
         pass
 
 
-class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
+class TestWorkerAutoDiscoveryWithCI(unittest.TestCase):
     """Test worker auto-discovery with CI integration."""
-    
-    async def asyncSetUp(self):
+
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    def tearDown(self):
+        anyio.run(self._async_tear_down)
+
+    async def _async_set_up(self):
         """Set up for tests."""
         # Create temporary directories for tests
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -185,7 +191,7 @@ class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
         # Start the coordinator
         await self.coordinator.start()
     
-    async def asyncTearDown(self):
+    async def _async_tear_down(self):
         """Clean up after tests."""
         # Stop the coordinator
         await self.coordinator.shutdown()
@@ -239,7 +245,10 @@ class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
         
         return workers
     
-    async def test_worker_auto_registration(self):
+    def test_worker_auto_registration(self):
+        anyio.run(self._test_worker_auto_registration)
+
+    async def _test_worker_auto_registration(self):
         """Test that workers are automatically registered."""
         # Create workers
         workers = await self.create_test_workers(2)
@@ -251,7 +260,10 @@ class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
         for worker in workers:
             self.assertIn(worker.worker_id, registered_workers)
     
-    async def test_worker_capability_awareness(self):
+    def test_worker_capability_awareness(self):
+        anyio.run(self._test_worker_capability_awareness)
+
+    async def _test_worker_capability_awareness(self):
         """Test that worker capabilities are properly tracked."""
         # Create workers with different capabilities
         workers = await self.create_test_workers(2)
@@ -273,7 +285,10 @@ class TestWorkerAutoDiscoveryWithCI(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("whisper", capabilities["models"])
     
     @patch('distributed_testing.coordinator.DistributedTestingCoordinator._assign_task_to_worker')
-    async def test_ci_integration_with_auto_discovery(self, mock_assign_task):
+    def test_ci_integration_with_auto_discovery(self, mock_assign_task):
+        anyio.run(self._test_ci_integration_with_auto_discovery, mock_assign_task)
+
+    async def _test_ci_integration_with_auto_discovery(self, mock_assign_task):
         """Test CI integration with worker auto-discovery."""
         # Set up mock assignment function that simulates task completion
         mock_assign_task.side_effect = lambda task, worker_id: self.coordinator._mark_task_completed(

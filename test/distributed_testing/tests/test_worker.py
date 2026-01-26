@@ -16,7 +16,6 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
 websockets = pytest.importorskip("websockets")
 
 _THIS_DIR = os.path.dirname(__file__)
@@ -69,7 +68,7 @@ class TestDistributedTestingWorker(unittest.TestCase):
 class TestDistributedTestingWorkerAsync:
     """Async test cases for the DistributedTestingWorker class."""
 
-    @pytest_asyncio.fixture
+    @pytest.fixture
     async def worker_setup(self):
         """Set up worker and mocked connection for testing."""
         coordinator_url = "http://localhost:8080"
@@ -104,7 +103,7 @@ class TestDistributedTestingWorkerAsync:
             
             yield worker, mock_ws
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_connect_to_coordinator(self, worker_setup):
         """Test connection to coordinator."""
         worker, mock_ws = worker_setup
@@ -114,8 +113,6 @@ class TestDistributedTestingWorkerAsync:
             json.dumps({"type": "auth_response", "status": "success", "token": "new_token", "worker_id": worker.worker_id}),
             json.dumps({"type": "register_response", "worker_id": worker.worker_id, "status": "success"})
         ]
-        
-            @pytest.mark.anyio
         result = await worker.connect_to_coordinator()
         
         # Verify connection was successful
@@ -135,7 +132,7 @@ class TestDistributedTestingWorkerAsync:
         # hardware detection, so we'll just check that it was sent
         assert mock_ws.send.call_count >= 2
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_authenticate_success(self, worker_setup):
         """Test successful authentication with coordinator."""
         worker, mock_ws = worker_setup
@@ -146,7 +143,7 @@ class TestDistributedTestingWorkerAsync:
             "status": "success",
             "token": "new_token",
             "worker_id": worker.worker_id
-            @pytest.mark.anyio
+        })
         
         # Test authentication
         worker.ws_connected = True  # Assume we're connected
@@ -164,7 +161,7 @@ class TestDistributedTestingWorkerAsync:
             "worker_id": worker.worker_id
         }))
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_authenticate_failure(self, worker_setup):
         """Test failed authentication with coordinator."""
         worker, mock_ws = worker_setup
@@ -175,7 +172,6 @@ class TestDistributedTestingWorkerAsync:
             "status": "failure",
             "message": "Invalid API key"
         })
-            @pytest.mark.anyio
         # Test authentication
         worker.ws_connected = True  # Assume we're connected
         result = await worker._authenticate()
@@ -183,7 +179,7 @@ class TestDistributedTestingWorkerAsync:
         # Verify authentication failed
         assert result is False
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_send_heartbeat(self, worker_setup):
         """Test sending heartbeat to coordinator."""
         worker, mock_ws = worker_setup
@@ -193,8 +189,6 @@ class TestDistributedTestingWorkerAsync:
             "type": "heartbeat_response",
             "status": "success"
         })
-        
-            @pytest.mark.anyio
         worker.ws_connected = True  # Assume we're connected
         
         # Mock health check to avoid actual hardware checks
@@ -214,7 +208,7 @@ class TestDistributedTestingWorkerAsync:
         assert "timestamp" in sent_message
         assert "hardware_metrics" in sent_message
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_task_execution_success(self, worker_setup):
         """Test successful task execution."""
         worker, mock_ws = worker_setup
@@ -225,7 +219,6 @@ class TestDistributedTestingWorkerAsync:
             "type": "benchmark",
             "config": {
                 "model": "test_model",
-            @pytest.mark.anyio
                 "precision": "fp32",
                 "iterations": 3
             },
@@ -257,7 +250,7 @@ class TestDistributedTestingWorkerAsync:
             worker._execute_benchmark_task.assert_called_once_with(task)
             worker._send_task_result.assert_called_once()
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_task_execution_failure(self, worker_setup):
         """Test failed task execution with error handling."""
         worker, mock_ws = worker_setup
@@ -268,7 +261,6 @@ class TestDistributedTestingWorkerAsync:
             "type": "test",
             "config": {
                 "test_file": "test_worker.py",
-            @pytest.mark.anyio
             },
             "status": "received",
             "received": datetime.now().isoformat()
@@ -290,14 +282,13 @@ class TestDistributedTestingWorkerAsync:
             worker._execute_test_task.assert_called_once_with(task)
             worker._send_task_error.assert_called_once()
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_task_execution_cancelled(self, worker_setup):
         """Test cancellation of a task during execution."""
         worker, mock_ws = worker_setup
         
         # Create a custom task for testing
         task = {
-            @pytest.mark.anyio
             "type": "custom",
             "config": {
                 "name": "test_custom_task"
@@ -321,15 +312,15 @@ class TestDistributedTestingWorkerAsync:
                 await anyio.sleep(0.1)
                 tg.cancel_scope.cancel()
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_check_health(self, worker_setup):
         """Test worker health check functionality."""
         worker, _ = worker_setup
         
         # Test a healthy state
-        worker.ws_connected = True
-            @pytest.mark.anyio
-             patch('worker.psutil.virtual_memory', return_value=MagicMock(percent=60)):
+           worker.ws_connected = True
+           with patch('worker.psutil.cpu_percent', return_value=50), \
+               patch('worker.psutil.virtual_memory', return_value=MagicMock(percent=60)):
             
             result = await worker.check_health()
             
@@ -372,18 +363,21 @@ class TestDistributedTestingWorkerAsync:
             assert result is False
             assert worker.is_healthy is False
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_collect_hardware_metrics(self, worker_setup):
         """Test collection of hardware metrics."""
         worker, _ = worker_setup
         
         # Mock hardware metrics
         with patch('worker.psutil.cpu_percent', return_value=50), \
-            @pytest.mark.anyio
-                percent=60, 
-                used=8 * 1024**3,  # 8 GB
-                available=12 * 1024**3  # 12 GB
-             )), \
+             patch(
+                 'worker.psutil.virtual_memory',
+                 return_value=MagicMock(
+                     percent=60,
+                     used=8 * 1024**3,  # 8 GB
+                     available=12 * 1024**3  # 12 GB
+                 ),
+             ), \
              patch('worker.HAS_TORCH', False):  # Disable GPU metrics for this test
             
             # Collect metrics

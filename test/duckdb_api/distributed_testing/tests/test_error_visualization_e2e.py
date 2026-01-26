@@ -41,7 +41,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("test_error_visualization_e2e")
 
-class TestErrorVisualizationE2E(unittest.IsolatedAsyncioTestCase):
+class TestErrorVisualizationE2E(unittest.TestCase):
     """End-to-End Tests for the Error Visualization System."""
     
     @classmethod

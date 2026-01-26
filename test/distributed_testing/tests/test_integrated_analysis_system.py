@@ -333,10 +333,16 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
         self.analysis_system.coordinator_integration.close.assert_called_once()
 
 
-class TestIntegratedAnalysisSystemWithCoordinator(unittest.IsolatedAsyncioTestCase):
+class TestIntegratedAnalysisSystemWithCoordinator(unittest.TestCase):
     """Test cases for the IntegratedAnalysisSystem with a real coordinator"""
 
-    async def asyncSetUp(self):
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    def tearDown(self):
+        anyio.run(self._async_tear_down)
+
+    async def _async_set_up(self):
         """Set up test environment before each test"""
         if not DUCKDB_AVAILABLE:
             self.skipTest("DuckDB not available, skipping tests")
@@ -378,7 +384,7 @@ class TestIntegratedAnalysisSystemWithCoordinator(unittest.IsolatedAsyncioTestCa
             "tasks_failed": 0
         }
 
-    async def asyncTearDown(self):
+    async def _async_tear_down(self):
         """Clean up after each test"""
         # Close the analysis system
         self.analysis_system.close()
@@ -390,7 +396,10 @@ class TestIntegratedAnalysisSystemWithCoordinator(unittest.IsolatedAsyncioTestCa
         except:
             pass
 
-    async def test_task_completion_integration(self):
+    def test_task_completion_integration(self):
+        anyio.run(self._test_task_completion_integration)
+
+    async def _test_task_completion_integration(self):
         """Test integration with task completion"""
         # Create a test task
         task_id = "test-task"

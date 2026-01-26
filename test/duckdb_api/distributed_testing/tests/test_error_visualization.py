@@ -22,7 +22,7 @@ if parent_dir not in sys.path:
 
 from duckdb_api.distributed_testing.dashboard.error_visualization_integration import ErrorVisualizationIntegration
 
-class TestErrorVisualization(unittest.IsolatedAsyncioTestCase):
+class TestErrorVisualization(unittest.TestCase):
     """Test cases for the Error Visualization System."""
     
     def setUp(self):
@@ -217,7 +217,10 @@ class TestErrorVisualization(unittest.IsolatedAsyncioTestCase):
         
         return errors
     
-    async def test_error_data_processing(self):
+    def test_error_data_processing(self):
+        anyio.run(self._test_error_data_processing)
+
+    async def _test_error_data_processing(self):
         """Test processing of error data."""
         # Process sample error data
         processed_data = await self.error_viz._process_error_data(self.sample_errors, 24)
@@ -246,7 +249,10 @@ class TestErrorVisualization(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(summary["network_errors"], 0)
         self.assertGreater(summary["hardware_errors"], 0)
     
-    async def test_error_distribution(self):
+    def test_error_distribution(self):
+        anyio.run(self._test_error_distribution)
+
+    async def _test_error_distribution(self):
         """Test error distribution generation."""
         # Generate error distribution
         error_distribution = await self.error_viz._generate_error_distribution(self.sample_errors)
@@ -270,7 +276,10 @@ class TestErrorVisualization(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Category", category)
             self.assertIn("Count", category)
     
-    async def test_error_patterns(self):
+    def test_error_patterns(self):
+        anyio.run(self._test_error_patterns)
+
+    async def _test_error_patterns(self):
         """Test error pattern detection."""
         # Generate error patterns
         error_patterns = await self.error_viz._generate_error_patterns(self.sample_errors)
@@ -304,7 +313,10 @@ class TestErrorVisualization(unittest.IsolatedAsyncioTestCase):
         
         self.assertTrue(recurring_pattern_found, "Failed to detect recurring error pattern")
     
-    async def test_worker_error_analysis(self):
+    def test_worker_error_analysis(self):
+        anyio.run(self._test_worker_error_analysis)
+
+    async def _test_worker_error_analysis(self):
         """Test worker error analysis."""
         # Generate worker error analysis
         worker_errors = await self.error_viz._generate_worker_error_analysis(self.sample_errors)
@@ -332,7 +344,10 @@ class TestErrorVisualization(unittest.IsolatedAsyncioTestCase):
         self.assertIn("status", worker)
         self.assertIn("critical_errors", worker)
     
-    async def test_hardware_error_analysis(self):
+    def test_hardware_error_analysis(self):
+        anyio.run(self._test_hardware_error_analysis)
+
+    async def _test_hardware_error_analysis(self):
         """Test hardware error analysis."""
         # Generate hardware error analysis
         hardware_errors = await self.error_viz._generate_hardware_error_analysis(self.sample_errors)
@@ -369,7 +384,10 @@ class TestErrorVisualization(unittest.IsolatedAsyncioTestCase):
         # Recent errors list might be limited to a maximum number (e.g., 50)
         self.assertLessEqual(len(recent_errors), hardware_error_count)
     
-    async def test_get_error_data(self):
+    def test_get_error_data(self):
+        anyio.run(self._test_get_error_data)
+
+    async def _test_get_error_data(self):
         """Test the get_error_data method."""
         # Mock the _get_error_data_from_files method to return our sample data
         original_method = self.error_viz._get_error_data_from_files

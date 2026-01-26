@@ -148,7 +148,7 @@ class MockEnhancedErrorRecoveryManager(EnhancedErrorRecoveryManager):
         self.strategies["system_recovery"] = MockRecoveryStrategy("system_recovery", "critical", True, 0.5)
 
 
-class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
+class TestPerformanceBasedErrorRecovery(unittest.TestCase):
     """Tests for the PerformanceBasedErrorRecovery class."""
     
     def setUp(self):
@@ -197,7 +197,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertIn('adaptive_timeouts', table_names)
         self.assertIn('progressive_recovery', table_names)
     
-    async def test_recover_success(self):
+    def test_recover_success(self):
+        anyio.run(self._test_recover_success)
+
+    async def _test_recover_success(self):
         """Test successful recovery."""
         # Create error report
         error_report = self.error_handler.create_error_report(
@@ -233,7 +236,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(records[0][3], "network")  # error_type
         self.assertEqual(records[0][5], True)  # success
     
-    async def test_recover_failure(self):
+    def test_recover_failure(self):
+        anyio.run(self._test_recover_failure)
+
+    async def _test_recover_failure(self):
         """Test failed recovery."""
         # Create error report
         error_report = self.error_handler.create_error_report(
@@ -267,7 +273,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(records[-1][3], "network")  # error_type
         self.assertEqual(records[-1][5], False)  # success
     
-    async def test_progressive_recovery(self):
+    def test_progressive_recovery(self):
+        anyio.run(self._test_progressive_recovery)
+
+    async def _test_progressive_recovery(self):
         """Test progressive recovery with escalation."""
         # Create error report
         error_report = self.error_handler.create_error_report(
@@ -310,7 +319,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history[-1]["old_level"], 4)
         self.assertEqual(history[-1]["new_level"], 5)
     
-    async def test_strategy_selection(self):
+    def test_strategy_selection(self):
+        anyio.run(self._test_strategy_selection)
+
+    async def _test_strategy_selection(self):
         """Test strategy selection based on performance history."""
         # Record fake performance history
         self.recovery_system._record_performance(
@@ -349,7 +361,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         # Check that the better performing strategy was selected
         self.assertEqual(strategy_id, "retry")
     
-    async def test_adaptive_timeouts(self):
+    def test_adaptive_timeouts(self):
+        anyio.run(self._test_adaptive_timeouts)
+
+    async def _test_adaptive_timeouts(self):
         """Test adaptive timeouts."""
         # Set initial timeout
         key = "network:retry"
@@ -377,7 +392,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(record)
         self.assertEqual(record[0], self.recovery_system.adaptive_timeouts[key])
     
-    async def test_resource_monitoring(self):
+    def test_resource_monitoring(self):
+        anyio.run(self._test_resource_monitoring)
+
+    async def _test_resource_monitoring(self):
         """Test resource usage monitoring."""
         # Get initial resource usage
         resources = self.recovery_system._get_resource_usage()
@@ -396,7 +414,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(diff["cpu_percent"], 5.0)
         self.assertEqual(diff["memory_percent"], 5.0)
     
-    async def test_impact_score(self):
+    def test_impact_score(self):
+        anyio.run(self._test_impact_score)
+
+    async def _test_impact_score(self):
         """Test impact score calculation."""
         # Test with various inputs
         score1 = self.recovery_system._calculate_impact_score(
@@ -428,7 +449,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         # Check that failed recovery increases score
         self.assertLess(score1, score3)
     
-    async def test_stability_check(self):
+    def test_stability_check(self):
+        anyio.run(self._test_stability_check)
+
+    async def _test_stability_check(self):
         """Test system stability check."""
         # Test stability check
         stability = await self.recovery_system._check_stability()
@@ -437,7 +461,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(stability, 0.0)
         self.assertLessEqual(stability, 1.0)
     
-    async def test_performance_metrics(self):
+    def test_performance_metrics(self):
+        anyio.run(self._test_performance_metrics)
+
+    async def _test_performance_metrics(self):
         """Test performance metrics collection."""
         # Record some performance data
         self.recovery_system._record_performance(
@@ -493,7 +520,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertIn("network", metrics["top_strategies"])
         self.assertIn("timeout", metrics["top_strategies"])
     
-    async def test_error_recovery_with_affected_tasks(self):
+    def test_error_recovery_with_affected_tasks(self):
+        anyio.run(self._test_error_recovery_with_affected_tasks)
+
+    async def _test_error_recovery_with_affected_tasks(self):
         """Test recovery with affected tasks detection."""
         # Create error report with task info
         error_report = self.error_handler.create_error_report(
@@ -543,7 +573,10 @@ class TestPerformanceBasedErrorRecovery(unittest.IsolatedAsyncioTestCase):
         self.assertIn("task-2", affected_tasks2)
         self.assertNotIn("task-3", affected_tasks2)  # Different worker
     
-    async def test_task_recovery_tracking(self):
+    def test_task_recovery_tracking(self):
+        anyio.run(self._test_task_recovery_tracking)
+
+    async def _test_task_recovery_tracking(self):
         """Test tracking of task recovery."""
         # Set up some affected tasks
         affected_tasks = {"task-1", "task-2", "task-3"}
