@@ -994,6 +994,11 @@ main() {
     log "Installing heavy test deps into $TEST_VENV_DIR"
     create_or_update_venv "$TEST_VENV_DIR"
     pip_install "$TEST_VENV_DIR" "$REPO_ROOT/test/requirements.txt"
+
+    # Ensure previous runs didn't leave the project installed in this venv.
+    # (Its dependency metadata intentionally differs from the heavy test stack.)
+    "$TEST_VENV_DIR/bin/python" -m pip uninstall -y ipfs-accelerate-py ipfs_accelerate_py >/dev/null 2>&1 || true
+
     # Do NOT install the project package into the heavy test venv.
     # The heavy test stack (e.g. selenium) can legitimately conflict with the
     # project's runtime pins (notably urllib3<2 for ipfshttpclient).
