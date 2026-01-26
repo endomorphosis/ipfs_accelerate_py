@@ -15,10 +15,8 @@ import logging
 import json
 try:
     import aiohttp
-    import asyncio
 except ImportError:
     aiohttp = None
-    asyncio = None
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 

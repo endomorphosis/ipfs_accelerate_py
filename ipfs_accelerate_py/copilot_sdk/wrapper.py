@@ -6,7 +6,7 @@ enabling agentic AI features with caching and retry logic.
 """
 
 import anyio
-import asyncio
+import sniffio
 import json
 import logging
 import os
@@ -95,31 +95,22 @@ class CopilotSDK:
         self._client = None
         self._active_sessions = {}
         self._tools = {}
-        
-        # Event loop for async operations
-        self._loop = None
-        self._loop_thread = None
-    
-    def _get_or_create_loop(self):
-        """Get or create an event loop for async operations."""
-        try:
-            return asyncio.get_running_loop()
-        except RuntimeError:
-            # No running loop, create a new one
-            if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-            return self._loop
     
     def _run_async(self, coro):
-        """Run an async coroutine and return the result."""
+        """Run an async coroutine and return the result.
+
+        If called from within an async context, returns the coroutine so the
+        caller can await it.
+        """
         try:
-            loop = asyncio.get_running_loop()
-            # Already in async context, just await
+            sniffio.current_async_library()
+        except sniffio.AsyncLibraryNotFoundError:
+            async def _runner():
+                return await coro
+
+            return anyio.run(_runner)
+        else:
             return coro
-        except RuntimeError:
-            # Not in async context, run in new loop
-            loop = self._get_or_create_loop()
-            return loop.run_until_complete(coro)
     
     async def _get_or_create_client(self):
         """Get or create the Copilot client."""

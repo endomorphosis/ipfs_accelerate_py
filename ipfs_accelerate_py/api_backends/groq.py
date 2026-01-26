@@ -555,9 +555,6 @@ class groq:
         self.endpoints = {}
         self.endpoint_status = {}
         
-        # Add queue for managing requests
-        self.request_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
-        
         # Extract API key from metadata or environment
         self.api_key = self.metadata.get("groq_api_key", os.environ.get("GROQ_API_KEY", ""))
         if not self.api_key:

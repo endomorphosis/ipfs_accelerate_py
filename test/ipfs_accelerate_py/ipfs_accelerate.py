@@ -648,6 +648,9 @@ class ipfs_accelerate_py:
         return None
     
     async def create_background_tasks(self):
+        if getattr(self, "_task_group", None) is None:
+            self._task_group = anyio.create_task_group()
+            await self._task_group.__aenter__()
         if "endpoint_handler" in list(self.resources.keys()):
             models = list(self.resources["endpoint_handler"].keys())
             for model in models:
@@ -669,17 +672,23 @@ class ipfs_accelerate_py:
                                 # If endpoint_handler method returned None, fall back to direct access
                                 if handler is None:
                                     handler = self.resources["endpoint_handler"][model][backend]
-                                    
-                                self.resources["consumer_tasks"][model][endpoint] = # TODO: Replace with task group - asyncio.create_task(
-                                    self.endpoint_consumer(
-                                        self.resources["queues"][model][backend], 
-                                        64, 
-                                        model, 
-                                        handler
-                                    )
+
+                                self._task_group.start_soon(
+                                    self.endpoint_consumer,
+                                    self.resources["queues"][model][backend],
+                                    64,
+                                    model,
+                                    handler,
                                 )
+                                self.resources["consumer_tasks"][model][endpoint] = True
                             if model in list(self.resources["endpoint_handler"].keys()):
-                                self.resources["queue_tasks"][model][backend] = # TODO: Replace with task group - asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
+                                self._task_group.start_soon(
+                                    self.model_consumer,
+                                    self.resources["queue"][model],
+                                    64,
+                                    model,
+                                )
+                                self.resources["queue_tasks"][model][backend] = True
         return None
     
     async def model_consumer(self, queue, batch_size, model):
@@ -1127,9 +1136,9 @@ class ipfs_accelerate_py:
             except aiohttp.ClientPayloadError as e:
                 print(f"ClientPayloadError: {str(e)}")
                 return ValueError(f"ClientPayloadError: {str(e)}")
-            except asyncio.TimeoutError as e:
-                print(f"Timeout error: {str(e)}")
-                return ValueError(f"Timeout error: {str(e)}")
+            except TimeoutError as e:
+                print(f"Timeout error: {e}")
+                return ValueError(f"Timeout error: {e}")
             except Exception as e:
                 print(f"Unexpected error: {str(e)}")
                 return ValueError(f"Unexpected error: {str(e)}")
