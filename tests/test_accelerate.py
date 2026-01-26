@@ -18,6 +18,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger('test_accelerate')
 
+    """Test hardware detection functionality."""
+    logger.info("Testing hardware detection...")
+    
+    """Test model endpoint initialization and processing."""
+    logger.info("Testing model endpoint initialization...")
+    
+    """Test IPFS operations."""
+    logger.info("Testing IPFS operations...")
+    
+    """Test accelerated inference with IPFS fallback."""
+    logger.info("Testing accelerated inference...")
+    
 # Add parent directory to path to import the module
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 

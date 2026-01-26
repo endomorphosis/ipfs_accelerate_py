@@ -7,6 +7,7 @@ Checks for deprecated APIs in web interface components for Python 3.12
 import sys
 import warnings
 import importlib
+import anyio
 from pathlib import Path
 
 def check_web_interface():
@@ -61,14 +62,12 @@ def check_async_compatibility():
     print("⚡ Checking async compatibility...")
     
     # Test basic async functionality
-    import asyncio
-    
     async def test_async():
         await anyio.sleep(0.001)
         return "async works"
     
     try:
-        result = anyio.run(test_async())
+        result = anyio.run(test_async)
         print("✅ Async/await functionality working")
         return True
     except Exception as e:
@@ -95,7 +94,7 @@ def check_deprecated_apis():
                 
                 # Check for deprecated patterns
                 patterns_to_check = [
-                    ("asyncio.coroutine", "Use async def instead"),
+                    ("coroutine", "Use async def instead"),
                     ("collections.Iterable", "Use collections.abc.Iterable"),
                     ("collections.Mapping", "Use collections.abc.Mapping"),
                     ("imp.load_source", "Use importlib instead"),
@@ -152,13 +151,8 @@ class WebInterfaceCompatibility:
     @staticmethod
     def _apply_python312_fixes():
         """Apply Python 3.12 specific compatibility fixes"""
-        # Ensure proper error handling for async operations
-        import asyncio
-        
-        # Fix for potential asyncio changes
-        if not hasattr(asyncio, 'coroutine'):
-            # asyncio.coroutine was removed, ensure we use async def
-            pass
+        # Placeholder for future Python 3.12-specific fixes
+        return None
     
     @staticmethod
     def get_safe_server_config() -> Dict[str, Any]:
@@ -171,10 +165,6 @@ class WebInterfaceCompatibility:
             "workers": 1,  # Single worker for compatibility
         }
         
-        # Python 3.12 specific adjustments
-        if sys.version_info >= (3, 12):
-            config["loop"] = "asyncio"  # Explicit loop specification
-            
         return config
 
 # Initialize compatibility on import

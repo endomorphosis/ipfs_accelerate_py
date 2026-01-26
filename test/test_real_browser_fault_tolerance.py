@@ -428,7 +428,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
                 manager.initialize_sharding(),
                 timeout=args.timeout
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Initialization timeout after {args.timeout}s")
             test_results["phases"]["model_sharding_setup"]["status"] = "failed"
             test_results["phases"]["model_sharding_setup"]["reason"] = "timeout"
@@ -468,7 +468,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
                 timeout=args.timeout
             )
             execution_time = time.time() - start_time
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Initial inference timeout after {args.timeout}s")
             test_results["phases"]["initial_inference"]["status"] = "failed"
             test_results["phases"]["initial_inference"]["reason"] = "timeout"
@@ -535,7 +535,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
                     timeout=args.timeout
                 )
                 execution_time = time.time() - start_time
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error(f"Post-failure inference timeout after {args.timeout}s")
                 test_results["phases"]["post_failure_inference"]["status"] = "failed"
                 test_results["phases"]["post_failure_inference"]["reason"] = "timeout"
@@ -595,7 +595,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
                         logger.info(f"Benchmark iteration {i+1}/{args.iterations}: {execution_time:.3f}s")
                     else:
                         logger.error(f"Error in iteration {i+1}: {result['error']}")
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.error(f"Timeout in iteration {i+1}")
                 except Exception as e:
                     logger.error(f"Error in iteration {i+1}: {e}")

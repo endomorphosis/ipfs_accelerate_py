@@ -5,7 +5,7 @@ Unit tests for the browser environment validation components.
 This script tests the functionality of browser environment validation,
 including browser detection, feature flags, and hardware acceleration detection.
 
-It uses pytest and pytest-asyncio to run the tests.
+It uses pytest and anyio to run the async tests.
 """
 
 import os
@@ -35,7 +35,7 @@ from check_browser_webnn_webgpu import (
 
 # ========== Browser Automation Tests ==========
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_browser_automation_initialization():
     """Test that BrowserAutomation class initializes correctly."""
     automation = BrowserAutomation(
@@ -65,7 +65,7 @@ async def test_browser_automation_initialization():
     assert automation.server_process is None
     assert automation.websocket_server is None
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_create_test_html():
     """Test creation of test HTML file."""
     html_file = create_test_html(
@@ -154,7 +154,7 @@ def test_browser_args_webnn():
     # Check Chrome-specific WebNN flags
     assert "--enable-features=WebNN" in chrome_args
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 @patch("fixed_web_platform.browser_automation.find_browser_executable")
 @patch("fixed_web_platform.browser_automation.subprocess.Popen")
 async def test_launch_with_subprocess(mock_popen, mock_find_browser):
@@ -225,7 +225,7 @@ def test_find_available_browsers():
                 # Should find browsers based on path existence
                 assert len(browsers) > 0
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 @patch("check_browser_webnn_webgpu.create_capability_detection_html")
 @patch("check_browser_webnn_webgpu.BrowserAutomation")
 async def test_check_browser_capabilities(mock_browser_automation, mock_create_html):
