@@ -69,9 +69,7 @@ def run_tests(component=None, verbose=False):
         verbose: Whether to show verbose output
     """
     try:
-        # Create event loop
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
+        # No explicit event loop management needed
         
         # Create test suite
         suite = create_test_suite(component)
@@ -89,8 +87,8 @@ def run_tests(component=None, verbose=False):
         print(f"Error running tests: {e}")
         return 1
     finally:
-        # Close the event loop
-        loop.close()
+        # No explicit loop cleanup required
+        pass
 
 
 def main():

@@ -90,7 +90,7 @@ class TaskReporterPlugin(Plugin):
             await self._connect_to_external_system()
         
         # Start periodic reporting task
-        self.reporting_task = # TODO: Replace with task group - asyncio.create_task(self._periodic_reporting())
+        self.reporting_task = # TODO: Replace with task group - anyio task group for reporting
         
         logger.info("TaskReporterPlugin initialized with coordinator")
         return True

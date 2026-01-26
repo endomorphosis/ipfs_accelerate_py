@@ -108,25 +108,24 @@ async def run_coordinator_demo(args):
     
     # Start the coordinator
     try:
-        # Hook SIGINT for graceful shutdown
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-        
-        # Register shutdown handler
-        for signal_name in ('SIGINT', 'SIGTERM'):
-            loop.add_signal_handler(
-                getattr(signal, signal_name),
-                lambda: # TODO: Replace with task group - asyncio.create_task(shutdown(coordinator))
-            )
-        
-        # Start coordinator server
-        site, runner = await coordinator.start()
-        
-        logger.info(f"Coordinator server started at http://{args.host}:{args.port}")
-        logger.info("Press Ctrl+C to stop the server")
-        
-        # Keep the server running
-        while True:
-            await anyio.sleep(1)
+        async def _signal_listener():
+            async with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
+                async for _ in signals:
+                    await shutdown(coordinator)
+                    break
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(_signal_listener)
+
+            # Start coordinator server
+            site, runner = await coordinator.start()
+
+            logger.info(f"Coordinator server started at http://{args.host}:{args.port}")
+            logger.info("Press Ctrl+C to stop the server")
+
+            # Keep the server running
+            while True:
+                await anyio.sleep(1)
             
     except anyio.get_cancelled_exc_class():
         logger.info("Server shutting down")
@@ -141,8 +140,7 @@ async def shutdown(coordinator):
     logger.info("Shutting down coordinator...")
     await coordinator.stop()
     
-    # Stop the event loop
-    # TODO: Remove event loop management - asyncio.get_event_loop().stop()
+    # AnyIO handles loop lifecycle
 
 
 async def run_simulated_tasks(args):

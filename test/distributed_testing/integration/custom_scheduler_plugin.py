@@ -128,7 +128,7 @@ class CustomSchedulerPlugin(Plugin):
         self.scheduler_task = None
         
         # Create the scheduler task
-        self.scheduler_task = # TODO: Replace with task group - asyncio.create_task(self._run_scheduler())
+        self.scheduler_task = # TODO: Replace with task group - anyio task group for scheduler
         
         logger.info("CustomSchedulerPlugin initialized with coordinator")
         return True

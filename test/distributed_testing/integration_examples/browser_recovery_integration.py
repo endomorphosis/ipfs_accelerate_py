@@ -16,6 +16,7 @@ import argparse
 import logging
 import json
 import traceback
+import inspect
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
@@ -261,7 +262,7 @@ except ImportError:
             try:
                 # Support both async and sync actions
                 result = action()
-                if asyncio.iscoroutine(result):
+                if inspect.iscoroutine(result):
                     result = await result
                     
                 # Record success
@@ -570,27 +571,7 @@ class BrowserRecoveryDemo:
         
         try:
             # Use the circuit breaker to protect the operation
-            if inspect.iscoroutinefunction(  # Added import inspectcircuit.execute):
-                result = await circuit.execute(run_test, fallback)
-            else:
-                # Synchronous execute method - avoid anyio.run() inside an existing event loop
-                loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-                if loop.is_running():
-                    # Create a wrapper that will call the coroutine properly
-                    async def run_async():
-                        return await run_test()
-                    # Create a task to be executed by the current running loop
-                    result = circuit.execute(
-                        lambda: loop.create_task(run_async()),
-                        fallback
-                    )
-                else:
-                    # If no loop is running, we can use loop.run_until_complete
-                    result = circuit.execute(
-                        lambda: loop.run_until_complete(run_test()),
-                        fallback
-                    )
-                
+            result = await circuit.execute(run_test, fallback)
             return result
         except Exception as e:
             logger.warning(f"Test operation failed with uncaught exception: {str(e)}")

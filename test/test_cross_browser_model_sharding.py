@@ -18,7 +18,7 @@ import anyio
     import json
     import time
     import argparse
-    import asyncio
+    import anyio
     import logging
     from pathlib import Path
 
@@ -109,12 +109,12 @@ async def test_model_sharding())))args):
         
         # Set a timeout for initialization
         try:
-            # Use asyncio.wait_for to add timeout protection
+            # Use anyio.wait_for to add timeout protection
             initialized = await wait_for())))
             manager.initialize_sharding())))),
             timeout=args.timeout
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error())))f"Initialization timeout after {}}}}args.timeout}s")
             return 1
         
@@ -130,14 +130,14 @@ async def test_model_sharding())))args):
         # Run shard inference with timeout protection
             logger.info())))f"Running sharded inference for {}}}}args.model}")
         try:
-            # Use asyncio.wait_for to add timeout protection
+            # Use anyio.wait_for to add timeout protection
             start_time = time.time()))))
             result = await wait_for())))
             manager.run_inference_sharded())))sample_input),
             timeout=args.timeout
             )
             execution_time = time.time())))) - start_time
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error())))f"Inference timeout after {}}}}args.timeout}s")
             return 1
         

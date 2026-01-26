@@ -522,7 +522,7 @@ class ResourcePoolPlugin(PluginBase):
                     }
                 
                 # Create tasks for each browser
-                tasks = []
+                send_stream, receive_stream = anyio.create_memory_object_stream(len(browsers))
                 
                 for browser in browsers:
                     async def run_on_browser(b):
@@ -546,29 +546,22 @@ class ResourcePoolPlugin(PluginBase):
                         except Exception as e:
                             return {"browser": b, "error": str(e), "success": False}
                     
-                    task = # TODO: Replace with task group - asyncio.create_task(run_on_browser(browser))
-                    tasks.append(task)
-                
-                # Wait for first successful result or all failures
-                done, pending = await asyncio.wait(
-                    tasks, 
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-                
-                # Cancel remaining tasks
-                for task in pending:
-                    task.cancel()
-                
-                # Check if any task succeeded
-                for task in done:
-                    try:
-                        task_result = task.result()
+                async def run_and_send(browser_name: str) -> None:
+                    task_result = await run_on_browser(browser_name)
+                    await send_stream.send(task_result)
+
+                async with anyio.create_task_group() as task_group:
+                    for browser in browsers:
+                        task_group.start_soon(run_and_send, browser)
+
+                    # Wait for first successful result or all failures
+                    for _ in browsers:
+                        task_result = await receive_stream.receive()
                         if task_result.get("success", False):
                             result = task_result["result"]
                             result["recovery_browser"] = task_result["browser"]
+                            task_group.cancel_scope.cancel()
                             return result
-                    except Exception:
-                        pass
                 
                 # All parallel recovery attempts failed
                 return {

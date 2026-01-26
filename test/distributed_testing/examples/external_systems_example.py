@@ -135,7 +135,7 @@ async def test_slack_connector(config):
                     "elements": [
                         {
                             "type": "mrkdwn",
-                            "text": "🕒 " + # TODO: Remove event loop management - asyncio.get_event_loop().time().__str__()
+                            "text": "🕒 " + str(time.time())
                         }
                     ]
                 }
@@ -297,7 +297,7 @@ async def test_prometheus_connector(config):
         logger.info(f"Memory usage metrics: {json.dumps(metrics.get('result_data', {}), indent=2)}")
         
         # Execute a range query
-        current_time = # TODO: Remove event loop management - asyncio.get_event_loop().time()
+        current_time = time.time()
         range_query_data = {
             "query": "process_resident_memory_bytes",
             "start": current_time - 3600,  # 1 hour ago

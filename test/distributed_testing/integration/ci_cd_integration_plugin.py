@@ -204,7 +204,7 @@ class CICDIntegrationPlugin(Plugin):
             
             # Start periodic update task if enabled
             if self.config["enable_status_updates"] and not self.config["update_on_completion_only"]:
-                self.update_task = # TODO: Replace with task group - asyncio.create_task(self._periodic_updates())
+                self.update_task = # TODO: Replace with task group - anyio task group for periodic updates
         else:
             logger.warning("No CI environment detected, plugin will operate in limited mode")
         
@@ -962,7 +962,7 @@ class StandardizedCIClient:
             await self.history_db.commit()
             
             # Set up cleanup for old history data
-            # TODO: Replace with task group - asyncio.create_task(self._cleanup_old_history())
+            # TODO: Replace with task group - anyio task group for cleanup
             
             logger.info(f"Initialized history database at {db_path}")
             

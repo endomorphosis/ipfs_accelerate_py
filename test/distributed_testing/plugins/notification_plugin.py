@@ -480,7 +480,7 @@ class NotificationPlugin(Plugin):
                 
                 # If this is the first update after creation, schedule a send
                 if group["count"] == 2:
-                    # TODO: Replace with task group - asyncio.create_task(self._send_group_after_window(group_key))
+                    # TODO: Replace with task group - anyio task group for delayed notifications
                     
                 return True
         

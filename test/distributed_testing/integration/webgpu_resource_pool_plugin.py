@@ -125,7 +125,7 @@ class WebGPUResourcePoolPlugin(Plugin):
             
             # Start metrics collection if enabled
             if self.config["metric_collection"]:
-                # TODO: Replace with task group - asyncio.create_task(self._collect_metrics())
+                # TODO: Replace with task group - anyio task group for metrics collection
             
             logger.info("WebGPUResourcePoolPlugin initialized with coordinator")
             return True

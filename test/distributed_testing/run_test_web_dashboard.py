@@ -314,6 +314,4 @@ async def main():
 
 if __name__ == "__main__":
     # For simplicity, use the main thread to run the web server
-    main_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-    # TODO: Remove event loop management - asyncio.set_event_loop(main_loop)
-    main_loop.run_until_complete(main())
+    anyio.run(main)

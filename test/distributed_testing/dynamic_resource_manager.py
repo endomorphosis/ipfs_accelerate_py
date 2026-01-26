@@ -417,7 +417,7 @@ class DynamicResourceManager:
         await self._provision_initial_workers()
         
         # Start management loop
-        # TODO: Replace with task group - asyncio.create_task(self._management_loop())
+        # TODO: Replace with task group - anyio task group for management loop
     
     async def stop(self) -> None:
         """Stop the resource manager."""
@@ -1553,7 +1553,7 @@ class DynamicResourceManager:
             
             # Remove from resources after a delay
             # (keep in memory for reporting, cleanup happens in background)
-            # TODO: Replace with task group - asyncio.create_task(self._delayed_resource_cleanup(resource_id))
+            # TODO: Replace with task group - anyio task group for delayed cleanup
             
             return True
         except Exception as e:

@@ -94,7 +94,7 @@ class CIIntegrationPlugin(Plugin):
             await self._initialize_ci_client()
         
         # Start periodic update task
-        self.update_task = # TODO: Replace with task group - asyncio.create_task(self._periodic_updates())
+        self.update_task = # TODO: Replace with task group - anyio task group for periodic updates
         
         logger.info("CIIntegrationPlugin initialized with coordinator")
         return True

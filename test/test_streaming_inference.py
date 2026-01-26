@@ -18,7 +18,7 @@ Usage:
     import sys
     import json
     import time
-    import asyncio
+    import anyio
     import logging
     import unittest
     from typing import Dict, List, Any, Optional
@@ -702,7 +702,7 @@ class AsyncTestCase()))))))))))unittest.TestCase):
     
     def run_async()))))))))))self, coroutine):
         """Run an asynchronous coroutine in the event loop."""
-    return # TODO: Remove event loop management - asyncio.get_event_loop()))))))))))).run_until_complete()))))))))))coroutine)
+    return anyio.run(coroutine)
 
 
 class TestStreamingInferencePipelineAsync()))))))))))AsyncTestCase):

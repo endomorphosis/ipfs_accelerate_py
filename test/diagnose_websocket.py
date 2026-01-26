@@ -15,7 +15,7 @@ Usage:
     import sys
     import json
     import time
-    import asyncio
+    import anyio
     import logging
     import argparse
     from pathlib import Path
@@ -93,7 +93,7 @@ async def run_websocket_server()host='localhost', port=8765):
         ):
             logger.info()f"WebSocket server running at ws://{}}}}}}}}}}}}}}}}}}}}}}}}}}host}:{}}}}}}}}}}}}}}}}}}}}}}}}}}port}")
             logger.info()"Press Ctrl+C to stop")
-            await asyncio.Future())  # Run forever
+            await anyio.sleep(3600)  # Run forever
     except Exception as e:
         logger.error()f"Failed to start WebSocket server: {}}}}}}}}}}}}}}}}}}}}}}}}}}e}")
             return 1

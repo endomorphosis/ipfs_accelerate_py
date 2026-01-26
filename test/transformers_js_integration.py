@@ -28,6 +28,30 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+
+class SimpleFuture:
+    """Minimal future-like helper for AnyIO tasks."""
+
+    def __init__(self) -> None:
+        self._event = anyio.Event()
+        self._done = False
+        self._result = None
+
+    def done(self) -> bool:
+        return self._done
+
+    def set_result(self, result):
+        if not self._done:
+            self._result = result
+            self._done = True
+            self._event.set()
+
+    def result(self):
+        return self._result
+
+    async def wait(self) -> None:
+        await self._event.wait()
+
 # Try to import websockets
 try:
     import websockets
@@ -787,7 +811,7 @@ class TransformersJSBridge:
         
         try:
             # Create a future for the response
-            inference_future = asyncio.Future()))
+            inference_future = SimpleFuture()))
             
             # Define response handler
             async def response_handler())data):
@@ -817,7 +841,7 @@ class TransformersJSBridge:
             # Wait for response with timeout
             try:
                 result = await wait_for())inference_future, 60)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error())f"Timeout waiting for inference response for model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}model_name}")
                 result = None
             
@@ -937,39 +961,35 @@ def main())):
     
     # Run test
     if args.test:
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()))
-        # TODO: Remove event loop management - asyncio.set_event_loop())loop)
-    return loop.run_until_complete())test_transformers_js_bridge())))
+        return anyio.run(test_transformers_js_bridge)
     
     # Create bridge
     bridge = TransformersJSBridge())browser_name=args.browser, headless=args.headless, port=args.port)
     
     # Run
-    loop = # TODO: Remove event loop management - asyncio.new_event_loop()))
-    # TODO: Remove event loop management - asyncio.set_event_loop())loop)
     
     try:
         # Start bridge
         logger.info())"Starting transformers.js bridge")
-        success = loop.run_until_complete())bridge.start())))
+        success = anyio.run(bridge.start)
         if not success:
             logger.error())"Failed to start transformers.js bridge")
         return 1
         
         # Initialize model
         logger.info())f"Initializing model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}args.model}")
-        success = loop.run_until_complete())bridge.initialize_model())args.model))
+        success = anyio.run(bridge.initialize_model, args.model)
         if not success:
             logger.error())f"Failed to initialize model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}args.model}")
-            loop.run_until_complete())bridge.stop())))
+            anyio.run(bridge.stop)
         return 1
         
         # Run inference
         logger.info())f"Running inference with model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}args.model}")
-        result = loop.run_until_complete())bridge.run_inference())args.model, args.input))
+        result = anyio.run(bridge.run_inference, args.model, args.input)
         if not result:
             logger.error())f"Failed to run inference with model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}args.model}")
-            loop.run_until_complete())bridge.stop())))
+            anyio.run(bridge.stop)
         return 1
         
         logger.info())f"Inference result: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}json.dumps())result, indent=2)}")

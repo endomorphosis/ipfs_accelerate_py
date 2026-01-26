@@ -98,7 +98,7 @@ class ResourcePoolIntegrationPlugin(Plugin):
         await self._initialize_resource_pool()
         
         # Start metrics collection task
-        self.metrics_task = # TODO: Replace with task group - asyncio.create_task(self._collect_metrics())
+        self.metrics_task = # TODO: Replace with task group - anyio task group for metrics collection
         
         logger.info("ResourcePoolIntegrationPlugin initialized with coordinator")
         return True

@@ -650,7 +650,7 @@ class MockCrossBrowserModelShardingManager:
         
         # If fault tolerance is enabled, trigger recovery
         if self.fault_tolerance_enabled:
-            # TODO: Replace with task group - asyncio.create_task(self._handle_connection_failure(browser_index))
+            # TODO: Replace with task group - anyio task group for connection failure handling
         
         return {
             "success": True,
@@ -699,7 +699,7 @@ class MockCrossBrowserModelShardingManager:
         
         # If fault tolerance is enabled, trigger recovery
         if self.fault_tolerance_enabled:
-            # TODO: Replace with task group - asyncio.create_task(self._handle_browser_crash(browser_index))
+            # TODO: Replace with task group - anyio task group for browser crash handling
         
         return {
             "success": True,
@@ -757,7 +757,7 @@ class MockCrossBrowserModelShardingManager:
         
         # If fault tolerance is enabled, trigger recovery
         if self.fault_tolerance_enabled:
-            # TODO: Replace with task group - asyncio.create_task(self._handle_component_timeout(component))
+            # TODO: Replace with task group - anyio task group for component timeout handling
         
         return {
             "success": True,

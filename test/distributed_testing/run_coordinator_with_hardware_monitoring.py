@@ -359,7 +359,7 @@ async def simulate_coordinator(args):
                 }
             }
         
-        worker_task = # TODO: Replace with task group - asyncio.create_task(
+        worker_task = # TODO: Replace with task group - anyio.create_task_group(
             simulate_worker(worker_id, coordinator, capabilities)
         )
         worker_tasks.append(worker_task)
@@ -439,7 +439,7 @@ async def simulate_coordinator(args):
                 memory_intensive = random.random() < 0.3 # 30% chance of memory-intensive task
                 
                 # Start task execution
-                task_execution = # TODO: Replace with task group - asyncio.create_task(
+                task_execution = # TODO: Replace with task group - anyio.create_task_group(
                     simulate_task_execution(
                         task_id, worker_id, coordinator, integration,
                         execution_time=execution_time,
