@@ -106,10 +106,16 @@ class MockCIProvider(CIProviderInterface):
         pass
 
 
-class TestCIIntegration(unittest.IsolatedAsyncioTestCase):
+class TestCIIntegration(unittest.TestCase):
     """Test CI integration functionality."""
-    
-    async def asyncSetUp(self):
+
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    def tearDown(self):
+        anyio.run(self._async_tear_down)
+
+    async def _async_set_up(self):
         """Set up for tests."""
         # Create temporary directories for tests
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -137,11 +143,14 @@ class TestCIIntegration(unittest.IsolatedAsyncioTestCase):
             artifact_dir=str(self.artifacts_dir)
         )
     
-    async def asyncTearDown(self):
+    async def _async_tear_down(self):
         """Clean up after tests."""
         self.temp_dir.cleanup()
     
-    async def test_create_test_run(self):
+    def test_create_test_run(self):
+        anyio.run(self._test_create_test_run)
+
+    async def _test_create_test_run(self):
         """Test creating a test run."""
         test_run_data = {
             "name": "Test Run",
@@ -156,7 +165,10 @@ class TestCIIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(test_run["status"], "running")
         self.assertIn("start_time", test_run)
     
-    async def test_update_test_run(self):
+    def test_update_test_run(self):
+        anyio.run(self._test_update_test_run)
+
+    async def _test_update_test_run(self):
         """Test updating a test run."""
         test_run = await self.mock_provider.create_test_run({"name": "Test Run"})
         test_run_id = test_run["id"]
@@ -173,7 +185,10 @@ class TestCIIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated_run["status"], "completed")
         self.assertIn("end_time", updated_run)
     
-    async def test_add_pr_comment(self):
+    def test_add_pr_comment(self):
+        anyio.run(self._test_add_pr_comment)
+
+    async def _test_add_pr_comment(self):
         """Test adding a PR comment."""
         pr_number = "123"
         comment = "Test comment"
@@ -184,7 +199,10 @@ class TestCIIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIn(pr_number, self.mock_provider.pr_comments)
         self.assertEqual(self.mock_provider.pr_comments[pr_number][0], comment)
     
-    async def test_upload_artifact(self):
+    def test_upload_artifact(self):
+        anyio.run(self._test_upload_artifact)
+
+    async def _test_upload_artifact(self):
         """Test uploading an artifact."""
         test_run = await self.mock_provider.create_test_run({"name": "Test Run"})
         test_run_id = test_run["id"]
@@ -201,7 +219,10 @@ class TestCIIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(artifact["name"], "sample.json")
         self.assertEqual(artifact["path"], str(self.artifact_path))
     
-    async def test_set_build_status(self):
+    def test_set_build_status(self):
+        anyio.run(self._test_set_build_status)
+
+    async def _test_set_build_status(self):
         """Test setting build status."""
         status = "success"
         description = "Build succeeded"
@@ -212,7 +233,10 @@ class TestCIIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIn(status, self.mock_provider.build_statuses)
         self.assertEqual(self.mock_provider.build_statuses[status], description)
     
-    async def test_result_reporter_report_test_result(self):
+    def test_result_reporter_report_test_result(self):
+        anyio.run(self._test_result_reporter_report_test_result)
+
+    async def _test_result_reporter_report_test_result(self):
         """Test reporting test results."""
         test_run = await self.mock_provider.create_test_run({"name": "Test Run"})
         test_run_id = test_run["id"]
@@ -274,7 +298,10 @@ class TestCIIntegration(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(json_content["failed_tests"], 1)
             self.assertIn("performance_metrics", json_content["metadata"])
     
-    async def test_result_reporter_collect_artifacts(self):
+    def test_result_reporter_collect_artifacts(self):
+        anyio.run(self._test_result_reporter_collect_artifacts)
+
+    async def _test_result_reporter_collect_artifacts(self):
         """Test collecting artifacts."""
         test_run = await self.mock_provider.create_test_run({"name": "Test Run"})
         test_run_id = test_run["id"]

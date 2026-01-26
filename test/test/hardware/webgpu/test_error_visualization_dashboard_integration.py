@@ -38,7 +38,7 @@ from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import Monito
 SKIP_AIOHTTP_TESTS = not aiohttp_available
 
 
-class TestDashboardRoutes(unittest.IsolatedAsyncioTestCase):
+class TestDashboardRoutes(unittest.TestCase):
     """Test dashboard routes for error visualization."""
     
     def setUp(self):
@@ -90,7 +90,10 @@ class TestDashboardRoutes(unittest.IsolatedAsyncioTestCase):
         """Clean up after tests."""
         self.temp_dir.cleanup()
     
-    async def test_api_report_error(self):
+    def test_api_report_error(self):
+        anyio.run(self._test_api_report_error)
+
+    async def _test_api_report_error(self):
         """Test the report-error API endpoint."""
         if SKIP_AIOHTTP_TESTS:
             self.skipTest("aiohttp not available")
@@ -117,7 +120,10 @@ class TestDashboardRoutes(unittest.IsolatedAsyncioTestCase):
         # Verify that report_error was called with the correct data
         self.dashboard.error_viz.report_error.assert_called_once_with(self.sample_error)
     
-    async def test_api_get_errors(self):
+    def test_api_get_errors(self):
+        anyio.run(self._test_api_get_errors)
+
+    async def _test_api_get_errors(self):
         """Test the get-errors API endpoint."""
         if SKIP_AIOHTTP_TESTS:
             self.skipTest("aiohttp not available")
@@ -154,10 +160,16 @@ class TestDashboardRoutes(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipIf(SKIP_AIOHTTP_TESTS, "aiohttp not available")
-class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
+class TestDashboardServer(unittest.TestCase):
     """Test the dashboard server with error visualization integration."""
-    
-    async def asyncSetUp(self):
+
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    def tearDown(self):
+        anyio.run(self._async_tear_down)
+
+    async def _async_set_up(self):
         """Set up the test environment."""
         # Create temporary directory
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -209,7 +221,7 @@ class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
             }
         }
     
-    async def asyncTearDown(self):
+    async def _async_tear_down(self):
         """Clean up after tests."""
         # Restore original start method
         self.dashboard.start = self.original_start
@@ -217,7 +229,10 @@ class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
         # Clean up
         self.temp_dir.cleanup()
     
-    async def test_error_visualization_initialization(self):
+    def test_error_visualization_initialization(self):
+        anyio.run(self._test_error_visualization_initialization)
+
+    async def _test_error_visualization_initialization(self):
         """Test that error visualization is properly initialized."""
         # Verify that error visualization is enabled
         self.assertTrue(self.dashboard.enable_error_visualization)
@@ -228,7 +243,10 @@ class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
         # Verify that the error_viz db_path matches dashboard db_path
         self.assertEqual(self.dashboard.error_viz.db_path, self.db_path)
     
-    async def test_websocket_handler(self):
+    def test_websocket_handler(self):
+        anyio.run(self._test_websocket_handler)
+
+    async def _test_websocket_handler(self):
         """Test the WebSocket handler for error visualization messages."""
         # Create mock WebSocket
         ws = AsyncMock()
@@ -256,7 +274,10 @@ class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
         # Verify that the WebSocket was registered
         self.dashboard.websocket_manager.register.assert_called()
     
-    async def test_report_error_integration(self):
+    def test_report_error_integration(self):
+        anyio.run(self._test_report_error_integration)
+
+    async def _test_report_error_integration(self):
         """Test the report_error method integration."""
         # Patch the dashboard.error_viz.report_error method
         self.dashboard.error_viz.report_error = AsyncMock(return_value=True)
@@ -270,7 +291,10 @@ class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
         # Verify that report_error was called
         self.dashboard.error_viz.report_error.assert_called_once_with(self.sample_error)
     
-    async def test_get_errors_integration(self):
+    def test_get_errors_integration(self):
+        anyio.run(self._test_get_errors_integration)
+
+    async def _test_get_errors_integration(self):
         """Test the get_errors method integration."""
         # Generate mock error data
         mock_error_data = {

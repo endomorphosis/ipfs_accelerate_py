@@ -130,7 +130,7 @@ class TestSoundGeneration(unittest.TestCase):
             self.assertEqual(wav_size, mp3_size)
 
 
-class TestSeverityDetection(unittest.IsolatedAsyncioTestCase):
+class TestSeverityDetection(unittest.TestCase):
     """Test suite for error severity detection logic."""
     
     def setUp(self):
@@ -432,7 +432,7 @@ class TestJavaScriptSeverityDetection(unittest.TestCase):
             )
 
 
-class TestWebSocketIntegration(unittest.IsolatedAsyncioTestCase):
+class TestWebSocketIntegration(unittest.TestCase):
     """Test suite for WebSocket integration."""
     
     def setUp(self):
@@ -455,7 +455,10 @@ class TestWebSocketIntegration(unittest.IsolatedAsyncioTestCase):
         """Clean up after tests."""
         self.temp_dir.cleanup()
     
-    async def test_report_error(self):
+    def test_report_error(self):
+        anyio.run(self._test_report_error)
+
+    async def _test_report_error(self):
         """Test reporting an error to WebSocket clients."""
         # Create test error
         error_data = {
@@ -532,7 +535,10 @@ class TestWebSocketIntegration(unittest.IsolatedAsyncioTestCase):
         for time_range in time_ranges:
             self.assertNotIn(f"errors_{time_range}", self.error_viz.error_cache)
     
-    async def test_prepare_error_for_display(self):
+    def test_prepare_error_for_display(self):
+        anyio.run(self._test_prepare_error_for_display)
+
+    async def _test_prepare_error_for_display(self):
         """Test preparation of error for display."""
         # Create test error
         error = {
@@ -581,7 +587,7 @@ class TestWebSocketIntegration(unittest.IsolatedAsyncioTestCase):
             self.fail("Timestamp was not properly formatted")
 
 
-class TestErrorVisualizationIntegration(unittest.IsolatedAsyncioTestCase):
+class TestErrorVisualizationIntegration(unittest.TestCase):
     """Additional integration tests for the Error Visualization system."""
     
     def setUp(self):
@@ -725,7 +731,10 @@ class TestErrorVisualizationIntegration(unittest.IsolatedAsyncioTestCase):
         
         return errors
     
-    async def test_multiple_error_processing(self):
+    def test_multiple_error_processing(self):
+        anyio.run(self._test_multiple_error_processing)
+
+    async def _test_multiple_error_processing(self):
         """Test processing of multiple errors with different severities."""
         # Process all sample errors
         processed_data = await self.error_viz._process_error_data(self.sample_errors, 24)
@@ -755,7 +764,10 @@ class TestErrorVisualizationIntegration(unittest.IsolatedAsyncioTestCase):
             self.assertIn("is_critical", error)
             self.assertIn("is_recurring", error)
     
-    async def test_store_error_in_db(self):
+    def test_store_error_in_db(self):
+        anyio.run(self._test_store_error_in_db)
+
+    async def _test_store_error_in_db(self):
         """Test storing an error in the database."""
         try:
             import duckdb

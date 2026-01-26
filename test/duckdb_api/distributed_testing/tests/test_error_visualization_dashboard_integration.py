@@ -317,7 +317,7 @@ class TestDashboardServer(unittest.TestCase):
 
 class TestErrorVisualizationHTML(unittest.TestCase):
     """Test error visualization HTML template."""
-    
+
     def setUp(self):
         """Set up the test environment."""
         # Path to the error visualization HTML template
@@ -327,78 +327,72 @@ class TestErrorVisualizationHTML(unittest.TestCase):
             "distributed_testing",
             "dashboard",
             "templates",
-            "error_visualization.html"
+            "error_visualization.html",
         )
-        
+
         # Check if template exists
         if not os.path.exists(self.template_path):
             self.skipTest(f"Template not found at {self.template_path}")
-        
+
         # Read the template
         with open(self.template_path, "r") as f:
             self.template_content = f.read()
-    
+
     def test_sound_notification_code(self):
         """Test that the template includes sound notification code."""
         # Check for the playErrorNotification function
-    def test_report_error_integration(self):
-        anyio.run(self._test_report_error_integration)
+        self.assertIn("playErrorNotification", self.template_content)
 
-    async def _test_report_error_integration(self):
-        
         # Check for sound file references
         self.assertIn("error-critical.mp3", self.template_content)
         self.assertIn("error-warning.mp3", self.template_content)
         self.assertIn("error-info.mp3", self.template_content)
         self.assertIn("error-notification.mp3", self.template_content)
-        
+
         # Check for volume control references
         self.assertIn("notificationVolume", self.template_content)
         self.assertIn("function changeNotificationVolume", self.template_content)
         self.assertIn("function toggleMute", self.template_content)
-    
-    def test_error_severity_code(self):
-    def test_get_errors_integration(self):
-        anyio.run(self._test_get_errors_integration)
 
-    async def _test_get_errors_integration(self):
+    def test_error_severity_code(self):
+        """Test that the template includes error severity detection code."""
         # Check for severity determination logic
         self.assertIn("errorType === 'critical'", self.template_content)
         self.assertIn("errorType === 'warning'", self.template_content)
         self.assertIn("errorType === 'info'", self.template_content)
-        
+
         # Check for error category checks
         self.assertIn("HARDWARE_NOT_AVAILABLE", self.template_content)
         self.assertIn("RESOURCE_EXHAUSTED", self.template_content)
         self.assertIn("WORKER_CRASH", self.template_content)
-    
+
     def test_websocket_integration(self):
         """Test that the template includes WebSocket integration code."""
         # Check for WebSocket initialization
         self.assertIn("function initializeWebSocket", self.template_content)
         self.assertIn("new WebSocket", self.template_content)
-        
+
         # Check for WebSocket event handlers
         self.assertIn("socket.onopen", self.template_content)
         self.assertIn("socket.onmessage", self.template_content)
         self.assertIn("socket.onclose", self.template_content)
         self.assertIn("socket.onerror", self.template_content)
-        
+
         # Check for error message handling
         self.assertIn("handleErrorUpdate", self.template_content)
         self.assertIn("addErrorToList", self.template_content)
         self.assertIn("playErrorNotification", self.template_content)
-    
+
     def test_accessibility_features(self):
         """Test that the template includes accessibility features."""
         # Check for ARIA attributes
         self.assertIn("aria-label", self.template_content)
         self.assertIn("aria-live", self.template_content)
         self.assertIn("aria-atomic", self.template_content)
-        
+
         # Check for visually hidden text
         self.assertIn("visually-hidden", self.template_content)
-        
+
         # Check for high contrast mode support
         self.assertIn("forced-colors", self.template_content)
 
