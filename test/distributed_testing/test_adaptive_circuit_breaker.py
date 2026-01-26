@@ -29,6 +29,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("test_adaptive_circuit_breaker")
 
+
+def _is_pytest() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules)
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
+
 # Import the adaptive circuit breaker
 try:
     from distributed_testing.adaptive_circuit_breaker import AdaptiveCircuitBreaker
@@ -47,7 +58,7 @@ try:
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
-    logger.warning("sklearn not available. ML tests will be limited.")
+    _log_optional_dependency("sklearn not available. ML tests will be limited.")
 
 # Check for visualization dependencies
 try:
@@ -57,7 +68,7 @@ try:
     VISUALIZATION_AVAILABLE = True
 except ImportError:
     VISUALIZATION_AVAILABLE = False
-    logger.warning("Visualization dependencies not available. Visualizations will be disabled.")
+    _log_optional_dependency("Visualization dependencies not available. Visualizations will be disabled.")
 
 class CircuitBreakerTester:
     """Test harness for Adaptive Circuit Breaker."""
@@ -684,7 +695,7 @@ class CircuitBreakerTester:
     def generate_visualizations(self) -> None:
         """Generate visualizations of test results."""
         if not VISUALIZATION_AVAILABLE:
-            logger.warning("Visualization dependencies not available. Skipping visualizations.")
+            _log_optional_dependency("Visualization dependencies not available. Skipping visualizations.")
             return
             
         logger.info("Generating visualizations")

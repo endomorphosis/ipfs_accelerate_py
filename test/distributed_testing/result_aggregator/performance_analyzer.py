@@ -27,6 +27,7 @@ import json
 import logging
 import math
 import os
+import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Set, Tuple, Union
 
@@ -46,6 +47,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _is_pytest() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules)
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
+
 # Import optional dependencies if available
 try:
     import matplotlib.pyplot as plt
@@ -54,7 +66,7 @@ try:
     VISUALIZATION_AVAILABLE = True
 except ImportError:
     VISUALIZATION_AVAILABLE = False
-    logger.warning("Visualization libraries not available. Visualization features will be disabled.")
+    _log_optional_dependency("Visualization libraries not available. Visualization features will be disabled.")
 
 try:
     from sklearn.linear_model import LinearRegression
@@ -63,7 +75,7 @@ try:
     ML_AVAILABLE = True
 except ImportError:
     ML_AVAILABLE = False
-    logger.warning("Scikit-learn not available. Advanced regression analysis will be disabled.")
+    _log_optional_dependency("Scikit-learn not available. Advanced regression analysis will be disabled.")
 
 class PerformanceAnalyzer:
     """Advanced performance analysis for test results."""

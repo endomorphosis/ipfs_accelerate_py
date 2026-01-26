@@ -350,7 +350,7 @@ class apis:
                                                 
                                             # Set up the endpoint
                                             self.resources["batch_sizes"][model][this_endpoint] = 0
-                                                self.resources["queues"][model][this_endpoint] = anyio.create_memory_object_stream(64)
+                                            self.resources["queues"][model][this_endpoint] = anyio.create_memory_object_stream(64)
                                             
                                             # Try to create an endpoint handler, but provide a fallback
                                             try:

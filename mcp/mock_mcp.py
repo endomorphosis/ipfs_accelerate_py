@@ -11,7 +11,9 @@ import inspect
 import json
 import logging
 import time
+from dataclasses import dataclass
 from enum import Enum
+from types import SimpleNamespace
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Type, TypeVar, Union, cast
 
 # Configure logging
@@ -23,6 +25,28 @@ LifespanResultT = TypeVar('LifespanResultT')
 ToolFuncT = Callable[..., Awaitable[Any]]
 LifespanStartFuncT = Callable[['Context'], Awaitable[LifespanResultT]]
 LifespanStopFuncT = Callable[['Context', LifespanResultT], Awaitable[None]]
+
+
+@dataclass
+class ToolDefinition:
+    name: str
+    description: str
+    function: Callable[..., Any]
+    schema: Dict[str, Any]
+
+
+@dataclass
+class ResourceDefinition:
+    path: str
+    description: str
+    function: Callable[..., Any]
+
+
+@dataclass
+class PromptDefinition:
+    name: str
+    description: str
+    template: str
 
 
 class TransportType(str, Enum):
@@ -93,11 +117,27 @@ class FastMCP:
         """
         self.name = name
         self.description = description or f"Mock implementation of {name}"
-        self.tools: Dict[str, Dict[str, Any]] = {}
+        self._tools: Dict[str, ToolDefinition] = {}
+        self._resources: Dict[str, ResourceDefinition] = {}
+        self._prompts: Dict[str, PromptDefinition] = {}
+        self.metadata: Dict[str, Any] = {}
+        self.state = SimpleNamespace()
         self.lifespan_start_handler: Optional[LifespanStartFuncT] = None
         self.lifespan_stop_handler: Optional[LifespanStopFuncT] = None
         self.lifespan_context: Any = None
         logger.info(f"Initialized mock MCP server: {name}")
+
+    @property
+    def tools(self) -> List[ToolDefinition]:
+        return list(self._tools.values())
+
+    @property
+    def resources(self) -> List[ResourceDefinition]:
+        return list(self._resources.values())
+
+    @property
+    def prompts(self) -> List[PromptDefinition]:
+        return list(self._prompts.values())
     
     def tool(self, 
              name: Optional[str] = None, 
@@ -135,22 +175,56 @@ class FastMCP:
                 params[param_name] = param_info
             
             # Register the tool
-            self.tools[tool_name] = {
-                "name": tool_name,
-                "description": tool_desc,
-                "function": func,
-                "schema": {
+            self._tools[tool_name] = ToolDefinition(
+                name=tool_name,
+                description=tool_desc,
+                function=func,
+                schema={
                     "type": "object",
                     "properties": params,
                     "required": required,
-                    "title": f"{tool_name}Arguments"
-                }
-            }
+                    "title": f"{tool_name}Arguments",
+                },
+            )
             
             logger.info(f"Registered tool: {tool_name}")
             return func
         
         return decorator
+
+    def resource(self, path: str, description: Optional[str] = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """Decorator to register a resource with the server."""
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            resource_desc = description or inspect.getdoc(func) or f"Resource: {path}"
+            self._resources[path] = ResourceDefinition(
+                path=path,
+                description=resource_desc,
+                function=func,
+            )
+            logger.info(f"Registered resource: {path}")
+            return func
+
+        return decorator
+
+    def register_resource(self, uri: str, function: Callable[..., Any], description: str = "") -> None:
+        """Register a resource directly."""
+        resource_desc = description or inspect.getdoc(function) or f"Resource: {uri}"
+        self._resources[uri] = ResourceDefinition(
+            path=uri,
+            description=resource_desc,
+            function=function,
+        )
+        logger.info(f"Registered resource: {uri}")
+
+    def prompt(self, name: str, template: str, description: str = "") -> None:
+        """Register a prompt template."""
+        prompt_desc = description or f"Prompt: {name}"
+        self._prompts[name] = PromptDefinition(
+            name=name,
+            description=prompt_desc,
+            template=template,
+        )
+        logger.info(f"Registered prompt: {name}")
     
     def on_lifespan_start(self) -> Callable[[LifespanStartFuncT], LifespanStartFuncT]:
         """Decorator to register a lifespan start handler.
@@ -229,7 +303,7 @@ class FastMCP:
             # In a real server, we'd enter a request handling loop here
             # For the mock, we just log and return immediately
             logger.info(f"Mock MCP server ready: {self.name}")
-            logger.info(f"Available tools: {', '.join(self.tools.keys())}")
+            logger.info(f"Available tools: {', '.join(self._tools.keys())}")
             
             # Keep running until interrupted
             while True:
@@ -247,8 +321,8 @@ class FastMCP:
             Dictionary of tool schemas
         """
         schemas = {}
-        for name, tool in self.tools.items():
-            schemas[name] = tool["schema"]
+        for name, tool in self._tools.items():
+            schemas[name] = tool.schema
         
         return schemas
     
@@ -267,11 +341,11 @@ class FastMCP:
         Raises:
             ValueError: If the tool is not found
         """
-        if name not in self.tools:
+        if name not in self._tools:
             raise ValueError(f"Tool not found: {name}")
-        
-        tool = self.tools[name]
-        func = tool["function"]
+
+        tool = self._tools[name]
+        func = tool.function
         
         # Create a context
         ctx = Context()
@@ -282,7 +356,9 @@ class FastMCP:
         # Invoke the tool
         logger.info(f"Invoking tool: {name}")
         start_time = time.time()
-        result = await func(**args)
+        result = func(**args)
+        if inspect.isawaitable(result):
+            result = await result
         duration = time.time() - start_time
         logger.info(f"Tool completed in {duration:.2f}s: {name}")
         

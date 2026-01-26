@@ -124,6 +124,20 @@ class ComprehensiveDependencyInstaller:
                 "category": "core",
                 "critical": False
             },
+            "scikit-learn": {
+                "pip_name": "scikit-learn",
+                "import_name": "sklearn",
+                "description": "Scikit-learn for ML utilities",
+                "category": "ai",
+                "critical": False
+            },
+            "pynvml": {
+                "pip_name": "pynvml",
+                "import_name": "pynvml",
+                "description": "NVIDIA NVML bindings for GPU detection",
+                "category": "ai",
+                "critical": False
+            },
             
             # Database and Storage
             "duckdb": {
@@ -232,6 +246,20 @@ class ComprehensiveDependencyInstaller:
                 "pip_name": "pandas",
                 "import_name": "pandas",
                 "description": "Data manipulation library",
+                "category": "data",
+                "critical": False
+            },
+            "matplotlib": {
+                "pip_name": "matplotlib",
+                "import_name": "matplotlib",
+                "description": "Plotting library",
+                "category": "data",
+                "critical": False
+            },
+            "seaborn": {
+                "pip_name": "seaborn",
+                "import_name": "seaborn",
+                "description": "Statistical data visualization",
                 "category": "data",
                 "critical": False
             },

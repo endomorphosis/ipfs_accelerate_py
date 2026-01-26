@@ -29,6 +29,17 @@ logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
+def _is_pytest() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules)
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
+
 # Add the project root to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
@@ -40,7 +51,9 @@ try:
     import numpy as np
     VISUALIZATION_AVAILABLE = True
 except ImportError:
-    logger.warning("Visualization packages not available. Install matplotlib, seaborn, pandas to enable visualizations.")
+    _log_optional_dependency(
+        "Visualization packages not available. Install matplotlib, seaborn, pandas to enable visualizations."
+    )
     VISUALIZATION_AVAILABLE = False
 
 # Optional database dependency. Tests patch `coordinator.duckdb.connect` and

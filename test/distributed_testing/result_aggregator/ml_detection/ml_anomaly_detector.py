@@ -81,6 +81,17 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _is_pytest() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules)
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
+
+
 class MLAnomalyDetector:
     """
     Machine Learning based anomaly detection for distributed testing results.
@@ -118,12 +129,12 @@ class MLAnomalyDetector:
         
         # Log the availability of optional dependencies
         if not SKLEARN_AVAILABLE:
-            logger.warning("Scikit-learn not available. ML-based anomaly detection will be disabled.")
-            logger.warning("Install scikit-learn using: pip install scikit-learn")
+            _log_optional_dependency("Scikit-learn not available. ML-based anomaly detection will be disabled.")
+            _log_optional_dependency("Install scikit-learn using: pip install scikit-learn")
         if not SCIPY_AVAILABLE:
-            logger.warning("SciPy not available. Some statistical functions will be limited.")
+            _log_optional_dependency("SciPy not available. Some statistical functions will be limited.")
         if not PLOTTING_AVAILABLE:
-            logger.warning("Matplotlib/Seaborn not available. Visualization will be disabled.")
+            _log_optional_dependency("Matplotlib/Seaborn not available. Visualization will be disabled.")
     
     def detect_anomalies(self,
                          model_name: Optional[str] = None,

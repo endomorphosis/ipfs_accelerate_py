@@ -60,7 +60,7 @@ try:
     DUCKDB_AVAILABLE = True
 except ImportError:
     DUCKDB_AVAILABLE = False
-    warnings.warn("DuckDB not available. Database functionality will be disabled.")
+    _emit_warning("DuckDB not available. Database functionality will be disabled.")
 
 try:
     import pandas as pd
@@ -68,7 +68,7 @@ try:
     DATA_ANALYSIS_AVAILABLE = True
 except ImportError:
     DATA_ANALYSIS_AVAILABLE = False
-    warnings.warn("Pandas/NumPy not available. Data analysis capabilities will be limited.")
+    _emit_warning("Pandas/NumPy not available. Data analysis capabilities will be limited.")
 
 try:
     import matplotlib.pyplot as plt
@@ -76,7 +76,7 @@ try:
     VISUALIZATION_AVAILABLE = True
 except ImportError:
     VISUALIZATION_AVAILABLE = False
-    warnings.warn("Matplotlib/Seaborn not available. Visualization will be disabled.")
+    _emit_warning("Matplotlib/Seaborn not available. Visualization will be disabled.")
 
 try:
     from scipy import stats
@@ -84,7 +84,7 @@ try:
     STATISTICAL_ANALYSIS_AVAILABLE = True
 except ImportError:
     STATISTICAL_ANALYSIS_AVAILABLE = False
-    warnings.warn("SciPy not available. Statistical analysis will be limited.")
+    _emit_warning("SciPy not available. Statistical analysis will be limited.")
 
 # Core service import (required for most functionality)
 try:

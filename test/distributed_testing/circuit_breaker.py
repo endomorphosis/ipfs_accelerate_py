@@ -26,6 +26,10 @@ class CircuitState(str, Enum):
     OPEN = "open"      # Failure detected, requests are blocked
     HALF_OPEN = "half_open"  # Testing if system has recovered
 
+
+class CircuitOpenError(Exception):
+    """Raised when an operation is attempted while the circuit is open."""
+
 class CircuitBreaker:
     """
     Circuit breaker implementation for preventing cascading failures
@@ -84,7 +88,7 @@ class CircuitBreaker:
                 # Circuit is open, fail fast
                 wait_time = self.recovery_timeout - (current_time - self.last_failure_time)
                 self.logger.warning(f"Circuit is open, failing fast. Retry after {wait_time:.1f}s")
-                raise Exception(f"Circuit {self.name} is open, failing fast")
+                raise CircuitOpenError(f"Circuit {self.name} is open, failing fast")
         
         # Execute function
         try:
@@ -106,7 +110,7 @@ class CircuitBreaker:
             
             # Add context to exception
             if self.state == CircuitState.OPEN:
-                raise Exception(f"Circuit {self.name} failed in open state: {str(e)}")
+                raise CircuitOpenError(f"Circuit {self.name} failed in open state: {str(e)}")
             else:
                 raise Exception(f"Circuit {self.name} operation failed: {str(e)}")
     

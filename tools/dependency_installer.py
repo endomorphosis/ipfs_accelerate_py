@@ -170,6 +170,7 @@ class DependencyInstaller:
             "numpy": "numpy",
             "scipy": "scipy",
             "scikit-learn": "sklearn",
+            "pynvml": "pynvml",
             
             # Audio processing
             "librosa": "librosa",
@@ -188,6 +189,7 @@ class DependencyInstaller:
             # Data science
             "pandas": "pandas",
             "matplotlib": "matplotlib",
+            "seaborn": "seaborn",
             
             # Optional advanced packages
             "fastmcp": "fastmcp",

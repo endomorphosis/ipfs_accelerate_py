@@ -21,6 +21,7 @@ import os
 import platform
 import re
 import subprocess
+import sys
 from enum import Enum
 from typing import Dict, List, Set, Optional, Tuple, Any, Union, DefaultDict
 from dataclasses import dataclass, field
@@ -31,6 +32,17 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
 )
 logger = logging.getLogger("enhanced_hardware_capability")
+
+
+def _is_pytest() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules)
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
 
 
 class HardwareType(Enum):
@@ -333,7 +345,7 @@ class HardwareCapabilityDetector:
         """Calculate CPU compute capability score."""
         cores = capability.cores or 0
         threads = capability.capabilities.get('threads', 0)
-        freq = capability.capabilities.get('frequency_mhz', 0)
+        freq = capability.capabilities.get('frequency_mhz') or 0
         
         if cores >= 32 and freq >= 3000:
             return CapabilityScore.EXCELLENT
@@ -351,7 +363,7 @@ class HardwareCapabilityDetector:
     def _calculate_cpu_memory_score(self, capability: HardwareCapability) -> CapabilityScore:
         """Calculate CPU memory capability score."""
         memory_gb = capability.memory_gb or 0
-        l3_cache = capability.capabilities.get('l3_cache_kb', 0)
+        l3_cache = capability.capabilities.get('l3_cache_kb') or 0
         
         if memory_gb >= 128 and l3_cache >= 32768:
             return CapabilityScore.EXCELLENT
@@ -531,7 +543,7 @@ class HardwareCapabilityDetector:
                 pynvml.nvmlShutdown()
         
         except ImportError:
-            logger.warning("pynvml not installed, cannot detect NVIDIA GPUs using NVML")
+            _log_optional_dependency("pynvml not installed, cannot detect NVIDIA GPUs using NVML")
             return []
         
         except Exception as e:
