@@ -111,13 +111,14 @@ class WebSocketBridge:
         self.server = None
         self.connection = None
         self.is_connected = False
-        self.message_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
+        self.message_send, self.message_receive = anyio.create_memory_object_stream(100)
         self.response_events = {}
         self.response_data = {}
         self.connection_event = anyio.Event()
         self.loop = None
         self.server_task = None
         self.process_task = None
+        self.task_group = None
         self.connection_attempts = 0
         self.max_connection_attempts = 3
         
@@ -133,8 +134,6 @@ class WebSocketBridge:
             return False
             
         try:
-            self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-            
             # Start with specific host address to avoid binding issues
             logger.info(f"Starting WebSocket server on {self.host}:{self.port}")
             self.server = await websockets.serve(
@@ -148,9 +147,11 @@ class WebSocketBridge:
                 close_timeout=5,   # Wait 5 seconds for graceful close
             )
             
-            # Create background task for processing messages
-            self.server_task = self.loop.create_task(self.keep_server_running())
-            self.process_task = self.loop.create_task(self.process_message_queue())
+            # Create background tasks for processing messages
+            self.task_group = anyio.create_task_group()
+            await self.task_group.__aenter__()
+            self.task_group.start_soon(self.keep_server_running)
+            self.task_group.start_soon(self.process_message_queue)
             
             logger.info(f"WebSocket server started on {self.host}:{self.port}")
             return True
@@ -247,7 +248,7 @@ class WebSocketBridge:
                 logger.debug(f"Received message: {msg_type}")
             
             # Add to message queue for processing
-            await self.message_queue.put(message)
+            await self.message_send.send(message)
             
             # If message has a request ID, set its event
             msg_id = message.get("id")
@@ -284,16 +285,13 @@ class WebSocketBridge:
         try:
             while True:
                 # Get message from queue
-                message = await self.message_queue.get()
+                message = await self.message_receive.receive()
                 
                 # Process message based on type
                 msg_type = message.get("type", "unknown")
                 
                 # Log for debugging but don't handle here - handled in response events
                 logger.debug(f"Processing message type: {msg_type}")
-                
-                # Acknowledge as processed
-                self.message_queue.task_done()
                 
         except anyio.get_cancelled_exc_class():
             logger.info("Message processing task cancelled")
@@ -303,19 +301,10 @@ class WebSocketBridge:
     async def stop(self):
         """Stop WebSocket server and clean up"""
         # Cancel background tasks
-        if self.process_task:
-            self.process_task.cancel()
-            try:
-                await self.process_task
-            except anyio.get_cancelled_exc_class():
-                pass
-            
-        if self.server_task:
-            self.server_task.cancel()
-            try:
-                await self.server_task
-            except anyio.get_cancelled_exc_class():
-                pass
+        if self.task_group:
+            self.task_group.cancel_scope.cancel()
+            await self.task_group.__aexit__(None, None, None)
+            self.task_group = None
         
         # Close server
         if self.server:
@@ -370,7 +359,7 @@ class WebSocketBridge:
                 self.connection_attempts = 0
                 return True
                 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 attempt += 1
                 if attempt > retry_attempts:
                     logger.warning(f"Timeout waiting for WebSocket connection after {retry_attempts} retries (timeout={timeout}s, elapsed={time.time() - connection_start:.1f}s)")
@@ -389,11 +378,12 @@ class WebSocketBridge:
                 # Perform cleanup to improve chances of successful reconnection
                 try:
                     # Clear any pending messages if possible
-                    while not self.message_queue.empty():
+                    while True:
                         try:
-                            self.message_queue.get_nowait()
-                            self.message_queue.task_done()
-                        except:
+                            self.message_receive.receive_nowait()
+                        except anyio.WouldBlock:
+                            break
+                        except anyio.EndOfStream:
                             break
                 except Exception as e:
                     logger.debug(f"Error during queue cleanup: {e}")
@@ -455,7 +445,7 @@ class WebSocketBridge:
                     timeout=timeout
                 )
                 return True
-            except asyncio.TimeoutError as e:
+            except TimeoutError as e:
                 # Create a context with detailed information
                 context = {
                     "action": "send_message",
@@ -465,7 +455,7 @@ class WebSocketBridge:
                 }
                 
                 # Let the retry decorator handle this recoverable error
-                raise asyncio.TimeoutError(f"Timeout sending message (timeout={timeout}s)")
+                raise TimeoutError(f"Timeout sending message (timeout={timeout}s)")
             except ConnectionClosedError as e:
                 # Connection was closed, clear connected state
                 self.is_connected = False
@@ -536,7 +526,7 @@ class WebSocketBridge:
                     )
                     return True
                     
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     attempt += 1
                     last_error = f"Timeout sending message (timeout={timeout}s)"
                     logger.warning(last_error)
@@ -646,7 +636,7 @@ class WebSocketBridge:
             needs_cleanup = False
             return response
             
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout waiting for response to message {msg_id} (timeout={response_timeout}s)")
             return None
             
@@ -1108,6 +1098,5 @@ async def test_websocket_bridge():
 
 if __name__ == "__main__":
     # Run test if script executed directly
-    import asyncio
     success = anyio.run(test_websocket_bridge())
     sys.exit(0 if success else 1)

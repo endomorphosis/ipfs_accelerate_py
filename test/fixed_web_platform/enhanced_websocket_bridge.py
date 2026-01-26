@@ -91,7 +91,7 @@ class EnhancedWebSocketBridge:
         self.last_receive_time = 0
         
         # Message handling
-        self.message_queue = asyncio.PriorityQueue()
+        self.message_send, self.message_receive = anyio.create_memory_object_stream(200)
         self.response_events = {}
         self.response_data = {}
         
@@ -101,6 +101,7 @@ class EnhancedWebSocketBridge:
         self.process_task = None
         self.heartbeat_task = None
         self.monitor_task = None
+        self.task_group = None
         
         # Reconnection state
         self.connection_attempts = 0
@@ -134,8 +135,6 @@ class EnhancedWebSocketBridge:
             return False
             
         try:
-            self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-            
             # Start with specific host address to avoid binding issues
             logger.info(f"Starting Enhanced WebSocket server on {self.host}:{self.port}")
             self.server = await websockets.serve(
@@ -150,13 +149,15 @@ class EnhancedWebSocketBridge:
             )
             
             # Create background tasks
-            self.server_task = self.loop.create_task(self.keep_server_running())
-            self.process_task = self.loop.create_task(self.process_message_queue())
-            
+            self.task_group = anyio.create_task_group()
+            await self.task_group.__aenter__()
+            self.task_group.start_soon(self.keep_server_running)
+            self.task_group.start_soon(self.process_message_queue)
+
             # Start heartbeat and monitoring if enabled
             if self.enable_heartbeat:
-                self.heartbeat_task = self.loop.create_task(self.send_heartbeats())
-                self.monitor_task = self.loop.create_task(self.monitor_connection_health())
+                self.task_group.start_soon(self.send_heartbeats)
+                self.task_group.start_soon(self.monitor_connection_health)
             
             # Reset shutdown event
             self.shutdown_event.clear()
@@ -298,7 +299,7 @@ class EnhancedWebSocketBridge:
             elif msg_type == "log":
                 priority = MessagePriority.LOW
                 
-            await self.message_queue.put((priority, message))
+            await self.message_send.send((priority, message))
             
             # If message has a request ID, set its event
             if msg_id and msg_id in self.response_events:
@@ -320,7 +321,7 @@ class EnhancedWebSocketBridge:
                 try:
                     # Get message from queue with timeout
                     priority, message = await wait_for(
-                        self.message_queue.get(),
+                        self.message_receive.receive(),
                         timeout=1.0
                     )
                     
@@ -330,10 +331,7 @@ class EnhancedWebSocketBridge:
                     # Log for debugging but don't handle here - handled in response events
                     logger.debug(f"Processing message type: {msg_type}, priority: {priority}")
                     
-                    # Acknowledge as processed
-                    self.message_queue.task_done()
-                    
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # No messages in queue, just continue
                     continue
                 except Exception as e:
@@ -430,16 +428,10 @@ class EnhancedWebSocketBridge:
         self.shutdown_event.set()
         
         # Cancel background tasks
-        for task in [self.process_task, self.server_task, self.heartbeat_task, self.monitor_task]:
-            if task:
-                try:
-                    task.cancel()
-                    try:
-                        await task
-                    except anyio.get_cancelled_exc_class():
-                        pass
-                except Exception as e:
-                    logger.error(f"Error cancelling task: {e}")
+        if self.task_group:
+            self.task_group.cancel_scope.cancel()
+            await self.task_group.__aexit__(None, None, None)
+            self.task_group = None
         
         # Close active connection
         if self.connection:

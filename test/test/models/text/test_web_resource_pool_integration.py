@@ -558,7 +558,9 @@ class WebResourcePoolIntegrationTester:
                         })
                 
                 # Start fault injection task
-                fault_task = # TODO: Replace with task group - asyncio.create_task(inject_fault())
+                fault_task = anyio.create_task_group()
+                await fault_task.__aenter__()
+                fault_task.start_soon(inject_fault)
             
             # Execute models concurrently
             start_time = time.time()
@@ -567,7 +569,7 @@ class WebResourcePoolIntegrationTester:
             
             # Wait for fault injection to complete if active
             if self.args.enable_fault_tolerance and self.args.inject_fault:
-                await fault_task
+                await fault_task.__aexit__(None, None, None)
             
             # Process results
             execution_results = []
