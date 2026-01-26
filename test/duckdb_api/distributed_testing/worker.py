@@ -1388,12 +1388,8 @@ class WorkerClient:
         while not self.heartbeat_stop_event.is_set():
             if self.connected and self.authenticated:
                 try:
-                    # Create event loop for async calls
-                    loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-                    # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-                    
                     # Send heartbeat
-                    heartbeat_success = loop.run_until_complete(self._send_heartbeat())
+                    heartbeat_success = anyio.from_thread.run(self._send_heartbeat)
                     if not heartbeat_success:
                         logger.warning("Heartbeat failed")
                 except Exception as e:
@@ -1542,19 +1538,15 @@ class WorkerClient:
             
             # Update worker state
             self.state = WORKER_STATE_ACTIVE
-            
-            # Create event loop for async calls
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-            
+
             # Report result
-            loop.run_until_complete(self._report_task_result(result))
-            
+            anyio.from_thread.run(self._report_task_result, result)
+
             # Update status
-            loop.run_until_complete(self._update_status(WORKER_STATE_ACTIVE))
-            
+            anyio.from_thread.run(self._update_status, WORKER_STATE_ACTIVE)
+
             # Request new task
-            loop.run_until_complete(self._request_task())
+            anyio.from_thread.run(self._request_task)
             
         except Exception as e:
             logger.error(f"Error in task thread for task {task_id}: {e}")
@@ -1562,19 +1554,15 @@ class WorkerClient:
             
             # Update worker state
             self.state = WORKER_STATE_ACTIVE
-            
-            # Create event loop for async calls
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-            
+
             # Report error
-            loop.run_until_complete(self._report_task_error(task_id, str(e)))
-            
+            anyio.from_thread.run(self._report_task_error, task_id, str(e))
+
             # Update status
-            loop.run_until_complete(self._update_status(WORKER_STATE_ACTIVE))
-            
+            anyio.from_thread.run(self._update_status, WORKER_STATE_ACTIVE)
+
             # Request new task
-            loop.run_until_complete(self._request_task())
+            anyio.from_thread.run(self._request_task)
     
     async def _report_task_result(self, result: Dict[str, Any]) -> bool:
         """Report task result to the coordinator.
@@ -1811,23 +1799,14 @@ def main():
         heartbeat_interval=args.heartbeat_interval
     )
     
-    # Set up signal handlers
-    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-    
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(
-            sig,
-            lambda: # TODO: Replace with task group - asyncio.create_task(worker.stop())
-        )
-    
     # Run worker
     try:
         logger.info(f"Starting worker with ID: {worker.worker_id}")
-        loop.run_until_complete(worker.run())
+        anyio.run(worker.run)
         return 0
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
-        loop.run_until_complete(worker.stop())
+        anyio.run(worker.stop)
         return 130
 
 

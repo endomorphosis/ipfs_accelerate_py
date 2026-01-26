@@ -557,14 +557,14 @@ class ResourcePoolBridgeIntegrationEnhanced:
                 hardware_preferences=hardware_preferences
             )
         elif hasattr(self.bridge, 'get_model'):
-            loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-            model = loop.run_until_complete(
-                self.bridge.get_model(
+            async def _get_model_async() -> Any:
+                return await self.bridge.get_model(
                     model_type=model_type,
                     model_name=model_name,
-                    hardware_preferences=hardware_preferences
+                    hardware_preferences=hardware_preferences,
                 )
-            )
+
+            model = anyio.run(_get_model_async)
         else:
             return None
             
@@ -778,8 +778,7 @@ class ResourcePoolBridgeIntegrationEnhanced:
         elif hasattr(self.bridge, 'execute_concurrent_sync'):
             results = self.bridge.execute_concurrent_sync(model_and_inputs_list)
         elif hasattr(self.bridge, 'execute_concurrent'):
-            loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-            results = loop.run_until_complete(self.bridge.execute_concurrent(model_and_inputs_list))
+            results = anyio.run(self.bridge.execute_concurrent, model_and_inputs_list)
         else:
             return [{"success": False, "error": "execute_concurrent not available"} for _ in model_and_inputs_list]
             
@@ -1278,8 +1277,7 @@ class ResourcePoolBridgeIntegrationEnhanced:
         if ADVANCED_POOLING_AVAILABLE and self.connection_pool:
             try:
                 logger.info("Closing connection pool manager")
-                loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-                loop.run_until_complete(self.connection_pool.shutdown())
+                anyio.run(self.connection_pool.shutdown)
                 logger.info("Connection pool manager closed successfully")
             except Exception as e:
                 logger.error(f"Error closing connection pool manager: {e}")
@@ -1330,8 +1328,7 @@ class ResourcePoolBridgeIntegrationEnhanced:
                 if hasattr(self.bridge, 'close_sync'):
                     self.bridge.close_sync()
                 elif hasattr(self.bridge, 'close'):
-                    loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-                    loop.run_until_complete(self.bridge.close())
+                    anyio.run(self.bridge.close)
                 logger.info("Base bridge closed successfully")
             except Exception as e:
                 logger.error(f"Error closing base bridge: {e}")
