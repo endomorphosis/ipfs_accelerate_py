@@ -66,7 +66,6 @@ class MockHandler:
                 pass
                 
             # Create queue for inference requests
-            import asyncio
             queue = AnyioQueue(16)
             
             if not webgpu_support:
@@ -138,7 +137,6 @@ class MockHandler:
         except Exception as e:
             print(f"Error initializing WebGPU: {e}")
             # Fallback to a minimal mock
-            import asyncio
             queue = AnyioQueue(16)
             return None, None, lambda x, sampling_rate=16000: {"output": "Mock WebGPU output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
 
@@ -161,7 +159,6 @@ class MockHandler:
                 pass
                 
             # Create queue for inference requests
-            import asyncio
             queue = AnyioQueue(16)
             
             if not webnn_support:
@@ -227,7 +224,6 @@ class MockHandler:
         except Exception as e:
             print(f"Error initializing WebNN: {e}")
             # Fallback to a minimal mock
-            import asyncio
             queue = AnyioQueue(16)
             return None, None, lambda x, sampling_rate=16000: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 

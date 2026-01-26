@@ -204,7 +204,6 @@ def run_parallel_execution(args: argparse.Namespace) -> None:
     
     if args.async_execution:
         # Import asyncio
-        import asyncio
         
         # Run asynchronously
         results = anyio.run(orchestrator.execute_all_tests_async())

@@ -28,7 +28,6 @@ Usage:
     import sys
     import json
     import time
-    import asyncio
     import argparse
     import logging
     import subprocess

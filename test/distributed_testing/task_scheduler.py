@@ -11,7 +11,6 @@ Usage:
     Import this module in coordinator.py to enable advanced task scheduling.
     """
 
-    import asyncio
     import json
     import logging
     import time

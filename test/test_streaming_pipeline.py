@@ -20,7 +20,6 @@ Usage:
     import sys
     import json
     import time
-    import asyncio
     import argparse
     import logging
     from pathlib import Path

@@ -30,7 +30,6 @@ Usage:
     import json
     import time
     import logging
-    import asyncio
     from typing import Dict, Any, List, Optional, Union
 
 # Set up logging

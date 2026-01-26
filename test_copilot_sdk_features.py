@@ -13,7 +13,6 @@ of the GitHub Copilot SDK (https://github.com/github/copilot-sdk):
 """
 
 import pytest
-import asyncio
 from unittest.mock import Mock, patch, MagicMock, AsyncMock, call
 from ipfs_accelerate_py.copilot_sdk import CopilotSDK
 

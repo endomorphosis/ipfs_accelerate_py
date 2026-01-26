@@ -288,7 +288,6 @@ class TestT5Models:
                 pass
                 
             # Create queue for inference requests
-            import asyncio
             queue = AnyioQueue(16)
             
             if not webnn_support:
@@ -343,7 +342,6 @@ class TestT5Models:
         except Exception as e:
             print(f"Error initializing WebNN: {e}")
             # Fallback to a minimal mock
-            import asyncio
             queue = AnyioQueue(16)
             return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 def test_pipeline(self, device="auto"):

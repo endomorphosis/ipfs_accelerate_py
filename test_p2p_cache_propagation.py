@@ -9,6 +9,7 @@ to all connected peers via libp2p, enabling cache sharing across GitHub Actions 
 import os
 import sys
 import time
+import anyio
 from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 
@@ -108,7 +109,6 @@ class TestP2PCachePropagation:
         print("Testing: Broadcast sends to all connected peers")
         
         import tempfile
-        import asyncio
         
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = configure_cache(
@@ -119,7 +119,6 @@ class TestP2PCachePropagation:
             
             # Mock P2P components
             cache._p2p_host = Mock()
-            cache._event_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
             
             # Mock connected peers
             peer1 = Mock()
@@ -160,7 +159,7 @@ class TestP2PCachePropagation:
                 await cache._broadcast_cache_entry("test_key", entry)
             
             # Run the async broadcast
-            cache._event_loop.run_until_complete(run_broadcast())
+            anyio.run(run_broadcast)
             
             # Verify messages were sent to both peers
             self.assert_equal(
@@ -171,14 +170,12 @@ class TestP2PCachePropagation:
             print(f"   ✓ Broadcast sent to {len(sent_messages)} connected peer(s)")
             print(f"   ✓ Each peer receives encrypted cache entry")
             
-            cache._event_loop.close()
     
     def test_received_cache_entry_stored_locally(self):
         """Verify that cache entries received from peers are stored locally."""
         print("Testing: Received entries stored in local cache")
         
         import tempfile
-        import asyncio
         
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = configure_cache(
@@ -214,9 +211,7 @@ class TestP2PCachePropagation:
             async def run_handler():
                 await cache._handle_cache_stream(stream)
             
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            loop.run_until_complete(run_handler())
-            loop.close()
+            anyio.run(run_handler)
             
             # Verify entry was stored
             final_size = cache.get_stats()['cache_size']

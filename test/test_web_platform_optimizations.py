@@ -20,7 +20,6 @@ Usage:
     import time
     import argparse
     import logging
-    import asyncio
 # JSON no longer needed for database storage - only used for legacy report generation
     import json
     from pathlib import Path

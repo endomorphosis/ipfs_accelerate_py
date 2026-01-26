@@ -18,6 +18,7 @@ import os
 import sys
 import json
 import time
+import subprocess
 import logging
 import argparse
 import anyio
@@ -307,11 +308,10 @@ class TestSuiteRunner:
         
         try:
             # Run the test with timeout protection
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "test_fault_tolerant_cross_browser_model_sharding.py", 
-                *cmd_args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            process = await anyio.open_process(
+                [sys.executable, "test_fault_tolerant_cross_browser_model_sharding.py", *cmd_args],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             
             try:
@@ -389,7 +389,7 @@ class TestSuiteRunner:
                     test_result["stdout"] = stdout
                     test_result["stderr"] = stderr
                     self.failed_tests.append(test_result)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Handle timeout
                 test_result["status"] = "timeout"
                 test_result["error_message"] = f"Test exceeded timeout ({TEST_TIMEOUT}s)"
@@ -399,7 +399,7 @@ class TestSuiteRunner:
                 process.terminate()
                 try:
                     await wait_for(process.wait(), timeout=10)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     process.kill()
         except Exception as e:
             # Handle unexpected errors

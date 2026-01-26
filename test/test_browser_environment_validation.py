@@ -11,7 +11,6 @@ It uses pytest and pytest-asyncio to run the tests.
 import os
 import sys
 import pytest
-import asyncio
 import tempfile
 import json
 from pathlib import Path

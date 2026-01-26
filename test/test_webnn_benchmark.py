@@ -13,7 +13,6 @@ Usage:
     import sys
     import json
     import time
-    import asyncio
     import logging
     import argparse
     from pathlib import Path

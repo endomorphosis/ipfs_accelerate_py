@@ -1053,7 +1053,6 @@ class BrowserAutomation:
                         logger.error(f"Invalid JSON: {message}")
             
             # Start WebSocket server
-            import asyncio
             self.websocket_server = await self.websockets.serve(
                 handle_connection, "localhost", self.server_port
             )

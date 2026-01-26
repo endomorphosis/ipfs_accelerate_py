@@ -161,11 +161,10 @@ class FaultToleranceTestRunner:
         
         # Execute the integration test
         try:
-            # Use asyncio subprocess for better integration with other async tests
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            process = await anyio.open_process(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             
             stdout, stderr = await process.communicate()
@@ -255,10 +254,10 @@ class FaultToleranceTestRunner:
                     
                     # Execute the test
                     try:
-                        process = await asyncio.create_subprocess_exec(
-                            *cmd,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
+                        process = await anyio.open_process(
+                            cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
                         )
                         
                         stdout, stderr = await process.communicate()
@@ -337,10 +336,10 @@ class FaultToleranceTestRunner:
             
             # Execute the test
             try:
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                process = await anyio.open_process(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                 )
                 
                 stdout, stderr = await process.communicate()
@@ -436,10 +435,10 @@ class FaultToleranceTestRunner:
         
         # Execute the test suite
         try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            process = await anyio.open_process(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             
             stdout, stderr = await process.communicate()
@@ -727,8 +726,8 @@ def main():
             args.stress_test = True
             args.resource_pool = True
     
-    # Run tests with asyncio event loop
-    return anyio.run(async_main(args))
+    # Run tests with AnyIO
+    return anyio.run(async_main, args)
 
 if __name__ == "__main__":
     sys.exit(main())

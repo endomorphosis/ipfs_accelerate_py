@@ -682,7 +682,6 @@ def main():
     progressive_data = recovery_system.get_progressive_recovery_history()
     
     # Create asynchronous function to run analyze_recovery_performance
-    import asyncio
     
     async def get_analysis_data():
         return await recovery_system.analyze_recovery_performance(days=args.days)

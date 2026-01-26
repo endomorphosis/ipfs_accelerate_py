@@ -480,32 +480,24 @@ class CrossPlatformCacheTest:
             self.log(f"Multiprocessing test failed: {e}", "WARNING")
             self.platform_issues.append(f"Multiprocessing issues: {e}")
     
-    def test_asyncio_support(self):
-        """Test asyncio support (needed for libp2p)."""
-        self.log("Testing asyncio support...", "INFO")
+    def test_anyio_support(self):
+        """Test AnyIO support (used by async components)."""
+        self.log("Testing AnyIO support...", "INFO")
         
         try:
-            import asyncio
-            
             # Test event loop
             async def test_coro():
                 await anyio.sleep(0.01)
                 return "test"
             
-            # Windows has special handling for event loops
-            if IS_WINDOWS:
-                # On Windows, use WindowsSelectorEventLoopPolicy
-                asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-                self.log("Using WindowsSelectorEventLoopPolicy", "INFO")
-            
             # Run test coroutine
-            result = anyio.run(test_coro())
-            assert result == "test", "Asyncio test failed"
-            self.log("Asyncio works correctly", "SUCCESS")
+            result = anyio.run(test_coro)
+            assert result == "test", "AnyIO test failed"
+            self.log("AnyIO works correctly", "SUCCESS")
             
         except Exception as e:
-            self.log(f"Asyncio test failed: {e}", "WARNING")
-            self.platform_issues.append(f"Asyncio issues: {e}")
+            self.log(f"AnyIO test failed: {e}", "WARNING")
+            self.platform_issues.append(f"AnyIO issues: {e}")
     
     def test_cross_platform_paths(self):
         """Test path handling across platforms."""

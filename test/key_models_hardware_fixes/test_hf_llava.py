@@ -124,7 +124,6 @@ from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
                         from PIL import Image
                         import time
                         import traceback
-                        import asyncio
                         
                         # Create MPS-compatible handler
                         def handler(input_data, **kwargs):

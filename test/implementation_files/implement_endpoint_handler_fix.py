@@ -14,7 +14,6 @@ This script will:
     import os
     import sys
     import json
-    import asyncio
     import traceback
     from datetime import datetime
     from pathlib import Path

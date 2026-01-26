@@ -476,7 +476,6 @@ class TestXCLIPModels:
                 pass
                 
             # Create queue for inference requests
-            import asyncio
             queue = AnyioQueue(16)
             
             if not webnn_support:
@@ -541,7 +540,6 @@ class TestXCLIPModels:
         except Exception as e:
             print(f"Error initializing WebNN: {e}")
             # Fallback to a minimal mock
-            import asyncio
             queue = AnyioQueue(16)
             return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 
@@ -564,7 +562,6 @@ class TestXCLIPModels:
                 pass
                 
             # Create queue for inference requests
-            import asyncio
             queue = AnyioQueue(16)
             
             if not webgpu_support:
@@ -670,7 +667,6 @@ class TestXCLIPModels:
         except Exception as e:
             print(f"Error initializing WebGPU for multimodal model: {e}")
             # Fallback to a minimal mock
-            import asyncio
             queue = AnyioQueue(16)
             return None, None, lambda x: {"output": "Mock WebGPU multimodal output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
 def test_pipeline(self, device="auto"):

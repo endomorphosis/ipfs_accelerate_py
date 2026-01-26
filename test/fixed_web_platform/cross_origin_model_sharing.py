@@ -1265,7 +1265,6 @@ async def run_model_sharing_demo():
 
 
 if __name__ == "__main__":
-    import asyncio
     
     # Run the demo
     anyio.run(run_model_sharing_demo())

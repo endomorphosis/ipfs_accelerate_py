@@ -3,13 +3,13 @@
 
 This is intentionally conservative: it applies only transformations that are
 very likely to be correct without deeper control-flow/context analysis.
-
-It also emits a report of remaining "hard" asyncio constructs that typically
-need manual refactoring (task groups, event loops, gather/wait_for, etc.).
-
-Usage:
-  # report only (no edits)
-  python tools/asyncio_to_anyio_bulk_refactor.py --check
+import argparse
+import json
+import re
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, Iterable, List, Tuple
 
   # apply safe edits in-place
   python tools/asyncio_to_anyio_bulk_refactor.py --apply
@@ -23,8 +23,6 @@ Exit codes:
   2: usage / unexpected failure
 """
 
-from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
-from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 from __future__ import annotations
 
 import argparse

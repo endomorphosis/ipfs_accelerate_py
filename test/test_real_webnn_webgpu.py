@@ -15,7 +15,6 @@ Usage:
     import json
     import argparse
     import logging
-    import asyncio
     from pathlib import Path
 
 # Setup logging

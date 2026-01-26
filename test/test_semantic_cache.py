@@ -13,7 +13,6 @@ This script tests semantic caching functionality for all supported API backends:
 
     import os
     import sys
-    import asyncio
     import json
     import time
     import hashlib

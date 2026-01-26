@@ -17,7 +17,6 @@ Example usage:
     import time
     import json
     import argparse
-    import asyncio
     from typing import Dict, List, Any
 
 # Set paths

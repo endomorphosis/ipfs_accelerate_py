@@ -116,7 +116,6 @@ except ImportError:
             # Import torch and asyncio for creating mock components
             try:
                 import torch
-                import asyncio
                 
                 # Create mock endpoint
                 class MockEndpoint:
@@ -168,7 +167,6 @@ except ImportError:
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio
                 handler = lambda x: {"output": "Mock CPU output", "input": x, "implementation_type": "MOCK"}
                 return None, None, handler, AnyioQueue(32), 1
             
@@ -185,7 +183,6 @@ except ImportError:
             """
             try:
                 import torch
-                import asyncio
                 
                 # Create mock endpoint with CUDA-specific methods
                 class MockCudaEndpoint:
@@ -246,7 +243,6 @@ except ImportError:
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio
                 handler = lambda x: {"output": "Mock CUDA output", "input": x, "implementation_type": "MOCK"}
                 return None, None, handler, AnyioQueue(32), 2
             
@@ -264,7 +260,6 @@ except ImportError:
             try:
                 import torch
                 import numpy as np
-                import asyncio
                 
                 # Create mock OpenVINO model
                 class MockOpenVINOModel:
@@ -311,7 +306,6 @@ except ImportError:
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio
                 handler = lambda x: {"output": "Mock OpenVINO output", "input": x, "implementation_type": "MOCK"}
                 return None, None, handler, AnyioQueue(64), 1
             
@@ -328,7 +322,6 @@ except ImportError:
             """
             try:
                 import torch
-                import asyncio
                 
                 # Create mock Apple Silicon endpoint
                 class MockMPSEndpoint:
@@ -392,7 +385,6 @@ except ImportError:
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio
                 handler = lambda x: {"output": "Mock MPS output", "input": x, "implementation_type": "MOCK"}
                 return None, None, handler, AnyioQueue(32), 2
             
@@ -409,7 +401,6 @@ except ImportError:
             """
             try:
                 import torch
-                import asyncio
                 
                 # Create mock ROCm endpoint (similar to CUDA but for AMD GPUs)
                 class MockROCmEndpoint:
@@ -470,7 +461,6 @@ except ImportError:
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio
                 handler = lambda x: {"output": "Mock ROCm output", "input": x, "implementation_type": "MOCK"}
                 return None, None, handler, AnyioQueue(32), 2
             
@@ -488,7 +478,6 @@ except ImportError:
             try:
                 import torch
                 import numpy as np
-                import asyncio
                 
                 # Create mock Qualcomm endpoint
                 class MockQualcommModel:
@@ -542,7 +531,6 @@ except ImportError:
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
-                import asyncio
                 handler = lambda x: {"output": "Mock Qualcomm output", "input": x, "implementation_type": "MOCK"}
                 return None, None, handler, AnyioQueue(32), 1
     

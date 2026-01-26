@@ -14,7 +14,6 @@ Usage:
     import sys
     import time
     import json
-    import asyncio
     import argparse
     import logging
     from typing import Dict, List, Any, Optional
