@@ -10,6 +10,7 @@ Usage:
     for browser-based model inference.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import anyio
 import hashlib
 import json
@@ -1011,7 +1012,7 @@ class ResourcePoolRecoveryManager:
                     
             elif strategy == "parallel":
                 # Parallel recovery - try multiple approaches simultaneously
-                results = await # TODO: Replace with task group - asyncio.gather(
+                results = await gather(
                     self._recover_model_retry(model_id, browser_id, model_state, inputs, operation_id),
                     self._recover_model_failover(model_id, browser_id, model_state, inputs, operation_id),
                     return_exceptions=True

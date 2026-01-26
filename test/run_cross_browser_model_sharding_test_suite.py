@@ -13,6 +13,7 @@ Usage:
     python run_cross_browser_model_sharding_test_suite.py --sharding-strategies layer,component --browsers chrome,firefox,edge
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -314,7 +315,7 @@ class TestSuiteRunner:
             )
             
             try:
-                stdout, stderr = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(process.communicate(), timeout=TEST_TIMEOUT)
+                stdout, stderr = await wait_for(process.communicate(), timeout=TEST_TIMEOUT)
                 stdout = stdout.decode() if stdout else ""
                 stderr = stderr.decode() if stderr else ""
                 
@@ -397,7 +398,7 @@ class TestSuiteRunner:
                 # Try to terminate the process
                 process.terminate()
                 try:
-                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(process.wait(), timeout=10)
+                    await wait_for(process.wait(), timeout=10)
                 except asyncio.TimeoutError:
                     process.kill()
         except Exception as e:
@@ -539,7 +540,7 @@ class TestSuiteRunner:
                     return await self.run_test(*test_params)
             
             tasks = [run_with_semaphore(params) for params in test_matrix]
-            results = await # TODO: Replace with task group - asyncio.gather(*tasks)
+            results = await gather(*tasks)
             
             for result in results:
                 completed_tests += 1

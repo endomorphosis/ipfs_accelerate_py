@@ -63,7 +63,7 @@ class MockHandler:
                 
             # Create queue for inference requests
             import asyncio
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             
             if not webgpu_support:
                 # Create a WebGPU simulation using CPU implementation for audio models
@@ -135,7 +135,7 @@ class MockHandler:
             print(f"Error initializing WebGPU: {e}")
             # Fallback to a minimal mock
             import asyncio
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             return None, None, lambda x, sampling_rate=16000: {"output": "Mock WebGPU output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
 
     def init_webnn(self, model_name=None):
@@ -158,7 +158,7 @@ class MockHandler:
                 
             # Create queue for inference requests
             import asyncio
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             
             if not webnn_support:
                 # Create a WebNN simulation using CPU implementation for audio models
@@ -224,7 +224,7 @@ class MockHandler:
             print(f"Error initializing WebNN: {e}")
             # Fallback to a minimal mock
             import asyncio
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             return None, None, lambda x, sampling_rate=16000: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 
     def init_rocm(self):
@@ -302,6 +302,7 @@ class test_hf_wav2vec2:
         # Try to import the real implementation
         real_implementation = False
         try:
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
             from ipfs_accelerate_py.worker.skillset.hf_wav2vec2 import hf_wav2vec2
             self.model = hf_wav2vec2(resources=self.resources, metadata=self.metadata)
             real_implementation = True

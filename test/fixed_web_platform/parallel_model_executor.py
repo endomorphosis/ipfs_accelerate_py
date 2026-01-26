@@ -20,6 +20,7 @@ Usage:
     results = await executor.execute_models(models_and_inputs)
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
@@ -475,7 +476,7 @@ class ParallelModelExecutor:
         worker = None
         try:
             # Wait for available worker with timeout
-            worker = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.worker_queue.get(), timeout=10.0)
+            worker = await wait_for(self.worker_queue.get(), timeout=10.0)
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for worker for model {model_id}")
             if not future.done():

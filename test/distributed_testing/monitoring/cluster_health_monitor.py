@@ -4,6 +4,7 @@ Cluster Health Monitor for Distributed Testing Framework.
 Provides real-time visualization of coordinator cluster health and performance metrics.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import anyio
 import os
 import sys
@@ -151,7 +152,7 @@ class ClusterHealthMonitor:
                 
                 # Wait for the next update interval
                 try:
-                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.stop_event.wait(), self.update_interval)
+                    await wait_for(self.stop_event.wait(), self.update_interval)
                 except asyncio.TimeoutError:
                     # This is expected - just continue
                     pass
@@ -178,7 +179,7 @@ class ClusterHealthMonitor:
             tasks.append(self._update_node_status(node, current_time))
             
         # Wait for all tasks to complete
-        await # TODO: Replace with task group - asyncio.gather(*tasks)
+        await gather(*tasks)
         
         # Update the GUI
         self.update_queue.put(self.nodes)

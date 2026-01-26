@@ -58,6 +58,7 @@ For more detailed information, refer to:
 - MERGED_GENERATOR_QUICK_REFERENCE.md: Command summary and examples
 """
 
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
 import os
 import sys
 import json
@@ -1145,7 +1146,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
+            queue = AnyioQueue(64)
             batch_size = self.batch_size
             
             # Processor is the tokenizer in this case
@@ -1190,7 +1191,7 @@ class TestHF{class_name}:
             
             # Simple mock handler
             handler = lambda x: {"output": "MOCK OUTPUT", "implementation_type": "MOCK", "model": model_name}
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
+            queue = AnyioQueue(64)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -1302,7 +1303,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+            queue = AnyioQueue(32)
             batch_size = self.batch_size
             
             endpoint = model
@@ -1342,7 +1343,7 @@ class TestHF{class_name}:
             
             # Simple mock handler
             handler = lambda x: {"output": "MOCK OUTPUT", "implementation_type": "MOCK", "model": model_name}
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+            queue = AnyioQueue(32)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -1458,7 +1459,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             batch_size = self.batch_size
             
             endpoint = model
@@ -1494,7 +1495,7 @@ class TestHF{class_name}:
             
             # Simple mock handler
             handler = lambda x, sampling_rate=16000: {"output": "MOCK OUTPUT", "implementation_type": "MOCK", "model": model_name}
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -1610,7 +1611,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+            queue = AnyioQueue(8)
             batch_size = self.batch_size
             
             endpoint = model
@@ -1646,7 +1647,7 @@ class TestHF{class_name}:
             
             # Simple mock handler
             handler = lambda x: {"output": "MOCK OUTPUT", "implementation_type": "MOCK", "model": model_name}
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+            queue = AnyioQueue(8)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -1733,7 +1734,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             batch_size = self.batch_size
             
             endpoint = model
@@ -1767,7 +1768,7 @@ class TestHF{class_name}:
             
             # Simple mock handler
             handler = lambda x: {"output": "MOCK OUTPUT", "implementation_type": "MOCK", "model": model_name}
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -1827,7 +1828,7 @@ class TestHF{class_name}:
                     }}
             
             # Create queue with larger batch size for GPU
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
+            queue = AnyioQueue(64)
             batch_size = self.batch_size * 2  # Larger batch size for GPU
             
             endpoint = model
@@ -1840,7 +1841,7 @@ class TestHF{class_name}:
             
             # Create simple mock implementation for CUDA
             handler = lambda x: {{"output": "MOCK CUDA OUTPUT", "implementation_type": "MOCK_CUDA", "model": model_name}}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), self.batch_size
+            return None, None, handler, AnyioQueue(32), self.batch_size
 """
     
     # Define the enhanced OpenVINO implementation
@@ -1933,7 +1934,7 @@ class TestHF{class_name}:
                         }
                 
                 # Create queue
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+                queue = AnyioQueue(32)
                 batch_size = self.batch_size
                 
                 endpoint = model
@@ -2018,7 +2019,7 @@ class TestHF{class_name}:
                                 }
                         
                         # Create queue
-                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+                        queue = AnyioQueue(32)
                         batch_size = self.batch_size
                         
                         endpoint = compiled_model
@@ -2083,7 +2084,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -2155,7 +2156,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue - smaller queue size for mobile processors
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             batch_size = 1  # Smaller batch size for mobile
             
             endpoint = model
@@ -2168,7 +2169,7 @@ class TestHF{class_name}:
             
             # Create simple mock implementation for Qualcomm
             handler = lambda x: {"output": "MOCK QUALCOMM OUTPUT", "implementation_type": "MOCK_QUALCOMM", "model": model_name}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8), 1
+            return None, None, handler, AnyioQueue(8), 1
     
     def init_mps(self, model_name=None, device="mps"):
         \"\"\"Initialize model for Apple Silicon (M1/M2/M3) inference.\"\"\"
@@ -2217,7 +2218,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+            queue = AnyioQueue(32)
             batch_size = self.batch_size
             
             endpoint = model
@@ -2230,7 +2231,7 @@ class TestHF{class_name}:
             
             # Create simple mock implementation for MPS
             handler = lambda x: {"output": "MOCK MPS OUTPUT", "implementation_type": "MOCK_MPS", "model": model_name}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), self.batch_size
+            return None, None, handler, AnyioQueue(16), self.batch_size
     
     def init_rocm(self, model_name=None, device="hip"):
         \"\"\"Initialize model for AMD ROCm inference.\"\"\"
@@ -2279,7 +2280,7 @@ class TestHF{class_name}:
                     }
             
             # Create queue
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+            queue = AnyioQueue(32)
             batch_size = self.batch_size
             
             endpoint = model
@@ -2292,7 +2293,7 @@ class TestHF{class_name}:
             
             # Create simple mock implementation for ROCm
             handler = lambda x: {"output": "MOCK ROCM OUTPUT", "implementation_type": "MOCK_ROCM", "model": model_name}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), self.batch_size
+            return None, None, handler, AnyioQueue(16), self.batch_size
     
     def init_webnn(self, model_name=None, model_path=None, model_type=None, device="webnn", web_api_mode="simulation", tokenizer=None, **kwargs):
         # If web platform support is available, use that implementation
@@ -2417,7 +2418,7 @@ class TestHF{class_name}:
                     }
                 
                 endpoint = MagicMock()
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+                queue = AnyioQueue(8)
                 batch_size = 1
                 return endpoint, processor, handler, queue, batch_size
             
@@ -2498,7 +2499,7 @@ class TestHF{class_name}:
                         
                         # Use the ONNX session as endpoint
                         endpoint = session
-                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+                        queue = AnyioQueue(8)
                         batch_size = 1
                         
                         print(f"Successfully created WebNN ONNX simulation for {model_name}")
@@ -2565,7 +2566,7 @@ class TestHF{class_name}:
                 
                 # Use the PyTorch model as endpoint
                 endpoint = model
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+                queue = AnyioQueue(8)
                 batch_size = 1
                 
                 return endpoint, processor, handler, queue, batch_size
@@ -2682,7 +2683,7 @@ class TestHF{class_name}:
             
             # Create mock endpoint and queue
             endpoint = MagicMock()
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+            queue = AnyioQueue(8)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -2699,7 +2700,7 @@ class TestHF{class_name}:
                 impl_type = "SIMULATION_WEBNN"
                 
             handler = lambda x: {"output": "MOCK WEBNN OUTPUT", "implementation_type": impl_type, "model": model_name}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8), 1
+            return None, None, handler, AnyioQueue(8), 1
     
     def init_webgpu(self, model_name=None, model_path=None, model_type=None, device="webgpu", web_api_mode="simulation", tokenizer=None, **kwargs):
         # If web platform support is available, use that implementation
@@ -2863,7 +2864,7 @@ class TestHF{class_name}:
                     }
                 
                 endpoint = MagicMock()
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+                queue = AnyioQueue(8)
                 batch_size = 1
                 return endpoint, processor, handler, queue, batch_size
             
@@ -2920,7 +2921,7 @@ class TestHF{class_name}:
                 
                 # Use the PyTorch model as endpoint
                 endpoint = model
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+                queue = AnyioQueue(8)
                 batch_size = 1
                 
                 return endpoint, processor, handler, queue, batch_size
@@ -3042,7 +3043,7 @@ class TestHF{class_name}:
             
             # Create mock endpoint and queue
             endpoint = MagicMock()
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8)
+            queue = AnyioQueue(8)
             batch_size = 1
             
             return endpoint, processor, handler, queue, batch_size
@@ -3059,7 +3060,7 @@ class TestHF{class_name}:
                 impl_type = "SIMULATION_WEBGPU"
                 
             handler = lambda x: {"output": "MOCK WEBGPU OUTPUT", "implementation_type": impl_type, "model": model_name}
-            return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(8), 1
+            return None, None, handler, AnyioQueue(8), 1
 """
     
     # Add main function and test methods
@@ -3699,7 +3700,7 @@ except ImportError:
                     tokenizer=processor
                 )
                 
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+                queue = AnyioQueue(32)
                 batch_size = 1
                 
                 return endpoint, processor, handler, queue, batch_size
@@ -3707,7 +3708,7 @@ except ImportError:
                 # Simplified fallback if the above fails
                 import asyncio
                 handler = lambda x: {{"output": "Mock CPU output", "input": x, "implementation_type": "MOCK"}}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 1
+                return None, None, handler, AnyioQueue(32), 1
             
         def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
             """Initialize model for CUDA inference.
@@ -3778,14 +3779,14 @@ except ImportError:
                     batch_size=batch_size
                 )
                 
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+                queue = AnyioQueue(32)
                 
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
                 import asyncio
                 handler = lambda x: {{"output": "Mock CUDA output", "input": x, "implementation_type": "MOCK"}}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 2
+                return None, None, handler, AnyioQueue(32), 2
             
         def init_openvino(self, model_name, model_type, device="CPU", **kwargs):
             """Initialize model for OpenVINO inference.
@@ -3842,7 +3843,7 @@ except ImportError:
                     endpoint=endpoint
                 )
                 
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
+                queue = AnyioQueue(64)
                 batch_size = 1
                 
                 return endpoint, processor, handler, queue, batch_size
@@ -3850,7 +3851,7 @@ except ImportError:
                 # Simplified fallback if the above fails
                 import asyncio
                 handler = lambda x: {{"output": "Mock OpenVINO output", "input": x, "implementation_type": "MOCK"}}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 1
+                return None, None, handler, AnyioQueue(64), 1
             
         def init_mps(self, model_name, model_type, device="mps", **kwargs):
             """Initialize model for Apple Silicon (M1/M2/M3) inference.
@@ -3924,14 +3925,14 @@ except ImportError:
                 
                 # MPS often supports good batching
                 batch_size = 2
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+                queue = AnyioQueue(32)
                 
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
                 import asyncio
                 handler = lambda x: {{"output": "Mock MPS output", "input": x, "implementation_type": "MOCK"}}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 2
+                return None, None, handler, AnyioQueue(32), 2
             
         def init_rocm(self, model_name, model_type, device="hip", **kwargs):
             """Initialize model for AMD ROCm (HIP) inference.
@@ -4002,14 +4003,14 @@ except ImportError:
                 
                 # ROCm typically supports batching like CUDA
                 batch_size = 2
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+                queue = AnyioQueue(32)
                 
                 return endpoint, processor, handler, queue, batch_size
             except Exception as e:
                 # Simplified fallback if the above fails
                 import asyncio
                 handler = lambda x: {{"output": "Mock ROCm output", "input": x, "implementation_type": "MOCK"}}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 2
+                return None, None, handler, AnyioQueue(32), 2
             
         def init_qualcomm(self, model_name, model_type, device="qualcomm", **kwargs):
             """Initialize model for Qualcomm AI inference.
@@ -4073,7 +4074,7 @@ except ImportError:
                     tokenizer=processor
                 )
                 
-                queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32)
+                queue = AnyioQueue(32)
                 batch_size = 1  # Qualcomm often has limited batch support
                 
                 return endpoint, processor, handler, queue, batch_size
@@ -4081,7 +4082,7 @@ except ImportError:
                 # Simplified fallback if the above fails
                 import asyncio
                 handler = lambda x: {{"output": "Mock Qualcomm output", "input": x, "implementation_type": "MOCK"}}
-                return None, None, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 1
+                return None, None, handler, AnyioQueue(32), 1
     
     print(f"Warning: {class_name} module not found, using mock implementation")
 

@@ -20,6 +20,7 @@ Usage:
     python run_coordinator_with_hardware_monitoring.py --workers 3 --tasks 10 --duration 60
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
@@ -364,7 +365,7 @@ async def simulate_coordinator(args):
         worker_tasks.append(worker_task)
     
     # Wait for all workers to register
-    await # TODO: Replace with task group - asyncio.gather(*worker_tasks)
+    await gather(*worker_tasks)
     
     # Start task creation and scheduling
     logger.info("Creating and scheduling tasks")

@@ -13,6 +13,7 @@ Examples:
     python migrate_to_anyio.py ./ipfs_accelerate_py/
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import sys
 import os
 import re

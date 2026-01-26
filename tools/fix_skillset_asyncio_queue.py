@@ -13,6 +13,7 @@ updates docstrings mentioning asyncio.Queue, and ensures AnyioQueue is imported.
 Scope: only ipfs_accelerate_py/worker/skillset/*.py (runtime, not tests).
 """
 
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
 from __future__ import annotations
 
 import re

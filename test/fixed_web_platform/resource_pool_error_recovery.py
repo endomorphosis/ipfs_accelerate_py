@@ -17,6 +17,7 @@ These utilities can be imported by the ResourcePoolBridge implementation
 to enhance error handling and recovery capabilities.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -110,7 +111,7 @@ class ResourcePoolErrorRecovery:
                 # Try multiple ping attempts
                 for attempt in range(retry_attempts):
                     try:
-                        ping_response = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                        ping_response = await wait_for(
                             connection.browser_automation.websocket_bridge.ping(),
                             timeout=timeout/2  # Use shorter timeout for ping
                         )

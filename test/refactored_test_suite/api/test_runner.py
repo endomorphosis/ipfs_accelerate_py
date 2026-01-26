@@ -7,6 +7,7 @@ and the underlying test execution functionality. It handles the execution of
 tests, status tracking, and result management.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -260,7 +261,7 @@ class TestRunner:
                 method = getattr(test_instance, method_name)
                 
                 # Run with timeout
-                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                result = await wait_for(
                     anyio.to_thread.run_sync(method),
                     timeout=timeout
                 )

@@ -11,6 +11,7 @@ Usage:
     and browser-based resource pools.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import anyio
 import json
 import logging
@@ -948,7 +949,7 @@ class LoadBalancerResourcePoolBridge:
         if self.monitoring_task:
             self._stop_monitoring.set()
             try:
-                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.monitoring_task, timeout=5)
+                await wait_for(self.monitoring_task, timeout=5)
             except asyncio.TimeoutError:
                 logger.warning("Monitoring task did not stop gracefully")
         
@@ -1142,7 +1143,7 @@ class LoadBalancerResourcePoolBridge:
             
             # Wait for next interval
             try:
-                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                await wait_for(
                     self._stop_monitoring.wait(), 
                     timeout=self.monitoring_interval
                 )

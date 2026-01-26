@@ -6,6 +6,7 @@ This module provides a client for interacting with the Predictive Performance AP
 including both synchronous and asynchronous implementations.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -662,7 +663,7 @@ class AsyncApiClient:
             while True:
                 try:
                     # Set a timeout for receiving messages
-                    message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(ws.recv(), timeout=5.0)
+                    message = await wait_for(ws.recv(), timeout=5.0)
                     data = json.loads(message)
                     
                     # Log progress

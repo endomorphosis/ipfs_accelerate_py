@@ -38,6 +38,8 @@ Usage:
     layer_5 = loader.get_component())))))))))))))))))))))))))"layers.5")
     """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
+import anyio
     import os
     import sys
     import time
@@ -284,7 +286,7 @@ class ProgressiveModelLoader:
             loading_tasks.append())))))))))))))))))))))))))task)
         
         # Wait for all critical components to load
-            results = await # TODO: Replace with task group - asyncio.gather())))))))))))))))))))))))))*loading_tasks)
+            results = await gather())))))))))))))))))))))))))*loading_tasks)
         
         # Map component names to loaded components
             loaded_critical = {}}}}}}}}}}}}}}}}}

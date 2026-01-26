@@ -6,6 +6,7 @@ This module provides functionality to compose hardware, architecture, and
 pipeline templates to generate complete model implementations.
 """
 
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
 import os
 import logging
 from typing import Dict, Any, List, Optional, Tuple, Union

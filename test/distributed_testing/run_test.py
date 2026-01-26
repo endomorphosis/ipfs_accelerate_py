@@ -16,6 +16,8 @@ Usage:
     python run_test.py --mode=worker --coordinator=http://localhost:8080
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
+import anyio
     import argparse
     import asyncio
     import json
@@ -95,7 +97,7 @@ Usage:
         lines = []],,]
         while len())))))))lines) < 50:  # Capture enough lines to find API keys
             try:
-                line = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())))))))process.stdout.readline())))))))), 0.1)
+                line = await wait_for())))))))process.stdout.readline())))))))), 0.1)
                 if not line:
                 break
                     
@@ -159,7 +161,7 @@ async def log_process_output())))))))process, name):
             break
             logger.info())))))))f"{}}}prefix} {}}}line.decode())))))))).strip()))))))))}")
     
-            await # TODO: Replace with task group - asyncio.gather())))))))
+            await gather())))))))
             read_stream())))))))process.stdout, f"[]],,{}}}name} stdout]"),
             read_stream())))))))process.stderr, f"[]],,{}}}name} stderr]")
             )

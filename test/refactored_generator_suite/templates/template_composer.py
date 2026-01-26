@@ -6,6 +6,7 @@ This module provides functionality to compose hardware, architecture, and
 pipeline templates to generate complete model implementations.
 """
 
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
 import os
 import logging
 from typing import Dict, Any, List, Optional, Tuple, Union
@@ -447,7 +448,7 @@ class TemplateComposer:
             # Test the endpoint
             self.__test__(model_name, handler, {hw_type}_label, tokenizer)
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing {hw_name} endpoint: {{e}}")
@@ -616,10 +617,10 @@ class TemplateComposer:
             
             import asyncio
             print(f"(MOCK) Created mock {model_name.upper()} endpoint for {{model_name}} on {{device_label}}")
-            return endpoint, tokenizer, mock_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, tokenizer, mock_handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error creating mock endpoint: {{e}}")
             import asyncio
-            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0"""
+            return None, None, None, AnyioQueue(32), 0"""
         return mock_impl

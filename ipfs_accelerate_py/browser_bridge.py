@@ -13,6 +13,7 @@ Key features:
 - Fault tolerance and recovery
 """
 
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
 import os
 import sys
 import json

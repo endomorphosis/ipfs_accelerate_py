@@ -16,6 +16,7 @@ Key features tested:
 6. Cross-node task migration
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
@@ -197,7 +198,7 @@ class FaultToleranceTestHarness:
             await anyio.sleep(0.5)
         
         # Wait for all workers to connect
-        await # TODO: Replace with task group - asyncio.gather(*self.worker_tasks)
+        await gather(*self.worker_tasks)
         logger.info(f"All {self.num_workers} workers connected")
         
         return True

@@ -63,7 +63,7 @@ class MockHandler:
                 
             # Create queue for inference requests
             import asyncio
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             
             if not webnn_support:
                 # Create a WebNN simulation using CPU implementation for text models
@@ -118,7 +118,7 @@ class MockHandler:
             print(f"Error initializing WebNN: {e}")
             # Fallback to a minimal mock
             import asyncio
-            queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+            queue = AnyioQueue(16)
             return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 
     def init_rocm(self):
@@ -210,6 +210,7 @@ class test_hf_llama:
         # Try to import the real implementation
         real_implementation = False
         try:
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
             from ipfs_accelerate_py.worker.skillset.hf_llama import hf_llama
             self.model = hf_llama(resources=self.resources, metadata=self.metadata)
             real_implementation = True

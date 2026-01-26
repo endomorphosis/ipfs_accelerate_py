@@ -4,6 +4,7 @@ Performance benchmark for coordinator redundancy in the Distributed Testing Fram
 Measures performance impact of different cluster configurations and workloads.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import anyio
 import os
 import sys
@@ -206,7 +207,7 @@ class RedundancyBenchmark:
                 worker_id = f"worker-{i}"
                 tasks.append(register_worker(worker_id))
                 
-            batch_times = await # TODO: Replace with task group - asyncio.gather(*tasks)
+            batch_times = await gather(*tasks)
             times.extend([t for t in batch_times if t is not None])
             
         return times
@@ -258,7 +259,7 @@ class RedundancyBenchmark:
                 task_id = f"task-{i}"
                 tasks.append(submit_task(task_id))
                 
-            batch_times = await # TODO: Replace with task group - asyncio.gather(*tasks)
+            batch_times = await gather(*tasks)
             times.extend([t for t in batch_times if t is not None])
             
         return times
@@ -310,7 +311,7 @@ class RedundancyBenchmark:
                 worker_id = f"worker-{i}"
                 tasks.append(update_status(worker_id))
                 
-            batch_times = await # TODO: Replace with task group - asyncio.gather(*tasks)
+            batch_times = await gather(*tasks)
             times.extend([t for t in batch_times if t is not None])
             
         return times
@@ -354,7 +355,7 @@ class RedundancyBenchmark:
             for i in range(batch, min(batch + batch_size, self.operations_per_run)):
                 tasks.append(query_results())
                 
-            batch_times = await # TODO: Replace with task group - asyncio.gather(*tasks)
+            batch_times = await gather(*tasks)
             times.extend([t for t in batch_times if t is not None])
             
         return times

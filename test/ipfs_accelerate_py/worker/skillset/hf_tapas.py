@@ -1,3 +1,4 @@
+from ..anyio_queue import AnyioQueue
 import anyio
 import os
 import json
@@ -105,11 +106,11 @@ class hf_tapas:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing CPU endpoint: {e}")
-            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return None, None, None, AnyioQueue(32), 0
     
     def init_cuda(self, model_name, device, cuda_label):
         """Initialize TAPAS model for CUDA inference."""
@@ -143,11 +144,11 @@ class hf_tapas:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing CUDA endpoint: {e}")
-            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return None, None, None, AnyioQueue(32), 0
     
     def init_rocm(self, model_name, device, rocm_label):
         """Initialize TAPAS model for ROCm (AMD GPU) inference."""
@@ -210,7 +211,7 @@ class hf_tapas:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
                 
         except Exception as e:
             print(f"Error loading model on ROCm: {e}")
@@ -248,11 +249,11 @@ class hf_tapas:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing OpenVINO endpoint: {e}")
-            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return None, None, None, AnyioQueue(32), 0
     
     def init_apple(self, model_name, device, apple_label):
         """Initialize TAPAS model for Apple Silicon (MPS) inference."""
@@ -288,11 +289,11 @@ class hf_tapas:
                 tokenizer=tokenizer
             )
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing Apple Silicon endpoint: {e}")
-            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return None, None, None, AnyioQueue(32), 0
     
     def init_qualcomm(self, model_name, device, qualcomm_label):
         """Initialize TAPAS model for Qualcomm inference."""
@@ -300,7 +301,7 @@ class hf_tapas:
         
         # For now, we create a mock implementation since Qualcomm SDK integration requires specific hardware
         print("Qualcomm implementation is a mock for now")
-        return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+        return None, None, None, AnyioQueue(32), 0
     
     def create_cpu_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint, tokenizer):
         """Create handler function for CPU text_embedding endpoint."""

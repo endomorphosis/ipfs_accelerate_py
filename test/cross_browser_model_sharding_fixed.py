@@ -15,6 +15,7 @@ Usage:
     python cross_browser_model_sharding.py --model llama-70b --browsers chrome,firefox,edge --test inference
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
@@ -520,7 +521,7 @@ class CrossBrowserModelShardingManager:
             init_tasks.append(task)
         
         # Wait for all initializations to complete
-        results = await # TODO: Replace with task group - asyncio.gather(*init_tasks, return_exceptions=True)
+        results = await gather(*init_tasks, return_exceptions=True)
         
         # Check for success
         success_count = sum(1 for result in results if result is True)
@@ -639,7 +640,7 @@ class CrossBrowserModelShardingManager:
             inference_tasks.append(task)
             
         # Wait for all inferences to complete
-        browser_results = await # TODO: Replace with task group - asyncio.gather(*inference_tasks, return_exceptions=True)
+        browser_results = await gather(*inference_tasks, return_exceptions=True)
         
         # Process results and handle errors
         valid_results = []
@@ -791,7 +792,7 @@ class CrossBrowserModelShardingManager:
             shutdown_tasks.append(task)
             
         # Wait for all shutdowns to complete
-        await # TODO: Replace with task group - asyncio.gather(*shutdown_tasks, return_exceptions=True)
+        await gather(*shutdown_tasks, return_exceptions=True)
         
         # Update state
         self.initialized = False

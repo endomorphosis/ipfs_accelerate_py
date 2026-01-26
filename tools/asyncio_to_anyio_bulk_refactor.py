@@ -23,6 +23,8 @@ Exit codes:
   2: usage / unexpected failure
 """
 
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 from __future__ import annotations
 
 import argparse
@@ -56,6 +58,24 @@ SAFE_REWRITES: List[Tuple[str, str]] = [
     (r"\basyncio\.Semaphore\(", "anyio.Semaphore("),
     # Entry-point runner
     (r"\basyncio\.run\(", "anyio.run("),
+
+    # Common migration placeholders that are syntactically invalid
+    (
+        r"\bawait\s*#\s*TODO:\s*Replace with anyio\.fail_after\s*-\s*asyncio\.wait_for\(",
+        "await wait_for(",
+    ),
+    (
+        r"\bawait\s*#\s*TODO:\s*Replace with task group\s*-\s*asyncio\.gather\(",
+        "await gather(",
+    ),
+    (
+        r"=\s*#\s*TODO:\s*Replace with anyio\.create_memory_object_stream\s*-\s*asyncio\.Queue\((\d+)\)",
+        r"= AnyioQueue(\1)",
+    ),
+    (
+        r",\s*#\s*TODO:\s*Replace with anyio\.create_memory_object_stream\s*-\s*asyncio\.Queue\((\d+)\)\s*,",
+        r", AnyioQueue(\1),",
+    ),
 ]
 
 
@@ -195,6 +215,37 @@ def _insert_anyio_import(source: str) -> str:
 
     lines.insert(insert_at, "import anyio\n")
     return "".join(lines)
+
+
+def _ensure_anyio_helpers_import(path: Path, source: str) -> str:
+    # Only insert when we introduced or already have bare gather()/wait_for().
+    if not re.search(r"\b(gather|wait_for)\(", source):
+        return source
+
+    if re.search(r"^\s*from\s+ipfs_accelerate_py\.anyio_helpers\s+import\s+", source, re.M):
+        return source
+
+    return _insert_import(source, "from ipfs_accelerate_py.anyio_helpers import gather, wait_for")
+
+
+def _ensure_anyioqueue_import(path: Path, source: str) -> str:
+    if "AnyioQueue(" not in source:
+        return source
+
+    # If already imported (any style), don't add another.
+    if re.search(r"\bAnyioQueue\b", source) and re.search(
+        r"^\s*from\s+.*anyio_queue\s+import\s+AnyioQueue\b", source, re.M
+    ):
+        return source
+
+    rel = str(path.relative_to(DEFAULT_ROOT)).replace("\\", "/")
+
+    # In-package skillset and generator templates use relative imports.
+    if "/worker/skillset/" in rel or "/generators/skill_generator/" in rel:
+        return _insert_import(source, "from ..anyio_queue import AnyioQueue")
+
+    # Everywhere else (tests/tools/scripts), use an absolute import.
+    return _insert_import(source, "from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue")
 
 
 def _ensure_sync_bridge_helper(source: str) -> str:
@@ -471,6 +522,10 @@ def _apply_rewrites(path: Path, source: str, bridges: bool) -> Tuple[str, Dict[s
     # If we made any replacements that introduce anyio usage, add import.
     if new_source != source:
         new_source = _insert_anyio_import(new_source)
+
+    # Helper imports for placeholder rewrites.
+    new_source = _ensure_anyio_helpers_import(path, new_source)
+    new_source = _ensure_anyioqueue_import(path, new_source)
 
     return new_source, applied
 

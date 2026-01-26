@@ -6,6 +6,7 @@ This module provides a bridge between the resource pool and WebNN/WebGPU backend
 allowing for efficient allocation and utilization of browser-based acceleration resources.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -407,7 +408,7 @@ class ResourcePoolBridgeIntegration:
                     
                     # Launch browser with timeout and retry
                     try:
-                        success = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                        success = await wait_for(
                             automation.launch(allow_simulation=True),
                             timeout=30  # 30 second timeout for browser launch
                         )
@@ -427,7 +428,7 @@ class ResourcePoolBridgeIntegration:
                     if success:
                         # Create WebSocket bridge
                         try:
-                            bridge = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                            bridge = await wait_for(
                                 self.create_websocket_bridge(port=port),
                                 timeout=10  # 10 second timeout for bridge creation
                             )
@@ -449,7 +450,7 @@ class ResourcePoolBridgeIntegration:
                         if bridge:
                             # Wait for connection to be established
                             try:
-                                connected = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                                connected = await wait_for(
                                     bridge.wait_for_connection(timeout=10),
                                     timeout=15  # 15 second total timeout
                                 )
@@ -495,7 +496,7 @@ class ResourcePoolBridgeIntegration:
                                 
                                 # Check browser capabilities
                                 try:
-                                    capabilities = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                                    capabilities = await wait_for(
                                         bridge.get_browser_capabilities(),
                                         timeout=10  # 10 second timeout for capability check
                                     )
@@ -962,7 +963,7 @@ class ResourcePoolBridgeIntegration:
                 try:
                     # Run inference with timeout
                     try:
-                        result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                        result = await wait_for(
                             self.bridge.run_inference(
                                 self.model_name,
                                 inputs,
@@ -1451,7 +1452,7 @@ class ResourcePoolBridgeIntegration:
                             try:
                                 # Use a smaller timeout for individual model execution
                                 model_timeout = min(60, timeout_seconds * 0.8)  # 80% of total timeout or 60s, whichever is smaller
-                                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(result, timeout=model_timeout)
+                                result = await wait_for(result, timeout=model_timeout)
                             except asyncio.TimeoutError:
                                 logger.error(f"Individual model timeout: {model_info['model_name']} after {model_timeout}s")
                                 return {
@@ -1541,7 +1542,7 @@ class ResourcePoolBridgeIntegration:
         
         # Wait for all tasks to complete with overall timeout
         try:
-            results = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+            results = await wait_for(
                 # TODO: Replace with task group - asyncio.gather(*tasks, return_exceptions=True),
                 timeout=timeout_seconds
             )
@@ -1716,7 +1717,7 @@ class ResourcePoolBridgeIntegration:
             logger.info("Closing circuit breaker manager")
             try:
                 # Use timeout to prevent hanging
-                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                await wait_for(
                     self.circuit_breaker_manager.close(),
                     timeout=10  # 10 second timeout for circuit breaker closing
                 )
@@ -1760,14 +1761,14 @@ class ResourcePoolBridgeIntegration:
                         async def cleanup_bridge():
                             try:
                                 # First try to shutdown the browser via the bridge
-                                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                                await wait_for(
                                     connection["bridge"].shutdown_browser(),
                                     timeout=5
                                 )
                                 connection_cleanup_status["browser_shutdown"] = True
                                 
                                 # Then stop the bridge itself
-                                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                                await wait_for(
                                     connection["bridge"].stop(),
                                     timeout=5
                                 )
@@ -1786,7 +1787,7 @@ class ResourcePoolBridgeIntegration:
                     if "automation" in connection:
                         async def cleanup_automation():
                             try:
-                                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                                await wait_for(
                                     connection["automation"].close(),
                                     timeout=5
                                 )
@@ -1840,7 +1841,7 @@ class ResourcePoolBridgeIntegration:
             if hasattr(self.adaptive_manager, 'close'):
                 try:
                     if inspect.iscoroutinefunction(  # Added import inspectself.adaptive_manager.close):
-                        await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                        await wait_for(
                             self.adaptive_manager.close(),
                             timeout=5
                         )

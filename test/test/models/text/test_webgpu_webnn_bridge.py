@@ -9,6 +9,8 @@ Usage:
     python test_webgpu_webnn_bridge.py --platform webnn --browser edge --model bert-base-uncased
     """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
+import anyio
     import os
     import sys
     import json
@@ -317,7 +319,7 @@ class WebPlatformBridge:
             start_time = time.time()))
         while time.time())) - start_time < timeout:
             try:
-                message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())self.ws_connection.recv())), 1.0)
+                message = await wait_for())self.ws_connection.recv())), 1.0)
                 data = json.loads())message)
                 
                 if data.get())"type") == message_type:
@@ -354,7 +356,7 @@ async def run_test())args):
         
         # Wait for browser to connect
         try:
-            await # TODO: Replace with anyio.fail_after - asyncio.wait_for())connected_event.wait())), 10)
+            await wait_for())connected_event.wait())), 10)
         except asyncio.TimeoutError:
             logger.error())"Timeout waiting for browser to connect")
             await bridge.stop()))

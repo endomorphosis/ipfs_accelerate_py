@@ -6,6 +6,7 @@ This test validates the enhanced resource pool bridge integration implementation
 particularly focusing on error recovery, performance trend analysis, and circuit breaker functionality.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
@@ -536,7 +537,7 @@ class MockResourcePoolBridge:
         results = []
         for model, inputs in model_and_inputs_list:
             try:
-                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(model.browser.call("inference", {
+                result = await wait_for(model.browser.call("inference", {
                     "model_type": model.model_type,
                     "model_name": model.model_name,
                     "inputs": inputs

@@ -16,6 +16,7 @@ Key features:
 - DuckDB integration for result storage and analysis
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
@@ -861,7 +862,7 @@ class EnhancedResourcePoolIntegration:
                 tasks.append(# TODO: Replace with task group - asyncio.create_task(model(inputs)))
         
         # Wait for all tasks to complete
-        results = await # TODO: Replace with task group - asyncio.gather(*tasks, return_exceptions=True)
+        results = await gather(*tasks, return_exceptions=True)
         
         # Process results (convert exceptions to error results)
         processed_results = []

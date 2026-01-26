@@ -7,6 +7,7 @@ connections from distributed testing workers, handles task assignments,
 state synchronization, and fault tolerance.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -625,7 +626,7 @@ class CoordinatorWebSocketServer:
         try:
             # Try to get a task with timeout
             try:
-                task_id, task_config = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.state.task_queue.get(), timeout=0.1)
+                task_id, task_config = await wait_for(self.state.task_queue.get(), timeout=0.1)
             except asyncio.TimeoutError:
                 return
             

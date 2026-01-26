@@ -10,6 +10,7 @@ It creates a browser-based environment where transformers.js can run inference
 and communicates with Python via a WebSocket bridge.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -815,7 +816,7 @@ class TransformersJSBridge:
             
             # Wait for response with timeout
             try:
-                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())inference_future, 60)
+                result = await wait_for())inference_future, 60)
             except asyncio.TimeoutError:
                 logger.error())f"Timeout waiting for inference response for model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}model_name}")
                 result = None

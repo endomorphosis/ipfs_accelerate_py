@@ -11,6 +11,7 @@ This test verifies that the P2P bootstrap policy is sane:
 6. Has reasonable timeouts
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import logging
@@ -315,7 +316,7 @@ def recommend_bootstrap_improvements():
     
     logger.info("\n4. Add Connection Timeout:")
     logger.info("   ```python")
-    logger.info("   await # TODO: Replace with anyio.fail_after - asyncio.wait_for(")
+    logger.info("   await wait_for(")
     logger.info("       self._connect_to_peer(peer_addr),")
     logger.info("       timeout=15.0")
     logger.info("   )")

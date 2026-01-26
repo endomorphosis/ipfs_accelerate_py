@@ -1,3 +1,4 @@
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import anyio
 import os
 import sys
@@ -418,7 +419,7 @@ class TestEndpointLifecycle:
                     print()f"Invoking async endpoint handler")
                     try:
                         # Use asyncio.wait_for to add timeout protection
-                        result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for()
+                        result = await wait_for()
                         endpoint_handler()test_input),
                         timeout=max_test_time
                         )

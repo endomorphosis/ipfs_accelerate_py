@@ -16,6 +16,7 @@ Key features:
 - Database integration for results storage and analysis
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
@@ -804,7 +805,7 @@ class EnhancedParallelModelExecutor:
             
             # Wait for all futures to complete or timeout
             try:
-                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(# TODO: Replace with task group - asyncio.gather(*futures), timeout=execution_timeout)
+                await wait_for(# TODO: Replace with task group - asyncio.gather(*futures), timeout=execution_timeout)
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout waiting for models execution after {execution_timeout}s")
                 
@@ -1252,7 +1253,7 @@ class EnhancedParallelModelExecutor:
         try:
             # Wait for an available worker with timeout
             try:
-                worker_id = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.available_workers.get(), timeout=30.0)
+                worker_id = await wait_for(self.available_workers.get(), timeout=30.0)
                 worker = self.workers[worker_id]
             except (asyncio.TimeoutError, KeyError) as e:
                 # No worker available, set error result
@@ -1489,7 +1490,7 @@ class EnhancedParallelModelExecutor:
             
             # Wait for any available worker
             try:
-                recovery_worker_id = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.available_workers.get(), timeout=10.0)
+                recovery_worker_id = await wait_for(self.available_workers.get(), timeout=10.0)
                 
                 # If we got the same worker that failed, put it back and try again
                 if recovery_worker_id == failed_worker_id:
@@ -1497,7 +1498,7 @@ class EnhancedParallelModelExecutor:
                     await self.available_workers.put(recovery_worker_id)
                     
                     # Try again with a timeout
-                    recovery_worker_id = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.available_workers.get(), timeout=10.0)
+                    recovery_worker_id = await wait_for(self.available_workers.get(), timeout=10.0)
                     
                     # If we still got the same worker, use it anyway
                     if recovery_worker_id == failed_worker_id:
@@ -1677,7 +1678,7 @@ class EnhancedParallelModelExecutor:
             close_futures.append(future)
         
         if close_futures:
-            await # TODO: Replace with task group - asyncio.gather(*close_futures, return_exceptions=True)
+            await gather(*close_futures, return_exceptions=True)
         
         # Close base executor if available
         if self.base_executor:

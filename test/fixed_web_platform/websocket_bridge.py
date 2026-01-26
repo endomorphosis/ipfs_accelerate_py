@@ -18,6 +18,7 @@ March 10, 2025 Update:
 - Implemented standardized retry mechanisms with exponential backoff
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -362,7 +363,7 @@ class WebSocketBridge:
                     logger.info(f"Connection attempt {attempt+1}: {elapsed:.1f}s elapsed, {retry_attempts-attempt} attempts remaining")
                 
                 # Wait for connection with timeout
-                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.connection_event.wait(), timeout=timeout)
+                await wait_for(self.connection_event.wait(), timeout=timeout)
                 logger.info(f"WebSocket connection established successfully after {attempt} retries ({time.time() - connection_start:.1f}s)")
                 
                 # Reset connection attempts counter on success
@@ -449,7 +450,7 @@ class WebSocketBridge:
             
             try:
                 # Use specified timeout for sending
-                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                await wait_for(
                     self.connection.send(message_json),
                     timeout=timeout
                 )
@@ -529,7 +530,7 @@ class WebSocketBridge:
                     # Serialize message once to avoid repeating work
                     message_json = json.dumps(message)
                     
-                    await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                    await wait_for(
                         self.connection.send(message_json),
                         timeout=timeout
                     )
@@ -627,7 +628,7 @@ class WebSocketBridge:
             logger.debug(f"Waiting for response to message {msg_id} (timeout={response_timeout}s)")
             
             # Use wait_for with the specified response timeout
-            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.response_events[msg_id].wait(), timeout=response_timeout)
+            await wait_for(self.response_events[msg_id].wait(), timeout=response_timeout)
             
             # Calculate actual response time
             response_time = time.time() - response_wait_start

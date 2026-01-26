@@ -11,6 +11,7 @@ Usage:
     python test_fault_tolerant_cross_browser_model_sharding.py --model vit-base-patch16-224 --shards 3 --type layer --model-type vision --comprehensive
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -332,7 +333,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
         
         try:
             # Use asyncio.wait_for to add timeout protection
-            initialized = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+            initialized = await wait_for(
                 manager.initialize_sharding(),
                 timeout=args.timeout
             )
@@ -371,7 +372,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
         try:
             # Use asyncio.wait_for to add timeout protection
             start_time = time.time()
-            result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+            result = await wait_for(
                 manager.run_inference_sharded(sample_input),
                 timeout=args.timeout
             )
@@ -434,7 +435,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
             try:
                 # Use asyncio.wait_for to add timeout protection
                 start_time = time.time()
-                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                result = await wait_for(
                     manager.run_inference_sharded(sample_input),
                     timeout=args.timeout
                 )
@@ -483,7 +484,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
             for i in range(args.iterations):
                 try:
                     start_time = time.time()
-                    result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                    result = await wait_for(
                         manager.run_inference_sharded(sample_input),
                         timeout=args.timeout
                     )
@@ -572,7 +573,7 @@ async def test_model_sharding(args) -> Dict[str, Any]:
                         batch_tasks.append(task)
                     
                     # Wait for all tasks in batch to complete
-                    batch_results = await # TODO: Replace with task group - asyncio.gather(*batch_tasks, return_exceptions=True)
+                    batch_results = await gather(*batch_tasks, return_exceptions=True)
                     stress_results.extend([r for r in batch_results if not isinstance(r, Exception)])
                     
                     request_count += batch_size

@@ -9,6 +9,7 @@ the Distributed Testing Framework, including worker status, task execution, reso
 utilization, error tracking, and performance metrics.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -1445,7 +1446,7 @@ class MonitoringDashboard:
             # Enter message loop
             while not self.stop_event.is_set():
                 try:
-                    message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                    message = await wait_for(
                         self.coordinator_websocket.recv(), timeout=1.0
                     )
                     await self._process_coordinator_message(message)

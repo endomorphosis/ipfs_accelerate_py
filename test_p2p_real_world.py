@@ -5,6 +5,7 @@ P2P Cache Real-World Integration Test
 This test actually starts P2P networking and verifies everything works end-to-end.
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
@@ -233,7 +234,7 @@ async def test_two_peers_communication():
             logger.info("✓ Stream closed")
             
             # Wait for message to be received
-            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(message_received.wait(), timeout=2.0)
+            await wait_for(message_received.wait(), timeout=2.0)
             logger.info("✓ Two-way communication successful")
         else:
             logger.warning("⚠ No addresses available on host 1")

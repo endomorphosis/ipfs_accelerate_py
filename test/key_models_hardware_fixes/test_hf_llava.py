@@ -79,6 +79,7 @@ class test_hf_llava:
         # Try to import the real implementation
         real_implementation = False
         try:
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
             from ipfs_accelerate_py.worker.skillset.hf_llava import hf_llava
             self.model = hf_llava(resources=self.resources, metadata=self.metadata)
             real_implementation = True
@@ -221,7 +222,7 @@ class test_hf_llava:
                         mock_processor = MagicMock()
                         
                         # Create queue
-                        queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16)
+                        queue = AnyioQueue(16)
                         batch_size = 1  # MPS typically processes one item at a time for LLaVA
                         
                         return mock_model, mock_processor, handler, queue, batch_size

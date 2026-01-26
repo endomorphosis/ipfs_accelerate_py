@@ -11,6 +11,8 @@ Usage:
     python test_cross_browser_model_sharding.py --model clip-vit-base-patch32 --shards 4 --type component --model-type multimodal
     """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
+import anyio
     import os
     import sys
     import json
@@ -108,7 +110,7 @@ async def test_model_sharding())))args):
         # Set a timeout for initialization
         try:
             # Use asyncio.wait_for to add timeout protection
-            initialized = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())))
+            initialized = await wait_for())))
             manager.initialize_sharding())))),
             timeout=args.timeout
             )
@@ -130,7 +132,7 @@ async def test_model_sharding())))args):
         try:
             # Use asyncio.wait_for to add timeout protection
             start_time = time.time()))))
-            result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for())))
+            result = await wait_for())))
             manager.run_inference_sharded())))sample_input),
             timeout=args.timeout
             )

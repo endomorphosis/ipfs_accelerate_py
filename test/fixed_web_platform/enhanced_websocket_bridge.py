@@ -15,6 +15,7 @@ Key improvements over the base WebSocket bridge:
 - Comprehensive statistics and diagnostics
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -318,7 +319,7 @@ class EnhancedWebSocketBridge:
             while not self.shutdown_event.is_set():
                 try:
                     # Get message from queue with timeout
-                    priority, message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                    priority, message = await wait_for(
                         self.message_queue.get(),
                         timeout=1.0
                     )
@@ -361,7 +362,7 @@ class EnhancedWebSocketBridge:
                             "timestamp": time.time()
                         }
                         
-                        await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                        await wait_for(
                             self.connection.send(json.dumps(heartbeat_msg)),
                             timeout=5.0
                         )
@@ -485,7 +486,7 @@ class EnhancedWebSocketBridge:
             
         try:
             # Wait for connection event with timeout
-            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.connection_event.wait(), timeout=timeout)
+            await wait_for(self.connection_event.wait(), timeout=timeout)
             return True
         except asyncio.TimeoutError:
             logger.warning(f"Timeout waiting for WebSocket connection (timeout={timeout}s)")
@@ -531,7 +532,7 @@ class EnhancedWebSocketBridge:
         for attempt in range(max_retries + 1):
             try:
                 # Use specified timeout for sending
-                await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                await wait_for(
                     self.connection.send(message_json),
                     timeout=timeout
                 )
@@ -599,7 +600,7 @@ class EnhancedWebSocketBridge:
             
         try:
             # Wait for response with timeout
-            await # TODO: Replace with anyio.fail_after - asyncio.wait_for(self.response_events[msg_id].wait(), timeout=timeout)
+            await wait_for(self.response_events[msg_id].wait(), timeout=timeout)
             
             # Get response data
             response = self.response_data.get(msg_id)

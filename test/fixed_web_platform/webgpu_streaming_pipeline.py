@@ -44,6 +44,7 @@ Usage:
     )
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -771,7 +772,7 @@ class WebGPUStreamingPipeline:
             while True:
                 # Wait for client messages (like cancellation)
                 try:
-                    message = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(websocket.recv(), timeout=1.0)
+                    message = await wait_for(websocket.recv(), timeout=1.0)
                     
                     # Process client messages
                     try:

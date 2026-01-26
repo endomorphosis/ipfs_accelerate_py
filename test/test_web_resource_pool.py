@@ -12,6 +12,7 @@ Usage:
     python test_web_resource_pool.py --test-enhanced  # Test enhanced implementation (May 2025)
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -546,7 +547,7 @@ class WebResourcePoolTester:
                     try:
                         # Since model() is synchronous, wrap in a thread to make it awaitable
                         loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-                        result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                        result = await wait_for(
                             loop.run_in_executor(None, lambda: model(test_input)),
                             timeout=timeout
                         )

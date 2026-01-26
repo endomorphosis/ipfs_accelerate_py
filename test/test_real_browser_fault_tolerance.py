@@ -11,6 +11,7 @@ Usage:
     python test_real_browser_fault_tolerance.py --model vit-base-patch16-224 --model-type vision --force-failure
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import json
@@ -423,7 +424,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
         # Initialize sharding
         logger.info(f"Initializing sharding for {args.model} with {min(len(browser_instances), args.shards)} shards")
         try:
-            initialized = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+            initialized = await wait_for(
                 manager.initialize_sharding(),
                 timeout=args.timeout
             )
@@ -462,7 +463,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
         logger.info(f"Running initial inference for {args.model}")
         try:
             start_time = time.time()
-            result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+            result = await wait_for(
                 manager.run_inference_sharded(sample_input),
                 timeout=args.timeout
             )
@@ -529,7 +530,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
             logger.info(f"Running post-failure inference for {args.model}")
             try:
                 start_time = time.time()
-                result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                result = await wait_for(
                     manager.run_inference_sharded(sample_input),
                     timeout=args.timeout
                 )
@@ -579,7 +580,7 @@ async def test_real_browser_fault_tolerance(args) -> Dict[str, Any]:
             for i in range(args.iterations):
                 try:
                     start_time = time.time()
-                    result = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+                    result = await wait_for(
                         manager.run_inference_sharded(sample_input),
                         timeout=args.timeout
                     )

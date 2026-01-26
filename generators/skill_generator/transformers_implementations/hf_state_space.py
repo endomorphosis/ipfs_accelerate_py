@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
 import anyio
 import os
 import json

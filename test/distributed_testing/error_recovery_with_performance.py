@@ -15,6 +15,7 @@ Key features:
 - Recovery performance analytics and reporting
 """
 
+from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import anyio
 import json
 import logging
@@ -442,7 +443,7 @@ class ErrorRecoveryWithPerformance:
         
         try:
             # Execute strategy with timeout
-            success = await # TODO: Replace with anyio.fail_after - asyncio.wait_for(
+            success = await wait_for(
                 strategy.execute(self._convert_error_report(error_report)),
                 timeout=timeout
             )
