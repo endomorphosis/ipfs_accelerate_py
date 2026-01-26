@@ -83,7 +83,8 @@ class ParallelModelExecutor:
         self.initialized = False
         self.workers = []
         self.worker_stats = {}
-        self.worker_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
+        self.worker_send, self.worker_receive = anyio.create_memory_object_stream(200)
+        self.worker_available = 0
         self.result_cache = {}
         self.execution_metrics = {
             'total_executions': 0,
@@ -101,6 +102,7 @@ class ParallelModelExecutor:
         # Threading and concurrency control
         self.loop = None
         self._worker_monitor_task = None
+        self.task_group = None
         self._is_shutting_down = False
     
     async def initialize(self) -> bool:
@@ -114,13 +116,6 @@ class ParallelModelExecutor:
             return True
         
         try:
-            # Get or create event loop
-            try:
-                self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-            except RuntimeError:
-                self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-                # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
-            
             # Verify resource pool integration is available
             if not self.resource_pool_integration:
                 try:
@@ -146,11 +141,14 @@ class ParallelModelExecutor:
                     return False
             
             # Start worker monitor task
-            self._worker_monitor_task = # TODO: Replace with task group - asyncio.create_task(self._monitor_workers())
+            self.task_group = anyio.create_task_group()
+            await self.task_group.__aenter__()
+            self.task_group.start_soon(self._monitor_workers)
             
             # Initialize worker queue with max_workers placeholders
             for _ in range(self.max_workers):
-                await self.worker_queue.put(None)
+                await self.worker_send.send(None)
+                self.worker_available += 1
             
             self.initialized = True
             logger.info(f"Parallel model executor initialized with {self.max_workers} workers")

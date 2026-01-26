@@ -2741,5 +2741,4 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-    loop.run_until_complete(test_model_sharding(args.model, args.shards, args.type, args.model_type))
+    anyio.run(test_model_sharding, args.model, args.shards, args.type, args.model_type)

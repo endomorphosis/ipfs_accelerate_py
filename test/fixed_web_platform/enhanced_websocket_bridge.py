@@ -92,6 +92,7 @@ class EnhancedWebSocketBridge:
         
         # Message handling
         self.message_send, self.message_receive = anyio.create_memory_object_stream(200)
+        self.queue_size = 0
         self.response_events = {}
         self.response_data = {}
         
@@ -300,6 +301,7 @@ class EnhancedWebSocketBridge:
                 priority = MessagePriority.LOW
                 
             await self.message_send.send((priority, message))
+            self.queue_size += 1
             
             # If message has a request ID, set its event
             if msg_id and msg_id in self.response_events:
@@ -324,6 +326,7 @@ class EnhancedWebSocketBridge:
                         self.message_receive.receive(),
                         timeout=1.0
                     )
+                    self.queue_size = max(0, self.queue_size - 1)
                     
                     # Process message based on type
                     msg_type = message.get("type", "unknown")
@@ -480,7 +483,7 @@ class EnhancedWebSocketBridge:
             # Wait for connection event with timeout
             await wait_for(self.connection_event.wait(), timeout=timeout)
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Timeout waiting for WebSocket connection (timeout={timeout}s)")
             return False
     
@@ -534,7 +537,7 @@ class EnhancedWebSocketBridge:
                 
                 return True
                 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if attempt < max_retries:
                     logger.warning(f"Timeout sending message, retrying (attempt {attempt+1}/{max_retries+1})")
                 else:
@@ -609,7 +612,7 @@ class EnhancedWebSocketBridge:
                 
             return response
             
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout waiting for response to message {msg_id}")
             self.stats["message_timeouts"] += 1
             self.stats["last_error"] = f"Response timeout for message {msg_id}"
@@ -842,7 +845,7 @@ class EnhancedWebSocketBridge:
             "reconnecting": self.reconnecting,
             "connection_attempts": self.connection_attempts,
             "messages_per_second": messages_per_second,
-            "queue_size": self.message_queue.qsize() if self.message_queue else 0,
+            "queue_size": self.queue_size,
             "heartbeat_enabled": self.enable_heartbeat
         }
         
@@ -994,6 +997,5 @@ async def test_enhanced_websocket_bridge():
 
 if __name__ == "__main__":
     # Run test if script executed directly
-    import asyncio
     success = anyio.run(test_enhanced_websocket_bridge())
     sys.exit(0 if success else 1)

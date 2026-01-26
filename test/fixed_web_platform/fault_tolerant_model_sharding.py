@@ -897,12 +897,7 @@ class FaultTolerantModelSharding:
         # For this simulation, we'll just log that monitoring would be started
         
         logger.info(f"Health monitoring started with {checkpoint_interval_sec}s checkpoint interval")
-        
-        # Schedule first checkpoint
-        # TODO: Replace with task group - asyncio.create_task(self._create_state_checkpoint())
-        
-        # Start health check loop
-        # TODO: Replace with task group - asyncio.create_task(self._health_check_loop(checkpoint_interval_sec))
+        # Background scheduling should be handled by the caller if needed.
         
     async def _health_check_loop(self, interval_sec: int) -> None:
         """
@@ -946,7 +941,7 @@ class FaultTolerantModelSharding:
                     self.browser_states[browser] = BrowserState.FAILED
                     
                     # Trigger recovery
-                    recovery_task = # TODO: Replace with task group - asyncio.create_task(self._recover_browser(browser))
+                    await self._recover_browser(browser)
                 else:
                     # Update last heartbeat
                     if "last_heartbeat" in connection:
@@ -1060,7 +1055,15 @@ class FaultTolerantModelSharding:
                 # Wait for recoveries with timeout
                 if recovery_tasks:
                     try:
-                        await asyncio.wait(recovery_tasks, timeout=recovery_timeout)
+                        async def run_recovery(task_coro):
+                            await task_coro
+
+                        with anyio.fail_after(recovery_timeout):
+                            async with anyio.create_task_group() as tg:
+                                for task_coro in recovery_tasks:
+                                    tg.start_soon(run_recovery, task_coro)
+                    except TimeoutError:
+                        logger.error("Timed out during recovery")
                     except Exception as e:
                         logger.error(f"Error during recovery: {e}")
                         
