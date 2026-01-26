@@ -543,15 +543,14 @@ class WebResourcePoolTester:
                     if hasattr(self.args, 'verbose') and self.args.verbose:
                         logger.debug(f"Running inference with timeout: {timeout}s")
                     
-                    # Use asyncio.wait_for to add timeout protection
+                    # Use AnyIO wait_for to add timeout protection
                     try:
                         # Since model() is synchronous, wrap in a thread to make it awaitable
-                        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
                         result = await wait_for(
-                            loop.run_in_executor(None, lambda: model(test_input)),
+                            anyio.to_thread.run_sync(lambda: model(test_input)),
                             timeout=timeout
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.error(f"Inference timeout after {timeout}s for {model_name}")
                         if retry_count < max_retries:
                             retry_count += 1

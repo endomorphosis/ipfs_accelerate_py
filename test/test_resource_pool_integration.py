@@ -152,10 +152,7 @@ async def test_adaptive_scaling():
 
 def main():
     """Main function to run the test."""
-    # Create and run event loop
-    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-    loop.run_until_complete(test_adaptive_scaling())
-    loop.close()
+    anyio.run(test_adaptive_scaling)
 
 if __name__ == "__main__":
     main()

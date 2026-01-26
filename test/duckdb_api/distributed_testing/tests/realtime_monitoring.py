@@ -606,13 +606,14 @@ async def main():
         debug=args.debug
     )
     
-    # Handle keyboard interrupt
-    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-    for s in [signal.SIGINT, signal.SIGTERM]:
-        loop.add_signal_handler(s, lambda: # TODO: Replace with task group - asyncio.create_task(shutdown(monitor)))
-    
-    # Start monitoring
-    await monitor.start()
+    # Start monitoring and handle keyboard interrupt
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(monitor.start)
+        async with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
+            async for _ in signals:
+                await shutdown(monitor)
+                tg.cancel_scope.cancel()
+                break
 
 async def shutdown(monitor):
     """Gracefully shutdown the monitor."""

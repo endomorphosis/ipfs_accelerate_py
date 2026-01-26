@@ -9,6 +9,7 @@ Usage:
     python test_resource_pool_bridge_integration.py
 """
 
+import anyio
 import os
 import sys
 import time
@@ -83,9 +84,7 @@ class MockResourcePoolBridge:
         return results
     
     def execute_concurrent_sync(self, models_and_inputs):
-        import asyncio
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        return loop.run_until_complete(self.execute_concurrent(models_and_inputs))
+        return anyio.run(self.execute_concurrent, models_and_inputs)
     
     def get_metrics(self):
         return {"aggregate": {"total_inferences": len(self.models)}}

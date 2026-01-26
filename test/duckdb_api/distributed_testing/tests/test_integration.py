@@ -158,43 +158,44 @@ class DistributedFrameworkIntegrationTest(unittest.TestCase):
     def _run_coordinator(cls):
         """Run the coordinator in a separate thread."""
         try:
-            # Setup the event loop
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-            
-            # Create database manager
-            db_manager = DatabaseManager(cls.db_path)
-            
-            # Create security manager with the database
-            security_manager = SecurityManager(db_manager, token_secret=cls.security_config["token_secret"])
-            
-            # Create coordinator
-            cls.coordinator = CoordinatorServer(
-                host=cls.coordinator_host,
-                port=cls.coordinator_port,
-                db_path=cls.db_path,
-                token_secret=cls.security_config["token_secret"],
-                heartbeat_timeout=5  # Short timeout for testing
-            )
-            
-            # Save references to components for testing
-            cls.db_manager = db_manager
-            cls.task_scheduler = cls.coordinator.task_manager
-            cls.worker_manager = cls.coordinator.worker_manager
-            cls.security_manager = security_manager
-            
-            # Create helper function to know when coordinator is ready
-            async def on_coordinator_start():
-                cls.coordinator_started.set()
-                await cls.coordinator_stopped.wait()
-                await cls.coordinator.stop()
-            
-            # Run both tasks: the coordinator and the signal handler
-            loop.create_task(cls.coordinator.start())
-            loop.run_until_complete(on_coordinator_start())
-            
-            # Cleanup
-            loop.close()
+            async def coordinator_task():
+                # Create database manager
+                db_manager = DatabaseManager(cls.db_path)
+
+                # Create security manager with the database
+                security_manager = SecurityManager(
+                    db_manager,
+                    token_secret=cls.security_config["token_secret"],
+                )
+
+                # Create coordinator
+                cls.coordinator = CoordinatorServer(
+                    host=cls.coordinator_host,
+                    port=cls.coordinator_port,
+                    db_path=cls.db_path,
+                    token_secret=cls.security_config["token_secret"],
+                    heartbeat_timeout=5,  # Short timeout for testing
+                )
+
+                # Save references to components for testing
+                cls.db_manager = db_manager
+                cls.task_scheduler = cls.coordinator.task_manager
+                cls.worker_manager = cls.coordinator.worker_manager
+                cls.security_manager = security_manager
+
+                # Create helper function to know when coordinator is ready
+                async def on_coordinator_start():
+                    cls.coordinator_started.set()
+                    await cls.coordinator_stopped.wait()
+                    await cls.coordinator.stop()
+
+                # Run coordinator and wait for stop signal
+                async with anyio.create_task_group() as tg:
+                    tg.start_soon(cls.coordinator.start)
+                    await on_coordinator_start()
+                    tg.cancel_scope.cancel()
+
+            anyio.run(coordinator_task)
         except Exception as e:
             print(f"Error in coordinator thread: {e}")
             import traceback

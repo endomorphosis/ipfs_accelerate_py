@@ -166,7 +166,9 @@ class FaultToleranceTestHarness:
             return False
         
         # Start coordinator
-        self.coordinator_task = # TODO: Replace with task group - asyncio.create_task(self.coordinator.start())
+        self.coordinator_task = anyio.create_task_group()
+        await self.coordinator_task.__aenter__()
+        self.coordinator_task.start_soon(self.coordinator.start)
         logger.info("Coordinator started")
         
         return True
@@ -189,8 +191,7 @@ class FaultToleranceTestHarness:
             self.workers.append(worker)
             
             # Connect worker
-            connect_task = # TODO: Replace with task group - asyncio.create_task(worker.connect())
-            self.worker_tasks.append(connect_task)
+            self.worker_tasks.append(worker.connect())
             
             logger.info(f"Worker {worker_id} connecting")
             
@@ -823,7 +824,9 @@ class FaultToleranceTestHarness:
             
             # Wait for the coordinator task to complete
             if self.coordinator_task:
-                await self.coordinator_task
+                self.coordinator_task.cancel_scope.cancel()
+                await self.coordinator_task.__aexit__(None, None, None)
+                self.coordinator_task = None
             
             logger.info("Coordinator stopped")
         
@@ -1218,12 +1221,9 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        # Get the event loop
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-        
         # Run the main function
-        exit_code = loop.run_until_complete(main())
-        
+        exit_code = anyio.run(main)
+
         # Exit with the exit code
         sys.exit(exit_code)
     except KeyboardInterrupt:

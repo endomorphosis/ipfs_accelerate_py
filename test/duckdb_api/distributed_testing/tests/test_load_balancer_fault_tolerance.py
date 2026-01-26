@@ -118,54 +118,57 @@ class LoadBalancerFaultToleranceTest(unittest.TestCase):
     def _run_coordinator_with_load_balancer(cls):
         """Run the coordinator with load balancer in a separate thread."""
         try:
-            # Setup the event loop
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-            
-            # Import and apply patches
-            from duckdb_api.distributed_testing.coordinator_patch import apply_patches, remove_patches
-            apply_patches()
-            
-            # Load balancer configuration with fault tolerance enabled
-            load_balancer_config = {
-                "db_path": cls.db_path,
-                "monitoring_interval": 2,  # Short interval for testing
-                "rebalance_interval": 5,   # Short interval for testing
-                "worker_concurrency": 2,
-                "enable_work_stealing": True,
-                "fault_tolerance": {
-                    "enabled": True,
-                    "max_recovery_attempts": 3,
-                    "recovery_timeout": 10,
-                    "recovery_strategies": ["immediate", "progressive", "coordinated"],
-                    "task_prioritization": True
-                },
-                "default_scheduler": {
-                    "type": "performance_based"
+            async def coordinator_task():
+                # Import and apply patches
+                from duckdb_api.distributed_testing.coordinator_patch import apply_patches, remove_patches
+                apply_patches()
+
+                # Load balancer configuration with fault tolerance enabled
+                load_balancer_config = {
+                    "db_path": cls.db_path,
+                    "monitoring_interval": 2,  # Short interval for testing
+                    "rebalance_interval": 5,   # Short interval for testing
+                    "worker_concurrency": 2,
+                    "enable_work_stealing": True,
+                    "fault_tolerance": {
+                        "enabled": True,
+                        "max_recovery_attempts": 3,
+                        "recovery_timeout": 10,
+                        "recovery_strategies": ["immediate", "progressive", "coordinated"],
+                        "task_prioritization": True,
+                    },
+                    "default_scheduler": {
+                        "type": "performance_based",
+                    },
                 }
-            }
-            
-            # Create coordinator with load balancer
-            cls.coordinator = CoordinatorServer(
-                host=cls.coordinator_host,
-                port=cls.coordinator_port,
-                db_path=cls.db_path,
-                token_secret=cls.security_config["token_secret"],
-                heartbeat_timeout=5,  # Short timeout for testing
-                enable_load_balancer=True,
-                load_balancer_config=load_balancer_config
-            )
-            
-            # Create helper function to know when coordinator is ready
-            async def on_coordinator_start():
-                cls.coordinator_started.set()
-                await cls.coordinator_stopped.wait()
-                # Stop coordinator
-                await cls.coordinator.stop()
-            
-            # Run both tasks: the coordinator and the signal handler
-            loop.create_task(cls.coordinator.start())
-            loop.run_until_complete(on_coordinator_start())
+
+                # Create coordinator with load balancer
+                cls.coordinator = CoordinatorServer(
+                    host=cls.coordinator_host,
+                    port=cls.coordinator_port,
+                    db_path=cls.db_path,
+                    token_secret=cls.security_config["token_secret"],
+                    heartbeat_timeout=5,  # Short timeout for testing
+                    enable_load_balancer=True,
+                    load_balancer_config=load_balancer_config,
+                )
+
+                # Create helper function to know when coordinator is ready
+                async def on_coordinator_start():
+                    cls.coordinator_started.set()
+                    await cls.coordinator_stopped.wait()
+                    # Stop coordinator
+                    await cls.coordinator.stop()
+
+                # Run coordinator and wait for stop signal
+                async with anyio.create_task_group() as tg:
+                    tg.start_soon(cls.coordinator.start)
+                    await on_coordinator_start()
+                    tg.cancel_scope.cancel()
+
+                remove_patches()
+
+            anyio.run(coordinator_task)
             
             # Cleanup
             loop.close()

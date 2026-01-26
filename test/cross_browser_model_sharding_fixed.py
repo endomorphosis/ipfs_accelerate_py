@@ -515,10 +515,7 @@ class CrossBrowserModelShardingManager:
                 continue
                 
             # Create initialization task for this browser
-            task = # TODO: Replace with task group - asyncio.create_task(
-                self._initialize_browser_shards(browser, shard_indices)
-            )
-            init_tasks.append(task)
+            init_tasks.append(self._initialize_browser_shards(browser, shard_indices))
         
         # Wait for all initializations to complete
         results = await gather(*init_tasks, return_exceptions=True)
@@ -630,14 +627,13 @@ class CrossBrowserModelShardingManager:
             browser_manager = self.browser_managers[browser]
             
             # Create inference task
-            task = # TODO: Replace with task group - asyncio.create_task(
+            inference_tasks.append(
                 self._run_browser_inference(
                     browser=browser,
                     manager=browser_manager,
                     inputs=browser_inputs[browser]
                 )
             )
-            inference_tasks.append(task)
             
         # Wait for all inferences to complete
         browser_results = await gather(*inference_tasks, return_exceptions=True)
@@ -788,8 +784,7 @@ class CrossBrowserModelShardingManager:
             browser_manager = self.browser_managers[browser]
             
             # Create shutdown task
-            task = # TODO: Replace with task group - asyncio.create_task(self._shutdown_browser(browser, browser_manager))
-            shutdown_tasks.append(task)
+            shutdown_tasks.append(self._shutdown_browser(browser, browser_manager))
             
         # Wait for all shutdowns to complete
         await gather(*shutdown_tasks, return_exceptions=True)
@@ -1006,11 +1001,4 @@ if __name__ == "__main__":
         return result
         
     # Run the test
-    if sys.platform != "win32":
-        import asyncio
-        result = anyio.run(run_test())
-    else:
-        # For Windows compatibility
-        import asyncio
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-        result = loop.run_until_complete(run_test())
+    result = anyio.run(run_test)

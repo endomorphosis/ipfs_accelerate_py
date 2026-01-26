@@ -128,45 +128,46 @@ class LoadBalancerMonitoringIntegrationTest(unittest.TestCase):
     def _run_coordinator_with_load_balancer(cls):
         """Run the coordinator with load balancer in a separate thread."""
         try:
-            # Setup the event loop
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-            
-            # Create coordinator with load balancer
-            cls.coordinator = CoordinatorServer(
-                host=cls.coordinator_host,
-                port=cls.coordinator_port,
-                db_path=cls.db_path,
-                token_secret=cls.security_config["token_secret"],
-                heartbeat_timeout=5,  # Short timeout for testing
-                enable_load_balancer=True  # Enable load balancer
-            )
-            
-            # Create monitoring integration
-            cls.monitoring = MonitoringIntegration(
-                coordinator=cls.coordinator,
-                load_balancer=cls.coordinator.load_balancer,
-                db_path=cls.metrics_db_path,
-                dashboard_host=cls.dashboard_host,
-                dashboard_port=cls.dashboard_port,
-                collection_interval=1.0  # Collect metrics every second
-            )
-            
-            # Start monitoring
-            cls.monitoring.start()
-            
-            # Create helper function to know when coordinator is ready
-            async def on_coordinator_start():
-                cls.coordinator_started.set()
-                await cls.coordinator_stopped.wait()
-                # Stop monitoring integration
-                cls.monitoring.stop()
-                # Stop coordinator
-                await cls.coordinator.stop()
-            
-            # Run both tasks: the coordinator and the signal handler
-            loop.create_task(cls.coordinator.start())
-            loop.run_until_complete(on_coordinator_start())
+            async def coordinator_task():
+                # Create coordinator with load balancer
+                cls.coordinator = CoordinatorServer(
+                    host=cls.coordinator_host,
+                    port=cls.coordinator_port,
+                    db_path=cls.db_path,
+                    token_secret=cls.security_config["token_secret"],
+                    heartbeat_timeout=5,  # Short timeout for testing
+                    enable_load_balancer=True,  # Enable load balancer
+                )
+
+                # Create monitoring integration
+                cls.monitoring = MonitoringIntegration(
+                    coordinator=cls.coordinator,
+                    load_balancer=cls.coordinator.load_balancer,
+                    db_path=cls.metrics_db_path,
+                    dashboard_host=cls.dashboard_host,
+                    dashboard_port=cls.dashboard_port,
+                    collection_interval=1.0,  # Collect metrics every second
+                )
+
+                # Start monitoring
+                cls.monitoring.start()
+
+                # Create helper function to know when coordinator is ready
+                async def on_coordinator_start():
+                    cls.coordinator_started.set()
+                    await cls.coordinator_stopped.wait()
+                    # Stop monitoring integration
+                    cls.monitoring.stop()
+                    # Stop coordinator
+                    await cls.coordinator.stop()
+
+                # Run coordinator and wait for stop signal
+                async with anyio.create_task_group() as tg:
+                    tg.start_soon(cls.coordinator.start)
+                    await on_coordinator_start()
+                    tg.cancel_scope.cancel()
+
+            anyio.run(coordinator_task)
             
             # Cleanup
             loop.close()

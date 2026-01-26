@@ -359,7 +359,7 @@ class ResourcePoolCircuitBreaker:
         self.health_metrics: Dict[str, BrowserHealthMetrics] = {}
         
         # Initialize locks for thread safety
-        self.circuit_locks: Dict[str, asyncio.Lock] = {}
+        self.circuit_locks: Dict[str, anyio.Lock] = {}
         
         # Initialize health check task
         self.health_check_task = None
@@ -767,7 +767,9 @@ class ResourcePoolCircuitBreaker:
                 await anyio.sleep(self.health_check_interval_seconds)
                 
         # Start health check task
-        self.health_check_task = # TODO: Replace with task group - asyncio.create_task(health_check_loop())
+        self.health_check_task = anyio.create_task_group()
+        await self.health_check_task.__aenter__()
+        self.health_check_task.start_soon(health_check_loop)
         logger.info(f"Health check task started (interval: {self.health_check_interval_seconds}s)")
         
     async def stop_health_check_task(self):
@@ -778,11 +780,8 @@ class ResourcePoolCircuitBreaker:
         self.running = False
         
         if self.health_check_task:
-            self.health_check_task.cancel()
-            try:
-                await self.health_check_task
-            except anyio.get_cancelled_exc_class():
-                pass
+            self.health_check_task.cancel_scope.cancel()
+            await self.health_check_task.__aexit__(None, None, None)
             self.health_check_task = None
             
         logger.info("Health check task stopped")
@@ -1400,7 +1399,7 @@ class ResourcePoolCircuitBreakerManager:
         action = error_context.get("action", "")
         error_type = error_context.get("error_type", "")
         
-        if "timeout" in str(error).lower() or "timeout" in error_type.lower() or isinstance(error, asyncio.TimeoutError):
+        if "timeout" in str(error).lower() or "timeout" in error_type.lower() or isinstance(error, TimeoutError):
             return ConnectionErrorCategory.TIMEOUT
             
         if "connection_closed" in str(error).lower() or "closed" in error_type.lower():

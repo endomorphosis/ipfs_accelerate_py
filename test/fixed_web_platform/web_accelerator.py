@@ -124,12 +124,8 @@ class WebAccelerator:
             "errors": 0
         }
         
-        # Create event loop for async operations
-        try:
-            self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-        except RuntimeError:
-            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
+        # Event loop managed by AnyIO when needed
+        self.loop = None
         
         # Initialize hardware detector if IPFS module is available
         self.hardware_detector = None
@@ -218,8 +214,8 @@ class WebAccelerator:
         Returns:
             Dict with acceleration results
         """
-        # Run async accelerate in the event loop
-        return self.loop.run_until_complete(self._accelerate_async(model_name, input_data, options))
+        # Run async accelerate via AnyIO
+        return anyio.run(self._accelerate_async, model_name, input_data, options)
     
     async def _accelerate_async(self, model_name: str, input_data: Any, options: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -594,6 +590,5 @@ async def test_web_accelerator():
 
 if __name__ == "__main__":
     # Run test if script executed directly
-    import asyncio
     success = anyio.run(test_web_accelerator())
     sys.exit(0 if success else 1)

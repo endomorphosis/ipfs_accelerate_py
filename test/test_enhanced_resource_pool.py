@@ -235,9 +235,9 @@ class EnhancedResourcePoolIntegration:
         tasks = []
         for model, inputs in model_and_inputs_list:
             if not model:
-                tasks.append(# TODO: Replace with task group - asyncio.create_task(anyio.sleep(0)))  # Dummy task
+                tasks.append(anyio.sleep(0))  # Dummy task
             else:
-                tasks.append(# TODO: Replace with task group - asyncio.create_task(model(inputs)))
+                tasks.append(model(inputs))
         
         # Wait for all tasks to complete
         results = await gather(*tasks, return_exceptions=True)

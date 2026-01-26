@@ -1185,29 +1185,33 @@ class ResourcePoolRecoveryManager:
         self.logger.info(f"Attempting parallel recovery for browser {browser_id}")
         
         # Try all strategies in parallel
-        reconnect_task = # TODO: Replace with task group - asyncio.create_task(self._reconnect_recovery(browser_id, failure_category))
-        restart_task = # TODO: Replace with task group - asyncio.create_task(self._restart_recovery(browser_id, failure_category))
-        failover_task = # TODO: Replace with task group - asyncio.create_task(self._failover_recovery(browser_id, failure_category))
-        
-        # Wait for first successful result
-        done, pending = await asyncio.wait(
-            [reconnect_task, restart_task, failover_task],
-            return_when=asyncio.FIRST_COMPLETED
-        )
-        
-        # Cancel remaining tasks
-        for task in pending:
-            task.cancel()
-            
-        # Check results
-        for task in done:
+        send_stream, receive_stream = anyio.create_memory_object_stream(0)
+
+        async def run_strategy(strategy_coro):
             try:
-                result = task.result()
-                if result["success"]:
-                    self.logger.info(f"Parallel recovery succeeded with strategy {result['recovery_type']}")
-                    return result
-            except Exception as e:
-                self.logger.warning(f"Parallel recovery task failed: {e}")
+                result = await strategy_coro
+            except Exception as exc:
+                result = exc
+            await send_stream.send(result)
+
+        async with send_stream, receive_stream:
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(run_strategy, self._reconnect_recovery(browser_id, failure_category))
+                tg.start_soon(run_strategy, self._restart_recovery(browser_id, failure_category))
+                tg.start_soon(run_strategy, self._failover_recovery(browser_id, failure_category))
+
+                # Collect results and stop on first success
+                for _ in range(3):
+                    result = await receive_stream.receive()
+                    if isinstance(result, Exception):
+                        self.logger.warning(f"Parallel recovery task failed: {result}")
+                        continue
+                    if result.get("success"):
+                        self.logger.info(
+                            f"Parallel recovery succeeded with strategy {result['recovery_type']}"
+                        )
+                        tg.cancel_scope.cancel()
+                        return result
                 
         # All strategies failed
         self.logger.error(f"All parallel recovery strategies failed for browser {browser_id}")
