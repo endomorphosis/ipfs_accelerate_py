@@ -19,7 +19,6 @@ Usage:
 """
 
 import anyio
-import asyncio
 import json
 import logging
 import time
@@ -668,7 +667,7 @@ class PerformanceBasedErrorRecovery:
             
             return success, recovery_info
         
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Recovery timed out
             execution_time = time.time() - start_time
             

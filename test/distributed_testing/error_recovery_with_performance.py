@@ -518,7 +518,7 @@ class ErrorRecoveryWithPerformance:
                     return await self.recover(error_report)
             
             return success, recovery_info
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Recovery timed out
             logger.error(f"Recovery timed out after {timeout} seconds for error {error_report.error_id}")
             
@@ -1834,7 +1834,6 @@ class ErrorRecoveryWithPerformance:
 # Demo and testing code
 if __name__ == "__main__":
     import duckdb
-    import asyncio
     
     async def run_demo():
         print("Error Recovery with Performance Tracking Demo")
@@ -1886,4 +1885,4 @@ if __name__ == "__main__":
         metrics = recovery_system.get_performance_metrics()
         print(json.dumps(metrics, indent=2))
 
-    anyio.run(run_demo())
+    anyio.run(run_demo)

@@ -1494,7 +1494,7 @@ class EnhancedErrorRecoveryManager:
         # Categorize based on error type and message
         if error_type in ["ConnectionError", "ConnectionRefusedError", "ConnectionResetError"]:
             category = ErrorCategory.CONNECTION.value
-        elif error_type in ["TimeoutError", "asyncio.TimeoutError"]:
+        elif error_type in ["TimeoutError"]:
             category = ErrorCategory.TIMEOUT.value
         elif error_type in ["DatabaseError", "OperationalError"]:
             if "connection" in error_message.lower():

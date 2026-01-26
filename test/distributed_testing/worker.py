@@ -97,7 +97,7 @@ class DistributedTestingWorker:
         
         # Task state
         self.current_task: Optional[Dict[str, Any]] = None
-        self.current_task_future: Optional[asyncio.Future] = None
+        self.current_task_future: Optional[Any] = None
         self.task_executors: Dict[str, Callable] = self._register_task_executors()
             
         # Heartbeat and health tracking
