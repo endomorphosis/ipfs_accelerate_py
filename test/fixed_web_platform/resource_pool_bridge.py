@@ -972,7 +972,7 @@ class ResourcePoolBridgeIntegration:
                             ),
                             timeout=60  # 60 second timeout for inference
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.error(f"Inference timeout for {self.model_name} after 60 seconds")
                         
                         # Update connection stats
@@ -1719,7 +1719,7 @@ class ResourcePoolBridgeIntegration:
                 if hasattr(self.circuit_breaker_manager, 'force_cleanup'):
                     try:
                         logger.warning("Attempting force cleanup of circuit breaker manager")
-                        if inspect.iscoroutinefunction(  # Added import inspectself.circuit_breaker_manager.force_cleanup):
+                        if inspect.iscoroutinefunction(self.circuit_breaker_manager.force_cleanup):
                             await self.circuit_breaker_manager.force_cleanup()
                         else:
                             self.circuit_breaker_manager.force_cleanup()
@@ -1763,7 +1763,7 @@ class ResourcePoolBridgeIntegration:
                                 )
                                 connection_cleanup_status["bridge_closed"] = True
                                 return True
-                            except asyncio.TimeoutError:
+                            except TimeoutError:
                                 logger.warning(f"Timeout shutting down bridge for {connection_id}")
                                 return False
                             except Exception as bridge_error:
@@ -1782,7 +1782,7 @@ class ResourcePoolBridgeIntegration:
                                 )
                                 connection_cleanup_status["automation_closed"] = True
                                 return True
-                            except asyncio.TimeoutError:
+                            except TimeoutError:
                                 logger.warning(f"Timeout closing automation for {connection_id}")
                                 return False
                             except Exception as automation_error:
