@@ -82,7 +82,7 @@ class HealthMonitor:
         await self._create_database_tables()
         
         # Start background tasks
-        # TODO: Replace with task group - asyncio.create_task(self._system_health_monitor())
+        # TODO: Start system health monitor in an AnyIO task group
         
         while True:
             try:

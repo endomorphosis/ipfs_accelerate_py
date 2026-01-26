@@ -434,7 +434,7 @@ class TestAuthMiddleware:
         
         return app, api_key, token
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_auth_middleware_public_route(self, setup_app):
         """Test middleware with public route."""
         app, _, _ = setup_app
@@ -455,7 +455,7 @@ class TestAuthMiddleware:
             assert response.status == 200
             assert response.text == "Success"
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_auth_middleware_api_key(self, setup_app):
         """Test middleware with API key."""
         app, api_key, _ = setup_app
@@ -493,7 +493,7 @@ class TestAuthMiddleware:
         assert "error" in body
         assert body["error"] == "Authentication required"
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_auth_middleware_token(self, setup_app):
         """Test middleware with token."""
         app, _, token = setup_app
@@ -526,7 +526,7 @@ class TestAuthMiddleware:
         # Verify authentication failed
         assert response.status == 401
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_auth_middleware_no_auth(self, setup_app):
         """Test middleware with no authentication."""
         app, _, _ = setup_app
@@ -545,7 +545,7 @@ class TestAuthMiddleware:
         # Verify authentication failed
         assert response.status == 401
     
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_auth_middleware_no_security_manager(self):
         """Test middleware with no security manager."""
         # Create app without security manager

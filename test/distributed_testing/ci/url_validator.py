@@ -9,7 +9,6 @@ still accessible and implements health monitoring for artifact availability.
 from __future__ import annotations
 
 import anyio
-import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
@@ -107,7 +106,7 @@ class ArtifactURLValidator:
     def _start_health_check_task(self):
         """Start the background task for periodic health checks."""
         # Keep this as a no-op unless an event loop/task framework is explicitly wired.
-        # This avoids import-time asyncio task creation and keeps the validator usable
+        # This avoids import-time task creation and keeps the validator usable
         # for on-demand validation in tests.
         if self._health_check_task is None:
             self._health_check_task = True
@@ -248,7 +247,7 @@ class ArtifactURLValidator:
                 is_valid = response.status < 400
                 return is_valid, response.status, None if is_valid else f"HTTP error: {response.status}"
                 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return False, None, f"Timeout after {self.check_timeout} seconds"
         except aiohttp.ClientError as e:
             return False, None, f"Client error: {str(e)}"
@@ -270,7 +269,7 @@ class ArtifactURLValidator:
         Returns:
             Dictionary mapping URLs to their validation results (is_valid, status_code, error_message)
         """
-        # NOTE: This is implemented sequentially to avoid asyncio task APIs.
+        # NOTE: This is implemented sequentially to avoid explicit task APIs.
         results: Dict[str, Tuple[bool, Optional[int], Optional[str]]] = {}
         for url in urls:
             if not url:  # Skip empty URLs

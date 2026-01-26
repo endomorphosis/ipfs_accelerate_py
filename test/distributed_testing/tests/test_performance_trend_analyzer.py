@@ -544,10 +544,6 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
 def run_tests():
     """Run the integration tests."""
     try:
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
         # Create test suite
         suite = unittest.TestSuite()
         suite.addTest(TestPerformanceTrendAnalyzerIntegration('test_analyzer_connects_to_coordinator'))
@@ -562,9 +558,6 @@ def run_tests():
         runner.run(suite)
     except Exception as e:
         print(f"Error running tests: {e}")
-    finally:
-        # Close the event loop
-        loop.close()
 
 
 if __name__ == "__main__":

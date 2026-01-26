@@ -110,10 +110,6 @@ class TestRedundancyManager(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment."""
-        import asyncio
-        self.event_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.event_loop)
-        
         # Create temporary directories for the nodes
         self.temp_dirs = [tempfile.mkdtemp() for _ in range(3)]
         
@@ -150,7 +146,7 @@ class TestRedundancyManager(unittest.TestCase):
             except Exception as e:
                 logger.warning(f"Error cleaning up temp dir: {e}")
         
-        self.event_loop.close()
+
             
     def test_init(self):
         """Test initialization of RedundancyManager."""
@@ -330,12 +326,12 @@ class TestRedundancyManager(unittest.TestCase):
             }
             
             # Trigger state sync
-            self.event_loop.run_until_complete(follower._sync_state_from_leader())
+            anyio.run(follower._sync_state_from_leader)
             
             # Verify the follower's state was updated
             self.assertEqual(follower.coordinator.state, leader.coordinator.state)
             
-    @patch('coordinator_redundancy.asyncio.sleep', return_value=None)
+    @patch('coordinator_redundancy.anyio.sleep', return_value=None)
     def test_failover(self, mock_sleep):
         """Test leader failover when the current leader fails."""
         # Setup three managers in a stable state

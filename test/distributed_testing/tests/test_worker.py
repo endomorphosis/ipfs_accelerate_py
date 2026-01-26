@@ -115,7 +115,7 @@ class TestDistributedTestingWorkerAsync:
             json.dumps({"type": "register_response", "worker_id": worker.worker_id, "status": "success"})
         ]
         
-        # Test connection
+            @pytest.mark.anyio
         result = await worker.connect_to_coordinator()
         
         # Verify connection was successful
@@ -146,7 +146,7 @@ class TestDistributedTestingWorkerAsync:
             "status": "success",
             "token": "new_token",
             "worker_id": worker.worker_id
-        })
+            @pytest.mark.anyio
         
         # Test authentication
         worker.ws_connected = True  # Assume we're connected
@@ -175,7 +175,7 @@ class TestDistributedTestingWorkerAsync:
             "status": "failure",
             "message": "Invalid API key"
         })
-        
+            @pytest.mark.anyio
         # Test authentication
         worker.ws_connected = True  # Assume we're connected
         result = await worker._authenticate()
@@ -194,7 +194,7 @@ class TestDistributedTestingWorkerAsync:
             "status": "success"
         })
         
-        # Test sending heartbeat
+            @pytest.mark.anyio
         worker.ws_connected = True  # Assume we're connected
         
         # Mock health check to avoid actual hardware checks
@@ -225,7 +225,7 @@ class TestDistributedTestingWorkerAsync:
             "type": "benchmark",
             "config": {
                 "model": "test_model",
-                "batch_sizes": [1, 2, 4],
+            @pytest.mark.anyio
                 "precision": "fp32",
                 "iterations": 3
             },
@@ -268,7 +268,7 @@ class TestDistributedTestingWorkerAsync:
             "type": "test",
             "config": {
                 "test_file": "test_worker.py",
-                "test_args": []
+            @pytest.mark.anyio
             },
             "status": "received",
             "received": datetime.now().isoformat()
@@ -297,7 +297,7 @@ class TestDistributedTestingWorkerAsync:
         
         # Create a custom task for testing
         task = {
-            "task_id": "test_task_3",
+            @pytest.mark.anyio
             "type": "custom",
             "config": {
                 "name": "test_custom_task"
@@ -328,7 +328,7 @@ class TestDistributedTestingWorkerAsync:
         
         # Test a healthy state
         worker.ws_connected = True
-        with patch('worker.psutil.cpu_percent', return_value=50), \
+            @pytest.mark.anyio
              patch('worker.psutil.virtual_memory', return_value=MagicMock(percent=60)):
             
             result = await worker.check_health()
@@ -379,7 +379,7 @@ class TestDistributedTestingWorkerAsync:
         
         # Mock hardware metrics
         with patch('worker.psutil.cpu_percent', return_value=50), \
-             patch('worker.psutil.virtual_memory', return_value=MagicMock(
+            @pytest.mark.anyio
                 percent=60, 
                 used=8 * 1024**3,  # 8 GB
                 available=12 * 1024**3  # 12 GB

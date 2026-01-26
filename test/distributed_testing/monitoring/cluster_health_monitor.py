@@ -153,7 +153,7 @@ class ClusterHealthMonitor:
                 # Wait for the next update interval
                 try:
                     await wait_for(self.stop_event.wait(), self.update_interval)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # This is expected - just continue
                     pass
                     
@@ -542,7 +542,7 @@ class ClusterHealthMonitor:
     def _on_close(self):
         """Handle window close event."""
         logger.info("GUI closed - stopping monitoring")
-        # TODO: Replace with task group - asyncio.create_task(self.stop_monitoring())
+        # TODO: Stop monitoring using an AnyIO task group
         self.root.destroy()
         
 
@@ -561,4 +561,4 @@ async def main():
     
 
 if __name__ == "__main__":
-    anyio.run(main())
+    anyio.run(main)

@@ -138,7 +138,7 @@ class CoordinatorRecoveryStrategy(RecoveryStrategy):
                                 "node_id": node_id,
                                 "details": f"Node returned HTTP {response.status}"
                             })
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 failures.append({
                     "type": FailureType.NETWORK_PARTITION,
                     "node_id": node_id,

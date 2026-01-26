@@ -310,7 +310,7 @@ class ErrorSimulator:
             worker_id = self.coordinator.running_tasks[task_id]
         
         # Create error
-        exception = asyncio.TimeoutError(f"Task {task_id} execution timed out")
+        exception = TimeoutError(f"Task {task_id} execution timed out")
         context = {
             "component": "task_execution",
             "operation": "execute",

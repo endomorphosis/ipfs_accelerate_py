@@ -1149,7 +1149,6 @@ class BrowserAutomationBridge:
                         logger.error(f"Invalid JSON: {message}")
             
             # Start WebSocket server
-            import asyncio
             self.websocket_server = await websockets.serve(
                 handle_connection, "localhost", self.server_port
             )
@@ -1482,7 +1481,7 @@ class BrowserAutomationBridge:
             # Stop WebSocket server if available
             if self.websocket_server and WEBSOCKETS_AVAILABLE:
                 self.websocket_server.close()
-                # Need to use asyncio.wait_closed in Python 3.7+
+                # Use wait_closed when available
                 if hasattr(self.websocket_server, 'wait_closed'):
                     await self.websocket_server.wait_closed()
                 self.websocket_server = None

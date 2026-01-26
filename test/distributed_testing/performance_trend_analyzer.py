@@ -358,7 +358,7 @@ class PerformanceTrendAnalyzer:
             self._init_database()
         
         # Start the main analysis loop
-        # TODO: Replace with task group - asyncio.create_task(self._analysis_loop())
+        # TODO: Start analysis loop in an AnyIO task group
     
     async def stop(self) -> None:
         """Stop the performance trend analyzer."""

@@ -442,7 +442,7 @@ class TestErrorRecoveryStrategies(unittest.TestCase):
         self.assertEqual(worker_strategy.name, "worker")
         self.assertEqual(unknown_strategy.name, "retry")
     
-    @patch('asyncio.sleep')
+    @patch('anyio.sleep')
     async def test_recovery_process(self, mock_sleep):
         """Test the full recovery process."""
         # Mock sleep to avoid delays in test

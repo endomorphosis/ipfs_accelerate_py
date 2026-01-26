@@ -1070,7 +1070,7 @@ def format_timestamp(timestamp):
 
 async def start_background_tasks():
     """Start background tasks."""
-    # TODO: Replace with task group - asyncio.create_task(data_update_loop())
+    # TODO: Start data update loop with AnyIO task group
 
 def main():
     """Main entrypoint."""

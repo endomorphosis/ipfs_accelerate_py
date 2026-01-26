@@ -725,7 +725,7 @@ class ExecutionOrchestrator:
             self.update_group_status()
             
             # Select tests for execution up to max_workers.
-            # Note: This executes sequentially to avoid asyncio task management.
+            # Note: This executes sequentially to avoid explicit task management.
             selected_tests = self.select_tests_for_execution()[: self.max_workers]
             if selected_tests:
                 for test_id in selected_tests:

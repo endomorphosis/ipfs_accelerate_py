@@ -393,17 +393,8 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.orchestrator.visualize_execution_plan(output_format="invalid")
     
-    @patch('execution_orchestrator.asyncio.create_task')
-    @patch('execution_orchestrator.asyncio.wait')
-    async def test_execute_all_tests_async(self, mock_wait, mock_create_task):
+    async def test_execute_all_tests_async(self):
         """Test asynchronous execution of all tests."""
-        # Setup mock asyncio functions
-        mock_task = MagicMock()
-        mock_create_task.return_value = mock_task
-        
-        # Mock asyncio.wait to return done tasks
-        mock_wait.side_effect = lambda tasks, **kwargs: (set([mock_task]), set())
-        
         # Patch update_group_status to mark all groups as completed after first call
         original_update_group_status = self.orchestrator.update_group_status
         
@@ -430,7 +421,7 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         self.assertIn('start_time', results)
         self.assertIn('end_time', results)
     
-    @patch('asyncio.sleep')
+    @patch('execution_orchestrator.anyio.sleep')
     @patch('random.uniform')
     @patch('random.random')
     async def test_execute_test_async(self, mock_random, mock_uniform, mock_sleep):

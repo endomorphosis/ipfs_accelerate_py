@@ -402,7 +402,7 @@ class ShardedModelManager:
         # Initialize results
         shard_results = {}
         
-        # Execute on each shard. Keep sequential to avoid asyncio task management.
+        # Execute on each shard. Keep sequential to avoid explicit task management.
         for shard_id, shard in shards.items():
             try:
                 result = await self._execute_shard(

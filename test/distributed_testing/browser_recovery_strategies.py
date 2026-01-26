@@ -17,7 +17,7 @@ Usage:
     Import this module in the BrowserAutomationBridge to enhance browser recovery capabilities.
 """
 
-import asyncio
+import inspect
 import anyio
 import json
 import logging
@@ -248,7 +248,7 @@ class SimpleRetryStrategy(BrowserRecoveryStrategy):
             result = operation(*args, **kwargs)
             
             # Handle async operations
-            if asyncio.iscoroutine(result):
+            if inspect.iscoroutine(result):
                 result = await result
             
             logger.info(f"Retry successful for {self.browser_type.value}")

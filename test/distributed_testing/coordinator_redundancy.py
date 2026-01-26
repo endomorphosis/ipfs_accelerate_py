@@ -41,15 +41,14 @@ import os
 import sys
 import json
 import time
-import asyncio
 import anyio
-import logging
+        except TimeoutError:
 import random
-import uuid
+        except TimeoutError:
 import aiohttp
-import threading
+        except TimeoutError:
 from typing import Dict, List, Any, Optional, Set, Tuple
-from enum import Enum
+        except TimeoutError:
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -736,7 +735,7 @@ class RedundancyManager:
                             await self._become_leader()
                 else:
                     logger.warning(f"Failed to send RequestVote to {node}: {response.status}")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Timeout sending RequestVote to {node}")
         except Exception as e:
             logger.error(f"Error sending RequestVote to {node}: {e}")
@@ -806,7 +805,7 @@ class RedundancyManager:
                             await self._send_append_entries(node)
                 else:
                     logger.warning(f"Failed to send AppendEntries to {node}: {response.status}")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Timeout sending AppendEntries to {node}")
         except Exception as e:
             logger.error(f"Error sending AppendEntries to {node}: {e}")
@@ -1154,7 +1153,7 @@ class RedundancyManager:
                     logger.info(f"State synchronized to node {node}")
                 else:
                     logger.warning(f"Failed to synchronize state to {node}: {response.status}")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Timeout synchronizing state to {node}")
         except Exception as e:
             logger.error(f"Error synchronizing state to {node}: {e}")
@@ -1717,7 +1716,7 @@ class RedundancyManager:
                 else:
                     logger.warning(f"Failed to forward {method} to leader: {response.status}")
                     return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Timeout forwarding {method} to leader")
             return False
         except Exception as e:

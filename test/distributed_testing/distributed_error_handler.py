@@ -17,7 +17,7 @@ Key features:
 """
 
 import anyio
-import asyncio
+import inspect
 import logging
 import time
 import traceback
@@ -651,7 +651,7 @@ class DistributedErrorHandler:
             error_type = ErrorType.NETWORK
             error_severity = ErrorSeverity.MEDIUM
         
-        elif exception_name in ["TimeoutError", "asyncio.TimeoutError"]:
+        elif exception_name in ["TimeoutError"]:
             error_type = ErrorType.TIMEOUT
             error_severity = ErrorSeverity.MEDIUM
         
@@ -824,7 +824,7 @@ class DistributedErrorHandler:
                 result = operation(*args, **kwargs)
                 
                 # Handle coroutines
-                if asyncio.iscoroutine(result):
+                if inspect.iscoroutine(result):
                     result = await result
                 
                 # If we got here after retries, update the error report
@@ -1407,7 +1407,7 @@ async def safe_execute_async(func, *args, error_handler=None, **kwargs):
     
     try:
         result = func(*args, **kwargs)
-        if asyncio.iscoroutine(result):
+        if inspect.iscoroutine(result):
             return await result
         return result
     except Exception as e:

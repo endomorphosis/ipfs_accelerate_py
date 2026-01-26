@@ -205,7 +205,7 @@ class IPFSAccelerateWebIntegration:
                     results.append(result)
                 return results
             
-            # Use the resource pool's concurrent execution capability, but handle the asyncio issues
+            # Use the resource pool's concurrent execution capability with AnyIO-safe handling
             # Instead of using execute_concurrent_sync which creates nested event loops,
             # we'll execute models one by one in a non-async way
             # This avoids the "Cannot run the event loop while another loop is running" error

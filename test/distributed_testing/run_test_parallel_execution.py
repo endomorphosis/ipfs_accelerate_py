@@ -203,10 +203,8 @@ def run_parallel_execution(args: argparse.Namespace) -> None:
     start_time = time.time()
     
     if args.async_execution:
-        # Import asyncio
-        
         # Run asynchronously
-        results = anyio.run(orchestrator.execute_all_tests_async())
+        results = anyio.run(orchestrator.execute_all_tests_async)
     else:
         # Run synchronously
         results = orchestrator.execute_all_tests()
@@ -258,7 +256,7 @@ def main() -> None:
     exec_group.add_argument('--timeout', type=int, default=None,
                           help='Execution timeout in seconds (default: None)')
     exec_group.add_argument('--async-execution', action='store_true',
-                          help='Use asynchronous execution with asyncio')
+                          help='Use asynchronous execution with AnyIO')
     exec_group.add_argument('--no-hooks', action='store_true',
                           help='Disable execution hooks')
     

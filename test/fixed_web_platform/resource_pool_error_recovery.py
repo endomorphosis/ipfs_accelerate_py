@@ -144,7 +144,7 @@ class ResourcePoolErrorRecovery:
                             except Exception as e:
                                 logger.warning(f"Ping succeeded but capabilities check failed: {e}")
                                 # Continue to next recovery strategy
-                    except (asyncio.TimeoutError, Exception) as e:
+                    except (TimeoutError, Exception) as e:
                         logger.warning(f"Ping attempt {attempt+1}/{retry_attempts} failed: {e}")
                         await anyio.sleep(0.5 * (attempt + 1))  # Exponential backoff
             
@@ -1065,8 +1065,7 @@ if __name__ == "__main__":
     
     # Run the async main function
     if args.test_recovery or args.export_telemetry:
-        import asyncio
-        anyio.run(main())
+        anyio.run(main)
     else:
         print("No action specified. Use --test-recovery or --export-telemetry")
         print("Example usage:")

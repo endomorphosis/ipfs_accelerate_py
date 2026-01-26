@@ -14,6 +14,7 @@ import json
 import logging
 import subprocess
 import signal
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
@@ -38,6 +39,14 @@ from coordinator import DistributedTestingCoordinator
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+async def _run_async(coro):
+    return await coro
+
+
+def run_async(coro):
+    return anyio.run(_run_async, coro)
 
 
 class FailoverSimulator:
@@ -256,16 +265,12 @@ class TestCoordinatorFailover(unittest.TestCase):
             import aiohttp
         except ImportError:
             raise unittest.SkipTest("aiohttp is required for these tests")
+
+        cls.event_loop = SimpleNamespace(run_until_complete=run_async)
             
-        # Create event loop for async tests
-        import asyncio
-        cls.event_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(cls.event_loop)
-        
     @classmethod
     def tearDownClass(cls):
         """Clean up after all tests."""
-        cls.event_loop.close()
         
     def setUp(self):
         """Set up before each test."""

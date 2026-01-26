@@ -156,7 +156,7 @@ class ResultAggregatorIntegration:
                 self.coordinator._handle_task_failed = AsyncMock(wraps=wrapped_failed)
                 
                 # Start periodic analysis task
-                # TODO: Replace with task group - asyncio.create_task(self._periodic_analysis_task())
+                # TODO: Start periodic analysis in an AnyIO task group
                 
                 logger.info("Registered with coordinator through method patching")
             

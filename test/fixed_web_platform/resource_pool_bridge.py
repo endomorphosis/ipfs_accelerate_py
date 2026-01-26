@@ -1860,7 +1860,7 @@ class ResourcePoolBridgeIntegration:
             if hasattr(self, 'tensor_sharing_manager'):
                 self.tensor_sharing_manager = None
             
-            # No asyncio event loop cleanup needed (AnyIO manages its own run context)
+            # No event loop cleanup needed (AnyIO manages its own run context)
         except Exception as clear_error:
             logger.warning(f"Error clearing references: {clear_error}")
             cleanup_status["errors"]["reference_clearing"] = str(clear_error)

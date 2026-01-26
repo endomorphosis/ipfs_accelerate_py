@@ -104,7 +104,6 @@ class ErrorHandler:
         
         # Timeout errors
         "TimeoutError": ErrorCategories.TIMEOUT,
-        "asyncio.TimeoutError": ErrorCategories.TIMEOUT,
         
         # Input errors
         "ValueError": ErrorCategories.INPUT,
@@ -584,7 +583,6 @@ def with_retry(max_retries: int = 3, initial_delay: float = 1.0,
                             logger.info(f"Retry {retry}/{max_retries} for {func.__name__} after {delay:.2f}s delay")
                     
                         if retry > 0:
-                            import asyncio
                             await anyio.sleep(delay)
                             delay *= backoff_factor
                             
