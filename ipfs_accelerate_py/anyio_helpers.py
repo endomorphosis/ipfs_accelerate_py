@@ -7,10 +7,9 @@ without forcing every callsite to be rewritten manually in one pass.
 They intentionally depend only on AnyIO.
 """
 
-from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 from __future__ import annotations
 
-from typing import Any, Awaitable, List, Sequence, TypeVar
+from typing import Any, Awaitable, List, TypeVar
 
 import anyio
 

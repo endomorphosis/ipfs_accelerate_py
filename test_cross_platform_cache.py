@@ -688,7 +688,7 @@ class CrossPlatformCacheTest:
         self.run_test("Cache Initialization", self.test_cache_initialization)
         self.run_test("Cache Operations", self.test_cache_operations)
         self.run_test("Multiprocessing Support", self.test_multiprocessing_support)
-        self.run_test("Asyncio Support", self.test_asyncio_support)
+        self.run_test("AnyIO Support", self.test_anyio_support)
         self.run_test("Cross-Platform Paths", self.test_cross_platform_paths)
         self.run_test("Environment Variables", self.test_environment_variables)
         

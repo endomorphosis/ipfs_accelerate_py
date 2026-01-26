@@ -216,6 +216,15 @@ def _insert_anyio_import(source: str) -> str:
 
 
 def _ensure_anyio_helpers_import(path: Path, source: str) -> str:
+    try:
+        rel = str(path.relative_to(DEFAULT_ROOT)).replace("\\", "/")
+    except ValueError:
+        rel = str(path)
+
+    # Never add an import into the helper module itself.
+    if rel.endswith("ipfs_accelerate_py/anyio_helpers.py"):
+        return source
+
     # Only insert when we introduced or already have bare gather()/wait_for().
     if not re.search(r"\b(gather|wait_for)\(", source):
         return source
@@ -594,6 +603,13 @@ def main(argv: List[str]) -> int:
         # rglob can yield broken symlinks; skip anything that isn't a readable file
         if not path.is_file():
             continue
+
+        # Never rewrite this tool itself.
+        try:
+            if str(path.relative_to(DEFAULT_ROOT)).replace("\\", "/") == "tools/asyncio_to_anyio_bulk_refactor.py":
+                continue
+        except ValueError:
+            pass
         # Skip vendored/virtualenv folders if user points include too wide
         if any(part in {".venv", ".venv_zt_validate", ".pytest_cache", "__pycache__"} for part in path.parts):
             continue
