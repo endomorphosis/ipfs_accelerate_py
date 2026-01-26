@@ -48,6 +48,7 @@ PIP_PREFER_BINARY="${PIP_PREFER_BINARY:-1}"                 # 1 => pass --prefer
 PIP_RETRIES="${PIP_RETRIES:-5}"                             # pip network retries
 PIP_TIMEOUT="${PIP_TIMEOUT:-60}"                            # pip network timeout (seconds)
 PIP_ARGS="${PIP_ARGS:-}"                                    # additional args appended to pip install (e.g. '--extra-index-url ...')
+PIP_NO_BUILD_ISOLATION="${PIP_NO_BUILD_ISOLATION:-0}"         # 1 => pass --no-build-isolation (useful for wheelhouse-only installs)
 
 # wheel build / from-source flow
 BUILD_WHEELS="${BUILD_WHEELS:-0}"                            # 1 => build wheels into wheelhouse before installing
@@ -123,6 +124,7 @@ Env overrides:
   OFFLINE, FORCE_LOCAL_TOOLS
   PIP_PREFER_BINARY, PIP_RETRIES, PIP_TIMEOUT, PIP_ARGS
   BUILD_WHEELS, USE_WHEELHOUSE, FROM_SOURCE, FROM_SOURCE_STRICT, PIP_NO_BINARY_ALL, WHEELHOUSE_DIR, REBUILD_WHEELS
+  PIP_NO_BUILD_ISOLATION
   INSTALL_TEST_DEPS, INSTALL_HEAVY_TEST_DEPS
   INSTALL_TOOL_GH, INSTALL_TOOL_IPFS, INSTALL_TOOL_JQ, INSTALL_TOOL_YQ
   GH_VERSION, KUBO_VERSION, JQ_VERSION, YQ_VERSION ("latest" or explicit version)
@@ -240,6 +242,12 @@ apply_profile_defaults() {
     PIP_PREFER_BINARY=0
     BUILD_WHEELS=1
     USE_WHEELHOUSE=1
+  fi
+
+  # Wheelhouse-only installs should avoid build isolation, since it would try to
+  # download build requirements (setuptools/wheel/etc) from the index.
+  if [[ "$USE_WHEELHOUSE" == "1" ]]; then
+    PIP_NO_BUILD_ISOLATION=1
   fi
 }
 
@@ -447,6 +455,10 @@ pip_install_with_common_args() {
     cmd+=("${extra[@]}")
   fi
 
+  if [[ "$PIP_NO_BUILD_ISOLATION" == "1" ]]; then
+    cmd+=(--no-build-isolation)
+  fi
+
   if [[ "$PIP_NO_BINARY_ALL" == "1" ]]; then
     cmd+=(--no-binary :all:)
   fi
@@ -458,6 +470,58 @@ pip_install_with_common_args() {
 
   cmd+=("$@")
   "${cmd[@]}"
+}
+
+pip_install_requirements_wheelhouse_aware() {
+  local venv_dir="$1" requirements_file="$2"
+
+  # Normal path: just install the requirements file.
+  if [[ "$USE_WHEELHOUSE" != "1" ]]; then
+    pip_install_with_common_args "$venv_dir" -r "$requirements_file"
+    return 0
+  fi
+
+  # Wheelhouse-only mode cannot satisfy VCS requirements (git+) without hitting
+  # the network and/or build isolation. We build those wheels ahead of time into
+  # the wheelhouse, then install by distribution name from wheelhouse.
+  local tmp_req vcs_name
+  tmp_req="$(mktemp)"
+  : >"$tmp_req"
+  local -a vcs_pkgs=()
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # strip comments and whitespace
+    line="${line%%#*}"
+    line="${line//$'\r'/}"
+    line="${line##+([[:space:]])}"
+    line="${line%%+([[:space:]])}"
+    [[ -z "$line" ]] && continue
+
+    vcs_name=""
+    if [[ "$line" =~ ^([A-Za-z0-9_.-]+)@\ *git\+ ]]; then
+      vcs_name="${BASH_REMATCH[1]}"
+    elif [[ "$line" == git+* && "$line" == *"#egg="* ]]; then
+      vcs_name="${line##*#egg=}"
+      vcs_name="${vcs_name%%&*}"
+    fi
+
+    if [[ -n "$vcs_name" ]]; then
+      vcs_pkgs+=("$vcs_name")
+    else
+      echo "$line" >>"$tmp_req"
+    fi
+  done <"$requirements_file"
+
+  if [[ -s "$tmp_req" ]]; then
+    pip_install_with_common_args "$venv_dir" -r "$tmp_req"
+  fi
+
+  rm -f "$tmp_req"
+
+  if [[ ${#vcs_pkgs[@]} -gt 0 ]]; then
+    log "Wheelhouse mode: installing VCS deps from wheelhouse: ${vcs_pkgs[*]}"
+    pip_install_with_common_args "$venv_dir" "${vcs_pkgs[@]}"
+  fi
 }
 
 pip_wheel_with_common_args() {
@@ -620,7 +684,7 @@ pip_install() {
   local requirements_file="$2"
   if [[ -f "$requirements_file" ]]; then
     log "Installing Python deps from $(relpath_or_self "$requirements_file")"
-    pip_install_with_common_args "$venv_dir" -r "$requirements_file"
+    pip_install_requirements_wheelhouse_aware "$venv_dir" "$requirements_file"
   else
     warn "Requirements file missing: $requirements_file"
   fi
