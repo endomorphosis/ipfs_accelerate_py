@@ -780,8 +780,6 @@ async def run_webgpu_inference(model_name: str, input_data: Any, model_type: str
     return await platform.run_inference(model_name, input_data, model_type)
 
 if __name__ == "__main__":
-    import asyncio
-    
     async def main():
         # Create WebGPU platform
         platform = create_webgpu_platform(simulation=True)
@@ -817,4 +815,4 @@ if __name__ == "__main__":
             print("WebGPU is not available")
     
     # Run main function
-    anyio.run(main())
+    anyio.run(main)

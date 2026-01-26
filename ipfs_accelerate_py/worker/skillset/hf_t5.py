@@ -3,6 +3,7 @@ import sys
 import os
 import time
 import anyio
+from ..anyio_queue import AnyioQueue
 from pathlib import Path
 
 class hf_t5:
@@ -60,7 +61,7 @@ class hf_t5:
             cpu_label: Label for CPU endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         print(f"Loading {model} for CPU inference...")
@@ -170,7 +171,7 @@ class hf_t5:
                 endpoint
             )
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(16), 1
             
         except Exception as e:
             print(f"Error initializing CPU model: {e}")
@@ -185,7 +186,7 @@ class hf_t5:
             qualcomm_label: Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -231,7 +232,7 @@ class hf_t5:
             # Create endpoint handler
             endpoint_handler = self.create_qualcomm_t5_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(16), 1
         except Exception as e:
             print(f"Error initializing Qualcomm T5 model: {e}")
             return None, None, None, None, 0
@@ -280,7 +281,7 @@ class hf_t5:
             
             endpoint_handler = self.create_apple_text_generation_endpoint_handler(endpoint, tokenizer, model, apple_label)
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon T5 model: {e}")
             return None, None, None, None, 0
@@ -316,7 +317,7 @@ class hf_t5:
             cuda_label: Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -488,7 +489,7 @@ class hf_t5:
             # Clean up GPU memory
             self.torch.cuda.empty_cache()
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), batch_size
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(16), batch_size
             
         except Exception as e:
             print(f"Error initializing CUDA model: {e}")
@@ -516,7 +517,7 @@ class hf_t5:
             openvino_cli_convert: Function to convert model with CLI
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -604,7 +605,7 @@ class hf_t5:
             )
             
             batch_size = 0
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(64), batch_size
         
         except Exception as e:
             print(f"Error initializing T5 for OpenVINO: {e}")

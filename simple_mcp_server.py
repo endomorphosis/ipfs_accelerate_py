@@ -161,14 +161,4 @@ async def main():
         )
 
 if __name__ == "__main__":
-    # Handle the case where asyncio loop might already be running
-    try:
-        anyio.run(main())
-    except RuntimeError as e:
-        if "anyio.run() cannot be called from a running event loop" in str(e):
-            # If we're in a running loop, just run the coroutine directly
-            import asyncio
-            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-            loop.create_task(main())
-        else:
-            raise
+    anyio.run(main)

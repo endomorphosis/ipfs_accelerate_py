@@ -53,7 +53,7 @@ class IPFSKitBridge:
             try:
                 # Get configuration
                 role = self.config.get("role", "leecher")
-                async_backend = self.config.get("async_backend", "asyncio")
+                async_backend = self.config.get("async_backend", "anyio")
 
                 # Initialize the API
                 self.ipfs_api = IPFSSimpleAPI(role=role, async_backend=async_backend)

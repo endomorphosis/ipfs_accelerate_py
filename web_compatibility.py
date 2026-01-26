@@ -28,13 +28,9 @@ class WebInterfaceCompatibility:
     @staticmethod
     def _apply_python312_fixes():
         """Apply Python 3.12 specific compatibility fixes"""
-        # Ensure proper error handling for async operations
-        import asyncio
-        
-        # Fix for potential asyncio changes
-        if not hasattr(asyncio, 'coroutine'):
-            # asyncio.coroutine was removed, ensure we use async def
-            pass
+        # Python 3.12 removed some deprecated async helpers; this project uses AnyIO.
+        # Keep this hook for future compatibility adjustments.
+        pass
     
     @staticmethod
     def get_safe_server_config() -> Dict[str, Any]:
@@ -49,7 +45,8 @@ class WebInterfaceCompatibility:
         
         # Python 3.12 specific adjustments
         if sys.version_info >= (3, 12):
-            config["loop"] = "asyncio"  # Explicit loop specification
+            # Prefer automatic loop selection for broad compatibility.
+            config["loop"] = "auto"
             
         return config
 

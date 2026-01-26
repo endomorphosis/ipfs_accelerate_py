@@ -3,6 +3,7 @@ import anyio
 import time
 import json
 from typing import Dict, Any, List, Optional, Union, Tuple
+from ..anyio_queue import AnyioQueue
 
 class hf_{model_type}:
     """HuggingFace {model_type_upper} protein folding/biological sequence model implementation.
@@ -234,14 +235,12 @@ class hf_{model_type}:
                 tokenizer=tokenizer
             )
             
-            import asyncio
             print(f"(MOCK) Created mock {model_type_upper} endpoint for {model_name} on {device_label}")
-            return endpoint, tokenizer, mock_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, tokenizer, mock_handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error creating mock endpoint: {e}")
-            import asyncio
-            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return None, None, None, AnyioQueue(32), 0
     
     def init(self):        
         if "torch" not in list(self.resources.keys()):
@@ -341,7 +340,7 @@ class hf_{model_type}:
             cpu_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -388,7 +387,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, cpu_label, tokenizer)
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing CPU endpoint: {e}")
@@ -404,7 +403,7 @@ class hf_{model_type}:
             cuda_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -457,7 +456,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, cuda_label, tokenizer)
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing CUDA endpoint: {e}")
@@ -473,7 +472,7 @@ class hf_{model_type}:
             rocm_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -566,7 +565,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, rocm_label, tokenizer)
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing ROCm endpoint: {e}")
@@ -582,7 +581,7 @@ class hf_{model_type}:
             openvino_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -633,7 +632,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, openvino_label, tokenizer)
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing OpenVINO endpoint: {e}")
@@ -649,7 +648,7 @@ class hf_{model_type}:
             apple_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -704,7 +703,7 @@ class hf_{model_type}:
             # Test the endpoint
             self.__test__(model_name, handler, apple_label, tokenizer)
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing Apple Silicon endpoint: {e}")
@@ -720,7 +719,7 @@ class hf_{model_type}:
             qualcomm_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         

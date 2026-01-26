@@ -465,7 +465,6 @@ def register_files_tools(mcp: FastMCP) -> None:
 
 if __name__ == "__main__":
     # This can be used for standalone testing
-    import asyncio
     import os
     import sys
     # Add parent directory to path
@@ -477,4 +476,4 @@ if __name__ == "__main__":
         register_files_tools(mcp)
         # Implement test code here if needed
     
-    anyio.run(test_tools())
+    anyio.run(test_tools)

@@ -1,6 +1,7 @@
 import os
 import time
 import anyio
+from ..anyio_queue import AnyioQueue
 import requests
 import io
 from pathlib import Path
@@ -369,7 +370,7 @@ class hf_clap:
             # Create endpoint handler
             endpoint_handler = self.create_qualcomm_audio_embedding_endpoint_handler(endpoint, processor, model, qualcomm_label)
             
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(32), 0
         except Exception as e:
             print(f"Error initializing Qualcomm CLAP model: {e}")
             return None, None, None, None, 0
@@ -459,7 +460,7 @@ class hf_clap:
             cpu_label: Label for CPU endpoint
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         # Ensure dependencies are loaded
         self.init()
@@ -620,7 +621,7 @@ class hf_clap:
             )
             
             print(f"Initialized CPU CLAP model ({implementation_type})")
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error in CPU initialization: {e}")
@@ -634,7 +635,7 @@ class hf_clap:
                 cpu_label
             )
             print("(MOCK) Initialized CPU CLAP model with mock components")
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(32), 0
 
     def init_cuda(self, model, device, cuda_label):
         self.init()
@@ -650,7 +651,7 @@ class hf_clap:
         endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0    
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(64), 0    
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
         """Initialize CLAP model for OpenVINO inference.
@@ -666,7 +667,7 @@ class hf_clap:
             openvino_cli_convert: Function to convert the model with CLI
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         # Import OpenVINO if needed
@@ -1000,7 +1001,7 @@ class hf_clap:
             )
             
             print(f"Successfully initialized OpenVINO CLAP model")
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(64), 0
             
         except Exception as e:
             print(f"Error in OpenVINO initialization: {e}")
@@ -1052,7 +1053,7 @@ class hf_clap:
             
             endpoint_handler = self.create_apple_audio_embedding_endpoint_handler(endpoint, processor, model, apple_label)
             
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon CLAP model: {e}")
             return None, None, None, None, 0

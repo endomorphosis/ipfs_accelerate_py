@@ -18,6 +18,7 @@ import time
 import anyio
 import logging
 import argparse
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
 
@@ -84,17 +85,15 @@ async def run_real_precision_test(
     logger.info(f"Running command: {' '.join(cmd)}")
     
     try:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+        result = await anyio.run_process(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
         
-        stdout, stderr = await process.communicate()
-        
         # Process output
-        stdout_str = stdout.decode() if stdout else ""
-        stderr_str = stderr.decode() if stderr else ""
+        stdout_str = result.stdout.decode() if result.stdout else ""
+        stderr_str = result.stderr.decode() if result.stderr else ""
         
         # Extract metrics from output
         metrics = extract_metrics_from_output(stdout_str, platform, bits)
@@ -110,8 +109,8 @@ async def run_real_precision_test(
                 logger.info(stderr_str)
         
         # Check process return code
-        if process.returncode != 0:
-            logger.error(f"Test failed with return code {process.returncode}")
+        if result.returncode != 0:
+            logger.error(f"Test failed with return code {result.returncode}")
             logger.error(f"Error: {stderr_str}")
             metrics["status"] = "failed"
         else:

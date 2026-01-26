@@ -294,7 +294,7 @@ class hf_llava:
             cpu_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -338,7 +338,7 @@ class hf_llava:
             qualcomm_label: Label to identify this endpoint ("qualcomm:0", etc.)
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -411,7 +411,7 @@ class hf_llava:
             cuda_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -627,7 +627,7 @@ class hf_llava:
             openvino_cli_convert: Function to convert model with CLI
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -728,7 +728,7 @@ class hf_llava:
             apple_label (str): Label to identify this endpoint ("apple:0", "apple:CPU_AND_GPU", etc.)
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         

@@ -243,11 +243,33 @@ class TemplateComposer:
                          pipeline_template: BasePipelineTemplate) -> str:
         """Generate import statements."""
         imports = "#!/usr/bin/env python3\n"
-        imports += "import asyncio\n"
+        imports += "import anyio\n"
         imports += "import os\n"
         imports += "import json\n"
         imports += "import time\n"
         imports += "from typing import Dict, List, Any, Tuple, Optional, Union\n\n"
+
+        imports += """
+class AnyioQueue:
+    def __init__(self, maxsize: int = 0):
+        self._send_stream, self._receive_stream = anyio.create_memory_object_stream(maxsize)
+
+    async def put(self, item):
+        await self._send_stream.send(item)
+
+    async def get(self):
+        return await self._receive_stream.receive()
+
+    def put_nowait(self, item):
+        self._send_stream.send_nowait(item)
+
+    def get_nowait(self):
+        return self._receive_stream.receive_nowait()
+
+    def close(self):
+        self._send_stream.close()
+        self._receive_stream.close()
+"""
         
         # Add architecture-specific imports
         
@@ -408,7 +430,7 @@ class TemplateComposer:
             {hw_type}_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         \"\"\"
         self.init()
         
@@ -447,7 +469,7 @@ class TemplateComposer:
             # Test the endpoint
             self.__test__(model_name, handler, {hw_type}_label, tokenizer)
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing {hw_name} endpoint: {{e}}")
@@ -614,12 +636,10 @@ class TemplateComposer:
                 tokenizer=tokenizer
             )
             
-            import asyncio
             print(f"(MOCK) Created mock {model_name.upper()} endpoint for {{model_name}} on {{device_label}}")
-            return endpoint, tokenizer, mock_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, tokenizer, mock_handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error creating mock endpoint: {{e}}")
-            import asyncio
-            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0"""
+            return None, None, None, AnyioQueue(32), 0"""
         return mock_impl

@@ -9,7 +9,7 @@ T = TypeVar("T")
 
 
 class AnyioQueue(Generic[T]):
-    """A small asyncio.Queue-like adapter backed by AnyIO.
+    """A small queue-like adapter backed by AnyIO.
 
     This is intentionally minimal; it supports the subset used across this repo:
     `put`, `put_nowait`, `get`, `get_nowait`, `qsize`, `empty`, and `task_done`.
@@ -55,7 +55,7 @@ class AnyioQueue(Generic[T]):
         return self._size <= 0
 
     def task_done(self) -> None:
-        # Provided for compatibility with asyncio.Queue.
+        # Provided for compatibility with queue-like interfaces.
         return None
 
     async def aclose(self) -> None:

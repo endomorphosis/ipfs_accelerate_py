@@ -234,7 +234,7 @@ class hf_bert:
             cpu_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -312,7 +312,7 @@ class hf_bert:
             cuda_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -479,7 +479,7 @@ class hf_bert:
             openvino_cli_convert: Function to convert model to OpenVINO format
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         print(f"Loading {model_name} for OpenVINO inference...")
@@ -619,7 +619,7 @@ class hf_bert:
             apple_label: Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         try:
@@ -660,7 +660,7 @@ class hf_bert:
             qualcomm_label: Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         

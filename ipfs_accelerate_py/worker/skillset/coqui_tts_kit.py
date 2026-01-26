@@ -9,6 +9,7 @@ import torchvision
 from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
 import torch 
 import anyio
+from ..anyio_queue import AnyioQueue
 import openvino as ov
 from pathlib import Path
 import numpy as np
@@ -49,7 +50,7 @@ class coqui_tts_kit:
         endpoint_handler = self.create_image_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
         endpoint = None
@@ -60,7 +61,7 @@ class coqui_tts_kit:
         endpoint = get_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(endpoint,tokenizer, model, openvino_label)
         batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size
+        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(64), batch_size
 
     def create_cpu_fish_speech_endpoint_handler(self, local_cpu_endpoint, local_cpu_processor, endpoint_model, cpu_label):
         def handler(x, y=None, local_cpu_endpoint=local_cpu_endpoint, local_cpu_processor=local_cpu_processor, endpoint_model=endpoint_model, cpu_label=cpu_label):

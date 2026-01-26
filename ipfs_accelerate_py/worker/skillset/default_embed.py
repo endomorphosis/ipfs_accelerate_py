@@ -1,4 +1,5 @@
 import anyio
+from ..anyio_queue import AnyioQueue
 import os
 import json
 import time
@@ -111,7 +112,6 @@ class hf_embed:
         if not using_mock:
             try:
                 import os
-                import asyncio
                 import traceback
                 
                 # Load tokenizer directly from HuggingFace with error handling
@@ -265,7 +265,7 @@ class hf_embed:
         implementation_type = "MOCK" if using_mock else "REAL"
         print(f"Initialized Qualcomm embedding model with implementation type: {implementation_type}")
         
-        return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+        return endpoint, tokenizer, endpoint_handler, AnyioQueue(64), 0
 
     def init_cpu(self, model, device, cpu_label):
         """
@@ -277,7 +277,7 @@ class hf_embed:
             cpu_label: Label for CPU endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         print(f"Loading {model} for CPU inference...")
@@ -387,7 +387,7 @@ class hf_embed:
                 tokenizer=tokenizer
             )
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing CPU embedding model: {e}")
@@ -406,7 +406,7 @@ class hf_embed:
             cuda_label: Label for the CUDA endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         print(f"Loading {model} for CUDA inference...")
@@ -703,7 +703,7 @@ class hf_embed:
                 print("✅ Using REAL implementation for CUDA")
                 
             print(f"CUDA initialization complete with implementation type: {implementation_type}")
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(64), batch_size
             
         except Exception as e:
             print(f"Error initializing CUDA model: {e}")
@@ -737,7 +737,7 @@ class hf_embed:
             openvino_cli_convert: Function to convert model to OpenVINO format
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         print(f"Loading {model_name} for OpenVINO inference...")
@@ -1197,7 +1197,7 @@ class hf_embed:
                 endpoint
             )
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(64), 0
             
         except Exception as e:
             print(f"Error initializing OpenVINO model: {e}")

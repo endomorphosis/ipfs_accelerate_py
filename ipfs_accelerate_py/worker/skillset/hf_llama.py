@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import time
 import anyio
+from ..anyio_queue import AnyioQueue
 import torch
 import numpy as np
 from unittest.mock import MagicMock
@@ -123,7 +124,7 @@ class hf_llama:
             
             # Create the handler
             endpoint_handler = self.create_cpu_llama_endpoint_handler(tokenizer, model, cpu_label, endpoint)
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(16), 1
         except Exception as e:
             print(f"Error initializing CPU model: {e}")
             return None, None, None, None, 0
@@ -172,7 +173,7 @@ class hf_llama:
             
             endpoint_handler = self.create_apple_text_generation_endpoint_handler(endpoint, tokenizer, model, apple_label)
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon LLaMA model: {e}")
             return None, None, None, None, 0
@@ -353,7 +354,7 @@ class hf_llama:
             if hasattr(self.torch.cuda, 'empty_cache'):
                 self.torch.cuda.empty_cache()
                 
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), batch_size if is_real_impl else 1
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(16), batch_size if is_real_impl else 1
             
         except Exception as e:
             print(f"Error in CUDA initialization: {e}")
@@ -499,7 +500,7 @@ class hf_llama:
                 endpoint
             )
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(64), 0
         
         except Exception as e:
             print(f"Error in OpenVINO initialization: {e}")
@@ -548,7 +549,7 @@ class hf_llama:
                     tokenizer, model, qualcomm_label, endpoint
                 )
                 
-                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
+                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(16), 1
             
             # Try real initialization
             try:
@@ -590,7 +591,7 @@ class hf_llama:
                     tokenizer, model, qualcomm_label, endpoint
                 )
                 
-                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
+                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(16), 1
                 
             except (ImportError, Exception) as e:
                 print(f"Error initializing real Qualcomm model: {e}")
@@ -612,7 +613,7 @@ class hf_llama:
                     tokenizer, model, qualcomm_label, endpoint
                 )
                 
-                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
+                return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(16), 1
                 
         except Exception as e:
             print(f"Critical error initializing Qualcomm LLaMA model: {e}")

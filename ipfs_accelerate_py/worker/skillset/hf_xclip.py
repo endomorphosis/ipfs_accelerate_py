@@ -121,7 +121,7 @@ class hf_xclip:
             qualcomm_label: Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -257,7 +257,7 @@ class hf_xclip:
             cpu_label: Label for this CPU endpoint
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -442,7 +442,7 @@ class hf_xclip:
             cuda_label: Label for this CUDA endpoint
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -554,7 +554,7 @@ class hf_xclip:
             openvino_cli_convert: Function to convert model using CLI
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         

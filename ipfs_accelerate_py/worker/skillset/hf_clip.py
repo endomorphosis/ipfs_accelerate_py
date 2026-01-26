@@ -225,7 +225,7 @@ class hf_clip:
             cpu_label: Label for CPU endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         print(f"Loading {model} for CPU inference...")
@@ -378,7 +378,7 @@ class hf_clip:
             qualcomm_label: Label for the Qualcomm hardware (e.g., 'qualcomm:0')
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
             If initialization fails, returns (None, None, None, None, 0)
         """
         # Ensure base dependencies are loaded
@@ -586,7 +586,7 @@ class hf_clip:
             cuda_label: CUDA device label (e.g., 'cuda:0')
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         print(f"Initializing CLIP model {model} for CUDA inference...")
@@ -726,7 +726,7 @@ class hf_clip:
             openvino_cli_convert: Function to convert model using CLI
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         

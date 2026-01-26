@@ -4,6 +4,7 @@ import io
 import json
 import time
 import anyio
+from ..anyio_queue import AnyioQueue
 import requests
 import gc
 from pydub import AudioSegment
@@ -209,7 +210,7 @@ class hf_wav2vec2:
             cpu_label: Label for this CPU endpoint
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         endpoint = None
@@ -320,7 +321,7 @@ class hf_wav2vec2:
             endpoint, processor, model, cpu_label
         )
         
-        return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+        return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
         
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         """Initialize Wav2Vec2 model for OpenVINO.
@@ -336,7 +337,7 @@ class hf_wav2vec2:
             openvino_cli_convert: Function to convert model via CLI
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -355,7 +356,7 @@ class hf_wav2vec2:
             endpoint_handler = self.create_openvino_transcription_endpoint_handler(
                 endpoint, processor, model, openvino_label
             )
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
             
         # Store the convert function
         self.openvino_cli_convert = openvino_cli_convert
@@ -496,7 +497,7 @@ class hf_wav2vec2:
             endpoint, processor, model, openvino_label
         )
         
-        return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+        return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
             
         try:
             # Load processor from HuggingFace
@@ -532,7 +533,7 @@ class hf_wav2vec2:
             if not hasattr(self, 'create_apple_transcription_endpoint_handler'):
                 self.create_apple_transcription_endpoint_handler = self.create_apple_audio_recognition_endpoint_handler
             
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon Wav2Vec2 model: {e}")
             return None, None, None, None, 0
@@ -695,7 +696,7 @@ class hf_wav2vec2:
             qualcomm_label: Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, processor, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -731,7 +732,7 @@ class hf_wav2vec2:
             endpoint_handler = self.create_qualcomm_transcription_endpoint_handler(
                 dummy_processor, model, qualcomm_label, dummy_endpoint
             )
-            return dummy_endpoint, dummy_processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return dummy_endpoint, dummy_processor, endpoint_handler, AnyioQueue(32), 0
             
         if not self.snpe_utils.is_available():
             print("Qualcomm SNPE is not available on this system")
@@ -742,7 +743,7 @@ class hf_wav2vec2:
             endpoint_handler = self.create_qualcomm_transcription_endpoint_handler(
                 dummy_processor, model, qualcomm_label, dummy_endpoint
             )
-            return dummy_endpoint, dummy_processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return dummy_endpoint, dummy_processor, endpoint_handler, AnyioQueue(32), 0
             
         try:
             # Initialize processor directly from HuggingFace
@@ -806,7 +807,7 @@ class hf_wav2vec2:
                 processor, model, qualcomm_label, endpoint
             )
             
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing Qualcomm Wav2Vec2 model: {e}")
@@ -819,7 +820,7 @@ class hf_wav2vec2:
                 dummy_processor, model, qualcomm_label, None
             )
             
-            return dummy_endpoint, dummy_processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return dummy_endpoint, dummy_processor, endpoint_handler, AnyioQueue(32), 0
     
     def create_cpu_wav2vec2_endpoint_handler(self, processor, endpoint_model, cpu_label, endpoint):
         """Creates a CPU handler for Wav2Vec2 embedding extraction.

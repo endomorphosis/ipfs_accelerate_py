@@ -21,6 +21,17 @@ import numpy as np
 from typing import List, Dict, Union, Any, Optional, Tuple
 
 
+class AnyioQueue:
+    def __init__(self, maxsize: int = 0):
+        self._send, self._recv = anyio.create_memory_object_stream(maxsize)
+
+    async def put(self, item: Any) -> None:
+        await self._send.send(item)
+
+    async def get(self) -> Any:
+        return await self._recv.receive()
+
+
 
 class hf_rag:
     """HuggingFace Retrieval-Augmented Generation Architecture implementation for RAG-TOKEN.
@@ -433,14 +444,12 @@ def format_context_from_documents(documents, max_length=1024, separator="\n\n"):
                 tokenizer=tokenizer
             )
             
-            import asyncio
             print(f"(MOCK) Created mock RAG-TOKEN endpoint for {model_name} on {device_label}")
-            return endpoint, tokenizer, mock_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, tokenizer, mock_handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error creating mock endpoint: {e}")
-            import asyncio
-            return None, None, None, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return None, None, None, AnyioQueue(32), 0
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         """Test function to validate endpoint functionality.
@@ -494,7 +503,7 @@ def format_context_from_documents(documents, max_length=1024, separator="\n\n"):
             cpu_label (str): Label to identify this endpoint
             
         Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+            Tuple of (endpoint, tokenizer, endpoint_handler, AnyioQueue, batch_size)
         """
         self.init()
         
@@ -546,7 +555,7 @@ model.eval()
             # Test the endpoint
             self.__test__(model_name, handler, cpu_label, tokenizer)
             
-            return model, tokenizer, handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return model, tokenizer, handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing CPU endpoint: {e}")
