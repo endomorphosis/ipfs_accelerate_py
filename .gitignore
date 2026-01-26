@@ -24,6 +24,7 @@ wheelhouse/
 __pycache__/
 .locks
 model_cache/
+wheelhouse/
 model_cache/*
 *_results_*
 *.env*
