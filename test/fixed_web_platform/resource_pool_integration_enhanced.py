@@ -207,6 +207,7 @@ class EnhancedResourcePoolIntegration:
         
         # Setup health monitoring if enabled
         self.health_monitor_task = None
+        self.health_monitor_task_group = None
         self.health_monitor_running = False
         
         logger.info(f"EnhancedResourcePoolIntegration initialized with max_connections={max_connections}, "
@@ -373,7 +374,7 @@ class EnhancedResourcePoolIntegration:
             
             # Start health monitoring if enabled
             if self.enable_health_monitoring:
-                self._start_health_monitoring()
+                await self._start_health_monitoring()
             
             # Record metrics
             self.metrics["telemetry"]["startup_time"] = time.time() - start_time
@@ -387,7 +388,7 @@ class EnhancedResourcePoolIntegration:
             traceback.print_exc()
             return False
     
-    def _start_health_monitoring(self):
+    async def _start_health_monitoring(self):
         """Start periodic health monitoring"""
         if self.health_monitor_running:
             return
@@ -420,8 +421,9 @@ class EnhancedResourcePoolIntegration:
                 await anyio.sleep(30)  # Check every 30 seconds
         
         # Start health monitoring task
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-        self.health_monitor_task = # TODO: Replace with task group - asyncio.create_task(health_monitor_loop())
+        self.health_monitor_task_group = anyio.create_task_group()
+        await self.health_monitor_task_group.__aenter__()
+        self.health_monitor_task_group.start_soon(health_monitor_loop)
         logger.info("Health monitoring task created")
     
     async def _check_connections_health(self):
@@ -857,9 +859,9 @@ class EnhancedResourcePoolIntegration:
         tasks = []
         for model, inputs in model_and_inputs_list:
             if not model:
-                tasks.append(# TODO: Replace with task group - asyncio.create_task(anyio.sleep(0)))  # Dummy task for None models
+                tasks.append(anyio.sleep(0))  # Dummy task for None models
             else:
-                tasks.append(# TODO: Replace with task group - asyncio.create_task(model(inputs)))
+                tasks.append(model(inputs))
         
         # Wait for all tasks to complete
         results = await gather(*tasks, return_exceptions=True)
@@ -903,12 +905,10 @@ class EnhancedResourcePoolIntegration:
             self.health_monitor_running = False
             
             # Cancel health monitor task
-            if self.health_monitor_task:
-                try:
-                    self.health_monitor_task.cancel()
-                    await anyio.sleep(0.5)  # Give it time to cancel
-                except Exception as e:
-                    logger.error(f"Error canceling health monitor task: {e}")
+            if self.health_monitor_task_group:
+                self.health_monitor_task_group.cancel_scope.cancel()
+                await self.health_monitor_task_group.__aexit__(None, None, None)
+                self.health_monitor_task_group = None
         
         # Close base integration
         if self.base_integration:

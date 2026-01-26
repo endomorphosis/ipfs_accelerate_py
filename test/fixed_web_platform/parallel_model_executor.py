@@ -203,21 +203,21 @@ class ParallelModelExecutor:
                 
                 # Check if we need to scale workers based on workload
                 if self.adaptive_scaling:
-                    self._adapt_worker_count()
+                    await self._adapt_worker_count()
         
         except anyio.get_cancelled_exc_class():
             logger.info("Worker monitor task cancelled")
         except Exception as e:
             logger.error(f"Error in worker monitor: {e}")
     
-    def _adapt_worker_count(self):
+    async def _adapt_worker_count(self):
         """Adapt worker count based on workload and performance metrics."""
         if not self.adaptive_scaling:
             return
         
         try:
             # Get current worker utilization
-            current_workers = self.worker_queue.qsize()
+            current_workers = self.worker_available
             max_workers = self.max_workers
             
             # Check average execution times if available
@@ -234,7 +234,7 @@ class ParallelModelExecutor:
             # 1. Worker queue is empty (all workers are busy)
             # 2. We have room to scale up
             # 3. Average execution time is not too high (possible issue)
-            if (self.worker_queue.qsize() == 0 and 
+            if (self.worker_available == 0 and 
                 current_workers < max_workers and 
                 avg_execution_time < self.execution_timeout * 0.8):
                 scale_up = True
@@ -242,7 +242,7 @@ class ParallelModelExecutor:
             # Scale down if:
             # 1. More than 50% of workers are idle
             # 2. We have more than the minimum workers
-            if (self.worker_queue.qsize() > max_workers * 0.5 and 
+            if (self.worker_available > max_workers * 0.5 and 
                 current_workers > max(1, max_workers * 0.25)):
                 scale_down = True
             
@@ -255,7 +255,8 @@ class ParallelModelExecutor:
                 if workers_to_add > 0:
                     logger.info(f"Scaling up workers: {current_workers} -> {new_worker_count}")
                     for _ in range(workers_to_add):
-                        await self.worker_queue.put(None)
+                        await self.worker_send.send(None)
+                        self.worker_available += 1
             
             elif scale_down:
                 # Remove a worker from the pool
@@ -305,7 +306,7 @@ class ParallelModelExecutor:
         # Automatic batch sizing if not specified
         if batch_size <= 0:
             # Size batch based on available workers and max models per worker
-            available_workers = self.worker_queue.qsize()
+            available_workers = self.worker_available
             batch_size = max(1, min(available_workers * self.max_models_per_worker, len(models_and_inputs)))
             logger.debug(f"Auto-sized batch to {batch_size} (workers: {available_workers}, max per worker: {self.max_models_per_worker})")
         
@@ -330,9 +331,9 @@ class ParallelModelExecutor:
         for batch_idx, batch in enumerate(batches):
             logger.debug(f"Executing batch {batch_idx+1}/{num_batches} with {len(batch)} models")
             
-            # Create futures and tasks for this batch
-            futures = []
+            # Create tasks for this batch
             tasks = []
+            task_model_ids = []
             
             # Group models by family/type for optimal browser selection
             grouped_models = self._group_models_by_family(batch)
@@ -347,55 +348,53 @@ class ParallelModelExecutor:
                 
                 # Process models in this family group
                 for model_id, inputs in family_models:
-                    # Create future for result
-                    future = self.loop.create_future()
-                    futures.append((model_id, future))
-                    
                     # Create task for model execution
-                    task = # TODO: Replace with task group - asyncio.create_task(
+                    tasks.append(
                         self._execute_model_with_resource_pool(
-                            model_id, inputs, family, platform, browser, future
+                            model_id, inputs, family, platform, browser
                         )
                     )
-                    tasks.append(task)
+                    task_model_ids.append(model_id)
             
             # Wait for all tasks to complete with timeout
             try:
-                await asyncio.wait(tasks, timeout=execution_timeout)
-            except asyncio.TimeoutError:
+                results = await wait_for(
+                    gather(*tasks, return_exceptions=True),
+                    timeout=execution_timeout
+                )
+            except TimeoutError:
                 logger.warning(f"Timeout waiting for batch {batch_idx+1}/{num_batches}")
-            
-            # Get results from futures
-            batch_results = []
-            for model_id, future in futures:
-                if future.done():
-                    try:
-                        result = future.result()
-                        batch_results.append(result)
-                        
-                        # Update execution metrics for successful execution
-                        if result.get('success', False):
-                            self.execution_metrics['successful_executions'] += 1
-                        else:
-                            self.execution_metrics['failed_executions'] += 1
-                    except Exception as e:
-                        logger.error(f"Error getting result for model {model_id}: {e}")
-                        batch_results.append({
-                            'success': False, 
-                            'error': str(e), 
-                            'model_id': model_id
-                        })
-                        self.execution_metrics['failed_executions'] += 1
-                else:
-                    # Future not done - timeout
-                    logger.warning(f"Timeout for model {model_id}")
+                batch_results = []
+                for model_id in task_model_ids:
                     batch_results.append({
-                        'success': False, 
-                        'error': 'Execution timeout', 
+                        'success': False,
+                        'error': 'Execution timeout',
                         'model_id': model_id
                     })
-                    future.cancel()  # Cancel the future
-                    self.execution_metrics['timeout_executions'] += 1
+                self.execution_metrics['timeout_executions'] += len(task_model_ids)
+                all_results.extend(batch_results)
+                continue
+
+            # Process results
+            batch_results = []
+            for model_id, result in zip(task_model_ids, results):
+                if isinstance(result, Exception):
+                    logger.error(f"Error getting result for model {model_id}: {result}")
+                    batch_results.append({
+                        'success': False,
+                        'error': str(result),
+                        'model_id': model_id
+                    })
+                    self.execution_metrics['failed_executions'] += 1
+                    continue
+
+                batch_results.append(result)
+
+                # Update execution metrics for successful execution
+                if result.get('success', False):
+                    self.execution_metrics['successful_executions'] += 1
+                else:
+                    self.execution_metrics['failed_executions'] += 1
             
             # Add batch results to overall results
             all_results.extend(batch_results)
@@ -457,8 +456,7 @@ class ParallelModelExecutor:
                                                 inputs: Dict[str, Any],
                                                 family: str,
                                                 platform: str,
-                                                browser: str,
-                                                future: asyncio.Future):
+                                                browser: str) -> Dict[str, Any]:
         """
         Execute a model using resource pool with enhanced error handling.
         
@@ -468,29 +466,25 @@ class ParallelModelExecutor:
             family: Model family/type
             platform: Platform to use (webnn, webgpu)
             browser: Browser to use
-            future: Future to set with result
         """
         # Get worker from queue with timeout
         worker = None
         try:
             # Wait for available worker with timeout
-            worker = await wait_for(self.worker_queue.get(), timeout=10.0)
-        except asyncio.TimeoutError:
+            worker = await wait_for(self.worker_receive.receive(), timeout=10.0)
+            self.worker_available = max(0, self.worker_available - 1)
+        except TimeoutError:
             logger.warning(f"Timeout waiting for worker for model {model_id}")
-            if not future.done():
-                future.set_result({
-                    'success': False,
-                    'error': 'Timeout waiting for worker',
-                    'model_id': model_id
-                })
-            return
+            return {
+                'success': False,
+                'error': 'Timeout waiting for worker',
+                'model_id': model_id
+            }
         
         try:
             # Execute using resource pool integration
             start_time = time.time()
-            
             result = await self._execute_model(model_id, inputs, family, platform, browser)
-            
             execution_time = time.time() - start_time
             
             # Update model-specific execution times
@@ -503,10 +497,30 @@ class ParallelModelExecutor:
             self.execution_metrics['model_execution_times'][model_id] = \
                 self.execution_metrics['model_execution_times'][model_id][-10:]
             
-            # Set future result if not already done
-            if not future.done():
-                future.set_result(result)
-            
+            return result
+        except Exception as e:
+            logger.error(f"Error executing model {model_id}: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'model_id': model_id
+            }
+        finally:
+            # Return worker to queue if available
+            if worker is not None and not self._is_shutting_down:
+                await self.worker_send.send(worker)
+                self.worker_available += 1
+            return {
+                'success': False,
+                'error': str(e),
+                'model_id': model_id
+            }
+        
+        finally:
+            # Return worker to queue if available
+            if worker is not None and not self._is_shutting_down:
+                await self.worker_send.send(worker)
+                self.worker_available += 1
         except Exception as e:
             logger.error(f"Error executing model {model_id}: {e}")
             
@@ -637,14 +651,11 @@ class ParallelModelExecutor:
         # Set shutting down flag
         self._is_shutting_down = True
         
-        # Cancel worker monitor task
-        if self._worker_monitor_task:
-            self._worker_monitor_task.cancel()
-            try:
-                await self._worker_monitor_task
-            except anyio.get_cancelled_exc_class():
-                pass
-            self._worker_monitor_task = None
+        # Cancel worker monitor task group
+        if self.task_group:
+            self.task_group.cancel_scope.cancel()
+            await self.task_group.__aexit__(None, None, None)
+            self.task_group = None
         
         # Close resource pool integration if we created it
         if self.resource_pool_integration and hasattr(self.resource_pool_integration, 'close'):
@@ -744,5 +755,4 @@ async def test_parallel_model_executor():
 
 # Run test if script executed directly
 if __name__ == "__main__":
-    import asyncio
     anyio.run(test_parallel_model_executor())

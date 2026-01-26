@@ -140,9 +140,7 @@ async def test_concurrent_models(integration, model_list):
     tasks = []
     
     for model_name, model, model_config in models:
-        task = # TODO: Replace with task group - asyncio.create_task(
-            model(model_config["input_example"])
-        )
+        task = model(model_config["input_example"])
         tasks.append((model_name, task))
     
     # Wait for all inference tasks
@@ -603,8 +601,6 @@ async def main():
     await integration.initialize()
     
     # Setup signal handlers for graceful shutdown
-    loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-    
     should_exit = False
     
     def shutdown_handler(signum, frame):
