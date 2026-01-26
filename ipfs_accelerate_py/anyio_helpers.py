@@ -19,7 +19,7 @@ T = TypeVar("T")
 async def wait_for(awaitable: Awaitable[T], timeout: float) -> T:
     """Await an awaitable with a timeout.
 
-    This is an AnyIO equivalent of asyncio.wait_for(awaitable, timeout=...).
+    This is an AnyIO equivalent of asyncio.wait_for with a timeout.
     """
     with anyio.fail_after(timeout):
         return await awaitable
@@ -28,7 +28,7 @@ async def wait_for(awaitable: Awaitable[T], timeout: float) -> T:
 async def gather(*awaitables: Awaitable[T], return_exceptions: bool = False) -> List[Any]:
     """Run awaitables concurrently and collect results.
 
-    Similar to asyncio.gather(*aws, return_exceptions=...).
+    Similar to asyncio.gather with optional exception collection.
 
     Notes:
     - When return_exceptions is False, the first exception cancels siblings.
