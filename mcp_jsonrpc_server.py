@@ -505,8 +505,15 @@ class MCPJSONRPCServer:
         
         # Handle batch requests
         if isinstance(request_data, list):
-            tasks = [self._handle_single_request(req) for req in request_data]
-            responses = await # TODO: Replace with task group - asyncio.gather(*tasks, return_exceptions=True)
+            responses: List[Optional[Dict]] = [None] * len(request_data)
+
+            async def _handle_one(i: int, req: Dict) -> None:
+                responses[i] = await self._handle_single_request(req)
+
+            async with anyio.create_task_group() as tg:
+                for i, req in enumerate(request_data):
+                    tg.start_soon(_handle_one, i, req)
+
             return [resp for resp in responses if resp is not None]
         
         # Handle single request

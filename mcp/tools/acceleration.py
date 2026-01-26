@@ -216,13 +216,13 @@ def register_acceleration_tools(mcp: FastMCP) -> None:
             times = []
             for i in range(iterations):
                 await ctx.info(f"Running benchmark iteration {i+1}/{iterations}")
-                start_time = # TODO: Remove event loop management - asyncio.get_event_loop().time()
+                start_time = anyio.current_time()
                 
                 # In a real implementation, we would run the model here
                 # For demonstration, we'll just simulate it
                 await anyio.sleep(0.1)  # Simulate model execution time
                 
-                end_time = # TODO: Remove event loop management - asyncio.get_event_loop().time()
+                end_time = anyio.current_time()
                 times.append(end_time - start_time)
                 await ctx.report_progress(i+1, iterations)
             

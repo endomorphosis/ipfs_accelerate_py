@@ -14,6 +14,8 @@ Supported Model Categories:
 """
 
 import anyio
+import sniffio
+import threading
 import logging
 import os
 import sys
@@ -50,6 +52,41 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("comprehensive_mcp_server")
+
+
+def _run_async_from_sync(async_fn, *args, **kwargs):
+    """Run an async callable from synchronous code.
+
+    - If invoked from an AnyIO worker thread, uses `anyio.from_thread.run`.
+    - If invoked from plain sync code, uses `anyio.run`.
+    - If an async library is running in this thread (e.g. notebooks), runs the
+      call in a dedicated helper thread.
+    """
+    try:
+        return anyio.from_thread.run(async_fn, *args, **kwargs)
+    except RuntimeError:
+        pass
+
+    try:
+        sniffio.current_async_library()
+    except sniffio.AsyncLibraryNotFoundError:
+        return anyio.run(async_fn, *args, **kwargs)
+
+    result = []
+    error = []
+
+    def _thread_main() -> None:
+        try:
+            result.append(anyio.run(async_fn, *args, **kwargs))
+        except BaseException as exc:  # noqa: BLE001
+            error.append(exc)
+
+    t = threading.Thread(target=_thread_main, daemon=True)
+    t.start()
+    t.join()
+    if error:
+        raise error[0]
+    return result[0] if result else None
 
 class ComprehensiveMCPServer:
     """Comprehensive AI Model MCP Server supporting all model types."""
@@ -1230,47 +1267,12 @@ if __name__ == "__main__":
     
     if HAVE_FASTMCP or hasattr(server, 'mcp'):
         try:
-            # Try to get existing event loop
-            try:
-                loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-                if loop.is_running():
-                    # If loop is already running, run in a new thread
-                    import threading
-                    
-                    def run_server():
-                        try:
-                            new_loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-                            # TODO: Remove event loop management - asyncio.set_event_loop(new_loop)
-                            new_loop.run_until_complete(server.run(
-                                transport=args.transport,
-                                host=args.host,
-                                port=args.port
-                            ))
-                        except Exception as e:
-                            logger.error(f"Server thread error: {e}")
-                        finally:
-                            new_loop.close()
-                    
-                    thread = threading.Thread(target=run_server)
-                    thread.start()
-                    thread.join()
-                else:
-                    # Event loop exists but not running
-                    anyio.run(server.run(
-                        transport=args.transport,
-                        host=args.host,
-                        port=args.port
-                    ))
-            except RuntimeError as e:
-                if "no current event loop" in str(e).lower() or "no running event loop" in str(e).lower():
-                    # No event loop, create one
-                    anyio.run(server.run(
-                        transport=args.transport,
-                        host=args.host,
-                        port=args.port
-                    ))
-                else:
-                    raise
+            _run_async_from_sync(
+                server.run,
+                transport=args.transport,
+                host=args.host,
+                port=args.port,
+            )
         except Exception as e:
             logger.error(f"Failed to run server: {e}")
             raise

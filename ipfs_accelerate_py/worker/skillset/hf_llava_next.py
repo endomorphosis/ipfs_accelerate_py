@@ -303,7 +303,7 @@ class hf_llava_next:
                 
                 # Use a queue for batch processing
                 batch_size = 1  # LLaVA models are memory-intensive, start with small batch
-                queue = # TODO: Replace with anyio.create_memory_object_stream - AnyioQueue(32)
+                queue = AnyioQueue(32)
                 
                 return model, processor, handler, queue, batch_size
                 

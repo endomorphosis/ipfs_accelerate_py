@@ -59,7 +59,7 @@ metadata = {
     "role": "leecher",  # Role is part of metadata
     # IPFS kit configuration in metadata
     "ipfs_kit": {
-        "async_backend": "asyncio",
+        "async_backend": "anyio",
         "num_workers": 4
     }
 }
