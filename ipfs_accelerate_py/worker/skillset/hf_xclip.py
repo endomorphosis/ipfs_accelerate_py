@@ -1,5 +1,6 @@
 import time
 import anyio
+from ..anyio_queue import AnyioQueue
 import os
 from PIL import Image
 import requests
@@ -166,7 +167,7 @@ class hf_xclip:
             # Create endpoint handler
             endpoint_handler = self.create_qualcomm_xclip_endpoint_handler(processor, model, qualcomm_label, endpoint)
             
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
         except Exception as e:
             print(f"Error initializing Qualcomm XClip model: {e}")
             return None, None, None, None, 0
@@ -215,7 +216,7 @@ class hf_xclip:
             
             endpoint_handler = self.create_apple_multimodal_endpoint_handler(endpoint, processor, model, apple_label)
             
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon XClip model: {e}")
             return None, None, None, None, 0
@@ -355,7 +356,7 @@ class hf_xclip:
                     
                     # Return all components needed for inference
                     print(f"Successfully initialized real XCLIP model for CPU")
-                    return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+                    return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
                 else:
                     print("Missing processor or endpoint for real implementation")
                     # Continue to mock implementation
@@ -413,7 +414,7 @@ class hf_xclip:
             )
             
             print("Successfully initialized mock XCLIP model for CPU")
-            return mock_endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return mock_endpoint, processor, endpoint_handler, AnyioQueue(64), 0
             
         except Exception as mock_error:
             print(f"Error creating mock implementation: {mock_error}")
@@ -430,7 +431,7 @@ class hf_xclip:
                 endpoint=mock_endpoint
             )
             
-            return mock_endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return mock_endpoint, processor, endpoint_handler, AnyioQueue(64), 0
     
     def init_cuda(self, model, device, cuda_label):
         """Initialize XCLIP model for CUDA/GPU.
@@ -480,7 +481,7 @@ class hf_xclip:
                     endpoint_model=model,
                     cuda_label=cuda_label
                 )
-                return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+                return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
             
             # Try to load the model components
             try:    
@@ -526,7 +527,7 @@ class hf_xclip:
             if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
                 self.torch.cuda.empty_cache()
             
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
             
         except Exception as e:
             print(f"Error initializing CUDA model: {e}")
@@ -537,7 +538,7 @@ class hf_xclip:
                 endpoint_model=model,
                 cuda_label=cuda_label
             )
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0    
+            return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         """Initialize XClip model for OpenVINO.
@@ -595,7 +596,7 @@ class hf_xclip:
                         endpoint_model=model,
                         openvino_label=openvino_label
                     )
-                    return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+                    return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
         except Exception as e:
             print(f"Error setting up OpenVINO: {e}")
             processor, endpoint = create_dummy_components()
@@ -605,7 +606,7 @@ class hf_xclip:
                 endpoint_model=model,
                 openvino_label=openvino_label
             )
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
         
         # Create dummy components that we'll use if any part of initialization fails
         dummy_processor, dummy_endpoint = create_dummy_components()
@@ -759,7 +760,7 @@ class hf_xclip:
             )
             
             # Return initialized components - always return success even with dummy components
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
             
         except Exception as e:
             print(f"Error in OpenVINO initialization: {e}")
@@ -770,7 +771,7 @@ class hf_xclip:
                 endpoint_model=model,
                 openvino_label=openvino_label
             )
-            return dummy_endpoint, dummy_processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0              
+            return dummy_endpoint, dummy_processor, endpoint_handler, AnyioQueue(64), 0
     
     def create_cpu_video_embedding_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint=None):
         def handler(text=None, frames=None, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=endpoint):

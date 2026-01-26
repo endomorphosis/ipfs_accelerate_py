@@ -2,6 +2,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 import anyio
+from ..anyio_queue import AnyioQueue
 from pathlib import Path
 import json
 import time
@@ -229,7 +230,7 @@ class hf_llava:
             return f"(MOCK) LLaVA response [timestamp: {timestamp}]: This is a mock response. I was asked to analyze an image {image_info} with prompt: '{text}'"
         
         print(f"Created mock LLaVA endpoint for {model_name} on {device_label}")
-        return endpoint, processor, mock_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+        return endpoint, processor, mock_handler, AnyioQueue(64), 0
     
     
     def init(self):        
@@ -321,7 +322,7 @@ class hf_llava:
                 self.torch.cuda.empty_cache()
                 
             print(f"Successfully initialized LLaVA model '{model_name}' on CPU")
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
             
         except Exception as e:
             print(f"Error initializing LLaVA model on CPU: {e}")
@@ -395,7 +396,7 @@ class hf_llava:
             )
             
             print(f"Successfully initialized LLaVA model '{model_name}' on Qualcomm device {qualcomm_label}")
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), 1
+            return endpoint, processor, endpoint_handler, AnyioQueue(16), 1
             
         except Exception as e:
             print(f"Error initializing Qualcomm LLaVA model: {e}")
@@ -600,7 +601,7 @@ class hf_llava:
             if hasattr(self.torch.cuda, 'empty_cache'):
                 self.torch.cuda.empty_cache()
                 
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(16), batch_size if is_real_impl else 1
+            return endpoint, processor, endpoint_handler, AnyioQueue(16), batch_size if is_real_impl else 1
             
         except Exception as e:
             print(f"Error in CUDA initialization: {e}")
@@ -712,7 +713,7 @@ class hf_llava:
             )
             
             print(f"Successfully initialized LLaVA model '{model_name}' on OpenVINO device {openvino_label}")
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
             
         except Exception as e:
             print(f"Error initializing OpenVINO LLaVA model: {e}")
@@ -785,7 +786,7 @@ class hf_llava:
             )
             
             print(f"Successfully initialized LLaVA model '{model_name}' on Apple Silicon {apple_label}")
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
             
         except Exception as e:
             print(f"Error initializing Apple Silicon LLaVA model: {e}")

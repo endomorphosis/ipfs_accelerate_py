@@ -1,5 +1,6 @@
 import time
 import anyio
+from ..anyio_queue import AnyioQueue
 from PIL import Image
 import requests
 from io import BytesIO
@@ -361,7 +362,7 @@ class hf_clip:
                 endpoint
             )
             
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(64), 0
             
         except Exception as e:
             print(f"Error initializing CPU model: {e}")
@@ -451,7 +452,7 @@ class hf_clip:
                 endpoint_handler = self.create_qualcomm_image_embedding_endpoint_handler(
                     processor, processor, model, qualcomm_label, endpoint
                 )
-                return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+                return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
             
             # Try to initialize real model
             real_processor = None
@@ -513,7 +514,7 @@ class hf_clip:
             )
             
             print(f"Initialized Qualcomm CLIP model ({initialization_type})")
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(64), 0
         except Exception as e:
             print(f"Error initializing Qualcomm model: {e}")
             # Create mock components as fallback
@@ -523,7 +524,7 @@ class hf_clip:
                 processor, processor, model, qualcomm_label, endpoint
             )
             print("(MOCK) Initialized Qualcomm CLIP model with mock components")
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
             
     def init_apple(self, model, device, apple_label):
         """Initialize CLIP model for Apple Silicon hardware."""
@@ -570,7 +571,7 @@ class hf_clip:
             
             endpoint_handler = self.create_apple_image_embedding_endpoint_handler(endpoint, processor, model, apple_label)
             
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(32), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(32), 0
         except Exception as e:
             print(f"Error initializing Apple Silicon CLIP model: {e}")
             return None, None, None, None, 0
@@ -603,7 +604,7 @@ class hf_clip:
             endpoint_handler = self.create_cuda_image_embedding_endpoint_handler(
                 tokenizer, endpoint_model=model, cuda_label=cuda_label, endpoint=endpoint
             )
-            return endpoint, tokenizer, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size
+            return endpoint, tokenizer, endpoint_handler, AnyioQueue(64), batch_size
             
         # Get device from cuda_label
         try:
@@ -709,7 +710,7 @@ class hf_clip:
         self.torch.cuda.empty_cache()
         
         print(f"CLIP CUDA initialization complete: {implementation_type}")
-        return endpoint, tokenizer if tokenizer is not None else processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), batch_size
+        return endpoint, tokenizer if tokenizer is not None else processor, endpoint_handler, AnyioQueue(64), batch_size
 
     def init_openvino(self, model=None, model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         """Initialize CLIP model for OpenVINO.
@@ -767,7 +768,7 @@ class hf_clip:
                         endpoint_model=model,
                         openvino_label=openvino_label
                     )
-                    return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+                    return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
         except Exception as e:
             print(f"Error setting up OpenVINO: {e}")
             processor, endpoint = create_dummy_components()
@@ -777,7 +778,7 @@ class hf_clip:
                 endpoint_model=model,
                 openvino_label=openvino_label
             )
-            return endpoint, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+            return endpoint, processor, endpoint_handler, AnyioQueue(64), 0
         
         # Create dummy components that we'll use if any part of initialization fails
         dummy_processor, dummy_endpoint = create_dummy_components()
@@ -942,7 +943,7 @@ class hf_clip:
                 # Return the model components
                 implementation_type = "REAL" if using_real_implementation else "MOCK"
                 print(f"Initialized OpenVINO CLIP model: {implementation_type}")
-                return ov_model, processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+                return ov_model, processor, endpoint_handler, AnyioQueue(64), 0
                 
             except Exception as cache_error:
                 print(f"Error in CLIP model setup: {cache_error}")
@@ -958,7 +959,7 @@ class hf_clip:
             openvino_label=openvino_label,
             implementation_real=False
         )
-        return dummy_endpoint, dummy_processor, endpoint_handler, # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64), 0
+        return dummy_endpoint, dummy_processor, endpoint_handler, AnyioQueue(64), 0
     
     def create_cpu_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint=None):
         """
