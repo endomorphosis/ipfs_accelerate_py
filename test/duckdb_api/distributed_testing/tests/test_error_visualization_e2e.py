@@ -304,7 +304,10 @@ class TestErrorVisualizationE2E(unittest.TestCase):
         
         return result[0] if result else 0
     
-    async def test_01_error_collection(self):
+    def test_01_error_collection(self):
+        anyio.run(self._test_01_error_collection)
+
+    async def _test_01_error_collection(self):
         """Test that errors are collected during task execution."""
         # Submit tasks to generate errors
         task_count = 20
@@ -321,7 +324,10 @@ class TestErrorVisualizationE2E(unittest.TestCase):
         
         logger.info(f"Test 01: Found {error_count} errors in the database")
     
-    async def test_02_error_visualization_api(self):
+    def test_02_error_visualization_api(self):
+        anyio.run(self._test_02_error_visualization_api)
+
+    async def _test_02_error_visualization_api(self):
         """Test that error data is available through the API."""
         # Get error data from API
         error_data = await self._get_error_data_from_api(time_range_hours=1)
@@ -340,7 +346,10 @@ class TestErrorVisualizationE2E(unittest.TestCase):
         
         logger.info(f"Test 02: API returned {summary['total_errors']} total errors")
     
-    async def test_03_error_pattern_detection(self):
+    def test_03_error_pattern_detection(self):
+        anyio.run(self._test_03_error_pattern_detection)
+
+    async def _test_03_error_pattern_detection(self):
         """Test that error patterns are correctly detected."""
         # Get error data from API
         error_data = await self._get_error_data_from_api(time_range_hours=1)
@@ -354,7 +363,10 @@ class TestErrorVisualizationE2E(unittest.TestCase):
         
         logger.info(f"Test 03: Detected {len(patterns['top_patterns'])} error patterns")
     
-    async def test_04_worker_error_analysis(self):
+    def test_04_worker_error_analysis(self):
+        anyio.run(self._test_04_worker_error_analysis)
+
+    async def _test_04_worker_error_analysis(self):
         """Test worker error analysis."""
         # Get error data from API
         error_data = await self._get_error_data_from_api(time_range_hours=1)
@@ -373,7 +385,10 @@ class TestErrorVisualizationE2E(unittest.TestCase):
         
         logger.info(f"Test 04: Found statistics for {len(worker_stats)} workers")
     
-    async def test_05_hardware_error_analysis(self):
+    def test_05_hardware_error_analysis(self):
+        anyio.run(self._test_05_hardware_error_analysis)
+
+    async def _test_05_hardware_error_analysis(self):
         """Test hardware error analysis."""
         # Get error data from API
         error_data = await self._get_error_data_from_api(time_range_hours=1)
@@ -393,7 +408,10 @@ class TestErrorVisualizationE2E(unittest.TestCase):
         
         logger.info(f"Test 05: Found status for {len(hardware_status)} hardware types")
     
-    async def test_06_different_time_ranges(self):
+    def test_06_different_time_ranges(self):
+        anyio.run(self._test_06_different_time_ranges)
+
+    async def _test_06_different_time_ranges(self):
         """Test error data with different time ranges."""
         # Get error data for different time ranges
         data_1h = await self._get_error_data_from_api(time_range_hours=1)
@@ -415,7 +433,10 @@ class TestErrorVisualizationE2E(unittest.TestCase):
         
         logger.info(f"Test 06: Error counts: 1h={count_1h}, 6h={count_6h}, 24h={count_24h}")
 
-    async def test_07_error_classification(self):
+    def test_07_error_classification(self):
+        anyio.run(self._test_07_error_classification)
+
+    async def _test_07_error_classification(self):
         """Test error classification (recurring, critical)."""
         # Submit more tasks to generate additional errors
         task_count = 10

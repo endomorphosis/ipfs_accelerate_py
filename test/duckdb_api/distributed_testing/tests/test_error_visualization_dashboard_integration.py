@@ -38,29 +38,29 @@ from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import Monito
 SKIP_AIOHTTP_TESTS = not aiohttp_available
 
 
-class TestDashboardRoutes(unittest.IsolatedAsyncioTestCase):
+class TestDashboardRoutes(unittest.TestCase):
     """Test dashboard routes for error visualization."""
-    
+
     def setUp(self):
         """Set up the test environment."""
         # Create temporary directory
         self.temp_dir = tempfile.TemporaryDirectory()
         self.output_dir = self.temp_dir.name
-        
+
         # Create test database file
         self.db_path = os.path.join(self.output_dir, "test_error_viz.duckdb")
-        
+
         # Set up monitoring dashboard mock
         self.dashboard = MagicMock()
         self.dashboard.error_viz = ErrorVisualizationIntegration(
             output_dir=self.output_dir,
-            db_path=self.db_path
+            db_path=self.db_path,
         )
-        
+
         # Mock request
         self.request = MagicMock()
         self.request.app = {"dashboard": self.dashboard}
-        
+
         # Generate a sample error
         self.sample_error = {
             "timestamp": datetime.now().isoformat(),
@@ -73,117 +73,129 @@ class TestDashboardRoutes(unittest.IsolatedAsyncioTestCase):
                 "metrics": {
                     "cpu": {"percent": 85},
                     "memory": {"used_percent": 70},
-                    "disk": {"used_percent": 60}
-                }
+                    "disk": {"used_percent": 60},
+                },
             },
             "hardware_context": {
                 "hardware_type": "cuda",
                 "hardware_status": {
                     "overheating": False,
                     "memory_pressure": True,
-                    "throttling": False
-                }
-            }
+                    "throttling": False,
+                },
+            },
         }
-    
+
     def tearDown(self):
         """Clean up after tests."""
         self.temp_dir.cleanup()
-    
-    async def test_api_report_error(self):
+
+    def test_api_report_error(self):
+        anyio.run(self._test_api_report_error)
+
+    async def _test_api_report_error(self):
         """Test the report-error API endpoint."""
         if SKIP_AIOHTTP_TESTS:
             self.skipTest("aiohttp not available")
-        
+
         # Mock request with error data
         request = AsyncMock()
         request.app = {"dashboard": self.dashboard}
         request.json = AsyncMock(return_value=self.sample_error)
-        
+
         # Mock dashboard.error_viz.report_error
         self.dashboard.error_viz.report_error = AsyncMock(return_value=True)
-        
+
         # Import the route handler
         from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import api_report_error
-        
+
         # Call the handler
         response = await api_report_error(request)
-        
+
         # Check response status and content
         self.assertEqual(response.status, 200)
         response_data = json.loads(response.text)
         self.assertEqual(response_data["status"], "success")
-        
+
         # Verify that report_error was called with the correct data
         self.dashboard.error_viz.report_error.assert_called_once_with(self.sample_error)
-    
-    async def test_api_get_errors(self):
+
+    def test_api_get_errors(self):
+        anyio.run(self._test_api_get_errors)
+
+    async def _test_api_get_errors(self):
         """Test the get-errors API endpoint."""
         if SKIP_AIOHTTP_TESTS:
             self.skipTest("aiohttp not available")
-        
+
         # Mock request for get errors
         request = MagicMock()
         request.app = {"dashboard": self.dashboard}
         request.query = {"time_range": "24"}
-        
+
         # Generate mock error data
         mock_error_data = {
             "summary": {"total_errors": 10},
             "timestamp": datetime.now().isoformat(),
-            "recent_errors": [{"id": 1, "message": "Test error"}]
+            "recent_errors": [{"id": 1, "message": "Test error"}],
         }
-        
+
         # Mock dashboard.error_viz.get_error_data
         self.dashboard.error_viz.get_error_data = AsyncMock(return_value=mock_error_data)
-        
+
         # Import the route handler
         from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import api_get_errors
-        
+
         # Call the handler
         response = await api_get_errors(request)
-        
+
         # Check response status and content
         self.assertEqual(response.status, 200)
         response_data = json.loads(response.text)
         self.assertEqual(response_data["status"], "success")
         self.assertEqual(response_data["data"], mock_error_data)
-        
+
         # Verify that get_error_data was called with the correct time range
         self.dashboard.error_viz.get_error_data.assert_called_once_with(time_range_hours=24)
 
 
 @unittest.skipIf(SKIP_AIOHTTP_TESTS, "aiohttp not available")
-class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
+class TestDashboardServer(unittest.TestCase):
     """Test the dashboard server with error visualization integration."""
-    
-    async def asyncSetUp(self):
+
+    def setUp(self):
+        anyio.run(self._async_set_up)
+
+    def tearDown(self):
+        anyio.run(self._async_tear_down)
+
+    async def _async_set_up(self):
         """Set up the test environment."""
         # Create temporary directory
         self.temp_dir = tempfile.TemporaryDirectory()
         self.output_dir = self.temp_dir.name
-        
+
         # Create test database file
         self.db_path = os.path.join(self.output_dir, "test_dashboard.duckdb")
-        
+
         # Create the dashboard
         self.dashboard = MonitoringDashboard(
             host="localhost",
             port=0,  # Use a random available port
             db_path=self.db_path,
-            enable_error_visualization=True
+            enable_error_visualization=True,
         )
-        
+
         # Patch the start method to avoid actually starting the server
         self.original_start = self.dashboard.start
         self.dashboard.start = AsyncMock()
-        
+
         # Initialize the dashboard internals
         await self.dashboard._initialize()
-        
+
         # Check that error visualization was initialized
         self.assertIsNotNone(self.dashboard.error_viz)
-        
+
         # Generate a sample error
         self.sample_error = {
             "timestamp": datetime.now().isoformat(),
@@ -196,39 +208,45 @@ class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
                 "metrics": {
                     "cpu": {"percent": 85},
                     "memory": {"used_percent": 70},
-                    "disk": {"used_percent": 60}
-                }
+                    "disk": {"used_percent": 60},
+                },
             },
             "hardware_context": {
                 "hardware_type": "cuda",
                 "hardware_status": {
                     "overheating": False,
                     "memory_pressure": True,
-                    "throttling": False
-                }
-            }
+                    "throttling": False,
+                },
+            },
         }
-    
-    async def asyncTearDown(self):
+
+    async def _async_tear_down(self):
         """Clean up after tests."""
         # Restore original start method
         self.dashboard.start = self.original_start
-        
+
         # Clean up
         self.temp_dir.cleanup()
-    
-    async def test_error_visualization_initialization(self):
+
+    def test_error_visualization_initialization(self):
+        anyio.run(self._test_error_visualization_initialization)
+
+    async def _test_error_visualization_initialization(self):
         """Test that error visualization is properly initialized."""
         # Verify that error visualization is enabled
         self.assertTrue(self.dashboard.enable_error_visualization)
-        
+
         # Verify that the error_viz object is created
         self.assertIsNotNone(self.dashboard.error_viz)
-        
+
         # Verify that the error_viz db_path matches dashboard db_path
         self.assertEqual(self.dashboard.error_viz.db_path, self.db_path)
-    
-    async def test_websocket_handler(self):
+
+    def test_websocket_handler(self):
+        anyio.run(self._test_websocket_handler)
+
+    async def _test_websocket_handler(self):
         """Test the WebSocket handler for error visualization messages."""
         # Create mock WebSocket
         ws = AsyncMock()
@@ -236,61 +254,66 @@ class TestDashboardServer(unittest.IsolatedAsyncioTestCase):
         ws.receive_json.side_effect = [
             {"type": "error_visualization_init", "time_range": 24},
             {"type": "subscribe", "topic": "error_visualization"},
-            web.WSMsgType.CLOSE  # Simulate close message
+            web.WSMsgType.CLOSE,  # Simulate close message
         ]
-        
+
         # Create mock request
         request = MagicMock()
         request.app = {"dashboard": self.dashboard}
-        
+
         # Import the WebSocket handler
         from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import websocket_handler
-        
+
         # Patch the dashboard.websocket_manager.register method
         self.dashboard.websocket_manager.register = AsyncMock()
-        
+
         # Call the handler
-        with patch('aiohttp.web.WebSocketResponse', return_value=ws):
+        with patch("aiohttp.web.WebSocketResponse", return_value=ws):
             await websocket_handler(request)
-        
+
         # Verify that the WebSocket was registered
         self.dashboard.websocket_manager.register.assert_called()
-    
-    async def test_report_error_integration(self):
+
+    def test_report_error_integration(self):
+        anyio.run(self._test_report_error_integration)
+
+    async def _test_report_error_integration(self):
         """Test the report_error method integration."""
         # Patch the dashboard.error_viz.report_error method
         self.dashboard.error_viz.report_error = AsyncMock(return_value=True)
-        
+
         # Report an error
         result = await self.dashboard.report_error(self.sample_error)
-        
+
         # Verify result
         self.assertTrue(result)
-        
+
         # Verify that report_error was called
         self.dashboard.error_viz.report_error.assert_called_once_with(self.sample_error)
-    
-    async def test_get_errors_integration(self):
+
+    def test_get_errors_integration(self):
+        anyio.run(self._test_get_errors_integration)
+
+    async def _test_get_errors_integration(self):
         """Test the get_errors method integration."""
         # Generate mock error data
         mock_error_data = {
             "summary": {"total_errors": 10},
             "timestamp": datetime.now().isoformat(),
-            "recent_errors": [{"id": 1, "message": "Test error"}]
+            "recent_errors": [{"id": 1, "message": "Test error"}],
         }
-        
+
         # Patch the dashboard.error_viz.get_error_data method
         self.dashboard.error_viz.get_error_data = AsyncMock(return_value=mock_error_data)
-        
+
         # Get errors
         result = await self.dashboard.get_errors(time_range_hours=24)
-        
+
         # Verify result
         self.assertEqual(result, mock_error_data)
-        
+
         # Verify that get_error_data was called
         self.dashboard.error_viz.get_error_data.assert_called_once_with(time_range_hours=24)
-
 
 class TestErrorVisualizationHTML(unittest.TestCase):
     """Test error visualization HTML template."""
@@ -318,7 +341,10 @@ class TestErrorVisualizationHTML(unittest.TestCase):
     def test_sound_notification_code(self):
         """Test that the template includes sound notification code."""
         # Check for the playErrorNotification function
-        self.assertIn("function playErrorNotification", self.template_content)
+    def test_report_error_integration(self):
+        anyio.run(self._test_report_error_integration)
+
+    async def _test_report_error_integration(self):
         
         # Check for sound file references
         self.assertIn("error-critical.mp3", self.template_content)
@@ -332,7 +358,10 @@ class TestErrorVisualizationHTML(unittest.TestCase):
         self.assertIn("function toggleMute", self.template_content)
     
     def test_error_severity_code(self):
-        """Test that the template includes error severity detection code."""
+    def test_get_errors_integration(self):
+        anyio.run(self._test_get_errors_integration)
+
+    async def _test_get_errors_integration(self):
         # Check for severity determination logic
         self.assertIn("errorType === 'critical'", self.template_content)
         self.assertIn("errorType === 'warning'", self.template_content)
