@@ -1303,7 +1303,7 @@ class ipfs_accelerate_py:
             except aiohttp.ClientPayloadError as e:
                 print(f"ClientPayloadError: {str(e)}")
                 return ValueError(f"ClientPayloadError: {str(e)}")
-            except asyncio.TimeoutError as e:
+            except TimeoutError as e:
                 print(f"Timeout error: {str(e)}")
                 return ValueError(f"Timeout error: {str(e)}")
             except Exception as e:

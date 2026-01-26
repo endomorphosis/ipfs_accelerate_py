@@ -34,6 +34,7 @@ import logging
 import random
 import anyio
 import threading
+import sniffio
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union, Tuple, Type
@@ -910,16 +911,15 @@ def accelerate_with_browser(
     Returns:
         Dictionary with inference results and performance metrics
     """
-    # Create or get event loop
     try:
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-    except RuntimeError:
-        loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-        # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-    
-    # Call the async version and wait for result
-    return loop.run_until_complete(
-        _accelerate_async(
+        sniffio.current_async_library()
+        raise RuntimeError(
+            "accelerate_with_browser() cannot be called from an async context; "
+            "use: await _accelerate_async(...)"
+        )
+    except sniffio.AsyncLibraryNotFoundError:
+        return anyio.run(
+            _accelerate_async,
             model_name=model_name,
             inputs=inputs,
             model_type=model_type,
@@ -930,9 +930,8 @@ def accelerate_with_browser(
             db_path=db_path,
             headless=headless,
             enable_ipfs=enable_ipfs,
-            **kwargs
+            **kwargs,
         )
-    )
 
 if __name__ == "__main__":
     # Simple test for the module

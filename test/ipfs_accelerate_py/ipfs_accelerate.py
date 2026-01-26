@@ -269,7 +269,7 @@ class ipfs_accelerate_py:
                     pass    
         for model in models:
             if model not in self.queues:
-                self.resources["queue"][model] = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(128)
+                self.resources["queue"][model] = anyio.create_memory_object_stream(128)
             if model not in list(self.resources["consumer_tasks"].keys()):
                 self.resources["consumer_tasks"][model] = {}
         if type(endpoint_list) == list:

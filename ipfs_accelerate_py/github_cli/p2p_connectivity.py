@@ -18,7 +18,6 @@ implemented here.
 """
 
 import anyio
-import asyncio
 import logging
 import os
 import random
@@ -692,10 +691,10 @@ class UniversalConnectivity:
 class _MDNSListener:
     """Zeroconf listener for mDNS peer discovery."""
 
-    def __init__(self, manager: UniversalConnectivity, host, loop: asyncio.AbstractEventLoop):
+    def __init__(self, manager: UniversalConnectivity, host, portal):
         self.manager = manager
         self.host = host
-        self.loop = loop
+        self.portal = portal
 
     def add_service(self, zeroconf, service_type, name) -> None:
         try:
@@ -734,7 +733,10 @@ class _MDNSListener:
                 except Exception as e:
                     logger.debug(f"mDNS connect failed for {peer_id}: {e}")
 
-            asyncio.run_coroutine_threadsafe(_connect(), self.loop)
+            if self.portal is not None:
+                self.portal.start_task_soon(_connect)
+            else:
+                threading.Thread(target=anyio.run, args=(_connect,), daemon=True).start()
         except Exception as e:
             logger.debug(f"mDNS add_service error: {e}")
 

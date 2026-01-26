@@ -9,6 +9,7 @@ import time
 import uuid
 import logging
 import anyio
+import threading
 from typing import Dict, List, Any, Optional
 from enum import Enum
 from dataclasses import dataclass, asdict
@@ -468,7 +469,8 @@ class WorkflowEngine:
     def __init__(self, storage: WorkflowStorage, ipfs_accelerate_instance=None):
         self.storage = storage
         self.ipfs_instance = ipfs_accelerate_instance
-        self._running_workflows: Dict[str, asyncio.Task] = {}
+        self._running_workflows: Dict[str, threading.Thread] = {}
+        self._stop_signals: Dict[str, threading.Event] = {}
     
     async def execute_task(self, workflow: Workflow, task: WorkflowTask, task_results: Dict[str, Any]) -> bool:
         """
@@ -847,7 +849,7 @@ class WorkflowEngine:
             'timestamp': time.time()
         }
     
-    async def execute_workflow(self, workflow_id: str):
+    async def execute_workflow(self, workflow_id: str, stop_signal: threading.Event | None = None):
         """Execute a complete workflow"""
         workflow = self.storage.load_workflow(workflow_id)
         if not workflow:
@@ -868,6 +870,14 @@ class WorkflowEngine:
             task_results = {}
             
             while True:
+                if stop_signal is not None and stop_signal.is_set():
+                    workflow = self.storage.load_workflow(workflow_id) or workflow
+                    workflow.status = WorkflowStatus.STOPPED.value
+                    workflow.completed_at = time.time()
+                    self.storage.save_workflow(workflow)
+                    logger.info(f"Workflow {workflow_id} stop requested")
+                    break
+
                 # Find tasks that are ready to run (dependencies met)
                 runnable_tasks = []
                 for task in workflow.tasks:
@@ -927,15 +937,32 @@ class WorkflowEngine:
             self.storage.save_workflow(workflow)
             if workflow_id in self._running_workflows:
                 del self._running_workflows[workflow_id]
+            if workflow_id in self._stop_signals:
+                del self._stop_signals[workflow_id]
+
+    def _run_workflow_thread(self, workflow_id: str, stop_signal: threading.Event) -> None:
+        try:
+            anyio.run(self.execute_workflow, workflow_id, stop_signal)
+        except Exception as e:
+            logger.error(f"Workflow thread crashed for {workflow_id}: {e}")
     
     def start_workflow(self, workflow_id: str):
         """Start a workflow in the background"""
-        if workflow_id in self._running_workflows:
+        existing = self._running_workflows.get(workflow_id)
+        if existing is not None and existing.is_alive():
             raise ValueError(f"Workflow {workflow_id} is already running")
-        
-        task = # TODO: Replace with task group - asyncio.create_task(self.execute_workflow(workflow_id))
-        self._running_workflows[workflow_id] = task
-        return task
+
+        stop_signal = threading.Event()
+        thread = threading.Thread(
+            target=self._run_workflow_thread,
+            args=(workflow_id, stop_signal),
+            name=f"workflow-{workflow_id}",
+            daemon=True,
+        )
+        self._stop_signals[workflow_id] = stop_signal
+        self._running_workflows[workflow_id] = thread
+        thread.start()
+        return thread
     
     def pause_workflow(self, workflow_id: str):
         """Pause a running workflow"""
@@ -962,8 +989,17 @@ class WorkflowEngine:
         
         # Cancel the task if it's running
         if workflow_id in self._running_workflows:
-            self._running_workflows[workflow_id].cancel()
+            stop_signal = self._stop_signals.get(workflow_id)
+            if stop_signal is not None:
+                stop_signal.set()
+            thread = self._running_workflows[workflow_id]
+            try:
+                thread.join(timeout=1.0)
+            except Exception:
+                pass
             del self._running_workflows[workflow_id]
+            if workflow_id in self._stop_signals:
+                del self._stop_signals[workflow_id]
         
         logger.info(f"Workflow {workflow_id} stopped")
 
