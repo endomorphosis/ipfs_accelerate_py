@@ -97,7 +97,7 @@ The WebGPU/WebNN Resource Pool Integration has been completed with these major f
 ### Basic Usage
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
 
 async def run_inference():
@@ -129,13 +129,13 @@ async def run_inference():
         await integration.close()
 
 # Run the async function
-asyncio.run(run_inference())
+anyio.run(run_inference)
 ```
 
 ### Concurrent Execution
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
 
 async def run_concurrent_inference():
@@ -194,7 +194,7 @@ async def run_concurrent_inference():
         await integration.close()
 
 # Run the async function
-asyncio.run(run_concurrent_inference())
+anyio.run(run_concurrent_inference)
 ```
 
 ### Getting Performance Metrics
@@ -233,7 +233,7 @@ async def get_metrics():
         await integration.close()
 
 # Run the async function
-asyncio.run(get_metrics())
+anyio.run(get_metrics)
 ```
 
 ### Real Browser Integration
@@ -291,7 +291,7 @@ async def test_real_browsers():
         await integration.close()
 
 # Run the test
-asyncio.run(test_real_browsers())
+anyio.run(test_real_browsers)
 ```
 
 ## Browser Selection Logic

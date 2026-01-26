@@ -34,7 +34,7 @@ To integrate semantic caching with an API backend:
 ### Example: OpenAI Integration
 
 ```python
-import asyncio
+import anyio
 from openai import AsyncClient
 from examples.openai_semantic_cache import SemanticCacheOpenAIClient
 
@@ -58,7 +58,7 @@ async def example():
     )
     print(response)
 
-asyncio.run(example())
+anyio.run(example)
 ```
 
 ### Example: Claude Integration
@@ -87,7 +87,7 @@ async def example():
     )
     print(response)
 
-asyncio.run(example())
+anyio.run(example)
 ```
 
 ### Example: Gemini Integration
@@ -116,7 +116,7 @@ async def example():
     )
     print(response)
 
-asyncio.run(example())
+anyio.run(example)
 ```
 
 ### Example: Groq Integration
@@ -145,7 +145,7 @@ async def example():
     )
     print(response)
 
-asyncio.run(example())
+anyio.run(example)
 ```
 
 ## Configuration Options

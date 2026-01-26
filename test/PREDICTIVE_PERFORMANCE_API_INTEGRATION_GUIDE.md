@@ -267,10 +267,10 @@ recommendations = client.list_recommendations(limit=5)
 print(f"Found {recommendations['count']} recommendations")
 ```
 
-The library also provides an asynchronous client for use with asyncio:
+The library also provides an asynchronous client for use with AnyIO:
 
 ```python
-import asyncio
+import anyio
 from test.api_client.predictive_performance_client import AsyncPredictivePerformanceClient
 
 async def main():
@@ -285,7 +285,7 @@ async def main():
     finally:
         await client.close()
 
-asyncio.run(main())
+anyio.run(main)
 ```
 
 ## Modifying the Integration

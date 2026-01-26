@@ -8,7 +8,7 @@ The Distributed Testing Framework uses a comprehensive testing approach that inc
 
 - **Unit Tests**: Tests for individual components in isolation with mocked dependencies
 - **Integration Tests**: Tests for interacting components and subsystems
-- **Asynchronous Tests**: Tests for asynchronous functionality using `pytest-asyncio`
+- **Asynchronous Tests**: Tests for asynchronous functionality using `pytest-anyio`
 - **⛔ NOTE**: Security and authentication features are now **OUT OF SCOPE** (see SECURITY_DEPRECATED.md)
 
 The tests are organized by component, with each component having its own test file in the `tests/` directory.
@@ -42,7 +42,7 @@ The framework includes a test runner script (`run_test_distributed_framework.py`
 Install the required packages for testing:
 
 ```bash
-pip install pytest pytest-asyncio coverage
+pip install pytest pytest-anyio coverage
 ```
 
 ### Running All Tests
@@ -140,7 +140,7 @@ The test framework supports these advanced features:
 For testing asynchronous code (like WebSocket communication):
 
 ```python
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_functionality():
     # Test async code
     result = await async_function()
@@ -185,7 +185,7 @@ When adding new components or features to the framework, follow these guidelines
 1. **Create a Test File**: Create a new test file in the `tests/` directory named `test_<component>.py`
 2. **Test Both Success and Failure**: Include tests for both success and failure paths
 3. **Mock Dependencies**: Use mocks to isolate the component being tested
-4. **Test Async Code**: Use `pytest.mark.asyncio` for testing asynchronous code
+4. **Test Async Code**: Use `pytest.mark.anyio` for testing asynchronous code
 5. **Mock Authentication**: Use simple mocks for authentication (actual security is out of scope)
 6. **Run with Coverage**: Check coverage to ensure adequate testing
 

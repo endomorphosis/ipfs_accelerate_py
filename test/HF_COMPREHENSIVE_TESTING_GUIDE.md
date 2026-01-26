@@ -817,8 +817,8 @@ def adapt_execution_flow(template_content, hardware_platform):
             # Add async runner at the end
             async_runner = """
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    import anyio
+    anyio.run(main)
             """
             
             # Replace standard runner

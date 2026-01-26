@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Remove unused `import asyncio` statements.
+"""Remove unused `import anyio` statements.
 
-This repo is mid-migration from asyncio to AnyIO; a common mechanical failure
-mode is leaving behind `import asyncio` after all `asyncio.*` usages were
+This repo is mid-migration to AnyIO; a common mechanical failure
+mode is leaving behind `import anyio` after all `anyio.*` usages were
 converted.
 
-This script conservatively removes *only* bare `import asyncio` lines when the
-module no longer references `asyncio.` anywhere.
+This script conservatively removes *only* bare `import anyio` lines when the
+module no longer references `anyio.` anywhere.
 
 Usage:
-  python tools/remove_unused_asyncio_imports.py --check
-  python tools/remove_unused_asyncio_imports.py --apply
+    python tools/remove_unused_anyio_imports.py --check
+    python tools/remove_unused_anyio_imports.py --apply
 
 Exit codes:
   0: no changes needed / successful apply
@@ -44,11 +44,11 @@ def process_file(path: Path) -> bool:
     except UnicodeDecodeError:
         return False
 
-    if "import asyncio" not in original:
+    if "import anyio" not in original:
         return False
 
-    # If asyncio is still referenced, don't touch imports.
-    if "asyncio." in original:
+    # If AnyIO is still referenced, don't touch imports.
+    if "anyio." in original:
         return False
 
     lines = original.splitlines(True)
@@ -56,7 +56,7 @@ def process_file(path: Path) -> bool:
     new_lines: List[str] = []
 
     for line in lines:
-        if line.strip() == "import asyncio":
+        if line.strip() == "import anyio":
             changed = True
             continue
         new_lines.append(line)
@@ -90,11 +90,11 @@ def main(argv: List[str]) -> int:
                 original = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 continue
-            if "import asyncio" not in original:
+            if "import anyio" not in original:
                 continue
-            if "asyncio." in original:
+            if "anyio." in original:
                 continue
-            if any(line.strip() == "import asyncio" for line in original.splitlines()):
+            if any(line.strip() == "import anyio" for line in original.splitlines()):
                 changed_paths.append(path)
         else:
             if process_file(path):
@@ -102,16 +102,16 @@ def main(argv: List[str]) -> int:
 
     if args.check:
         if changed_paths:
-            print(f"Would remove unused import asyncio in {len(changed_paths)} files")
+            print(f"Would remove unused import anyio in {len(changed_paths)} files")
             for p in changed_paths[:50]:
                 print(f"  - {p.relative_to(root)}")
             if len(changed_paths) > 50:
                 print(f"  ... ({len(changed_paths) - 50} more)")
             return 1
-        print("No unused asyncio imports found")
+        print("No unused anyio imports found")
         return 0
 
-    print(f"Removed unused asyncio imports in {len(changed_paths)} files")
+    print(f"Removed unused anyio imports in {len(changed_paths)} files")
     return 0
 
 

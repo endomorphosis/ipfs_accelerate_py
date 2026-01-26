@@ -276,7 +276,7 @@ For asynchronous usage:
 
 ```python
 from test.refactored_test_suite.api.api_client import AsyncApiClient
-import asyncio
+import anyio
 
 async def run_async_example():
     client = AsyncApiClient(base_url="http://localhost:8000")
@@ -285,7 +285,7 @@ async def run_async_example():
     print(f"Test completed with status: {result['status']}")
 
 # Run the async example
-asyncio.run(run_async_example())
+anyio.run(run_async_example)
 ```
 
 ### Predictive Performance API Client
@@ -338,7 +338,7 @@ For asynchronous usage:
 
 ```python
 from test.api_client.predictive_performance_client import AsyncPredictivePerformanceClient
-import asyncio
+import anyio
 
 async def run_async_example():
     client = AsyncPredictivePerformanceClient(base_url="http://localhost:8080")
@@ -353,5 +353,5 @@ async def run_async_example():
         await client.close()
 
 # Run the async example
-asyncio.run(run_async_example())
+anyio.run(run_async_example)
 ```

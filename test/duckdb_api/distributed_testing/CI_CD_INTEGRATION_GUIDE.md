@@ -201,7 +201,7 @@ Test reports now include direct links to test artifacts, enabling easy access to
 - **Direct Access**: One-click access to test artifacts from reports, PR comments, and dashboards
 - **Consistent Format**: Same URL format and behavior across all CI providers
 - **Automatic Inclusion**: URLs automatically added to all report formats (Markdown, HTML, JSON)
-- **Parallel Processing**: Efficient batch retrieval of multiple URLs using asyncio tasks (3-10x faster than sequential retrieval)
+- **Parallel Processing**: Efficient batch retrieval of multiple URLs using AnyIO tasks (3-10x faster than sequential retrieval)
 - **Enhanced PR Comments**: PR comments include direct links to artifacts for easy review
 - **Robust Error Handling**: Graceful degradation when URL retrieval fails
 - **Caching System**: Intelligent caching to minimize redundant API calls
@@ -226,7 +226,7 @@ The integration leverages three main components in the TestResultReporter class:
        print(f"Artifact {artifact['name']} URL: {artifact.get('url')}")
    ```
 
-2. **New `get_artifact_urls` Method**: Efficiently retrieves multiple artifact URLs in parallel using asyncio tasks
+2. **New `get_artifact_urls` Method**: Efficiently retrieves multiple artifact URLs in parallel using AnyIO tasks
    ```python
    # Retrieve multiple artifact URLs in parallel
    artifact_urls = await reporter.get_artifact_urls(
@@ -261,7 +261,7 @@ The integration workflow automatically:
 
 #### Technical Implementation
 
-The `get_artifact_urls` method uses asyncio tasks to retrieve multiple URLs in parallel:
+The `get_artifact_urls` method uses AnyIO tasks to retrieve multiple URLs in parallel:
 
 ```python
 async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -> Dict[str, Optional[str]]:
@@ -285,7 +285,7 @@ async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -
     # Create tasks for retrieving URLs in parallel
     tasks = []
     for name in artifact_names:
-        task = asyncio.create_task(self.ci_provider.get_artifact_url(test_run_id, name))
+        task = anyio.create_task_group()
         tasks.append((name, task))
     
     # Wait for all tasks to complete

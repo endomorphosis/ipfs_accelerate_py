@@ -385,7 +385,7 @@ artifact_urls = await reporter.get_artifact_urls(
 
 #### Bulk URL Retrieval Implementation
 
-The `get_artifact_urls` method retrieves multiple URLs in parallel using asyncio tasks:
+The `get_artifact_urls` method retrieves multiple URLs in parallel using AnyIO tasks:
 
 ```python
 async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -> Dict[str, Optional[str]]:
@@ -409,7 +409,7 @@ async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -
     # Create tasks for retrieving URLs in parallel
     tasks = []
     for name in artifact_names:
-        task = asyncio.create_task(self.ci_provider.get_artifact_url(test_run_id, name))
+        task = anyio.create_task_group()
         tasks.append((name, task))
     
     # Wait for all tasks to complete

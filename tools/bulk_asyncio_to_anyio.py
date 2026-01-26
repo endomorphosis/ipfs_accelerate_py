@@ -15,13 +15,13 @@ Safety
 Examples
 --------
 Dry run on core package:
-  .venv/bin/python tools/bulk_asyncio_to_anyio.py ipfs_accelerate_py
+    .venv/bin/python tools/bulk_anyio_refactor.py ipfs_accelerate_py
 
 Apply changes with backups:
-  .venv/bin/python tools/bulk_asyncio_to_anyio.py ipfs_accelerate_py --apply --backup
+    .venv/bin/python tools/bulk_anyio_refactor.py ipfs_accelerate_py --apply --backup
 
 Apply repo-wide but skip tests:
-  .venv/bin/python tools/bulk_asyncio_to_anyio.py . --apply --backup --exclude 'test/**'
+    .venv/bin/python tools/bulk_anyio_refactor.py . --apply --backup --exclude 'test/**'
 
 Notes
 -----
@@ -55,7 +55,7 @@ DEFAULT_EXCLUDES = [
 
 
 TODO_TAG = "TODO(anyio-migrate)"
-UNSAFE_ASYNCIO_CALLS = [
+UNSAFE_ANYIO_CALLS = [
     "create_task",
     "gather",
     "wait_for",
@@ -144,7 +144,7 @@ def migrate_text(text: str, *, mark_unsafe: bool) -> tuple[str, dict[str, int], 
     By default this only applies *mechanical* conversions that are very likely
     to be correct without understanding control flow.
 
-    If mark_unsafe=True, it will optionally annotate some unsafe asyncio usage
+    If mark_unsafe=True, it will optionally annotate some unsafe AnyIO usage
     sites by appending an end-of-line TODO marker when it can do so safely.
     """
 
@@ -164,42 +164,42 @@ def migrate_text(text: str, *, mark_unsafe: bool) -> tuple[str, dict[str, int], 
     original = text
 
     # Mechanical replacements that keep code valid.
-    text, n = re.subn(r"\basyncio\.sleep\(", "anyio.sleep(", text)
+    text, n = re.subn(r"\banyio\.sleep\(", "anyio.sleep(", text)
     counters["sleep"] += n
 
-    text, n = re.subn(r"\basyncio\.run\(", "anyio.run(", text)
+    text, n = re.subn(r"\banyio\.run\(", "anyio.run(", text)
     counters["run"] += n
 
-    text, n = re.subn(r"\basyncio\.Event\(\)", "anyio.Event()", text)
+    text, n = re.subn(r"\banyio\.Event\(\)", "anyio.Event()", text)
     counters["event"] += n
 
-    text, n = re.subn(r"\basyncio\.Lock\(\)", "anyio.Lock()", text)
+    text, n = re.subn(r"\banyio\.Lock\(\)", "anyio.Lock()", text)
     counters["lock"] += n
 
-    text, n = re.subn(r"\basyncio\.to_thread\(", "anyio.to_thread.run_sync(", text)
+    text, n = re.subn(r"\banyio\.to_thread\.run_sync\(", "anyio.to_thread.run_sync(", text)
     counters["to_thread"] += n
 
     # iscoroutinefunction -> inspect.iscoroutinefunction
-    text, n = re.subn(r"\basyncio\.iscoroutinefunction\(", "inspect.iscoroutinefunction(", text)
+    text, n = re.subn(r"\banyio\.iscoroutinefunction\(", "inspect.iscoroutinefunction(", text)
     counters["iscoro"] += n
 
     # Detect higher-level constructs that need manual conversion.
     unsafe_hits: dict[str, int] = {}
-    for call in UNSAFE_ASYNCIO_CALLS:
-        n_call = len(re.findall(rf"\basyncio\.{re.escape(call)}\b", text))
+    for call in UNSAFE_ANYIO_CALLS:
+        n_call = len(re.findall(rf"\banyio\.{re.escape(call)}\b", text))
         if n_call:
             unsafe_hits[call] = n_call
             counters["unsafe_found"] += n_call
 
     if unsafe_hits:
         warnings.append(
-            "Unsafe asyncio constructs present (manual anyio conversion needed): "
+            "Unsafe AnyIO constructs present (manual review needed): "
             + ", ".join(f"{k}={v}" for k, v in sorted(unsafe_hits.items()))
         )
 
     if mark_unsafe and unsafe_hits:
         # Conservative marking: only append TODO to lines that:
-        # - contain an unsafe asyncio call
+        # - contain an unsafe AnyIO call
         # - do not already contain TODO_TAG
         # - do not already contain a comment (#), to avoid mangling existing comments
         # This keeps code valid and avoids the whitespace/syntax issues from modifying call sites.
@@ -209,7 +209,7 @@ def migrate_text(text: str, *, mark_unsafe: bool) -> tuple[str, dict[str, int], 
             if TODO_TAG in line or "#" in line:
                 out.append(line)
                 continue
-            if any(f"asyncio.{call}" in line for call in unsafe_hits.keys()):
+            if any(f"anyio.{call}" in line for call in unsafe_hits.keys()):
                 stripped_nl = "\n" if line.endswith("\n") else ""
                 base = line[:-1] if stripped_nl else line
                 out.append(f"{base}  # {TODO_TAG}: convert to anyio pattern{stripped_nl}")
@@ -232,7 +232,7 @@ def migrate_text(text: str, *, mark_unsafe: bool) -> tuple[str, dict[str, int], 
     if counters["iscoro"] > 0:
         text = _ensure_inspect_import(text)
 
-    # If we replaced import asyncio -> import anyio, we might break remaining asyncio uses.
+    # If we replaced import anyio, we might break remaining uses.
     # We do NOT touch imports automatically; we only add anyio.
 
     if text != original:
@@ -258,8 +258,8 @@ def migrate_file(
     except Exception as e:
         return FileResult(path=path, changed=False, reason=f"read-error: {e}", warnings=[str(e)])
 
-    if "asyncio" not in raw:
-        return FileResult(path=path, changed=False, reason="no-asyncio", warnings=[])
+    if "anyio" not in raw:
+        return FileResult(path=path, changed=False, reason="no-anyio", warnings=[])
 
     new_text, counters, warnings = migrate_text(raw, mark_unsafe=mark_unsafe)
 
@@ -301,7 +301,7 @@ def migrate_file(
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Bulk asyncio->anyio mechanical migration")
+    parser = argparse.ArgumentParser(description="Bulk AnyIO mechanical migration")
     parser.add_argument("paths", nargs="+", help="File(s) or directory(ies) to process")
     parser.add_argument("--apply", action="store_true", help="Write changes to disk")
     parser.add_argument("--backup", action="store_true", help="Store backups under .migrate_backups/")
@@ -310,7 +310,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--mark-unsafe",
         action="store_true",
-        help=f"Conservatively append end-of-line '{TODO_TAG}' markers where possible for unsafe asyncio constructs",
+        help=f"Conservatively append end-of-line '{TODO_TAG}' markers where possible for unsafe AnyIO constructs",
     )
     parser.add_argument("--exclude", action="append", default=[], help="Glob exclude pattern (repeatable)")
 

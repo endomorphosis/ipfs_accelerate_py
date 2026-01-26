@@ -222,7 +222,7 @@ The system includes comprehensive tests to verify functionality:
 python run_test_artifact_discovery.py
 
 # Run specific test functions
-python -c "import asyncio; from run_test_artifact_discovery import test_artifact_metadata_extraction; asyncio.run(test_artifact_metadata_extraction())"
+python -c "import anyio; from run_test_artifact_discovery import test_artifact_metadata_extraction; anyio.run(test_artifact_metadata_extraction)"
 ```
 
 ## Future Enhancements

@@ -62,7 +62,7 @@ python generators/models/test_webnn_webgpu_integration.py --platform webgpu --br
 ### WebGPU Implementation
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
 
 async def run_webgpu_example():
@@ -83,13 +83,13 @@ async def run_webgpu_example():
     await impl.shutdown()
 
 # Run the example
-asyncio.run(run_webgpu_example())
+anyio.run(run_webgpu_example)
 ```
 
 ### WebNN Implementation
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.webnn_implementation import RealWebNNImplementation
 
 async def run_webnn_example():
@@ -114,13 +114,13 @@ async def run_webnn_example():
     await impl.shutdown()
 
 # Run the example
-asyncio.run(run_webnn_example())
+anyio.run(run_webnn_example)
 ```
 
 ### Unified Platform Interface
 
 ```python
-import asyncio
+import anyio
 from implement_real_webnn_webgpu import RealWebPlatformIntegration
 
 async def run_unified_example():
@@ -153,13 +153,13 @@ async def run_unified_example():
     await integration.shutdown("webgpu")  # use same platform as above
 
 # Run the example
-asyncio.run(run_unified_example())
+anyio.run(run_unified_example)
 ```
 
 ### Advanced Usage with Unified Framework
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.unified_web_framework import (
     WebPlatformAccelerator,
     create_web_endpoint,
@@ -203,7 +203,7 @@ async def run_advanced_example():
     print(simple_result)
 
 # Run the example
-asyncio.run(run_advanced_example())
+anyio.run(run_advanced_example)
 ```
 
 ## API Reference
@@ -908,7 +908,7 @@ async def diagnose_websocket():
         async with websockets.serve(echo, "localhost", port):
             print(f"Diagnostic server running on ws://localhost:{port}")
             # Wait for connections
-            await asyncio.Future()  # Run forever
+            await anyio.sleep(float("inf"))  # Run forever
     except Exception as e:
         print(f"WebSocket diagnostic error: {e}")
 

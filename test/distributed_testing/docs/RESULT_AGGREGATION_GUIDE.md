@@ -550,7 +550,7 @@ viz_data = prepare_for_visualization(
 Run scheduled analysis to detect long-term trends and recurring patterns:
 
 ```python
-import asyncio
+import anyio
 from datetime import datetime, timedelta
 
 async def run_periodic_analysis():
@@ -579,10 +579,10 @@ async def run_periodic_analysis():
             f.write(report)
         
         # Wait 24 hours before next analysis
-        await asyncio.sleep(24 * 60 * 60)
+        await anyio.sleep(24 * 60 * 60)
 
 # Start periodic analysis
-asyncio.create_task(run_periodic_analysis())
+anyio.create_task_group()
 ```
 
 ## Web Dashboard

@@ -263,7 +263,7 @@ if enable_load_balancer:
 
 # Starting the load balancer as a background task
 if self.load_balancer:
-    self.load_balancer_task = asyncio.create_task(
+    self.load_balancer_task = anyio.create_task_group(
         self.load_balancer.start_balancing()
     )
     logger.info("Load balancer started")

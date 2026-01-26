@@ -859,7 +859,7 @@ async def test_connection(browser_name):
     print(f"Waiting for results from {browser_name}...")
     
     # Set up result handler
-    result_event = asyncio.Event()
+    result_event = anyio.Event()
     result_data = None
     
     async def handle_test_results(message):
@@ -873,7 +873,8 @@ async def test_connection(browser_name):
     
     # Wait for results with timeout
     try:
-        await asyncio.wait_for(result_event.wait(), timeout=30.0)
+        with anyio.fail_after(30.0):
+            await result_event.wait()
         
         # Print detailed results
         print(f"\n--- {browser_name.upper()} BROWSER DIAGNOSTICS ---")
@@ -903,7 +904,7 @@ async def test_connection(browser_name):
         
         return result_data
         
-    except asyncio.TimeoutError:
+    except TimeoutError:
         print(f"Timeout waiting for results from {browser_name}")
         return False
     finally:
@@ -968,7 +969,7 @@ async def send_and_wait(self, message, timeout=None):
     msg_id = message["id"]
     
     # Create event for this request
-    self.response_events[msg_id] = asyncio.Event()
+    self.response_events[msg_id] = anyio.Event()
     
     # Log the outgoing message
     await self.log_message_flow("OUTGOING", message)
@@ -981,7 +982,8 @@ async def send_and_wait(self, message, timeout=None):
         
     try:
         # Wait for response with timeout
-        await asyncio.wait_for(self.response_events[msg_id].wait(), timeout=timeout)
+        with anyio.fail_after(timeout):
+            await self.response_events[msg_id].wait()
         
         # Get response data
         response = self.response_data.get(msg_id)

@@ -1,4 +1,4 @@
-# Glob patterns for files that are temporarily allowed to reference asyncio.
+# Glob patterns for files that are temporarily allowed to reference legacy async APIs.
 #
 # The intent is for this file to shrink over time until it is empty.
 #
@@ -6,12 +6,4 @@
 # ipfs_accelerate_py/legacy/**
 # test/**
 
-# Current policy: allow tests to continue to use asyncio while core code migrates.
-# Tighten this once we finish the migration.
-
-test/**
-
-# Tooling that intentionally references asyncio as text (migration/audit helpers)
-migrate_to_anyio.py
-tools/audit_asyncio_usage.py
-tools/bulk_asyncio_to_anyio.py
+# Current policy: empty (migration complete).

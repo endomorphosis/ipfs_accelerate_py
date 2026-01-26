@@ -121,7 +121,7 @@ print(f"Tests failed: {result['results']['tests_failed']}")
 
 ```python
 from refactored_test_suite.api.api_client import AsyncApiClient
-import asyncio
+import anyio
 
 async def run_async_example():
     client = AsyncApiClient(base_url="http://localhost:8000")
@@ -140,7 +140,7 @@ async def run_async_example():
     print(f"Test completed with status: {result['status']}")
 
 # Run the async example
-asyncio.run(run_async_example())
+anyio.run(run_async_example)
 ```
 
 ## Test Types

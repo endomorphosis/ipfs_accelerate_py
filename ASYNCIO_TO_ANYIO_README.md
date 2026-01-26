@@ -1,23 +1,12 @@
-# AsyncIO to AnyIO Migration
+# AnyIO Migration
 
 ## Quick Start
 
-This project is being migrated from `asyncio` to `anyio` for better cross-platform async compatibility.
+This project is being migrated to `anyio` for better cross-platform async compatibility.
 
 ### What Changed?
 
 ```python
-# Before (asyncio)
-import asyncio
-
-async def main():
-    await asyncio.sleep(1)
-    queue = asyncio.Queue()
-    task = asyncio.create_task(my_func())
-    
-asyncio.run(main())
-
-# After (anyio)
 import anyio
 
 async def main():
@@ -25,7 +14,7 @@ async def main():
     send, recv = anyio.create_memory_object_stream()
     async with anyio.create_task_group() as tg:
         tg.start_soon(my_func)
-    
+
 anyio.run(main)
 ```
 
@@ -84,27 +73,21 @@ python3 migrate_to_anyio.py ipfs_accelerate_py/ --apply
 
 ### 1. Imports
 ```python
-import asyncio  →  import anyio
+import anyio
 ```
 
 ### 2. Running Async Code
 ```python
-asyncio.run(main())  →  anyio.run(main)
+anyio.run(main)
 ```
 
 ### 3. Sleeping
 ```python
-await asyncio.sleep(1)  →  await anyio.sleep(1)
+await anyio.sleep(1)
 ```
 
 ### 4. Queues
 ```python
-# Before
-queue = asyncio.Queue(maxsize=128)
-await queue.put(item)
-item = await queue.get()
-
-# After
 send_stream, receive_stream = anyio.create_memory_object_stream(max_buffer_size=128)
 await send_stream.send(item)
 item = await receive_stream.receive()
@@ -112,12 +95,6 @@ item = await receive_stream.receive()
 
 ### 5. Task Management
 ```python
-# Before
-task1 = asyncio.create_task(func1())
-task2 = asyncio.create_task(func2())
-results = await asyncio.gather(task1, task2)
-
-# After
 async with anyio.create_task_group() as tg:
     tg.start_soon(func1)
     tg.start_soon(func2)
@@ -125,13 +102,6 @@ async with anyio.create_task_group() as tg:
 
 ### 6. Timeouts
 ```python
-# Before
-try:
-    await asyncio.wait_for(func(), timeout=5.0)
-except asyncio.TimeoutError:
-    pass
-
-# After
 try:
     with anyio.fail_after(5.0):
         await func()
@@ -141,28 +111,18 @@ except TimeoutError:
 
 ### 7. Thread Execution
 ```python
-# Before
-loop = asyncio.get_event_loop()
-result = await loop.run_in_executor(None, sync_func, arg)
-
-# After
 result = await anyio.to_thread.run_sync(sync_func, arg)
 ```
 
 ### 8. Events & Locks
 ```python
-# Before
-event = asyncio.Event()
-lock = asyncio.Lock()
-
-# After
 event = anyio.Event()
 lock = anyio.Lock()
 ```
 
 ## Benefits
 
-1. **Cross-Platform**: Works with asyncio, trio, and curio
+1. **Cross-Platform**: Works with Trio and Curio backends
 2. **Better Structure**: Task groups provide cleaner concurrent code
 3. **Safer Cancellation**: Automatic cleanup on errors
 4. **Modern Patterns**: Follows current async best practices
@@ -170,21 +130,21 @@ lock = anyio.Lock()
 
 ## Documentation
 
-- **Migration Guide**: `ASYNCIO_TO_ANYIO_MIGRATION.md`
-- **Summary**: `ASYNCIO_TO_ANYIO_SUMMARY.md`
+- **Migration Guide**: See the migration guide and progress notes
+- **Summary**: See the migration summary
 - **Test Suite**: `test_anyio_migration.py`
 - **Migration Tool**: `migrate_to_anyio.py`
 
 ## Compatibility
 
 - **Python**: 3.8+ required
-- **Backward Compatible**: Can use both asyncio and anyio during migration
+- **Backward Compatible**: Can use other async backends during migration
 - **No Breaking Changes**: External APIs remain unchanged
 - **Incremental**: Migrate file by file as needed
 
 ## Getting Help
 
-1. Check the migration guide: `ASYNCIO_TO_ANYIO_MIGRATION.md`
+1. Check the migration guide and progress notes
 2. Run the test suite: `python3 test_anyio_migration.py`
 3. Use the migration tool: `python3 migrate_to_anyio.py --help`
 4. Review completed migrations in git history
@@ -192,7 +152,7 @@ lock = anyio.Lock()
 ## Contributing
 
 When adding new async code:
-1. Use `anyio` instead of `asyncio`
+1. Use `anyio`
 2. Use task groups instead of `create_task`/`gather`
 3. Use memory streams instead of `Queue`
 4. Use `anyio.to_thread.run_sync()` for sync code

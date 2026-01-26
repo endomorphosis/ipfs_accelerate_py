@@ -317,7 +317,7 @@ You can forward critical errors to Slack channels for immediate team notificatio
 ```python
 import aiohttp
 import json
-import asyncio
+import anyio
 from datetime import datetime
 
 async def report_error_with_slack_notification(dashboard_url, slack_webhook_url, error_data):
@@ -457,7 +457,7 @@ class ErrorMetricsExporter:
                 print(f"Error updating metrics: {e}")
             
             # Sleep for the poll interval
-            await asyncio.sleep(self.poll_interval)
+            await anyio.sleep(self.poll_interval)
             
     async def _update_metrics(self):
         import aiohttp
@@ -513,7 +513,7 @@ For critical errors, you may want to send email alerts to system administrators:
 ```python
 import smtplib
 from email.message import EmailMessage
-import asyncio
+import anyio
 
 class EmailAlertSystem:
     def __init__(self, smtp_server, smtp_port, username, password, recipients):
@@ -534,7 +534,7 @@ class EmailAlertSystem:
         self.dashboard_url = "http://localhost:8080"
         
         # Start monitoring thread
-        asyncio.create_task(self._monitor_errors())
+        anyio.create_task_group()
     
     async def _monitor_errors(self):
         import aiohttp
@@ -570,7 +570,7 @@ class EmailAlertSystem:
                                         await self._send_email_alert(error)
                 except Exception as e:
                     print(f"WebSocket error: {e}")
-                    await asyncio.sleep(5)  # Wait before reconnecting
+                    await anyio.sleep(5)  # Wait before reconnecting
     
     async def _send_email_alert(self, error):
         """Send email alert for critical error.
@@ -761,7 +761,7 @@ curl -X GET "http://localhost:8080/api/errors?time_range=24"
 #### WebSocket Client Example
 
 ```python
-import asyncio
+import anyio
 import websockets
 import json
 
@@ -792,7 +792,7 @@ async def monitor_errors():
                     print(f"New error: {error.get('type')} - {error.get('message')}")
 
 # Run the WebSocket client
-asyncio.run(monitor_errors())
+anyio.run(monitor_errors)
 ```
 
 ## Conclusion

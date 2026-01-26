@@ -1002,7 +1002,7 @@ async def _handle_rate_limit(self):
         # Reset counter and wait if needed
         wait_time = 60.0 - time_passed
         if wait_time > 0:
-            await asyncio.sleep(wait_time)
+            await anyio.sleep(wait_time)
         self.request_count = 0
         self.last_request_time = time.time()
 ```
@@ -1347,7 +1347,7 @@ try:
             error_message=f"API Error {response.status}: {error_text}",
             error_code=f"CLIENT_ERROR"
         )
-except asyncio.TimeoutError:
+except TimeoutError:
     # Timeout error
     return ExternalSystemResult(
         success=False,

@@ -232,7 +232,7 @@ def init_webnn(self, model_name="MODEL_PLACEHOLDER"):
             implementation_type=implementation_type
         )
         
-        return endpoint, tokenizer, handler, asyncio.Queue(32), 0
+        return endpoint, tokenizer, handler, AnyioQueue(32), 0
         
     except Exception as e:
         print(f"Error initializing WebNN model: {e}")
@@ -300,7 +300,7 @@ def init_webgpu(self, model_name="MODEL_PLACEHOLDER"):
             implementation_type=implementation_type
         )
         
-        return endpoint, tokenizer, handler, asyncio.Queue(32), 0
+        return endpoint, tokenizer, handler, AnyioQueue(32), 0
         
     except Exception as e:
         print(f"Error initializing WebGPU model: {e}")

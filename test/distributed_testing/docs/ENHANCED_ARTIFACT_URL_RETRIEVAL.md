@@ -7,7 +7,7 @@ The Enhanced Artifact URL Retrieval System is a comprehensive solution for manag
 The Enhanced Artifact URL Retrieval System provides:
 
 - **Universal Interface**: The same method works across all CI providers
-- **Parallel URL Retrieval**: Efficient batch retrieval of multiple artifact URLs using asyncio tasks (3-10x faster than sequential retrieval)
+- **Parallel URL Retrieval**: Efficient batch retrieval of multiple artifact URLs using AnyIO tasks (3-10x faster than sequential retrieval)
 - **URL Caching**: Minimizes API calls by caching URLs for future requests
 - **Report Integration**: Automatically includes artifact URLs in test reports (Markdown, HTML, JSON)
 - **PR Comment Enhancement**: Adds direct links to artifacts in PR comments
@@ -86,7 +86,7 @@ for name, url in artifact_urls.items():
     print(f"Artifact '{name}' available at: {url}")
 ```
 
-The `get_artifact_urls` method implements parallel URL retrieval using asyncio tasks, which is 3-10x faster than sequential retrieval:
+The `get_artifact_urls` method implements parallel URL retrieval using AnyIO tasks, which is 3-10x faster than sequential retrieval:
 
 ```python
 async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -> Dict[str, Optional[str]]:
@@ -110,7 +110,7 @@ async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -
     # Create tasks for retrieving URLs in parallel
     tasks = []
     for name in artifact_names:
-        task = asyncio.create_task(self.ci_provider.get_artifact_url(test_run_id, name))
+        task = anyio.create_task_group()
         tasks.append((name, task))
     
     # Wait for all tasks to complete

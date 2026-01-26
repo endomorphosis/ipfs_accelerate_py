@@ -82,7 +82,7 @@ GitHub Actions runners running in Docker containers cannot connect to the P2P ca
 
 6. **libp2p Compatibility**
    - Version mismatch between host and container
-   - Python asyncio event loop issues in containerized environment
+   - Python AnyIO event loop issues in containerized environment
 
 ## Diagnostic Plan
 

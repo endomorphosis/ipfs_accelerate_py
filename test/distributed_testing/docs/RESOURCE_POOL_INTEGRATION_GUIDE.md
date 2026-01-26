@@ -172,7 +172,7 @@ The integration follows this high-level architecture:
 Here's a complete example of integrating a worker node with the Resource Pool:
 
 ```python
-import asyncio
+import anyio
 import logging
 from typing import Dict, Any
 
@@ -257,9 +257,9 @@ class ResourcePoolWorker(Worker):
         
         try:
             # Run inference
-            start_time = asyncio.get_event_loop().time()
+            start_time = anyio.current_time()
             result = await model(inputs)
-            end_time = asyncio.get_event_loop().time()
+            end_time = anyio.current_time()
             
             # Calculate metrics
             latency_ms = (end_time - start_time) * 1000
@@ -328,9 +328,9 @@ class ResourcePoolWorker(Worker):
         
         try:
             # Run inference
-            start_time = asyncio.get_event_loop().time()
+            start_time = anyio.current_time()
             result = await sharded_execution.run_inference(inputs)
-            end_time = asyncio.get_event_loop().time()
+            end_time = anyio.current_time()
             
             # Calculate metrics
             latency_ms = (end_time - start_time) * 1000

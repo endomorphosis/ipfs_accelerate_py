@@ -1259,7 +1259,7 @@ You can integrate your own systems with the Error Visualization dashboard using 
 # Example of custom error reporting integration
 import aiohttp
 import json
-import asyncio
+import anyio
 
 async def report_custom_error(dashboard_url, error_data):
     """Report a custom error to the Error Visualization system.

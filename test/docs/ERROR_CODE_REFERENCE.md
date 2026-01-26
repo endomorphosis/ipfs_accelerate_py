@@ -1221,7 +1221,7 @@ except APIRequestError as e:
         console.log(f"Retrying after {remaining_seconds} seconds")
         
         # Wait and retry
-        await asyncio.sleep(remaining_seconds)
+        await anyio.sleep(remaining_seconds)
         response = await make_api_request()
     elif e.status_code >= 500:
         # Server error

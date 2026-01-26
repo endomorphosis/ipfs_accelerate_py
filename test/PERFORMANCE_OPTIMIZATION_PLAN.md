@@ -204,7 +204,7 @@ def _prepare_request_with_compression(self, data, compression_threshold=1024):
 
 **Implementation Example:**
 ```python
-import asyncio
+import anyio
 import aiohttp
 
 class AsyncApiClient:
@@ -237,10 +237,10 @@ class AsyncApiClient:
     def get_or_create_event_loop(cls):
         """Get the existing event loop or create a new one."""
         try:
-            return asyncio.get_event_loop()
+            return anyio.get_event_loop()
         except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop = anyio.new_event_loop()
+            anyio.set_event_loop(loop)
             return loop
 ```
 
@@ -309,7 +309,7 @@ class PredictivePrefetcher:
         self.client = client
         self.pattern_history = []
         self.pattern_frequency = {}
-        self.prefetch_queue = asyncio.Queue()
+        self.prefetch_queue = AnyioQueue()
         self.prefetch_task = None
         
     def record_operation(self, operation_type, params):

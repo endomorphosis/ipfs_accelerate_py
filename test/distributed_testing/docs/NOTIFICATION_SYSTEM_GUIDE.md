@@ -144,7 +144,7 @@ The notification system can be configured using the following environment variab
 Here's an example of using the notification system in your code:
 
 ```python
-import asyncio
+import anyio
 import os
 from distributed_testing.plugins.notification_plugin import NotificationPlugin
 from distributed_testing.plugin_architecture import PluginManager, HookType

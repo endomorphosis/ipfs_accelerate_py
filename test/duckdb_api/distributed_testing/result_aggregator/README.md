@@ -541,7 +541,7 @@ The response from the API varies depending on which aggregator was used:
 ```python
 import json
 import websockets
-import asyncio
+import anyio
 
 async def get_aggregated_results(coordinator_url, api_key, result_type, aggregation_level, use_detailed=False):
     async with websockets.connect(coordinator_url) as websocket:
@@ -567,7 +567,7 @@ async def get_aggregated_results(coordinator_url, api_key, result_type, aggregat
         return result["results"]
 
 # Example: Get high-level performance aggregation by model
-results = asyncio.run(get_aggregated_results(
+results = anyio.run(get_aggregated_results,
     "ws://coordinator-host:8080",
     "your-api-key",
     "performance",

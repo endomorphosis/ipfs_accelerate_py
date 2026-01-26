@@ -91,7 +91,7 @@ Asynchronously generates text from a prompt.
 
 **Example:**
 ```python
-import asyncio
+import anyio
 
 async def generate():
     output = await streaming.generate_async(
@@ -101,7 +101,7 @@ async def generate():
     )
     print("\nGeneration complete.")
     
-asyncio.run(generate())
+anyio.run(generate)
 ```
 
 #### `stream_websocket(websocket, config=None)`

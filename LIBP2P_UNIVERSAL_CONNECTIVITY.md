@@ -194,7 +194,7 @@ python test_universal_connectivity.py
 ### Manual Testing
 
 ```python
-import asyncio
+import anyio
 from libp2p import new_host
 from multiaddr import Multiaddr
 
@@ -207,9 +207,9 @@ async def test_connection():
     print(f"Listening on: {addr}")
     
     # Keep running
-    await asyncio.Event().wait()
+    await anyio.Event().wait()
 
-asyncio.run(test_connection())
+anyio.run(test_connection)
 ```
 
 ## Troubleshooting

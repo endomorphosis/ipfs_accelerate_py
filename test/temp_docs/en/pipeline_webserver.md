@@ -41,12 +41,12 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from transformers import pipeline
-import asyncio
+import anyio
 
 async def homepage(request):
     payload = await request.body()
     string = payload.decode("utf-8")
-    response_q = asyncio.Queue()
+    response_q = AnyioQueue()
     await request.app.model_queue.put((string, response_q))
     output = await response_q.get()
     return JSONResponse(output)
@@ -66,9 +66,9 @@ app = Starlette(
 
 @app.on_event("startup")
 async def startup_event():
-    q = asyncio.Queue()
+    q = AnyioQueue()
     app.model_queue = q
-    asyncio.create_task(server_loop(q))
+    anyio.create_task_group()
 ```
 
 Start the server with the following command.
@@ -120,8 +120,9 @@ strings = []
 queues = []
 while True:
     try:
-        (string, rq) = await asyncio.wait_for(q.get(), timeout=0.001)
-    except asyncio.exceptions.TimeoutError:
+        with anyio.fail_after(0.001):
+            (string, rq) = await q.get()
+    except TimeoutError:
         break
     strings.append(string)
     queues.append(rq)

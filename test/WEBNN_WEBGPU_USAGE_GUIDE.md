@@ -37,7 +37,7 @@ python generators/models/test_webnn_webgpu_integration.py --install-drivers
 ### Basic WebGPU with 4-bit Quantization
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
 from fixed_web_platform.webgpu_quantization import setup_4bit_inference
 
@@ -66,13 +66,13 @@ async def run_webgpu_example():
     await impl.shutdown()
 
 # Run the example
-asyncio.run(run_webgpu_example())
+anyio.run(run_webgpu_example)
 ```
 
 ### Basic WebNN with 8-bit Quantization
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.webnn_implementation import RealWebNNImplementation
 
 async def run_webnn_example():
@@ -100,7 +100,7 @@ async def run_webnn_example():
     await impl.shutdown()
 
 # Run the example
-asyncio.run(run_webnn_example())
+anyio.run(run_webnn_example)
 ```
 
 ## Quantization Options
@@ -140,7 +140,7 @@ Mixed precision keeps some layers at higher precision:
 ### WebGPU with Ultra-Low Precision (2-bit)
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
 
 async def run_ultra_low_precision():
@@ -175,13 +175,13 @@ async def run_ultra_low_precision():
     await impl.shutdown()
 
 # Run the example
-asyncio.run(run_ultra_low_precision())
+anyio.run(run_ultra_low_precision)
 ```
 
 ### Advanced Quantization with Per-Channel and Mixed Precision
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
 from fixed_web_platform.webgpu_quantization import WebGPUQuantizer, quantize_model_weights
 
@@ -220,13 +220,13 @@ async def run_advanced_quantization():
     await impl.shutdown()
 
 # Run the example
-asyncio.run(run_advanced_quantization())
+anyio.run(run_advanced_quantization)
 ```
 
 ### Browser-Optimized Testing
 
 ```python
-import asyncio
+import anyio
 import sys
 
 async def run_browser_optimized_test():
@@ -272,7 +272,7 @@ async def run_browser_optimized_test():
 
 # Run with browser from command line
 if __name__ == "__main__":
-    asyncio.run(run_browser_optimized_test())
+    anyio.run(run_browser_optimized_test)
 ```
 
 ## Testing Tools

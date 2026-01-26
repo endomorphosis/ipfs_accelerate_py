@@ -393,7 +393,7 @@ python implement_comprehensive_webnn_webgpu.py --generate-matrix --db-path resul
 ### Python API
 
 ```python
-import asyncio
+import anyio
 from implement_comprehensive_webnn_webgpu import run_webnn_webgpu_test
 
 # Run WebNN test
@@ -429,8 +429,8 @@ async def test_webgpu():
     print(f"WebGPU result: {result}")
 
 # Run tests
-asyncio.run(test_webnn())
-asyncio.run(test_webgpu())
+anyio.run(test_webnn)
+anyio.run(test_webgpu)
 ```
 
 ## Further Resources

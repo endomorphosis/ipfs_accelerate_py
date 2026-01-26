@@ -423,7 +423,7 @@ async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -
     # Create tasks for retrieving URLs in parallel
     tasks = []
     for name in artifact_names:
-        task = asyncio.create_task(self.ci_provider.get_artifact_url(test_run_id, name))
+        task = anyio.create_task_group()
         tasks.append((name, task))
     
     # Wait for all tasks to complete
@@ -671,7 +671,7 @@ The integration with `TestResultReporter` handles several edge cases and optimiz
 
 2. **URL Retrieval Failures**: If URL retrieval fails for some artifacts, the reporter logs the errors and continues with the available URLs, maintaining smooth operation.
 
-3. **Parallel Processing**: URL retrieval operations are performed in parallel using asyncio tasks, significantly improving performance when retrieving multiple URLs.
+3. **Parallel Processing**: URL retrieval operations are performed in parallel using AnyIO tasks, significantly improving performance when retrieving multiple URLs.
 
 4. **Report URLs**: The reports themselves are uploaded as artifacts, and their URLs are included in the test result metadata, enabling easy access to reports.
 

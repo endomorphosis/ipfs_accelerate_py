@@ -88,7 +88,7 @@ The WebNN and WebGPU implementations can be accessed through our unified Python 
 
 ```python
 # Import the real implementation module
-import asyncio
+import anyio
 from run_real_webgpu_webnn import run_real_webnn_test, run_real_webgpu_test
 
 # Run WebNN test with experimental precision
@@ -114,8 +114,8 @@ async def test_webgpu_precision():
         print(f"{bits}-bit WebGPU result: {result}")
 
 # Run the tests
-asyncio.run(test_webnn())
-asyncio.run(test_webgpu_precision())
+anyio.run(test_webnn)
+anyio.run(test_webgpu_precision)
 ```
 
 ### Using Command-Line Tool (Recommended):
@@ -138,7 +138,7 @@ done
 ### Advanced Usage with Custom Options:
 
 ```python
-import asyncio
+import anyio
 import subprocess
 import json
 
@@ -158,10 +158,10 @@ async def run_custom_test(platform, browser, bits, model="bert-base-uncased", ex
         cmd.append("--experimental-precision")
     
     # Run the command and capture output
-    process = await asyncio.create_subprocess_exec(
+   process = await anyio.create_subprocess_exec(
         *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+      stdout=anyio.subprocess.PIPE,
+      stderr=anyio.subprocess.PIPE
     )
     
     stdout, stderr = await process.communicate()
@@ -181,7 +181,7 @@ async def run_custom_test(platform, browser, bits, model="bert-base-uncased", ex
         return {"status": "error", "message": str(e)}
 
 # Example usage
-asyncio.run(run_custom_test("webnn", "edge", 4, experimental=True))
+anyio.run(run_custom_test, "webnn", "edge", 4, experimental=True)
 ```
 
 ## Browser-Specific Considerations

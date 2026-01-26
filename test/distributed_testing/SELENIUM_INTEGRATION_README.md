@@ -563,10 +563,8 @@ async def execute(self, func: Callable[..., Awaitable[Any]], *args, **kwargs) ->
     try:
         if self.state == CircuitState.HALF_OPEN:
             # Set timeout for half-open test
-            result = await asyncio.wait_for(
-                func(*args, **kwargs),
-                timeout=self.half_open_timeout
-            )
+            with anyio.fail_after(self.half_open_timeout):
+                result = await func(*args, **kwargs)
         else:
             # Normal execution
             result = await func(*args, **kwargs)
@@ -663,7 +661,7 @@ for i in range(circuit.failure_threshold):
 assert circuit.get_state() == "open"
 
 # Wait for half-open transition
-await asyncio.sleep(circuit.half_open_after + 1)
+await anyio.sleep(circuit.half_open_after + 1)
 assert circuit.get_state() == "half-open"
 
 # In half-open state, inject_random_failure avoids severe intensities
@@ -689,7 +687,7 @@ assert result["circuit_breaker_open"] == True  # Failure is blocked
 assert result["success"] == False  # Injection does not succeed
 
 # Wait for recovery and half-open state
-await asyncio.sleep(circuit.half_open_after + 1)
+await anyio.sleep(circuit.half_open_after + 1)
 
 # Now we can inject failures again (mild/moderate only)
 result = await injector.inject_random_failure()

@@ -170,7 +170,7 @@ python test/run_real_web_benchmarks.py --warmup
 For more control, you can use the lower-level API directly:
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.browser_automation import BrowserAutomation
 from fixed_web_platform.websocket_bridge import create_websocket_bridge
 
@@ -232,7 +232,7 @@ async def run_custom_benchmark():
         await bridge.stop()
 
 # Run the benchmark
-asyncio.run(run_custom_benchmark())
+anyio.run(run_custom_benchmark)
 ```
 
 ## ResourcePoolBridge Integration (March 2025)

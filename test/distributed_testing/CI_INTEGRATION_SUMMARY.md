@@ -61,7 +61,7 @@ The hardware monitoring system is now fully integrated with the project's CI/CD 
 - Automatic artifact cleanup based on retention policies
 - Standardized artifact URL retrieval across all CI providers, fully integrated with TestResultReporter
 - Automatic inclusion of artifact URLs in reports and PR comments
-- Parallel URL retrieval with asyncio tasks for improved performance
+- Parallel URL retrieval with AnyIO tasks for improved performance
 - Enhanced reports with clickable artifact links in Markdown, HTML, and JSON formats
 - Smart caching of artifact URLs to minimize API calls
 - Graceful degradation with robust error handling and fallback mechanisms

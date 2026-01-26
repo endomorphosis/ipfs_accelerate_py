@@ -992,7 +992,7 @@ stages:
 For custom integration, use the CI provider classes directly:
 
 ```python
-import asyncio
+import anyio
 import os
 from distributed_testing.ci import CIProviderFactory
 
@@ -1134,7 +1134,7 @@ async def main():
     # Clean up
     await provider.close()
 
-asyncio.run(main())
+anyio.run(main)
 ```
 
 ## Configuration Options

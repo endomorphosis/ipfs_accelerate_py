@@ -565,7 +565,7 @@ result = streaming_handler.generate(
 )
 
 # Option 2: Generate asynchronously
-import asyncio
+import anyio
 
 async def generate_async():
     result = await streaming_handler.generate_async(
@@ -575,7 +575,7 @@ async def generate_async():
     )
     return result
 
-result = asyncio.run(generate_async())
+result = anyio.run(generate_async)
 
 # Get performance statistics
 stats = streaming_handler.get_performance_stats()
@@ -587,14 +587,15 @@ print(f"Batch size adaptation: {stats['batch_size_history']}")
 
 ```python
 from fixed_web_platform.webgpu_streaming_inference import start_websocket_server
-import asyncio
+import anyio
 
 # Start WebSocket server
-asyncio.run(start_websocket_server(
-    model_path="llama-7b",
-    host="localhost",
-    port=8765
-))
+anyio.run(
+  start_websocket_server,
+  model_path="llama-7b",
+  host="localhost",
+  port=8765,
+)
 ```
 
 **Client JavaScript**:

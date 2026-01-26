@@ -295,7 +295,7 @@ When transforming procedural test functions into class-based tests, we follow th
 For tests that use `async`/`await`, we need to take special care:
 
 1. Keep the async methods but wrap them in synchronous test methods when needed
-2. Use `asyncio.run()` to execute async code from synchronous test methods
+2. Use `anyio.run()` to execute async code from synchronous test methods
 3. Ensure proper cleanup of async resources
 
 ## Timeline

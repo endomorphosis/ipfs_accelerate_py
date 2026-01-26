@@ -5,8 +5,8 @@ This repo is migrating to AnyIO. This script helps track remaining
 imports/usages and can optionally fail CI once an allowlist is in place.
 
 Usage:
-  .venv/bin/python tools/audit_asyncio_usage.py
-  .venv/bin/python tools/audit_asyncio_usage.py --fail --allowlist .asyncio_allowlist
+    .venv/bin/python tools/audit_anyio_usage.py
+    .venv/bin/python tools/audit_anyio_usage.py --fail --allowlist .anyio_allowlist
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-ASYNCIO_PATTERNS = [
+ANYIO_PATTERNS = [
     re.compile(r"^\s*import\s+anyio\b", re.MULTILINE),
     re.compile(r"^\s*from\s+anyio\b", re.MULTILINE),
     re.compile(r"\banyio\.", re.MULTILINE),
@@ -96,7 +96,7 @@ def main(argv: list[str]) -> int:
             continue
 
         count = 0
-        for pat in ASYNCIO_PATTERNS:
+        for pat in ANYIO_PATTERNS:
             count += len(pat.findall(text))
 
         if count:

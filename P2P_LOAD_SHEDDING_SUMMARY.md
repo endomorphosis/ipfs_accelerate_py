@@ -111,10 +111,8 @@ self._p2p_bootstrap_peers = list(set(self._p2p_bootstrap_peers))
 
 #### 4. Connection Timeouts
 ```python
-await asyncio.wait_for(
-    self._connect_to_peer(peer_addr),
-    timeout=15.0
-)
+with anyio.fail_after(15.0):
+    await self._connect_to_peer(peer_addr)
 ```
 
 **Rationale**:

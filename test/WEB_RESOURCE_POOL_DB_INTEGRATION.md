@@ -372,7 +372,7 @@ ORDER BY day
 ## Example: Complete Resource Pool with Database Integration
 
 ```python
-import asyncio
+import anyio
 from pathlib import Path
 import os
 from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
@@ -449,7 +449,7 @@ async def run_with_database():
         await pool.close()
 
 if __name__ == "__main__":
-    asyncio.run(run_with_database())
+    anyio.run(run_with_database)
 ```
 
 ## Conclusion

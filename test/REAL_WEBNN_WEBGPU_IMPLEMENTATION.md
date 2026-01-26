@@ -151,7 +151,7 @@ python generators/models/test_real_webnn_webgpu.py --platform webgpu --model ber
 ### Using the Resource Pool Bridge in Custom Code
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.resource_pool_bridge import ResourcePoolBridge
 
 async def run_models():
@@ -197,7 +197,7 @@ async def run_models():
     return text_result, image_result
 
 # Run the async function
-results = asyncio.run(run_models())
+results = anyio.run(run_models)
 ```
 
 ### Using with Resource Pool Integration

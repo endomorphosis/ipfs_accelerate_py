@@ -75,10 +75,10 @@ cache.put("key1", data1)
 # Async
 async def process():
     cache.put("key2", data2)
-    await asyncio.sleep(1)
+    await anyio.sleep(1)
     return cache.get("key1")
 
-result = asyncio.run(process())
+result = anyio.run(process)
 ```
 
 **Result**: ✅ Works correctly
@@ -87,16 +87,12 @@ result = asyncio.run(process())
 
 ### Background Event Loop for P2P
 
-The P2P functionality uses a **background thread with a dedicated event loop**:
+The P2P functionality uses a **background thread with AnyIO**:
 
 ```python
 def _init_p2p(self) -> None:
-    # Create new event loop for background thread
-    self._event_loop = asyncio.new_event_loop()
-    
     def run_event_loop():
-        asyncio.set_event_loop(self._event_loop)
-        self._event_loop.run_forever()
+        anyio.run(self._start_p2p_host)
     
     # Start in daemon thread
     self._p2p_thread = threading.Thread(
@@ -107,10 +103,7 @@ def _init_p2p(self) -> None:
     self._p2p_thread.start()
     
     # Schedule initialization (non-blocking)
-    future = asyncio.run_coroutine_threadsafe(
-        self._start_p2p_host(),
-        self._event_loop
-    )
+    # Host startup runs inside the AnyIO loop in the background thread
 ```
 
 ### Non-Blocking P2P Operations
@@ -124,9 +117,10 @@ def _broadcast_in_background(self, cache_key: str, entry: CacheEntry):
         return
     
     # Schedule async operation in background event loop
-    asyncio.run_coroutine_threadsafe(
-        self._broadcast_cache_entry(cache_key, entry),
-        self._event_loop
+    anyio.from_thread.run(
+        self._broadcast_cache_entry,
+        cache_key,
+        entry
     )
 ```
 

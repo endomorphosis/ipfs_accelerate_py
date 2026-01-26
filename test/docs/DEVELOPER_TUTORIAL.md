@@ -645,7 +645,7 @@ from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.webgpu_streaming_inference import StreamingInferencePipeline
-import asyncio
+import anyio
 import threading
 
 app = Flask(__name__)
@@ -705,8 +705,8 @@ def generate_streaming_text(prompt):
             socketio.emit('error', {'message': str(e)})
     
     # Run the async function
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    loop = anyio.new_event_loop()
+    anyio.set_event_loop(loop)
     loop.run_until_complete(_generate())
 
 if __name__ == '__main__':

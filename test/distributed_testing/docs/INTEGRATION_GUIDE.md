@@ -529,7 +529,7 @@ class EmailNotifier(NotificationPlugin):
 ### Using the GraphQL API
 
 ```python
-import asyncio
+import anyio
 from gql import gql, Client
 from gql.transport.aiohttp import AIOHTTPTransport
 
@@ -583,10 +583,10 @@ async def main():
             break
             
         print(f"Task {task_id} status: {status}")
-        await asyncio.sleep(5)
+        await anyio.sleep(5)
 
 # Run the example
-asyncio.run(main())
+anyio.run(main)
 ```
 
 ### Creating a CI/CD Integration

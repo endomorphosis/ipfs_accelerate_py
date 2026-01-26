@@ -187,7 +187,7 @@ def init_rocm(self, model_name, device, rocm_label):
             tokenizer=tokenizer
         )
         
-        return model, tokenizer, handler, asyncio.Queue(32), 0
+        return model, tokenizer, handler, AnyioQueue(32), 0
         
     except Exception as e:
         print(f"Error initializing ROCm endpoint: {e}")

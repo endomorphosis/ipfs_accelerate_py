@@ -1083,7 +1083,7 @@ Imports:
 - `from generators.hardware.hardware_detection import HAS_MPS`
 - `from unittest.mock import Mock`
 - `numpy as np`
-- `asyncio`
+- `anyio`
 - `torch`
 - `from typing import Union`
 - `time`

@@ -260,8 +260,8 @@ async def test_browser_automation():
         await bridge.close()
 
 # Run the test
-import asyncio
-asyncio.run(test_browser_automation())
+import anyio
+anyio.run(test_browser_automation)
 ```
 
 ### Using the Enhanced Circuit Breaker

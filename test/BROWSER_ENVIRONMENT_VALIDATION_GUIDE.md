@@ -96,7 +96,7 @@ The workflow will:
 ### Basic WebNN/WebGPU Detection
 
 ```python
-import asyncio
+import anyio
 from check_browser_webnn_webgpu import check_browser_capabilities
 
 async def test_browser():
@@ -119,7 +119,7 @@ async def test_browser():
         print(f"Architecture: {details.get('architecture')}")
 
 # Run the test
-asyncio.run(test_browser())
+anyio.run(test_browser)
 ```
 
 ### Using the BrowserAutomation Class
@@ -127,7 +127,7 @@ asyncio.run(test_browser())
 For more advanced scenarios, you can use the `BrowserAutomation` class directly:
 
 ```python
-import asyncio
+import anyio
 from fixed_web_platform.browser_automation import BrowserAutomation
 
 async def run_browser_test():
@@ -162,7 +162,7 @@ async def run_browser_test():
         await automation.close()
 
 # Run the test
-asyncio.run(run_browser_test())
+anyio.run(run_browser_test)
 ```
 
 ## Selenium Integration

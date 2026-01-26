@@ -90,7 +90,7 @@ class WorkerNode:
         self.coordinator_url = config["coordinator_url"]
         self.worker_id = config["worker_id"]
         self.hardware_info = self._detect_hardware()
-        self.task_queue = asyncio.Queue()
+        self.task_queue = AnyioQueue()
         self.running = False
         
     async def start(self):

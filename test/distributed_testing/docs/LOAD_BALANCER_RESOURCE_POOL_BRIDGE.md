@@ -368,7 +368,7 @@ And provides automatic recommendations for:
 Here's a complete example of using the Load Balancer Resource Pool Bridge:
 
 ```python
-import asyncio
+import anyio
 import logging
 from typing import Dict, Any
 
@@ -435,7 +435,7 @@ async def main():
         ))
         
         # Wait for tests to complete
-        await asyncio.sleep(60)
+        await anyio.sleep(60)
         
         # Analyze system performance
         analysis = await bridge.analyze_system_performance()
@@ -449,7 +449,7 @@ async def main():
         await bridge.stop()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main)
 ```
 
 ## Monitoring and Metrics

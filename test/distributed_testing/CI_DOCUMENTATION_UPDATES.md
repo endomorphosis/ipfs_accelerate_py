@@ -27,7 +27,7 @@ This document summarizes the documentation updates made for the CI integration f
    - Detailed explanation of the get_artifact_urls method for efficient bulk URL retrieval
    - Detailed documentation of enhanced collect_and_upload_artifacts with automatic URL retrieval
    - Documentation of updated report_test_result with artifact URL integration
-   - Parallel URL retrieval implementation with asyncio tasks for significantly improved performance
+   - Parallel URL retrieval implementation with AnyIO tasks for significantly improved performance
    - Complete integration workflow from artifact collection to report generation
    - Examples of enhanced reports with artifact URLs in all formats (Markdown, HTML, JSON)
    - Examples of PR comments with artifact URLs

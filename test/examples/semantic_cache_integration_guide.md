@@ -195,7 +195,7 @@ Tune these parameters based on your specific use case:
 Here's how to use a cached API client:
 
 ```python
-import asyncio
+import anyio
 from your_api_module import create_client
 
 async def main():
@@ -217,7 +217,7 @@ async def main():
     # Print cache statistics
     print(client.get_cache_stats())
 
-asyncio.run(main())
+anyio.run(main)
 ```
 
 ## Advanced Cache Control

@@ -1404,7 +1404,7 @@ def setup_websocket_streaming(pipeline):
             await websocket.send(json.dumps(token_data))
             
             # Add a small delay to prevent overwhelming the client
-            await asyncio.sleep(0.01)
+            await anyio.sleep(0.01)
         
         # Send completion message
         await websocket.send(json.dumps({"status": "complete"}))

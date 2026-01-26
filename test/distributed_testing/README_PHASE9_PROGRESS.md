@@ -60,7 +60,7 @@ The Distributed Testing Framework implementation is now complete with all compon
    - Execution group management based on dependencies 
    - Flow control mechanisms for parallelism management
    - Progress tracking and reporting
-   - Asynchronous execution support with asyncio
+   - Asynchronous execution support with AnyIO
    - Comprehensive unit tests and demo script
 
 5. **Enhanced Error Handling System (COMPLETED)**: Implemented a comprehensive error handling system for distributed testing:

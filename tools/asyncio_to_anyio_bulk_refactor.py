@@ -397,10 +397,10 @@ def _apply_sync_bridge_rewrites(source: str) -> Tuple[str, Dict[str, int]]:
     if n:
         applied["anyio.get_event_loop+run_until_complete (assign)"] = n
 
-    # 2) asyncio new loop try/finally wrapper (assignment)
-    pat_asyncio_try_assign = re.compile(
-        r"^(?P<indent>[ \t]*)loop\s*=\s*asyncio\.new_event_loop\(\)\s*$\n"
-        r"(?P=indent)asyncio\.set_event_loop\(loop\)\s*$\n"
+    # 2) anyio new loop try/finally wrapper (assignment)
+    pat_anyio_try_assign = re.compile(
+        r"^(?P<indent>[ \t]*)loop\s*=\s*anyio\.new_event_loop\(\)\s*$\n"
+        r"(?P=indent)anyio\.set_event_loop\(loop\)\s*$\n"
         r"(?P=indent)try:\s*$\n"
         rf"(?P=indent)[ \t]+(?P<var>\w+)\s*=\s*loop\.run_until_complete\(\s*(?P<call>[\w\.]+)\({args_1level}\)\s*\)\s*$\n"
         r"(?P=indent)finally:\s*$\n"
@@ -408,21 +408,21 @@ def _apply_sync_bridge_rewrites(source: str) -> Tuple[str, Dict[str, int]]:
         re.M | re.S,
     )
 
-    def repl_asyncio_try_assign(m: re.Match) -> str:
+    def repl_anyio_try_assign(m: re.Match) -> str:
         indent = m.group("indent")
         var = m.group("var")
         call = m.group("call")
         args = m.group("args")
         return f"{indent}{var} = " + _format_bridge_call(indent, call, args).lstrip() + "\n"
 
-    new_source, n = pat_asyncio_try_assign.subn(repl_asyncio_try_assign, new_source)
+    new_source, n = pat_anyio_try_assign.subn(repl_anyio_try_assign, new_source)
     if n:
-        applied["asyncio.new_event_loop try/finally (assign)"] = n
+        applied["anyio.new_event_loop try/finally (assign)"] = n
 
-    # 3) asyncio new loop try/finally wrapper (return)
-    pat_asyncio_try_return = re.compile(
-        r"^(?P<indent>[ \t]*)loop\s*=\s*asyncio\.new_event_loop\(\)\s*$\n"
-        r"(?P=indent)asyncio\.set_event_loop\(loop\)\s*$\n"
+    # 3) anyio new loop try/finally wrapper (return)
+    pat_anyio_try_return = re.compile(
+        r"^(?P<indent>[ \t]*)loop\s*=\s*anyio\.new_event_loop\(\)\s*$\n"
+        r"(?P=indent)anyio\.set_event_loop\(loop\)\s*$\n"
         r"(?P=indent)try:\s*$\n"
         rf"(?P=indent)[ \t]+return\s+loop\.run_until_complete\(\s*(?P<call>[\w\.]+)\({args_1level}\)\s*\)\s*$\n"
         r"(?P=indent)finally:\s*$\n"
@@ -430,50 +430,50 @@ def _apply_sync_bridge_rewrites(source: str) -> Tuple[str, Dict[str, int]]:
         re.M | re.S,
     )
 
-    def repl_asyncio_try_return(m: re.Match) -> str:
+    def repl_anyio_try_return(m: re.Match) -> str:
         indent = m.group("indent")
         call = m.group("call")
         args = m.group("args")
         return f"{indent}return " + _format_bridge_call(indent, call, args).lstrip() + "\n"
 
-    new_source, n = pat_asyncio_try_return.subn(repl_asyncio_try_return, new_source)
+    new_source, n = pat_anyio_try_return.subn(repl_anyio_try_return, new_source)
     if n:
-        applied["asyncio.new_event_loop try/finally (return)"] = n
+        applied["anyio.new_event_loop try/finally (return)"] = n
 
-    # 4) asyncio get_event_loop/new_event_loop wrapper (common CLI sync pattern)
-    pat_asyncio_get_event_loop = re.compile(
+    # 4) anyio get_event_loop/new_event_loop wrapper (common CLI sync pattern)
+    pat_anyio_get_event_loop = re.compile(
         r"^(?P<indent>[ \t]*)try:\s*$\n"
-        r"(?P=indent)[ \t]+loop\s*=\s*asyncio\.get_event_loop\(\)\s*$\n"
+        r"(?P=indent)[ \t]+loop\s*=\s*anyio\.get_event_loop\(\)\s*$\n"
         + spacer
         + r"(?P=indent)except\s+RuntimeError:\s*$\n"
-        r"(?P=indent)[ \t]+loop\s*=\s*asyncio\.new_event_loop\(\)\s*$\n"
-        r"(?P=indent)[ \t]+asyncio\.set_event_loop\(loop\)\s*$\n"
+        r"(?P=indent)[ \t]+loop\s*=\s*anyio\.new_event_loop\(\)\s*$\n"
+        r"(?P=indent)[ \t]+anyio\.set_event_loop\(loop\)\s*$\n"
         + spacer
         + rf"(?P=indent)return\s+loop\.run_until_complete\(\s*(?P<call>[\w\.]+)\({args_1level}\)\s*\)\s*$",
         re.M | re.S,
     )
 
-    def repl_asyncio_get_event_loop(m: re.Match) -> str:
+    def repl_anyio_get_event_loop(m: re.Match) -> str:
         indent = m.group("indent")
         call = m.group("call")
         args = m.group("args")
         return f"{indent}return " + _format_bridge_call(indent, call, args).lstrip()
 
-    new_source, n = pat_asyncio_get_event_loop.subn(repl_asyncio_get_event_loop, new_source)
+    new_source, n = pat_anyio_get_event_loop.subn(repl_anyio_get_event_loop, new_source)
     if n:
-        applied["asyncio.get_event_loop try/except + run_until_complete"] = n
+        applied["anyio.get_event_loop try/except + run_until_complete"] = n
 
-    # 5) loop = asyncio.get_event_loop(); return loop.run_until_complete(...)
-    pat_asyncio_loop_direct = re.compile(
-        r"^(?P<indent>[ \t]*)loop\s*=\s*asyncio\.get_event_loop\(\)\s*$\n"
+    # 5) loop = anyio.get_event_loop(); return loop.run_until_complete(...)
+    pat_anyio_loop_direct = re.compile(
+        r"^(?P<indent>[ \t]*)loop\s*=\s*anyio\.get_event_loop\(\)\s*$\n"
         + spacer
         + rf"(?P=indent)return\s+loop\.run_until_complete\(\s*(?P<call>[\w\.]+)\({args_1level}\)\s*\)\s*$",
         re.M | re.S,
     )
 
-    new_source, n = pat_asyncio_loop_direct.subn(repl_anyio_loop, new_source)
+    new_source, n = pat_anyio_loop_direct.subn(repl_anyio_loop, new_source)
     if n:
-        applied["asyncio.get_event_loop+run_until_complete"] = n
+        applied["anyio.get_event_loop+run_until_complete"] = n
 
     # If any bridge rewrites were applied, ensure helper exists.
     if applied:
@@ -596,11 +596,8 @@ def main(argv: List[str]) -> int:
             continue
 
         # Never rewrite this tool itself.
-        try:
-            if str(path.relative_to(DEFAULT_ROOT)).replace("\\", "/") == "tools/asyncio_to_anyio_bulk_refactor.py":
-                continue
-        except ValueError:
-            pass
+        if path.resolve() == Path(__file__).resolve():
+            continue
         # Skip vendored/virtualenv folders if user points include too wide
         if any(part in {".venv", ".venv_zt_validate", ".pytest_cache", "__pycache__"} for part in path.parts):
             continue

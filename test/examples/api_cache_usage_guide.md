@@ -45,7 +45,7 @@ pip install -r requirements.txt
 Here's a minimal example to get started with semantic caching for OpenAI:
 
 ```python
-import asyncio
+import anyio
 from openai import AsyncClient
 from examples.openai_semantic_cache import SemanticCacheOpenAIClient
 
@@ -85,7 +85,7 @@ async def main():
     # Print cache statistics
     print(cached_client.get_cache_stats())
 
-asyncio.run(main())
+anyio.run(main)
 ```
 
 ## Supported APIs
@@ -279,7 +279,7 @@ cached_client = SemanticCacheOpenAIClient(
 All cache implementations are thread-safe for concurrent usage:
 
 ```python
-import asyncio
+import anyio
 
 async def process_query(query, cached_client):
     response = await cached_client.create_chat_completion(
@@ -307,12 +307,12 @@ async def main():
     
     # Run concurrently
     tasks = [process_query(query, cached_client) for query in queries]
-    results = await asyncio.gather(*tasks)
+    results = await anyio.gather(*tasks)
     
     # Print cache statistics
     print(cached_client.get_cache_stats())
 
-asyncio.run(main())
+anyio.run(main)
 ```
 
 ## Monitoring and Metrics
@@ -612,7 +612,7 @@ Complete example of integrating with a web application:
 from fastapi import FastAPI, BackgroundTasks
 from examples.openai_semantic_cache import SemanticCacheOpenAIClient
 from openai import AsyncClient
-import asyncio
+import anyio
 import time
 
 app = FastAPI()
@@ -633,12 +633,12 @@ async def clean_cache():
         print(f"Cache stats: {stats}")
         
         # Wait for an hour
-        await asyncio.sleep(3600)
+        await anyio.sleep(3600)
 
 @app.on_event("startup")
 async def startup_event():
     # Start cache maintenance task
-    asyncio.create_task(clean_cache())
+    anyio.create_task(clean_cache())
 
 @app.post("/chat")
 async def chat(query: str):
