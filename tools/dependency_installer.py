@@ -26,6 +26,13 @@ class DependencyInstaller:
         self.installation_log = []
         self.failed_installations = []
         self.successful_installations = []
+        self.repo_root = Path(__file__).resolve().parents[1]
+        self.external_dir = self.repo_root / "external"
+        self.local_packages = [
+            "ipfs_kit_py",
+            "ipfs_model_manager_py",
+            "ipfs_transformers_py",
+        ]
         
     def check_dependency(self, module_name: str, import_name: Optional[str] = None) -> bool:
         """
@@ -185,6 +192,10 @@ class DependencyInstaller:
             # Optional advanced packages
             "fastmcp": "fastmcp",
             "duckdb": "duckdb",
+            "fastapi": "fastapi",
+            "uvicorn": "uvicorn",
+            "aiohttp": "aiohttp",
+            "websockets": "websockets",
         }
         
         results = {}
@@ -195,6 +206,41 @@ class DependencyInstaller:
             else:
                 results[package_name] = self.install_package(package_name, import_name)
         
+        return results
+
+    def install_local_packages(self) -> Dict[str, bool]:
+        """Install bundled local packages from external/ when present."""
+        results: Dict[str, bool] = {}
+        if not self.external_dir.exists():
+            logger.info("No external directory found; skipping local package installs")
+            return results
+
+        for package in self.local_packages:
+            package_path = self.external_dir / package
+            if not package_path.exists():
+                results[package] = False
+                continue
+
+            try:
+                cmd = [sys.executable, "-m", "pip", "install", "-e", str(package_path)]
+                logger.info(f"Installing local package {package} from {package_path}...")
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                if result.returncode == 0:
+                    self.successful_installations.append(package)
+                    self.installation_log.append(f"✅ {package} installed from {package_path}")
+                    results[package] = True
+                else:
+                    error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                    self.failed_installations.append(package)
+                    self.installation_log.append(f"❌ {package} local install failed: {error_msg}")
+                    logger.error(f"❌ {package} local install failed: {error_msg}")
+                    results[package] = False
+            except Exception as e:
+                self.failed_installations.append(package)
+                self.installation_log.append(f"❌ {package} local install error: {str(e)}")
+                logger.error(f"❌ {package} local install error: {str(e)}")
+                results[package] = False
+
         return results
     
     def run_comprehensive_installation(self) -> Dict[str, Any]:
@@ -208,6 +254,9 @@ class DependencyInstaller:
         
         # Install AI/ML dependencies
         ai_results = self.install_ai_ml_dependencies()
+
+        # Install local external packages when available
+        local_results = self.install_local_packages()
         
         # Install Playwright if needed
         playwright_available = self.check_dependency("playwright")
@@ -218,7 +267,7 @@ class DependencyInstaller:
             self.installation_log.append("✅ Playwright already available")
         
         # Generate summary
-        total_packages = len(ai_results) + (0 if playwright_available else 1)
+        total_packages = len(ai_results) + len(local_results) + (0 if playwright_available else 1)
         successful_count = len(self.successful_installations) + (1 if playwright_success else 0)
         failed_count = len(self.failed_installations)
         
@@ -228,6 +277,7 @@ class DependencyInstaller:
             "failed_installations": failed_count,
             "success_rate": (successful_count / total_packages) * 100 if total_packages > 0 else 0,
             "ai_packages": ai_results,
+            "local_packages": local_results,
             "playwright_available": playwright_success,
             "installation_log": self.installation_log,
             "failed_packages": self.failed_installations

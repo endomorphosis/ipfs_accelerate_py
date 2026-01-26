@@ -208,7 +208,8 @@ class GitHubClient(CIProviderInterface):
         """
         await self._ensure_session()
 
-        if self._offline:
+        if self._offline or self.session is None:
+            self._offline = True
             logger.info(f"Offline mode: treating update_test_run({test_run_id}) as success")
             return True
         
@@ -298,7 +299,8 @@ class GitHubClient(CIProviderInterface):
         """
         await self._ensure_session()
 
-        if self._offline:
+        if self._offline or self.session is None:
+            self._offline = True
             logger.info(f"Offline mode: treating add_pr_comment(PR #{pr_number}) as success")
             return True
         

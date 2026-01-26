@@ -223,7 +223,8 @@ class JenkinsClient(CIProviderInterface):
         """
         await self._ensure_session()
 
-        if self._offline:
+        if self._offline or self.session is None:
+            self._offline = True
             logger.info(f"Offline mode: treating update_test_run({test_run_id}) as success")
             return True
         
@@ -305,7 +306,8 @@ class JenkinsClient(CIProviderInterface):
         """
         await self._ensure_session()
 
-        if self._offline:
+        if self._offline or self.session is None:
+            self._offline = True
             if not hasattr(self, "_artifact_urls"):
                 self._artifact_urls = {}
             if test_run_id not in self._artifact_urls:
@@ -383,7 +385,7 @@ class JenkinsClient(CIProviderInterface):
         Returns:
             True if comment was added successfully
         """
-        logger.warning("Jenkins doesn't have native PR comment functionality. This would require plugin integration.")
+        logger.info("Jenkins doesn't have native PR comment functionality. This would require plugin integration.")
         return False
             
     async def get_test_run_status(self, test_run_id: str) -> Dict[str, Any]:

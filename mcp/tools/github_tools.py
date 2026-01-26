@@ -6,10 +6,22 @@ including workflow queue management and runner provisioning.
 """
 
 import logging
+import os
 import time
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.github")
+
+
+def _is_pytest() -> bool:
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
 
 # Try imports with fallbacks
 try:
@@ -22,14 +34,20 @@ except ImportError:
 
 # Import GitHub operations
 try:
-    from ...shared import SharedCore, GitHubOperations
+    from shared import SharedCore, GitHubOperations
     shared_core = SharedCore()
     github_ops = GitHubOperations(shared_core)
     HAVE_GITHUB = True
-except ImportError as e:
-    logger.warning(f"GitHub operations not available: {e}")
-    HAVE_GITHUB = False
-    github_ops = None
+except ImportError:
+    try:
+        from ...shared import SharedCore, GitHubOperations
+        shared_core = SharedCore()
+        github_ops = GitHubOperations(shared_core)
+        HAVE_GITHUB = True
+    except ImportError as e:
+        _log_optional_dependency(f"GitHub operations not available: {e}")
+        HAVE_GITHUB = False
+        github_ops = None
 
 
 def register_github_tools(mcp: FastMCP) -> None:
@@ -37,7 +55,7 @@ def register_github_tools(mcp: FastMCP) -> None:
     logger.info("Registering GitHub CLI tools")
     
     if not HAVE_GITHUB:
-        logger.warning("GitHub operations not available, skipping registration")
+        _log_optional_dependency("GitHub operations not available, skipping registration")
         return
     
     @mcp.tool()

@@ -460,7 +460,7 @@ class TestResultReporter:
             Dictionary mapping artifact names to their URLs (or None if not found)
         """
         if not self.ci_provider or not hasattr(self.ci_provider, 'get_artifact_url'):
-            logger.warning("CI provider doesn't support get_artifact_url method")
+            logger.info("CI provider doesn't support get_artifact_url method")
             return {name: None for name in artifact_names}
 
         # Fast-path for mock providers that expose an in-memory URL cache.
@@ -490,7 +490,7 @@ class TestResultReporter:
                             if valid_urls:
                                 await validate_urls(list(valid_urls.values()))
                         except ImportError:
-                            logger.warning("URL validator not available, skipping URL validation")
+                            logger.info("URL validator not available, skipping URL validation")
                         except Exception as e:
                             logger.error(f"Error validating artifact URLs: {str(e)}")
 
@@ -506,7 +506,10 @@ class TestResultReporter:
             try:
                 urls[name] = await self.ci_provider.get_artifact_url(test_run_id, name)
             except Exception as e:
-                logger.error(f"Error retrieving artifact URL for {name}: {str(e)}")
+                if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+                    logger.info(f"Error retrieving artifact URL for {name}: {str(e)}")
+                else:
+                    logger.error(f"Error retrieving artifact URL for {name}: {str(e)}")
                 urls[name] = None
 
         async with anyio.create_task_group() as tg:
@@ -537,7 +540,7 @@ class TestResultReporter:
                             else:
                                 logger.warning(f"Artifact URL for {name} ({url}) is not accessible: {error_message}")
             except ImportError:
-                logger.warning("URL validator not available, skipping URL validation")
+                logger.info("URL validator not available, skipping URL validation")
             except Exception as e:
                 logger.error(f"Error validating artifact URLs: {str(e)}")
         

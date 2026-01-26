@@ -311,6 +311,7 @@ class TestCoordinator:
         # Plugin manager is optional; keep falsy by default so integrations can fall back
         # to method patching in minimal-dependency environments.
         self.plugin_manager = None
+        self.state_manager = None
 
         # Advanced components are not part of the lightweight TestCoordinator; they are
         # provided by DistributedTestingCoordinator below.
@@ -452,6 +453,7 @@ class DistributedTestingCoordinator(TestCoordinator):
         db_path: str | None = None,
         host: str = "0.0.0.0",
         port: int = 5000,
+        cluster_nodes: Optional[List[str]] = None,
         enable_advanced_scheduler: bool = True,
         enable_health_monitor: bool = True,
         enable_load_balancer: bool = True,
@@ -498,6 +500,27 @@ class DistributedTestingCoordinator(TestCoordinator):
         # AdaptiveLoadBalancer requires a coordinator reference.
         self.load_balancer = AdaptiveLoadBalancer(self) if enable_load_balancer else None
         self.plugin_manager = PluginManager(self) if enable_plugins else None
+
+        # Distributed state manager (enables recovery workflows)
+        self.state_manager = None
+        try:
+            from .distributed_state_management import DistributedStateManager  # type: ignore
+        except Exception:
+            try:
+                from distributed_state_management import DistributedStateManager  # type: ignore
+            except Exception:
+                DistributedStateManager = None  # type: ignore
+
+        if DistributedStateManager is not None:
+            try:
+                node_url = f"http://{host}:{port}/{self.id}"
+                nodes = cluster_nodes or [node_url]
+                self.state_manager = DistributedStateManager(self, nodes, self.id)
+            except Exception as exc:
+                if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+                    logger.info(f"Distributed state manager unavailable: {exc}")
+                else:
+                    logger.warning(f"Distributed state manager unavailable: {exc}")
 
         self._server_runner = None
         self._server_site = None

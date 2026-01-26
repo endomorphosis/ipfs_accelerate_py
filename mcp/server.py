@@ -20,6 +20,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _is_pytest() -> bool:
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
+
 # Backward-compatible singleton access (used by tests and older integrations)
 _mcp_server_instance: Optional["FastMCP"] = None
 
@@ -43,7 +54,7 @@ except ImportError:
     # Fall back to mock implementation if FastMCP is not available
     from mcp.mock_mcp import FastMCP, Context
     fastmcp_available = False
-    logger.warning("FastMCP import failed, falling back to mock implementation")
+    _log_optional_dependency("FastMCP import failed, falling back to mock implementation")
 
 # Import the IPFS context
 from mcp.types import IPFSAccelerateContext
@@ -51,11 +62,43 @@ from mcp.types import IPFSAccelerateContext
 # Try to import ipfs_kit_py (be tolerant to any import error)
 try:
     import ipfs_kit_py
-    from ipfs_kit_py import IPFSApi
-    ipfs_available = True
+
+    ipfs_client_factory = None
+    try:
+        from ipfs_kit_py import IPFSApi  # type: ignore
+        ipfs_client_factory = IPFSApi
+    except Exception:
+        try:
+            from ipfs_kit_py import IPFSSimpleAPI  # type: ignore
+            if IPFSSimpleAPI is not None:
+                ipfs_client_factory = IPFSSimpleAPI
+        except Exception:
+            ipfs_client_factory = None
+
+    if ipfs_client_factory is None:
+        try:
+            get_high_level_api = getattr(ipfs_kit_py, "get_high_level_api", None)
+            if callable(get_high_level_api):
+                api_cls, _plugin_base = get_high_level_api()
+                if api_cls is not None:
+                    ipfs_client_factory = api_cls
+        except Exception:
+            ipfs_client_factory = None
+
+    if ipfs_client_factory is None:
+        try:
+            from ipfs_kit_py.ipfs_client import ipfs_py  # type: ignore
+            ipfs_client_factory = ipfs_py
+        except Exception:
+            ipfs_client_factory = None
+
+    ipfs_available = ipfs_client_factory is not None
+    if not ipfs_available:
+        _log_optional_dependency("ipfs_kit_py available, but no IPFS client API was found; IPFS features disabled")
 except Exception as e:
     ipfs_available = False
-    logger.warning(f"ipfs_kit_py not available or failed to import ({e!s}); some functionality will be limited")
+    ipfs_client_factory = None
+    _log_optional_dependency(f"ipfs_kit_py not available or failed to import ({e!s}); some functionality will be limited")
 
 # Import error reporting
 try:
@@ -96,7 +139,7 @@ def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
         if ipfs_available:
             try:
                 # Create IPFS client
-                ipfs_client = ipfs_kit_py.IPFSApi()
+            ipfs_client = ipfs_client_factory()
                 ipfs_context.set_ipfs_client(ipfs_client)
                 
                 # Test connection

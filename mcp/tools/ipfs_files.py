@@ -15,6 +15,17 @@ from typing import Dict, Any, List, Optional, Union, cast
 # Configure logging
 logger = logging.getLogger(__name__)
 
+
+def _is_pytest() -> bool:
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
+
 # Try imports with fallbacks
 try:
     from mcp.server.fastmcp import FastMCP, Context
@@ -27,15 +38,21 @@ except ImportError:
 
 # Import shared operations
 try:
-    from ...shared import SharedCore, FileOperations
+    from shared import SharedCore, FileOperations
     shared_core = SharedCore()
     file_ops = FileOperations(shared_core)
     HAVE_SHARED = True
-except ImportError as e:
-    logger.warning(f"Shared operations not available: {e}")
-    HAVE_SHARED = False
-    shared_core = None
-    file_ops = None
+except ImportError:
+    try:
+        from ...shared import SharedCore, FileOperations
+        shared_core = SharedCore()
+        file_ops = FileOperations(shared_core)
+        HAVE_SHARED = True
+    except ImportError as e:
+        _log_optional_dependency(f"Shared operations not available: {e}")
+        HAVE_SHARED = False
+        shared_core = None
+        file_ops = None
 
 # Import the get_ipfs_client function from tools module for fallback
 from . import get_ipfs_client

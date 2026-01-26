@@ -22,17 +22,34 @@ except ImportError:
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.inference")
 
+
+def _is_pytest() -> bool:
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
+
 # Import shared operations
 try:
-    from ....shared import SharedCore, InferenceOperations
+    from ...shared import SharedCore, InferenceOperations
     shared_core = SharedCore()
     inference_ops = InferenceOperations(shared_core)
     HAVE_SHARED = True
-except ImportError as e:
-    logger.warning(f"Shared operations not available: {e}")
-    HAVE_SHARED = False
-    shared_core = None
-    inference_ops = None
+except ImportError:
+    try:
+        from shared import SharedCore, InferenceOperations
+        shared_core = SharedCore()
+        inference_ops = InferenceOperations(shared_core)
+        HAVE_SHARED = True
+    except ImportError as e:
+        _log_optional_dependency(f"Shared operations not available: {e}")
+        HAVE_SHARED = False
+        shared_core = None
+        inference_ops = None
 
 def register_tools(mcp):
     """Register inference-related tools with the MCP server"""

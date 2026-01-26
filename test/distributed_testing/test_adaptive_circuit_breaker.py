@@ -31,11 +31,15 @@ logger = logging.getLogger("test_adaptive_circuit_breaker")
 
 # Import the adaptive circuit breaker
 try:
-    from adaptive_circuit_breaker import AdaptiveCircuitBreaker
+    from distributed_testing.adaptive_circuit_breaker import AdaptiveCircuitBreaker
     ADAPTIVE_CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
-    ADAPTIVE_CIRCUIT_BREAKER_AVAILABLE = False
-    logger.error("AdaptiveCircuitBreaker not available. Tests will be skipped.")
+    try:
+        from adaptive_circuit_breaker import AdaptiveCircuitBreaker
+        ADAPTIVE_CIRCUIT_BREAKER_AVAILABLE = True
+    except ImportError:
+        ADAPTIVE_CIRCUIT_BREAKER_AVAILABLE = False
+        logger.error("AdaptiveCircuitBreaker not available. Tests will be skipped.")
 
 # Check for sklearn
 try:

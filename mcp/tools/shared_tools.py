@@ -5,10 +5,22 @@ This module provides MCP tools that use the shared operations for consistency wi
 """
 
 import logging
+import os
 import time
 from typing import Dict, List, Any, Optional, Union
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.shared")
+
+
+def _is_pytest() -> bool:
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
 
 # Try imports with fallbacks
 try:
@@ -22,32 +34,59 @@ except ImportError:
 
 # Import shared operations
 try:
-    from ...shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+    from shared import (
+        SharedCore,
+        InferenceOperations,
+        FileOperations,
+        ModelOperations,
+        NetworkOperations,
+        QueueOperations,
+        TestOperations,
+    )
     shared_core = SharedCore()
     inference_ops = InferenceOperations(shared_core)
-    file_ops = FileOperations(shared_core) 
+    file_ops = FileOperations(shared_core)
     model_ops = ModelOperations(shared_core)
     network_ops = NetworkOperations(shared_core)
     queue_ops = QueueOperations(shared_core)
     test_ops = TestOperations(shared_core)
     HAVE_SHARED = True
-except ImportError as e:
-    logger.warning(f"Shared operations not available: {e}")
-    HAVE_SHARED = False
-    shared_core = None
-    inference_ops = None
-    file_ops = None
-    model_ops = None
-    network_ops = None
-    queue_ops = None
-    test_ops = None
+except ImportError:
+    try:
+        from ...shared import (
+            SharedCore,
+            InferenceOperations,
+            FileOperations,
+            ModelOperations,
+            NetworkOperations,
+            QueueOperations,
+            TestOperations,
+        )
+        shared_core = SharedCore()
+        inference_ops = InferenceOperations(shared_core)
+        file_ops = FileOperations(shared_core)
+        model_ops = ModelOperations(shared_core)
+        network_ops = NetworkOperations(shared_core)
+        queue_ops = QueueOperations(shared_core)
+        test_ops = TestOperations(shared_core)
+        HAVE_SHARED = True
+    except ImportError as e:
+        _log_optional_dependency(f"Shared operations not available: {e}")
+        HAVE_SHARED = False
+        shared_core = None
+        inference_ops = None
+        file_ops = None
+        model_ops = None
+        network_ops = None
+        queue_ops = None
+        test_ops = None
 
 def register_shared_tools(mcp: FastMCP) -> None:
     """Register tools that use shared operations with the MCP server."""
     logger.info("Registering shared operation tools")
     
     if not HAVE_SHARED:
-        logger.warning("Shared operations not available, skipping registration")
+        _log_optional_dependency("Shared operations not available, skipping registration")
         return
     
     # Inference tools using shared operations

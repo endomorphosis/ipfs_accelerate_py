@@ -139,8 +139,12 @@ try:
     )
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
-    logger.warning("Circuit breaker not available")
-    CIRCUIT_BREAKER_AVAILABLE = False
+    try:
+        from circuit_breaker import CircuitBreaker, CircuitState, CircuitOpenError
+        CIRCUIT_BREAKER_AVAILABLE = True
+    except ImportError:
+        logger.warning("Circuit breaker not available")
+        CIRCUIT_BREAKER_AVAILABLE = False
 
 class BrowserConfiguration:
     """Configuration settings for browser initialization."""

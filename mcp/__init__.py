@@ -19,6 +19,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ipfs_accelerate_mcp")
 
+
+def _is_pytest() -> bool:
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_pytest():
+        logger.info(message)
+    else:
+        logger.warning(message)
+
 # Version information
 __version__ = "0.1.0"  # Initial version
 
@@ -32,8 +43,8 @@ except ImportError:
     # Fall back to mock implementation if FastMCP is not available
     from mcp.mock_mcp import FastMCP, Context
     fastmcp_available = False
-    logger.warning("FastMCP import failed, falling back to mock implementation")
-    logger.warning("Using mock MCP implementation")
+    _log_optional_dependency("FastMCP import failed, falling back to mock implementation")
+    _log_optional_dependency("Using mock MCP implementation")
 
 # Check for ipfs_kit_py (tolerate any import error)
 try:
@@ -42,7 +53,7 @@ try:
     logger.info("IPFS Kit available")
 except Exception as e:
     ipfs_kit_available = False
-    logger.warning(f"IPFS Kit not available or failed to import ({e!s}); some functionality will be limited")
+    _log_optional_dependency(f"IPFS Kit not available or failed to import ({e!s}); some functionality will be limited")
 
 from mcp.types import IPFSAccelerateContext
 from mcp.server import create_ipfs_mcp_server, run_server

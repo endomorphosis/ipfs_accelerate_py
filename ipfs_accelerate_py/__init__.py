@@ -23,10 +23,22 @@ except Exception:
     install_depends = None
 
 import os
+import sys
+from pathlib import Path
+
+def _add_external_package(package_name: str) -> None:
+    """Ensure external bundled packages are importable without pip install."""
+    repo_root = Path(__file__).resolve().parents[1]
+    candidate = repo_root / "external" / package_name
+    if candidate.exists() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
 
 # Optionally skip importing the heavy core (avoids ipfs_kit_py import at import-time)
 if os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") != "1":
     try:
+        _add_external_package("ipfs_kit_py")
+        _add_external_package("ipfs_model_manager_py")
+        _add_external_package("ipfs_transformers_py")
         from .ipfs_accelerate import ipfs_accelerate_py as original_ipfs_accelerate_py
     except Exception:
         original_ipfs_accelerate_py = None
