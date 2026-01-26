@@ -678,7 +678,6 @@ class IPFSAccelerateCLI:
     
     def _start_integrated_mcp_server(self, args):
         """Start the integrated MCP server with dashboard, model manager, and queue monitoring"""
-        import asyncio
         import threading
         from http.server import HTTPServer, BaseHTTPRequestHandler
         import json

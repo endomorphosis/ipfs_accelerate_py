@@ -12,6 +12,7 @@ import tempfile
 import os
 import sys
 import json
+import shutil
 import anyio
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -101,10 +102,8 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
             pass
             
         # Clean up test directories
-        for file in os.listdir("test_reports"):
-            os.unlink(os.path.join("test_reports", file))
-        for file in os.listdir("test_visualizations"):
-            os.unlink(os.path.join("test_visualizations", file))
+        shutil.rmtree("test_reports", ignore_errors=True)
+        shutil.rmtree("test_visualizations", ignore_errors=True)
 
     def test_initialization(self):
         """Test initialization of the IntegratedAnalysisSystem"""

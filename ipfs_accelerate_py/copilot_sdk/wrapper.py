@@ -5,6 +5,7 @@ This module provides Python wrappers for GitHub Copilot SDK,
 enabling agentic AI features with caching and retry logic.
 """
 
+import anyio
 import asyncio
 import json
 import logging
@@ -212,7 +213,7 @@ class CopilotSDK:
         
         # Wait for response (collect events)
         messages = []
-        done = asyncio.Event()
+        done = anyio.Event()
         
         def on_event(event):
             if event.type.value == "assistant.message":
@@ -285,7 +286,7 @@ class CopilotSDK:
         # Collect streaming chunks
         chunks = []
         messages = []
-        done = asyncio.Event()
+        done = anyio.Event()
         
         def on_event(event):
             if event.type.value == "assistant.message_delta":

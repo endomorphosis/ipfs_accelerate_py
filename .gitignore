@@ -79,3 +79,10 @@ documentation_analysis.json
 actionlint
 actionlint_*
 LICENSE.txt
+
+# Repo-local userland tools (installed by scripts/zero_touch_install.sh)
+bin/*
+!bin/.gitkeep
+
+# Codemod backups
+.migrate_backups/
