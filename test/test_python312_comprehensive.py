@@ -62,7 +62,7 @@ class Python312CompatibilityTester:
         logger.info("📦 Testing dependency compatibility")
         
         # Test core Python modules first
-        core_modules = ["json", "os", "sys", "pathlib", "argparse", "logging", "asyncio"]
+        core_modules = ["json", "os", "sys", "pathlib", "argparse", "logging"]
         failed_core = []
         
         for module in core_modules:
@@ -194,13 +194,11 @@ class Python312CompatibilityTester:
         
         try:
             # Test async functionality
-            import asyncio
-            
             async def test_async():
                 await anyio.sleep(0.001)
                 return "async working"
-            
-            result = anyio.run(test_async())
+
+            result = anyio.run(test_async)
             logger.info("✅ Async/await functionality working")
             
             # Test for deprecated API usage
@@ -212,7 +210,7 @@ class Python312CompatibilityTester:
                     try:
                         content = Path(file_path).read_text()
                         deprecated_patterns = [
-                            "asyncio.coroutine",
+                            "coroutine",
                             "collections.Iterable",
                             "collections.Mapping",
                         ]

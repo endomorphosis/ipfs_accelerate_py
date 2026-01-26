@@ -447,8 +447,7 @@ async def get_model_unified_data(model_name: str):
     try:
         # Gather model-specific data from all components
         async with httpx.AsyncClient() as client:
-            # Use asyncio.gather to make concurrent requests
-            import asyncio
+            # Use AnyIO gather to make concurrent requests
             test_res, gen_res, bench_res = await gather(
                 client.get(f"{{TEST_API_URL}}/api/test/db/runs", params={{"model_name": model_name, "limit": 10}}),
                 client.get(f"{{GENERATOR_API_URL}}/api/generator/db/tasks", params={{"model_name": model_name, "limit": 10}}),
@@ -508,8 +507,7 @@ async def unified_search(query: str = Query(...), limit: int = Query(100, gt=0, 
     try:
         # Search across all component databases
         async with httpx.AsyncClient() as client:
-            # Use asyncio.gather to make concurrent requests
-            import asyncio
+            # Use AnyIO gather to make concurrent requests
             test_res, gen_res, bench_res = await gather(
                 client.post(
                     f"{{TEST_API_URL}}/api/test/db/search", 
@@ -633,13 +631,10 @@ async def websocket_forward(websocket: WebSocket, target_url: str):
                     except Exception as e:
                         logger.error(f"Receiver error: {{e}}")
                 
-                import asyncio
                 import datetime as import_datetime
-                sender_task = # TODO: Replace with task group - asyncio.create_task(sender())
-                receiver_task = # TODO: Replace with task group - asyncio.create_task(receiver())
                 
-                # Wait for either task to complete
-                await gather(sender_task, receiver_task, return_exceptions=True)
+                # Run sender/receiver concurrently
+                await gather(sender(), receiver(), return_exceptions=True)
     except Exception as e:
         logger.error(f"WebSocket forward error: {{e}}")
         await websocket.close(code=1011, reason=f"Error connecting to target: {{str(e)}}")

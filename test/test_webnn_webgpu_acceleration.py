@@ -81,7 +81,7 @@ class TestWebNNWebGPUIntegration(unittest.TestCase):
         self.assertEqual(accelerator._get_optimal_browser("unknown", "webnn"), "edge")
         self.assertEqual(accelerator._get_optimal_browser("unknown", "webgpu"), "chrome")
     
-    @mock.patch('asyncio.run')
+    @mock.patch('anyio.run')
     @mock.patch('ipfs_accelerate_py.webnn_webgpu_integration._accelerate_async')
     def test_accelerate_with_browser(self, mock_accelerate_async, mock_run):
         """Test the main accelerate_with_browser function."""

@@ -153,7 +153,7 @@ class TestMCPIntegration(unittest.TestCase):
 
 # Run the tests
 if __name__ == "__main__":
-    # For async tests, we need to use asyncio
+    # For async tests, we use AnyIO
     async def run_async_tests():
         # Create a test suite
         suite = unittest.TestSuite()
