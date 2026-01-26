@@ -852,8 +852,7 @@ class ResourcePoolBridgeIntegrationWithRecovery:
                 if hasattr(self.bridge, 'close_sync'):
                     self.bridge.close_sync()
                 elif hasattr(self.bridge, 'close'):
-                    loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-                    loop.run_until_complete(self.bridge.close())
+                    anyio.run(self.bridge.close)
                 logger.info("Base bridge closed successfully")
             except Exception as e:
                 logger.error(f"Error closing base bridge: {e}")
@@ -964,35 +963,35 @@ class ResourcePoolBridgeIntegrationWithRecovery:
                 )
             except AttributeError:
                 # Might be an async method
-                loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-                return loop.run_until_complete(
-                    self.bridge_with_recovery.share_tensor_between_models(
+                async def _share_tensor_recovery_async() -> Dict[str, Any]:
+                    return await self.bridge_with_recovery.share_tensor_between_models(
                         tensor_data=tensor_data,
                         tensor_name=tensor_name,
                         producer_model=producer_model,
                         consumer_models=consumer_models,
                         shape=shape,
                         storage_type=storage_type,
-                        dtype=dtype
+                        dtype=dtype,
                     )
-                )
+
+                return anyio.run(_share_tensor_recovery_async)
         
         # Fall back to base bridge if recovery not enabled
         if hasattr(self.bridge, 'share_tensor_between_models'):
             # Check if it's an async method
-            if inspect.iscoroutinefunction(  # Added import inspectself.bridge.share_tensor_between_models):
-                loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-                return loop.run_until_complete(
-                    self.bridge.share_tensor_between_models(
+            if inspect.iscoroutinefunction(self.bridge.share_tensor_between_models):
+                async def _share_tensor_base_async() -> Dict[str, Any]:
+                    return await self.bridge.share_tensor_between_models(
                         tensor_data=tensor_data,
                         tensor_name=tensor_name,
                         producer_model=producer_model,
                         consumer_models=consumer_models,
                         shape=shape,
                         storage_type=storage_type,
-                        dtype=dtype
+                        dtype=dtype,
                     )
-                )
+
+                return anyio.run(_share_tensor_base_async)
             else:
                 return self.bridge.share_tensor_between_models(
                     tensor_data=tensor_data,

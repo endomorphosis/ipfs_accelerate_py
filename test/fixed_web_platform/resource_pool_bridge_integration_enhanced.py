@@ -45,6 +45,7 @@ import sys
 import time
 import json
 import anyio
+import inspect
 import logging
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union, Callable, Set
@@ -280,8 +281,7 @@ class ResourcePoolBridgeIntegrationEnhanced:
             
             # Initialize base bridge
             if hasattr(self.bridge, 'initialize'):
-                loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-                success = loop.run_until_complete(self.bridge.initialize())
+                success = anyio.run(self.bridge.initialize)
                 if not success:
                     logger.error("Failed to initialize base bridge")
                     return False
@@ -338,10 +338,9 @@ class ResourcePoolBridgeIntegrationEnhanced:
                     adaptive_scaling=self.adaptive_scaling,
                     db_path=self.db_path
                 )
-                
+
                 # Initialize connection pool
-                loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-                loop.run_until_complete(self.connection_pool.initialize())
+                anyio.run(self.connection_pool.initialize)
                 
                 logger.info("Connection pool manager initialized successfully")
             
@@ -1083,8 +1082,10 @@ class ResourcePoolBridgeIntegrationEnhanced:
         elif hasattr(self.bridge, 'get_health_status_sync'):
             status = self.bridge.get_health_status_sync()
         elif hasattr(self.bridge, 'get_health_status'):
-            loop = # TODO: Remove event loop management - asyncio.get_event_loop() if hasattr(asyncio, 'get_event_loop') else # TODO: Remove event loop management - asyncio.new_event_loop()
-            status = loop.run_until_complete(self.bridge.get_health_status())
+            async def _get_health_status_async() -> Dict[str, Any]:
+                return await self.bridge.get_health_status()
+
+            status = anyio.run(_get_health_status_async)
         else:
             status = {"status": "unknown"}
         
