@@ -20,6 +20,8 @@ ipfs_env/
 test/*.json
 build/
 .venv/
+wheelhouse/
+__pycache__/
 .locks
 model_cache/
 model_cache/*
