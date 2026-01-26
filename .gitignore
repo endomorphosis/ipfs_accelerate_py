@@ -9,6 +9,7 @@
 *model_functionality_report*
 *model_functionality*
 *.json
+.venv-test
 *result.json*
 *benchmark_report*
 *.log

@@ -994,7 +994,10 @@ main() {
     log "Installing heavy test deps into $TEST_VENV_DIR"
     create_or_update_venv "$TEST_VENV_DIR"
     pip_install "$TEST_VENV_DIR" "$REPO_ROOT/test/requirements.txt"
-    pip_install_editable_package "$TEST_VENV_DIR"
+    # Do NOT install the project package into the heavy test venv.
+    # The heavy test stack (e.g. selenium) can legitimately conflict with the
+    # project's runtime pins (notably urllib3<2 for ipfshttpclient).
+    # Keeping this venv as "tools/tests only" avoids pip check conflicts.
     pip_check "$TEST_VENV_DIR"
   else
     log "Skipping heavy test deps (INSTALL_HEAVY_TEST_DEPS=$INSTALL_HEAVY_TEST_DEPS)"
@@ -1012,7 +1015,7 @@ main() {
   log "Python: $VENV_DIR/bin/python"
   log "Run tests: $VENV_DIR/bin/python -m pytest"
   if [[ "$INSTALL_HEAVY_TEST_DEPS" == "1" ]]; then
-    log "Heavy test env: $TEST_VENV_DIR/bin/python -m pytest"
+    log "Heavy test env: $TEST_VENV_DIR/bin/python -m pytest (best for selenium/e2e style tests)"
   fi
 }
 
