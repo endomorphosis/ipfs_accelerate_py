@@ -4,6 +4,24 @@ import requests
 import json
 from typing import Dict, List, Optional, Union, Any, Callable
 
+
+class _AnyioQueue:
+    def __init__(self, max_items: int = 0):
+        self._send, self._recv = anyio.create_memory_object_stream(max_items)
+
+    async def put(self, item: Any) -> None:
+        await self._send.send(item)
+
+    async def get(self) -> Any:
+        return await self._recv.receive()
+
+    def task_done(self) -> None:
+        return
+
+    async def aclose(self) -> None:
+        await self._send.aclose()
+        await self._recv.aclose()
+
 class llvm:
     """LLVM API Backend Integration
     
@@ -55,7 +73,7 @@ class llvm:
         self.endpoint_status = {}
         self.registered_models = {}
         # Add queue for managing requests
-        self.request_queue = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue(64)
+        self.request_queue: _AnyioQueue = _AnyioQueue(max_items=64)
         return None
     
     def init(self, endpoint_url=None, api_key=None, model_name=None, endpoint_type="completion"):

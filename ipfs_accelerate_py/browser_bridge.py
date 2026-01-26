@@ -29,6 +29,27 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union, Tuple, Type, Callable
 
+
+CancelledError = anyio.get_cancelled_exc_class()
+
+
+class _AnyioQueue:
+    def __init__(self, max_items: int = 0):
+        self._send, self._recv = anyio.create_memory_object_stream(max_items)
+
+    async def put(self, item: Any) -> None:
+        await self._send.send(item)
+
+    async def get(self) -> Any:
+        return await self._recv.receive()
+
+    def task_done(self) -> None:
+        return
+
+    async def aclose(self) -> None:
+        await self._send.aclose()
+        await self._recv.aclose()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -113,8 +134,10 @@ class BrowserBridge:
         self.client_connections = {}
         self.browser_id = str(uuid.uuid4())
         self.shutdown_requested = False
-        self.messages = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
+        self.messages: _AnyioQueue = _AnyioQueue(max_items=256)
         self.results = {}
+
+        self._task_group: anyio.abc.TaskGroup | None = None
         
         # HTML template and other browser resources
         self._init_browser_resources()
@@ -911,13 +934,21 @@ class BrowserBridge:
         await self._launch_browser()
         
         # Start message processing loop
-        # TODO: Replace with task group - asyncio.create_task(self._process_messages())
+        if self._task_group is None:
+            self._task_group = anyio.create_task_group()
+            await self._task_group.__aenter__()
+        self._task_group.start_soon(self._process_messages)
         
         logger.info(f"Browser bridge started with {self.browser_name} browser")
         
     async def stop(self):
         """Stop the browser bridge."""
         self.shutdown_requested = True
+
+        try:
+            await self.messages.aclose()
+        except Exception:
+            pass
         
         # Close WebSocket server
         if self.websocket_server:
@@ -931,6 +962,11 @@ class BrowserBridge:
             
         # Close browser
         await self._close_browser()
+
+        if self._task_group is not None:
+            tg = self._task_group
+            self._task_group = None
+            await tg.__aexit__(None, None, None)
         
         logger.info("Browser bridge stopped")
         
@@ -1280,7 +1316,9 @@ class BrowserBridge:
                 # Mark message as processed
                 self.messages.task_done()
                 
-            except asyncio.CancelledError:
+            except anyio.EndOfStream:
+                break
+            except CancelledError:
                 # Task was cancelled, exit gracefully
                 break
             except Exception as e:
